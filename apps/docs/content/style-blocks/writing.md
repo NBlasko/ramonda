@@ -87,16 +87,27 @@ Two of CSS's own rules surprise people, so they are worth saying out loud:
 
 ## A value in a declaration is written out
 
-Everything in a block is decided when the block compiles. A TypeScript expression in a declaration's
-value — `{ … }`, a hole — is refused:
+Everything in a block is decided when the block compiles. A TypeScript expression standing in for a
+declaration's value — `$( … )`, a hole — is refused:
 
 ```
-color: {this.brand};             ✗  hole-not-allowed
+color: $(this.brand);            ✗  hole-not-allowed
 ```
 
-Two things cover what a hole would be reached for.
+Three things cover what a hole would be reached for.
 
-**If the value is one of a few, write them out.** [`match`](/style-blocks/composing#match-one-value-several-outcomes) makes each
+**If the value is one of two, write the choice.** Both values become classes and the condition picks
+one — see [a choice between two values](/style-blocks/composing#a-choice-between-two-values):
+
+```tsx
+class Note extends Component<{ urgent: boolean; text: string }> {
+  render() {
+    return <p className={@@( color: $(this.props.urgent) ? #ef4444 : #374151; )}>{this.props.text}</p>;
+  }
+}
+```
+
+**If the value is one of a few, write them all out.** [`match`](/style-blocks/composing#match-one-value-several-outcomes) makes each
 arm its own rule and its own class, so the subject only picks between classes that already exist:
 
 ```tsx
@@ -105,7 +116,7 @@ class Chip extends Component<{ tone: "hot" | "cold" }> {
     return (
       <span className={@@(
         padding: 4px 10px;
-        color: match({this.props.tone}) {
+        color: match $(this.props.tone) {
           hot  => #ff0055;
           cold => #0ea5e9;
         };
@@ -121,7 +132,7 @@ can read and your element can set — one name however many declarations read it
 ```tsx
 const width = @@property( syntax: "<percentage>"; initial-value: 0%; inherits: false; );
 
-const meter = @@( height: 8px; width: var({width}); );
+const meter = @@( height: 8px; width: var($(width)); );
 ```
 
 That page is [values that come from data](/style-blocks/dynamic), and it is worth reading before you
@@ -142,10 +153,10 @@ padding-left: {v}; padding-right: {v};             TWO variables, two classes
 padding-left: var({pad}); padding-right: var({pad});   ONE, however many read it
 ```
 
-**The braces are still how an expression gets in**, and three of them are untouched, because none of
-them puts a value on an element: `if ({…})` and `...{…}` choose between whole rules,
-`match({…})` chooses between classes, and `var({name})` names a `@@property` site the compiler
-resolves before the CSS is written.
+**`$( … )` is how an expression gets in**, and everywhere else it stands is untouched, because none
+of them puts a value on an element: `when $(…)` and `...$(…)` choose between whole rules,
+`match $(…)` and `$(…) ? a : b` choose between classes, and `var($(name))` names a `@@property`
+site the compiler resolves before the CSS is written.
 
 ## A value you build in TypeScript can be typed
 
@@ -211,12 +222,12 @@ a function chooses between them and hands the one it picked to `toStyle`:
 
 ```tsx
 import { toStyle } from "@ramonda/css";
-import { $ } from "../css-system";
+import { $color } from "../css-system";
 import type { Var } from "../css-system";
 
 declare const loud: boolean;
 
-const pick = (): Var<"color"> => (loud ? $.color.accent : $.color.surface);
+const pick = (): Var<"color"> => (loud ? $color.accent : $color.surface);
 const theme = toStyle([[pick(), "#10b981"]]);
 ```
 
@@ -240,13 +251,13 @@ stylesheet as they stand, and the CSS compiler would refuse the **whole file** �
 the block, the file, or the line it came from. So it is reported before it gets there, as
 `line-comment`, on the `//` itself.
 
-Inside braces a comment is TypeScript's, because that is what the braces hold:
+Inside `$( … )` a comment is TypeScript's, because that is what the escape holds:
 
 ```tsx
 declare const loud: boolean;
 
 const card = @@(
-  if ({/* the brand, not the accent */ loud}) { color: #ff0055; }
+  when $(/* the brand, not the accent */ loud) { color: #ff0055; }
 );
 ```
 

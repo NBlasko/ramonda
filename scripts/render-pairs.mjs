@@ -8,7 +8,7 @@
  * `markup` uses the class names; on the block page each name becomes its compiled classes.
  *
  * `shared` is source written above every block's module — a `@@keyframes` a block names. A block may
- * spread another of the pair, `...{base}`, and it is then imported from that block's own module.
+ * spread another of the pair, `...$(base)`, and it is then imported from that block's own module.
  *
  * Every element is sized and outlined, so a declaration that goes wrong moves or recolours
  * something the picture shows. A pair earns its place by a fault it would have caught — the
@@ -167,7 +167,7 @@ export const PAIRS = [
     name: "an animation that fills forwards",
     hand: `@keyframes grow { from { width: 10px; } to { width: 120px; } } .a { background: #9cf; height: 20px; animation: grow 1s ease-in forwards; }`,
     shared: "const grow = @@keyframes( from { width: 10px; } to { width: 120px; } );\n",
-    blocks: { a: "background: #9cf; height: 20px; animation: {grow} 1s ease-in forwards;" },
+    blocks: { a: "background: #9cf; height: 20px; animation: $(grow) 1s ease-in forwards;" },
     markup: `<div class="a"></div>`,
   },
   {
@@ -177,7 +177,7 @@ export const PAIRS = [
     hand: `.card { padding: 8px; border: 2px solid #999; background: #eee; padding-left: 40px; }`,
     blocks: {
       base: "padding: 8px; border: 2px solid #999; background: #eee;",
-      card: "...{base}; padding-left: 40px;",
+      card: "...$(base); padding-left: 40px;",
     },
     markup: `<div class="card" style="${BOX}">text</div>`,
   },

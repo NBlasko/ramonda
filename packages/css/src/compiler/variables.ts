@@ -1,4 +1,4 @@
-import type { Block, BlockItem, ValuePart } from "./ast";
+import { type Block, type BlockItem, type ValuePart, childrenOf } from "./ast";
 
 /**
  * What a block does with custom properties: the names it SETS, and the names it READS.
@@ -71,8 +71,8 @@ export function variablesIn(block: Block): Variables {
 
   const walk = (items: readonly BlockItem[]): void => {
     for (const item of items) {
-      if (item.kind === "rule") {
-        walk(item.items);
+      if (item.kind !== "declaration") {
+        walk(childrenOf(item));
         continue;
       }
       if (item.property.startsWith("--")) set.push(item.property);

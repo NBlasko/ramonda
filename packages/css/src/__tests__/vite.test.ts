@@ -278,7 +278,7 @@ describe("a block it cannot read", () => {
     const { transform } = hooks();
 
     try {
-      transform.call({}, `const a = <div className={@@( {name}: 24px; )}>x</div>;\n`, "/src/Card.tsx");
+      transform.call({}, `const a = <div className={@@( $(name): 24px; )}>x</div>;\n`, "/src/Card.tsx");
       expect.unreachable("the plugin should have refused");
     } catch (error) {
       const refusal = error as Error & { id?: string; loc?: { line: number; column: number } };
@@ -291,14 +291,14 @@ describe("a block it cannot read", () => {
        * error anywhere to find it. Measured on a real parse error at a known position: `@` on
        * 1-based column 20 came back as `1:19`, caret under it.
        *
-       * The hole's `{` is at 1-based column 31 in the source below. It has moved twice: 24 while a
+       * The hole's `$(` is at 1-based column 31 in the source below. It has moved twice: 24 while a
        * block could be written as a bare attribute, 25 once the braced spelling added its brace, and
        * 31 now that the attribute is `className` rather than the `css` prop that is gone. Each move
        * was a number in this file, which is why they are asserted FROM the source rather than
        * written out — the assertion below proves the source really says what the prose claims.
        */
-      const source = `const a = <div className={@@( {name}: 24px; )}>x</div>;\n`;
-      expect(source.indexOf("{", source.indexOf("@@(") + 3) + 1).toBe(31);
+      const source = `const a = <div className={@@( $(name): 24px; )}>x</div>;\n`;
+      expect(source.indexOf("$(", source.indexOf("@@(") + 3) + 1).toBe(31);
       expect(refusal.loc).toEqual({ line: 1, column: 30 });
     }
   });
@@ -339,7 +339,7 @@ describe("the assembled stylesheet", () => {
   // here needs: a hole used to put one on the element, and a runtime value is refused.
   const SOURCE =
     `const c = @@property(\n  syntax: "<color>";\n  inherits: false;\n  initial-value: red;\n);\n` +
-    `const a = <div className={@@( color: var({c}); )}>x</div>;\n`;
+    `const a = <div className={@@( color: var($(c)); )}>x</div>;\n`;
 
   /** The plugin after one file has been through it, and the CSS it produced. */
   const built = () => {
@@ -555,7 +555,7 @@ describe("the dependency scan", () => {
   /** A scan is not where an author should meet a diagnostic — the real transform reports it. */
   test("a block it cannot read is passed over rather than thrown from", () => {
     const { load } = scanner();
-    const path = written("Broken.tsx", `const a = <div className={@@( {whatever}: 4px; )}>x</div>;\n`);
+    const path = written("Broken.tsx", `const a = <div className={@@( $(whatever): 4px; )}>x</div>;\n`);
 
     expect(() => load?.({ path })).not.toThrow();
     expect(load?.({ path })).toBeNull();

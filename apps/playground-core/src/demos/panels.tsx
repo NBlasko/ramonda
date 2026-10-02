@@ -268,8 +268,8 @@ export class StyleBlock extends Component {
             flex-direction: column;
             gap: 8px;
             padding: 4px 0;
-            border-left: var({WEIGHT}) solid #ff0055;
-            padding-left: calc(var({WEIGHT}) + 8px);
+            border-left: var($(WEIGHT)) solid #ff0055;
+            padding-left: calc(var($(WEIGHT)) + 8px);
             transition: border-left-width 150ms ease-in-out, padding-left 150ms ease-in-out;
             &:hover {
               border-left-color: #00b37e;
@@ -296,17 +296,17 @@ export class StyleBlock extends Component {
  * 8 rules and 353 B for one root block with descendant selectors. So per-element is not a
  * concession, it is the cheaper and clearer one, and this panel is written that way.
  *
- * **`...{ … }` merges another block here.** It works across files, because what it merges is a
+ * **`...$(…)` merges another block here.** It works across files, because what it merges is a
  * value — importable, storable in an object, pickable out of one.
  *
- * **`if ({ … }) { … }` merges a group only when the condition holds**, and both are arguments of
+ * **`when $(…) { … }` merges a group only when the condition holds**, and both are arguments of
  * the same merge in the order they were written, so **what comes later wins**. That is the rule a
  * reader of CSS already has, and it is the thing whole-block classes could never express: the order
  * of names in a `class` attribute means nothing in CSS, so precedence has to be decided where the
  * author wrote it.
  *
  * **There is no `@else`, and the replacement is stronger.** Spreading a lookup —
- * `...{TONES[this.tone]}` — is exhaustive: add a tone to the union and forget the map, and
+ * `...$(TONES[this.tone])` — is exhaustive: add a tone to the union and forget the map, and
  * TypeScript reports it. `@else` never could.
  *
  * **Watch `padding` when "roomy" is on.** The base sets `padding-left` and the group sets the
@@ -383,19 +383,19 @@ export class StyleBlockComposed extends Component {
 
         <div
           className={@@(
-            ...{CONTROL};
-            ...{TONES[this.tone]};
+            ...$(CONTROL);
+            ...$(TONES[this.tone]);
 
-            if ({this.off}) {
+            when $(this.off) {
               opacity: 0.5;
               cursor: none;
 
-              if ({this.roomy}) {
+              when $(this.roomy) {
                 color: yellow;
               }
             }
 
-            if ({this.roomy}) {
+            when $(this.roomy) {
               padding: 14px 20px;
             }
           )}
@@ -469,7 +469,7 @@ export class StyleBlockNested extends Component {
           @@(
             /* One name, read four times below — see the note above. */
             --accent: #10b981;
-            if ({this.urgent}) {
+            when $(this.urgent) {
               --accent: #ff0055;
             }
 

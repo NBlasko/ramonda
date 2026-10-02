@@ -5,6 +5,13 @@ that stopped being true when the package landed: `@ramonda/css` is a real worksp
 `0.0.0`, private and unpublished, with a compiler, a check command, an editor plugin, two bundler
 adapters and a formatter wrapper.
 
+> **The spelling changed on 2026-10-02**, after most of this was written: code goes into a block as
+> `$( … )` (it was `{ … }`, and `{{ … }}` before that), a condition is `when $( … ) { … }` with
+> `else when` and `else` (it was `if ({ … })`, and `@@if` before that), a match is `match $( … ) { … }`
+> at both levels, a value may be a choice `$(c) ? a : b`, and a variable is `$group.path` (it was
+> `$.group.path`). Prose here has been moved to the new spelling where it names the construct; where
+> it records what an OLD spelling did, the old spelling is the point and stays.
+
 This file is the *why*, and it is the oldest of the three. `PLAN.md` is the *when*; `CONTRACT.md` is
 what both halves must agree on.
 
@@ -671,12 +678,12 @@ This is the repository's recurring fault in its purest form: one question — *w
 hold* — with two consumers, the type and the completion, and a design that lets only one of them read
 the answer.
 
-### A `$.color.primary.main` syntax for variables — BUILT
+### A `$color.primary.main` syntax for variables — BUILT
 
 **Status 2026-10-02:** built and shipped — `$` paths in a block, codegen's `css-system/`, and the
 pages in `style-blocks/variables.md`. What follows is the reasoning as it was weighed.
 
-The user's proposal: a third spelling for a custom property, `$.color.primary.main` instead of
+The user's proposal: a third spelling for a custom property, `$color.primary.main` instead of
 `var(--color-primary-main)`, with three reasons. Two of them turn out to stand differently than
 posed.
 
@@ -690,7 +697,7 @@ there. **The argument survives in a stronger form**, though: a hole costs 41 byt
 render, people reach for one anyway, and making the free path the SHORT path is a real lever. That is
 a different claim from "it avoids a hole", and it is the one worth arguing.
 
-**"It is shorter" barely is.** `$.color.primary.main` is 20 characters against 25 for
+**"It is shorter" barely is.** `$color.primary.main` is 20 characters against 25 for
 `var(--color-primary-main)`. Five characters do not carry a design decision.
 
 **"Types from the config" is real, and has a cheaper route.** Generating the token names into the
@@ -710,8 +717,8 @@ of 88 tokens in 6 groups, asked at the position an editor asks:
     a value typed as the flat union, empty string       88 offered
     the same union, after `var(--color-`                88 offered
     $.                                                   6 offered   color, font, motion, …
-    $.color.                                             5 offered   border, primary, state, …
-    $.color.primary.                                     4 offered   contrast, dark, light, …
+    $color.                                             5 offered   border, primary, state, …
+    $color.primary.                                     4 offered   contrast, dark, light, …
 
 The service returns the whole list at both string positions; the editor narrows what it DISPLAYS by
 what has been typed. That is filtering, and filtering requires already knowing the name. The nested
@@ -722,9 +729,9 @@ reaching for a token usually has. At two hundred tokens the gap widens rather th
 
     var(--color-primary-main)   plain CSS, checked by our rule against every name the build sets
     var({accent})               a `@@property` binding, checked by TypeScript, compiles to a name
-    $.color.primary.main        proposed
+    $color.primary.main        proposed
 
-`Why the condition is inside { }` in the docs makes exactly this argument for `if ({ … })`: *the
+`Why the condition is inside { }` in the docs makes exactly this argument for `when $(…)`: *the
 moment there are two, every reader has to learn which one a given line is.* Three is worse.
 
 **What only `$` can give, and the user did not raise it:** it is a real object, so rename-refactor
@@ -753,7 +760,7 @@ spellings of one thing. They are spellings of two different things:
 
 | | the world | what checks it |
 |---|---|---|
-| `$.color.primary.main` | **closed** — the tokens this project declared | the type: complete, with completion and rename |
+| `$color.primary.main` | **closed** — the tokens this project declared | the type: complete, with completion and rename |
 | `var(--anything)` | **open** — including what an ancestor, a foreign stylesheet or JS sets | the rule: knows the whole build, and has an escape |
 
 **The closed case has no spelling today.** `@@property` is the nearest thing and is not it: a
@@ -773,7 +780,7 @@ browser and there is no runtime: the stylesheet is what a hand-written `var()` p
 is not decoration — it is what makes the value's type true, because a `var()` with no fallback can
 resolve to nothing and a type that promised a colour would have lied.
 
-**A group is an error; always write a leaf.** `$.color.primary` names three variables and no value.
+**A group is an error; always write a leaf.** `$color.primary` names three variables and no value.
 Left alone TypeScript would say `Type '{ main: … }' is not assignable`, which names the shape instead
 of the mistake, so groups carry a marker and the message says a group was named.
 
@@ -789,9 +796,9 @@ while it is being typed**, so the defaults are written against a real type rathe
 kind("color",  { primary: { main: "30px"   } })   TS2322  not assignable to `#${string}` | rgb(…) | …
 kind("length", { control: { md: "#3b82f6" } })    TS2322  not assignable to "0" | `${number}px` | …
 
-$.size.control.sm   in a padding narrowed to 4/8/16/24   ok
-$.size.control.md   the same slot                        TS2345  Var<"length","30px"> is not PaddingScale
-$.color.primary.main                                     TS2345  a colour
+$size.control.sm   in a padding narrowed to 4/8/16/24   ok
+$size.control.md   the same slot                        TS2345  Var<"length","30px"> is not PaddingScale
+$color.primary.main                                     TS2345  a colour
 ```
 
 That last pair is the point of the kind: the narrowing a project sets on a property reaches its
@@ -836,7 +843,7 @@ drugog mesta gde su variable, zar ne?"* They do, and that is two places.
 ```
 ramonda.css.ts   ->   :root { --color-primary-main: #3b82f6; … }    emitted
                  ->   $ and the types                               emitted
-                 ->   $.color.primary.main  ->  var(--color-primary-main, #3b82f6)
+                 ->   $color.primary.main  ->  var(--color-primary-main, #3b82f6)
 ```
 
 The fallback is then not a second copy of the value. It is one value, written once, used twice: as
@@ -873,7 +880,7 @@ And a fallback is **invisible to a read** — `--unset` is still `""` after a pr
 one. So a typed read has to apply the fallback itself:
 
 ```ts
-read($.color.primary.main, el)   // getPropertyValue, trimmed; "" becomes the declared fallback
+read($color.primary.main, el)   // getPropertyValue, trimmed; "" becomes the declared fallback
 ```
 
 which is what makes "never undefined" true in JavaScript too, not only in CSS. `$` is already an
@@ -915,7 +922,7 @@ goes to a directory the project's `tsconfig.json` already includes.
 | the `$` module | the object — each leaf carries its NAME and its FALLBACK — plus `Var<kind, value>` types, `toStyle` and `read` |
 | the value types | the narrowed per-property types the virtual file already consumes |
 
-`$.color.primary.main` in a block compiles to `var(--color-primary-main, #3b82f6)`. In TypeScript it
+`$color.primary.main` in a block compiles to `var(--color-primary-main, #3b82f6)`. In TypeScript it
 is a real object, which is what `read` and `toStyle` need.
 
 ##### 4. Where a wrong value is caught — and where it is not
@@ -926,7 +933,7 @@ not everywhere, and the gap is worth knowing.
 | a wrong value written… | caught at build? | by what |
 |---|---|---|
 | in the config — `kind("length", { md: "#3b82f6" })` | **yes** | `tsc`, `TS2322` |
-| in a block — `padding: $.color.primary.main` | **yes** | the types, `TS2345` |
+| in a block — `padding: $color.primary.main` | **yes** | the types, `TS2345` |
 | in a block — `--size-control-md: crveno` | **yes** | the checker already reads custom properties a block sets |
 | through `toStyle({ "size.control.md": "crveno" })` | **yes** | it is TypeScript |
 | in THEIR own hand-written `.css` file | **no** | it is not a file we compile |
@@ -1080,7 +1087,7 @@ name, the fallback and the kind; everything past that is the project's.
   Only the last is interesting — a hole there is already a real TypeScript expression, so `$` rides
   the same machinery for completion while compiling to text rather than to a custom property.
 - Names that are not identifiers (`2xl`, `0`): written with a dot in the block, bracketed in the
-  virtual file. Measured — `$.space.inline.2xl` does not parse (`TS1351`), `["2xl"]` does — and the
+  virtual file. Measured — `$space.inline.2xl` does not parse (`TS1351`), `["2xl"]` does — and the
   mapping already supports it, since `Segment` keeps `sourceLength` apart from the virtual length and
   `copied` is written rather than inferred. The path is emitted as several runs so completion lands.
 
@@ -1209,7 +1216,7 @@ themed tokens have to be typed too.
 
 #### The path's colouring
 
-`$.space.gutter.wide` colours only `space`, as a property VALUE, and the rest — the `$`, the dots,
+`$space.gutter.wide` colours only `space`, as a property VALUE, and the rest — the `$`, the dots,
 `gutter`, `wide` — comes out as plain text.
 
 **That is the state BEFORE `ramonda.css-variable`, measured and fixed.** The grammar makes the whole
@@ -2101,10 +2108,10 @@ misreports the thing it reviewed:
 - **The merge is real.** `"*": { units, arity }` plus `"padding-left": { values }` stacks; each
   constraint fires on its own. `"*": { shorthand: false }` with `padding: { shorthand: true }` brings
   exactly one back. Presets — design C's whole reason — will work.
-- **A token is not a hole in the strictness.** `padding-left: $.rems.big.one` is refused where the
-  property is px-only; `z-index: $.space.gutter.normal` is refused because a length is not an
+- **A token is not a hole in the strictness.** `padding-left: $rems.big.one` is refused where the
+  property is px-only; `z-index: $space.gutter.normal` is refused because a length is not an
   integer.
-- **`$` earns the virtual file.** `$.space.gutter.norml` gets *Did you mean 'normal'?* from
+- **`$` earns the virtual file.** `$space.gutter.norml` gets *Did you mean 'normal'?* from
   TypeScript itself, with rename and go-to-definition for free.
 
 ### 1. `units` meant two different things — FIXED
@@ -2146,8 +2153,8 @@ it urgent: `units` reached only the checker then, and it reaches the types now.
 A mistyped `$` path was reported twice, at two columns, with the same suggestion in each:
 
 ```
-unknown-variable  `$.space.gutter.norml` is not a variable this project declares.
-                  Did you mean `$.space.gutter.normal`?
+unknown-variable  `$space.gutter.norml` is not a variable this project declares.
+                  Did you mean `$space.gutter.normal`?
 TS2551            Property 'norml' does not exist on type
                   'Readonly<{ normal: Token<"length", "16px">; }>'. Did you mean 'normal'?
 ```
@@ -2183,7 +2190,7 @@ padding-left: 0   →   Type '"0"' is not assignable to type
 
 **A bare `0` is not a hardcoded length.** CSS lets a zero length go without a unit, `CssDimension`
 holds `0 | "0"` for exactly that reason, and a project saying *lengths come from variables* is not
-asking anybody to write `$.space.none`. The dimensionless zero went out with the literals because
+asking anybody to write `$space.none`. The dimensionless zero went out with the literals because
 the two lived in one type.
 
 Both spellings are admitted: a block is CSS, so `padding-left: 0` reaches the type as the string
@@ -2313,7 +2320,7 @@ what is already known, including a suggestion of the declared variable whose val
 
 ```
 `8px` is a length written out, and this project takes lengths only from its own variables.
-You declared `$.space.sm` with exactly this value.
+You declared `$space.sm` with exactly this value.
 ```
 
 So the work is the same either way, and generating leaves the config one key smaller. `reason` goes
@@ -2333,8 +2340,8 @@ svidja, pa onda prosiri range."* — was already the behaviour, and measured:
 "padding-left": { values: ["4px", "8px"] }
 
 padding-left: 12px      refused    a literal outside the list
-padding-left: $.s.ok    accepted   declared 8px, which the list permits
-padding-left: $.s.big   refused    declared 30px, which it does not
+padding-left: $s.ok    accepted   declared 8px, which the list permits
+padding-left: $s.big   refused    declared 30px, which it does not
 ```
 
 So `variablesOnly` is not a way around a range. It is the same range with one spelling taken away.
@@ -2382,7 +2389,7 @@ is one value, and the two coincide on purpose.
 **But asking exposed the message, and it was the worst one in the package:**
 
 ```
-toStyle([[$.space.gutter, "24px"]])
+toStyle([[$space.gutter, "24px"]])
 
 TS2322: Type 'Token<"length", "16px">' is not assignable to type 'never'.
 TS2322: Type 'string' is not assignable to type 'never'.
@@ -2448,12 +2455,12 @@ before   TS2322: Type '"8px"' is not assignable to type
 after    literal-not-allowed: `8px` is a length or a percentage written out, and this project
            takes them only from its own variables.
 
-           Declare it in `ramonda.css.ts` and write `$.…`, or set
+           Declare it in `ramonda.css.ts` and write `$group.…`, or set
            `"padding-left": { variablesOnly: false }`.
 ```
 
 **What is deliberately not a literal.** A CALL is an escape hatch and is not read into —
-`calc($.space.md * 2)` holds a `2` that is not a hardcoded length and nothing here can tell it from
+`calc($space.md * 2)` holds a `2` that is not a hardcoded length and nothing here can tell it from
 one that is. A bare `0` needs no unit in CSS. `var()` is what CSS itself provides. A HOLE evaluates
 at render.
 
@@ -2873,8 +2880,8 @@ feature creates the convention rather than joining one.
 
 ```tsx
 function Card(props: { css?: CssBlock<Root>; titleCss?: CssBlock<Title> }) {
-  return <div css={@@( display: flex; ...{props.css}; )}>
-           <h2 css={@@( ...{props.titleCss}; )}>…</h2>
+  return <div css={@@( display: flex; ...$(props.css); )}>
+           <h2 css={@@( ...$(props.titleCss); )}>…</h2>
          </div>;
 }
 ```
@@ -2986,7 +2993,7 @@ neko ne stavi nesto da ide kroz props, a ja ga ne konzumiram na strani deteta, t
 se tiho rastave stvari."* Eight shapes measured, and two controls each flipping exactly one of them.
 
 - **Walk BACKWARD from every `__from` and `__val`, following initialisers.** The forward walk, from
-  the declaration to its references, falsely reported `const s = this.css; ...{s}` — a prop that is
+  the declaration to its references, falsely reported `const s = this.css; ...$(s)` — a prop that is
   used, through one local. Breaking the initialiser-following on purpose put that false report back,
   which is how the fix is known to be the fix.
 - **A destructured prop is TWO slot-typed declarations.** For `function M({ css }: { css?: Slot })`
@@ -3013,8 +3020,8 @@ caller's `padding-left` — and a `padding` inside a `@media` clears only the `p
 that same `@media`, leaving the outer one alone. So this rule is not about a broken merge. It is
 about a child that PROMISED a property in its allow-list and then took it back.
 
-`...{css}; padding: 8px` with `padding-left` allowed is `covers(padding, padding-left)`;
-`...{css}; color: red` with `color` allowed is `conflict(color, color)`. `padding: 8px; ...{css}` is
+`...$(css); padding: 8px` with `padding-left` allowed is `covers(padding, padding-left)`;
+`...$(css); color: red` with `color` allowed is `conflict(color, color)`. `padding: 8px; ...$(css)` is
 quiet, and that is the order a slot is for. There are two fixes and both are right — move the spread
 down, or take the property out of the allow-list. The second turns a CSS ordering mistake into a
 question about the API: *why promise `padding-left` and then clear it?*
@@ -3047,7 +3054,7 @@ Raised by the user with an example of their own, and it is the better question:
 const base = @@( @media (prefers-color-scheme: dark) { color: white; } );
 
 const card = <div css={@@(
-  ...{base};
+  ...$(base);
   @media (min-width: 40rem) { color: blue; }
 )}>…</div>;
 ```
@@ -3059,18 +3066,18 @@ another file, when both are written inline, and **when the files are added in th
 nothing here to type, and a type parameter that never changes an answer is cost without benefit.
 
 **The same-band case IS a fault, and it is silent through a spread.** Two `@supports` in one block
-are reported by `override-out-of-order`; the moment one arrives by `...{base}` the rule sees
+are reported by `override-out-of-order`; the moment one arrives by `...$(base)` the rule sees
 nothing. So the single fault — *a spread is opaque* — has two faces: **merge time**, where a
 shorthand clears a longhand, and **sheet time**, where two same-band conditions tie.
 
 **But only one of the two needs a type**, and this is the rule to keep:
 
-- **`...{base}`** — there is a declaration to follow. Measured: the checker resolves the import
-  across modules and reads the block verbatim. The COMPILER deliberately does not — `...{base}`
+- **`...$(base)`** — there is a declaration to follow. Measured: the checker resolves the import
+  across modules and reads the block verbatim. The COMPILER deliberately does not — `...$(base)`
   emits `_merge(base, {"@media (min-width: 40rem)|color": "r-…"})`, a runtime merge of class maps
   keyed `condition|property`. The checker is not the compiler, and it can read what the compiler
   chose not to.
-- **`...{this.css}`** — there is no declaration. The value comes from a caller who has not been
+- **`...$(this.css)`** — there is no declaration. The value comes from a caller who has not been
   written. Only the type can describe it.
 
 **The block type must NOT carry both its contents and its allow-list.** Measured: it works, and the
@@ -3090,7 +3097,7 @@ style by a condition, conditions inside a value, and a style function returning
 `[compiledStyles, InlineStyles]`. This package has all three, and the first compiles to pure class
 selection:
 
-    if ({this.active}) { color: blue; }
+    when $(this.active) { color: blue; }
       CSS    r-c-red{color:red;}  r-c-blue{color:blue;}
       value  _merge({"color":"r-c-red"}, this.active && {"color":"r-c-blue"})
 
@@ -3098,7 +3105,7 @@ selection:
       CSS    r-OsXzXT1Qd{color:var(--r-OsXzXT1Qd-0);}
       value  _merge({"color":["r-OsXzXT1Qd", this.brand]})
 
-No custom property, no inline attribute, two static rules in the sheet. `...{cond ? hot : cold}`
+No custom property, no inline attribute, two static rules in the sheet. `...$(cond ? hot : cold)`
 is the same. So a project or a slot that forbids holes loses nothing it cannot say another way.
 
 **Two levels, both measured.**
@@ -3403,7 +3410,7 @@ Two shapes are not, and they were settled separately.
 
 #### SUPERSEDED — a block holding an `if`
 
-    <Chip labelCss={@@( font-weight: 400; if ({this.loud}) { font-weight: 600; } )} />
+    <Chip labelCss={@@( font-weight: 400; when $(this.loud) { font-weight: 600; } )} />
       ->  _merge({"font-weight":"r-fw-400",}, this.loud && {"font-weight":"r-fw-600",})
 
 **The compiler hoists every combination and leaves only a choice in the render.** A block with `n`
@@ -3477,7 +3484,7 @@ end at an inline custom property.
 #### `match`
 
 ```
-color: match({this.variant}) {
+color: match $(this.variant) {
   primary   => #10b981;
   secondary => #6b7280;
   _         => inherit;
@@ -3493,7 +3500,7 @@ matchers; none of it is wanted, and the documentation has to say so or the name 
 - **Arms hold literals only.** `primary => {this.x}` must be refused, or the hole is back through a
   side door.
 - **Exhaustive, or `_`.** The checker can see the union. When nothing matches at run time — which a
-  cast can always arrange — **no declaration applies**, which is the same answer `if ({false})`
+  cast can always arrange — **no declaration applies**, which is the same answer `when $(false)`
   already gives.
 
 **`match` and `if` do not overlap**, and the user drew the line: `if` takes any expression that comes
@@ -3509,7 +3516,7 @@ equal by value.
 #### The hole goes
 
 `{expr}` in a declaration's value is refused, and the message points at `match` and `@@property`.
-`if ({cond})` and `...{block}` keep their braces — neither injects a value, both choose between
+`when $(cond)` and `...$(block)` keep their braces — neither injects a value, both choose between
 classes.
 
 Two measured facts argue for it beyond stability:
@@ -3561,7 +3568,7 @@ a block position. The merge cannot be bypassed with `+`, which today is not even
      ordinary annotation; inside a block, a choice between two variables is a `match` whose arms are
      `$` paths.
    - **`match` cannot take a boolean subject.** Arm keys are emitted as string literals, so
-     `match({this.full}) { true => …; }` is `"true"` against `boolean` and does not type-check. `if`
+     `match $(this.full) { true => …; }` is `"true"` against `boolean` and does not type-check. `if`
      is the answer for a boolean, and that is what the documentation says — but the rule that would
      SAY so does not exist yet.
 4. ~~**A property key in every class name.**~~ — **DONE.** A class is `r-<key>-<value>`: the first
@@ -3664,7 +3671,7 @@ module exporting `$`, as codegen writes one. The question as it was put:
 
 Found by the second review of `wholeAcrossBlocks` (`typed.ts`). The virtual file writes a variable
 value as `__vars.border.thin`, a property access, and the walk reads only literal values — so
-`...{base}; border-top: $.border.thin` after a base holding `border: var(--x)` is not reported,
+`...$(base); border-top: $border.thin` after a base holding `border: var(--x)` is not reported,
 though the compiler makes that value a `var()` and it reaches the sheet whole. A MISSED fault, not a
 false one: the merge's development warning still sees it at run time.
 
@@ -3700,7 +3707,7 @@ served none when the mode's NAME decided. A build has none, in any mode, and nei
 (mode `test`, or Vitest running at all), so a test comparing a whole `className` sees what ships.
 Measured on a scaffolded SSR app: the server and the client carry the same marks, hydration reports
 nothing, and an edit moves the line in both. Two blocks on one line share one mark — one place. `withoutSourceMarks` is the runtime helper a spread calls; it takes an absent part as the merge
-does — found on the playground, where `...{props.css}` with no prop threw.
+does — found on the playground, where `...$(props.css)` with no prop threw.
 
 Dev source maps point each rule at where it was written (`order.md`, "From a rule back to the line
 that wrote it"). A class written in several places is one rule with several origins, so a style
@@ -3709,7 +3716,7 @@ panel lists all of them, and nothing in the page says which one THIS element's c
 **Rejected first, and why:**
 - a browser extension (Chrome, Firefox) — it sees the element and its classes, and which BLOCK gave
   a class is known only while rendering; guessing from the element's component is wrong whenever a
-  block arrives as a `css` prop or through `...{base}`. Two extensions to maintain, for a guess;
+  block arrives as a `css` prop or through `...$(base)`. Two extensions to maintain, for a guess;
 - a dev-only custom property in every rule, `--r-src: "Card.tsx:14"` — it sits in the RULE, which
   is shared, so it has the same several-origins problem as the map; it inherits to every child;
 - a suffix on dev class names — dev and production would carry different classes, and the merge
@@ -3723,7 +3730,7 @@ more class in development, `r:src:Card.tsx:10` (spelling to settle): file and li
 - It has **no CSS rule**, so it styles nothing, and it does not start with `r-`, so the merge never
   reads it as a style key — styles and winners are the same in development and production.
 - It has its own **prefix the merge recognises** as a source mark.
-- **A spread leaves no mark.** `const card = @@( ...{base}; … )` in `Card.tsx:10`: the element shows
+- **A spread leaves no mark.** `const card = @@( ...$(base); … )` in `Card.tsx:10`: the element shows
   `Card.tsx:10` only. In development the compiler passes a spread's base through a helper that drops
   its source marks, and the block adds its own. What matters is where a block is USED, not where a
   piece of it came from.
@@ -3789,7 +3796,7 @@ css-system/
   variables.css         `:root`, and an `@property` for each
 ```
 
-`index.ts` so an import writes the folder and no filename — `import { $ } from "../../css-system"`.
+`index.ts` so an import writes the folder and no filename — `import { $color } from "../../css-system"`.
 
 ### `outDir`, and why it is read from the TEXT
 
@@ -4167,7 +4174,7 @@ number                  number              TS2322
 boolean                 boolean             TS2322: Type 'string' is not assignable to type 'boolean'
 ```
 
-The transform is happy with all of them — `match({this.loud}) { true => red; false => blue; }`
+The transform is happy with all of them — `match $(this.loud) { true => red; false => blue; }`
 compiles and emits `r-c-red` and `r-c-blue`. It is the TYPE that refuses, and the cause is one line
 in `virtual.ts`:
 
@@ -4191,7 +4198,7 @@ change to `lookup` and wants its own measurement.
 expression.
 
 ```tsx
-match({this.loud ? "on" : "off"}) { on => red; off => blue; }
+match $(this.loud ? "on" : "off") { on => red; off => blue; }
 ```
 
 So the ternary is available after all, just not in the arm. That is a workaround rather than a

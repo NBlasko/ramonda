@@ -1,5 +1,5 @@
 import MagicString from "magic-string";
-import { segments } from "./flatten";
+import { type Guard, sameGuard, segments } from "./flatten";
 import type { AtomicDeclaration } from "./flatten";
 import { SHORTHANDS } from "./keywords.generated";
 import { keyIn } from "../key";
@@ -174,6 +174,9 @@ export interface TransformResult {
  * before any of it existed, 1,268 files and 10.61 MB in **1.33 ms**. A plugin returning `undefined`
  * here hands the file on untouched, with no map to compose and no string to rebuild.
  */
+/** An expression that is one operand however it is placed: a name, a member path, `!` before one. */
+const SIMPLE_OPERAND = /^!*[A-Za-z_$][\w$]*(?:\??\.[A-Za-z_$][\w$]*)*$/;
+
 export function transform(source: string, options: TransformOptions = {}): TransformResult | undefined {
   if (!mayHoldABlock(source)) return undefined;
 
@@ -467,7 +470,7 @@ export function transform(source: string, options: TransformOptions = {}): Trans
      * guard can be emitted once, and a nested segment would need its outer guard a second time.
      * Measured before this existed, the outer guard was simply dropped:
      *
-     *     if ({off}) { cursor: none; if ({roomy}) { color: yellow } }
+     *     when $(off) { cursor: none; when $(roomy) { color: yellow } }
      *     -> _merge({…}, off && {cursor}, roomy && {color})
      *
      * and `color` landed whenever `roomy` was on, whatever `off` was.
@@ -490,15 +493,44 @@ export function transform(source: string, options: TransformOptions = {}): Trans
      * one needs a merge, because its own guard can be written only once and the second thing under
      * it would otherwise lose it.
      */
-    const holdsMoreThanOne = (guards: readonly number[], upto: number): boolean =>
+    const holdsMoreThanOne = (guards: readonly Guard[], upto: number): boolean =>
       all.filter(
         (other) =>
-          other.guards.length >= upto && guards.slice(0, upto).every((one, index) => other.guards[index] === one),
+          other.guards.length >= upto &&
+          guards.slice(0, upto).every((one, index) => sameGuard(other.guards[index], one)),
       ).length > 1;
+
+    /**
+     * A condition, as ONE operand of the operator written after it. Measured before the parens:
+     * `$(p ? q : r)` compiled to `p ? q : r && "r-c-red"`, which JavaScript reads as
+     * `p ? q : (r && "r-c-red")`. A plain name or member path needs none, and keeps reading as the
+     * source does.
+     */
+    const condition = (hole: number): void => {
+      const span = read.holes[hole];
+      const plain = SIMPLE_OPERAND.test(source.slice(span.start, span.end).trim());
+      if (!plain) piece += "(";
+      expression();
+      if (!plain) piece += ")";
+    };
+
+    /**
+     * Leaving a guard's merge. An ARM of a chain is followed by the next arm, which writes its own
+     * ` : ` — or it was the last, and the chain ends: with no final `else`, nothing applies when
+     * nothing held, which is a `null` the merge skips.
+     */
+    const close = (guard: Guard | undefined, next: Guard | undefined): boolean => {
+      piece += ")";
+      const chain = guard?.chain;
+      if (chain === undefined) return false;
+      if (next?.chain?.id === chain.id && next.chain.arm === chain.arm + 1) return true;
+      piece += chain.otherwise ? ")" : " : null)";
+      return false;
+    };
 
     /** The guard levels that opened a merge, innermost last — so leaving one closes the right ones. */
     const open: number[] = [];
-    let previous: readonly number[] = [];
+    let previous: readonly Guard[] = [];
 
     let first = true;
     for (const segment of all) {
@@ -507,24 +539,44 @@ export function transform(source: string, options: TransformOptions = {}): Trans
       while (
         shared < previous.length &&
         shared < segment.guards.length &&
-        previous[shared] === segment.guards[shared]
+        sameGuard(previous[shared], segment.guards[shared])
       ) {
         shared++;
       }
-      // Leaving a group closes its merge; the comma then separates siblings at the right level.
+      // Leaving a group closes its merge; the comma then separates siblings at the right level —
+      // except between two arms of one chain, which the next arm's ` : ` separates.
+      let continuing = false;
       while (open.length > 0 && open[open.length - 1] >= shared) {
-        piece += ")";
-        open.pop();
+        const level = open.pop() ?? 0;
+        continuing = close(previous[level], segment.guards[level]);
       }
       previous = segment.guards;
 
-      if (!first) piece += ",";
+      if (!first && !continuing) piece += ",";
       first = false;
 
       // Each guard this segment does not already sit under, from the deepest one still open.
       const from = open.length === 0 ? 0 : open[open.length - 1] + 1;
       for (let index = from; index < segment.guards.length; index++) {
-        expression();
+        const guard = segment.guards[index];
+
+        /**
+         * An ARM of a chain: `(a ? _merge(…) : b ? _merge(…) : _merge(…))`, each condition once and
+         * in the order it was written. Every arm is a merge of its own, because what follows an arm
+         * is the next arm's ` : ` and not a comma; the parens make the whole chain one operand.
+         */
+        if (guard.chain !== undefined) {
+          piece += guard.chain.arm === 0 ? "(" : " : ";
+          if (guard.hole !== undefined) {
+            condition(guard.hole);
+            piece += " ? ";
+          }
+          piece += `${block}(`;
+          open.push(index);
+          continue;
+        }
+
+        condition(guard.hole ?? 0);
         piece += " && ";
         if (holdsMoreThanOne(segment.guards, index + 1)) {
           piece += `${block}(`;
@@ -540,8 +592,8 @@ export function transform(source: string, options: TransformOptions = {}): Trans
          * cannot do at runtime.
          *
          * **Measured before this refusal existed: it compiled and the selector silently vanished.**
-         * `&:hover { ...{{base}}; }` came out as `_merge(base)`, so a block meant for hover applied
-         * always. A GUARD is fine and is allowed: `if` changes no key, it only decides whether the
+         * `&:hover { ...$(base); }` came out as `_merge(base)`, so a block meant for hover applied
+         * always. A GUARD is fine and is allowed: `when` changes no key, it only decides whether the
          * whole map lands.
          */
         // Reported by `spread-out-of-place`, which the refusal above already stopped the build on.
@@ -559,6 +611,9 @@ export function transform(source: string, options: TransformOptions = {}): Trans
         continue;
       }
 
+      /** The declarations of a run — a block match has its own, per arm, and is emitted below. */
+      const runItems: readonly AtomicDeclaration[] = segment.kind === "declarations" ? segment.items : [];
+
       /**
        * Every arm of one `match` is its own rule — or, split, its own several — so a run of them is
        * ONE call that chooses between their classes rather than a class. Grouped by the SUBJECT'S
@@ -567,11 +622,11 @@ export function transform(source: string, options: TransformOptions = {}): Trans
        * rule to emit.
        */
       const armsFrom = (from: number): AtomicDeclaration[] => {
-        const first = segment.items[from];
+        const first = runItems[from];
         if (first.arm === undefined) return [];
         const group = [first];
-        while (from + group.length < segment.items.length) {
-          const next = segment.items[from + group.length];
+        while (from + group.length < runItems.length) {
+          const next = runItems[from + group.length];
           if (next.arm === undefined || next.arm.hole !== first.arm.hole) break;
           group.push(next);
         }
@@ -681,12 +736,74 @@ export function transform(source: string, options: TransformOptions = {}): Trans
        * The parts are counted in a first pass because the wrapper has to be emitted before the
        * first one, and that pass is where each declaration's rule is registered.
        */
-      type Part = { kind: "classes"; written: string[] } | { kind: "match"; group: AtomicDeclaration[] };
+      /**
+       * A BLOCK match is one lookup: each arm's classes as one string, a split family's marker in
+       * front of its pieces as everywhere, and an empty arm as `""` — it still answers for its key.
+       */
+      if (segment.kind === "match") {
+        const answers = segment.arms.map((arm) => {
+          const written: string[] = [];
+          const markers = new Set<string>();
+          for (const one of arm.items) {
+            const own = register(one);
+            conditionsUnder(one, own);
+            namesFor(one);
+            clears(one);
+            const marker =
+              one.from === undefined
+                ? undefined
+                : markerFor(one.from, one.selector, one.conditions, one.important === true);
+            if (marker !== undefined && !markers.has(marker)) {
+              markers.add(marker);
+              written.push(marker);
+            }
+            written.push(own);
+          }
+          return { key: arm.key, otherwise: arm.otherwise, classes: written.join(" ") };
+        });
+        picked = true;
+        piece += `${lookup}(`;
+        expression();
+        piece += ",{";
+        for (const answer of answers) {
+          if (!answer.otherwise) piece += `${JSON.stringify(answer.key)}:${JSON.stringify(answer.classes)},`;
+        }
+        piece += "}";
+        const fallback = answers.find((answer) => answer.otherwise);
+        if (fallback !== undefined) piece += `,${JSON.stringify(fallback.classes)}`;
+        piece += ")";
+        continue;
+      }
+
+      type Part =
+        | { kind: "classes"; written: string[] }
+        | { kind: "match"; group: AtomicDeclaration[] }
+        | { kind: "choice"; group: AtomicDeclaration[] };
       const parts: Part[] = [];
       /** The families whose marker this segment already carries — see `markerFor`. */
       const marked = new Set<string>();
 
-      for (let index = 0; index < segment.items.length; index++) {
+      for (let index = 0; index < runItems.length; index++) {
+        /** A choice's branches, all of them: one conditional expression picks between their classes. */
+        const head = runItems[index];
+        if (head.choice !== undefined) {
+          const group = [head];
+          while (
+            index + group.length < runItems.length &&
+            runItems[index + group.length].choice?.id === head.choice.id
+          ) {
+            group.push(runItems[index + group.length]);
+          }
+          for (const one of group) {
+            conditionsUnder(one, register(one));
+            namesFor(one);
+            clears(one);
+          }
+          parts.push({ kind: "choice", group });
+          index += group.length - 1;
+          continue;
+        }
+
         const group = armsFrom(index);
         if (group.length > 0) {
           for (const one of group) {
@@ -699,7 +816,7 @@ export function transform(source: string, options: TransformOptions = {}): Trans
           continue;
         }
 
-        const declaration = segment.items[index];
+        const declaration = runItems[index];
         if (declaration.holes.length > 0) {
           throw new Error(
             `[@ramonda/css] internal: a declaration in ${filename} reached emission carrying a runtime ` +
@@ -743,6 +860,28 @@ export function transform(source: string, options: TransformOptions = {}): Trans
           continue;
         }
 
+        /**
+         * `(a ? "…" : b ? "…" : "…")`: each condition once, in order, and each branch's classes —
+         * a split family's marker in front of its pieces, as an arm's are.
+         */
+        if (part.kind === "choice") {
+          const holes = part.group[0].choice?.holes ?? [];
+          const branches = holes.map(() => [] as string[]).concat([[]]);
+          for (const one of part.group) {
+            const list = branches[one.choice?.branch ?? 0];
+            if (one.from !== undefined && list.length === 0)
+              list.push(markerFor(one.from, one.selector, one.conditions, one.important === true));
+            list.push(nameFor(one));
+          }
+          piece += "(";
+          for (const [index, hole] of holes.entries()) {
+            condition(hole);
+            piece += ` ? ${JSON.stringify(branches[index].join(" "))} : `;
+          }
+          piece += `${JSON.stringify(branches[holes.length].join(" "))})`;
+          continue;
+        }
+
         const arms = armClasses(part.group);
         const fallback = arms.get(OTHERWISE);
         picked = true;
@@ -761,8 +900,7 @@ export function transform(source: string, options: TransformOptions = {}): Trans
     }
     // Every nested merge still open at the end of the block.
     while (open.length > 0) {
-      piece += ")";
-      open.pop();
+      close(previous[open.pop() ?? 0], undefined);
     }
     // The block's own source mark, last, so it outlives nothing it should not: see `marks`.
     if (markPath !== undefined) {
@@ -803,9 +941,9 @@ export function transform(source: string, options: TransformOptions = {}): Trans
      * The invariant the whole rewrite below rests on: one piece of surrounding text per hole, plus
      * a tail. It was never stated, and breaking it was silent.
      *
-     * An `if` group with nothing in it recorded a hole and produced no segment, so every piece slid
+     * A `when` group with nothing in it recorded a hole and produced no segment, so every piece slid
      * one place left: one block emitted its map twice, another put a guard where a value belonged,
-     * and `if ({variant}) { }` alone compiled to `_merge(variant)` — which parses, runs, and ships
+     * and `when $(variant) { }` alone compiled to `_merge(variant)` — which parses, runs, and ships
      * two class names made out of the letters of a string. `flatten.ts` no longer produces that
      * shape; this is the belt, because a mismatch here means an author's expression is about to be
      * written somewhere it was not written, and that must never be something to discover at runtime.

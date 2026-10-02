@@ -27,7 +27,7 @@ const SOURCE = `export const Card = (props: { id: string }) => {
   return (
     <div className={@@(
       display: flex;
-      border-left: {accent};
+      border-left: $(accent);
     )}>
       <span>{props.id}</span>
     </div>
@@ -69,7 +69,7 @@ describe("what comes back", () => {
     const out = held?.restore(reindent(held.text));
 
     expect(out).toContain("display: flex;");
-    expect(out).toContain("border-left: {accent};");
+    expect(out).toContain("border-left: $(accent);");
   });
 
   test("and the formatter's own work outside the block survives", () => {
@@ -122,7 +122,7 @@ describe("what comes back", () => {
 describe("what it steps over", () => {
   test("a block found inside another is not placeheld twice", () => {
     const held = placehold(
-      `const a = <div className={@@( color: { <b className={@@( color: red; )}/> }; )}>x</div>;\n`,
+      `const a = <div className={@@( color: $( <b className={@@( color: red; )}/> ); )}>x</div>;\n`,
     );
 
     expect(held?.text.match(/\/\*@ramonda-css:/g)).toHaveLength(1);
@@ -241,8 +241,8 @@ describe("the CSS inside a block", () => {
    * A `match`, which is a THIRD shape beside a declaration and a nested rule — and was laid out as
    * neither. Reported by the user from the playground, where what came back was:
    *
-   *     color: match({this.tone}) {quiet => $.color.accent.quiet;
-   *       loud  => $.color.text.primary;};
+   *     color: match $(this.tone) {quiet => $color.accent.quiet;
+   *       loud  => $color.text.primary;};
    *
    * `opensAHole` asks whether the text in front of a `{` is a declaration's head, and `color:` is —
    * so the brace that opens a match body was read as a hole and every arm was swallowed as one run
@@ -251,24 +251,24 @@ describe("the CSS inside a block", () => {
   describe("a match", () => {
     test("puts every arm on its own line, lined up on the `=>`", () => {
       const out = laid(
-        `const a = <div className={@@(\n  color: match({this.tone}) {quiet => red;\n    loud  => blue;};\n)}>x</div>;\n`,
+        `const a = <div className={@@(\n  color: match $(this.tone) {quiet => red;\n    loud  => blue;};\n)}>x</div>;\n`,
       );
 
       expect(out).toBe(
-        `const a = <div className={@@(\n  color: match({this.tone}) {\n    quiet => red;\n    loud  => blue;\n  };\n)}>x</div>;\n`,
+        `const a = <div className={@@(\n  color: match $(this.tone) {\n    quiet => red;\n    loud  => blue;\n  };\n)}>x</div>;\n`,
       );
     });
 
     test("the `;` that ends the declaration rides the closing brace", () => {
       const out = laid(
-        `const a = <div className={@@(\n  color: match({t}) { a => red; };\n  padding: 8px;\n)}>x</div>;\n`,
+        `const a = <div className={@@(\n  color: match $(t) { a => red; };\n  padding: 8px;\n)}>x</div>;\n`,
       );
 
       expect(out).toContain("\n  };\n  padding: 8px;");
     });
 
     test("and a match with no `;` after it keeps a bare brace", () => {
-      const out = laid(`const a = <div className={@@(\n  color: match({t}) { a => red; }\n)}>x</div>;\n`);
+      const out = laid(`const a = <div className={@@(\n  color: match $(t) { a => red; }\n)}>x</div>;\n`);
 
       expect(out).toContain("\n  }\n");
       expect(out).not.toContain("};");
@@ -277,7 +277,7 @@ describe("the CSS inside a block", () => {
     /** The arms line up on the LONGEST key, which is what makes a lookup table read as one. */
     test("the padding is the longest key's, not a fixed width", () => {
       const out = laid(
-        `const a = <div className={@@(\n  color: match({t}) { a => red; secondary => blue; _ => inherit; };\n)}>x</div>;\n`,
+        `const a = <div className={@@(\n  color: match $(t) { a => red; secondary => blue; _ => inherit; };\n)}>x</div>;\n`,
       );
 
       expect(out).toContain("    a         => red;");
@@ -288,7 +288,7 @@ describe("the CSS inside a block", () => {
     /** A value holding a `;` inside parens is not the end of an arm. */
     test("a `;` inside a call does not end an arm", () => {
       const out = laid(
-        `const a = <div className={@@(\n  background: match({t}) { a => url("a;b.png"); _ => none; };\n)}>x</div>;\n`,
+        `const a = <div className={@@(\n  background: match $(t) { a => url("a;b.png"); _ => none; };\n)}>x</div>;\n`,
       );
 
       expect(out).toContain(`    a => url("a;b.png");`);
@@ -297,7 +297,7 @@ describe("the CSS inside a block", () => {
 
     /** Laying out what is already laid out changes nothing, or a formatter fights every save. */
     test("running it twice says the same thing", () => {
-      const source = `const a = <div className={@@(\n  color: match({this.tone}) {quiet => red;\n    loud  => blue;};\n)}>x</div>;\n`;
+      const source = `const a = <div className={@@(\n  color: match $(this.tone) {quiet => red;\n    loud  => blue;};\n)}>x</div>;\n`;
       const once = laid(source);
 
       expect(laid(String(once))).toBe(once);
@@ -305,7 +305,7 @@ describe("the CSS inside a block", () => {
 
     /** A one-line block is a deliberate shape, and that is decided above this. */
     test("a match on one line stays on one line", () => {
-      const source = `const a = <div className={@@( color: match({t}) { a => red; }; )}>x</div>;\n`;
+      const source = `const a = <div className={@@( color: match $(t) { a => red; }; )}>x</div>;\n`;
 
       expect(laid(source)).toBe(source);
     });
@@ -332,8 +332,8 @@ describe("the CSS inside a block", () => {
   });
 
   test.each([
-    ["a hole", `  color: {a ? "red" : "blue"};`],
-    ["a hole holding braces", `  color: { {a: 1}.a };`],
+    ["a hole", `  color: $(a ? "red" : "blue");`],
+    ["a hole holding braces", `  color: $({a: 1}.a);`],
     ["a url with a semicolon", `  background: url("a;b.png");`],
     ["a quoted brace", `  content: "}";`],
     ["a function", `  width: calc(100% - 8px);`],
@@ -374,8 +374,8 @@ describe("the CSS inside a block", () => {
 
   test.each([
     ["a string", `  grid-template-areas: "a   a" "b   b";`],
-    ["a hole holding an object", `  color: { {a: {b: 1}}.a.b };`],
-    ["a hole whose expression ends in a brace", `  color: {{ x["}"] }};`],
+    ["a hole holding an object", `  color: $({a: {b: 1}}.a.b);`],
+    ["a hole whose expression ends in a brace", `  color: $({ x[")"] });`],
     ["a comment", `  /* two  spaces */`],
   ])("%s keeps its own spacing", (_what, written) => {
     expect(laid(`const a = <div className={@@(\n${written}\n)}>x</div>;\n`)).toBe(
@@ -386,13 +386,12 @@ describe("the CSS inside a block", () => {
   /**
    * With NO formatter, a hole's own spacing is its expression's and stays.
    *
-   * The whitespace between `{` and `a` is a delimiter's and is closed up, because a hole is the
-   * escape JSX already uses in the same place and JSX writes it tight. What is inside is TypeScript,
+   * The whitespace between `$(` and `a` is a delimiter's and is closed up, as a call's parens are. What is inside is TypeScript,
    * and nothing here has an opinion about TypeScript — see the block below for who does.
    */
-  test("a hole keeps the spacing inside its expression, and loses it at the braces", () => {
-    expect(laid(`const a = <div className={@@(\n  color: { a  ?  "red"  :  "blue" };\n)}>x</div>;\n`)).toBe(
-      `const a = <div className={@@(\n  color: {a  ?  "red"  :  "blue"};\n)}>x</div>;\n`,
+  test("a hole keeps the spacing inside its expression, and loses it at the parens", () => {
+    expect(laid(`const a = <div className={@@(\n  color: $( a  ?  "red"  :  "blue" );\n)}>x</div>;\n`)).toBe(
+      `const a = <div className={@@(\n  color: $(a  ?  "red"  :  "blue");\n)}>x</div>;\n`,
     );
   });
 
@@ -401,7 +400,7 @@ describe("the CSS inside a block", () => {
    * lay out TypeScript.
    *
    * **Reported by a user**: *"formating unutar rupe ne radi"*, on
-   * `color: {this.toggle ? $.color.accent.quiet    : $.color.accent.main}`. They were right, and it
+   * `color: $(this.toggle ? $color.accent.quiet    : $color.accent.main)`. They were right, and it
    * was the one part of the file that is ordinary TypeScript escaping the formatter entirely —
    * `ramonda-css format` exists precisely so a file carrying blocks is laid out by the project's own
    * tools.
@@ -420,20 +419,20 @@ describe("the CSS inside a block", () => {
     };
 
     test("the user's own example", () => {
-      expect(through(`const a = <div className={@@(\n  color: {t ? $.a.b    : $.a.c};\n)}>x</div>;\n`)).toBe(
-        `const a = <div className={@@(\n  color: {t ? $.a.b : $.a.c};\n)}>x</div>;\n`,
+      expect(through(`const a = <div className={@@(\n  color: $(t ? $a.b    : $a.c);\n)}>x</div>;\n`)).toBe(
+        `const a = <div className={@@(\n  color: $(t ? $a.b : $a.c);\n)}>x</div>;\n`,
       );
     });
 
-    test("and the braces are still closed up, which was already right", () => {
-      expect(through(`const a = <div className={@@(\n  color: {  t ? $.a.b    : $.a.c  };\n)}>x</div>;\n`)).toBe(
-        `const a = <div className={@@(\n  color: {t ? $.a.b : $.a.c};\n)}>x</div>;\n`,
+    test("and the parens are still closed up, which was already right", () => {
+      expect(through(`const a = <div className={@@(\n  color: $(  t ? $a.b    : $a.c  );\n)}>x</div>;\n`)).toBe(
+        `const a = <div className={@@(\n  color: $(t ? $a.b : $a.c);\n)}>x</div>;\n`,
       );
     });
 
     test("a hole beside text keeps the text exactly", () => {
-      expect(through(`const a = <div className={@@(\n  padding-left: {this.gap   +   2}px;\n)}>x</div>;\n`)).toBe(
-        `const a = <div className={@@(\n  padding-left: {this.gap + 2}px;\n)}>x</div>;\n`,
+      expect(through(`const a = <div className={@@(\n  padding-left: $(this.gap   +   2)px;\n)}>x</div>;\n`)).toBe(
+        `const a = <div className={@@(\n  padding-left: $(this.gap + 2)px;\n)}>x</div>;\n`,
       );
     });
 
@@ -446,7 +445,7 @@ describe("the CSS inside a block", () => {
      */
     test("a result that spans lines is declined, and the author's text stays", () => {
       const across = () => "a\n  ? b\n  : c";
-      const source = `const a = <div className={@@(\n  color: {t ?   b :   c};\n)}>x</div>;\n`;
+      const source = `const a = <div className={@@(\n  color: $(t ?   b :   c);\n)}>x</div>;\n`;
 
       expect(placehold(source, { expression: across })?.restore(placehold(source, { expression: across })!.text)).toBe(
         source,
@@ -458,7 +457,7 @@ describe("the CSS inside a block", () => {
       const throws = () => {
         throw new Error("no");
       };
-      const source = `const a = <div className={@@(\n  color: {t ?   b :   c};\n)}>x</div>;\n`;
+      const source = `const a = <div className={@@(\n  color: $(t ?   b :   c);\n)}>x</div>;\n`;
 
       expect(placehold(source, { expression: throws })?.restore(placehold(source, { expression: throws })!.text)).toBe(
         source,
@@ -466,7 +465,7 @@ describe("the CSS inside a block", () => {
     });
 
     test("an expression that begins or ends with a brace keeps its spaces, as it did", () => {
-      const source = `const a = <div className={@@(\n  color: {{ x["}"] }};\n)}>x</div>;\n`;
+      const source = `const a = <div className={@@(\n  color: $({ x[")"] });\n)}>x</div>;\n`;
 
       expect(through(source)).toBe(source);
     });
@@ -598,7 +597,7 @@ describe("line endings the author's checkout uses", () => {
 /**
  * A hole's braces sit against its expression, whatever was typed.
  *
- * **Reported by a user**: the formatter left `if ({ this.roomy})` exactly as written, so the same
+ * **Reported by a user**: the formatter left `when $( this.roomy)` exactly as written, so the same
  * condition appeared four ways in one file. Measured, all four survived a format unchanged.
  *
  * ## Why against, and not `{ … }`
@@ -610,10 +609,10 @@ describe("line endings the author's checkout uses", () => {
  * The whitespace immediately inside the braces is not part of the expression, so trimming it changes
  * nothing about what runs. **Except in one shape, which is why the rule has a condition**: an
  * expression that itself begins with `{` — `{ {a: 1}.a }` — would become `{{a: 1}.a}`, and a reader
- * meeting `{{` in a language that spelled holes `{{ }}` until this morning deserves better. The
+ * meeting `{{` in a language that spelled holes `$( )` until this morning deserves better. The
  * space stays there.
  */
-describe("the space inside a hole's braces", () => {
+describe("the space inside an escape's parens", () => {
   /** The block's own lines, without the `const s = @@(` around them. */
   const formatted = (block: string) => {
     const out = formatText(`const s = @@(\n${block}\n);\n`, "C.tsx", (text) => text);
@@ -622,31 +621,36 @@ describe("the space inside a hole's braces", () => {
   };
 
   test.each([
-    ["a condition", "  if ({ this.roomy }) {\n    color: red;\n  }", "  if ({this.roomy}) {\n    color: red;\n  }"],
+    ["a condition", "  when $( this.roomy ) {\n    color: red;\n  }", "  when $(this.roomy) {\n    color: red;\n  }"],
     [
       "one space, on the left only",
-      "  if ({ this.roomy }) {\n    color: red;\n  }",
-      "  if ({this.roomy}) {\n    color: red;\n  }",
+      "  when $( this.roomy) {\n    color: red;\n  }",
+      "  when $(this.roomy) {\n    color: red;\n  }",
     ],
-    ["a value", "  color: { this.accent };", "  color: {this.accent};"],
-    ["a spread", "  ...{ base };", "  ...{base};"],
-    ["a property name", "  { accent }: red;", "  {accent}: red;"],
-    ["already tight, left alone", "  color: {this.accent};", "  color: {this.accent};"],
+    ["a value", "  color: $( this.accent );", "  color: $(this.accent);"],
+    ["a spread", "  ...$( base );", "  ...$(base);"],
+    ["a property name", "  $( accent ): red;", "  $(accent): red;"],
+    ["already tight, left alone", "  color: $(this.accent);", "  color: $(this.accent);"],
   ])("%s", (_what, written, expected) => {
     expect(formatted(written)).toBe(expected);
   });
 
-  test("an expression that starts with a brace keeps its space", () => {
-    expect(formatted("  color: { {a: 1}.a };")).toBe("  color: { {a: 1}.a };");
+  /**
+   * An expression that starts or ends with a brace is closed up too. With `{ }` as the escape it kept
+   * its space, because closing it up wrote `{{`; `$({` cannot be misread, so the exception went.
+   */
+  test("an expression that starts with a brace is closed up like any other", () => {
+    expect(formatted("  color: $( {a: 1}.a );")).toBe("  color: $({a: 1}.a);");
+    expect(formatted("  color: $( pick({a: 1}) );")).toBe("  color: $(pick({a: 1}));");
   });
 
   test("and a template literal inside is untouched", () => {
-    expect(formatted("  padding: { `${n}px` };")).toBe("  padding: {`${n}px`};");
+    expect(formatted("  padding: $( `${n}px` );")).toBe("  padding: $(`${n}px`);");
   });
 
   /** Formatting is idempotent, which is the property a formatter is only ever trusted for once. */
   test("running it twice changes nothing more", () => {
-    const once = formatted("  if ({ this.roomy }) {\n    color: red;\n  }");
+    const once = formatted("  when $( this.roomy ) {\n    color: red;\n  }");
     const twice = formatted(once);
 
     expect(twice).toBe(once);
@@ -884,7 +888,7 @@ describe("what the rule reports, the formatter writes", () => {
 
   /**
    * **And what the formatter may NOT rewrite.** A url is a filename, a string is the author's bytes,
-   * and a hole is JavaScript — `color: {RED}` names a binding, and folding it would rewrite the
+   * and a hole is JavaScript — `color: $(RED)` names a binding, and folding it would rewrite the
    * author's identifier into one that does not exist.
    */
   test.each([
@@ -900,9 +904,9 @@ describe("what the rule reports, the formatter writes", () => {
   });
 
   test("a hole's own identifier is left alone", () => {
-    const source = "const RED = 1;\nconst a = @@(\n  color: {RED};\n);\n";
+    const source = "const RED = 1;\nconst a = @@(\n  color: $(RED);\n);\n";
 
-    expect(formatText(source, FILE, asIs)).toContain("color: {RED}");
+    expect(formatText(source, FILE, asIs)).toContain("color: $(RED)");
   });
 });
 
@@ -920,7 +924,7 @@ describe("a declared variable is not a formatter's business", () => {
   const identity = (text: string) => text;
 
   test("the path survives byte for byte", () => {
-    const source = `const a = <div className={@@(\n  color: $.color.primary.main;\n)}>x</div>;\n`;
+    const source = `const a = <div className={@@(\n  color: $color.primary.main;\n)}>x</div>;\n`;
 
     expect(formatText(source, "X.tsx", identity)).toBe(source);
   });
@@ -928,16 +932,16 @@ describe("a declared variable is not a formatter's business", () => {
   test("even written loosely, because the innards are not reformatted at all", () => {
     // No space after the colon, and a segment starting with a digit. A formatter that touched the
     // block would tidy the first and could break the second.
-    const source = `const b = <div className={@@(\n  padding:$.space.inline.2xl;\n)}>x</div>;\n`;
+    const source = `const b = <div className={@@(\n  padding:$space.inline.2xl;\n)}>x</div>;\n`;
 
     expect(formatText(source, "X.tsx", identity)).toBe(source);
   });
 
   test("and it moves with the block when the formatter re-indents around it", () => {
-    const source = `function C() {\n  return <div className={@@(\n  width: calc($.size.control.md * 2);\n)}>x</div>;\n}\n`;
+    const source = `function C() {\n  return <div className={@@(\n  width: calc($size.control.md * 2);\n)}>x</div>;\n}\n`;
     const out = formatText(source, "X.tsx", reindent);
 
-    expect(out).toContain("calc($.size.control.md * 2)");
+    expect(out).toContain("calc($size.control.md * 2)");
   });
 });
 
@@ -979,5 +983,131 @@ describe("a placeholder that comes back more than once", () => {
     const held = placehold(source);
 
     expect(held?.restore(held.text)).toBe(source);
+  });
+});
+
+/** The block's own lines, without the `const s = @@(` around them. */
+const laidOut = (block: string): string => {
+  const out = formatText(`const s = @@(\n${block}\n);\n`, "C.tsx", (text) => text);
+  const lines = out.split("\n");
+  return lines.slice(1, lines.indexOf(");")).join("\n");
+};
+
+/** The user's choice: `} else {`, on one line, as JavaScript writes it. */
+describe("the branches of a condition", () => {
+  test.each([
+    [
+      "a bare `else` on its own line",
+      "  when $(a) {\n    color: red;\n  }\n  else {\n    color: blue;\n  }",
+      "  when $(a) {\n    color: red;\n  } else {\n    color: blue;\n  }",
+    ],
+    [
+      "an `else when` and an `else`, all on one line",
+      "  when $(a) { color: red; } else when $(b) { color: green; } else { color: blue; }",
+      "  when $(a) {\n    color: red;\n  } else when $(b) {\n    color: green;\n  } else {\n    color: blue;\n  }",
+    ],
+    [
+      "already laid out, left alone",
+      "  when $(a) {\n    color: red;\n  } else {\n    color: blue;\n  }",
+      "  when $(a) {\n    color: red;\n  } else {\n    color: blue;\n  }",
+    ],
+    [
+      "nested one step in",
+      "  &:hover {\n    when $(a) { color: red; }\n    else { color: blue; }\n  }",
+      "  &:hover {\n    when $(a) {\n      color: red;\n    } else {\n      color: blue;\n    }\n  }",
+    ],
+  ])("%s", (_what, written, expected) => {
+    expect(laidOut(written)).toBe(expected);
+    expect(laidOut(expected)).toBe(expected);
+  });
+
+  /** A note between the branches is the author's, and moving it next to the brace would lose its place. */
+  test("a comment between them keeps its own line", () => {
+    const written = "  when $(a) {\n    color: red;\n  }\n  /* otherwise */\n  else {\n    color: blue;\n  }";
+
+    expect(laidOut(written)).toBe(written);
+  });
+
+  test("a selector named `elsewhere` is not a branch", () => {
+    const written = "  when $(a) {\n    color: red;\n  }\n  & elsewhere {\n    color: blue;\n  }";
+
+    expect(laidOut(written)).toBe(written);
+  });
+});
+
+describe("a block match", () => {
+  test("one arm to a line, lined up on the arrow, its declarations inside one pair of parens", () => {
+    const written =
+      "  match $( this.tone ) {\n  hot =>(color:red;   padding: 4px;);\n      _ => (  color: gray;  );\n  }";
+
+    expect(laidOut(written)).toBe(
+      "  match $(this.tone) {\n    hot => ( color: red; padding: 4px; );\n    _   => ( color: gray; );\n  }",
+    );
+  });
+
+  test("an empty arm is a pair of parens with a space", () => {
+    expect(laidOut("  match $(t) {\n    hot => ();\n    _ => ( color: gray; );\n  }")).toBe(
+      "  match $(t) {\n    hot => ( );\n    _   => ( color: gray; );\n  }",
+    );
+  });
+
+  test("an arm holding a nested rule keeps it, with its spaces collapsed", () => {
+    expect(laidOut("  match $(t) {\n    hot => ( color: red;   &:hover {  color: blue; } );\n  }")).toBe(
+      "  match $(t) {\n    hot => ( color: red; &:hover { color: blue; } );\n  }",
+    );
+  });
+
+  test("it settles", () => {
+    const once = laidOut("  match $(t) {\n    hot => ( color: red; );\n    _ => ( color: gray; );\n  }");
+
+    expect(laidOut(once)).toBe(once);
+  });
+});
+
+describe("a choice", () => {
+  test("one condition stays on one line", () => {
+    expect(laidOut("  border:   $( on )  ?  2px solid red   :  1px solid #ccc;")).toBe(
+      "  border: $(on) ? 2px solid red : 1px solid #ccc;",
+    );
+  });
+
+  /** The user's rule: parens around a branch are not the canonical spelling, and the formatter takes them off. */
+  test("parens around a branch come off", () => {
+    expect(laidOut("  border: $(on) ? (2px solid red) : (1px solid #ccc);")).toBe(
+      "  border: $(on) ? 2px solid red : 1px solid #ccc;",
+    );
+  });
+
+  test("a function is not a branch in parens, and keeps its own", () => {
+    expect(laidOut("  color: $(on) ? rgb(1 2 3) : (blue);")).toBe("  color: $(on) ? rgb(1 2 3) : blue;");
+    expect(laidOut("  width: $(on) ? (1px) + (2px) : 0;")).toBe("  width: $(on) ? (1px) + (2px) : 0;");
+  });
+
+  /**
+   * A chain is a table: every new line starts with `:` under the declaration's colon, the `?`s line
+   * up, the values make a column, and the last value sits in it too.
+   */
+  test("a chain is one condition to a line, aligned as a table", () => {
+    expect(laidOut("  color: $(this.error) ? red : $(warn) ? orange : $(this.ok) ? green : gray;")).toBe(
+      [
+        "  color: $(this.error) ? red",
+        "       : $(warn)       ? orange",
+        "       : $(this.ok)    ? green",
+        "       :                 gray;",
+      ].join("\n"),
+    );
+  });
+
+  test("a chain already laid out settles", () => {
+    const once = laidOut("  color: $(a) ? red : $(bb) ? (orange) : gray;");
+
+    expect(once).toBe(["  color: $(a)  ? red", "       : $(bb) ? orange", "       :         gray;"].join("\n"));
+    expect(laidOut(once)).toBe(once);
+  });
+
+  test("inside a nested rule, at its depth", () => {
+    expect(laidOut("  &:hover {\n    color: $(a) ? red : $(b) ? blue : gray;\n  }")).toBe(
+      ["  &:hover {", "    color: $(a) ? red", "         : $(b) ? blue", "         :        gray;", "  }"].join("\n"),
+    );
   });
 });

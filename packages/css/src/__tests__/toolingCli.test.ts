@@ -80,7 +80,7 @@ const STYLED = `export const Card = (props: { id: string }) => {
   return (
     <div className={@@(
       display: flex;
-      border-left: {props.id};
+      border-left: $(props.id);
     )}>
       <span>{props.id}</span>
     </div>
@@ -100,7 +100,7 @@ describe("format", () => {
     expect(out).toContain("const a = 1;");
     // …and the block is still the author's own text, unreformatted.
     expect(out).toContain("display: flex;");
-    expect(out).toContain("border-left: {props.id};");
+    expect(out).toContain("border-left: $(props.id);");
     expect(out).toContain("className={@@(");
   });
 
@@ -108,7 +108,7 @@ describe("format", () => {
    * A hole's expression through the project's own biome — and twice, which is what a formatter owes.
    *
    * **Reported by a user**: *"formating unutar rupe ne radi"*, on
-   * `color: {this.toggle ? $.color.accent.quiet    : $.color.accent.main}`. The braces were closed
+   * `color: $(this.toggle ? $color.accent.quiet    : $color.accent.main)`. The braces were closed
    * up and the interior was untouched, so the one part of a block that IS ordinary TypeScript was
    * the one part escaping the formatter.
    *
@@ -119,18 +119,18 @@ describe("format", () => {
     const root = project({
       "Card.tsx":
         `export const a = <div className={@@(\n` +
-        `  color: {t ? one    : two};\n` +
-        `  padding-left: {gap   +   2}px;\n` +
-        `  content: {items.map((one)=>one.name).join( 'x' )};\n` +
+        `  color: $(t ? one    : two);\n` +
+        `  padding-left: $(gap   +   2)px;\n` +
+        `  content: $(items.map((one)=>one.name).join( 'x' ));\n` +
         `)}>x</div>;\n`,
     });
 
     run(root, ["format", "src/Card.tsx"]);
     const once = readFileSync(join(root, "src", "Card.tsx"), "utf8");
 
-    expect(once).toContain("{t ? one : two}");
-    expect(once).toContain("{gap + 2}px");
-    expect(once).toContain("{items.map((one) => one.name).join(");
+    expect(once).toContain("$(t ? one : two)");
+    expect(once).toContain("$(gap + 2)px");
+    expect(once).toContain("$(items.map((one) => one.name).join(");
 
     run(root, ["format", "src/Card.tsx"]);
 

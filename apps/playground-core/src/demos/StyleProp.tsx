@@ -45,7 +45,7 @@ type ChipStyle = {
  * may be rendered a hundred times in a list and a hole was a custom property set on every one of
  * them. A runtime value in a declaration is refused everywhere now, so there is nothing left for a
  * prop to refuse and `CssBlock` is the only type. A caller still varies what they send with
- * `if ({…}) { … }` and `match`, both of which pick between whole rules.
+ * `when $(…) { … }` and `match`, both of which pick between whole rules.
  */
 type ChipLabelStyle = {
   "font-weight"?: 400 | 600;
@@ -63,16 +63,16 @@ export class Chip extends Component<{
         className={@@(
           display: inline-flex;
           align-items: center;
-          gap: $.space.gutter.tight;
+          gap: $space.gutter.tight;
           padding: 4px 10px;
-          border-radius: $.size.radius.pill;
-          background-color: $.color.surface.sunken;
-          color: $.color.text.primary;
+          border-radius: $size.radius.pill;
+          background-color: $color.surface.sunken;
+          color: $color.text.primary;
           /* The caller's block LAST, so what they send wins — which is what a slot is for. */
-          ...{this.props.css};
+          ...$(this.props.css);
         )}
       >
-        <span className={@@( ...{this.props.labelCss}; )}>{this.props.label}</span>
+        <span className={@@( ...$(this.props.labelCss); )}>{this.props.label}</span>
       </span>
     );
   }
@@ -88,12 +88,12 @@ export class StyleProp extends Component {
   render() {
     return (
       <div className="panel">
-        <div className={@@(display: flex; margin: $.space.gutter.wide;)}>
+        <div className={@@(display: flex; margin: $space.gutter.wide;)}>
           <strong>A prop that says what may be sent</strong>
           <button onclick={this.flip}>{this.loud ? "quiet" : "loud"}</button>
         </div>
 
-        <div className={@@( display: flex; gap: $.space.gutter.normal; flex-wrap: wrap; align-items: center; )}>
+        <div className={@@( display: flex; gap: $space.gutter.normal; flex-wrap: wrap; align-items: center; )}>
           {/* Nothing sent: the chip's own styles stand. */}
           <Chip label="plain" />
 
@@ -101,10 +101,10 @@ export class StyleProp extends Component {
           <Chip
             label="accent"
             css={@@(
-              background-color: $.color.accent.main;
-              color: $.color.surface.base;
+              background-color: $color.accent.main;
+              color: $color.surface.base;
               &:hover {
-                background-color: $.color.accent.quiet;
+                background-color: $color.accent.quiet;
               }
             )}
           />
@@ -114,7 +114,7 @@ export class StyleProp extends Component {
             label="label"
             labelCss={@@(
               font-weight: 400;
-              if ({this.loud}) {
+              when $(this.loud) {
                 font-weight: 600;
               }
             )}
@@ -124,9 +124,9 @@ export class StyleProp extends Component {
 
               css={@@( background-color: #ff0055; )}             the value  — not a declared colour
               css={@@( padding: 2px; )}                          the property — not in the allow-list
-              css={@@( &:focus { color: $.color.text.muted; } )}          the state — not offered
-              css={@@( & > span { color: $.color.text.muted; } )}         a combinator — never offered
-              labelCss={@@( letter-spacing: {this.gap}; )}         a runtime value in a static slot
+              css={@@( &:focus { color: $color.text.muted; } )}          the state — not offered
+              css={@@( & > span { color: $color.text.muted; } )}         a combinator — never offered
+              labelCss={@@( letter-spacing: $(this.gap); )}         a runtime value in a static slot
           */}
         </div>
       </div>

@@ -104,7 +104,7 @@ describe("the bin", () => {
    */
   test("a block it cannot read is reported first, and exits 1", () => {
     const { output, status } = run(
-      project(`const a = (\n  <div className={@@(\n    {name}: 24px;\n  )}>x</div>\n);\nexport default a;\n`),
+      project(`const a = (\n  <div className={@@(\n    $(name): 24px;\n  )}>x</div>\n);\nexport default a;\n`),
     );
 
     expect(status).toBe(1);
@@ -468,7 +468,7 @@ describe("codegen", () => {
 
   test("a collision stops it, with both paths named", () => {
     const root = bare(
-      `import { kind } from "@ramonda/css/config";\nexport default { variables: { "a-b": kind("length", { c: "1px" }), a: kind("length", { "b-c": "2px" }) } };\n`,
+      `import { kind } from "@ramonda/css/config";\nexport default { variables: { a: kind("length", { b: { c: "1px" }, "b-c": "2px" }) } };\n`,
     );
     const { output, status } = runIn(root);
 
@@ -522,10 +522,8 @@ describe("codegen", () => {
   test.each([
     ["a name the stylesheet cannot hold", `{ "a}b": kind("color", { c: "red" }) }`],
     ["a value that would close the rule", `{ a: kind("color", { c: "red; }" }) }`],
-    [
-      "two variables spelling one custom property",
-      `{ "a-b": kind("length", { c: "1px" }), a: kind("length", { "b-c": "2px" }) }`,
-    ],
+    ["two variables spelling one custom property", `{ a: kind("length", { b: { c: "1px" }, "b-c": "2px" }) }`],
+    ["a group that is no identifier", `{ "a-b": kind("length", { c: "1px" }) }`],
   ])("%s is SAID, with no stack and with the config named", (_what, variables) => {
     const root = bare(`import { kind } from "@ramonda/css/config";\nexport default { variables: ${variables} };\n`);
     const { output, status } = runIn(root);

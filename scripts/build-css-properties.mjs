@@ -334,7 +334,7 @@ function unwrap(one) {
  *
  * `gap` is `<'row-gap'> <'column-gap'>?` and `padding` is `<'padding-top'>{1,4}` — every part is
  * another property, and without following them neither can be classified at all. Measured before
- * this: `gap: $.color.accent.main` compiled, because an unclassified property is `string | number`
+ * this: `gap: $color.accent.main` compiled, because an unclassified property is `string | number`
  * and a variable is a branded string. Reported by a user.
  *
  * Bounded, because a property may refer to itself through a chain.

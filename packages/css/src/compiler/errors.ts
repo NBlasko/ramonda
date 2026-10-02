@@ -43,7 +43,7 @@ export class CssBlockError extends Error {
  */
 export function holeOutOfPlace(what: "a declaration" | "a property name" | "a selector" | "a frame"): string {
   const door =
-    " A value that comes from data is declared with `@@property( … )` and read as `var({name})`; one" +
+    " A value that comes from data is declared with `@@property( … )` and read as `var($(name))`; one" +
     " that is a choice between a few is written out with `match`.";
   return what === "a declaration"
     ? `a hole cannot be a whole declaration — a declaration needs a property, and a block takes no runtime value in one.${door}`

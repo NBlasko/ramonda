@@ -269,7 +269,7 @@ describe("`$` without an import", () => {
   const VARS = `{}`;
 
   test("completes one level at a time", () => {
-    const { offered } = editorWith(VARS, `const a = <div className={@@( color: $./*|*/ )}>x</div>;\n`, {
+    const { offered } = editorWith(VARS, `const a = <div className={@@( color: $/*|*/ )}>x</div>;\n`, {
       color: `kind("color", { accent: { main: "#10b981" } })`,
       space: `kind("length", { gutter: { tight: "8px" } })`,
     });
@@ -278,7 +278,7 @@ describe("`$` without an import", () => {
   });
 
   test("and the next level down", () => {
-    const { offered } = editorWith(VARS, `const b = <div className={@@( color: $.color.accent./*|*/ )}>x</div>;\n`, {
+    const { offered } = editorWith(VARS, `const b = <div className={@@( color: $color.accent./*|*/ )}>x</div>;\n`, {
       color: `kind("color", { accent: { main: "#10b981", quiet: "#00b37e" } })`,
     });
 
@@ -288,7 +288,7 @@ describe("`$` without an import", () => {
   test("a path is silent, mixed into a value and alone", () => {
     const { reported } = editorWith(
       VARS,
-      `const c = <div className={@@( gap: 4px $.space.gutter.tight; color: $.color.accent.main; )}>x</div>;\n`,
+      `const c = <div className={@@( gap: 4px $space.gutter.tight; color: $color.accent.main; )}>x</div>;\n`,
       {
         color: `kind("color", { accent: { main: "#10b981" } })`,
         space: `kind("length", { gutter: { tight: "8px" } })`,
@@ -299,7 +299,7 @@ describe("`$` without an import", () => {
   });
 
   test("and nothing names jQuery, whatever else it says", () => {
-    const { reported } = editorWith(VARS, `const d = <div className={@@( color: $.nope.at.all; )}>x</div>;\n`, {
+    const { reported } = editorWith(VARS, `const d = <div className={@@( color: $nope.at.all; )}>x</div>;\n`, {
       color: `kind("color", { accent: { main: "#10b981" } })`,
     });
 

@@ -17,9 +17,9 @@ export interface Block {
   readonly items: readonly BlockItem[];
 }
 
-export type BlockItem = Declaration | NestedRule;
+export type BlockItem = Declaration | NestedRule | BlockMatch;
 
-/** `border-left: 4px solid {{this.accent}}`. */
+/** `border-left: 4px solid $(this.accent)`. */
 export interface Declaration {
   readonly kind: "declaration";
   /**
@@ -74,10 +74,69 @@ export interface NestedRule {
   readonly items: readonly BlockItem[];
 }
 
-export type ValuePart = TextPart | HolePart | VariablePart | MatchPart;
+/**
+ * `match $(this.tone) { hot => ( color: red; padding: 4px; ); _ => ( color: gray; ); }` — a match
+ * whose arms are whole groups of declarations rather than one value.
+ *
+ * It compiles exactly as a {@link MatchPart} does: every declaration in every arm is its own class,
+ * and the render picks one arm's classes by the subject. The two shapes are one feature at two
+ * levels, so they share the subject's numbering and the `_` arm, and differ only in what an arm
+ * holds. An arm holds declarations and nested rules; composition — a condition, a spread, another
+ * match — is refused inside one, because an arm is a set of classes known at build time.
+ */
+export interface BlockMatch {
+  readonly kind: "match";
+  /** Where `match` begins, and where the closing brace of its arms ends. */
+  readonly at?: number;
+  readonly end?: number;
+  /** The subject's hole, as {@link MatchPart.hole}. */
+  readonly hole: number;
+  readonly arms: readonly BlockArm[];
+}
+
+/** One arm of a {@link BlockMatch}: what the subject must be, and what applies then. */
+export interface BlockArm {
+  /** The key as written, unquoted — see {@link MatchArm.key}. */
+  readonly key: string;
+  readonly otherwise: boolean;
+  /** Where the key begins, and how far the arm runs to its `;`. */
+  readonly at?: number;
+  readonly length?: number;
+  readonly items: readonly BlockItem[];
+}
+
+export type ValuePart = TextPart | HolePart | VariablePart | MatchPart | ChoicePart;
 
 /**
- * `match({this.variant}) { primary => red; _ => inherit; }` — one subject, several answers.
+ * `$(this.error) ? 2px solid red : 1px solid #ccc` — a choice between values, by conditions.
+ *
+ * A {@link MatchPart} for the case with two answers, and compiled the same way: every branch is a
+ * value known when the block compiles, so every branch is a class and the render only chooses. A
+ * chain — `$(a) ? x : $(b) ? y : z` — is one part with several branches, each condition its own
+ * hole, written once and in order. The final `: value` is mandatory and is {@link otherwise}.
+ *
+ * Like a match it is the WHOLE value or it is not a choice.
+ */
+export interface ChoicePart {
+  readonly kind: "choice";
+  readonly branches: readonly ChoiceBranch[];
+  /** The value after the last `:`, which applies when no condition held. */
+  readonly otherwise: readonly ValuePart[];
+  readonly at?: number;
+  readonly length?: number;
+}
+
+/** One `$(condition) ? value` of a {@link ChoicePart}. */
+export interface ChoiceBranch {
+  /** The condition's hole, in the reader's numbering — see {@link MatchPart.hole}. */
+  readonly hole: number;
+  readonly value: readonly ValuePart[];
+  readonly at?: number;
+  readonly length?: number;
+}
+
+/**
+ * `match $(this.variant) { primary => red; _ => inherit; }` — one subject, several answers.
  *
  * ## Why it is not a hole
  *
@@ -88,7 +147,7 @@ export type ValuePart = TextPart | HolePart | VariablePart | MatchPart;
  *
  * ## Why the arms are `ValuePart[]` and not text
  *
- * An arm holds a whole value — `4px solid red`, or `$.color.accent`, which must reach the virtual
+ * An arm holds a whole value — `4px solid red`, or `$color.accent`, which must reach the virtual
  * file as a real expression the same way it does anywhere else. **A hole inside an arm is refused**,
  * because it would put the render's value back where a class is supposed to be; that is a rule
  * rather than a shape, so the parser reads one and the checker speaks about it.
@@ -133,13 +192,13 @@ export interface MatchArm {
 }
 
 /**
- * `$.color.primary.main` — a variable the PROJECT declared, named by the path it was declared at.
+ * `$color.primary.main` — a variable the PROJECT declared, named by the path it was declared at.
  *
  * ## Why this is not resolved text
  *
- * A `{{ … }}` naming a `@@property` site becomes a {@link TextPart} with `resolved` set, because
+ * A `$(…)` naming a `@@property` site becomes a {@link TextPart} with `resolved` set, because
  * nothing after the parse needs the author's spelling of it again. This is the opposite case: the
- * virtual file emits `$.color.primary.main` as a REAL TypeScript expression, and that expression is
+ * virtual file emits `$color.primary.main` as a REAL TypeScript expression, and that expression is
  * where completion, the kind check and rename all come from. Flattening it to text here would throw
  * away the one thing that makes the spelling worth having.
  *
@@ -161,12 +220,12 @@ export interface VariablePart {
   readonly path: string;
   /** Where the `$` is in the author's file. See {@link Declaration.at}. */
   readonly at?: number;
-  /** How far the path runs, so a squiggle covers `$.color.primary.main` and not a character of it. */
+  /** How far the path runs, so a squiggle covers `$color.primary.main` and not a character of it. */
   readonly length?: number;
   /**
-   * Whether the author's last character is a DOT — `$.` or `$.color.`, a path being typed.
+   * Whether the author's last character is a DOT — `$.` or `$color.`, a path being typed.
    *
-   * Carried because the virtual file has to emit that dot: without it `$.color.` becomes
+   * Carried because the virtual file has to emit that dot: without it `$color.` becomes
    * `__vars.color` and the language service sees a finished expression rather than a member access
    * in progress, so it offers nothing. Measured as an empty completion list exactly where the
    * variable groups belong.
@@ -180,7 +239,7 @@ export interface TextPart {
   readonly at?: number;
   readonly text: string;
   /**
-   * Text this COMPILER decided, not text the author wrote — a `{{ … }}` that named a `@@keyframes`
+   * Text this COMPILER decided, not text the author wrote — a `$(…)` that named a `@@keyframes`
    * or `@@property` site and was resolved to that site's generated name.
    *
    * It is text for every purpose that matters: part of the hash, no custom property, and it stands
@@ -191,7 +250,7 @@ export interface TextPart {
    * The checker skips it for exactly that reason. Measured before this existed: the name stood alone
    * as a bare word in a value, because a resolved reference arrived as its own part and the function
    * step-over in `words()` works within one part — so `rotate(var(`, the name and `))` were three
-   * parts, and `transform: rotate(var({{angle}}))` was reported while the same text written by hand
+   * parts, and `transform: rotate(var($(angle)))` was reported while the same text written by hand
    * was silent. The same CSS, two answers.
    */
   readonly resolved?: true;
@@ -209,7 +268,7 @@ export interface HolePart {
   /** 0-based, in source order within the block. */
   readonly index: number;
   /**
-   * Where the `{{` is in the author's file, and how far the `}}` is — for a squiggle over the hole
+   * Where the `$(` is in the author's file, and how far the `)` is — for a squiggle over the hole
    * itself. See {@link Declaration.at}.
    *
    * The EXPRESSION still never reaches here, which is the point of the note above: this is a span,
@@ -229,15 +288,25 @@ export interface HolePart {
  * file wants only whether there are any, and the type its helper returns follows from that.
  *
  * **`ReadBlock.holes` is not the same list**, and reaching for it was the first mistake:
- * composition is written with the same braces, so `...{base}` and `if ({on})` are in the reader's
+ * composition is written with the same braces, so `...$(base)` and `when $(on)` are in the reader's
  * holes while neither puts anything on an element. Only a hole in a VALUE does.
  */
+/**
+ * The items a group holds — a nested rule's, or every arm's of a block match, in the order written.
+ *
+ * For a walk that asks what a block SETS and not how it is chosen. One that compares declarations
+ * with each other must treat each arm as its own group, because two arms never apply together.
+ */
+export function childrenOf(item: NestedRule | BlockMatch): readonly BlockItem[] {
+  return item.kind === "rule" ? item.items : item.arms.flatMap((arm) => arm.items);
+}
+
 export function runtimeValuesIn(block: Block): readonly { declaration: Declaration; part: HolePart }[] {
   const found: { declaration: Declaration; part: HolePart }[] = [];
   const inItems = (items: readonly BlockItem[]): void => {
     for (const item of items) {
-      if (item.kind === "rule") {
-        inItems(item.items);
+      if (item.kind !== "declaration") {
+        inItems(childrenOf(item));
         continue;
       }
       for (const part of item.value) if (part.kind === "hole") found.push({ declaration: item, part });

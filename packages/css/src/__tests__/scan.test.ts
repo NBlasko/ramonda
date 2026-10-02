@@ -325,10 +325,10 @@ describe("a block that is not an attribute", () => {
   test.each([
     ["a url with a scheme", "const a = <div css=@@( background: url(http://x/a.png); ) sx=@@( gap: 4px; )>x</div>;\n"],
     ["a slash between percentages", "const a = <div css=@@( border-radius: 50% / 20%; ) sx=@@( gap: 4px; )>x</div>;\n"],
-    ["a division in a hole", "const a = <div css=@@( width: {a / b}px; ) sx=@@( gap: 4px; )>x</div>;\n"],
+    ["a division in a hole", "const a = <div css=@@( width: $(a / b)px; ) sx=@@( gap: 4px; )>x</div>;\n"],
     ["an apostrophe in a css string", `const a = <div css=@@( content: "it's"; ) sx=@@( gap: 4px; )>x</div>;\n`],
     ["a paren inside a css string", 'const a = <div css=@@( content: ")"; ) sx=@@( gap: 4px; )>x</div>;\n'],
-    ["a paren inside a hole's template", "const a = <div css=@@( color: {`a)b`}; ) sx=@@( gap: 4px; )>x</div>;\n"],
+    ["a paren inside a hole's template", "const a = <div css=@@( color: $(`a)b`); ) sx=@@( gap: 4px; )>x</div>;\n"],
     ["a css comment holding a paren", "const a = <div css=@@( /* ) */ color: red; ) sx=@@( gap: 4px; )>x</div>;\n"],
   ])("%s leaves the block after it findable", (_what, source) => {
     expect(findBlocks(source).map((one) => one.name)).toEqual(["css", "sx"]);
@@ -336,7 +336,7 @@ describe("a block that is not an attribute", () => {
 
   /** And a block written INSIDE a block is still found, which is what the refusal reads. */
   test("a nested block is found, not skipped", () => {
-    const source = 'const a = @@( color: {x ? @@( color: red; ) : "b"}; );\n';
+    const source = 'const a = @@( color: $(x ? @@( color: red; ) : "b"); );\n';
 
     expect(findBlocks(source).length).toBe(2);
   });

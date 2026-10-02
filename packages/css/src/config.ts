@@ -76,7 +76,7 @@ export interface Config {
    * project does not write either. That is what makes the fallback ONE value used twice rather than
    * a number kept in step by hand.
    *
-   * `$.color.primary.main` in a block then compiles to `var(--color-primary-main)`, and a path
+   * `$color.primary.main` in a block then compiles to `var(--color-primary-main)`, and a path
    * naming nothing here is reported — see the `unknown-variable` rule, which is the only thing
    * standing between a typo and a `var()` into a name nothing sets.
    */

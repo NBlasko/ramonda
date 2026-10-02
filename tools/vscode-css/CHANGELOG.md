@@ -1,5 +1,19 @@
 # Ramonda CSS
 
+## 0.3.0
+
+- **The colours follow the new spelling of a block's logic.** This release goes with the `@ramonda/css`
+  that changed it, and colours an older block wrongly, so update the two together.
+
+  - Code goes into a block as `$( … )`, wherever it stands: `color: $(tint)`, `...$(base)`,
+    `$(angle): 45deg`. The `$` is coloured as the language's marker and the inside is TypeScript.
+  - A theme variable is `$color.primary.main` — the group right after the `$` — as one token.
+  - `when $( … ) { … } else when $( … ) { … } else { … }` colours every word as a keyword and every
+    condition as code.
+  - `match $( … ) { key => ( … ); }` in a block, and `match $( … ) { key => value; }` in a value,
+    colour the word, the subject, the keys and the arrows; the declarations in an arm are CSS.
+  - `$(c) ? a : b` colours `?` and `:` as operators and keeps the two values CSS.
+
 ## 0.2.0
 
 - **The `useSyntaxServer` setting is no longer needed.** An editor runs two TypeScript servers, and

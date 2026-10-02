@@ -104,14 +104,14 @@ describe("a conditional at-rule", () => {
 describe("a hole", () => {
   /**
    * **Renumbered per declaration**, and without that two identical declarations would hash
-   * differently. A hole's index is the BLOCK's, so `color: {{x}}` is hole 0 in one block and hole 1
+   * differently. A hole's index is the BLOCK's, so `color: $(x)` is hole 0 in one block and hole 1
    * in a block with a declaration above it — same declaration, two canonical texts, two classes, and
    * the dedupe that pays for the whole design gone.
    */
   test("is numbered within its own declaration, not within the block", () => {
-    const alone = of("color: {x};")[0];
+    const alone = of("color: $(x);")[0];
     // The SECOND hole of its block, so its block index is 1 and its own index is still 0.
-    const later = of("background: {a};\ncolor: {b};")[1];
+    const later = of("background: $(a);\ncolor: $(b);")[1];
 
     expect(later.holes).toEqual([1]);
     expect(later.canonical).toBe(alone.canonical);
@@ -119,10 +119,10 @@ describe("a hole", () => {
   });
 
   test("and a declaration with two keeps them in order", () => {
-    const [one] = of("border-left: {w} solid {c};");
+    const [one] = of("border-left: $(w) solid $(c);");
 
     expect(one.holes).toEqual([0, 1]);
-    expect(one.canonical).toBe(of("border-left: {a} solid {b};")[0].canonical);
+    expect(one.canonical).toBe(of("border-left: $(a) solid $(b);")[0].canonical);
   });
 });
 
@@ -297,7 +297,7 @@ describe("how narrow a rule is", () => {
    * medium are weaker than a breakpoint; `@supports`, orientation, contrast and `forced-colors` are
    * stronger. **The user chose this over the order I had shipped** — I had every mode beating every
    * breakpoint — and the reason is which mistake stays silent: theming lives in a BASE block and a
-   * modifier adjusts at a breakpoint, so `...{base}; @media (min-width: …) { … }` is the shape
+   * modifier adjusts at a breakpoint, so `...$(base); @media (min-width: …) { … }` is the shape
    * people write, and mode-wins loses it with nothing able to report it.
    */
   test("the modes are ordered against each other the way Tailwind orders them", () => {
@@ -640,7 +640,7 @@ describe("a shorthand is split into what it sets", () => {
    * hands back and the merge splits on its spaces — see `match.test.ts`.
    */
   test("an arm of a match is split, and every piece keeps its arm", () => {
-    expect(splitKeys("border-left: match({t}) { loud => 4px solid red; quiet => 1px dashed grey; };")).toEqual([
+    expect(splitKeys("border-left: match $(t) { loud => 4px solid red; quiet => 1px dashed grey; };")).toEqual([
       "border-left-color",
       "border-left-style",
       "border-left-width",
@@ -652,11 +652,11 @@ describe("a shorthand is split into what it sets", () => {
 
   /** A declared variable is a `var()` in the sheet, and what is inside it is unknown here. */
   test("nor is one reading a declared variable", () => {
-    expect(splitKeys("padding: $.space.md;")).toEqual(["padding"]);
+    expect(splitKeys("padding: $space.md;")).toEqual(["padding"]);
   });
 
   test("nor one where a variable stands beside written values", () => {
-    expect(splitKeys("border-top: $.line.thin solid red;")).toEqual(["border-top"]);
+    expect(splitKeys("border-top: $line.thin solid red;")).toEqual(["border-top"]);
   });
 
   /**

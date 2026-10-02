@@ -136,7 +136,7 @@ describe("running codegen", () => {
     write(
       "ramonda.css.ts",
       `import { kind } from "@ramonda/css/config";
-export default { variables: { "a-b": kind("length", { c: "1px" }), a: kind("length", { "b-c": "2px" }) } };
+export default { variables: { a: kind("length", { b: { c: "1px" }, "b-c": "2px" }) } };
 `,
     );
 

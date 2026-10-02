@@ -45,7 +45,13 @@ export function normalise(block: Block): string {
 function items(list: readonly BlockItem[]): string {
   let out = "";
   for (const item of list) {
-    out += item.kind === "declaration" ? `${propertyName(item.property)}:${value(item.value)};` : rule(item);
+    out +=
+      item.kind === "declaration"
+        ? `${propertyName(item.property)}:${value(item.value)};`
+        : item.kind === "match"
+          ? // The subject is a hole, so it is the placeholder; each arm is its key and its group.
+            `match${HOLE}${item.hole}${HOLE}{${item.arms.map((arm) => `${JSON.stringify(arm.key)}=>(${items(arm.items)});`).join("")}}`
+          : rule(item);
   }
   return out;
 }
@@ -75,7 +81,7 @@ export function propertyName(property: string): string {
  * The value, with its holes standing in as placeholders.
  *
  * The parts are joined BEFORE the whitespace is collapsed, and that ordering is the whole
- * correctness of it: collapsing each part on its own would trim the space in `4px solid {{colour}}`
+ * correctness of it: collapsing each part on its own would trim the space in `4px solid $(colour)`
  * off the end of the text part, and merge it with `4px solid{{colour}}` — two different values, one
  * class, and the second one broken.
  */
@@ -97,6 +103,10 @@ function value(parts: readonly ValuePart[]): string {
       raw += `${HOLE}${part.hole}${HOLE}?{`;
       for (const arm of part.arms) raw += `${arm.key}=>${value(arm.value)};`;
       raw += "}";
+    } else if (part.kind === "choice") {
+      // The same, for a choice: each condition and its value in order, then the last value.
+      for (const branch of part.branches) raw += `${HOLE}${branch.hole}${HOLE}?${value(branch.value)}:`;
+      raw += value(part.otherwise);
     } else raw += `${HOLE}${part.index}${HOLE}`;
   }
   return collapse(raw);

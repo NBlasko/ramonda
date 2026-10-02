@@ -72,7 +72,7 @@ them means nothing else is opened at all.
 ### If you declare variables
 
 Nothing above changes, and one thing is added: the plugin writes a `css-system/` folder beside
-`ramonda.css.ts` holding `$` and the values, and your app imports the stylesheet once.
+`ramonda.css.ts` holding the variable groups — `$color`, `$space` — and their values, and your app imports the stylesheet once.
 
 ```ts
 import "./css-system/variables.css";

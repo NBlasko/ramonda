@@ -26,7 +26,7 @@ export type {
 /** A colour, for the declaration that makes one — see `CssDimension` for the same argument. */
 export type { CssColor, CssColorKeyword } from "./values.generated";
 /**
- * What `$.color.primary.main` IS, for the module codegen writes.
+ * What `$color.primary.main` IS, for the module codegen writes.
  *
  * A TYPE and nothing else, which is what lets that module import from here without importing
  * anything: a token's runtime value is the string `var(--color-primary-main)`, written straight into

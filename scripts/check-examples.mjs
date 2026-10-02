@@ -400,7 +400,7 @@ function shape(code) {
      * The project's OWN property map when there is one, and the shipped one when there is not.
      *
      * It was pinned to the shipped map, and that is what a project WITHOUT a config is checked
-     * against — so `$.color.accent` on a page about declaring variables came back
+     * against — so `$color.accent` on a page about declaring variables came back
      * `Property 'color' does not exist on type '"Declare your variables in ramonda.css.ts…"'`. The
      * examples were being checked as a project that had never run codegen, which is not the project
      * any page here describes.
@@ -544,7 +544,7 @@ const work = mkdtempSync(join(tmpdir(), "ramonda-examples-"));
  * The docs' own `ramonda.css.ts`, carried into the work directory and generated from.
  *
  * Every block is checked here rather than where the page lives, so a config beside the page is
- * nowhere the checker would walk up to. Without it `$.color.accent` is
+ * nowhere the checker would walk up to. Without it `$color.accent` is
  * `Property 'color' does not exist on type '"Declare your variables in ramonda.css.ts…"'` — the
  * message this package shows a project that has not declared anything, shown to a page ABOUT
  * declaring things.

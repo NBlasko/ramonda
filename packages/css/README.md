@@ -6,7 +6,7 @@ in a stylesheet, and the block becomes the classes it came to — a string, so `
 ```
 <div className={@@(
   display: flex;
-  border-left: match({this.tone}) {
+  border-left: match $(this.tone) {
     loud => 4px solid #10b981;
     _    => 4px solid #64748b;
   };
@@ -72,15 +72,15 @@ export default {
 
 ```tsx
 const card = @@(
-  color: $.color.accent;
-  padding: $.space.gutter;
+  color: $color.accent;
+  padding: $space.gutter;
 );
 ```
 
-`$.color.accent` compiles to `var(--color-accent)` — the path is the name, so there is no string to
+`$color.accent` compiles to `var(--color-accent)` — the path is the name, so there is no string to
 misspell, and a typo is a TypeScript error with the suggestion it already knows how to make.
 
-The **kind** is checked in both directions. `padding-left: $.color.accent` is refused before
+The **kind** is checked in both directions. `padding-left: $color.accent` is refused before
 anything runs; and `codegen` writes an `@property` registration for every variable, so a value the
 browser cannot use falls back to the declared one instead of collapsing the element that reads it.
 

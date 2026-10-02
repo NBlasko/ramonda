@@ -38,7 +38,7 @@ function matched(css: string): MatchPart {
 
 describe("reading a match", () => {
   test("the subject is a hole and every arm is read", () => {
-    const one = matched(`color: match({this.variant}) {\n  primary => red;\n  secondary => blue;\n}`);
+    const one = matched(`color: match $(this.variant) {\n  primary => red;\n  secondary => blue;\n}`);
 
     expect(one.arms.map((arm) => arm.key)).toEqual(["primary", "secondary"]);
     expect(
@@ -47,26 +47,26 @@ describe("reading a match", () => {
   });
 
   test("`_` is the default arm and says so", () => {
-    const one = matched(`color: match({this.variant}) {\n  primary => red;\n  _ => inherit;\n}`);
+    const one = matched(`color: match $(this.variant) {\n  primary => red;\n  _ => inherit;\n}`);
 
     expect(one.arms.map((arm) => arm.otherwise)).toEqual([false, true]);
   });
 
   test("a key may be a number", () => {
-    expect(matched(`grid-column: match({this.span}) {\n  1 => 1;\n  2 => span 2;\n}`).arms.map((a) => a.key)).toEqual([
+    expect(matched(`grid-column: match $(this.span) {\n  1 => 1;\n  2 => span 2;\n}`).arms.map((a) => a.key)).toEqual([
       "1",
       "2",
     ]);
   });
 
   test("a key may be quoted, for what is not an identifier", () => {
-    expect(matched(`color: match({this.v}) {\n  "extra large" => red;\n}`).arms.map((a) => a.key)).toEqual([
+    expect(matched(`color: match $(this.v) {\n  "extra large" => red;\n}`).arms.map((a) => a.key)).toEqual([
       "extra large",
     ]);
   });
 
   test("an arm holds a whole value, not one word", () => {
-    const one = matched(`border-left: match({this.tone}) {\n  loud => 4px solid red;\n  quiet => 1px dashed grey;\n}`);
+    const one = matched(`border-left: match $(this.tone) {\n  loud => 4px solid red;\n  quiet => 1px dashed grey;\n}`);
 
     expect(one.arms[0].value.map((part) => (part.kind === "text" ? part.text.trim() : "?")).join("")).toBe(
       "4px solid red",
@@ -74,13 +74,13 @@ describe("reading a match", () => {
   });
 
   test("an arm may name a declared variable", () => {
-    const one = matched(`color: match({this.tone}) {\n  loud => $.color.accent;\n}`);
+    const one = matched(`color: match $(this.tone) {\n  loud => $color.accent;\n}`);
 
     expect(one.arms[0].value.some((part) => part.kind === "variable")).toBe(true);
   });
 
   test("the value holds the match and nothing else", () => {
-    expect(parts(`color: match({this.v}) {\n  a => red;\n}`).filter((one) => one.kind === "text")).toEqual([]);
+    expect(parts(`color: match $(this.v) {\n  a => red;\n}`).filter((one) => one.kind === "text")).toEqual([]);
   });
 });
 
@@ -95,7 +95,7 @@ describe("what a match compiles to", () => {
   };
 
   test("every arm is its own rule, so every arm is a class", () => {
-    const { css } = compiled(`color: match({v}) { primary => red; secondary => blue; };`);
+    const { css } = compiled(`color: match $(v) { primary => red; secondary => blue; };`);
 
     expect(css).toContain("color:red;");
     expect(css).toContain("color:blue;");
@@ -106,13 +106,13 @@ describe("what a match compiles to", () => {
    * class while the page renders, and the key it decides for is in whichever class it returns.
    */
   test("and it is one call that chooses between their classes", () => {
-    const { code } = compiled(`color: match({v}) { primary => red; secondary => blue; };`);
+    const { code } = compiled(`color: match $(v) { primary => red; secondary => blue; };`);
 
     expect(code).toContain(`_pick(v,{"primary":"r-c-red","secondary":"r-c-blue",})`);
   });
 
   test("the `_` arm is the fallback, not a key", () => {
-    const { code } = compiled(`color: match({v}) { primary => red; _ => inherit; };`);
+    const { code } = compiled(`color: match $(v) { primary => red; _ => inherit; };`);
 
     expect(code).toContain(`_pick(v,{"primary":"r-c-red",},"r-c-inherit")`);
   });
@@ -123,7 +123,7 @@ describe("what a match compiles to", () => {
   });
 
   test("an arm may hold a whole value, and it splits into the longhands it sets", () => {
-    const { css } = compiled(`border-left: match({t}) { loud => 4px solid red; quiet => 1px dashed grey; };`);
+    const { css } = compiled(`border-left: match $(t) { loud => 4px solid red; quiet => 1px dashed grey; };`);
 
     expect(css).toContain("border-left-width:4px;");
     expect(css).toContain("border-left-style:solid;");
@@ -148,7 +148,7 @@ describe("what a match does at run time", () => {
 
   /**
    * **With no `_`, nothing applies** — the entry carries no class, the merge skips it, and whatever
-   * was set above it stands. That is the answer `if ({false})` already gives, and it is why an arm
+   * was set above it stands. That is the answer `when $(false)` already gives, and it is why an arm
    * can be a class at all: every outcome was decided when the block compiled, including this one.
    */
   test("with no `_`, an unmatched subject sets nothing and leaves what was above it", () => {
@@ -173,23 +173,23 @@ describe("what a match may not hold", () => {
    * or the design leaks through a side door.
    */
   test("a hole in an arm is refused", () => {
-    expect(rules(`color: match({v}) { primary => {this.brand}; };`)).toContain("hole-in-a-match-arm");
+    expect(rules(`color: match $(v) { primary => $(this.brand); };`)).toContain("hole-in-a-match-arm");
   });
 
   test("a hole in the SUBJECT is what a match is, so it is quiet", () => {
-    expect(rules(`color: match({v}) { primary => red; };`)).toEqual([]);
+    expect(rules(`color: match $(v) { primary => red; };`)).toEqual([]);
   });
 
   test("two arms with one key are reported, because the second can never be reached", () => {
-    expect(rules(`color: match({v}) { primary => red; primary => blue; };`)).toContain("match-arm-repeated");
+    expect(rules(`color: match $(v) { primary => red; primary => blue; };`)).toContain("match-arm-repeated");
   });
 
   test("a `_` written above an arm is reported, because it answers first", () => {
-    expect(rules(`color: match({v}) { _ => inherit; primary => red; };`)).toContain("match-arm-repeated");
+    expect(rules(`color: match $(v) { _ => inherit; primary => red; };`)).toContain("match-arm-repeated");
   });
 
   test("a match with no arms is refused", () => {
-    expect(rules(`color: match({v}) { };`)).toContain("match-with-no-arms");
+    expect(rules(`color: match $(v) { };`)).toContain("match-with-no-arms");
   });
 });
 
@@ -207,7 +207,7 @@ describe("what a match may not hold", () => {
 describe("setting a registered property", () => {
   test("the binding is the generated name, and one property is one name however often it is read", () => {
     const source = `const pad = @@property( syntax: "<length>"; initial-value: 0px; );
-const box = @@( padding-left: var({pad}); padding-right: var({pad}); );`;
+const box = @@( padding-left: var($(pad)); padding-right: var($(pad)); );`;
     const out = transform(source, { filename: "Card.tsx" });
     if (out === undefined) throw new Error("not transformed");
     const sheet = new Sheet();
@@ -228,7 +228,7 @@ const box = @@( padding-left: var({pad}); padding-right: var({pad}); );`;
    */
   test("and a hole, which would have been two names for one value, is refused outright", () => {
     expect(() =>
-      transform(`const a = @@( padding-left: {v}; padding-right: {v}; );`, { filename: "Card.tsx" }),
+      transform(`const a = @@( padding-left: $(v); padding-right: $(v); );`, { filename: "Card.tsx" }),
     ).toThrow(/@@property/);
   });
 });
@@ -246,17 +246,17 @@ describe("a match on a shorthand", () => {
     transform(`declare const t: "a" | "b";\nconst x = @@( ${block} );\n`, { filename: "Card.tsx" })?.code ?? "";
 
   test("each arm is the family's marker and its pieces", () => {
-    expect(code("padding: match({t}) { a => 1px; b => 2px 3px; };")).toContain(
+    expect(code("padding: match $(t) { a => 1px; b => 2px 3px; };")).toContain(
       '_pick(t,{"a":"r-p- r-pt-1px r-pr-1px r-pb-1px r-pl-1px","b":"r-p- r-pt-2px r-pr-3px r-pb-2px r-pl-3px",})',
     );
   });
 
   test("and the otherwise arm too", () => {
-    expect(code("padding: match({t}) { a => 1px; _ => 0; };")).toContain(',"r-p- r-pt-0 r-pr-0 r-pb-0 r-pl-0")');
+    expect(code("padding: match $(t) { a => 1px; _ => 0; };")).toContain(',"r-p- r-pt-0 r-pr-0 r-pb-0 r-pl-0")');
   });
 
   test("an arm that cannot split keeps its shorthand, and the others still split", () => {
-    expect(code("padding: match({t}) { a => var(--p); b => 1px; };")).toContain(
+    expect(code("padding: match $(t) { a => var(--p); b => 1px; };")).toContain(
       '_pick(t,{"a":"r-p-var(--p)","b":"r-p- r-pt-1px r-pr-1px r-pb-1px r-pl-1px",})',
     );
   });

@@ -8,7 +8,7 @@ import { ConfigError, findConfig, readConfig } from "./config";
  * Codegen, actually run — the step that turns everything else about `$` into something a project
  * can use.
  *
- * Without this, `$.color.primary.main` parses, compiles, colours and checks, and a project still has
+ * Without this, `$color.primary.main` parses, compiles, colours and checks, and a project still has
  * no `$` to import and no stylesheet setting the variables. Three callers need it and must agree:
  * the CLI, for CI and for the first run; and both bundler plugins, so an ordinary `dev` needs no
  * command at all.

@@ -124,7 +124,7 @@ export class Card extends Component {
     return (
       <div>
         <img src="a.png" />
-        <div className={@@( color: match({this.tone}) { loud => red; _ => blue; }; )} ${FAULTS}>x</div>
+        <div className={@@( color: match $(this.tone) { loud => red; _ => blue; }; )} ${FAULTS}>x</div>
       </div>
     );
   }

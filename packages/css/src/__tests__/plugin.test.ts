@@ -167,7 +167,7 @@ describe("completion, at every caret a person passes through", () => {
    */
   test.each([
     ["inside a block", `const a = <div className={@@( disp${CARET} )}>x</div>;\n`],
-    ["inside a hole", `const tone = 1;\nconst a = <div className={@@( opacity: {to${CARET}}; )}>x</div>;\n`],
+    ["inside a hole", `const tone = 1;\nconst a = <div className={@@( opacity: $(to${CARET}); )}>x</div>;\n`],
     ["in ordinary code beside a block", `const a = <div className={@@( color: red; )}>x</div>;\nconst b = ${CARET}\n`],
     ["in a file with a named site", `const k = @@keyframes( from { opacity: 0; } );\nconst b = ${CARET}\n`],
   ])("%s offers none of this file's own declarations", (_what, marked) => {
@@ -291,7 +291,7 @@ describe("the red squiggles", () => {
       `export class Card {\n  toggle = true;\n  render() {\n` +
       `    const shade = this.toggle ? "red" : "blue";\n` +
       `    return (\n      <div\n        className={@@(\n          color: white;\n` +
-      `          &:hover { color: {shade}; }\n        )}\n      >x</div>\n    );\n  }\n}\n`;
+      `          &:hover { color: $(shade); }\n        )}\n      >x</div>\n    );\n  }\n}\n`;
     const { service } = editor(marked);
 
     for (const one of service.getSuggestionDiagnostics(FILE)) {
@@ -352,12 +352,12 @@ describe("the CSS rules, as squiggles", () => {
    * cannot go — there is no correct compilation — so the only place it can be SAID rather than
    * enforced is here, under the character, while it is being typed.
    */
-  test("a hole where a custom property cannot go is an error under the `{`", () => {
-    const marked = `const a = (\n  <div className={@@(\n    {name}: 24px;\n  )}>x</div>\n);\n`;
+  test("a hole where a custom property cannot go is an error under the `$(`", () => {
+    const marked = `const a = (\n  <div className={@@(\n    $(name): 24px;\n  )}>x</div>\n);\n`;
     const { service, source } = editor(marked);
 
     const [only] = service.getSemanticDiagnostics(FILE);
-    expect(only.start).toBe(source.indexOf("{", source.indexOf("@@(") + 3));
+    expect(only.start).toBe(source.indexOf("$(", source.indexOf("@@(") + 3));
     expect(only.length).toBe(1);
     expect(only.category).toBe(ts.DiagnosticCategory.Error);
     expect(ts.flattenDiagnosticMessageText(only.messageText, " ")).toContain("hole-out-of-place");
@@ -474,7 +474,7 @@ describe("the CSS rules, as squiggles", () => {
 
 describe("hover", () => {
   test("over a hole's expression, it is the expression's own type", () => {
-    const marked = `const accent: string = "#10b981";\nconst a = <div className={@@( color: {acc${CARET}ent}; )}>x</div>;\n`;
+    const marked = `const accent: string = "#10b981";\nconst a = <div className={@@( color: $(acc${CARET}ent); )}>x</div>;\n`;
     const { service, caret } = editor(marked);
 
     const info = service.getQuickInfoAtPosition(FILE, caret);
@@ -693,7 +693,7 @@ export default [before, a, after];
    * should read as `this.weight` reads anywhere else.
    */
   test("no semantic token paints the CSS, and a hole still gets one", () => {
-    const marked = `const accent = "red";\nconst a = <div className={@@( display: flex; color: {accent}; )}>x</div>;\nexport default [a, accent];\n`;
+    const marked = `const accent = "red";\nconst a = <div className={@@( display: flex; color: $(accent); )}>x</div>;\nexport default [a, accent];\n`;
     const { service, source } = editor(marked);
     const covers = (what: string) => {
       const at = source.indexOf(what, source.indexOf("css=@@("));
@@ -806,7 +806,7 @@ describe("the language service surface", () => {
 describe("what an editor would have written", () => {
   const WITH_IMPORT = `import { tone } from "./theme";
 const a = <div className={@@(
-  color: {tone};
+  color: $(tone);
 )}>hello</div>;
 `;
 
@@ -862,7 +862,7 @@ const a = <div className={@@(
   test("find-all-references points inside the author's file", () => {
     const source = `const tone = "red";
 const a = <div className={@@(
-  color: {tone};
+  color: $(tone);
 )}>x</div>;
 `;
     const { service } = editor(source);
@@ -899,7 +899,7 @@ const a = <div className={@@(
       (one: ts.LanguageService, at: number) => one.getBreakpointStatementAtPosition(FILE, at),
     ],
   ])("%s answers inside the author's file", (_what, run) => {
-    const source = `const tone = "red";\nconst a = <div className={@@(\n  color: {tone};\n)}>x</div>;\n`;
+    const source = `const tone = "red";\nconst a = <div className={@@(\n  color: $(tone);\n)}>x</div>;\n`;
     const { service } = editor(source);
 
     const span = run(service, source.indexOf("tone"));
@@ -970,7 +970,7 @@ const a = <div className={@@(
   test("a breakpoint span is inside the author's file", () => {
     const source = `const tone = "red";
 const a = <div className={@@(
-  color: {tone};
+  color: $(tone);
 )}>x</div>;
 `;
     const { service } = editor(source);
@@ -1410,7 +1410,7 @@ describe("completion in a value", () => {
   });
 
   test("a hole is TypeScript, and keeps being TypeScript", () => {
-    const offered = names(`const accent = "red";\nconst a = <div className={@@( color: {acc${CARET}}; )}>x</div>;\n`);
+    const offered = names(`const accent = "red";\nconst a = <div className={@@( color: $(acc${CARET}); )}>x</div>;\n`);
 
     expect(offered).toContain("accent");
     expect(offered).not.toContain("inherit");
@@ -1588,7 +1588,7 @@ describe("hovering a declaration", () => {
 /**
  * Going to a binding a block READS, from inside the block.
  *
- * **Reported by a user**: ctrl+click on `CONTROL` or `TONES` inside a `...{ … }` landed on the JSDoc
+ * **Reported by a user**: ctrl+click on `CONTROL` or `TONES` inside a `...$( … )` landed on the JSDoc
  * above the declaration rather than on the declaration, and they could see no pattern in it. The
  * pattern is length: a span that starts a few characters early is invisible until the thing above it
  * is long, and both of those carry a paragraph of comment.
@@ -1637,7 +1637,7 @@ describe("hovering a declaration", () => {
 describe("an offset turned into a line and a column", () => {
   const SOURCE =
     `/**\n * A comment long enough that landing inside it is unmistakable, and then some more of it.\n */\n` +
-    `const CONTROL = @@( color: red; );\n\nconst card = @@(\n  ...{CONTROL};\n  padding: 8px;\n);\n`;
+    `const CONTROL = @@( color: red; );\n\nconst card = @@(\n  ...$(CONTROL);\n  padding: 8px;\n);\n`;
 
   /** Where a position really is, counted in the author's own text. */
   const trueLine = (source: string, at: number) => {
@@ -1670,7 +1670,7 @@ describe("an offset turned into a line and a column", () => {
 describe("a file asked for under a differently spelled path", () => {
   const SOURCE =
     `/**\n * A comment long enough that landing inside it is unmistakable, and then some more of it.\n */\n` +
-    `const CONTROL = @@( color: red; );\n\nconst card = @@(\n  ...{CONTROL};\n  padding: 8px;\n);\n`;
+    `const CONTROL = @@( color: red; );\n\nconst card = @@(\n  ...$(CONTROL);\n  padding: 8px;\n);\n`;
 
   // Built by concatenation, not by `join` — which normalises, and normalising is the whole point.
   const DIRECTORY = join(PACKAGE, "src", "__tests__");
@@ -1680,7 +1680,7 @@ describe("a file asked for under a differently spelled path", () => {
     ["a doubled separator", `${DIRECTORY}//Card.tsx`],
   ])("%s still maps the definition home", (_what, spelled) => {
     const { service, source } = editor(SOURCE, { properties: join(PACKAGE, "src", "properties"), as: spelled });
-    const at = source.lastIndexOf("...{CONTROL}") + 4;
+    const at = source.lastIndexOf("...$(CONTROL)") + 5;
 
     const [only] = service.getDefinitionAtPosition(spelled, at) ?? [];
     if (only === undefined) throw new Error("no definition");
@@ -1691,7 +1691,7 @@ describe("a file asked for under a differently spelled path", () => {
   test("and so does a document highlight", () => {
     const spelled = `${join(PACKAGE, "src", "__tests__")}/./Card.tsx`;
     const { service, source } = editor(SOURCE, { properties: join(PACKAGE, "src", "properties"), as: spelled });
-    const at = source.lastIndexOf("...{CONTROL}") + 4;
+    const at = source.lastIndexOf("...$(CONTROL)") + 5;
 
     const [group] = service.getDocumentHighlights(spelled, at, [spelled]) ?? [];
     if (group === undefined) throw new Error("no highlights");
@@ -1705,11 +1705,11 @@ describe("a file asked for under a differently spelled path", () => {
 describe("going to a binding a block reads", () => {
   const source =
     `/**\n * A paragraph of comment, long enough that landing on it is unmistakable.\n *\n * A second one, for the same reason.\n */\nconst CONTROL = @@( color: red; );\n\n` +
-    `const card = @@(\n  ...{CONTROL};\n  padding: 8px;\n);\n`;
+    `const card = @@(\n  ...$(CONTROL);\n  padding: 8px;\n);\n`;
 
   test("lands on the declaration, not on the comment above it", () => {
     const { service } = editor(source);
-    const at = source.indexOf("...{CONTROL}") + 4;
+    const at = source.indexOf("...$(CONTROL)") + 5;
 
     const [only] = service.getDefinitionAtPosition(FILE, at) ?? [];
     if (only === undefined) throw new Error("no definition");
@@ -1721,16 +1721,16 @@ describe("going to a binding a block reads", () => {
    * The same, with the comment above it holding text that LOOKS like a block.
    *
    * This is the shape the user actually had: `panels.tsx` explains the syntax in its own JSDoc, so
-   * the paragraph above the declaration contains `...{ … }` and `if ({ … }) { … }` as prose. If
+   * the paragraph above the declaration contains `...$( … )` and `when $( … ) { … }` as prose. If
    * any scanner reads a comment as a site, every position after it shifts — and the symptom is a
    * definition landing a few characters early, which is exactly what was reported.
    */
   test("even when the comment above it explains the syntax", () => {
     const explained =
-      `/**\n * A block, explained.\n *\n * \`...{ … }\` merges another block here, and \`if ({ … }) { … }\` merges a group.\n *\n * Spreading a lookup — \`...{TONES[this.tone]}\` — is exhaustive.\n */\nconst CONTROL = @@( color: red; );\n\n` +
-      `const card = @@(\n  ...{CONTROL};\n  padding: 8px;\n);\n`;
+      `/**\n * A block, explained.\n *\n * \`...$( … )\` merges another block here, and \`when $( … ) { … }\` merges a group.\n *\n * Spreading a lookup — \`...$(TONES[this.tone])\` — is exhaustive.\n */\nconst CONTROL = @@( color: red; );\n\n` +
+      `const card = @@(\n  ...$(CONTROL);\n  padding: 8px;\n);\n`;
     const { service } = editor(explained);
-    const at = explained.lastIndexOf("...{CONTROL}") + 4;
+    const at = explained.lastIndexOf("...$(CONTROL)") + 5;
 
     const [only] = service.getDefinitionAtPosition(FILE, at) ?? [];
     if (only === undefined) throw new Error("no definition");
@@ -1740,7 +1740,7 @@ describe("going to a binding a block reads", () => {
 
   test("and the bound span covers the name under the cursor", () => {
     const { service } = editor(source);
-    const at = source.indexOf("...{CONTROL}") + 4;
+    const at = source.indexOf("...$(CONTROL)") + 5;
 
     const got = service.getDefinitionAndBoundSpan(FILE, at);
     if (got === undefined) throw new Error("no bound span");
@@ -1752,7 +1752,7 @@ describe("going to a binding a block reads", () => {
 /**
  * `optionalReplacementSpan`, which is the span an editor REPLACES when a completion is accepted.
  *
- * **Reported by a user as "no completion inside an `if` group", and it took eleven measurements to
+ * **Reported by a user as "no completion inside a `when` group", and it took eleven measurements to
  * find because the entries were always right.** The list came back with all 551 properties and the
  * one they wanted among them; what was wrong was the span beside it.
  *
@@ -1761,7 +1761,7 @@ describe("going to a binding a block reads", () => {
  * `...got` and was handed on with the VIRTUAL file's coordinates, which point at unrelated characters
  * in the author's:
  *
- *     inside an `if` group, typing `op`     the span covered `dd`
+ *     inside a `when` group, typing `op`     the span covered `dd`
  *     at the top of a block, typing `dis`     the span covered `ip}>flip the tone<`
  *
  * The caret is outside a span like that, so an editor is entitled to drop the list — and VS Code
@@ -1772,10 +1772,10 @@ describe("the span a completion replaces", () => {
   test.each([
     ["at the top of a block", `const a = <div className={@@(\n  dis${CARET}\n)}>x</div>;\n`, "dis"],
     ["after a declaration", `const a = <div className={@@(\n  display: flex;\n  op${CARET}\n)}>x</div>;\n`, "op"],
-    ["inside an `if` group", `const a = <div className={@@(\n  if ({on}) {\n    op${CARET}\n  }\n)}>x</div>;\n`, "op"],
+    ["inside an `if` group", `const a = <div className={@@(\n  when $(on) {\n    op${CARET}\n  }\n)}>x</div>;\n`, "op"],
     [
       "second in an `if` group",
-      `const a = <div className={@@(\n  if ({on}) {\n    opacity: 0.5;\n    cu${CARET}\n  }\n)}>x</div>;\n`,
+      `const a = <div className={@@(\n  when $(on) {\n    opacity: 0.5;\n    cu${CARET}\n  }\n)}>x</div>;\n`,
       "cu",
     ],
     ["inside a nested rule", `const a = <div className={@@(\n  &:hover {\n    cu${CARET}\n  }\n)}>x</div>;\n`, "cu"],
@@ -1814,7 +1814,7 @@ describe("a span that would eat the line below", () => {
   test.each([
     [
       "at the top of a block, above a spread",
-      `const a = <div className={@@(\n  dis${CARET}\n  ...{base};\n)}>x</div>;\n`,
+      `const a = <div className={@@(\n  dis${CARET}\n  ...$(base);\n)}>x</div>;\n`,
     ],
     ["above another declaration", `const a = <div className={@@(\n  dis${CARET}\n  color: red;\n)}>x</div>;\n`],
     ["above a nested rule", `const a = <div className={@@(\n  dis${CARET}\n  &:hover { color: red; }\n)}>x</div>;\n`],
@@ -1832,7 +1832,7 @@ describe("a span that would eat the line below", () => {
 
   /** And what the editor would be left with, which is the fault stated as a fault. */
   test("accepting a completion does not take the line below with it", () => {
-    const marked = `const a = <div className={@@(\n  dis${CARET}\n  ...{base};\n)}>x</div>;\n`;
+    const marked = `const a = <div className={@@(\n  dis${CARET}\n  ...$(base);\n)}>x</div>;\n`;
     const { service, source, caret } = editor(marked);
     const got = service.getCompletionsAtPosition(FILE, caret, undefined);
     const entry = got?.entries.find((one) => one.name === "display");
@@ -1844,7 +1844,7 @@ describe("a span that would eat the line below", () => {
         ? source
         : source.slice(0, span.start) + (entry.insertText ?? entry.name) + source.slice(span.start + span.length);
 
-    expect(applied).toContain("...{base};");
+    expect(applied).toContain("...$(base);");
   });
 });
 
@@ -1872,11 +1872,11 @@ describe("a caret on a blank line at the end", () => {
     ],
     [
       "of an `if` group",
-      `const a = <div className={@@(\n  if ({on}) {\n    opacity: 0.5;\n    ${CARET}\n  }\n)}>x</div>;\n`,
+      `const a = <div className={@@(\n  when $(on) {\n    opacity: 0.5;\n    ${CARET}\n  }\n)}>x</div>;\n`,
     ],
     [
       "of a group, two blank lines and stray spaces",
-      `const a = <div className={@@(\n  if ({on}) {\n    opacity: 0.5;\n\n      ${CARET}\n\n  }\n)}>x</div>;\n`,
+      `const a = <div className={@@(\n  when $(on) {\n    opacity: 0.5;\n\n      ${CARET}\n\n  }\n)}>x</div>;\n`,
     ],
     [
       "of a nested rule",
@@ -1913,7 +1913,7 @@ describe("a caret on a blank line at the end", () => {
  * The generator asserts every written name exists in `mdn-data`, so a sentence cannot be attached to
  * a selector CSS does not have.
  *
- * `if` and `...` are this language's own and have no upstream to read; what they say is what this
+ * `when` and `...` are this language's own and have no upstream to read; what they say is what this
  * repository measured about them.
  */
 describe("hover", () => {
@@ -1931,8 +1931,8 @@ describe("hover", () => {
     `  display: flex;\n` +
     `  &::after { content: ""; }\n` +
     `  &:hover { color: red; }\n` +
-    `  if ({on}) { opacity: 0.5; }\n` +
-    `  ...{base};\n` +
+    `  when $(on) { opacity: 0.5; }\n` +
+    `  ...$(base);\n` +
     `  @media (min-width: 40rem) { gap: 8px; }\n` +
     `)>x</div>;\n`;
 
@@ -1956,15 +1956,15 @@ describe("hover", () => {
     expect(hovered(BLOCK, "::after").documentation).toContain("developer.mozilla.org");
   });
 
-  test("`if` says what a group does", () => {
-    const { signature, documentation } = hovered(BLOCK, "if");
+  test("`when` says what a group does", () => {
+    const { signature, documentation } = hovered(BLOCK, "when");
 
-    expect(signature).toContain("if");
+    expect(signature).toContain("when");
     expect(documentation).toContain("later");
   });
 
   test("`...` says what a spread does", () => {
-    const { signature } = hovered(BLOCK, "...{base}");
+    const { signature } = hovered(BLOCK, "...$(base)");
 
     expect(signature).toContain("...");
   });
@@ -2191,8 +2191,8 @@ describe("what a completion is allowed to replace", () => {
  */
 describe("a definition in another file that also holds a block", () => {
   const THEME = join(PACKAGE, "src", "__tests__", "Theme.tsx");
-  const THEME_SOURCE = `export const tone = "#10b981";\nexport const box = <i className={@@( color: {tone}; )}>x</i>;\n`;
-  const CARD_SOURCE = `import { tone } from "./Theme";\nconst a = <div className={@@( color: {tone}; )}>x</div>;\n`;
+  const THEME_SOURCE = `export const tone = "#10b981";\nexport const box = <i className={@@( color: $(tone); )}>x</i>;\n`;
+  const CARD_SOURCE = `import { tone } from "./Theme";\nconst a = <div className={@@( color: $(tone); )}>x</div>;\n`;
 
   /** Both files in one program, both holding a block, so both are overlaid. */
   const twoFiles = () => {
@@ -2229,7 +2229,7 @@ describe("a definition in another file that also holds a block", () => {
   };
 
   /** The caret on `tone` inside this file's block — the import's own binding. */
-  const caretOnTone = CARD_SOURCE.lastIndexOf("{tone}") + 1;
+  const caretOnTone = CARD_SOURCE.lastIndexOf("$(tone)") + 2;
 
   test("the span lands on the declaration, in the author's own text", () => {
     const { service, sources } = twoFiles();
@@ -2273,7 +2273,7 @@ describe("a definition in another file that also holds a block", () => {
  * author's file destroyed, and there is no version of this trade where the second is better.
  */
 describe("an edit an editor would apply", () => {
-  const BLOCK = `const tone = "red";\nconst a = <div className={@@( color: {tone}; )}>x</div>;\n`;
+  const BLOCK = `const tone = "red";\nconst a = <div className={@@( color: $(tone); )}>x</div>;\n`;
   const caretOnTone = BLOCK.indexOf("tone");
 
   test("rename is declined on a file with a block", () => {
@@ -2587,7 +2587,7 @@ describe("no span the plugin returns can reach outside the file", () => {
     ],
     [
       "a block with a condition and a match",
-      `declare const t: "a" | "b";\nconst a = <div className={@@( if ({t}) { color: red; } cursor: match({t}) { a => pointer; b => default; }; )}>x</div>;\nexport default a;\n`,
+      `declare const t: "a" | "b";\nconst a = <div className={@@( when $(t) { color: red; } cursor: match $(t) { a => pointer; b => default; }; )}>x</div>;\nexport default a;\n`,
     ],
   ];
 
@@ -2720,7 +2720,7 @@ describe("the typed rules, in the editor", () => {
     const marked =
       `import type { CssBlock } from "../properties";\n` +
       `export function Card(props: { css?: CssBlock }) {\n` +
-      `  return <div className={@@( color: red; ...{props.css}; )}>x</div>;\n}\n`;
+      `  return <div className={@@( color: red; ...$(props.css); )}>x</div>;\n}\n`;
     const { service } = editor(marked);
 
     expect(service.getSemanticDiagnostics(FILE)).toEqual([]);
@@ -2730,7 +2730,7 @@ describe("the typed rules, in the editor", () => {
     const marked =
       `import type { CssBlock } from "../properties";\n` +
       `export function Card(props: { css?: CssBlock<{ "padding-left"?: string }> }) {\n` +
-      `  return <div className={@@( ...{props.css}; padding: 8px; )}>x</div>;\n}\n`;
+      `  return <div className={@@( ...$(props.css); padding: 8px; )}>x</div>;\n}\n`;
     const { service, source } = editor(marked);
     const found = service
       .getSemanticDiagnostics(FILE)
@@ -2916,7 +2916,7 @@ describe("a block carrying an expression", () => {
   const WITH_A_MATCH = (body: string) =>
     `class Host {\n  brand: "a" | "b" = "a";\n  render() {\n    return <div className={@@(\n${body}\n    )}>x</div>;\n  }\n}\nexport default Host;\n`;
 
-  const MATCH = `      color: match({this.brand}) { a => red; b => blue; };`;
+  const MATCH = `      color: match $(this.brand) { a => red; b => blue; };`;
 
   test("a correct one is as quiet as a static one", () => {
     const { service } = editor(WITH_A_MATCH(`${MATCH}\n      display: flex;`));
@@ -2940,7 +2940,7 @@ describe("a block carrying an expression", () => {
    */
   test("a runtime value in a declaration is reported, on the hole the author wrote", () => {
     const { service, source } = editor(
-      `class Host {\n  brand = "red";\n  render() {\n    return <div className={@@(\n      color: {this.brand};\n    )}>x</div>;\n  }\n}\nexport default Host;\n`,
+      `class Host {\n  brand = "red";\n  render() {\n    return <div className={@@(\n      color: $(this.brand);\n    )}>x</div>;\n  }\n}\nexport default Host;\n`,
     );
     const [only] = service.getSemanticDiagnostics(FILE);
 

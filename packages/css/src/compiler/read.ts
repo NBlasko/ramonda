@@ -1,4 +1,14 @@
-import type { Block, BlockItem, MatchArm, MatchPart, ValuePart } from "./ast";
+import type {
+  Block,
+  BlockArm,
+  BlockItem,
+  BlockMatch,
+  ChoiceBranch,
+  ChoicePart,
+  MatchArm,
+  MatchPart,
+  ValuePart,
+} from "./ast";
 import { HOLE } from "./normalise";
 import { holeOutOfPlace, refuse } from "./errors";
 
@@ -26,78 +36,121 @@ import { holeOutOfPlace, refuse } from "./errors";
  */
 
 /**
- * What opens a conditional group — see the note in `readHead`.
+ * What opens a conditional group: `when $(cond) { … }`.
  *
- * **No `@@`, and that is the rule the sigil now has: `@@` opens a BLOCK and nothing else.** Inside a
- * block the language is the block's own, and it already spells itself without a sigil — `{expr}` is a
- * hole and `...{expr}` is a spread, both borrowed from JavaScript and read as JavaScript. `@@if` was
- * the one place `@@` appeared inside a block, which made the sigil mean two things.
+ * **Not `if`, because CSS has an `if`.** `if()` is a value function in CSS Values 5 — shipped in
+ * Chromium and WebKit, measured — so the same word would mean two things a line apart. `when` is not
+ * CSS: there is a drafted `@when`, with its `@`, and no browser has it.
  *
- * It also collided with the named-site shape: measured, `@@if({on})` with no space was read as a
- * site named `if` and refused as *a block cannot contain another block* — a message about the wrong
- * thing, one keystroke away.
- *
- * **`if (` is safe, and it was measured rather than assumed.** In Chromium 151, `if (x) { … }` in a
- * prelude is DROPPED: a type selector may not be followed by parentheses, and a functional
- * pseudo-class needs its colon. Nothing in CSS starts with a bare word and takes parens — `@media`,
- * `@supports`, `@container`, `@layer`, `@scope` and the drafted `@when` all carry an `@`. The `if()`
- * CSS Values 5 shipped in Chrome 137 is a VALUE function, after the colon, which is a different
- * position entirely.
- *
- * The one CSS meaning `if` has here is a bare `if { … }`, a type selector for an element that cannot
- * exist: measured, `customElements.define("if", …)` is refused because a custom element name must
- * contain a hyphen. It is reported rather than compiled — see `guard-without-a-condition`.
+ * The condition is `$( … )`, code, and nothing else: `when` and one escape. A bare `when { … }` is a
+ * type selector for an element that cannot exist — a custom element's name must contain a hyphen —
+ * so it is refused rather than compiled. Somebody who means that selector writes `& when { … }`.
  */
-export const CONDITION = "if";
+export const CONDITION = "when";
 
 /**
- * What opens a lookup in a VALUE — `color: match({this.variant}) { … }`.
+ * What opens a lookup in a VALUE — `color: match $(this.variant) { … }`.
  *
  * Not a rule and not a condition: it stands where a value stands, and what it produces is one of the
  * values written inside it. See {@link MatchPart} for why that is the whole point.
  */
 export const MATCH = "match";
 
-/** `if` and its opening paren, with any whitespace between them — see where it is used. */
-const CONDITION_HEAD = new RegExp(`^${CONDITION}\\s*\\($`);
+/**
+ * How code is entered: `$( … )`. Everything that is TypeScript in a block is inside one — a
+ * condition, a `match` subject, a spread, a `@@property` or `@@keyframes` constant.
+ *
+ * **Not `{ … }`, which is CSS's block.** JSX enters code with braces, and a block is CSS, where a
+ * brace opens a rule — so the same character meant both, and a reader could not tell `{this.x}` from
+ * `&:hover {`. `$(` never occurs in CSS: `$` is no CSS character, and a `(` follows only a function's
+ * name.
+ */
+export const ESCAPE = "$(";
+
+/** Whether `$(` starts at `at` — the one test every reader of a block asks. */
+export function opensCode(source: string, at: number): boolean {
+  return source.charCodeAt(at) === 36 /* $ */ && source.charCodeAt(at + 1) === 40 /* ( */;
+}
+
+/** The word that opens a condition's other branches: `else when $( … ) { … }` and `else { … }`. */
+export const ELSE = "else";
+/** The head of a branch that has a condition of its own. */
+export const ELSE_CONDITION = `${ELSE} ${CONDITION}`;
+
+/** A prelude that is TRYING to be a condition, well formed or not — the word and a boundary. */
+const OPENS_A_CONDITION = new RegExp(`^(?:${ELSE}\\s+)?${CONDITION}\\b`);
+/** A prelude that is trying to be a branch of one. */
+const OPENS_A_BRANCH = new RegExp(`^${ELSE}\\b`);
 
 /**
- * A prelude that is TRYING to be a condition, well formed or not.
+ * What a rule's prelude makes it in a chain of conditions, or nothing for every other rule.
  *
- * The word and a boundary, because the marker is a word now: `startsWith` was enough for `@@if`,
- * which cannot begin a selector, and with a bare `if` it reported `iframe { … }` — valid CSS, and a
- * false report is the one thing this file may not produce. Measured, on the first run after the
- * rename.
- *
- * `if.active` and `if { … }` match too, and are refused rather than compiled: both name an element
- * that cannot exist, because a custom element's name must contain a hyphen. Somebody who means the
- * selector writes `& if { … }`, which names the parent and is not this shape.
+ * One definition, for the reason `holeIn` gives: the reader, the flattening, the rules and the
+ * virtual file all ask it, and two answers to one question is where this package finds its faults.
  */
-const OPENS_A_CONDITION = new RegExp(`^${CONDITION}\\b`);
-/** `match` and then its parenthesis, which only a lookup has. */
-const MATCH_HEAD = new RegExp(`^${MATCH}\\s*\\(`);
+export function branchOf(
+  prelude: string,
+): { readonly kind: "when" | "else when"; readonly hole: number } | { readonly kind: "else" } | undefined {
+  const when = holeIn(prelude, CONDITION);
+  if (when !== undefined) return { kind: "when", hole: when };
+  const otherwise = holeIn(prelude, ELSE_CONDITION);
+  if (otherwise !== undefined) return { kind: "else when", hole: otherwise };
+  return prelude.trim() === ELSE ? { kind: "else" } : undefined;
+}
+/** `match` and then its escape, which only a lookup has. */
+const MATCH_HEAD = /^match\s*\$\(/;
 
-/** What a condition used to be spelled, so the rename says so rather than failing as something else. */
-const OLD_CONDITION_HEAD = new RegExp(`^@@${CONDITION}\\s*\\($`);
+/**
+ * The spellings this language had before `$( … )`, named for what they became rather than left to
+ * fail as something else. Nothing reads them: there is no second syntax, only a pointer.
+ */
+const OLD_CONDITION = /^(?:@@)?if\s*\(/;
+const TO_CONDITION = "a condition is written `when $( … ) { … }` — `$( … )` is how code goes into a block.";
+const TO_ESCAPE =
+  "code goes into a block as `$( … )` — `{ … }` is CSS's own, the body of a rule. Write `$(…)` where the braces are.";
+const TO_CHOICE =
+  "a choice is written `$( … ) ? a : b` — a condition, `?`, the value when it holds, `:`, the value when it " +
+  "does not. Both values are needed.";
+const TO_BLOCK_MATCH =
+  "a match is written `match $( … ) { key => ( … ); }` — the subject in `$( … )`, and every arm `key => ( … );`.";
+const TO_ARM =
+  "an arm is written `key => ( … );` — the declarations it applies in parens, as an arrow returns a value.";
+const TO_ARM_END = "every arm ends with `;` — `key => ( … );`, then the next arm.";
+const TO_ARM_BODY =
+  "an arm holds declarations and nested rules, which are classes known when the block compiles — a condition, " +
+  "a spread or another match cannot go in one. Write it beside the match instead.";
+/** What opens a block-level match: the word, alone, at the start of an item. */
+const OPENS_A_BLOCK_MATCH = new RegExp(`^${MATCH}(?![\\w-])`);
+const TO_BRANCH_PLACE =
+  "an `else` belongs right after a `when $( … ) { … }` or an `else when $( … ) { … }` — it is the " +
+  "rest of that choice, so it cannot start one, follow a declaration or a selector, or come after a final `else`.";
+const TO_ELSE_CONDITION =
+  "`else` takes no condition of its own — a branch with one is written `else when $( … ) { … }`.";
+/** A condition is `when` and ONE escape, and nothing else. */
+const TO_ONE_CONDITION =
+  `\`${CONDITION}\` takes one \`$( … )\` and nothing else — everything the condition needs goes ` +
+  "inside it, where it is ordinary TypeScript. To select an element named " +
+  `\`${CONDITION}\` instead, name the parent: \`& ${CONDITION} { … }\`.`;
+const LONE_DOLLAR = "a `$` on its own names nothing — write `$group.name` for a theme variable, or `$( … )` for code.";
+const TO_VARIABLE = (path: string) =>
+  `a variable is written \`$${path}\` — the group's name right after the \`$\`. \`$( … )\` is code.`;
 
 /** What opens a spread of another block's map. */
 export const SPREAD = "...";
 
 /**
- * The hole index a composition marker's head holds — `@@if {{c}}`, `...{{base}}` — or nothing.
+ * The hole index a composition marker's head holds — `@@if $(c)`, `...$(base)` — or nothing.
  *
  * One definition, because two readers of one syntax is where this package keeps finding faults: the
  * transform, the virtual file and the rules all ask this and must agree. The marker and one hole and
- * nothing else — `@@iffy {{c}}` is not a condition and `... {{a}} {{b}}` is not a spread, so both
+ * nothing else — `@@iffy $(c)` is not a condition and `... $(a) $(b)` is not a spread, so both
  * fall through to being read as what they look like and are refused there.
  */
 export function holeIn(head: string, marker: string): number | undefined {
-  // A condition PARENTHESISES its hole — `@@if ({cond})`, the shape `@media (…)` has — and a spread
-  // does not, because a spread is a declaration's position rather than an at-rule's head.
-  const escaped = marker === SPREAD ? "\\.\\.\\." : marker;
-  const open = marker === SPREAD ? "" : "\\(\\s*";
-  const close = marker === SPREAD ? "" : "\\s*\\)";
-  const found = new RegExp(`^\\s*${escaped}\\s*${open}${HOLE}(\\d+)${HOLE}${close}\\s*$`).exec(head);
+  // The escape brings its own parentheses, so neither marker wraps it in more: `when $(on)` and
+  // `...$(base)`.
+  const escaped = marker === SPREAD ? "\\.\\.\\." : marker.replace(" ", "\\s+");
+  const found = new RegExp(`^\\s*${escaped}\\s*${HOLE}(\\d+)${HOLE}\\s*$`).exec(head);
   return found === null ? undefined : Number(found[1]);
 }
 
@@ -170,7 +223,7 @@ export interface Span {
  * Letters, digits, `_` and `-`. Digits FIRST is the case that matters: `2xl` and `0` are ordinary
  * names in a design system, and the block is this package's grammar, so they are writable here. The
  * virtual file is the only place that must be TypeScript, and it spells such a segment with
- * brackets — measured, `$.space.inline.2xl` does not parse as TypeScript and `["2xl"]` does.
+ * brackets — measured, `$space.inline.2xl` does not parse as TypeScript and `["2xl"]` does.
  */
 function isPathCharacter(code: number): boolean {
   return (
@@ -184,6 +237,7 @@ function isPathCharacter(code: number): boolean {
 
 const PAREN = 41; /* ) */
 const BRACE = 125; /* } */
+const BRACE_OPEN = 123; /* { */
 
 /**
  * Where the hole opening at `at` closes — the offset of its `}}` — or -1 when it never does.
@@ -218,6 +272,11 @@ const BRACE = 125; /* } */
 export function closingHole(source: string, at: number): number {
   let index = at + 1;
   let depth = 0;
+  /**
+   * What closes it: a `)` for the `(` of `$( … )`, which is how code is entered now, and a `}` for a
+   * `{ … }` the formatter still walks — a `match` body.
+   */
+  const closer = source.charCodeAt(at) === 40 /* ( */ ? PAREN : BRACE;
   /** Whether a `/` at the current position would DIVIDE rather than open a regex — see above. */
   let divides = false;
 
@@ -269,13 +328,18 @@ export function closingHole(source: string, at: number): number {
     if (code === 123 /* { */ || code === 40 /* ( */ || code === 91 /* [ */) {
       depth++;
       divides = false;
+    } else if (code === PAREN && closer === PAREN && depth === 0) {
+      return index + 1;
     } else if (code === 41 /* ) */ || code === 93 /* ] */) {
       depth--;
       divides = true;
-    } else if (code === BRACE) {
+    } else if (code === BRACE && closer === BRACE) {
       // Just PAST the closer, so no caller has to know how long the closer is. It used to return the
       // first of `}}` and every one of the four call sites added 2.
       if (depth === 0) return index + 1;
+      depth--;
+      divides = true;
+    } else if (code === BRACE) {
       depth--;
       divides = true;
     } else {
@@ -376,29 +440,6 @@ function isWordCharacter(code: number): boolean {
 }
 
 /**
- * Whether a `{` opens a HOLE rather than a nested rule, judged by the text in front of it.
- *
- * A hole is one brace, so this is the one question the parser has that CSS's own grammar cannot
- * answer — and there are exactly three positions where a `{` is a hole, each of them something a
- * selector provably is not:
- *
- * - **nothing in front of it**, a hole in a property NAME — `{accent}: #34d399`, the only way to set
- *   a registered property. A prelude cannot start with `{`: that would be an empty selector.
- * - **exactly `<name>:`**, a value. A selector cannot END in a colon, which is what makes `&:hover`,
- *   `@media (min-width: 40rem)` and `&[data-x="y"]` unambiguous — measured against every prelude in
- *   this repository, twelve distinct, none misread.
- * - **exactly `...`**, a spread.
- *
- * And one that is a bracket rather than a position: **immediately after `(`**. That is the
- * condition, `@@if ({cond})`, and a hole inside a function, `url({href})`. No CSS construct puts a
- * `{` after a `(`, so it cannot be anything else.
- *
- * **The condition needing no case of its own is why it is parenthesised.** `@@if {cond} {` would put
- * two brackets of different kinds a space apart, and `} {` reads as a close and an open at one
- * level. `@@if ({cond}) {` is the shape `@media (…) {` already has — and it is the same length as
- * the `{{ }}` spelling it replaces, so the readable form costs nothing.
- */
-/**
  * A property name, a colon, and then either a space or the end of the text.
  *
  * **The space is load-bearing and a probe found it.** A bare type selector is a legal prelude —
@@ -419,24 +460,12 @@ function isWordCharacter(code: number): boolean {
  *
  * Nothing noticed because the same names parse correctly with an ordinary value: this regex is only
  * consulted where a `{` follows, so a property that never carried a hole never met it.
+ *
+ * What it decides now: a `{` after a head of this shape belongs to the VALUE — a `match` body — and
+ * not to a rule. See `looksLikeARule`.
  */
 const A_DECLARATION =
   /^\s*(?:--(?:[\w-]|[\u0080-\uFFFF])+|-?(?:[a-zA-Z_]|[\u0080-\uFFFF])(?:[\w-]|[\u0080-\uFFFF])*)\s*:(\s|$)/;
-
-/**
- * A declaration whose property NAME is itself a hole — `{angle}: 45deg`, the way a registered
- * property is set. The value after it is a value like any other, and may be a hole too.
- *
- * Without this the second `{` was read as a rule opening: the text in front of it starts with `{`,
- * so no other clause matched. Found by a test that set a registered property to a computed value,
- * which is a shape somebody would write on their first day with `@@property`.
- */
-const A_HELD_NAME = /^\s*\{[^{}]*\}\s*:(\s|$)/;
-
-export function opensAHole(before: string): boolean {
-  const text = before.trimEnd();
-  return text === "" || text === SPREAD || text.endsWith("(") || A_DECLARATION.test(before) || A_HELD_NAME.test(before);
-}
 
 /**
  * What a `//` inside a block is, in one sentence — said by the `line-comment` RULE and by the
@@ -557,21 +586,20 @@ export function readBlock(source: string, open: number, filename: string, option
   }
 
   /**
-   * Past one hole, recording its expression, and returns the part that stands for it.
+   * Past one escape, `$( … )`, recording its expression, and returns the part that stands for it.
    *
-   * `at` is on the first `{` of `{{`. The end is the first `}}` at brace depth zero **in the
-   * expression's own grammar** — braces, parens, brackets, strings and templates all counted, which
-   * is why this cannot be `indexOf("}}")`.
+   * `at` is on the `$`. The end is the `)` at depth zero **in the expression's own grammar** —
+   * brackets, strings, templates, regexes and comments all counted — see {@link closingHole}.
    */
   function pastHole(): ValuePart {
-    /** Where the `{` itself is, before `at` moves past the hole. */
+    /** Where the `$` itself is, before `at` moves past the escape. */
     const opens = at;
-    const start = at + 1;
-    /** Just past the `}` — see {@link closingHole}. */
-    const close = closingHole(source, at);
+    const start = at + 2;
+    /** Just past the `)` — see {@link closingHole}. */
+    const close = closingHole(source, at + 1);
 
     if (close === -1 && !tolerant) {
-      refuse("this hole is never closed — a `{` needs a `}`.", source, at, filename);
+      refuse("this `$(` is never closed — it needs a `)`.", source, at, filename);
     }
 
     const end = close === -1 ? source.length : close - 1;
@@ -602,7 +630,7 @@ export function readBlock(source: string, open: number, filename: string, option
   }
 
   /**
-   * `match({subject}) { key => value; … }`, read from the `m`.
+   * `match $(subject) { key => value; … }`, read from the `m`.
    *
    * Tolerant throughout, because an editor sees this half-written more often than finished: a
    * missing brace, an arm with no `=>`, a key and nothing after it. Every one of those ends the read
@@ -613,8 +641,6 @@ export function readBlock(source: string, open: number, filename: string, option
     const opens = at;
     at += MATCH.length;
     skipTrivia();
-    if (source.charCodeAt(at) === 40 /* ( */) at++;
-    skipTrivia();
 
     /**
      * The subject is a HOLE in the reader's numbering, which is how its expression reaches the
@@ -622,12 +648,10 @@ export function readBlock(source: string, open: number, filename: string, option
      * carry a value onto an element — and `MatchPart` says so where a reader will look.
      */
     let hole = holes.length;
-    if (source.charCodeAt(at) === 123 /* { */) {
+    if (opensCode(source, at)) {
       const read = pastHole();
       if (read.kind === "hole") hole = read.index;
     }
-    skipTrivia();
-    if (source.charCodeAt(at) === 41 /* ) */) at++;
     skipTrivia();
     if (source.charCodeAt(at) === 123 /* { */) at++;
 
@@ -675,6 +699,72 @@ export function readBlock(source: string, open: number, filename: string, option
     }
     const written = source.slice(from, at).trim();
     return written === "" ? undefined : written;
+  }
+
+  /**
+   * `match $(subject) { key => ( … ); … }` at the head of an item — a match whose arms are groups.
+   *
+   * The arms are read the way a value match's are, the key by the same function, and each arm's body
+   * by `readItems` as any group of declarations is: an arm IS one, closed by a paren instead of a
+   * brace. What an arm may hold is checked here, because the emit picks an arm's classes in one
+   * lookup and a condition or a spread inside one would have nothing to stand on.
+   */
+  function readBlockMatch(): BlockMatch {
+    const opens = at;
+    at += MATCH.length;
+    skipTrivia();
+
+    let hole = holes.length;
+    if (opensCode(source, at)) {
+      const read = pastHole();
+      if (read.kind === "hole") hole = read.index;
+    } else if (!tolerant) refuse(TO_BLOCK_MATCH, source, opens, filename);
+    skipTrivia();
+    if (source.charCodeAt(at) === BRACE_OPEN) at++;
+    else if (!tolerant) refuse(TO_BLOCK_MATCH, source, opens, filename);
+
+    const arms: BlockArm[] = [];
+    for (;;) {
+      skipTrivia();
+      if (at >= source.length) {
+        if (!tolerant) refuse("this match is never closed — its arms need a `}` after them.", source, opens, filename);
+        break;
+      }
+      if (source.charCodeAt(at) === BRACE) {
+        at++;
+        break;
+      }
+
+      const keyAt = at;
+      const key = readArmKey();
+      if (key === undefined) {
+        if (!tolerant) refuse(TO_ARM, source, keyAt, filename);
+        at++;
+        continue;
+      }
+      skipTrivia();
+      if (source.startsWith("=>", at)) at += 2;
+      else if (!tolerant) refuse(TO_ARM, source, keyAt, filename);
+      skipTrivia();
+      if (source.charCodeAt(at) !== 40 /* ( */) {
+        if (!tolerant) refuse(TO_ARM, source, keyAt, filename);
+        // Forgiving: what follows is not an arm body, so the match ends where it stopped making sense.
+        break;
+      }
+      at++;
+      const inside = readItems(PAREN);
+      if (!tolerant) {
+        const composed = compositionIn(inside);
+        if (composed !== undefined) refuse(TO_ARM_BODY, source, composed, filename);
+      }
+      skipTrivia();
+      if (source.charCodeAt(at) === 59 /* ; */) at++;
+      else if (!tolerant) refuse(TO_ARM_END, source, at, filename);
+
+      arms.push({ key, otherwise: key === "_", at: keyAt, length: at - keyAt, items: inside });
+    }
+
+    return { kind: "match", at: opens, end: at, hole, arms };
   }
 
   /* ---- deciding what an item is ---------------------------------------------------------------- */
@@ -747,19 +837,29 @@ export function readBlock(source: string, open: number, filename: string, option
         head += " ";
         continue;
       }
-      if (code === 123 /* { */) {
-        // The one question CSS's grammar cannot answer — see {@link opensAHole}, asked with the text
-        // the head reader will have built rather than with the raw source.
-        if (opensAHole(head)) {
-          const mark = at;
-          at = index;
-          pastHoleWithoutRecording();
-          head += source.slice(index, at);
-          index = at;
-          at = mark;
+      // An escape is stepped over whole: whatever its code holds — a `;`, a `{` — is TypeScript's.
+      if (opensCode(source, index)) {
+        const mark = at;
+        at = index;
+        pastHoleWithoutRecording();
+        head += source.slice(index, at);
+        index = at;
+        at = mark;
+        continue;
+      }
+      if (code === 123 /* { */ && depth === 0) {
+        /**
+         * Inside a DECLARATION a `{` is a `match` body — `color: match $(t) { … }` — and it is
+         * stepped over whole, so the value's own `;` decides. The head already reads `property: `,
+         * which no selector can: see {@link A_DECLARATION}. Anywhere else a `{` opens a rule.
+         */
+        if (A_DECLARATION.test(head)) {
+          const close = closingHole(source, index);
+          head += source.slice(index, close === -1 ? source.length : close);
+          index = close === -1 ? source.length : close;
           continue;
         }
-        if (depth === 0) return true;
+        return true;
       }
       /**
        * A paren is handled to the end here rather than falling through to the tests below it. The
@@ -825,15 +925,15 @@ export function readBlock(source: string, open: number, filename: string, option
         text += " ";
         continue;
       }
-      if (code === 123 && opensAHole(text)) {
+      if (opensCode(source, at)) {
         /**
-         * The one hole that MAY stand in a property name: a reference to a registered property,
+         * The one escape that MAY stand in a property name: a reference to a registered property,
          * which is a name this compiler generated and the author has no other way to write.
-         * `{angle}: 45deg` is how a `@@property( … )` is set, and without it registering one is
+         * `$(angle): 45deg` is how a `@@property( … )` is set, and without it registering one is
          * only half a feature — nothing else can name it.
          */
-        const close = closingHole(source, at);
-        const written = close === -1 ? undefined : resolve?.(source.slice(at + 1, close - 1).trim());
+        const close = closingHole(source, at + 1);
+        const written = close === -1 ? undefined : resolve?.(source.slice(at + 2, close - 1).trim());
         if (written !== undefined) {
           text += written;
           at = close;
@@ -841,23 +941,15 @@ export function readBlock(source: string, open: number, filename: string, option
         }
 
         /**
-         * The two heads that ARE an expression rather than a name.
+         * The two heads that ARE an expression rather than a name: `when $(cond)` and `...$(block)`.
+         * Recorded like any other escape, so the transform leaves the author's expression exactly
+         * where they wrote it, and marked in the text with the placeholder a value uses.
          *
-         * `@@if {{cond}}` and `...{{block}}` are composition, and what follows the marker is
-         * TypeScript — which is what `{{ }}` means everywhere else in a block. Recorded like any
-         * other hole, so the transform leaves the author's expression exactly where they wrote it,
-         * and marked in the text with the same placeholder a value uses.
+         * Whitespace between the marker and the escape is free, as everywhere else in a block.
          */
-        /**
-         * The marker, with whatever whitespace was typed between it and its parenthesis.
-         *
-         * Compared by equality against `"@@if ("` and `"@@if("` until a review found it: two spaces,
-         * a tab or a newline turned a condition into *a hole cannot stand in a selector* — a refusal
-         * naming the wrong thing, on code whose only fault was its spacing. Every other whitespace
-         * in a block is free, and `holeIn` allows it on both sides of everything else.
-         */
-        const head = text.trimEnd();
-        if (CONDITION_HEAD.test(head) || head === SPREAD) {
+        const head = text.trim().replace(/\s+/g, " ");
+        if (!tolerant && head === ELSE) refuse(TO_ELSE_CONDITION, source, from, filename);
+        if (head === CONDITION || head === ELSE_CONDITION || head === SPREAD) {
           const part = pastHole();
           // A part that came back as TEXT is a reference to a named site, resolved at build time —
           // a `@@keyframes` name, which is a string and not a condition or a block. It falls
@@ -868,23 +960,7 @@ export function readBlock(source: string, open: number, filename: string, option
           }
         }
 
-        /**
-         * THE OLD SPELLING, named for what it was rather than left to fail as something else.
-         *
-         * `@@if` was the one place `@@` appeared INSIDE a block, and the sigil means one thing now: a
-         * block opens with it and nothing else does. Left to the refusal below, `@@if ({on})` came
-         * back as *a hole cannot stand in a selector* — true, and about the wrong thing.
-         */
-        if (!tolerant && OLD_CONDITION_HEAD.test(head)) {
-          refuse(
-            `\`@@${CONDITION}\` is written \`${CONDITION} ({ … })\` now — \`@@\` opens a block and ` +
-              "nothing else, and everything inside one is the block's own language.",
-            source,
-            at,
-            filename,
-          );
-        }
-
+        if (!tolerant && OPENS_A_CONDITION.test(head)) refuse(TO_ONE_CONDITION, source, from, filename);
         if (!tolerant) refuse(holeOutOfPlace(at === from ? "a declaration" : what), source, at, filename);
         // Kept as text, so the rest of the block still reads. The fault is the checker's to name.
         const start = at;
@@ -916,19 +992,20 @@ export function readBlock(source: string, open: number, filename: string, option
   }
 
   /**
-   * `$` `.` segment ( `.` segment )* — the path, from the `$` to wherever it stops being one.
+   * `$` group ( `.` segment )* — the path, from the `$` to wherever it stops being one. The group is
+   * the config's own name, right after the `$`: `$color.line`.
    *
    * A segment is `[A-Za-z0-9_-]`, which admits `2xl` and `0` deliberately: the block is this
    * package's grammar, so a design system's own names are writable here. Only the VIRTUAL file has
    * to be TypeScript, and it spells such a segment with brackets.
    *
-   * A trailing dot is kept in neither the path nor the span's exclusion — `$.color.` reads as
+   * A trailing dot is kept in neither the path nor the span's exclusion — `$color.` reads as
    * `color` with the dot inside the span, because that is the caret position completion is asked
    * about.
    */
   function pastVariable(): ValuePart {
     const start = at;
-    at += 2; // `$.`
+    at += 1; // `$`
 
     const segments: string[] = [];
     for (;;) {
@@ -947,7 +1024,74 @@ export function readBlock(source: string, open: number, filename: string, option
   }
 
   /** A declaration's value: text and holes, up to `;` or whatever closes the block it is in. */
-  function readValue(closer: number): ValuePart[] {
+  /**
+   * Whether a value starting at `at` is a CHOICE: an escape, and a `?` right after it. CSS has no
+   * `?` in a value, so nothing a stylesheet can hold is read as one.
+   */
+  function opensAChoice(from: number): boolean {
+    if (!opensCode(source, from)) return false;
+    let index = closingHole(source, from + 1);
+    if (index === -1) return false;
+    while (index < source.length && isSpace(source.charCodeAt(index))) index++;
+    return source.charCodeAt(index) === 63 /* ? */;
+  }
+
+  /**
+   * `$(a) ? x : $(b) ? y : z`, read whole. A branch after `?` runs to the `:` at its top level, and
+   * the last one, after `:`, to the `;`. A branch written in parens is the same value — the
+   * formatter takes them off — and a function like `rgb(1 2 3)` is not a branch in parens.
+   */
+  function readChoice(closer: number): ChoicePart {
+    const opens = at;
+    const branches: ChoiceBranch[] = [];
+    let otherwise: ValuePart[] = [];
+
+    for (;;) {
+      const branchAt = at;
+      const condition = pastHole();
+      if (condition.kind !== "hole" && !tolerant) refuse(TO_CHOICE, source, branchAt, filename);
+      skipTrivia();
+      at++; // the `?`, which `opensAChoice` saw
+      skipTrivia();
+      const value = branchValue(closer, true);
+      if (!tolerant && (value.length === 0 || source.charCodeAt(at) !== 58))
+        refuse(TO_CHOICE, source, branchAt, filename);
+      branches.push({
+        hole: condition.kind === "hole" ? condition.index : holes.length,
+        value,
+        at: branchAt,
+        length: at - branchAt,
+      });
+      if (source.charCodeAt(at) !== 58 /* : */) break;
+      at++;
+      skipTrivia();
+      if (opensAChoice(at)) continue;
+      otherwise = branchValue(closer, false);
+      if (!tolerant && otherwise.length === 0) refuse(TO_CHOICE, source, opens, filename);
+      break;
+    }
+
+    return { kind: "choice", branches, otherwise, at: opens, length: at - opens };
+  }
+
+  /** One branch's value — the inside of its parens when the whole branch is in a pair of them. */
+  function branchValue(closer: number, toColon: boolean): ValuePart[] {
+    if (source.charCodeAt(at) === 40 /* ( */) {
+      const mark = at;
+      at++;
+      const inside = readValue(PAREN, false, true);
+      if (source.charCodeAt(at) === PAREN) {
+        at++;
+        skipTrivia();
+        const next = source.charCodeAt(at);
+        if (next === (toColon ? 58 : 59) || (!toColon && next === closer)) return inside;
+      }
+      at = mark;
+    }
+    return readValue(closer, toColon, true);
+  }
+
+  function readValue(closer: number, toColon = false, inABranch = false): ValuePart[] {
     /**
      * A value that IS a lookup, read whole before anything else is tried.
      *
@@ -962,6 +1106,9 @@ export function readBlock(source: string, open: number, filename: string, option
       skipTrivia();
       const found = MATCH_HEAD.exec(source.slice(at));
       if (found !== null) return [readMatch()];
+      // A choice inside a branch would leave its `:` to the branch around it: read as a hole, it is
+      // refused there by `hole-in-a-match-arm` rather than misread.
+      if (!inABranch && opensAChoice(at)) return [readChoice(closer)];
       at = mark;
     }
 
@@ -995,26 +1142,47 @@ export function readBlock(source: string, open: number, filename: string, option
         continue;
       }
       /**
-       * `$.color.primary.main` — a declared variable, at any depth, so `calc($.size.md * 2)` works.
+       * `$color.primary.main` — a declared variable, at any depth, so `calc($size.md * 2)` works.
        *
-       * A `$` that is not followed by a dot is ordinary text: CSS values do carry one, and nothing
-       * is being named. A dot with nothing after it IS a variable, with an empty path — see
-       * `VariablePart.path` for why that is what an editor needs.
+       * The group's name follows the `$` directly, so a `$` and then a letter or `_` is a variable,
+       * and a `$` and then `(` is code. A `$` before anything else is ordinary text. A trailing dot
+       * with nothing after it is kept in the path's span — see `VariablePart.path` for why that is
+       * what an editor needs.
        */
-      if (code === 36 && source.charCodeAt(at + 1) === 46) {
+      if (code === 36 && isNameStart(source.charCodeAt(at + 1))) {
         flush();
         parts.push(pastVariable());
         textAt = at;
         continue;
       }
-      // Inside a value there is nothing else a `{` could be, so no question is asked here.
-      if (code === 123) {
+      /**
+       * A `$` and nothing a name could be yet — the caret right after it, in an editor. Read as a
+       * variable with an empty path, so the virtual file asks TypeScript for the groups there.
+       * A build refuses it: CSS has no use for a `$` outside a string, so one alone is a name or an
+       * escape not finished.
+       */
+      if (code === 36 && !opensCode(source, at) && source.charCodeAt(at + 1) !== 46) {
+        if (!tolerant) refuse(LONE_DOLLAR, source, at, filename);
+        flush();
+        parts.push({ kind: "variable", path: "", at, length: 1, open: true });
+        at++;
+        textAt = at;
+        continue;
+      }
+      // The spelling a variable had before: named, not read.
+      if (code === 36 && source.charCodeAt(at + 1) === 46 && !tolerant) {
+        const path = /^\$\.([\w.-]*)/.exec(source.slice(at))?.[1] ?? "";
+        refuse(TO_VARIABLE(path), source, at, filename);
+      }
+      // A `{` in a value is not CSS, and it is how code was entered before `$( … )`.
+      if (code === 123 && !tolerant) refuse(TO_ESCAPE, source, at, filename);
+      if (opensCode(source, at)) {
         flush();
         parts.push(pastHole());
         /**
          * The run AFTER a hole starts after the hole, and it used to start where the hole did.
          *
-         * `flush` moves the mark to `at`, and at that moment `at` is the `{` — so the trailing run
+         * `flush` moves the mark to `at`, and at that moment `at` is the `$` — so the trailing run
          * of `4px solid {w} inset` recorded the hole's own offset. Two runs claiming one position is
          * what broke the reverse lookup: it sorts by author offset, the trailing run sorted before
          * the hole between them, and **every author offset past the first hole in a value mapped
@@ -1037,7 +1205,7 @@ export function readBlock(source: string, open: number, filename: string, option
         at++;
         continue;
       }
-      if (depth === 0 && (code === 59 || code === closer)) break;
+      if (depth === 0 && (code === 59 || code === closer || (toColon && code === 58))) break;
 
       text += source[at];
       at++;
@@ -1068,46 +1236,49 @@ export function readBlock(source: string, open: number, filename: string, option
 
       const from = at;
 
+      // A `{` where an item starts is how a property name took code before `$( … )`.
+      if (!tolerant && source.charCodeAt(at) === 123) refuse(TO_ESCAPE, source, at, filename);
+
+      /**
+       * The spellings this had before `$( … )`, named rather than left to fail as something else —
+       * asked of the source before the head is read, because the old `when $(on)` has an escape
+       * where the reader refuses one and would name that instead.
+       */
+      if (!tolerant && OLD_CONDITION.test(source.slice(at, at + 16))) refuse(TO_CONDITION, source, at, filename);
+
+      if (OPENS_A_BLOCK_MATCH.test(source.slice(at, at + MATCH.length + 1))) {
+        items.push(readBlockMatch());
+        continue;
+      }
+
       if (looksLikeARule(closer)) {
         const prelude = readHead(123 /* { */, "a selector").trim();
 
         /**
-         * A condition is the marker and ONE hole, and nothing else.
-         *
-         * **Measured before this refusal existed: `@@if {{on}}Error { … }` compiled.** A hole is let
-         * into a prelude only when the text so far is exactly `@@if`, and after recording it the
-         * read carries on — so anything written after the hole joined the prelude as ordinary text
-         * and nothing asked about it. The group still worked, which is why it was silent.
-         *
-         * The mirror case was already refused, and that asymmetry is what gave it away: the text
-         * BEFORE the hole was checked and the text after it was not.
+         * A branch stands right after the `when` or `else when` it continues — comments between
+         * them are not items, so they do not part the two — and nowhere else.
          */
-        /**
-         * THE OLD SPELLING, named for what it was rather than left to fail as something else.
-         *
-         * `@@if` was the one place `@@` appeared inside a block, and the sigil means one thing now:
-         * a block opens with it and nothing else does. Left alone, `@@if ({on})` fails as *a hole
-         * cannot stand in a selector* — true, and about the wrong thing.
-         */
-        if (prelude.startsWith(`@@${CONDITION}`) && !tolerant) {
-          refuse(
-            `\`@@${CONDITION}\` is written \`${CONDITION} ({ … })\` now — \`@@\` opens a block and ` +
-              "nothing else, and everything inside one is the block's own language.",
-            source,
-            from,
-            filename,
-          );
+        if (!tolerant && OPENS_A_BRANCH.test(prelude)) {
+          if (!/^else\s+when\b/.test(prelude) && prelude !== ELSE) refuse(TO_ELSE_CONDITION, source, from, filename);
+          const before = items[items.length - 1];
+          const continues = before?.kind === "rule" && branchOf(before.prelude)?.kind.endsWith("when") === true;
+          if (!continues) refuse(TO_BRANCH_PLACE, source, from, filename);
         }
 
-        if (OPENS_A_CONDITION.test(prelude) && holeIn(prelude, CONDITION) === undefined && !tolerant) {
-          refuse(
-            `\`${CONDITION}\` takes one parenthesised \`({ … })\` and nothing else — everything the ` +
-              "condition needs goes inside the braces, where it is ordinary TypeScript. To select an " +
-              `element named \`${CONDITION}\` instead, name the parent: \`& ${CONDITION} { … }\`.`,
-            source,
-            from,
-            filename,
-          );
+        // The old `...$(base)` reaches here because its `{` opens a rule.
+        if (!tolerant && prelude === SPREAD) refuse(TO_ESCAPE, source, from, filename);
+
+        /**
+         * A condition is `when` and ONE escape, and nothing else.
+         *
+         * **Measured before this refusal existed: a condition with text after its hole compiled.** A
+         * hole is let into a prelude only when the text so far is exactly the marker, and after
+         * recording it the read carries on — so anything written after it joined the prelude as
+         * ordinary text, and nothing asked about it.
+         */
+        const branch = branchOf(prelude);
+        if (OPENS_A_CONDITION.test(prelude) && (branch === undefined || branch.kind === "else") && !tolerant) {
+          refuse(TO_ONE_CONDITION, source, from, filename);
         }
         // `readHead` stopped on the `{` the lookahead found, so this cannot be anything else.
         at++;
@@ -1118,7 +1289,7 @@ export function readBlock(source: string, open: number, filename: string, option
       const property = readHead(58 /* : */, "a property name").trim();
       if (at >= source.length || source.charCodeAt(at) !== 58) {
         /**
-         * A spread has no value, and that is what it IS: `...{{base}};` merges another block's map
+         * A spread has no value, and that is what it IS: `...$(base);` merges another block's map
          * at this point rather than setting anything. It reaches here because it has no colon —
          * which for everything else is the missing half of a declaration.
          */
@@ -1234,6 +1405,30 @@ export function readBlock(source: string, open: number, filename: string, option
 
   const items = readItems(PAREN);
   return { block: { items }, holes, end: at - 1 };
+}
+
+/**
+ * Where the first piece of composition in an arm's items stands — a condition or its branch, a
+ * spread, a match at either level — or nothing.
+ */
+function compositionIn(items: readonly BlockItem[]): number | undefined {
+  for (const item of items) {
+    if (item.kind === "match") return item.at ?? 0;
+    if (item.kind === "rule") {
+      if (branchOf(item.prelude) !== undefined) return item.at ?? 0;
+      const inner = compositionIn(item.items);
+      if (inner !== undefined) return inner;
+      continue;
+    }
+    if (isSpread(item.property)) return item.at ?? 0;
+    if (item.value.some((part) => part.kind === "match")) return item.valueAt ?? item.at ?? 0;
+  }
+  return undefined;
+}
+
+/** What a variable's group may start with: a letter or `_` — never a digit, never `(`. */
+function isNameStart(code: number): boolean {
+  return (code >= 97 && code <= 122) || (code >= 65 && code <= 90) || code === 95;
 }
 
 function isSpace(code: number): boolean {

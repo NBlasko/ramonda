@@ -108,7 +108,7 @@ const WIDEST = 4999;
  * mode after every breakpoint, which makes a dark-mode rule beat a wide-screen rule for the same
  * property. Tailwind's order is the other way, and the reason to prefer it is which mistake stays
  * silent: theming lives in a BASE block and a modifier adjusts at a breakpoint, so
- * `...{base}; @media (min-width: …) { … }` is the shape people write — and under the mode-wins order
+ * `...$(base); @media (min-width: …) { … }` is the shape people write — and under the mode-wins order
  * that shape loses, with nothing able to report it (a spread's operand is a runtime value). The user
  * made the call.
  */

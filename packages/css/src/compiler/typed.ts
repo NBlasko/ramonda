@@ -225,7 +225,7 @@ function calls(node: ts.Node, name: string): node is ts.CallExpression {
  * ## It walks BACKWARD, from the consumers
  *
  * The obvious pass — from the declaration out to its references — was written first and reported a
- * prop that IS used: `const mine = props.sx; ...{mine}` reaches a block through one local, and a
+ * prop that IS used: `const mine = props.sx; ...$(mine)` reaches a block through one local, and a
  * reference walk sees an assignment rather than a spread. So the pass runs the other way, from
  * every helper call back through what each name was declared as, and the set it builds is *what was
  * consumed* rather than *where this went*.
@@ -364,7 +364,7 @@ function neverUsed(
       message:
         `\`${name}\` takes a style block and is never put on an element, so whatever a caller ` +
         `sends is\n        dropped without a word.\n\n        Spread it into a block — ` +
-        `\`...{${name}};\` — or take the prop off.`,
+        `\`...$(${name});\` — or take the prop off.`,
     });
   }
 }
@@ -372,7 +372,7 @@ function neverUsed(
 /**
  * **Rule 2 — a declaration below the spread that clears what a caller may send.**
  *
- * `...{props.sx}; padding: 8px` where the prop allows `padding-left`: the shorthand clears the
+ * `...$(props.sx); padding: 8px` where the prop allows `padding-left`: the shorthand clears the
  * longhand, exactly as CSS says, and the caller's value is gone. **The merge is not wrong here** —
  * the clear-list is emitted with its full context and does precisely this — so the fault is not a
  * broken override. It is a component that PROMISED a property in its allow-list and then took it
@@ -613,7 +613,7 @@ export function registeredNeverSet(
       message:
         `\`${site.binding}\` is read by a block and set by nothing, so every element gets its ` +
         `\`initial-value\`. Set it — \`style={{ [${site.binding}]: value }}\`, \`toStyle\`, or a ` +
-        `block writing \`{${site.binding}}: <value>;\` — or write the value straight into the block if ` +
+        `block writing \`$(${site.binding}): <value>;\` — or write the value straight into the block if ` +
         `it never changes.`,
     });
   }
@@ -990,7 +990,7 @@ function allowListIsAnInterface(
  * `narrower-after-a-whole-shorthand` across blocks — a spread, or `mergeClassNames(a, b)`.
  *
  * The compiler refuses a narrower whole shorthand after a wider one inside one block. A spread is a
- * VALUE to it, so a wider one arriving through `...{base}` was never seen, and the merge could only
+ * VALUE to it, so a wider one arriving through `...$(base)` was never seen, and the merge could only
  * warn in development. A program can follow the name to the block it was written as, and read what
  * that block sets the way the compiler reads its own — as the author wrote it, one declaration each.
  *
@@ -1048,7 +1048,7 @@ function wholeAcrossBlocks(
 
   /**
    * A value as the SHEET gets it, as far as this rule asks: a `$` path is a `var()` there, alone or
-   * as part of a value — `1px solid $.color.a` is written as a template. §17: reading only string
+   * as part of a value — `1px solid $color.a` is written as a template. §17: reading only string
    * literals missed every shorthand a variable keeps whole. Anything else is not read.
    */
   const valueOf = (value: ts.Expression): string | undefined => {
@@ -1092,7 +1092,7 @@ function wholeAcrossBlocks(
    * are checked and then CLEAR what they cover, as the merge does: a block that sets `border` itself
    * after a spread has taken the spread's whole `border` away.
    *
-   * A GUARDED group ends the walk. The virtual file writes `if` as a marker followed by the group's
+   * A GUARDED group ends the walk. The virtual file writes `when` as a marker followed by the group's
    * declarations with nothing where the group closes, so whether a later re-set is guarded cannot
    * be read here — and a rule that guesses reports correct code. The merge's development warning
    * still sees what is left. A `match`'s arms each set the family, so they clear like one

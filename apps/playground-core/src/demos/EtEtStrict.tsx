@@ -18,11 +18,11 @@ export class EtEtStrict extends Component {
         className={@@(
           background-color: yellowgreen;
           color: white;
-          padding: $.space.gutter.normal;
+          padding: $space.gutter.normal;
           &:hover {
-            color: match({this.tone}) {
-              quiet => $.color.accent.quiet;
-              loud  => $.color.text.primary;
+            color: match $(this.tone) {
+              quiet => $color.accent.quiet;
+              loud  => $color.text.primary;
             };
             cursor: pointer;
           }

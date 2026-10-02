@@ -5,8 +5,74 @@ import { RESETS_DIFFER } from "./leaves.generated";
 import { SHAPES } from "./shapes.generated";
 import { holdsVar, misplacedWord } from "./split";
 import type { Config, PropertyRules, UnitsByFamily } from "../config";
-import type { Block, BlockItem, Declaration, NestedRule, ValuePart } from "./ast";
-import { runtimeValuesIn } from "./ast";
+import type { Block as AnyBlock, BlockItem as AnyItem, Declaration, NestedRule as AnyRule, ValuePart } from "./ast";
+import { childrenOf, runtimeValuesIn } from "./ast";
+import { nameFor } from "./dollar";
+import { HOLE } from "./normalise";
+
+/**
+ * A block as the rules read it: declarations and nested rules, and nothing else.
+ *
+ * A block-level `match` reaches them as one GROUP per arm — a `when` on the subject — because that
+ * is what an arm is to every question asked here: declarations that apply under a condition. A
+ * value is checked as the property's, a property name as a property, and two arms are never
+ * compared with each other, exactly as two `when` groups are not. What only a match has — its keys —
+ * is asked of the block before the conversion, by `blockMatchArms`.
+ */
+interface NestedRule extends Omit<AnyRule, "items"> {
+  readonly items: readonly BlockItem[];
+}
+type BlockItem = Declaration | NestedRule;
+interface Block {
+  readonly items: readonly BlockItem[];
+}
+
+/**
+ * A declaration whose value CHOOSES — a value `match`, a choice — as one group per answer, each
+ * holding the declaration with that answer as its whole value.
+ *
+ * Every rule that reads a value then reads every arm, where it read none before: measured,
+ * `color: match $(t) { a => redd; }` was silent while `color: redd` was reported. Each answer is its
+ * own group, so two of them are never compared as a repeat or an override. An answer holding a hole
+ * is left out: `hole-in-a-match-arm` reports it, and the value rules would only say it again.
+ */
+function answersOf(item: Declaration): BlockItem[] | undefined {
+  const chooses = item.value.find((part) => part.kind === "match" || part.kind === "choice");
+  if (chooses === undefined) return undefined;
+  const answers =
+    chooses.kind === "match"
+      ? chooses.arms.map((arm) => ({ hole: chooses.hole, value: arm.value }))
+      : chooses.kind === "choice"
+        ? [
+            ...chooses.branches.map((one) => ({ hole: one.hole, value: one.value })),
+            { hole: chooses.branches[chooses.branches.length - 1]?.hole ?? 0, value: chooses.otherwise },
+          ]
+        : [];
+  return answers
+    .filter((one) => one.value.length > 0 && !one.value.some((part) => part.kind === "hole"))
+    .map((one) => ({
+      kind: "rule",
+      at: item.at,
+      preludeEnd: item.at,
+      prelude: `${CONDITION} ${HOLE}${one.hole}${HOLE}`,
+      items: [{ ...item, value: one.value, valueAt: one.value[0]?.at ?? item.valueAt }],
+    }));
+}
+
+function asGroups(items: readonly AnyItem[]): BlockItem[] {
+  return items.flatMap((item): BlockItem[] => {
+    if (item.kind === "declaration") return answersOf(item) ?? [item];
+    if (item.kind === "rule") return [{ ...item, items: asGroups(item.items) }];
+    const prelude = `${CONDITION} ${HOLE}${item.hole}${HOLE}`;
+    return item.arms.map((arm) => ({
+      kind: "rule",
+      at: arm.at,
+      preludeEnd: arm.at === undefined ? undefined : arm.at + arm.key.length,
+      prelude,
+      items: asGroups(arm.items),
+    }));
+  });
+}
 import {
   conflict,
   covers,
@@ -39,7 +105,7 @@ import {
   PRIMITIVE,
 } from "./keywords.generated";
 import { canonicalPrelude, canonicalValue, propertyName } from "./normalise";
-import { CONDITION, LINE_COMMENT, MATCH, SPREAD, closingHole, holeIn, opensAHole } from "./read";
+import { CONDITION, ESCAPE, LINE_COMMENT, MATCH, SPREAD, branchOf, closingHole, holeIn, opensCode } from "./read";
 import type { BlockSite } from "./scan";
 import { blocksInATemplate } from "./scan";
 
@@ -141,6 +207,7 @@ export const RULE_IDS = [
   "unknown-flag",
   "unclosed-call",
   "unknown-variable",
+  "variable-by-hand",
   "too-many-values",
   "missing-semicolon",
   "literal-not-allowed",
@@ -270,13 +337,9 @@ export function checkTemplates(source: string): Finding[] {
 export function checkText(source: string, open: number, end: number): Finding[] {
   const findings: Finding[] = [];
   let parens = 0;
-  /** Where the current item began — `opensAHole` reads the text in front of a `{`, not the block. */
-  let item = open + 1;
 
   for (let index = open + 1; index < end; index++) {
     const code = source.charCodeAt(index);
-
-    if (code === 59 /* ; */ || code === 125 /* } */) item = index + 1;
 
     if (code === 34 /* " */ || code === 39 /* ' */) {
       index = endOfString(source, index);
@@ -287,13 +350,13 @@ export function checkText(source: string, open: number, end: number): Finding[] 
       index = close === -1 ? end : close + 1;
       continue;
     }
-    if (code === 123 /* { */ && opensAHole(source.slice(item, index))) {
-      // Not `indexOf("}")`: a hole holds JavaScript, so an object literal inside one has its own —
-      // see `closingHole`, which three scanners share for exactly this reason.
+    if (opensCode(source, index)) {
+      // Code, stepped over whole: a `//` inside `$( … )` is TypeScript's comment, not CSS's fault.
+      // Not `indexOf(")")` — see `closingHole`, which three scanners share for exactly this reason.
       //
       // A `{` that opens a nested RULE is deliberately NOT stepped over: a `//` inside one is the
       // same fault as a `//` anywhere else, and skipping the body would take it with it.
-      const close = closingHole(source, index);
+      const close = closingHole(source, index + 1);
       index = close === -1 ? end : close - 1;
       continue;
     }
@@ -361,9 +424,13 @@ export interface CheckOptions {
   readonly config?: Config;
 }
 
-export function checkBlock(block: Block, options: CheckOptions = {}): Finding[] {
+export function checkBlock(written: AnyBlock, options: CheckOptions = {}): Finding[] {
   const { at, references, syntaxes, config } = options;
   const findings: Finding[] = [];
+  blockMatchArms(written.items, findings);
+  // Asked of the block as written: the arms below become groups, and their keys go with them.
+  matchArms(written, findings);
+  const block: Block = { items: asGroups(written.items) };
   walk(block.items, findings, at === undefined ? undefined : at.toLowerCase());
   overrideOutOfOrder(block, findings);
   narrowerAfterAWholeShorthand(block, findings);
@@ -394,10 +461,10 @@ export function checkBlock(block: Block, options: CheckOptions = {}): Finding[] 
   // descriptors rather than an element's declarations, and `hole-in-a-named-block` already reports a
   // hole in one — in its own words, about its own shape. Two reports on one character is one too many.
   if (at === undefined) holeNotAllowed(block, findings);
-  matchArms(block, findings);
   if (at?.toLowerCase() === "property") initialValueAndSyntax(block, findings);
   if (references !== undefined && references.size > 0) setByAnotherName(block, references, findings);
   if (config !== undefined) unknownVariable(block, config, findings);
+  if (config !== undefined) variableByHand(block, config, findings);
   tooManyValues(block, config?.properties, findings);
   literalNotAllowed(block, config?.properties, findings);
   doesNothing(block, findings);
@@ -807,7 +874,7 @@ function literalNotAllowed(block: Block, rules: PropertyRules | undefined, findi
           length: found[0].length,
           message:
             `\`${found[0].trim()}\` is a colour written out, and this project takes colours only from its ` +
-            `own variables.\n\n        Declare it in \`ramonda.css.ts\` and write \`$.…\`, or set ` +
+            `own variables.\n\n        Declare it in \`ramonda.css.ts\` and write \`$group.name\`, or set ` +
             `\`${JSON.stringify(property)}: { variablesOnly: false }\` beside \`"<color>"\`.`,
         });
         break;
@@ -836,7 +903,7 @@ function literalNotAllowed(block: Block, rules: PropertyRules | undefined, findi
  *
  * ## What is deliberately NOT a literal
  *
- * A CALL is an escape hatch and is not read into: `calc($.space.md * 2)` holds a `2` that is not a
+ * A CALL is an escape hatch and is not read into: `calc($space.md * 2)` holds a `2` that is not a
  * hardcoded length, and nothing here can tell it from one that is. A bare `0` needs no unit in CSS
  * and is not a value anybody reached for instead of a token. `var()` is what CSS itself provides. A
  * HOLE evaluates at render and is nobody's to read. A keyword is not a dimension at all.
@@ -886,7 +953,7 @@ function dimensionNotAllowed(block: Block, rules: PropertyRules | undefined, fin
               `\`${text}\` is ${NARROW[found]?.said ?? "a value"} written out, and this project takes ` +
               `them only from its own variables.` +
               `\n\n        A custom property set here is still a value this project ships. Declare it in ` +
-              `\n        \`ramonda.css.ts\` and write \`$.…\`.`,
+              `\n        \`ramonda.css.ts\` and write \`$group.name\`.`,
           });
           break;
         }
@@ -924,7 +991,7 @@ function dimensionNotAllowed(block: Block, rules: PropertyRules | undefined, fin
           message:
             `\`${text}\` is ${NARROW[primitive]?.said ?? "a value"} written out, and this project takes ` +
             `them only from its own variables.` +
-            `\n\n        Declare it in \`ramonda.css.ts\` and write \`$.…\`, or set ` +
+            `\n\n        Declare it in \`ramonda.css.ts\` and write \`$group.name\`, or set ` +
             `\`${JSON.stringify(property)}: { variablesOnly: false }\`.`,
         });
         break;
@@ -1140,14 +1207,14 @@ function valueNotAllowed(block: Block, rules: PropertyRules | undefined, finding
  * ## What is NOT a hole, though it has braces
  *
  * The braces are still how an expression gets in; what is refused is a value in a declaration.
- * `if ({this.on}) { … }` and `...{on ? hot : cold}` choose between whole rules and write nothing on
- * the element. `match({this.variant})` chooses between classes. `var({angle})` and `{angle}: 45deg`
+ * `when $(this.on) { … }` and `...$(on ? hot : cold)` choose between whole rules and write nothing on
+ * the element. `match $(this.variant)` chooses between classes. `var({angle})` and `{angle}: 45deg`
  * name a `@@property` site, which is text by the time the CSS is written.
  *
  * ## A declared variable is not a hole either — but the BRACES decide, not the name
  *
- * Measured, and it was assumed wrongly first: `color: $.color.brand` written bare parses as a
- * `VariablePart` and becomes a `var()` in the stylesheet, while `color: {$.color.brand}` — the same
+ * Measured, and it was assumed wrongly first: `color: $color.brand` written bare parses as a
+ * `VariablePart` and becomes a `var()` in the stylesheet, while `color: {$color.brand}` — the same
  * variable, in braces — parses as a `HolePart` and set a custom property per element. So the second
  * is reported and the bare spelling is the fix. `var(--brand)` written out is ordinary text and is
  * never asked about.
@@ -1163,9 +1230,9 @@ function holeNotAllowed(block: Block, findings: Finding[]): void {
       message:
         `A style block takes no runtime value, and \`${property}\` is given one.\n\n` +
         `        If the value is one of a few, write them out with \`match\`:\n` +
-        `        \`${property}: match({…}) { a => …; _ => …; }\` — every arm is its own class.\n` +
+        `        \`${property}: match $(…) { a => …; _ => …; }\` — every arm is its own class.\n` +
         `        If it really comes from data, declare it with \`@@property( … )\` and set it on\n` +
-        `        the element. To pick between whole rules, \`if ({…}) { … }\` still does.`,
+        `        the element. To pick between whole rules, \`when $(…) { … }\` still does.`,
     });
   }
 }
@@ -1188,18 +1255,90 @@ function holeNotAllowed(block: Block, findings: Finding[]): void {
  *
  * ## No arms at all
  *
- * `match({v}) { }` reads, and sets nothing whatever the subject is. That is a declaration written
- * and then taken back, which is worth a word rather than a silent nothing — unlike `if ({c}) { }`,
+ * `match $(v) { }` reads, and sets nothing whatever the subject is. That is a declaration written
+ * and then taken back, which is worth a word rather than a silent nothing — unlike `when $(c) { }`,
  * which mirrors an empty at-rule CSS itself allows.
  */
-function matchArms(block: Block, findings: Finding[]): void {
-  const walkItems = (items: readonly BlockItem[]): void => {
+/**
+ * The keys of a block-level match: none at all, one written twice, and one below `_` — the same
+ * three faults a value match's keys can have, in the same words.
+ */
+function blockMatchArms(items: readonly AnyItem[], findings: Finding[]): void {
+  for (const item of items) {
+    if (item.kind === "declaration") continue;
+    if (item.kind === "rule") {
+      blockMatchArms(item.items, findings);
+      continue;
+    }
+    if (item.arms.length === 0) {
+      findings.push({
+        rule: "match-with-no-arms",
+        at: item.at ?? 0,
+        length: MATCH.length,
+        message:
+          "a `match` with no arms sets nothing, whatever its subject is.\n\n        Write an arm, or take it out.",
+      });
+    }
+    armKeys(item.arms, item.at, findings);
+    for (const arm of item.arms) blockMatchArms(arm.items, findings);
+  }
+}
+
+/** Two arms with one key, and an arm below `_`: the second can never answer. */
+function armKeys(
+  arms: readonly { readonly key: string; readonly otherwise: boolean; readonly at?: number }[],
+  at: number | undefined,
+  findings: Finding[],
+): void {
+  const seen = new Set<string>();
+  let answered = false;
+  for (const arm of arms) {
+    const repeated = seen.has(arm.key);
+    if (repeated || answered) {
+      findings.push({
+        rule: "match-arm-repeated",
+        at: arm.at ?? at ?? 0,
+        length: arm.key.length,
+        message: repeated
+          ? `\`${arm.key}\` is matched twice, and the arm above answers first — so this one ` +
+            "never runs.\n\n        Take it out, or give it the key it was meant to have."
+          : `\`_\` above this answers for everything, so \`${arm.key}\` never runs.` +
+            "\n\n        Write `_` last, where it is the fallback rather than the answer.",
+      });
+    }
+    seen.add(arm.key);
+    if (arm.otherwise) answered = true;
+  }
+}
+
+function matchArms(block: AnyBlock, findings: Finding[]): void {
+  const walkItems = (items: readonly AnyItem[]): void => {
     for (const item of items) {
-      if (item.kind === "rule") {
-        walkItems(item.items);
+      if (item.kind !== "declaration") {
+        walkItems(childrenOf(item));
         continue;
       }
       for (const part of item.value) {
+        /**
+         * A CHOICE's branches are values decided when the block compiles, exactly as a match's arms
+         * are, so a runtime value in one is the same fault, said in the same words.
+         */
+        if (part.kind === "choice") {
+          const branches = [...part.branches.map((one) => one.value), part.otherwise];
+          for (const inside of branches.flat()) {
+            if (inside.kind !== "hole") continue;
+            findings.push({
+              rule: "hole-in-a-match-arm",
+              at: inside.at ?? part.at ?? 0,
+              length: inside.length ?? 1,
+              message:
+                "a branch of a choice is a value decided when the block compiles, so it cannot hold one " +
+                "the render computes.\n\n        Write the value out — every branch becomes a class, " +
+                "and the condition picks one.",
+            });
+          }
+          continue;
+        }
         if (part.kind !== "match") continue;
 
         if (part.arms.length === 0) {
@@ -1214,8 +1353,6 @@ function matchArms(block: Block, findings: Finding[]): void {
           continue;
         }
 
-        const seen = new Set<string>();
-        let answered = false;
         for (const arm of part.arms) {
           for (const inside of arm.value) {
             if (inside.kind !== "hole") continue;
@@ -1226,27 +1363,12 @@ function matchArms(block: Block, findings: Finding[]): void {
               message:
                 "an arm is a value decided when the block compiles, so it cannot hold one the " +
                 "render computes.\n\n        Write the value out, or match on it instead — " +
-                "`match({…}) { … }` is how a value that varies becomes\n        one of several " +
+                "`match $(…) { … }` is how a value that varies becomes\n        one of several " +
                 "that do not.",
             });
           }
-
-          const repeated = seen.has(arm.key);
-          if (repeated || answered) {
-            findings.push({
-              rule: "match-arm-repeated",
-              at: arm.at ?? part.at ?? 0,
-              length: arm.key.length,
-              message: repeated
-                ? `\`${arm.key}\` is matched twice, and the arm above answers first — so this one ` +
-                  "never runs.\n\n        Take it out, or give it the key it was meant to have."
-                : `\`_\` above this answers for everything, so \`${arm.key}\` never runs.` +
-                  "\n\n        Write `_` last, where it is the fallback rather than the answer.",
-            });
-          }
-          seen.add(arm.key);
-          if (arm.otherwise) answered = true;
         }
+        armKeys(part.arms, part.at, findings);
       }
     }
   };
@@ -1406,7 +1528,7 @@ function pathsDeclaredBy(config: Config): ReadonlySet<string> {
 }
 
 /**
- * `$.a.b.c` naming a variable this project never declared.
+ * `$a.b.c` naming a variable this project never declared.
  *
  * **This is the only thing standing between a typo and a `var()` into nothing.** The compiler emits
  * `var(--a-b-c)` from the path alone and reads no config to do it — deliberately, so that the CLI,
@@ -1420,7 +1542,7 @@ function pathsDeclaredBy(config: Config): ReadonlySet<string> {
  *
  * ## A group is reported too
  *
- * `$.color.primary` names three variables and no value. Left alone it would compile to
+ * `$color.primary` names three variables and no value. Left alone it would compile to
  * `var(--color-primary)`, which nothing sets, so it is the same fault with a better message
  * available: the path exists, it is just not a leaf.
  *
@@ -1430,6 +1552,44 @@ function pathsDeclaredBy(config: Config): ReadonlySet<string> {
  * without ever learning the config exists. A config OBJECT that declares no variables is therefore
  * told so. No config object at all is different and stays silent — nobody asked.
  */
+/**
+ * `var(--color-accent)` written by hand for a variable the project declares.
+ *
+ * It renders the same as `$color.accent`, and it is the one spelling of a declared variable nothing
+ * checks: rename the variable in `ramonda.css.ts` and this goes on reading the old name, which
+ * nothing sets — measured for `unknown-variable`, an unset `var()` lays the element out as if the
+ * property were never written. A `var()` with a fallback is left alone, because `$` cannot say one.
+ */
+function variableByHand(block: Block, config: Config, findings: Finding[]): void {
+  const byName = new Map([...pathsDeclaredBy(config)].map((path) => [nameFor(path) as string, path]));
+  if (byName.size === 0) return;
+
+  const walkItems = (items: readonly BlockItem[]): void => {
+    for (const item of items) {
+      if (item.kind === "rule") {
+        walkItems(item.items);
+        continue;
+      }
+      for (const part of item.value) {
+        if (part.kind !== "text" || part.at === undefined) continue;
+        for (const found of part.text.matchAll(/var\(\s*(--[\w-]+)\s*\)/g)) {
+          const path = byName.get(found[1]);
+          if (path === undefined) continue;
+          findings.push({
+            rule: "variable-by-hand",
+            at: part.at + (found.index ?? 0),
+            length: found[0].length,
+            message:
+              `\`${found[0]}\` reads a variable this project declares, and nothing checks it written this way. ` +
+              `Write \`$${path}\`, which follows the config.`,
+          });
+        }
+      }
+    }
+  };
+  walkItems(block.items);
+}
+
 function unknownVariable(block: Block, config: Config, findings: Finding[]): void {
   const declared = pathsDeclaredBy(config);
 
@@ -1440,6 +1600,7 @@ function unknownVariable(block: Block, config: Config, findings: Finding[]): voi
   }
 
   const among = [...declared];
+  const tops = new Set([...declared].map((path) => path.split(".")[0]));
 
   const walkItems = (items: readonly BlockItem[]): void => {
     for (const item of items) {
@@ -1451,18 +1612,29 @@ function unknownVariable(block: Block, config: Config, findings: Finding[]): voi
         if (part.kind !== "variable" || part.at === undefined) continue;
         if (declared.has(part.path)) continue;
 
-        const written = part.path === "" ? "$." : `$.${part.path}`;
+        const written = `$${part.path}`;
         const meant = nearest(part.path, among);
 
         const message =
-          declared.size === 0
-            ? `\`${written}\` names a variable, and this project declares no variables.\n\n` +
-              `        Declare them in \`ramonda.css.ts\`, with a kind and a fallback each:\n` +
-              `        variables: { color: kind("color", { primary: { main: "#3b82f6" } }) }`
-            : groups.has(part.path)
-              ? `\`${written}\` names a group of variables rather than one of them. Write a variable.`
-              : `\`${written}\` is not a variable this project declares.` +
-                (meant === undefined ? "" : ` Did you mean \`$.${meant}\`?`);
+          part.path === ""
+            ? "a `$` on its own names nothing — write `$group.name` for a theme variable, or `$( … )` for code."
+            : declared.size === 0
+              ? `\`${written}\` names a variable, and this project declares no variables.\n\n` +
+                `        Declare them in \`ramonda.css.ts\`, with a kind and a fallback each:\n` +
+                `        variables: { color: kind("color", { primary: { main: "#3b82f6" } }) }`
+              : groups.has(part.path)
+                ? `\`${written}\` names a group of variables rather than one of them. Write a variable.`
+                : !groups.has(part.path.split(".")[0])
+                  ? /**
+                     * A GROUP the project does not have: `$` and a name is only ever a theme
+                     * variable, so `$props.tone` is most likely a reach for a value from code.
+                     */
+                    `\`${written}\` names no group of variables this project has — its groups are ` +
+                    `${[...tops].map((one) => `\`$${one}\``).join(", ")}.` +
+                    (meant === undefined ? "" : ` Did you mean \`$${meant}\`?`) +
+                    " A value from code is written `$( … )`."
+                  : `\`${written}\` is not a variable this project declares.` +
+                    (meant === undefined ? "" : ` Did you mean \`$${meant}\`?`);
 
         findings.push({ rule: "unknown-variable", at: part.at, length: part.length ?? written.length, message });
       }
@@ -1475,15 +1647,15 @@ function unknownVariable(block: Block, config: Config, findings: Finding[]): voi
 /**
  * A variable set by one name and read by another, when the author meant one.
  *
- * A named `@@property` block is a TypeScript binding, and `var({{accent}})` resolves at build time to
- * the name that block generated. Setting it with the same binding works end to end — `{{accent}}:
+ * A named `@@property` block is a TypeScript binding, and `var($(accent))` resolves at build time to
+ * the name that block generated. Setting it with the same binding works end to end — `$(accent):
  * blue` writes `--r-…: blue` and the `var()` reads it back.
  *
  * **Writing the literal name instead is two variables, and nothing said so.** Measured:
  *
  * ```
  * --accent: blue;               ->  .r-… { --accent: blue }       ONE variable
- * background: var({{accent}});  ->  reads --r-k8u6ISIlk           ANOTHER
+ * background: var($(accent));  ->  reads --r-k8u6ISIlk           ANOTHER
  * ```
  *
  * The author believes they set what they read; the `var()` falls back to the `@property`
@@ -1529,7 +1701,7 @@ function setByAnotherName(block: Block, references: ReadonlyMap<string, string>,
       message:
         `\`${one.name}\` is set here, and \`${binding}\` is read as a binding below — those are two ` +
         `different custom properties, so this declaration does nothing for it. Write ` +
-        `\`{{${binding}}}: …\` to set the one you read.`,
+        `\`$(${binding}): …\` to set the one you read.`,
     });
   }
 }
@@ -2022,7 +2194,7 @@ function rootUnderTheElement(selector: string): boolean {
  *
  * A spread merges a whole block, and a block's map carries the context each of its declarations was
  * written in. Inside `&:hover` it would have to re-scope every key it holds — `background` becoming
- * `:hover|background` — which a merge cannot do at runtime. A GUARD is fine: `if` changes no key,
+ * `:hover|background` — which a merge cannot do at runtime. A GUARD is fine: `when` changes no key,
  * it only decides whether the whole map lands.
  *
  * **Refused by the build already, and by nothing else.** The refusal lived in `transform`, so the
@@ -2034,8 +2206,8 @@ function spreadOutOfPlace(block: Block, findings: Finding[]): void {
   const walkItems = (items: readonly BlockItem[], scoped: boolean): void => {
     for (const item of items) {
       if (item.kind === "rule") {
-        // A guard is not a scope: `if` decides whether the map lands, and changes no key in it.
-        const guard = holeIn(item.prelude, CONDITION) !== undefined;
+        // A guard is not a scope: `when` decides whether the map lands, and changes no key in it.
+        const guard = branchOf(item.prelude) !== undefined;
         walkItems(item.items, scoped || !guard);
         continue;
       }
@@ -2048,7 +2220,7 @@ function spreadOutOfPlace(block: Block, findings: Finding[]): void {
         message:
           "a spread merges a whole block, and a block carries the context its own declarations " +
           "were written in — so it cannot go inside a selector or a `@media`. Write it at the " +
-          "top level of the block, or inside `if { … }`, which changes no declaration.",
+          "top level of the block, or inside `when $( … ) { … }`, which changes no declaration.",
       });
     }
   };
@@ -2073,7 +2245,7 @@ function holeInANamedBlock(block: Block, at: string, findings: Finding[]): void 
        * **Over the HOLE, and every one of them.**
        *
        * This pointed at the start of the VALUE with a length of 1 — measured on
-       * `@@font-face( src: url({n}); )`, a one-character squiggle over the `u` of `url(`, which is
+       * `@@font-face( src: url($(n)); )`, a one-character squiggle over the `u` of `url(`, which is
        * mid-word and is not the fault. And it stopped after the first hole, so an author fixed one,
        * re-ran, and met the next.
        *
@@ -2093,7 +2265,7 @@ function holeInANamedBlock(block: Block, at: string, findings: Finding[]): void 
           message:
             `a hole cannot go in \`@@${at}( … )\` — this names something the whole stylesheet uses, ` +
             `and there is no element here for a value to come from. Declare the value with ` +
-            `\`@@property( … )\`, read it as \`var({name})\` inside this site, and set it on the ` +
+            `\`@@property( … )\`, read it as \`var($(name))\` inside this site, and set it on the ` +
             `element that uses it.`,
         });
       }
@@ -2167,13 +2339,13 @@ export function checkNamedSite(site: BlockSite): Finding[] {
 }
 
 /**
- * `if` or a spread inside `@@keyframes( … )` and the other named blocks.
+ * `when` or a spread inside `@@keyframes( … )` and the other named blocks.
  *
  * Composition decides what lands on an ELEMENT: a guard switches a map on and off, a spread merges
  * one into another. A named block is not an element — it is a rule the whole stylesheet uses — so
  * neither has anything to act on.
  *
- * **Both were reported as something else.** `if ({on}) { from { … } }` came back as *`if ( 0 )`
+ * **Both were reported as something else.** `when $(on) { from { … } }` came back as *`if ( 0 )`
  * is not a keyframe*, which names the guard as a frame; and the virtual file wrote the helper call
  * among the object literal's members, where a call is not a member, so the file did not parse and
  * nothing else in it was checked either.
@@ -2182,9 +2354,7 @@ function compositionInANamedBlock(block: Block, at: string, findings: Finding[])
   const walkItems = (items: readonly BlockItem[]): void => {
     for (const item of items) {
       const found =
-        item.kind === "rule"
-          ? holeIn(item.prelude, CONDITION) !== undefined
-          : holeIn(item.property, SPREAD) !== undefined;
+        item.kind === "rule" ? branchOf(item.prelude) !== undefined : holeIn(item.property, SPREAD) !== undefined;
 
       if (found) {
         findings.push({
@@ -2192,7 +2362,7 @@ function compositionInANamedBlock(block: Block, at: string, findings: Finding[])
           at: item.at ?? 0,
           length: item.kind === "rule" ? item.prelude.length : item.property.length,
           message:
-            `\`@@${at}( … )\` cannot hold ${item.kind === "rule" ? "`if`" : "a spread"} — composition ` +
+            `\`@@${at}( … )\` cannot hold ${item.kind === "rule" ? "`when`" : "a spread"} — composition ` +
             `decides what lands on an ELEMENT, and this names a rule the whole stylesheet uses. ` +
             `Compose where the block is used instead.`,
         });
@@ -2296,13 +2466,13 @@ const OPENS_A_VAR = /var\(\s*$/i;
  *
  * **This package said so in `references.ts` and emitted it anyway**, because that is the shape an
  * IMPORTED binding produces: `namedSites` reads one file, so `import { accent } from "./theme"` is
- * not a name it can resolve and the reference stays a hole. Measured, `background: var({{accent}})`
+ * not a name it can resolve and the reference stays a hole. Measured, `background: var($(accent))`
  * on an imported binding compiled to `background:var(var(--r-…-0))` with nothing reported at all.
  *
  * A reference to a site in the SAME file never reaches here: it is resolved to text before any rule
  * runs, so there is no hole to find. That is what the named-site design is for, and it is asserted.
  *
- * The FALLBACK is a different position and is left alone — `var(--x, {{colour}})` is a value where a
+ * The FALLBACK is a different position and is left alone — `var(--x, $(colour))` is a value where a
  * value belongs, and `var(--unset, var(--hole))` was measured resolving correctly. Only the first
  * argument is a name.
  */
@@ -2578,7 +2748,7 @@ function walk(items: readonly BlockItem[], findings: Finding[], body?: string): 
 
     /**
      * A hole read into the PROPERTY, which is what a forgiving parse does with one written where a
-     * custom property cannot go. `{{name}}: 24px` puts it in the name; a hole standing alone with no
+     * custom property cannot go. `$(name): 24px` puts it in the name; a hole standing alone with no
      * colon after it puts the whole declaration there.
      */
     const named = findings.length;
@@ -3328,8 +3498,8 @@ const PERCENTAGE = /^([+]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?)%$/;
  */
 function unknownFrame(rule: NestedRule, findings: Finding[]): void {
   // A GUARD is not a frame and is not spelled like one. `composition-in-a-named-block` owns it, and
-  // saying `if ( 0 ) is not a keyframe` beside that names the wrong thing as the fault.
-  if (holeIn(rule.prelude, CONDITION) !== undefined) return;
+  // saying `when $(on) is not a keyframe` beside that names the wrong thing as the fault.
+  if (branchOf(rule.prelude) !== undefined) return;
 
   for (const part of rule.prelude.split(",")) {
     const frame = part.trim().toLowerCase();
@@ -3447,7 +3617,7 @@ function gluedHole(item: Declaration, findings: Finding[]): void {
  * Whether a character keeps a hole apart from what is written next to it.
  *
  * Whitespace is the obvious one, and it is not the only one: `calc( … )` and a comma-separated list
- * are their own grammars, so `calc({{n}} * 1px)` and `minmax(0, {{n}})` concatenate nothing. What is
+ * are their own grammars, so `calc($(n) * 1px)` and `minmax(0, $(n))` concatenate nothing. What is
  * left — a letter, a digit, a `#`, a `-` — would run into the substituted tokens and produce a value
  * the browser refuses.
  */
@@ -3685,10 +3855,10 @@ function holeInHead(
   what: "a declaration" | "a property name" | "a selector" | "a frame",
   findings: Finding[],
 ): void {
-  const found = text.indexOf("{");
+  const found = text.indexOf(ESCAPE);
   if (found === -1 || at === undefined) return;
 
-  // The `{`, which is where the author has to move something. The expression's own length is not the
+  // The `$(`, which is where the author has to move something. The expression's own length is not the
   // fault and underlining it would say the expression is wrong.
   findings.push({ rule: "hole-out-of-place", at: at + found, length: 1, message: holeOutOfPlace(what) });
 }
@@ -3837,9 +4007,9 @@ function words(parts: readonly ValuePart[]): Word[] {
     /**
      * A word TOUCHING a hole is part of the hole's value, not a value of its own.
      *
-     * `padding: {{n}}px` is one length written in two pieces, and `px` on its own is nothing a
+     * `padding: $(n)px` is one length written in two pieces, and `px` on its own is nothing a
      * property accepts. Measured before this existed, on every property with a keyword row:
-     * `gap: {{n}}px` reported *`gap` does not accept `px`* — a false report on correct CSS, which is
+     * `gap: $(n)px` reported *`gap` does not accept `px`* — a false report on correct CSS, which is
      * how a checker earns being switched off. Whitespace is what separates values, so a piece with
      * none between it and the hole is the same value.
      */
@@ -4075,7 +4245,7 @@ export { nearest } from "./nearest";
  *
  * ## Absence proves nothing, so absence is silent
  *
- * `flatten` drops a spread — `...{base}` merges declarations this never sees. So a row may only
+ * `flatten` drops a spread — `...$(base)` merges declarations this never sees. So a row may only
  * read a disabling declaration that is PRESENT. `top: 20px` on its own says nothing, because the
  * block spread above it may be what positions the element, and a rule that guessed would report
  * correct CSS. The same reasoning keeps `text-overflow` quiet when no `white-space` is written:

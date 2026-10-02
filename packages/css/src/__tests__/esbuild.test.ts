@@ -164,7 +164,7 @@ describe("a build", () => {
       "index.tsx":
         `const w = @@property(\n  syntax: "<length>";\n  inherits: false;\n  initial-value: 0px;\n);\n` +
         `export const at = (v: string) => ({ [w]: v });\n` +
-        `const a = <div className={@@(\n  border-left: var({w}) solid red;\n)}>x</div>;\nexport default a;\n`,
+        `const a = <div className={@@(\n  border-left: var($(w)) solid red;\n)}>x</div>;\nexport default a;\n`,
     });
     const { js, css } = outputs(await build(root));
 
@@ -183,7 +183,7 @@ describe("a build", () => {
 
   /** The refusal has to arrive as a position in the author's file, not as a stack trace. */
   test("a block it cannot read is reported on the author's line", async () => {
-    const root = project({ "index.tsx": `const a = <div className={@@(\n  {whole}\n)}>x</div>;\n` });
+    const root = project({ "index.tsx": `const a = <div className={@@(\n  $(whole);\n)}>x</div>;\n` });
 
     await expect(build(root)).rejects.toMatchObject({
       errors: [expect.objectContaining({ location: expect.objectContaining({ line: 2 }) })],
@@ -284,7 +284,7 @@ describe("what a file is loaded as", () => {
 export default <div className={panel}>x</div>;
 `,
       "styles.ts": `const width: number = 4;
-export const panel = @@(\n  gap: 4px;\n  if ({width}) { padding: 8px; }\n);
+export const panel = @@(\n  gap: 4px;\n  when $(width) { padding: 8px; }\n);
 `,
     });
     const { js, css } = outputs(await build(root));
@@ -516,7 +516,7 @@ console.log(b);
 describe("codegen through the plugin", () => {
   test("the pair is written into the build's own root, before anything is resolved", async () => {
     const root = project({
-      "index.tsx": `const a = <div className={@@( color: $.color.primary.main; )}>x</div>;\nexport default a;\n`,
+      "index.tsx": `const a = <div className={@@( color: $color.primary.main; )}>x</div>;\nexport default a;\n`,
       "ramonda.css.ts": `import { kind } from "@ramonda/css/config";\nexport default { variables: { color: kind("color", { primary: { main: "#3b82f6" } }) } };\n`,
     });
 

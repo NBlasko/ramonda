@@ -1,11 +1,11 @@
 /**
- * Composition against the browser's own cascade — `...{base}` plus a condition.
+ * Composition against the browser's own cascade — `...$(base)` plus a condition.
  *
  *     node prototype-composition.mjs
  *
  * ## The question, and why it needed a browser
  *
- * `...{base}` is the one hole the compiler cannot see: a spread is a runtime value, so nothing at
+ * `...$(base)` is the one hole the compiler cannot see: a spread is a runtime value, so nothing at
  * build time knows what is in it. `merge.ts` warns when a composition cannot take effect, and a
  * review measured that warning — but never the RESULT. So this asks the only question that matters
  * to somebody reading a page: **does a composed element compute what the same declarations, written

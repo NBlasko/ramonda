@@ -96,14 +96,14 @@ const card = @@(
 
 ## A condition your code decides
 
-`if ({ … }) { … }` is not a stylesheet condition at all — it is a group merged when the expression
+`when $(…) { … }` is not a stylesheet condition at all — it is a group merged when the expression
 holds, so the answer comes from the merge rather than from the sheet. **Later wins, which is the
 order you wrote:**
 
 ```tsx
 const card = (compact: boolean, loud: boolean) => @@(
-  if ({compact}) { color: red; }
-  if ({loud}) { color: blue; }
+  when $(compact) { color: red; }
+  when $(loud) { color: blue; }
 );
 ```
 
@@ -145,14 +145,14 @@ condition if it matters.
 
 ## Reusing a block does not change any of it
 
-`...{base}` merges another block's declarations. Two declarations of one property under different
+`...$(base)` merges another block's declarations. Two declarations of one property under different
 conditions are two different things set, so both survive the merge and the list above decides:
 
 ```tsx
 const base = @@( @media (prefers-color-scheme: dark) { color: white; } );
 
 const card = <div className={@@(
-  ...{base};
+  ...$(base);
   @media (min-width: 40rem) { color: blue; }
 )}>…</div>;
 ```
@@ -169,7 +169,7 @@ compose them the other way round.
 ```
 
 Inside one block that is a build error instead, on the line you wrote. Across a reuse it can only be
-a run-time warning: what is in `...{base}` is a value, and the compiler does not know it. It is said
+a run-time warning: what is in `...$(base)` is a value, and the compiler does not know it. It is said
 once, and it is not in a production build at all.
 
 ## The one place the stylesheet decides instead of you

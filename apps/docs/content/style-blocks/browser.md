@@ -44,7 +44,7 @@ Every block adds one class that names where it was written, `r:src:` and then th
 That element merged a block from `Card.tsx` with one its parent sent from `Page.tsx`, so it names
 both — two blocks used side by side are equal, and each is named.
 
-**A spread leaves no mark.** A block that spreads `...{base}` names its own line, not `base`'s:
+**A spread leaves no mark.** A block that spreads `...$(base)` names its own line, not `base`'s:
 what you look for is where a block was used, and `base` is part of that block.
 
 These classes have no rule and are not keys, so they style nothing and the merge treats them like a

@@ -56,10 +56,10 @@ describe("with it", () => {
   });
 
   test("the CSS inside is returned as written, holes and nesting and all", async () => {
-    const source = `const panel = @@(\n  border-left: {\`\${w}px\`} solid #ff0055;\n  &:hover { color: red; }\n);\n`;
+    const source = `const panel = @@(\n  border-left: $(\`\${w}px\`) solid #ff0055;\n  &:hover { color: red; }\n);\n`;
     const out = await format(source);
 
-    expect(out).toContain("border-left: {`${w}px`} solid #ff0055;");
+    expect(out).toContain("border-left: $(`${w}px`) solid #ff0055;");
     expect(out).toContain("&:hover { color: red; }");
   });
 
@@ -170,16 +170,16 @@ describe("with it", () => {
  */
 describe("a declared variable", () => {
   test("survives, written tightly or loosely", async () => {
-    const source = `const a = <div className={@@( color: $.color.primary.main; padding:$.space.inline.2xl; )}>x</div>;\n`;
+    const source = `const a = <div className={@@( color: $color.primary.main; padding:$space.inline.2xl; )}>x</div>;\n`;
     const out = await format(source);
 
-    expect(out).toContain("$.color.primary.main");
-    expect(out).toContain("$.space.inline.2xl");
+    expect(out).toContain("$color.primary.main");
+    expect(out).toContain("$space.inline.2xl");
   });
 
   test("and inside a call, where the arithmetic could invite a rewrite", async () => {
-    const source = `const b = <div className={@@( width: calc($.size.control.md * 2); )}>x</div>;\n`;
+    const source = `const b = <div className={@@( width: calc($size.control.md * 2); )}>x</div>;\n`;
 
-    expect(await format(source)).toContain("calc($.size.control.md * 2)");
+    expect(await format(source)).toContain("calc($size.control.md * 2)");
   });
 });

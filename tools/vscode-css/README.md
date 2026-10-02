@@ -14,19 +14,21 @@ highlighter, which has no way to load the grammars this extension is made of. It
 those grammars, so it cannot drift from what you get.*
 
 ```tsx
-<div css={@@(
+<div className={@@(
   display: flex;
   gap: 8px;
-  border-left: 4px solid {this.accent};
+  border-left: 4px solid $color.accent;
+  color: $(this.loud) ? #f05 : #333;
   &:hover {
     border-left-color: #00b37e;
   }
-)>
+)}>
   <span>Panel</span>
 </div>
 ```
 
-The CSS is coloured as CSS, `{this.accent}` as TypeScript, and `&:hover` as a selector.
+The CSS is coloured as CSS, `$(this.loud)` as TypeScript, `$color.accent` as a variable, and
+`&:hover` as a selector.
 
 ## Install
 

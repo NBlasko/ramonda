@@ -12,7 +12,7 @@ import type { Kind, ValueByKind } from "./token";
  *
  * `DESIGN.md` settles the shape, and each part earns its place:
  *
- * - **A name**, so `$.color.primary.main` can be written instead of `var(--color-primary-main)` and
+ * - **A name**, so `$color.primary.main` can be written instead of `var(--color-primary-main)` and
  *   completed one level at a time. Measured: a nested object offers 6 names, then 5, then 4, where a
  *   flat union of the same scale offers 88 at every position.
  * - **A fallback**, because that is what makes the type TRUE. A `var()` with no fallback can resolve
@@ -101,7 +101,7 @@ export interface Variable<K extends Kind = Kind, V = unknown> {
 declare const RANGE: unique symbol;
 
 /**
- * A declared variable as a VALUE — what `$.color.primary.main` is, once codegen has written it.
+ * A declared variable as a VALUE — what `$color.primary.main` is, once codegen has written it.
  *
  * A branded `string`, and each half of that is load-bearing. A string, because its runtime value is
  * `var(--color-primary-main)` and that has to be usable everywhere a CSS value goes: in a block, in
