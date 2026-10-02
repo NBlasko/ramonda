@@ -465,3 +465,39 @@ describe("a regex literal in a hole", () => {
     expect(value(block)).toBe("content:@0@;");
   });
 });
+
+/**
+ * Every refusal is read for its WORDS, not only for having happened.
+ *
+ * Measured by replacing each message with nonsense: four of them changed nothing in any test, and
+ * one of those four was wrong — the unclosed block's said a `@(` needs a `)`, which is not how a
+ * block opens. A message no test reads can say anything.
+ */
+describe("what each refusal says", () => {
+  const said = (source: string) => {
+    try {
+      readBlock(source, source.indexOf("@@(") + 2, "C.tsx");
+      return "read";
+    } catch (error) {
+      return (error as Error).message;
+    }
+  };
+
+  test.each([
+    ["the old brace escape in a value", "@@(\n  color: {tint};\n)", "C.tsx:2:10", "code goes into a block as `$( … )`"],
+    ["the old brace escape for a name", "@@(\n  {name}: 24px;\n)", "C.tsx:2:3", "code goes into a block as `$( … )`"],
+    ["an escape never closed", "@@(\n  color: $(tint;", "C.tsx:2:10", "this `$(` is never closed — it needs a `)`."],
+    [
+      "a match never closed",
+      "@@(\n  match $(t) {\n    a => ( color: red; );\n",
+      "C.tsx:2:3",
+      "this match is never closed",
+    ],
+    ["a block never closed", "@@(\n  color: red;\n", "C.tsx:1:3", "this block is never closed — a `@@(` needs a `)`."],
+  ])("%s", (_what, source, where, words) => {
+    const message = said(source);
+
+    expect(message).toContain(where);
+    expect(message).toContain(words);
+  });
+});

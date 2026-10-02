@@ -2622,7 +2622,7 @@ describe("a narrower whole shorthand after a wider one from another block", () =
  * `__vars.border.thin`, or inside a template when it is part of a value, and the walk read only
  * string literals, so these went unreported.
  *
- * The project declares its variables the way codegen does: its properties module exports `$`.
+ * The project declares its variables the way codegen does: its properties module exports one name per group.
  */
 describe("a `$` variable in a whole shorthand from another block", () => {
   const PROPS =

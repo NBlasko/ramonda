@@ -321,7 +321,7 @@ function moduleTree(named: readonly Named[]): string {
 export interface Generated {
   /** `:root`, and one `@property` per variable that can be registered. */
   readonly css: string;
-  /** The `$` module, in TypeScript, for the project's own compiler to read. */
+  /** The module — one export per group and the project's types — for its own compiler to read. */
   readonly module: string;
 }
 

@@ -13,7 +13,7 @@ import { HOLE } from "./normalise";
 import { holeOutOfPlace, refuse } from "./errors";
 
 /**
- * Reading one block: the CSS between `@(` and its `)`, and the expressions carried inside it.
+ * Reading one block: the CSS between `@@(` and its `)`, and the expressions carried inside it.
  *
  * Two grammars meet here and neither can be read with the other's rules. The block is CSS, so a
  * `)` inside a string does not close it and `url(a.png)` is not a nesting level anybody meant. A
@@ -1221,7 +1221,7 @@ export function readBlock(source: string, open: number, filename: string, option
     for (;;) {
       skipTrivia();
       if (at >= source.length) {
-        if (!tolerant) refuse("this block is never closed — a `@(` needs a `)`.", source, open, filename);
+        if (!tolerant) refuse("this block is never closed — a `@@(` needs a `)`.", source, open, filename);
         return items;
       }
       if (source.charCodeAt(at) === closer) {

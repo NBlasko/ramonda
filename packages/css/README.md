@@ -84,8 +84,8 @@ The **kind** is checked in both directions. `padding-left: $color.accent` is ref
 anything runs; and `codegen` writes an `@property` registration for every variable, so a value the
 browser cannot use falls back to the declared one instead of collapsing the element that reads it.
 
-`npx ramonda-css codegen` writes `css-system/` beside the config — the `$` object, this project's
-narrowed types, and a `variables.css` your app imports once. Both bundler plugins run it for you.
+`npx ramonda-css codegen` writes `css-system/` beside the config — one export per group (`$color`,
+`$space`) for code, this project's narrowed types, and a `variables.css` your app imports once. Both bundler plugins run it for you.
 Commit the folder: your editor reads it, so a fresh clone is checked before anything is built.
 
 The same file is where a project narrows what a block may say at all — which units, which values,

@@ -128,7 +128,7 @@ export interface Config {
    * outDir: "design-system",
    * ```
    *
-   * The folder holds `index.ts` — the `$` object, `Value`, `Var` and this project's narrowed
+   * The folder holds `index.ts` — one export per group (`$color`), `Value`, `Var` and this project's narrowed
    * property map — and `variables.css`, which sets them. Both are meant to be COMMITTED: they are
    * codegen output like any other, and this repository's own `keywords.generated.ts` is committed
    * with a gate catching drift, which is what prevents drift rather than hiding the file.

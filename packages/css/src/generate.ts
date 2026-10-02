@@ -17,7 +17,7 @@ import { ConfigError, findConfig, readConfig } from "./config";
  *
  * Beside the config, named after it:
  *
- *     ramonda.css.ts   ->   css-system/index.ts       the `$` object and its types
+ *     ramonda.css.ts   ->   css-system/index.ts       one export per group, and the types
  *                      ->   css-system/variables.css  `:root`, and an `@property` for each
  *
  * **A folder, committed, and its name is the project's.** They were two files beside the config and
