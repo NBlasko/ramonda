@@ -474,8 +474,19 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
    * Only a finite union of strings is asked: a plain `string` has no list to cover, and a subject
    * that may be `undefined` needs no arm for it — nothing is picked then.
    */
+  /**
+   * And **the subject is a string** — the third argument, `true`, written over the subject itself.
+   *
+   * An arm's key is a written word, so against a number or a boolean `1 => …` and `true => …` would
+   * leave a reader asking which one it is. The user's decision, DESIGN.md §12: `match` takes a
+   * string, a boolean is a choice, and a number becomes a word in code. The keys are then taken as
+   * any string, so the refusal is said once, on the subject, instead of once per key.
+   */
   write(
-    `declare function ${lookup}<const S, const K extends readonly S[]>(subject: S, keys: K, whole?: ` +
+    `declare function ${lookup}<const S, const K extends readonly ([NonNullable<S>] extends [string] ? S : string)[]>(subject: S, keys: K, ` +
+      "text: [NonNullable<S>] extends [string] ? true : [NonNullable<S>] extends [boolean] ? " +
+      '"match takes a string — for a boolean, write $(on) ? a : b" : ' +
+      `"match takes a string — name the cases in code, $(n > 2 ? 'large' : 'small')", whole?: ` +
       "[NonNullable<S>] extends [string] ? string extends NonNullable<S> ? true : " +
       "[Exclude<NonNullable<S>, K[number]>] extends [never] ? true : " +
       "`this match has no arm for ${Exclude<NonNullable<S>, K[number]> & string} — add one, or a _ arm for the rest` : true): never;",
@@ -748,21 +759,10 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
       if (item.kind === "match") {
         // A forgiving read can hand a subject no hole holds; there is then nothing to check it against.
         if (!single && holes[item.hole] !== undefined) {
-          write(`${lookup}(`);
-          expression(holes[item.hole]);
-          write(", [");
-          const keys = item.arms.filter((arm) => !arm.otherwise);
-          for (const [index, arm] of keys.entries()) {
-            if (index > 0) write(", ");
+          matchCall(holes[item.hole], item.arms, item.at, (arm) => {
             const quoted = arm.at !== undefined && (source[arm.at] === '"' || source[arm.at] === "'");
-            derived(JSON.stringify(arm.key), arm.at, arm.key.length + (quoted ? 2 : 0));
-          }
-          write("]");
-          if (!item.arms.some((arm) => arm.otherwise)) {
-            write(", ");
-            derived("true", item.at, MATCH.length);
-          }
-          write("),");
+            return arm.key.length + (quoted ? 2 : 0);
+          });
         }
         for (const arm of item.arms) items(arm.items, holes, keepLine, single);
         keepLine(item.end);
@@ -813,20 +813,7 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
       const chosen = item.kind === "declaration" ? item.value.find((part) => part.kind === "match") : undefined;
       if (chosen !== undefined && chosen.kind === "match" && item.kind === "declaration") {
         if (!single && holes[chosen.hole] !== undefined) {
-          write(`${lookup}(`);
-          expression(holes[chosen.hole]);
-          write(", [");
-          const keys = chosen.arms.filter((arm) => !arm.otherwise);
-          for (const [index, arm] of keys.entries()) {
-            if (index > 0) write(", ");
-            derived(JSON.stringify(arm.key), arm.at, arm.length);
-          }
-          write("]");
-          if (!chosen.arms.some((arm) => arm.otherwise)) {
-            write(", ");
-            derived("true", chosen.at, MATCH.length);
-          }
-          write("),");
+          matchCall(holes[chosen.hole], chosen.arms, chosen.at, (arm) => arm.length);
 
           for (const arm of chosen.arms) {
             // A runtime value is `hole-in-a-match-arm`'s to report; the type would say it again.
@@ -1091,6 +1078,38 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
       const emitted = isIdentifier(segment) ? `.${segment}` : `[${JSON.stringify(segment)}]`;
       derived(emitted, at + dot, index - dot);
     }
+  }
+
+  /**
+   * One `match`'s call to the helper, at either level: the subject, its keys, a `true` over the
+   * subject that says it is a string, and — with no `_` — a `true` over the word that says every
+   * value has an arm. The two levels differ only in how long a key's span is, so that is passed in.
+   */
+  function matchCall(
+    subject: Span,
+    arms: readonly {
+      readonly key: string;
+      readonly otherwise?: boolean;
+      readonly at?: number;
+      readonly length?: number;
+    }[],
+    at: number | undefined,
+    keySpan: (arm: { readonly key: string; readonly at?: number; readonly length?: number }) => number | undefined,
+  ): void {
+    write(`${lookup}(`);
+    expression(subject);
+    write(", [");
+    for (const [index, arm] of arms.filter((one) => !one.otherwise).entries()) {
+      if (index > 0) write(", ");
+      derived(JSON.stringify(arm.key), arm.at, keySpan(arm));
+    }
+    write("], ");
+    derived("true", subject.start, subject.end - subject.start);
+    if (!arms.some((arm) => arm.otherwise)) {
+      write(", ");
+      derived("true", at, MATCH.length);
+    }
+    write("),");
   }
 
   /**

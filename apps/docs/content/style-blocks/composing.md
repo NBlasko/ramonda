@@ -137,11 +137,15 @@ you want those, compute the subject before the block and match on what comes out
 - **An arm that can never run** (`match-arm-repeated`) and **a match with no arms**
   (`match-with-no-arms`) are reported.
 
-### A boolean subject is a choice
+### The subject is a string
 
-Arm keys are written as CSS words and checked as strings, so `true =>` does not match a `boolean`.
-That is not a gap to work around — a two-way choice has its own spelling, [`$(c) ? a : b`](#a-choice-between-two-values),
-and for whole groups there is `when`.
+An arm's key is a written word, so `match` takes a string. Against a number or a boolean, `1 =>` and
+`true =>` would leave you asking whether the key is the value or its spelling — so either one is
+refused on the subject, and the message says what to write instead:
+
+- **a boolean** is a two-way choice, which has its own spelling:
+  [`$(on) ? a : b`](#a-choice-between-two-values), and `when` for whole groups;
+- **a number** becomes a word in code first: `match $(n > 2 ? "large" : "small") { … }`.
 
 ### A match over whole groups
 

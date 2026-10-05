@@ -4155,7 +4155,20 @@ mistake that harness note records making once already: *the first repair was a l
 what one reaches for when the cause is a guess. It made the window smaller and left the race.* If it
 returns, the thing to measure first is whether shiki's registry is safe to share across tests at all.
 
-### 12. `match` takes a STRING subject, and says so as a `TS2322` — boolean DECIDED, number OPEN
+### 12. `match` takes a STRING subject — DECIDED, both halves
+
+**Status 2026-10-05: CLOSED, by the user.** A number subject was measured to be fully buildable —
+the run time already compares `String(subject)`, and keys checked against the subject's SPELLING
+(`` `${S}` ``) made `1 | 2`, `-1`, `0.5` and a boolean all work, with the "trap" below not arising.
+It was turned down anyway, for the reason that decides it: *kada napisemo true, da li je to boolean
+ili string "true"?* An arm's key is a written word, and a reader cannot tell whether `1 =>` is the
+number or its spelling. So `match` takes a string; anything else is refused ON THE SUBJECT, once,
+saying what to write — `$(on) ? a : b` for a boolean, a word made in code for a number. The keys
+are then taken as any string, so the refusal is not repeated per key. The build is unchanged: it
+does not run the type check, and the run time still compares spellings.
+
+The rest of this section is the history that led there.
+
 
 **Status 2026-10-02:** a boolean subject is an `if`, and `composing.md` says so (*A boolean subject is
 an `if`*). A NUMBER subject is still refused with a raw `TS2322` that names neither `match` nor the
