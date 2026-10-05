@@ -780,8 +780,27 @@ function reindented(escape: string, at: string): string {
   return [first, ...rest.map((one) => (one.trim() === "" ? "" : at + one.slice(base)))].join("\n");
 }
 
-/** Whether a piece of an arm list is nothing but comments — a note that belongs to the arm before it. */
-const onlyComments = (piece: string) => /^(\s*\/\*[\s\S]*?\*\/)+\s*$/.test(piece);
+/**
+ * Whether a piece of an arm list is nothing but comments — a note that belongs to the arm before it.
+ *
+ * A scan rather than a regex. The regex was `^(\s*\/\*[\s\S]*?\*\/)+\s*$`, which can split a run of
+ * comments many ways and tries every one when the piece does not end where it should — CodeQL found
+ * it on the PR, and measured it was four times slower for every two more comments: a run of forty
+ * did not finish. This walks each character once.
+ */
+function onlyComments(piece: string): boolean {
+  let index = 0;
+  let any = false;
+  for (;;) {
+    while (index < piece.length && /\s/.test(piece[index])) index++;
+    if (index === piece.length) return any;
+    if (!piece.startsWith("/*", index)) return false;
+    const close = piece.indexOf("*/", index + 2);
+    if (close === -1) return false;
+    index = close + 2;
+    any = true;
+  }
+}
 
 /** A block-level match's head: the word at the start of an item, and its subject. */
 const OPENS_A_BLOCK_MATCH = new RegExp(`^${MATCH}\\s*\\$\\(`);
