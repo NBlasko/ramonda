@@ -31,12 +31,12 @@ export default class ConfigPlayground extends Component {
       <div
         className={@@(
           /* ── variables: `$` reaches what the config declares ───────────────────────
-             Try `$.color.accent.` and watch the group complete one level at a time.
-             Try `$.color.accent.nope` — reported twice, by the type and by the rule.
-             Try `padding-left: $.color.accent.main` — a colour is not a length.        */
-          color: $.color.text.primary;
-          background: $.color.surface.base;
-          border-left: 4px solid $.color.accent.main;
+             Try `$color.accent.` and watch the group complete one level at a time.
+             Try `$color.accent.nope` — reported twice, by the type and by the rule.
+             Try `padding-left: $color.accent.main` — a colour is not a length.        */
+          color: $color.text.primary;
+          background: $color.surface.base;
+          border-left: 4px solid $color.accent.main;
 
           /* ── `values`: z-index is [0, 1, 10, 100, 1000] in this project ────────────
              Change this to 5 and it is reported. In the editor, type `z-index: 1` and
@@ -53,7 +53,7 @@ export default class ConfigPlayground extends Component {
           /* ── `units`: uncomment `"*": { units: ["px", "rem", "%"] }` ───────────────
              `em` is refused then, and the `px` line beside it is not.                  */
           letter-spacing: 0.05em;
-          gap: 4px $.space.gutter.tight;
+          gap: 4px $space.gutter.tight;
 
           /* ── `shorthand`: uncomment `"*": { shorthand: false }` ────────────────────
              `padding` and `background` above stop existing — and are gone from the
@@ -62,7 +62,7 @@ export default class ConfigPlayground extends Component {
           padding-left: 12px;
 
           &:hover {
-            border-left-color: $.color.accent.quiet;
+            border-left-color: $color.accent.quiet;
 
             & .label {
               text-decoration: underline;

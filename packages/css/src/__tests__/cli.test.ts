@@ -104,7 +104,7 @@ describe("the bin", () => {
    */
   test("a block it cannot read is reported first, and exits 1", () => {
     const { output, status } = run(
-      project(`const a = (\n  <div className={@@(\n    {name}: 24px;\n  )}>x</div>\n);\nexport default a;\n`),
+      project(`const a = (\n  <div className={@@(\n    $(name): 24px;\n  )}>x</div>\n);\nexport default a;\n`),
     );
 
     expect(status).toBe(1);
@@ -265,6 +265,17 @@ describe("a config this cannot use", () => {
     ["an async config", 'export default async () => ({ units: { length: ["px"] } });', "is async"],
     ["units as a string", 'export default { units: "px" };', "takes families"],
     ["a setting that is not one", 'export default { unitz: ["px"] };', "not a setting"],
+    // The build refuses these whatever the config says, so switching one off would only quiet the editor.
+    [
+      "a refusal switched off",
+      'export default { rules: { "block-refused": "off" } };',
+      "the build refuses it whatever",
+    ],
+    [
+      "a block in a template switched off",
+      'export default { rules: { "block-in-a-template": "off" } };',
+      "the build refuses it whatever",
+    ],
     ["exporting a number", "export default 5;", "must export an object"],
   ])("%s is said as a sentence, not thrown", (_what, config, expected) => {
     const { status, output } = withConfig(config);
@@ -395,7 +406,7 @@ describe("codegen", () => {
 
   test("writes the pair, says what it wrote, and exits 0", () => {
     const root = bare(
-      `import { kind } from "@ramonda/css/config";\nexport default { variables: { color: kind("color", { primary: { main: "#3b82f6" } }) } };\n`,
+      `import { kind } from "@ramonda/css/config";\nexport default { variables: { $color: kind("color", { primary: { main: "#3b82f6" } }) } };\n`,
     );
     const { output, status } = runIn(root);
 
@@ -424,7 +435,7 @@ describe("codegen", () => {
    * compares before writing for an unrelated reason.
    */
   describe("`--check`", () => {
-    const declaring = `import { kind } from "@ramonda/css/config";\nexport default { variables: { color: kind("color", { primary: { main: "#3b82f6" } }) } };\n`;
+    const declaring = `import { kind } from "@ramonda/css/config";\nexport default { variables: { $color: kind("color", { primary: { main: "#3b82f6" } }) } };\n`;
 
     test("a project with no generated pair at all is stale, and nothing is written", () => {
       const root = bare(declaring);
@@ -468,7 +479,7 @@ describe("codegen", () => {
 
   test("a collision stops it, with both paths named", () => {
     const root = bare(
-      `import { kind } from "@ramonda/css/config";\nexport default { variables: { "a-b": kind("length", { c: "1px" }), a: kind("length", { "b-c": "2px" }) } };\n`,
+      `import { kind } from "@ramonda/css/config";\nexport default { variables: { $a: kind("length", { b: { c: "1px" }, "b-c": "2px" }) } };\n`,
     );
     const { output, status } = runIn(root);
 
@@ -507,7 +518,7 @@ describe("codegen", () => {
    */
   test("a declaration `kind` refuses is said once, with the file and the reason", () => {
     const root = bare(
-      `import { kind } from "@ramonda/css/config";\nexport default { variables: { a: kind("length", { b: { value: "8px", range: [] } }) } };\n`,
+      `import { kind } from "@ramonda/css/config";\nexport default { variables: { $a: kind("length", { b: { value: "8px", range: [] } }) } };\n`,
     );
     const { output, status } = runIn(root);
 
@@ -522,10 +533,8 @@ describe("codegen", () => {
   test.each([
     ["a name the stylesheet cannot hold", `{ "a}b": kind("color", { c: "red" }) }`],
     ["a value that would close the rule", `{ a: kind("color", { c: "red; }" }) }`],
-    [
-      "two variables spelling one custom property",
-      `{ "a-b": kind("length", { c: "1px" }), a: kind("length", { "b-c": "2px" }) }`,
-    ],
+    ["two variables spelling one custom property", `{ a: kind("length", { b: { c: "1px" }, "b-c": "2px" }) }`],
+    ["a group that is no identifier", `{ "a-b": kind("length", { c: "1px" }) }`],
   ])("%s is SAID, with no stack and with the config named", (_what, variables) => {
     const root = bare(`import { kind } from "@ramonda/css/config";\nexport default { variables: ${variables} };\n`);
     const { output, status } = runIn(root);

@@ -6,12 +6,12 @@ import { transform } from "../compiler/transform";
 import { virtualFile } from "../compiler/virtual";
 
 /**
- * `$.color.primary.main` in a block — the spelling for a variable the project DECLARED.
+ * `$color.primary.main` in a block — the spelling for a variable the project DECLARED.
  *
  * It reaches the AST as its own kind of part rather than as resolved text, and that is the decision
  * the rest of the feature rests on. A `@@property` reference becomes `TextPart` with `resolved: true`
  * because nothing downstream needs the author's spelling of it again. This is the opposite: the
- * virtual file has to emit `$.color.primary.main` as a REAL TypeScript expression, which is where
+ * virtual file has to emit `$color.primary.main` as a REAL TypeScript expression, which is where
  * completion and type checking come from, so the path and its span must survive the parse.
  *
  * The parser resolves nothing. A path is text until something that has read the config says what it
@@ -32,47 +32,61 @@ const shapes = (css: string) => parts(css).map((one) => (one.kind === "variable"
 describe("reading `$` in a value", () => {
   test("a path on its own is one variable part and nothing else", () => {
     // No leading `text`: the reader skips the trivia after the colon, so the value STARTS here.
-    expect(shapes("color: $.color.primary.main;")).toEqual(["$color.primary.main"]);
+    expect(shapes("color: $color.primary.main;")).toEqual(["$color.primary.main"]);
   });
 
   test("it keeps the path only — resolving is somebody else's question", () => {
-    const [variable] = parts("color: $.color.primary.main;");
+    const [variable] = parts("color: $color.primary.main;");
 
     expect(variable).toMatchObject({ kind: "variable", path: "color.primary.main" });
   });
 
   test("a segment that is not an identifier is allowed, because the block is our grammar", () => {
-    expect(shapes("padding: $.space.inline.2xl;")).toEqual(["$space.inline.2xl"]);
-    expect(shapes("z-index: $.layer.0;")).toEqual(["$layer.0"]);
+    expect(shapes("padding: $space.inline.2xl;")).toEqual(["$space.inline.2xl"]);
+    expect(shapes("z-index: $layer.0;")).toEqual(["$layer.0"]);
   });
 
   test("it works inside a call, which is where half the real uses are", () => {
-    expect(shapes("width: calc($.size.control.md * 2);")).toEqual(["text", "$size.control.md", "text"]);
+    expect(shapes("width: calc($size.control.md * 2);")).toEqual(["text", "$size.control.md", "text"]);
   });
 
   test("more than one in a value, each its own part", () => {
-    expect(shapes("border: 1px solid $.color.border.strong;")).toEqual(["text", "$color.border.strong"]);
-    expect(shapes("margin: $.space.sm $.space.lg;")).toEqual(["$space.sm", "text", "$space.lg"]);
+    expect(shapes("border: 1px solid $color.border.strong;")).toEqual(["text", "$color.border.strong"]);
+    expect(shapes("margin: $space.sm $space.lg;")).toEqual(["$space.sm", "text", "$space.lg"]);
   });
 
-  test("a bare `$` is text, because CSS may hold one and nothing is being named", () => {
+  test("a `$` in a string is text, because a string may hold anything", () => {
     expect(shapes('content: "$";')).toEqual(["text"]);
-    expect(shapes("grid-template-areas: $;")).toEqual(["text"]);
   });
 
-  test("`$.` with nothing after it is STILL a variable part, which is what completion needs", () => {
+  test("`$` with nothing after it is STILL a variable part, which is what completion needs", () => {
     // Half-typed is the common state in an editor. A part with an empty path is what gives the
-    // virtual file somewhere to put the caret; text here would mean no completion after the dot.
-    expect(shapes("color: $.;")).toEqual(["$"]);
+    // virtual file somewhere to put the caret; text here would mean no completion of the groups.
+    expect(shapes("color: $;")).toEqual(["$"]);
+  });
+
+  /** A build has no caret, so a `$` alone is a name or an escape somebody did not finish. */
+  test("and a build refuses it, saying both things it could have been", () => {
+    const source = `<div className={@@(\ncolor: $;\n)}>x</div>`;
+    const [site] = findBlocks(source);
+
+    expect(() => readBlock(source, site.open, "Card.tsx")).toThrow(/\$group\.name.*\$\( … \)/);
+  });
+
+  test("the old `$.` spelling is refused with the new one", () => {
+    const source = `<div className={@@(\ncolor: $.color.primary;\n)}>x</div>`;
+    const [site] = findBlocks(source);
+
+    expect(() => readBlock(source, site.open, "Card.tsx")).toThrow("`$color.primary`");
   });
 
   test("the span is the author's, so a squiggle lands on the path", () => {
-    const source = `<div className={@@(\ncolor: $.color.primary.main;\n)}>x</div>`;
+    const source = `<div className={@@(\ncolor: $color.primary.main;\n)}>x</div>`;
     const [site] = findBlocks(source);
     const { block } = readBlock(source, site.open, "Card.tsx", { tolerant: true });
     const [variable] = (block.items[0] as Declaration).value.filter((one) => one.kind === "variable");
 
-    expect(source.slice(variable.at, (variable.at ?? 0) + (variable.length ?? 0))).toBe("$.color.primary.main");
+    expect(source.slice(variable.at, (variable.at ?? 0) + (variable.length ?? 0))).toBe("$color.primary.main");
   });
 });
 
@@ -106,19 +120,19 @@ describe("what `$` compiles to", () => {
    * that names nothing is reported.
    */
   test("a path becomes the custom property it names", () => {
-    expect(css("color: $.color.primary.main;")).toContain("var(--color-primary-main)");
+    expect(css("color: $color.primary.main;")).toContain("var(--color-primary-main)");
   });
 
   test("a segment that is not an identifier survives into the name", () => {
-    expect(css("padding: $.space.inline.2xl;")).toContain("var(--space-inline-2xl)");
+    expect(css("padding: $space.inline.2xl;")).toContain("var(--space-inline-2xl)");
   });
 
   test("inside a call, and beside other text", () => {
-    expect(css("width: calc($.size.control.md * 2);")).toContain("calc(var(--size-control-md) * 2)");
+    expect(css("width: calc($size.control.md * 2);")).toContain("calc(var(--size-control-md) * 2)");
   });
 
   test("it is NOT a hole — nothing lands on the element", () => {
-    const result = transform(`const a = <div className={@@( color: $.color.primary.main; )}>x</div>;\n`, {
+    const result = transform(`const a = <div className={@@( color: $color.primary.main; )}>x</div>;\n`, {
       filename: "Card.tsx",
     });
 
@@ -128,14 +142,17 @@ describe("what `$` compiles to", () => {
   });
 
   test("two blocks writing one variable share a class; two different ones do not", () => {
-    expect(classes("color: $.color.primary.main;")).toEqual(classes("color: $.color.primary.main;"));
-    expect(classes("color: $.color.primary.main;")).not.toEqual(classes("color: $.color.primary.light;"));
+    expect(classes("color: $color.primary.main;")).toEqual(classes("color: $color.primary.main;"));
+    expect(classes("color: $color.primary.main;")).not.toEqual(classes("color: $color.primary.light;"));
   });
 });
 
 describe("what the virtual file makes of it", () => {
-  const code = (block: string) => {
-    const built = virtualFile(`const a = <div className={@@( ${block} )}>x</div>;\n`, { properties: "./properties" });
+  const code = (block: string, tolerant = false) => {
+    const built = virtualFile(`const a = <div className={@@( ${block} )}>x</div>;\n`, {
+      properties: "./properties",
+      tolerant,
+    });
     if (built === undefined) throw new Error("the virtual file found no block");
     return built.code;
   };
@@ -152,7 +169,7 @@ describe("what the virtual file makes of it", () => {
     // `__vars` rather than `$`: a block needs no import, so the virtual file binds the project's
     // variables under a name of its own. See the declaration in `virtual.ts` for what leaving it to
     // the author's scope was measured to say.
-    expect(code("color: $.color.primary.main;")).toContain("{color:__vars.color.primary.main}");
+    expect(code("color: $color.primary.main;")).toContain("{color:__vars.color.primary.main}");
   });
 
   /**
@@ -164,7 +181,7 @@ describe("what the virtual file makes of it", () => {
    * dead beside it. A block is this package's language and `$` belongs to it.
    */
   test("`$` needs no import, because the virtual file binds it", () => {
-    const written = code("color: $.color.primary.main;");
+    const written = code("color: $color.primary.main;");
 
     // `var`, not `const`: in a file that is a script it is global, and a second script declaring it
     // again is allowed for a `var` of the same type and `TS2451` for a `const`.
@@ -174,26 +191,30 @@ describe("what the virtual file makes of it", () => {
   });
 
   test("a segment that is not an identifier is bracketed, because THIS half must parse", () => {
-    expect(code("padding: $.space.inline.2xl;")).toContain('__vars.space.inline["2xl"]');
-    expect(code("z-index: $.layer.0;")).toContain('__vars.layer["0"]');
+    expect(code("padding: $space.inline.2xl;")).toContain('__vars.space.inline["2xl"]');
+    expect(code("z-index: $layer.0;")).toContain('__vars.layer["0"]');
   });
 
-  test("a half-typed path keeps its trailing DOT, which is what completion needs", () => {
+  test("a `$` alone becomes a member access in progress, which is what completion needs", () => {
     // `__vars` alone is a finished expression and an editor answers one with nothing. With the dot
-    // it is a member access in progress, and the members are the whole point of the spelling.
-    expect(code("color: $.;")).toContain("{color:__vars.}");
+    // it is a member access in progress, and the groups are its members.
+    expect(code("color: $;", true)).toContain("{color:__vars.}");
+  });
+
+  test("a half-typed path keeps its trailing DOT", () => {
+    expect(code("color: $color.;", true)).toContain("{color:__vars.color.}");
   });
 
   /**
    * The space before the expression is KEPT, and it was not.
    *
    * `collapse` trims both ends of what it is given, and each text run was collapsed on its own — so
-   * `border: 1px solid {accent}` became `` `1px solid${x}` ``, a value that reads `1px solidred`.
+   * `border: 1px solid $(accent)` became `` `1px solid${x}` ``, a value that reads `1px solidred`.
    * The emitted CSS was always right — `flatten` collapses the whole value at once, so that space
    * is interior there — and nothing depended on the virtual file's version until a property's own
    * type started reading the SHAPE of it.
    */
   test("mixed with text it is one template literal, with the spaces the author wrote", () => {
-    expect(code("border: 1px solid $.color.border.strong;")).toContain("`1px solid ${__vars.color.border.strong}`");
+    expect(code("border: 1px solid $color.border.strong;")).toContain("`1px solid ${__vars.color.border.strong}`");
   });
 });

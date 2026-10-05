@@ -96,11 +96,11 @@ describe("what a block becomes", () => {
   });
 
   test("a value that is entirely one hole is the expression itself, so its own type is checked", () => {
-    expect(body(`const a = <div className={@@( padding: {size}; )}>x</div>;\n`)).toContain(`{padding:__val((size))}`);
+    expect(body(`const a = <div className={@@( padding: $(size); )}>x</div>;\n`)).toContain(`{padding:__val((size))}`);
   });
 
   test("text and a hole together become a template literal, which keeps the pattern", () => {
-    expect(body(`const a = <div className={@@( padding: {n}px; )}>x</div>;\n`)).toContain(
+    expect(body(`const a = <div className={@@( padding: $(n)px; )}>x</div>;\n`)).toContain(
       "{padding:`${__val((n))}px`}",
     );
   });
@@ -120,11 +120,11 @@ describe("what a block becomes", () => {
   });
 
   test("the expression is parenthesised, so a comma inside cannot change the call", () => {
-    expect(body(`const a = <div className={@@( color: {(a, b)}; )}>x</div>;\n`)).toContain(`{color:__val(((a, b)))}`);
+    expect(body(`const a = <div className={@@( color: $((a, b)); )}>x</div>;\n`)).toContain(`{color:__val(((a, b)))}`);
   });
 
   test("a backtick in the CSS cannot end the template literal it lands in", () => {
-    expect(body('const a = <div className={@@( content: "`${x}" {y}; )}>x</div>;\n')).toContain("\\`\\${x}");
+    expect(body('const a = <div className={@@( content: "`${x}" $(y); )}>x</div>;\n')).toContain("\\`\\${x}");
   });
 
   /**
@@ -154,7 +154,7 @@ describe("what a block becomes", () => {
     expect(preamble).not.toMatch(/\btype __|interface __/);
     // `match`'s own helper: the subject, the keys it may be, and the arms — see its declaration.
     expect(preamble).toContain(
-      `declare function __match<S, const K extends readonly S[]>(subject: S, keys: K): never;`,
+      `declare function __match<const S, const K extends readonly S[]>(subject: S, keys: K, whole?: `,
     );
     expect(preamble).toContain(`__cond<T>(condition: import("./properties").CssCondition<T>): never;`);
     expect(preamble).toContain(`__from<T>(block: import("./properties").CssSpreadable<T>): never;`);
@@ -183,7 +183,7 @@ describe("what a block becomes", () => {
    * it over, because a virtual file exists to be type-checked and a refusal belongs to the build.
    */
   test("a block found inside another block is passed over rather than read twice", () => {
-    const file = build(`const a = <div className={@@( color: { <b className={@@( color: red; )}/> })}>x</div>;\n`);
+    const file = build(`const a = <div className={@@( color: $( <b className={@@( color: red; )}/> ))}>x</div>;\n`);
 
     // EITHER helper: this block carries a hole, so it gets the one whose flag says so. What the
     // test is about is the COUNT — one call, not two — and naming a single helper hid that.
@@ -299,7 +299,7 @@ describe("the declaration a caret is in", () => {
 });
 
 describe("the way home", () => {
-  const source = `const accent = 1;\nconst a = <div className={@@( display: flex; color: {accent}; )}>x</div>;\n`;
+  const source = `const accent = 1;\nconst a = <div className={@@( display: flex; color: $(accent); )}>x</div>;\n`;
   const file = build(source);
   if (file === undefined) throw new Error("the virtual file found no block");
 
@@ -307,7 +307,7 @@ describe("the way home", () => {
   const from = (needle: string) => file.homeOf(file.code.indexOf(needle));
 
   test("an expression maps offset for offset, because it was copied", () => {
-    expect(from("accent)")).toBe(source.indexOf("accent}"));
+    expect(from("accent)")).toBe(source.indexOf("accent)"));
   });
 
   test("code outside a block maps offset for offset too", () => {
@@ -448,7 +448,7 @@ describe("through tsc, and back to the author's own file", () => {
   });
 
   test("a hole in a value block is still checked in its own scope", () => {
-    const source = `class Card {\n  size = true;\n  panel = @@(\n    padding: {this.size};\n  );\n}\n`;
+    const source = `class Card {\n  size = true;\n  panel = @@(\n    padding: $(this.size);\n  );\n}\n`;
     const [only] = check(source);
 
     expect(only.code).toBe(2322);
@@ -487,7 +487,7 @@ describe("through tsc, and back to the author's own file", () => {
   test("a hole is checked against the property it stands in, in its own lexical scope", () => {
     // `this.size` resolves to the class's own field, which is the whole point of leaving the
     // expression where the author wrote it rather than lifting it out.
-    const source = `class Card {\n  size = true;\n  render() {\n    return (\n      <div className={@@(\n        padding: {this.size};\n      )}>x</div>\n    );\n  }\n}\n`;
+    const source = `class Card {\n  size = true;\n  render() {\n    return (\n      <div className={@@(\n        padding: $(this.size);\n      )}>x</div>\n    );\n  }\n}\n`;
     const [only] = check(source);
 
     expect(only.code).toBe(2322);
@@ -506,16 +506,154 @@ describe("through tsc, and back to the author's own file", () => {
   });
 
   test("a name that does not exist is reported where it is written", () => {
-    const source = `const a = (\n  <div className={@@(\n    color: {missing};\n  )}>x</div>\n);\n`;
+    const source = `const a = (\n  <div className={@@(\n    color: $(missing);\n  )}>x</div>\n);\n`;
     const [only] = check(source);
 
     expect(only.code).toBe(2304);
     expect(only.message).toContain("missing");
-    expect({ line: only.line, column: only.column }).toEqual({ line: 3, column: 13 });
+    expect({ line: only.line, column: only.column }).toEqual({ line: 3, column: 14 });
+  });
+
+  /** Every branch of a chain is checked, its condition beside it — as a `when` is. */
+  test("a name that does not exist in an `else when` is reported where it is written", () => {
+    const source = `declare const a: boolean;\nconst x = @@(\n  when $(a) { color: red; }\n  else when $(missing) { color: blue; }\n);\nexport default x;\n`;
+    const [only, ...rest] = check(source);
+
+    expect(rest).toEqual([]);
+    expect(only.code).toBe(2304);
+    expect({ line: only.line, column: only.column }).toEqual({ line: 4, column: 15 });
+  });
+
+  test("a wrong value inside a bare `else` is reported, on the value", () => {
+    const source = `declare const a: boolean;\nconst x = @@(\n  when $(a) { display: flex; }\n  else { display: flx; }\n);\nexport default x;\n`;
+    const found = check(source);
+
+    expect(found).toHaveLength(1);
+    expect(found[0].line).toBe(4);
+  });
+
+  /** A block-level match asks the subject against its keys once, and checks every arm's values. */
+  test("a block match's key the subject can never be is reported on the key", () => {
+    const source = `declare const t: "hot" | "cold";\nconst x = @@(\n  match $(t) {\n    hot => ( color: red; );\n    warm => ( color: blue; );\n  }\n);\nexport default x;\n`;
+    const found = check(source);
+
+    expect(found).toHaveLength(1);
+    expect({ line: found[0].line, column: found[0].column }).toEqual({ line: 5, column: 5 });
+  });
+
+  test("a wrong value inside a block match's arm is reported, on its line", () => {
+    const source = `declare const t: "hot" | "cold";\nconst x = @@(\n  match $(t) {\n    hot => ( display: flx; );\n    cold => ( display: flex; );\n  }\n);\nexport default x;\n`;
+    const found = check(source);
+
+    expect(found).toHaveLength(1);
+    expect(found[0].line).toBe(4);
+  });
+
+  /**
+   * A match with no `_` has to name every value its subject can be — the composing page said so,
+   * and measured, neither level checked it: `match $(size) { small => … }` over `"small" | "large"`
+   * was silent, and a `large` element got nothing.
+   */
+  describe("a match with no `_`", () => {
+    const at = (source: string) => {
+      const found = check(source);
+      return found.map((one) => ({ line: one.line, column: one.column, says: one.message }));
+    };
+
+    test.each([
+      [
+        "in a value",
+        `declare const size: "small" | "large";\nconst x = @@(\n  padding: match $(size) { small => 2px; };\n);\nexport default x;\n`,
+        { line: 3, column: 12 },
+      ],
+      [
+        "over whole groups",
+        `declare const size: "small" | "large";\nconst x = @@(\n  match $(size) {\n    small => ( padding: 2px; );\n  }\n);\nexport default x;\n`,
+        { line: 3, column: 3 },
+      ],
+    ])("%s names the value it has no arm for, on the word", (_what, source, where) => {
+      const [only, ...rest] = at(source);
+
+      expect(rest).toEqual([]);
+      expect({ line: only.line, column: only.column }).toEqual(where);
+      expect(only.says).toContain("this match has no arm for large — add one, or a _ arm for the rest");
+    });
+
+    /**
+     * A subject written as a literal is that literal, not \`string\`. Reported by the user: TypeScript
+     * widened \`$("nepostojecaVrednost")\` to \`string\`, so a match whose keys it can never be was
+     * silent — while the same value through a \`const\` was refused.
+     */
+    test("a literal subject is checked as itself", () => {
+      const source = `const x = @@(\n  match $("nepostojecaVrednost") {\n    quiet => ( padding: 2px; );\n    loud => ( padding: 4px; );\n  }\n);\nexport default x;\n`;
+      const found = check(source).map((one) => one.message);
+
+      expect(found).toHaveLength(2);
+      expect(found[0]).toContain(`Type '"quiet"' is not assignable to type '"nepostojecaVrednost"'`);
+    });
+
+    test.each([
+      ["every value named", `match $(size) { small => ( padding: 2px; ); large => ( padding: 4px; ); }`],
+      ["a `_` for the rest", `match $(size) { small => ( padding: 2px; ); _ => ( padding: 4px; ); }`],
+      ["a plain string subject, which no list could cover", `match $(name) { a => ( padding: 2px; ); }`],
+      [
+        "a subject that may be undefined, every value named",
+        `match $(maybe) { small => ( padding: 2px; ); large => ( padding: 4px; ); }`,
+      ],
+    ])("%s is quiet", (_what, block) => {
+      const source = `declare const size: "small" | "large";\ndeclare const name: string;\ndeclare const maybe: "small" | "large" | undefined;\nconst x = @@(\n  ${block}\n);\nexport default x;\n`;
+
+      expect(check(source)).toEqual([]);
+    });
+  });
+
+  test("a block match that is right reports nothing", () => {
+    const source = `declare const t: "hot" | "cold";\nconst x = @@(\n  match $(t) {\n    hot => ( display: flex; );\n    _ => ( display: block; );\n  }\n);\nexport default x;\n`;
+
+    expect(check(source)).toEqual([]);
+  });
+
+  /** A choice: each condition beside, and every branch checked as the property's value, on itself. */
+  test("a wrong value in a choice's branch is reported on that branch", () => {
+    const source = `declare const on: boolean;\nconst x = @@(\n  display: $(on) ? flex : flx;\n);\nexport default x;\n`;
+    const found = check(source);
+
+    expect(found).toHaveLength(1);
+    expect({ line: found[0].line, column: found[0].column }).toEqual({ line: 3, column: 27 });
+  });
+
+  test("a condition naming nothing is reported where it is written", () => {
+    const source = `const x = @@(\n  display: $(missing) ? flex : block;\n);\nexport default x;\n`;
+    const [only, ...rest] = check(source);
+
+    expect(rest).toEqual([]);
+    expect(only.code).toBe(2304);
+    expect({ line: only.line, column: only.column }).toEqual({ line: 2, column: 14 });
+  });
+
+  test("a choice that is right reports nothing", () => {
+    const source = `declare const a: boolean;\ndeclare const b: boolean;\nconst x = @@(\n  display: $(a) ? flex : $(b) ? grid : block;\n);\nexport default x;\n`;
+
+    expect(check(source)).toEqual([]);
+  });
+
+  /**
+   * A runtime value in an arm or a branch is said once, by `hole-in-a-match-arm`. The virtual file
+   * wrote the arm anyway, as a template string, and the type said it again in its own words —
+   * *Type '`${string}`' is not assignable…* — on the PROPERTY for a match arm. Measured in round 7.
+   */
+  test.each([
+    ["a value match's arm", "  display: match $(t) { a => $(base); b => flex; };"],
+    ["a choice's branch", "  display: $(on) ? $(base) : flex;"],
+    ["the last branch of a choice", "  display: $(on) ? flex : $(base);"],
+  ])("a runtime value in %s is left to its rule", (_what, css) => {
+    const source = `declare const t: "a" | "b";\ndeclare const on: boolean;\ndeclare const base: string;\nconst x = @@(\n${css}\n);\nexport default x;\n`;
+
+    expect(check(source)).toEqual([]);
   });
 
   test("a block that is right reports nothing at all", () => {
-    const source = `const size = "8px" as const;\nconst a = (\n  <div className={@@(\n    display: flex;\n    padding: {size};\n    &:hover { color: red; }\n    --brand: red;\n  )}>x</div>\n);\n`;
+    const source = `const size = "8px" as const;\nconst a = (\n  <div className={@@(\n    display: flex;\n    padding: $(size);\n    &:hover { color: red; }\n    --brand: red;\n  )}>x</div>\n);\n`;
 
     expect(check(source)).toEqual([]);
   });
@@ -580,7 +718,7 @@ describe("a rewritten run whose length happens to match the author's", () => {
 
   /** And a genuinely copied run still maps both ends — a hole's contents are the author's own text. */
   test("a hole's expression is copied, and maps offset for offset", () => {
-    expect(spanOver(`const a = <div className={@@( color: {this.tone}; )}>x</div>;\n`, "this.tone")).toBe("this.tone");
+    expect(spanOver(`const a = <div className={@@( color: $(this.tone); )}>x</div>;\n`, "this.tone")).toBe("this.tone");
   });
 });
 
@@ -611,18 +749,26 @@ describe("what the virtual file hands TypeScript", () => {
     ["a braced one", "const a = <div className={@@(\n  color: red;\n)}>x</div>;\n"],
     ["a plain value", "const a = @@(\n  color: red;\n);\n"],
     ["a nested rule", "const a = @@(\n  &:hover { color: red; }\n);\n"],
-    ["a hole", "const a = @@(\n  color: {tint};\n);\n"],
-    ["a group", "const a = @@(\n  if ({on}) { color: red; }\n);\n"],
-    ["a spread", "const a = @@(\n  ...{base};\n);\n"],
+    ["a hole", "const a = @@(\n  color: $(tint);\n);\n"],
+    ["a group", "const a = @@(\n  when $(on) { color: red; }\n);\n"],
+    [
+      "a chain",
+      "const a = @@(\n  when $(a) { color: red; }\n  else when $(b) { color: blue; }\n  else { color: green; }\n);\n",
+    ],
+    [
+      "a chain inside a NAMED BLOCK",
+      "const k = @@keyframes(\n  when $(on) { from { opacity: 0; } }\n  else { to { opacity: 1; } }\n);\n",
+    ],
+    ["a spread", "const a = @@(\n  ...$(base);\n);\n"],
     ["a named site as a value", "const k = @@keyframes(\n  from { opacity: 0; }\n);\n"],
     ["two blocks in one file", "const a = @@( color: red; );\nconst b = @@( color: blue; );\n"],
     // The three that did not, each for its own reason.
     ["a SHEBANG, which is legal only at offset 0", "#!/usr/bin/env node\nconst a = @@(\n  color: red;\n);\n"],
     ["a NAMED SITE as a bare attribute", "const a = <div css=@@keyframes(\n  from { opacity: 0; }\n)>x</div>;\n"],
-    ["a BLOCK NESTED IN A HOLE", 'const a = @@(\n  color: {on ? @@( color: red; ) : "blue"};\n);\n'],
+    ["a BLOCK NESTED IN A HOLE", 'const a = @@(\n  color: $(on ? @@( color: red; ) : "blue");\n);\n'],
     // A named block's body is a single object literal, and a call is not one of its members.
-    ["`if` inside a NAMED BLOCK", "const k = @@keyframes(\n  if ({on}) { from { opacity: 0; } }\n);\n"],
-    ["a SPREAD inside a named block", 'const f = @@font-face(\n  src: url("/b.woff2");\n  ...{base};\n);\n'],
+    ["`if` inside a NAMED BLOCK", "const k = @@keyframes(\n  when $(on) { from { opacity: 0; } }\n);\n"],
+    ["a SPREAD inside a named block", 'const f = @@font-face(\n  src: url("/b.woff2");\n  ...$(base);\n);\n'],
   ])("%s", (_what, source) => {
     expect(parses(source)).toEqual([]);
   });
@@ -633,7 +779,7 @@ describe("what the virtual file hands TypeScript", () => {
    * inside gets no answer, and the declaration beside it gets its own.
    */
   test("a block nested in a hole leaves the rest of the file readable", () => {
-    const virtual = build('const a = @@(\n  color: {on ? @@( color: red; ) : "blue"};\n  dsiplay: flex;\n);\n');
+    const virtual = build('const a = @@(\n  color: $(on ? @@( color: red; ) : "blue");\n  dsiplay: flex;\n);\n');
 
     expect(virtual?.code).toContain("(null)");
     expect(virtual?.code).not.toContain("@@(");
@@ -656,7 +802,7 @@ describe("what the virtual file hands TypeScript", () => {
    * difference was seen and never made.
    */
   test("a guard inside a named block is not written into its literal", () => {
-    const virtual = build("const k = @@keyframes(\n  if ({on}) { from { opacity: 0; } }\n);\n");
+    const virtual = build("const k = @@keyframes(\n  when $(on) { from { opacity: 0; } }\n);\n");
 
     expect(virtual?.code).not.toContain("__cond(");
     // And the body it guarded is still checked, which is why this is not simply refused.
@@ -676,14 +822,14 @@ describe("what the virtual file hands TypeScript", () => {
    */
   test.each([
     ["no hole", "const a = @@(\n  color: red;\n);\nconst after = 1;\n"],
-    ["a one-line hole", "const a = @@(\n  color: {tint};\n);\nconst after = 1;\n"],
-    ["a hole across two lines", "const a = @@(\n  color: {cond\n    ? red\n    : blue};\n);\nconst after = 1;\n"],
-    ["a hole across four lines", "const a = @@(\n  color: {[\n    1,\n    2,\n  ].length};\n);\nconst after = 1;\n"],
-    ["a guard across lines", "const a = @@(\n  if ({a\n    && b}) { color: red; }\n);\nconst after = 1;\n"],
-    ["a spread across lines", "const a = @@(\n  ...{one\n    ?? two};\n);\nconst after = 1;\n"],
+    ["a one-line hole", "const a = @@(\n  color: $(tint);\n);\nconst after = 1;\n"],
+    ["a hole across two lines", "const a = @@(\n  color: $(cond\n    ? red\n    : blue);\n);\nconst after = 1;\n"],
+    ["a hole across four lines", "const a = @@(\n  color: $([\n    1,\n    2,\n  ].length);\n);\nconst after = 1;\n"],
+    ["a guard across lines", "const a = @@(\n  when $(a\n    && b) { color: red; }\n);\nconst after = 1;\n"],
+    ["a spread across lines", "const a = @@(\n  ...$(one\n    ?? two);\n);\nconst after = 1;\n"],
     [
       "two blocks, one with a multi-line hole",
-      "const a = @@( color: red; );\nconst b = @@(\n  color: {x\n    ?? y};\n);\n",
+      "const a = @@( color: red; );\nconst b = @@(\n  color: $(x\n    ?? y);\n);\n",
     ],
   ])("%s keeps the file's line count", (_what, source) => {
     expect(build(source)?.code.split("\n")).toHaveLength(source.split("\n").length);
@@ -699,10 +845,10 @@ describe("what the virtual file hands TypeScript", () => {
    * were unaffected, which is why it went unseen.
    */
   test.each([
-    ["text, hole, text", "const a = @@( border-left: 4px solid {tint} inset; );\n"],
-    ["hole, text", "const a = @@( border-left: {w} solid red; );\n"],
-    ["two holes", "const a = @@( border-left: {w} solid {c}; );\n"],
-    ["a hole and text in a nested rule", "const a = @@( &:hover { border-left: {w} solid red; } );\n"],
+    ["text, hole, text", "const a = @@( border-left: 4px solid $(tint) inset; );\n"],
+    ["hole, text", "const a = @@( border-left: $(w) solid red; );\n"],
+    ["two holes", "const a = @@( border-left: $(w) solid $(c); );\n"],
+    ["a hole and text in a nested rule", "const a = @@( &:hover { border-left: $(w) solid red; } );\n"],
   ])("%s: every offset in the value maps home", (_what, source) => {
     const virtual = build(source);
     const from = source.indexOf(": ") + 2;
@@ -711,9 +857,9 @@ describe("what the virtual file hands TypeScript", () => {
     const lost: number[] = [];
     for (let at = from; at < to; at++) {
       const spot = virtual?.virtualOf(at);
-      // A hole's own braces are this file's, so they map nowhere by design; the text either side and
-      // the expression between them are the author's.
-      if (source[at] === "{" || source[at] === "}") continue;
+      // An escape's own `$(` and `)` are this file's, so they map nowhere by design; the text either
+      // side and the expression between them are the author's. No value here holds another paren.
+      if ("$()".includes(source[at])) continue;
       if (spot === undefined || virtual?.homeOf(spot) === undefined) lost.push(at);
     }
 
@@ -744,7 +890,7 @@ describe("what the virtual file hands TypeScript", () => {
 
   /** And a caret in the FIRST run answers from the first run, not from the last. */
   test("a caret in the text before a hole belongs to that text", () => {
-    const source = "const a = @@( border-left: 4px solid {tint} inset; );\n";
+    const source = "const a = @@( border-left: 4px solid $(tint) inset; );\n";
     const virtual = build(source);
     const at = source.indexOf("solid");
 

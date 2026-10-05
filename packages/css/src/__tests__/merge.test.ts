@@ -95,7 +95,7 @@ describe("what a merge produces", () => {
     expect(mergeClassNames()).toBe("");
   });
 
-  /** A `match` that named no arm gives nothing back, which is the same answer as `if ({false})`. */
+  /** A `match` that named no arm gives nothing back, which is the same answer as `when $(false)`. */
   test("a part that is `undefined` leaves what was above it standing", () => {
     expect(mergeClassNames(classOf("color", "red"), undefined)).toBe(classOf("color", "red"));
   });
@@ -181,7 +181,7 @@ describe("a shorthand meeting its own longhand", () => {
   });
 
   /**
-   * **Associative**, which is what lets a nested `if` mean what a flattened one means — and it is
+   * **Associative**, which is what lets a nested `when` mean what a flattened one means — and it is
    * the property clearing could have broken, since clearing removes keys rather than replacing them.
    */
   test("and clearing is associative, which is what lets a group nest", () => {
@@ -244,7 +244,7 @@ describe("clearing inside a condition", () => {
 });
 
 /**
- * A block spread back into another — which is what `...{base};` does.
+ * A block spread back into another — which is what `...$(base);` does.
  *
  * `const base = @@( … )` compiles to a class string, and a spread hands `merge` that string. It used
  * to compile to a merged VALUE carrying a hidden map, and a value spread in without it composed
@@ -555,7 +555,7 @@ describe("an override the stylesheet will not honour", () => {
 /**
  * **THE WARNING MISSED EVERY SHORTHAND, and that is all 98 families.**
  *
- * `warnAboutOrder` exists for the one hole the compiler cannot see: `...{base}` is a runtime value,
+ * `warnAboutOrder` exists for the one hole the compiler cannot see: `...$(base)` is a runtime value,
  * so nothing at build time knows what is in it. It grouped by the EXACT property name, so
  * `padding` and `padding-left` were never compared — and a shorthand under a condition silently beat
  * a longhand composed after it.

@@ -1,6 +1,6 @@
 ---
 title: Composing, and who wins
-description: Merging one block into another, conditions that bring whole groups, and the cascade layer that decides against your own stylesheet.
+description: Merging one block into another, conditions and matches that bring whole groups or pick one value, and the cascade layer that decides against yours.
 section: Style blocks
 order: 114
 ---
@@ -10,8 +10,8 @@ order: 114
 A block is rarely one thing. A button has a base, a variant, a size and a couple of toggles — and a
 toggle changes **groups of keys**, not just values.
 
-Two spellings do that, both written inside the block, and both mean the same: **later wins**, which
-is the rule you already have when you read CSS.
+A spread and a condition do that, both written inside the block, and both follow the same rule:
+**later wins**, which is the rule you already have when you read CSS.
 
 ```tsx
 const button = @@(
@@ -33,36 +33,71 @@ class Button extends Component {
   render() {
     return (
       <button className={@@(
-        ...{button};
-        ...{variants[this.variant]};
+        ...$(button);
+        ...$(variants[this.variant]);
 
-        if ({this.disabled}) {
+        when $(this.disabled) {
           opacity: 0.5;
           cursor: not-allowed;     /* wins over `cursor: pointer`, because it is BELOW it */
         }
 
         width: auto;
-        if ({this.full}) { width: 100%; }
+        when $(this.full) { width: 100%; }
       )}>press</button>
     );
   }
 }
 ```
 
-- **`...{ … }` merges another block here**, and it works across files. What it merges is a value, so
+- **`...$(…)` merges another block here**, and it works across files. What it merges is a value, so
   it can be imported, put in an object, or picked out of one.
-- **`if ({ … }) { … }` merges a group only when the condition holds.**
+- **`when $(…) { … }` merges a group only when the condition holds.**
 
 Both are arguments of the same merge, in the order you wrote them.
 
-**There is no `@else`.** For a choice between several blocks, spread a *lookup* — the one above,
-keyed by the variant. TypeScript then checks the map covers the union, so adding a third variant and
-forgetting the map is reported. For a choice of a single *value*, write a
-[`match`](#match-one-value-several-outcomes): each arm becomes its own class, so nothing is built while the page renders.
+For a choice between several blocks you already have, spread a *lookup* — the one above, keyed by
+the variant. TypeScript then checks the map covers the union, so adding a third variant and
+forgetting the map is reported.
+
+## `when`, `else when`, `else`
+
+A condition can go on, the way it does in JavaScript. **The first condition that holds brings its
+group, and the rest are not asked:**
+
+```tsx
+class Field extends Component<{ state: "error" | "warning" | "ok" }> {
+  render() {
+    return (
+      <input aria-label="Email" className={@@(
+        border: 1px solid;
+
+        when $(this.props.state === "error") {
+          border-color: #ef4444;
+        } else when $(this.props.state === "warning") {
+          border-color: #f59e0b;
+        } else {
+          border-color: #d1d5db;
+        }
+      )} />
+    );
+  }
+}
+```
+
+- **With no final `else`, nothing is brought when nothing holds**, and whatever was written above the
+  chain stands.
+- **An `else` belongs right after a `}` that closes a `when` or an `else when`.** Anywhere else — first
+  in a block, after a declaration, after a final `else` — it is refused, because there is nothing for
+  it to be the rest of.
+- **`else` takes no condition of its own.** A branch with one is `else when $( … )`.
+- The formatter writes each `else` on the line of the brace before it, as above.
+
+When every branch compares one value with a few fixed ones, as this one does, a
+[`match`](#a-match-over-whole-groups) says it shorter.
 
 ## `match` — one value, several outcomes
 
-`if` chooses between whole groups. `match` chooses between **values of one property**:
+`when` chooses between whole groups. `match` chooses between **values of one property**:
 
 ```tsx
 class Chip extends Component<{ tone: "hot" | "cold" | "quiet" }> {
@@ -70,7 +105,7 @@ class Chip extends Component<{ tone: "hot" | "cold" | "quiet" }> {
     return (
       <span className={@@(
         padding: 4px 10px;
-        color: match({this.props.tone}) {
+        color: match $(this.props.tone) {
           hot   => #ff0055;
           cold  => #0ea5e9;
           _     => inherit;
@@ -91,58 +126,119 @@ One expression, one value per arm. There is no destructuring, no guard and no cu
 you want those, compute the subject before the block and match on what comes out.
 
 - **The keys are checked against the subject's type.** An arm for a value the subject can never hold
-  is a fault on the key, and a missing one is a fault too unless there is a `_`.
+  is a fault on the key, and a missing one is a fault too unless there is a `_` — reported on the
+  word `match`, naming the value with no arm. A subject typed as a plain `string` has no list to
+  cover, so for it only the keys are asked.
 - **`_` answers for everything the arms above did not.** Without it, a subject that names no arm sets
-  **nothing at all**, and whatever was written above it stands — the same answer `if` gives.
-- **An arm holds a literal.** `hot => {this.x}` is refused (`hole-in-a-match-arm`): an arm carrying
+  **nothing at all**, and whatever was written above it stands — the same answer `when` gives.
+- **An arm holds a literal.** `hot => $(this.x)` is refused (`hole-in-a-match-arm`): an arm carrying
   the render's own value would cost exactly what a match exists to avoid. A `$` variable is fine, and
   needs no import, because an arm is CSS.
 - **An arm that can never run** (`match-arm-repeated`) and **a match with no arms**
   (`match-with-no-arms`) are reported.
 
-### A boolean subject is an `if`
+### A boolean subject is a choice
 
 Arm keys are written as CSS words and checked as strings, so `true =>` does not match a `boolean`.
-That is not a gap to work around — a two-way choice is what `if` is for:
+That is not a gap to work around — a two-way choice has its own spelling, [`$(c) ? a : b`](#a-choice-between-two-values),
+and for whole groups there is `when`.
+
+### A match over whole groups
+
+The same lookup, with a group in each arm instead of one value. The arms go inside `{ }` and each
+one's declarations inside `( … )` — the shape an arrow function has when it returns a value — and
+every arm ends with `;`:
 
 ```tsx
-declare const full: boolean;
+class Badge extends Component<{ size: "small" | "large" }> {
+  render() {
+    return (
+      <span className={@@(
+        match $(this.props.size) {
+          small => ( padding: 2px 6px; font-size: 12px; );
+          large => ( padding: 6px 12px; font-size: 16px; );
+        }
+      )}>{this.props.size}</span>
+    );
+  }
+}
+```
 
-const button = @@(
-  width: auto;
-  if ({full}) { width: 100%; }
+Everything above holds for it: the keys are checked against the subject's type, `_` answers for the
+rest, and every declaration in every arm is its own class, picked at render by one lookup.
+
+- **An arm holds declarations and nested rules** — `hot => ( color: red; &:hover { color: darkred; } );`
+  is fine. A condition, a spread or another match inside an arm is refused: an arm is a set of
+  classes known when the block compiles. Write those beside the match instead.
+- **An empty arm, `( )`, brings nothing** and still answers for its key, so `_` does not.
+
+## A choice between two values
+
+For one property and two values, write the choice where the value goes:
+
+```tsx
+class Input extends Component<{ invalid: boolean }> {
+  render() {
+    return (
+      <input aria-label="Email" className={@@(
+        border: $(this.props.invalid) ? 2px solid #ef4444 : 1px solid #d1d5db;
+      )} />
+    );
+  }
+}
+```
+
+Both values become classes and the condition picks one, exactly as a `match` arm does — so a branch
+holds a value written out, or a `$` variable, and never a value from code (`hole-in-a-match-arm`).
+The `:` is required; a value that applies only when the condition holds is a `when`.
+
+Choices chain, and the first condition that holds picks the value. The formatter lays a chain out as
+a table:
+
+```tsx
+declare const error: boolean;
+declare const warning: boolean;
+
+const field = @@(
+  color: $(error)   ? #ef4444
+       : $(warning) ? #f59e0b
+       :              #111827;
 );
 ```
 
-## Why the condition is inside `{ }`
+Parens around a branch — `$(c) ? (2px solid red) : (1px solid #ccc)` — mean the same, and the
+formatter takes them off.
 
-Because that is the one rule this syntax has: **TypeScript appears inside `{ }` and nowhere else.**
-`if (this.disabled)` would read more naturally and would be a second spelling for the same thing —
-and the moment there are two, every reader has to learn which one a given line is.
+## Why the condition is inside `$( )`
+
+Because that is the one rule this syntax has: **TypeScript appears inside `$( )` and nowhere else.**
+`when this.disabled` would be shorter and would be a second way for code to get into a block — and
+the moment there are two, every reader has to learn which one a given line is. The word is `when`
+rather than `if` because CSS has an `if()` of its own.
 
 ## What is checked in a group
 
-Everything a block is checked for, a group is checked for the same way — a typo inside `if` is the
+Everything a block is checked for, a group is checked for the same way — a typo inside `when` is the
 same error, with the same *did you mean*, that it is outside one.
 
 **The condition is an ordinary expression and is not required to be a `boolean`.** It is the same
-`if` JavaScript has, and `if ({items.length})` is the shape people reach for; demanding a `boolean`
+truthiness JavaScript's `if` has, and `when $(items.length)` is the shape people reach for; demanding a `boolean`
 would refuse it for nothing. What is refused is a condition that can never be FALSE, because that is
 a group that can never be off. A type that holds `false`, `0`, `""`, `null` or `undefined` is a
 condition; one that holds none of them is a mistake.
 
 | written | what happens |
 |---|---|
-| `if ({this.method})` — a method you forgot to call | reported: *a function is always truthy — call it, or test a value* |
-| `if ({someObject})`, `if ({"yes"})`, `if ({items})` | reported: *this is always truthy, so the group can never be off* |
-| `if ({maybeUndefined})` | fine — that is the shape a prop has |
-| `if ({items.length})`, `if ({name})` | fine — `0` and `""` are false, so the group can be off |
-| `...{notABlock}` | reported: *only a style block can be spread* |
-| `...{base}` inside `&:hover` or a `@media` | reported — see below |
+| `when $(this.method)` — a method you forgot to call | reported: *a function is always truthy — call it, or test a value* |
+| `when $(someObject)`, `when $("yes")`, `when $(items)` | reported: *this is always truthy, so the group can never be off* |
+| `when $(maybeUndefined)` | fine — that is the shape a prop has |
+| `when $(items.length)`, `when $(name)` | fine — `0` and `""` are false, so the group can be off |
+| `...$(notABlock)` | reported: *only a style block can be spread* |
+| `...$(base)` inside `&:hover` or a `@media` | reported — see below |
 
 ## Nesting, and a shorthand meeting its longhand
 
-`if` nests, and a nested condition means both must hold. A selector inside a group and a group inside
+`when` nests, and a nested condition means both must hold. A selector inside a group and a group inside
 a selector mean the same thing, so write whichever reads better.
 
 One thing worth knowing, because CSS itself works this way: a **shorthand written later clears the
@@ -154,9 +250,9 @@ few that stay whole, and the few that are refused.
 That holds across the logical spellings too: `margin` sets all four sides whichever way the text
 runs, so it clears `margin-inline`, `margin-block-start` and the rest.
 
-**A spread goes at the top of a block, or inside `if`** — not inside a selector or a `@media`. It
+**A spread goes at the top of a block, or inside `when`** — not inside a selector or a `@media`. It
 merges a whole block, and a block carries the context each of its own declarations was written in, so
-there is nothing sensible for a nested one to mean. An `if` is fine: it changes no declaration, it
+there is nothing sensible for a nested one to mean. A `when` is fine: it changes no declaration, it
 only decides whether the whole thing lands.
 
 ## Logical and physical, in one block

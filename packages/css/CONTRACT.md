@@ -30,7 +30,7 @@ One hoisted constant at module scope, or a merge at the site when the render dec
                                        source
 <div className=@@(
   display: flex;
-  border-left: match({this.tone}) { loud => 4px solid #10b981; _ => 4px solid #64748b; };
+  border-left: match $(this.tone) { loud => 4px solid #10b981; _ => 4px solid #64748b; };
 )>
 
                                        emitted
@@ -91,7 +91,7 @@ which is what lets a block travel to another component as a string and still be 
                                        source
 const panel = @@(
   display: flex;
-  color: $.color.accent;
+  color: $color.accent;
   &:hover { color: #0e9f6e; }
 );
 
@@ -136,10 +136,10 @@ different properties, so without it both classes land and the SHEET breaks the t
 the call site. Measured, it agrees with CSS in both directions for `padding`, `border-left` and `gap`.
 
 **The merge is associative** — 50,309 random groupings, zero disagreements — which is what lets a
-nested `if` be COMPILED as a nested merge:
+nested `when` be COMPILED as a nested merge:
 
 ```
-if ({a}) { color: red; if ({b}) { color: blue; } }
+when $(a) { color: red; when $(b) { color: blue; } }
 ->  _merge(a && _merge("r-c-red", b && "r-c-blue"))
 ```
 
@@ -205,7 +205,7 @@ page. A table of all 98 shorthand families is 23 KB, 3.7 KB gzipped — larger t
 **There is none any more, and that is the change worth writing down.** A block sets nothing on an
 element: it is classes, and a class name is a name.
 
-The rule there used to be belonged to the values a `{expr}` hole carried, which went into a `style`
+The rule there used to be belonged to the values a `$(expr)` hole carried, which went into a `style`
 attribute. A value is whatever the author's expression evaluated to, and an expression can read a
 record — so a value holding a `;` became a SECOND declaration when a server-rendered attribute was
 parsed back out of HTML. Measured through `renderToString` and back through `innerHTML`:
@@ -335,18 +335,18 @@ build time, with the source position, and reported by the checker first:
 border-left: {width};            ✗   a runtime value — `match` or `@@property` instead
 {cond ? "display:flex" : ""}     ✗   a declaration — nothing to choose between
 &:{state} { … }                  ✗   a selector
-if ({cond}) { … }                ✓   a condition, and the parentheses are the at-rule's head
-...{base};                       ✓   a spread, in a declaration's position
-color: match({v}) { … }          ✓   a subject, choosing between whole classes
+when $(cond) { … }                ✓   a condition, and the parentheses are the at-rule's head
+...$(base);                       ✓   a spread, in a declaration's position
+color: match $(v) { … }          ✓   a subject, choosing between whole classes
 {name}: 24px;                    ✓   a property name, when it RESOLVES — see below
 ```
 
 **A name in a property position is the one that resolves rather than choosing, and it is how a
-registered property is set.** `{accent}: #f05` where `accent` is a `@@property( … )` declared in this
+registered property is set.** `$(accent): #f05` where `accent` is a `@@property( … )` declared in this
 file — or imported from a module, one relative hop — resolves to that site's generated name before
 any rule sees it, so it is TEXT by the time the CSS is written. Unresolved, it is refused as above.
 
-The same resolution is why `var({accent})` works and `var({anythingElse})` cannot: `var()` takes a
+The same resolution is why `var($(accent))` works and `var($(anythingElse))` cannot: `var()` takes a
 literal name, so a brace that stays a brace compiles to `var(var(--…))`, which computes to nothing —
 measured in Chromium, dropping that declaration and leaving the one beside it applied. Reported as
 `hole-as-a-variable-name`.

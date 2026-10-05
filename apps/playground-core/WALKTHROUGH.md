@@ -114,7 +114,7 @@ Now `em` is the only unit it takes, and every other property is unchanged.
 "<color>": { variablesOnly: true },
 ```
 
-**What should happen.** `color: red` and `border: 1px solid red` are both reported. `$.color.accent.main`
+**What should happen.** `color: red` and `border: 1px solid red` are both reported. `$color.accent.main`
 is not, and neither is `currentcolor`, `inherit` or `var(--anything)` — none of those is a colour
 somebody hardcoded.
 
@@ -174,12 +174,12 @@ color: kind("color", {
 
 **What should happen.**
 
-- `$.color.accent.loud` completes, one level at a time: `$.` offers the groups, `$.color.` offers
+- `$color.accent.loud` completes, one level at a time: `$.` offers the groups, `$color.` offers
   the colours, and so on.
 - It compiles to `var(--color-accent-loud)`, and codegen has written both the `:root` that sets it
   and the `@property` that registers it. Neither file is committed.
-- `padding-left: $.color.accent.loud` is **reported**: a colour is not a length.
-- `$.color.accent.lodu` is reported with *Did you mean* — twice, once by the type and once by the
+- `padding-left: $color.accent.loud` is **reported**: a colour is not a length.
+- `$color.accent.lodu` is reported with *Did you mean* — twice, once by the type and once by the
   checker, which is deliberate: the type answers in the editor and the rule answers in CI.
 
 ## 7. What no config at all does

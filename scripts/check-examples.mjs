@@ -338,6 +338,12 @@ function ramondaGlobals(except = new Set()) {
   return lines.join("\n");
 }
 
+/** A documented example misusing a variable it imports from `../css-system`. See `SELFTEST=system`. */
+const PLANTED_SYSTEM = `import { $color } from "../css-system";
+
+export const planted: number = $color.accent;
+`;
+
 /**
  * A documented example with a style block whose property does not exist. See `SELFTEST=block`.
  *
@@ -400,7 +406,7 @@ function shape(code) {
      * The project's OWN property map when there is one, and the shipped one when there is not.
      *
      * It was pinned to the shipped map, and that is what a project WITHOUT a config is checked
-     * against — so `$.color.accent` on a page about declaring variables came back
+     * against — so `$color.accent` on a page about declaring variables came back
      * `Property 'color' does not exist on type '"Declare your variables in ramonda.css.ts…"'`. The
      * examples were being checked as a project that had never run codegen, which is not the project
      * any page here describes.
@@ -544,7 +550,7 @@ const work = mkdtempSync(join(tmpdir(), "ramonda-examples-"));
  * The docs' own `ramonda.css.ts`, carried into the work directory and generated from.
  *
  * Every block is checked here rather than where the page lives, so a config beside the page is
- * nowhere the checker would walk up to. Without it `$.color.accent` is
+ * nowhere the checker would walk up to. Without it `$color.accent` is
  * `Property 'color' does not exist on type '"Declare your variables in ramonda.css.ts…"'` — the
  * message this package shows a project that has not declared anything, shown to a page ABOUT
  * declaring things.
@@ -612,7 +618,18 @@ const unparseable = [];
  * So the floor is asserted rather than assumed: with this set, a run that does NOT report the planted
  * block is a run that has gone blind again.
  */
-const selftest = process.env.SELFTEST === "block";
+/**
+ * `SELFTEST=system` plants an example that reads a variable through the project's generated module,
+ * the way the variables page teaches — `import { $color } from "../css-system"` — and misuses it.
+ *
+ * Measured before this existed: the work directory is flat, so `../css-system` resolved to nothing,
+ * `TS2307` is in `IGNORED` for the sake of third-party imports, and the import fell to `any` — every
+ * example importing a group or `Var` was checked against nothing, and one taught a call the types
+ * refuse.
+ */
+const selftestKind =
+  process.env.SELFTEST === "block" || process.env.SELFTEST === "system" ? process.env.SELFTEST : undefined;
+const selftest = selftestKind !== undefined;
 if (selftest) {
   files.push("SELFTEST");
 }
@@ -621,7 +638,10 @@ if (selftest) {
 const claimed = new Map();
 
 for (const file of files) {
-  const blocks = file === "SELFTEST" ? [{ code: PLANTED, line: 1, expectReport: undefined }] : blocksIn(file);
+  const blocks =
+    file === "SELFTEST"
+      ? [{ code: selftestKind === "system" ? PLANTED_SYSTEM : PLANTED, line: 1, expectReport: undefined }]
+      : blocksIn(file);
   if (blocks.length === 0) continue;
   const ambient = preamblesFor(file);
   /** Specifier -> the block's text, for the CSS rules. `tsc` reads the copy written beside them. */
@@ -634,6 +654,7 @@ for (const file of files) {
       return;
     }
     const path = join(work, `${file.replace(/[^\w]/g, "_")}__${index}.tsx`);
+    shaped.text = towardsTheSystem(shaped.text);
     writeFileSync(path, shaped.text);
 
     /**
@@ -678,6 +699,22 @@ for (const file of files) {
       fragment: block.fragment,
       expectReport: block.expectReport,
     });
+  });
+}
+
+/**
+ * `../css-system`, however many levels up, as the generated module in the work directory.
+ *
+ * A page imports the project's generated module from where a component would sit —
+ * `import { $color } from "../css-system"` — and the work directory is flat, so that path pointed
+ * nowhere; `TS2307` is ignored for third-party imports, and the import fell to `any`. Rewritten to
+ * `./css-system`, which IS the module codegen wrote here, padded so every column after it stays put.
+ * See `SELFTEST=system`.
+ */
+function towardsTheSystem(text) {
+  return text.replace(/(["'])((?:\.\.\/)+)css-system\1/g, (whole, quote) => {
+    const local = `${quote}./css-system${quote}`;
+    return local + " ".repeat(whole.length - local.length);
   });
 }
 
@@ -932,10 +969,11 @@ rmSync(work, { recursive: true, force: true });
 
 if (selftest) {
   const caught = [...byUnit].some(([unit]) => unit.file === "SELFTEST");
+  const what = selftestKind === "system" ? "a variable misused through `../css-system`" : "the planted style block";
   console[caught ? "log" : "error"](
     caught
-      ? "[examples] SELFTEST block: the planted style block was reported, as it must be"
-      : "[examples] SELFTEST block: the planted style block was NOT reported — the gate is blind to the syntax again",
+      ? `[examples] SELFTEST ${selftestKind}: ${what} was reported, as it must be`
+      : `[examples] SELFTEST ${selftestKind}: ${what} was NOT reported — the gate is blind to it again`,
   );
   process.exit(caught ? 0 : 1);
 }

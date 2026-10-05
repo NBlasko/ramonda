@@ -20,7 +20,7 @@ import { kind } from "@ramonda/css/config";
 
 export default {
   variables: {
-    color: kind("color", { accent: "#10b981" }),
+    $color: kind("color", { accent: "#10b981" }),
   },
   properties: {
     "<color>": { variablesOnly: true },
@@ -112,7 +112,7 @@ properties: { "padding-left": { units: ["px"] } },
 properties: { "<color>": { variablesOnly: true } },
 ```
 
-`color: #ff0000` is then refused and `color: $.color.accent` is not. It is the setting that turns a
+`color: #ff0000` is then refused and `color: $color.accent` is not. It is the setting that turns a
 palette from a recommendation into something the build enforces.
 
 Two things it deliberately lets through: a bare `0`, which needs no unit and is nobody's hardcoded

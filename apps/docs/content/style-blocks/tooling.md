@@ -29,6 +29,9 @@ the format-on-save your editor does for you:
 { "plugins": ["@ramonda/css/prettier"] }
 ```
 
+It lays out the CSS inside a block exactly as `ramonda-css format` does — one declaration to a line,
+`} else {`, the arms of a `match` lined up — so the two formatters never disagree about a block.
+
 **biome and oxlint get wrappers**, because they have no plugin surface for a syntax they cannot
 parse:
 

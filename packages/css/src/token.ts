@@ -38,7 +38,7 @@ export type Kind =
 declare const TOKEN: unique symbol;
 
 /**
- * A declared variable as a value — `$.color.primary.main`, once codegen has written it.
+ * A declared variable as a value — `$color.primary.main`, once codegen has written it.
  *
  * A branded `string`, and each half is load-bearing. A string, because its runtime value is
  * `var(--color-primary-main)` and that has to work everywhere a CSS value goes: in a block, in a

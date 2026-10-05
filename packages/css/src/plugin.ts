@@ -1,5 +1,5 @@
 import type ts from "typescript";
-import type { BlockItem } from "./compiler/ast";
+import { type BlockItem, childrenOf } from "./compiler/ast";
 import {
   PROPERTIES,
   PRIMITIVE,
@@ -9,7 +9,7 @@ import {
   SELECTORS,
   AT_RULE_LINKS,
 } from "./compiler/keywords.generated";
-import { type Span, readBlock } from "./compiler/read";
+import { CONDITION, MATCH, type Span, readBlock } from "./compiler/read";
 import { NAMED_BLOCKS, REPLACED_CODES, SPEAKS_OVER_TYPES, type Finding } from "./compiler/rules";
 import { variablesOnlyKinds } from "./codegen";
 import { checkedSource } from "./compiler/source";
@@ -666,7 +666,7 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
            * The span the editor REPLACES when a completion is accepted, mapped like every other.
            *
            * **It arrived through `...got` in the virtual file's coordinates**, and pointed at
-           * unrelated characters in the author's — measured, `op` in an `if` group came back as a
+           * unrelated characters in the author's — measured, `op` in a `when` group came back as a
            * span over `dd`, and `dis` at the top of a block as a span over `ip}>flip the tone<`. A
            * caret outside its own replacement span is something an editor is entitled to drop, and
            * VS Code did: no completions inside a group, while recovering at the top of a block. That
@@ -820,7 +820,7 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
          *
          * A selector, an at-rule condition and this language's own markers had nobody to answer for
          * them: measured, hovering `::after` gave `(property) "&::after": ({ content: string } | …)[]`
-         * — a true sentence about an object literal, and useless. `if` and `...` gave nothing at
+         * — a true sentence about an object literal, and useless. `when` and `...` gave nothing at
          * all. A property already answers well, so that path is untouched.
          */
         const said = spoken(cache.get(fileName)?.where ?? EMPTY_REGIONS, position);
@@ -1733,6 +1733,12 @@ function selectorsFor(colons: 1 | 2, typed: string): readonly string[] {
 /** Every declaration's VALUE, with the property it belongs to — see `valueWords`. */
 function collect(items: readonly BlockItem[], out: ValueSpan[], preludes?: PreludeSpan[], paths?: Span[]): void {
   for (const item of items) {
+    if (item.kind === "match") {
+      // The word itself, so a hover on it says what a match does — see `spoken`.
+      if (item.at !== undefined) preludes?.push({ start: item.at, end: item.at + MATCH.length, prelude: MATCH });
+      collect(childrenOf(item), out, preludes, paths);
+      continue;
+    }
     if (item.kind === "rule") {
       // The prelude's own span, which a nested rule already carries for the checker's squiggles.
       if (item.at !== undefined && item.preludeEnd !== undefined) {
@@ -1762,6 +1768,9 @@ function collect(items: readonly BlockItem[], out: ValueSpan[], preludes?: Prelu
      * in a value and that is all this knew about it.
      */
     for (const part of item.value) {
+      if (part.kind === "match" && part.at !== undefined) {
+        preludes?.push({ start: part.at, end: part.at + MATCH.length, prelude: MATCH });
+      }
       if (part.kind === "variable" && part.at !== undefined) {
         paths?.push({ start: part.at, end: part.at + (part.length ?? 0) });
       }
@@ -1886,7 +1895,7 @@ const EMPTY_REGIONS: Regions = { blocks: [], holes: [], values: [], paths: [], p
  *
  * **Reported by a user.** Hovering `::after` gave `(property) "&::after": ({ content: string } | …)[]`
  * — a true sentence about the object literal the virtual file builds, and useless to somebody asking
- * what `::after` does. `if` and `...` gave nothing at all. Measured, three shapes were wrong in two
+ * what `::after` does. `when` and `...` gave nothing at all. Measured, three shapes were wrong in two
  * ways and one was already right:
  *
  *     display, content    CSS grammar plus Initial/Inherited     already right, and untouched
@@ -1898,12 +1907,12 @@ const EMPTY_REGIONS: Regions = { blocks: [], holes: [], values: [], paths: [], p
  * idea for everything else a block holds.
  *
  * The selector names, their groups and their MDN links are generated from `mdn-data`; the sentences
- * are written, and the generator refuses a sentence naming a selector CSS does not have. `if` and
+ * are written, and the generator refuses a sentence naming a selector CSS does not have. `when` and
  * `...` have no upstream — what they say is what this repository measured about them.
  */
 const COMPOSITION: Readonly<Record<string, { signature: string; note: string }>> = {
-  if: {
-    signature: "if ({ … })",
+  [CONDITION]: {
+    signature: "when $( … )",
     note:
       "The declarations inside apply only while the condition holds.\n\n" +
       "Everything is one merge in the order it was written, so **later wins** — a group below a " +
@@ -1912,12 +1921,33 @@ const COMPOSITION: Readonly<Record<string, { signature: string; note: string }>>
       "in a `class` attribute means nothing in CSS.\n\n" +
       "A group inside a group holds only when both conditions do.",
   },
+  "else when": {
+    signature: "else when $( … )",
+    note:
+      "The rest of the choice above it: its declarations apply when this condition holds and none " +
+      "before it in the chain did. The first condition that holds brings its group, and the rest " +
+      "are not asked.",
+  },
+  else: {
+    signature: "else",
+    note:
+      "The last of the choice above it: its declarations apply when no condition in the chain held. " +
+      "The first condition that holds brings its group, so this one comes in only when none did.",
+  },
+  [MATCH]: {
+    signature: "match $( … )",
+    note:
+      "Picks one arm by the subject's value. Every arm is classes made when the block compiles, and " +
+      "the render only chooses between them.\n\n" +
+      "The keys are checked against the subject's type. `_` answers for every value the arms above " +
+      "it do not name; without it, a subject no arm names brings nothing.",
+  },
   "...": {
-    signature: "...{ … }",
+    signature: "...$( … )",
     note:
       "Merges another block's declarations here, in this position.\n\n" +
       "It works across files, because what it merges is a value — importable, storable in an object, " +
-      "or picked out of one, which is what makes a lookup exhaustive where an `@else` never could be.\n\n" +
+      "or picked out of one, which is what makes a choice between blocks exhaustive over a union.\n\n" +
       "**Later wins**, so what is spread above a declaration loses to it and what is spread below " +
       "overrides it.",
   },
@@ -1949,7 +1979,17 @@ function spoken(where: Regions, at: number): ts.QuickInfo | undefined {
   });
 
   const trimmed = found.prelude.trim();
-  const marker = trimmed.startsWith("if") ? "if" : trimmed === "..." ? "..." : undefined;
+  const marker = /^else\s+when\b/.test(trimmed)
+    ? "else when"
+    : /^else\b/.test(trimmed)
+      ? "else"
+      : trimmed.startsWith(CONDITION)
+        ? CONDITION
+        : trimmed.startsWith(MATCH)
+          ? MATCH
+          : trimmed === "..."
+            ? "..."
+            : undefined;
   const composition = marker === undefined ? undefined : COMPOSITION[marker];
   if (composition !== undefined) return say(composition.signature, composition.note);
 

@@ -3,18 +3,25 @@
   "injectionSelector": "L:meta.embedded.block.css meta.property-value.css, L:meta.embedded.block.css meta.property-name.css",
   "patterns": [
     {
-      "include": "#hole"
+      "include": "#escape"
+    },
+    {
+      "include": "#choice"
     }
   ],
   "repository": {
-    "hole": {
-      "begin": "(\\{)",
+    "escape": {
+      "comment": "`$(` opens it and the `)` that balances it closes it.",
+      "begin": "(\\$)(\\()",
       "beginCaptures": {
         "1": {
+          "name": "keyword.control.ramonda"
+        },
+        "2": {
           "name": "punctuation.section.embedded.begin.ramonda"
         }
       },
-      "end": "(\\})",
+      "end": "(\\))",
       "endCaptures": {
         "1": {
           "name": "punctuation.section.embedded.end.ramonda"
@@ -25,8 +32,17 @@
         {
           "include": "source.tsx"
         }
-      ],
-      "comment": "A hole is ONE brace, so the injection cannot simply match `{` — the CSS grammar uses that for a nested rule's body, and an `L:` injection outruns the host grammar everywhere it matches. It is narrowed to the scopes a rule's `{` is never in: a property's value, and a property's name, which is where `{accent}: red` sets a registered property. The `if ({ … })` and `...` heads are the block grammar's own patterns and are not this injection's to colour."
+      ]
+    },
+    "choice": {
+      "comment": "`?` and `:` between spaces in a value are a choice's — CSS has no `?` in a value and no `:` at its top level; a `:` in `url(http://…)` has no space around it.",
+      "match": "(?<=\\s)([?:])(?=\\s)",
+      "captures": {
+        "1": {
+          "name": "keyword.operator.ternary.ramonda"
+        }
+      }
     }
-  }
+  },
+  "comment": "`$( … )` — the one way code goes into a block, wherever it stands in a value or a property name — and the two operators of a choice, `$(c) ? a : b`. `$` is this language's marker, as it is in `$color.line`; the parens are the region's own, so the TypeScript inside them is TypeScript. The TSX grammar pairs its own parens, so a `)` inside the expression does not end the escape."
 }

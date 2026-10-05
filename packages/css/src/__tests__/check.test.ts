@@ -116,7 +116,7 @@ describe("a project that is right", () => {
         `const accent = @@property(\n  syntax: "<color>";\n  inherits: false;\n  initial-value: #10b981;\n);\n` +
         `export const tint = (value: string) => ({ [accent]: value });\n` +
         `export class Card {\n  render() {\n` +
-        `    return <div className={@@( border-left: 4px solid var({accent}); )}>x</div>;\n` +
+        `    return <div className={@@( border-left: 4px solid var($(accent)); )}>x</div>;\n` +
         `  }\n}\n`,
     });
 
@@ -141,7 +141,7 @@ describe("a project that is not", () => {
   /**
    * ONE finding for a hole, and it is ours.
    *
-   * It used to be one for a hole whose TYPE the property could not take — `position: {this.wide}`
+   * It used to be one for a hole whose TYPE the property could not take — `position: $(this.wide)`
    * with a boolean — and a long note weighing which of the compiler's two messages to keep. The
    * hole is refused outright now, so the weighing is gone with it: `hole-not-allowed` is the only
    * thing said, whether or not the expression would also have failed its type.
@@ -154,7 +154,7 @@ describe("a project that is not", () => {
     ["an open one", "color"],
   ])("a hole in %s is reported once, by us, wherever its type would have landed", (_what, property) => {
     const report = check({
-      "Card.tsx": `export class Card {\n  wide = true;\n  render() {\n    return <div className={@@( ${property}: {this.wide}; )}>x</div>;\n  }\n}\n`,
+      "Card.tsx": `export class Card {\n  wide = true;\n  render() {\n    return <div className={@@( ${property}: $(this.wide); )}>x</div>;\n  }\n}\n`,
     });
 
     expect(report.findings).toHaveLength(1);
@@ -312,7 +312,7 @@ describe("a block that cannot be read at all", () => {
    */
   test("is reported alone, and nothing is type-checked", () => {
     const report = check({
-      "Card.tsx": `const n: number = "no";\nconst a = <div className={@@(\n  {name}: 24px;\n)}>x</div>;\nexport default [n, a];\n`,
+      "Card.tsx": `const n: number = "no";\nconst a = <div className={@@(\n  $(name): 24px;\n)}>x</div>;\nexport default [n, a];\n`,
     });
 
     expect(report.refused).toBe(true);
@@ -566,13 +566,13 @@ describe("a named site", () => {
  * A reference to a named site, through the type checker.
  *
  * The transform writes these in at build time, and the check has to read the file the same way or it
- * reports a fault the build does not have — `{{angle}}: 45deg` is a hole in a property name, which
+ * reports a fault the build does not have — `$(angle): 45deg` is a hole in a property name, which
  * is refused everywhere except here.
  */
 describe("a reference to a named site", () => {
   test("reading one in a value is not a fault", () => {
     const report = check({
-      "Card.tsx": `const slide = @@keyframes(\n  from { opacity: 0; }\n);\nconst card = @@( animation: {slide} 3s; );\nexport { card };\n`,
+      "Card.tsx": `const slide = @@keyframes(\n  from { opacity: 0; }\n);\nconst card = @@( animation: $(slide) 3s; );\nexport { card };\n`,
     });
 
     expect(report.findings).toEqual([]);
@@ -580,7 +580,7 @@ describe("a reference to a named site", () => {
 
   test("and setting a registered property by name is not either", () => {
     const report = check({
-      "Card.tsx": `const angle = @@property(\n  syntax: "<angle>";\n  inherits: false;\n  initial-value: 0deg;\n);\nconst card = @@( {angle}: 45deg; );\nexport { card };\n`,
+      "Card.tsx": `const angle = @@property(\n  syntax: "<angle>";\n  inherits: false;\n  initial-value: 0deg;\n);\nconst card = @@( $(angle): 45deg; );\nexport { card };\n`,
     });
 
     expect(report.findings).toEqual([]);
@@ -588,7 +588,7 @@ describe("a reference to a named site", () => {
 
   test("while a hole in a name that stands for nothing is still reported", () => {
     const report = check({
-      "Card.tsx": `const card = @@( {whatever}: 45deg; );\nexport { card };\n`,
+      "Card.tsx": `const card = @@( $(whatever): 45deg; );\nexport { card };\n`,
     });
 
     expect(report.findings.length).toBeGreaterThan(0);
@@ -615,7 +615,7 @@ describe("a reference to a named site", () => {
       // The setter is here because a property read and set by nothing is its own finding now — see
       // `registered-never-set`. What this test is about is the READ resolving across the module.
       "Card.tsx":
-        `import { accent } from "./theme";\nconst card = @@( color: var({accent}); );\n` +
+        `import { accent } from "./theme";\nconst card = @@( color: var($(accent)); );\n` +
         `export const tint = (value: string) => ({ [accent]: value });\nexport { card };\n`,
     });
 
@@ -626,7 +626,7 @@ describe("a reference to a named site", () => {
   test("and sets a registered property by name, which only resolving makes legal", () => {
     const report = check({
       "theme.ts": THEME,
-      "Card.tsx": `import { accent } from "./theme";\nconst card = @@( {accent}: #f05; );\nexport { card };\n`,
+      "Card.tsx": `import { accent } from "./theme";\nconst card = @@( $(accent): #f05; );\nexport { card };\n`,
     });
 
     expect(report.refused).toBe(false);
@@ -641,7 +641,7 @@ describe("a reference to a named site", () => {
     const report = check({
       "Card.tsx":
         `const angle = @@property(\n  syntax: "<angle>";\n  inherits: false;\n  initial-value: 0deg;\n);\n` +
-        `const card = @@( transform: rotate(var({angle})); );\nexport { card };\n`,
+        `const card = @@( transform: rotate(var($(angle))); );\nexport { card };\n`,
     });
 
     expect(report.findings).toHaveLength(1);
@@ -654,7 +654,7 @@ describe("a reference to a named site", () => {
     const report = check({
       "Card.tsx":
         `const angle = @@property(\n  syntax: "<angle>";\n  inherits: false;\n  initial-value: 0deg;\n);\n` +
-        `const card = @@( {angle}: 45deg; transform: rotate(var({angle})); );\nexport { card };\n`,
+        `const card = @@( $(angle): 45deg; transform: rotate(var($(angle))); );\nexport { card };\n`,
     });
 
     expect(report.findings).toEqual([]);
@@ -670,7 +670,7 @@ describe("a reference to a named site", () => {
       "theme.ts": `export const angle = @@property(\n  syntax: "<angle>";\n  inherits: false;\n  initial-value: 0deg;\n);\n`,
       "Card.tsx":
         `import { angle } from "./theme";\n` +
-        `const card = @@( transform: rotate(var({angle})); );\n` +
+        `const card = @@( transform: rotate(var($(angle))); );\n` +
         `export const at = (deg: string) => ({ [angle]: deg });\nexport { card };\n`,
     });
 
@@ -680,7 +680,7 @@ describe("a reference to a named site", () => {
   test("and one read across modules with no reference at all is still reported, on the module that declares it", () => {
     const report = check({
       "theme.ts": `export const angle = @@property(\n  syntax: "<angle>";\n  inherits: false;\n  initial-value: 0deg;\n);\n`,
-      "Card.tsx": `import { angle } from "./theme";\nconst card = @@( transform: rotate(var({angle})); );\nexport { card };\n`,
+      "Card.tsx": `import { angle } from "./theme";\nconst card = @@( transform: rotate(var($(angle))); );\nexport { card };\n`,
     });
 
     expect(report.findings).toHaveLength(1);
@@ -698,7 +698,7 @@ describe("a reference to a named site", () => {
       "Card.tsx":
         `// ramonda-css-ignore a consumer of this package sets it\n` +
         `export const angle = @@property(\n  syntax: "<angle>";\n  inherits: false;\n  initial-value: 0deg;\n);\n` +
-        `const card = @@( transform: rotate(var({angle})); );\nexport { card };\n`,
+        `const card = @@( transform: rotate(var($(angle))); );\nexport { card };\n`,
     });
 
     expect(report.findings).toEqual([]);
@@ -709,7 +709,7 @@ describe("a reference to a named site", () => {
     const report = check({
       "Card.tsx":
         `export const angle = @@property(\n  syntax: "<angle>";\n  inherits: false;\n  initial-value: 0deg;\n);\n` +
-        `const card = @@( transform: rotate(var({angle})); );\nexport { card };\n`,
+        `const card = @@( transform: rotate(var($(angle))); );\nexport { card };\n`,
       "ramonda.css.ts": `export default { rules: { "registered-never-set": "off" } };\n`,
     });
 
@@ -737,7 +737,7 @@ describe("a reference to a named site", () => {
     const report = check({
       "Card.tsx":
         `const angle = @@property(\n  syntax: "<angle>";\n  inherits: false;\n  initial-value: 0deg;\n);\n` +
-        `const card = @@( transform: rotate(var({angle})); );\nexport { card };\n` +
+        `const card = @@( transform: rotate(var($(angle))); );\nexport { card };\n` +
         extra,
     });
 
@@ -755,7 +755,7 @@ describe("a reference to a named site", () => {
       "theme.ts": `export const angle = @@property(\n  syntax: "<angle>";\n  inherits: false;\n  initial-value: 0deg;\n);\n`,
       "Card.tsx":
         `import { angle } from "./theme";\n` +
-        `const card = @@( transform: rotate(var({angle})); );\nexport { card, angle };\n`,
+        `const card = @@( transform: rotate(var($(angle))); );\nexport { card, angle };\n`,
     });
 
     expect(report.findings.map((one) => one.code)).toContain("registered-never-set");
@@ -774,7 +774,7 @@ describe("a reference to a named site", () => {
   test("a name the imported module does not export is still reported", () => {
     const report = check({
       "theme.ts": THEME,
-      "Card.tsx": `import { missing } from "./theme";\nconst card = @@( {missing}: #f05; );\nexport { card };\n`,
+      "Card.tsx": `import { missing } from "./theme";\nconst card = @@( $(missing): #f05; );\nexport { card };\n`,
     });
 
     expect(report.findings.length).toBeGreaterThan(0);
@@ -842,12 +842,12 @@ describe("a file whose first lines are directives", () => {
  *
  * Both are caught by a TYPE rather than by a rule of ours, which means TypeScript's own message at
  * the author's own position and no diagnostic to write. And what the block already had must survive:
- * a typo inside `if` is the same `TS2561` it is outside one.
+ * a typo inside `when` is the same `TS2561` it is outside one.
  */
 describe("a conditional group", () => {
   test("an ordinary condition is not a fault", () => {
     const report = check({
-      "Card.tsx": `class C {\n  off = false;\n  r() {\n    return <div className={@@( cursor: pointer; if ({this.off}) { cursor: not-allowed; } )}>x</div>;\n  }\n}\nexport default C;\n`,
+      "Card.tsx": `class C {\n  off = false;\n  r() {\n    return <div className={@@( cursor: pointer; when $(this.off) { cursor: not-allowed; } )}>x</div>;\n  }\n}\nexport default C;\n`,
     });
 
     expect(report.findings).toEqual([]);
@@ -855,7 +855,7 @@ describe("a conditional group", () => {
 
   test("and so is one that may be missing, which is the shape a prop has", () => {
     const report = check({
-      "Card.tsx": `declare const maybe: { a: 1 } | undefined;\nconst a = <div className={@@( if ({maybe}) { opacity: 0.5; } )}>x</div>;\nexport default a;\n`,
+      "Card.tsx": `declare const maybe: { a: 1 } | undefined;\nconst a = <div className={@@( when $(maybe) { opacity: 0.5; } )}>x</div>;\nexport default a;\n`,
     });
 
     expect(report.findings).toEqual([]);
@@ -865,34 +865,34 @@ describe("a conditional group", () => {
   test.each([
     [
       "a method that was not called",
-      `class C { off() {} r() { return <div className={@@( if ({this.off}) { opacity: 0.5; } )}>x</div>; } }`,
+      `class C { off() {} r() { return <div className={@@( when $(this.off) { opacity: 0.5; } )}>x</div>; } }`,
     ],
-    ["an object", `declare const o: { a: 1 };\nconst a = <div className={@@( if ({o}) { opacity: 0.5; } )}>x</div>;`],
+    ["an object", `declare const o: { a: 1 };\nconst a = <div className={@@( when $(o) { opacity: 0.5; } )}>x</div>;`],
     [
       "a promise",
-      `declare const p: Promise<number>;\nconst a = <div className={@@( if ({p}) { opacity: 0.5; } )}>x</div>;`,
+      `declare const p: Promise<number>;\nconst a = <div className={@@( when $(p) { opacity: 0.5; } )}>x</div>;`,
     ],
     // **Measured and MISSED before this line existed.** The check asked whether the type was an
     // object, and a literal is not one — so every one of these passed while never being false.
     [
       "a string literal",
-      `declare const s: "yes";\nconst a = <div className={@@( if ({s}) { opacity: 0.5; } )}>x</div>;`,
+      `declare const s: "yes";\nconst a = <div className={@@( when $(s) { opacity: 0.5; } )}>x</div>;`,
     ],
     [
       "a union of them",
-      `declare const s: "a" | "b";\nconst a = <div className={@@( if ({s}) { opacity: 0.5; } )}>x</div>;`,
+      `declare const s: "a" | "b";\nconst a = <div className={@@( when $(s) { opacity: 0.5; } )}>x</div>;`,
     ],
     [
       "a union of numbers",
-      `declare const n: 1 | 2;\nconst a = <div className={@@( if ({n}) { opacity: 0.5; } )}>x</div>;`,
+      `declare const n: 1 | 2;\nconst a = <div className={@@( when $(n) { opacity: 0.5; } )}>x</div>;`,
     ],
     [
       "a template type that cannot be empty",
-      `declare const t: \`x\${string}\`;\nconst a = <div className={@@( if ({t}) { opacity: 0.5; } )}>x</div>;`,
+      `declare const t: \`x\${string}\`;\nconst a = <div className={@@( when $(t) { opacity: 0.5; } )}>x</div>;`,
     ],
     [
       "an array, which is an object wearing a length",
-      `declare const xs: number[];\nconst a = <div className={@@( if ({xs}) { opacity: 0.5; } )}>x</div>;`,
+      `declare const xs: number[];\nconst a = <div className={@@( when $(xs) { opacity: 0.5; } )}>x</div>;`,
     ],
   ])("%s is reported, because it is always truthy", (_what, code) => {
     const report = check({ "Card.tsx": `${code}\nexport {};\n` });
@@ -904,7 +904,7 @@ describe("a conditional group", () => {
   /**
    * What must stay allowed, because truthiness is the QUESTION rather than an accident.
    *
-   * `if` is an `if`, and a condition that can be false is a condition. Requiring `boolean` would
+   * `when` is a `when`, and a condition that can be false is a condition. Requiring `boolean` would
    * refuse `items.length`, which is exactly the shape a person reaches for — so the type refuses
    * only what can never be off, and lets everything else through.
    */
@@ -918,7 +918,7 @@ describe("a conditional group", () => {
     ["a comparison", "declare const n: number;", "n > 2"],
   ])("%s is allowed", (_what, declare, expression) => {
     const report = check({
-      "Card.tsx": `${declare}\nconst a = <div className={@@( if ({${expression}}) { opacity: 0.5; } )}>x</div>;\nexport {};\n`,
+      "Card.tsx": `${declare}\nconst a = <div className={@@( when $(${expression}) { opacity: 0.5; } )}>x</div>;\nexport {};\n`,
     });
 
     expect(report.findings).toEqual([]);
@@ -926,7 +926,7 @@ describe("a conditional group", () => {
 
   test("a typo inside a group is the same fault it is outside one", () => {
     const report = check({
-      "Card.tsx": `declare const c: boolean;\nconst a = <div className={@@(\n  if ({c}) {\n    dsiplay: flex;\n  }\n)}>x</div>;\nexport default a;\n`,
+      "Card.tsx": `declare const c: boolean;\nconst a = <div className={@@(\n  when $(c) {\n    dsiplay: flex;\n  }\n)}>x</div>;\nexport default a;\n`,
     });
 
     expect(report.findings).toHaveLength(1);
@@ -941,7 +941,7 @@ describe("a conditional group", () => {
    */
   test("a wrong condition does not hide the faults under it", () => {
     const report = check({
-      "Card.tsx": `declare const o: { a: 1 };\nconst a = <div className={@@(\n  if ({o}) {\n    dsiplay: flex;\n    colr: red;\n  }\n)}>x</div>;\nexport default a;\n`,
+      "Card.tsx": `declare const o: { a: 1 };\nconst a = <div className={@@(\n  when $(o) {\n    dsiplay: flex;\n    colr: red;\n  }\n)}>x</div>;\nexport default a;\n`,
     });
 
     expect(report.findings).toHaveLength(3);
@@ -952,7 +952,7 @@ describe("a conditional group", () => {
 describe("a spread", () => {
   test("of a block is not a fault", () => {
     const report = check({
-      "Card.tsx": `const base = @@( display: flex; );\nconst a = <div className={@@( ...{base}; opacity: 0.5; )}>x</div>;\nexport default a;\n`,
+      "Card.tsx": `const base = @@( display: flex; );\nconst a = <div className={@@( ...$(base); opacity: 0.5; )}>x</div>;\nexport default a;\n`,
     });
 
     expect(report.findings).toEqual([]);
@@ -960,7 +960,7 @@ describe("a spread", () => {
 
   test("of something that is not a block is reported", () => {
     const report = check({
-      "Card.tsx": `declare const plain: { color: string };\nconst a = <div className={@@( ...{plain}; )}>x</div>;\nexport default a;\n`,
+      "Card.tsx": `declare const plain: { color: string };\nconst a = <div className={@@( ...$(plain); )}>x</div>;\nexport default a;\n`,
     });
 
     expect(report.findings).toHaveLength(1);
@@ -969,7 +969,7 @@ describe("a spread", () => {
 
   test("and the fault lands on the expression the author wrote", () => {
     const report = check({
-      "Card.tsx": `declare const plain: string;\nconst a = <div className={@@(\n  display: flex;\n  ...{plain};\n)}>x</div>;\nexport default a;\n`,
+      "Card.tsx": `declare const plain: string;\nconst a = <div className={@@(\n  display: flex;\n  ...$(plain);\n)}>x</div>;\nexport default a;\n`,
     });
 
     expect(report.findings[0].line).toBe(4);
@@ -995,7 +995,7 @@ describe("a spread", () => {
  * other direction is reported as a divergence and **not** repaired. Two paths let it back in.
  *
  * - `CssBlockShape` is a `Partial`, and optionality puts `| undefined` back on every property. So
- *   `color: {maybe}` passed — for the 424 properties whose type is `CssValue`. The 127 closed ones
+ *   `color: $(maybe)` passed — for the 424 properties whose type is `CssValue`. The 127 closed ones
  *   caught it by accident, because they refuse a bare `string` too.
  * - A value that is TEXT AND HOLES is written as a template literal, which accepts anything at all.
  *   Nothing here was checked: not `undefined`, not `null`, not an object, not a function's `void`.
@@ -1021,10 +1021,10 @@ describe("a runtime value in a declaration", () => {
     check({ "Card.tsx": `${head}const a = <div className={@@(\n  ${declaration}\n)}>x</div>;\nexport default a;\n` });
 
   test.each([
-    ["a whole value", "  color: {brand};", "declare const brand: string;\n"],
-    ["part of one", "  border-left: {w} solid red;", "declare const w: string;\n"],
-    ["a custom property's value", "  --brand: {brand};", "declare const brand: string;\n"],
-    ["one inside a nested rule", "  &:hover { color: {brand}; }", "declare const brand: string;\n"],
+    ["a whole value", "  color: $(brand);", "declare const brand: string;\n"],
+    ["part of one", "  border-left: $(w) solid red;", "declare const w: string;\n"],
+    ["a custom property's value", "  --brand: $(brand);", "declare const brand: string;\n"],
+    ["one inside a nested rule", "  &:hover { color: $(brand); }", "declare const brand: string;\n"],
   ])("%s is reported, once, on the hole the author wrote", (_what, declaration, head) => {
     const report = held(declaration, head);
 
@@ -1039,8 +1039,8 @@ describe("a runtime value in a declaration", () => {
    * type is dropped, because the fix is to delete the hole either way.
    */
   test.each([
-    ["undefined", "  color: {maybe};", "declare const maybe: string | undefined;\n"],
-    ["an object", "  color: {obj};", "declare const obj: { a: number };\n"],
+    ["undefined", "  color: $(maybe);", "declare const maybe: string | undefined;\n"],
+    ["an object", "  color: $(obj);", "declare const obj: { a: number };\n"],
   ])("%s is one finding, ours, and not the compiler's as well", (_what, declaration, head) => {
     const report = held(declaration, head);
 
@@ -1050,7 +1050,7 @@ describe("a runtime value in a declaration", () => {
 
   /** The message sends a person to both doors, because which one applies is theirs to know. */
   test("the message names `match` and `@@property`", () => {
-    const [only] = held("  color: {brand};", "declare const brand: string;\n").findings;
+    const [only] = held("  color: $(brand);", "declare const brand: string;\n").findings;
 
     expect(only.message).toContain("match");
     expect(only.message).toContain("@@property");
@@ -1061,12 +1061,12 @@ describe("a runtime value in a declaration", () => {
    * names something the compiler resolves to text, and none puts a value on an element.
    */
   test("a hole in a condition is still any expression at all", () => {
-    expect(held("  if ({on}) { color: red; }", "declare const on: boolean;\n").findings).toEqual([]);
+    expect(held("  when $(on) { color: red; }", "declare const on: boolean;\n").findings).toEqual([]);
   });
 
   test("a match chooses between classes, so it is not one", () => {
     const report = held(
-      "  color: match({tone}) {\n    hot => red;\n    _ => blue;\n  };",
+      "  color: match $(tone) {\n    hot => red;\n    _ => blue;\n  };",
       'declare const tone: "hot" | "cold";\n',
     );
 
@@ -1077,7 +1077,7 @@ describe("a runtime value in a declaration", () => {
     const report = check({
       "Card.tsx":
         `const angle = @@property(\n  syntax: "<angle>";\n  inherits: false;\n  initial-value: 0deg;\n);\n` +
-        `const a = <div className={@@( {angle}: 45deg; transform: rotate(var({angle})); )}>x</div>;\nexport default a;\n`,
+        `const a = <div className={@@( $(angle): 45deg; transform: rotate(var($(angle))); )}>x</div>;\nexport default a;\n`,
     });
 
     expect(report.findings).toEqual([]);
@@ -1100,17 +1100,17 @@ describe("the editor and the build, on the same file", () => {
   test.each([
     [
       "a spread inside a selector",
-      "const base = @@( color: red; );\nconst a = <div className={@@(\n  &:hover { ...{base}; }\n)}>x</div>;\nexport default a;\n",
+      "const base = @@( color: red; );\nconst a = <div className={@@(\n  &:hover { ...$(base); }\n)}>x</div>;\nexport default a;\n",
       "spread-out-of-place",
     ],
     [
       "a spread inside a `@media`",
-      "const base = @@( color: red; );\nconst a = <div className={@@(\n  @media print { ...{base}; }\n)}>x</div>;\nexport default a;\n",
+      "const base = @@( color: red; );\nconst a = <div className={@@(\n  @media print { ...$(base); }\n)}>x</div>;\nexport default a;\n",
       "spread-out-of-place",
     ],
     [
       "a hole inside `@@keyframes`",
-      "declare const w: number;\nconst k = @@keyframes(\n  from { opacity: {w}; }\n);\nexport default k;\n",
+      "declare const w: number;\nconst k = @@keyframes(\n  from { opacity: $(w); }\n);\nexport default k;\n",
       "hole-in-a-named-block",
     ],
   ])("%s is reported here too, not only at build", (_what, source, rule) => {
@@ -1124,8 +1124,8 @@ describe("the editor and the build, on the same file", () => {
     ["a bare element selector", "  div { color: red; }"],
     ["a class selector", "  .title { color: red; }"],
     ["a descendant of a pseudo", "  &:hover div { color: red; }"],
-    ["a spread at the top level", "  ...{base};"],
-    ["a spread inside `if`, which changes no key", "  if ({on}) { ...{base}; }"],
+    ["a spread at the top level", "  ...$(base);"],
+    ["a spread inside `if`, which changes no key", "  when $(on) { ...$(base); }"],
   ])("%s is accepted here, as the build accepts it", (_what, body) => {
     const report = check({
       "Card.tsx":
@@ -1141,7 +1141,7 @@ describe("the editor and the build, on the same file", () => {
    *
    * Both were refused by the build and by nothing else, and both came back as SOMETHING ELSE. A
    * misspelt name had no surface, so the ordinary block check took over and reported `from { … }` as
-   * a nested rule; and `if` inside `@@keyframes` was reported as *`if ( 0 )` is not a keyframe*.
+   * a nested rule; and `when` inside `@@keyframes` was reported as *`if ( 0 )` is not a keyframe*.
    * A wrong message is worse than none — it sends a person to the wrong line.
    */
   test.each([
@@ -1153,13 +1153,13 @@ describe("the editor and the build, on the same file", () => {
     ],
     [
       "`if` inside a named block",
-      "declare const on: boolean;\nconst k = @@keyframes(\n  if ({on}) { from { opacity: 0; } }\n);\nexport default k;\n",
+      "declare const on: boolean;\nconst k = @@keyframes(\n  when $(on) { from { opacity: 0; } }\n);\nexport default k;\n",
       "composition-in-a-named-block",
-      "cannot hold `if`",
+      "cannot hold `when`",
     ],
     [
       "a spread inside a named block",
-      'declare const base: never;\nconst f = @@font-face(\n  font-family: "Brand";\n  src: url("/b.woff2");\n  ...{base};\n);\nexport default f;\n',
+      'declare const base: never;\nconst f = @@font-face(\n  font-family: "Brand";\n  src: url("/b.woff2");\n  ...$(base);\n);\nexport default f;\n',
       "composition-in-a-named-block",
       "cannot hold a spread",
     ],
@@ -1225,7 +1225,7 @@ describe("a variable nothing in the project sets", () => {
       "Card.tsx":
         body === ""
           ? `const brand = @@property(\n  syntax: "<color>";\n  inherits: true;\n  initial-value: #10b981;\n);\n` +
-            `const a = <div className={@@(\n  color: var({brand});\n)}>x</div>;\nexport default [brand, a];\n`
+            `const a = <div className={@@(\n  color: var($(brand));\n)}>x</div>;\nexport default [brand, a];\n`
           : `const a = <div className={@@(\n${body}\n)}>x</div>;\nexport default a;\n`,
     });
 
@@ -1268,7 +1268,7 @@ describe("the type a block has", () => {
     const report = check({
       "Card.tsx":
         `const forged = { className: "r-x", properties: [], values: [] };\n` +
-        `const a = <div className={@@( ...{forged}; )}>x</div>;\nexport default a;\n`,
+        `const a = <div className={@@( ...$(forged); )}>x</div>;\nexport default a;\n`,
     });
 
     expect(report.findings).toHaveLength(1);
@@ -1784,19 +1784,21 @@ describe("a style prop nobody uses", () => {
   });
 
   test("spread into a block, it is quiet", () => {
-    expect(card(`  return <div className={@@( color: red; ...{props.css}; )}>x</div>;`).findings).toEqual([]);
+    expect(card(`  return <div className={@@( color: red; ...$(props.css); )}>x</div>;`).findings).toEqual([]);
   });
 
   /** The false report the FORWARD walk gave, which is why the pass runs backward from the spread. */
   test("reached through a local, it is quiet", () => {
-    expect(card(`  const mine = props.css;\n  return <div className={@@( ...{mine}; )}>x</div>;`).findings).toEqual([]);
+    expect(card(`  const mine = props.css;\n  return <div className={@@( ...$(mine); )}>x</div>;`).findings).toEqual(
+      [],
+    );
   });
 
   test("handed on to another component's style prop, it is quiet", () => {
     const report = check({
       "Inner.tsx":
         `import type { CssBlock } from "@ramonda/css/properties";\n` +
-        `export function Inner(props: { titleCss?: CssBlock }) { return <div className={@@( ...{props.titleCss}; )}>x</div>; }\n`,
+        `export function Inner(props: { titleCss?: CssBlock }) { return <div className={@@( ...$(props.titleCss); )}>x</div>; }\n`,
       "Card.tsx":
         `import type { CssBlock } from "@ramonda/css/properties";\nimport { Inner } from "./Inner";\n` +
         `export function Card(props: { titleCss?: CssBlock }) { return <Inner titleCss={props.titleCss} />; }\n`,
@@ -1830,7 +1832,7 @@ describe("a style prop nobody uses", () => {
     const used = check({
       "Card.tsx":
         `import type { CssBlock } from "@ramonda/css/properties";\n` +
-        `export function Card({ css }: { css?: CssBlock }) { return <div className={@@( ...{css}; )}>x</div>; }\n`,
+        `export function Card({ css }: { css?: CssBlock }) { return <div className={@@( ...$(css); )}>x</div>; }\n`,
     });
 
     expect(used.findings).toEqual([]);
@@ -1857,7 +1859,7 @@ describe("a style prop nobody uses", () => {
         `import type { CssBlock } from "@ramonda/css/properties";\n` +
         `export function Card(props: { css?: CssBlock }) {\n` +
         `  const { css } = props;\n` +
-        `  return <div className={@@( ...{css}; )}>x</div>;\n}\n`,
+        `  return <div className={@@( ...$(css); )}>x</div>;\n}\n`,
     });
 
     expect(report.findings).toEqual([]);
@@ -1882,7 +1884,7 @@ describe("a style prop nobody uses", () => {
       "Card.tsx":
         `import type { CssBlock } from "@ramonda/css/properties";\nimport { Component } from "./base";\n` +
         `export class Card extends Component<{ css?: CssBlock }> {\n` +
-        `  render() { return <div className={@@( ...{this.props.css}; )}>x</div>; }\n}\n`,
+        `  render() { return <div className={@@( ...$(this.props.css); )}>x</div>; }\n}\n`,
     });
 
     expect(used.findings).toEqual([]);
@@ -1913,7 +1915,7 @@ describe("a style prop nobody uses", () => {
         `import type { CssBlock } from "@ramonda/css/properties";\n` +
         `export function Card(props: { css?: CssBlock }) {\n` +
         `  const { css: mine } = props;\n` +
-        `  return <div className={@@( ...{mine}; )}>x</div>;\n}\n`,
+        `  return <div className={@@( ...$(mine); )}>x</div>;\n}\n`,
     });
 
     expect(report.findings).toEqual([]);
@@ -1936,7 +1938,7 @@ describe("a style prop nobody uses", () => {
     const report = check({
       "Card.tsx":
         `import type { CssBlock } from "@ramonda/css/properties";\n` +
-        `function wrap(b: CssBlock | undefined) { return <div className={@@( ...{b}; )}>y</div>; }\n` +
+        `function wrap(b: CssBlock | undefined) { return <div className={@@( ...$(b); )}>y</div>; }\n` +
         `export function Card(props: { css?: CssBlock }) { return wrap(props.css); }\n`,
     });
 
@@ -1950,7 +1952,7 @@ describe("a style prop nobody uses", () => {
         `export class Card {\n` +
         `  props!: { css?: CssBlock };\n` +
         `  get mine() { return this.props.css; }\n` +
-        `  render() { return <div className={@@( ...{this.mine}; )}>x</div>; }\n}\n`,
+        `  render() { return <div className={@@( ...$(this.mine); )}>x</div>; }\n}\n`,
     });
 
     expect(report.findings).toEqual([]);
@@ -1998,7 +2000,7 @@ describe("a style prop the block overrides below the spread", () => {
     });
 
   test("a shorthand below the spread clears what the caller may send", () => {
-    const report = card(`...{props.css}; padding: 8px;`);
+    const report = card(`...$(props.css); padding: 8px;`);
 
     expect(report.findings).toHaveLength(1);
     expect(report.findings[0].code).toBe("style-prop-overridden");
@@ -2006,18 +2008,18 @@ describe("a style prop the block overrides below the spread", () => {
   });
 
   test("the same property below the spread is reported too", () => {
-    const report = card(`...{props.css}; color: red;`, `{ color?: string }`);
+    const report = card(`...$(props.css); color: red;`, `{ color?: string }`);
 
     expect(report.findings).toHaveLength(1);
     expect(report.findings[0].code).toBe("style-prop-overridden");
   });
 
   test("above the spread it is quiet, and that is the order a slot is for", () => {
-    expect(card(`padding: 8px; ...{props.css};`).findings).toEqual([]);
+    expect(card(`padding: 8px; ...$(props.css);`).findings).toEqual([]);
   });
 
   test("a property the slot never promised is quiet", () => {
-    expect(card(`...{props.css}; color: red;`).findings).toEqual([]);
+    expect(card(`...$(props.css); color: red;`).findings).toEqual([]);
   });
 
   /** A prop that promised nothing in particular cannot have a promise broken. */
@@ -2025,7 +2027,7 @@ describe("a style prop the block overrides below the spread", () => {
     const report = check({
       "Card.tsx":
         `import type { CssBlock } from "@ramonda/css/properties";\n` +
-        `export function Card(props: { css?: CssBlock }) { return <div className={@@( ...{props.css}; padding: 8px; )}>x</div>; }\n`,
+        `export function Card(props: { css?: CssBlock }) { return <div className={@@( ...$(props.css); padding: 8px; )}>x</div>; }\n`,
     });
 
     expect(report.findings).toEqual([]);
@@ -2045,7 +2047,7 @@ describe("a spread of something that may be absent", () => {
       "Card.tsx":
         `import type { CssBlock } from "@ramonda/css/properties";\n` +
         `export function Card(props: { css?: ${type} }) {\n` +
-        `  return <div className={@@( color: red; ...{props.css}; )}>x</div>;\n}\n`,
+        `  return <div className={@@( color: red; ...$(props.css); )}>x</div>;\n}\n`,
     });
 
   test("an optional block spreads", () => {
@@ -2057,7 +2059,7 @@ describe("a spread of something that may be absent", () => {
       "Card.tsx":
         `import type { CssBlock } from "@ramonda/css/properties";\n` +
         `export function Card(props: { on: boolean; css: CssBlock }) {\n` +
-        `  return <div className={@@( color: red; ...{props.on && props.css}; )}>x</div>;\n}\n`,
+        `  return <div className={@@( color: red; ...$(props.on && props.css); )}>x</div>;\n}\n`,
     });
 
     expect(report.findings).toEqual([]);
@@ -2104,7 +2106,7 @@ describe("a spread of something that may be absent", () => {
       "Card.tsx":
         `import type { CssBlock } from "@ramonda/css/properties";\n` +
         `export function Card(props: { a: CssBlock; b: CssBlock }) {\n` +
-        `  return <div className={@@( ...{\`\${props.a} \${props.b}\`}; )}>x</div>;\n}\n`,
+        `  return <div className={@@( ...$(\`\${props.a} \${props.b}\`); )}>x</div>;\n}\n`,
     });
 
     const said = report.findings.map((one) => one.message).join("\n");
@@ -2183,9 +2185,9 @@ describe("a runtime value sent to a prop", () => {
   });
 
   test.each([
-    ["at the top level", `color: {this.brand};`],
-    ["inside a nested rule", `color: red;\n  &:hover { color: {this.brand}; }`],
-    ["and inside a conditional group", `color: red;\n  if ({this.brand}) { color: {this.brand}; }`],
+    ["at the top level", `color: $(this.brand);`],
+    ["inside a nested rule", `color: red;\n  &:hover { color: $(this.brand); }`],
+    ["and inside a conditional group", `color: red;\n  when $(this.brand) { color: $(this.brand); }`],
   ])("one %s is refused, in the file that wrote it", (_what, block) => {
     const report = calling(block);
 
@@ -2196,7 +2198,7 @@ describe("a runtime value sent to a prop", () => {
 
   /** The whole reason refusing one is affordable: a variant is still sayable without it. */
   test("a condition is not a runtime value, so a variant still goes through", () => {
-    expect(calling(`color: red;\n  if ({this.brand}) { color: blue; }`).findings).toEqual([]);
+    expect(calling(`color: red;\n  when $(this.brand) { color: blue; }`).findings).toEqual([]);
   });
 });
 
@@ -2309,24 +2311,24 @@ describe("what counts as below the spread", () => {
   const rules = (block: string) => card(block).findings.map((one) => one.code);
 
   test("a conditional group below the spread still clears", () => {
-    expect(rules(`...{props.css}; if ({props.on}) { padding: 8px; }`)).toEqual(["style-prop-overridden"]);
+    expect(rules(`...$(props.css); when $(props.on) { padding: 8px; }`)).toEqual(["style-prop-overridden"]);
   });
 
   test("a conditional group ABOVE it does not", () => {
-    expect(rules(`if ({props.on}) { padding: 8px; } ...{props.css};`)).toEqual([]);
+    expect(rules(`when $(props.on) { padding: 8px; } ...$(props.css);`)).toEqual([]);
   });
 
   test("a nested rule is its own group, so what is inside it is not below the outer spread", () => {
-    expect(rules(`...{props.css}; &:hover { padding: 8px; }`)).toEqual([]);
+    expect(rules(`...$(props.css); &:hover { padding: 8px; }`)).toEqual([]);
   });
 
   /**
-   * It never arises: a spread may stand only at a block's top level or inside `if { … }`, because
+   * It never arises: a spread may stand only at a block's top level or inside `when $( … ) { … }`, because
    * a block carries the context its declarations were written in. `spread-out-of-place` is what
    * says so, and it says it first.
    */
   test("a spread cannot go inside a nested rule at all, so the question never arises", () => {
-    expect(rules(`&:hover { ...{props.css}; padding: 8px; }`)).toContain("spread-out-of-place");
+    expect(rules(`&:hover { ...$(props.css); padding: 8px; }`)).toContain("spread-out-of-place");
   });
 
   /**
@@ -2335,7 +2337,7 @@ describe("what counts as below the spread", () => {
    * a declaration that CLEARS theirs is reported.
    */
   test("a longhand below a spread that allows the shorthand is quiet", () => {
-    expect(card(`...{props.css}; padding-left: 4px;`, `{ padding?: string }`).findings).toEqual([]);
+    expect(card(`...$(props.css); padding-left: 4px;`, `{ padding?: string }`).findings).toEqual([]);
   });
 
   /**
@@ -2351,7 +2353,7 @@ describe("what counts as below the spread", () => {
         `  a?: CssBlock<{ "padding-left"?: string }>;\n` +
         `  b?: CssBlock<{ "padding-top"?: string }>;\n` +
         `}) {\n` +
-        `  return <div className={@@( ...{props.a}; ...{props.b}; padding: 8px; )}>x</div>;\n}\n`,
+        `  return <div className={@@( ...$(props.a); ...$(props.b); padding: 8px; )}>x</div>;\n}\n`,
     });
 
     expect(report.findings.map((one) => one.code)).toEqual(["style-prop-overridden"]);
@@ -2392,7 +2394,7 @@ describe("silencing a typed rule", () => {
       "Card.tsx":
         `import type { CssBlock } from "@ramonda/css/properties";\n` +
         `export function Card(props: { css?: CssBlock<{ "padding-left"?: string }> }) {\n` +
-        `  return <div className={@@( ...{props.css}; padding: 8px; )}>x</div>;\n}\n`,
+        `  return <div className={@@( ...$(props.css); padding: 8px; )}>x</div>;\n}\n`,
       "ramonda.css.ts": `export default { rules: { "style-prop-overridden": "off" } };\n`,
     });
 
@@ -2464,7 +2466,7 @@ describe("a typed rule beside the compiler", () => {
     `import type { CssBlock } from "@ramonda/css/properties";\n` +
     `declare function Inner(p: { css?: CssBlock<{ color?: string }> }): JSX.Element;\n` +
     `export function Card(props: { css?: CssBlock<{ "padding-left"?: string }> }) {\n` +
-    `  return <Inner css={@@( ...{props.css}; padding: 8px; )} />;\n}\n`;
+    `  return <Inner css={@@( ...$(props.css); padding: 8px; )} />;\n}\n`;
 
   /**
    * `padding` is refused by the receiving slot AND clears what this component's caller may send.
@@ -2493,7 +2495,7 @@ describe("a typed rule beside the compiler", () => {
       "Card.tsx":
         `import type { CssBlock } from "@ramonda/css/properties";\n` +
         `export interface CardProps { css?: CssBlock }\n` +
-        `export function Card(props: CardProps) { return <div className={@@( ...{props.css}; )}>x</div>; }\n`,
+        `export function Card(props: CardProps) { return <div className={@@( ...$(props.css); )}>x</div>; }\n`,
     });
 
     expect(report.findings).toEqual([]);
@@ -2514,32 +2516,32 @@ describe("a match, type-checked", () => {
     });
 
   test("arms the subject can hold are quiet", () => {
-    expect(card(`color: match({this.variant}) { primary => red; secondary => blue; };`).findings).toEqual([]);
+    expect(card(`color: match $(this.variant) { primary => red; secondary => blue; };`).findings).toEqual([]);
   });
 
   test("a key the subject can never hold is reported, at the key", () => {
-    const report = card(`color: match({this.variant}) { primary => red; tertiary => blue; };`);
+    const report = card(`color: match $(this.variant) { primary => red; tertiary => blue; };`);
 
     expect(report.findings.length).toBeGreaterThan(0);
     expect(report.findings[0].message).toContain("tertiary");
   });
 
   test("an arm's value is judged by the property, not by the call", () => {
-    const report = card(`position: match({this.variant}) { primary => statik; secondary => absolute; };`);
+    const report = card(`position: match $(this.variant) { primary => statik; secondary => absolute; };`);
 
     expect(report.findings.length).toBeGreaterThan(0);
     expect(report.findings.map((one) => String(one.message)).join(" ")).toContain("statik");
   });
 
   test("a fault inside the SUBJECT is reported where it is written", () => {
-    const report = card(`color: match({this.varaint}) { primary => red; };`);
+    const report = card(`color: match $(this.varaint) { primary => red; };`);
 
     expect(report.findings.length).toBeGreaterThan(0);
     expect(report.findings.map((one) => String(one.message)).join(" ")).toContain("varaint");
   });
 
   test("`_` needs no key the subject can hold", () => {
-    expect(card(`color: match({this.variant}) { primary => red; _ => inherit; };`).findings).toEqual([]);
+    expect(card(`color: match $(this.variant) { primary => red; _ => inherit; };`).findings).toEqual([]);
   });
 });
 
@@ -2555,7 +2557,7 @@ describe("a narrower whole shorthand after a wider one from another block", () =
   test("through a spread in the same file", () => {
     expect(
       codes({
-        "Card.tsx": `const base = @@( border: var(--x); );\nexport const card = @@( ...{base}; border-top: var(--y); );\n`,
+        "Card.tsx": `const base = @@( border: var(--x); );\nexport const card = @@( ...$(base); border-top: var(--y); );\n`,
       }),
     ).toContain("narrower-after-a-whole-shorthand");
   });
@@ -2564,7 +2566,7 @@ describe("a narrower whole shorthand after a wider one from another block", () =
     expect(
       codes({
         "base.ts": `export const base = @@( font: caption; );\n`,
-        "Card.tsx": `import { base } from "./base";\nexport const card = @@( ...{base}; font-variant: var(--v); );\n`,
+        "Card.tsx": `import { base } from "./base";\nexport const card = @@( ...$(base); font-variant: var(--v); );\n`,
       }),
     ).toContain("narrower-after-a-whole-shorthand");
   });
@@ -2609,7 +2611,7 @@ describe("a narrower whole shorthand after a wider one from another block", () =
     ["an important wider one", "border: var(--x) !important;", "border-top: var(--y);"],
   ])("not for %s", (_what, first, second) => {
     expect(
-      codes({ "Card.tsx": `const base = @@( ${first} );\nexport const card = @@( ...{base}; ${second} );\n` }),
+      codes({ "Card.tsx": `const base = @@( ${first} );\nexport const card = @@( ...$(base); ${second} );\n` }),
     ).not.toContain("narrower-after-a-whole-shorthand");
   });
 });
@@ -2620,43 +2622,43 @@ describe("a narrower whole shorthand after a wider one from another block", () =
  * `__vars.border.thin`, or inside a template when it is part of a value, and the walk read only
  * string literals, so these went unreported.
  *
- * The project declares its variables the way codegen does: its properties module exports `$`.
+ * The project declares its variables the way codegen does: its properties module exports one name per group.
  */
 describe("a `$` variable in a whole shorthand from another block", () => {
   const PROPS =
     `export * from ${JSON.stringify(join(PACKAGE, "src", "properties"))};\n` +
-    `export declare const $: { border: { thin: string; top: string }; color: { a: string } };\n`;
+    `export declare const $border: { thin: string; top: string };\nexport declare const $color: { a: string };\n`;
   const CONFIG =
     `import { kind } from ${JSON.stringify(join(PACKAGE, "dist", "config.js"))};\n` +
     `export default { variables: {\n` +
-    `  border: kind("any", { thin: "1px solid red", top: "2px solid blue" }),\n` +
-    `  color: kind("color", { a: "#000" }),\n} };\n`;
+    `  $border: kind("any", { thin: "1px solid red", top: "2px solid blue" }),\n` +
+    `  $color: kind("color", { a: "#000" }),\n} };\n`;
   const findings = (base: string, card: string) =>
     checkProject(
       project(
         {
           "props.ts": PROPS,
           "ramonda.css.ts": CONFIG,
-          "Card.tsx": `const base = @@( ${base} );\nexport const card = @@( ...{base}; ${card} );\n`,
+          "Card.tsx": `const base = @@( ${base} );\nexport const card = @@( ...$(base); ${card} );\n`,
         },
         "src/props.ts",
       ),
     ).findings;
 
   test("the project's variables resolve, so nothing else is reported", () => {
-    expect(findings("border: $.border.thin;", "border-top-color: $.color.a;")).toEqual([]);
+    expect(findings("border: $border.thin;", "border-top-color: $color.a;")).toEqual([]);
   });
 
   test.each([
-    ["a variable in each", "border: $.border.thin;", "border-top: $.border.top;"],
-    ["a variable as part of each value", "border: 2px solid $.color.a;", "border-top: 1px solid $.color.a;"],
-    ["a variable as part of the wider one only", "border: 2px solid $.color.a;", "border-top: $.border.top;"],
+    ["a variable in each", "border: $border.thin;", "border-top: $border.top;"],
+    ["a variable as part of each value", "border: 2px solid $color.a;", "border-top: 1px solid $color.a;"],
+    ["a variable as part of the wider one only", "border: 2px solid $color.a;", "border-top: $border.top;"],
   ])("is reported: %s", (_what, base, card) => {
     expect(findings(base, card).map((one) => one.code)).toEqual(["narrower-after-a-whole-shorthand"]);
   });
 
   test("not for a longhand after it", () => {
-    expect(findings("border: $.border.thin;", "border-top-color: $.color.a;")).toEqual([]);
+    expect(findings("border: $border.thin;", "border-top-color: $color.a;")).toEqual([]);
   });
 });
 
@@ -2704,7 +2706,7 @@ describe("the cross-block check, second review", () => {
 
   test("a pair inside one block after a spread is the compiler's, and is said once", () => {
     const report = found({
-      "Card.tsx": `const base = @@( color: red; );\nexport const card = @@( ...{base}; border: var(--x); border-top: var(--y); );\n`,
+      "Card.tsx": `const base = @@( color: red; );\nexport const card = @@( ...$(base); border: var(--x); border-top: var(--y); );\n`,
     });
     expect(report).toHaveLength(1);
   });
@@ -2712,8 +2714,8 @@ describe("the cross-block check, second review", () => {
   test("a block spread a second time counts a second time", () => {
     const report = found({
       "Card.tsx":
-        `const a = @@( border: var(--x); );\nconst b = @@( ...{a}; color: red; );\n` +
-        `export const card = @@( ...{a}; border: 1px solid red; ...{b}; border-top: var(--y); );\n`,
+        `const a = @@( border: var(--x); );\nconst b = @@( ...$(a); color: red; );\n` +
+        `export const card = @@( ...$(a); border: 1px solid red; ...$(b); border-top: var(--y); );\n`,
     });
     expect(report).toHaveLength(1);
   });
@@ -2722,7 +2724,7 @@ describe("the cross-block check, second review", () => {
     const report = found({
       "Card.tsx":
         `declare const on: boolean;\nconst base = @@( border: var(--x); );\n` +
-        `export const card = @@( ...{base}; if ({on}) { border: 1px solid red; } border-top: var(--y); );\n`,
+        `export const card = @@( ...$(base); when $(on) { border: 1px solid red; } border-top: var(--y); );\n`,
     });
     expect(report).toEqual([]);
   });

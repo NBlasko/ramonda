@@ -3,7 +3,7 @@ import { nameFor } from "./dollar";
 import { HOLE, canonicalValue, collapse, propertyName } from "./normalise";
 import { MAY_CLEAR, PROPERTIES, SHORTHANDS } from "./keywords.generated";
 import { widthSlot } from "../conditions";
-import { CONDITION, SPREAD, holeIn } from "./read";
+import { SPREAD, branchOf, holeIn } from "./read";
 import { IMPORTANT, splitOf } from "./split";
 
 /**
@@ -59,6 +59,12 @@ export interface AtomicDeclaration {
    * entry that chooses between the classes. See `MatchPart`.
    */
   readonly arm?: { readonly hole: number; readonly is: string; readonly otherwise: boolean };
+  /**
+   * When this declaration is one BRANCH of a choice — `$(a) ? x : $(b) ? y : z`: which choice (its
+   * first condition's hole), which branch, and every condition in order. The last branch, the one
+   * after the final `:`, is `branch === holes.length`. See `ChoicePart`.
+   */
+  readonly choice?: { readonly id: number; readonly branch: number; readonly holes: readonly number[] };
   /**
    * Whether the value ends in `!important`, which MIRRORS the layer it goes in.
    *
@@ -408,7 +414,7 @@ export function onlyTheModeDecides(a: string, b: string): boolean {
  *
  * ## Holes are renumbered per declaration
  *
- * A hole's index belongs to the BLOCK, so `color: {{x}}` is hole 0 alone and hole 1 under another
+ * A hole's index belongs to the BLOCK, so `color: $(x)` is hole 0 alone and hole 1 under another
  * declaration — the same declaration with two canonical texts, two classes, and the dedupe that pays
  * for this whole design gone. The placeholder carries the LOCAL index and {@link AtomicDeclaration.holes}
  * says which of the block's holes those are.
@@ -423,17 +429,56 @@ export function onlyTheModeDecides(a: string, b: string): boolean {
  * One argument of the merge a block compiles to.
  *
  * A run of declarations under the same guards is ONE map — not one each — a spread is another
- * block's map, and the guards are the conditions of the `if` groups it sits inside.
+ * block's map, and the guards are the conditions of the `when` groups it sits inside.
  *
  * **Nesting is a conjunction**, which is why the guards are a flat list rather than a tree. That is
  * only correct because the merge is associative, which was measured over 50,301 random groupings
  * drawn from one shorthand family: zero disagreements between a nested merge and a flat one.
  */
+/**
+ * One condition a segment sits under.
+ *
+ * A `when` alone is its hole. A BRANCH of a chain — `when … else when … else …` — also says which
+ * chain and which arm, because the chain compiles to one conditional expression and every arm is
+ * one of its operands: the emit needs to know where one arm ends and the next begins, and whether
+ * the chain has a final `else`. A final `else` has no hole of its own.
+ */
+export interface Guard {
+  readonly hole?: number;
+  readonly chain?: {
+    /** The first arm's hole, which names the chain: one per chain, and in source order. */
+    readonly id: number;
+    readonly arm: number;
+    /** Whether this is the chain's last arm. */
+    readonly last: boolean;
+    /** Whether the chain ends in a bare `else`. */
+    readonly otherwise: boolean;
+  };
+}
+
+export const sameGuard = (a: Guard | undefined, b: Guard | undefined): boolean =>
+  a !== undefined &&
+  b !== undefined &&
+  a.hole === b.hole &&
+  a.chain?.id === b.chain?.id &&
+  a.chain?.arm === b.chain?.arm;
+
 export type AtomicSegment =
-  | { readonly kind: "declarations"; readonly guards: readonly number[]; readonly items: AtomicDeclaration[] }
+  | { readonly kind: "declarations"; readonly guards: readonly Guard[]; readonly items: AtomicDeclaration[] }
+  | {
+      /** A block-level match: one lookup by the subject's hole, and what each arm applies. */
+      readonly kind: "match";
+      readonly guards: readonly Guard[];
+      readonly hole: number;
+      readonly arms: readonly {
+        readonly key: string;
+        readonly otherwise: boolean;
+        readonly items: readonly AtomicDeclaration[];
+      }[];
+    }
   | {
       readonly kind: "spread";
-      readonly guards: readonly number[];
+      readonly guards: readonly Guard[];
       readonly hole: number;
       /**
        * The selector and conditions it was written under, which must both be empty.
@@ -456,7 +501,9 @@ export type AtomicSegment =
  */
 
 export function flatten(block: Block): AtomicDeclaration[] {
-  return segments(block).flatMap((one) => (one.kind === "declarations" ? one.items : []));
+  return segments(block).flatMap((one) =>
+    one.kind === "declarations" ? one.items : one.kind === "match" ? one.arms.flatMap((arm) => arm.items) : [],
+  );
 }
 
 /**
@@ -484,7 +531,7 @@ function walk(
   items: readonly BlockItem[],
   selector: string,
   conditions: readonly string[],
-  guards: readonly number[],
+  guards: readonly Guard[],
   out: AtomicSegment[],
   split: boolean,
 ): void {
@@ -497,29 +544,99 @@ function walk(
     return fresh;
   };
 
-  for (const item of items) {
+  /** A group's items under one more guard — and, when it produced nothing, its guard alone. */
+  const group = (inside: readonly BlockItem[], guard: Guard): void => {
+    const before = out.length;
+    walk(inside, selector, conditions, [...guards, guard], out, split);
+    // Why an empty group still emits its guard is written out below, at the `when` alone.
+    if (out.length === before) out.push({ kind: "declarations", guards: [...guards, guard], items: [] });
+  };
+
+  for (let at = 0; at < items.length; at++) {
+    const item = items[at];
+
+    /**
+     * A BLOCK match is a segment of its own: one lookup by the subject, and every arm's declarations
+     * as the classes that arm picks — EVERY arm, an empty one too, because an arm with nothing in it
+     * still answers for its key, and leaving it out would hand that key to `_`. An arm holds no
+     * composition (the reader refuses it), so its items are declarations under no guard of their own.
+     */
+    if (item.kind === "match") {
+      const arms = item.arms.map((one) => {
+        const inside: AtomicSegment[] = [];
+        walk(one.items, selector, conditions, [], inside, split);
+        return {
+          key: one.key,
+          otherwise: one.otherwise,
+          items: inside.flatMap((piece) => (piece.kind === "declarations" ? piece.items : [])),
+        };
+      });
+      out.push({ kind: "match", guards: [...guards], hole: item.hole, arms });
+      continue;
+    }
+
     if (item.kind === "rule") {
-      const condition = holeIn(item.prelude, CONDITION);
+      const branch = branchOf(item.prelude);
+
+      /**
+       * A CHAIN — a `when` and the `else when` and `else` right after it — is one choice, and each
+       * arm is a guard that names the chain and its place in it. The reader has already refused an
+       * `else` anywhere else, so what follows a `when` here is its chain.
+       */
+      const chain: { item: (typeof items)[number] & { kind: "rule" }; hole?: number }[] = [];
+      if (branch?.kind === "when") {
+        chain.push({ item, hole: branch.hole });
+        for (let next = at + 1; next < items.length; next++) {
+          const following = items[next];
+          if (following.kind !== "rule") break;
+          const more = branchOf(following.prelude);
+          if (more === undefined || more.kind === "when") break;
+          chain.push({ item: following, hole: more.kind === "else when" ? more.hole : undefined });
+          if (more.kind === "else") break;
+        }
+      }
+      if (chain.length > 1) {
+        const id = chain[0].hole ?? 0;
+        const otherwise = chain[chain.length - 1].hole === undefined;
+        chain.forEach((arm, index) =>
+          group(arm.item.items, {
+            hole: arm.hole,
+            chain: { id, arm: index, last: index === chain.length - 1, otherwise },
+          }),
+        );
+        at += chain.length - 1;
+        continue;
+      }
+
+      // A branch on its own reaches here only from a forgiving read: its condition, if it has one,
+      // guards it as a `when` would, and a bare `else` guards nothing.
+      if (branch?.kind === "else") {
+        walk(item.items, selector, conditions, guards, out, split);
+        continue;
+      }
+
+      const condition = branch?.hole;
       if (condition !== undefined) {
         const before = out.length;
-        walk(item.items, selector, conditions, [...guards, condition], out, split);
+        walk(item.items, selector, conditions, [...guards, { hole: condition }], out, split);
         /**
          * A group that produced NOTHING still emits its guard, as an empty run.
          *
-         * `@media print { }` is legal CSS that does nothing, so `if ({x}) { }` is legal here that
+         * `@media print { }` is legal CSS that does nothing, so `when $(x) { }` is legal here that
          * does nothing — and commenting a group's body out is how somebody reaches it. But the
          * emission counts on one segment per recorded hole: `readBlock` records the condition's
          * `{expr}` whatever the group holds, and without this the guard had a hole and no segment,
          * so every following piece of text slid one place left.
          *
-         * Measured before this line existed: `if ({variant}) { }` alone compiled to
+         * Measured before this line existed: `when $(variant) { }` alone compiled to
          * `_merge(variant)`, which parses, runs, and ships `class="l g"` for `variant = "lg"` —
          * two class names that never existed, with nothing downstream able to notice.
          *
          * An empty run contributes no declaration, so the guard is evaluated and applies nothing,
          * which is what the browser does with the empty at-rule this mirrors.
          */
-        if (out.length === before) out.push({ kind: "declarations", guards: [...guards, condition], items: [] });
+        if (out.length === before)
+          out.push({ kind: "declarations", guards: [...guards, { hole: condition }], items: [] });
         continue;
       }
       if (item.prelude.trimStart().startsWith("@")) {
@@ -553,6 +670,22 @@ function declarationsOf(
   conditions: readonly string[],
   split: boolean,
 ): AtomicDeclaration[] {
+  /**
+   * A CHOICE: every branch is its own rule, as a match arm is, each marked with its place so the emit
+   * writes one conditional expression that picks between their classes.
+   */
+  const chosen = item.value.find((part) => part.kind === "choice");
+  if (chosen !== undefined && chosen.kind === "choice") {
+    const holes = chosen.branches.map((one) => one.hole);
+    const values = [...chosen.branches.map((one) => one.value), chosen.otherwise];
+    return values.flatMap((one, branch) =>
+      maybeSplit(item, one, selector, conditions, undefined, split).map((piece) => ({
+        ...piece,
+        choice: { id: holes[0] ?? 0, branch, holes },
+      })),
+    );
+  }
+
   const found = item.value.find((part) => part.kind === "match");
   if (found !== undefined && found.kind === "match") {
     return found.arms.flatMap((one) =>
@@ -643,6 +776,8 @@ function built(
       value += `var(${nameFor(part.path)})`;
       continue;
     }
+    // A choice never reaches here: `declarationsOf` hands each of its branches over alone.
+    if (part.kind === "choice") continue;
     value += `${HOLE}${holes.length}${HOLE}`;
     holes.push(part.index);
   }
@@ -720,8 +855,8 @@ function built(
   };
 }
 
-const same = (a: readonly number[], b: readonly number[]) =>
-  a.length === b.length && a.every((one, index) => one === b[index]);
+const same = (a: readonly Guard[], b: readonly Guard[]) =>
+  a.length === b.length && a.every((one, index) => sameGuard(one, b[index]));
 
 /**
  * What a nested rule appends to its parent's selector.

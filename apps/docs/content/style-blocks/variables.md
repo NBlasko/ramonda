@@ -24,7 +24,7 @@ The last three have somewhere else to go, and a variable has two.
 
 ## A variable your project declares
 
-Declare it in `ramonda.css.ts` and read it with `$`:
+Declare it in `ramonda.css.ts` and read it the way it is declared — a group's name starts with `$`:
 
 ```ts
 // ramonda.css.ts
@@ -32,62 +32,67 @@ import { kind } from "@ramonda/css/config";
 
 export default {
   variables: {
-    color: kind("color", { accent: "#10b981", surface: "#ffffff" }),
-    space: kind("length", { gutter: "16px" }),
+    $color: kind("color", { accent: "#10b981", surface: "#ffffff" }),
+    $space: kind("length", { gutter: "16px" }),
   },
 };
 ```
 
 ```tsx
 const card = @@(
-  background: $.color.surface;
-  border-left: 4px solid $.color.accent;
-  padding: $.space.gutter;
+  background: $color.surface;
+  border-left: 4px solid $color.accent;
+  padding: $space.gutter;
 );
 ```
 
-`$.color.accent` compiles to `var(--color-accent)`. The name is the path, so the stylesheet is
+`$color.accent` compiles to `var(--color-accent)`. The name is the path, so the stylesheet is
 readable, and the path is the only spelling — there is no string to get wrong.
 
-### Where `$` needs importing, and where it does not
+**The group is `$color` everywhere**: in the config, in a block, and in the `import { $color }` code
+uses. A group written without its `$` — `color: kind(…)` — is refused by the config's type and when
+the config loads. The `$` is not part of the CSS name: `--color-accent`, not `--$color-accent`.
 
-A block is CSS, not TypeScript, and the compiler puts `$` in scope while it checks one. So **in a
-declaration's value you write it bare**, with no import anywhere in the file:
+`$` and a name is only ever a variable. A group the project does not have — `$props.size` — is
+reported with the groups it does have, because the usual cause is reaching for a value from code,
+which is written `$( … )`.
+
+### Where a group needs importing, and where it does not
+
+A block is CSS, not TypeScript, and the compiler puts every group in scope while it checks one. So
+**anywhere in a block you write a variable bare**, with no import anywhere in the file — in a value,
+in a `match` arm, in either branch of a choice:
 
 ```tsx
+declare const dark: boolean;
+
 const card = @@(
-  color: $.color.accent;
+  color: $(dark) ? $color.accent : $color.surface;
 );
 ```
 
-**Inside braces it is ordinary TypeScript**, because that is what the braces hold — a piece of your
-program written inside the template. TypeScript resolves the name there the way it resolves every
-other name, so it has to be imported:
+**Inside `$( … )` it is ordinary TypeScript**, because that is what the escape holds. TypeScript
+resolves a name there the way it resolves every other name — and so it does in the rest of your
+file: a lookup table of values, an argument you pass around, a `toStyle` call. There, import the
+group by the name it has in a block:
 
 ```tsx
-import { $ } from "../css-system";
+import { read } from "@ramonda/css";
+import { $color } from "../css-system";
 
 declare const dark: boolean;
 
-const tone = dark ? $.color.accent : $.color.surface;
-const card = @@(
-  ...{dark ? @@( color: $.color.accent; ) : @@( color: $.color.surface; )};
-);
+const tone = dark ? $color.accent : $color.surface;
+const now = read(tone, document.body);
 ```
 
-A `match` arm is CSS, so it takes the bare spelling — `hot => $.color.accent;` needs no import. It is
-the braces that decide, not where in the block you are.
+The rule is one line: **inside the CSS, no import; in code, import the group.** `$color.accent` is
+the same text in both places. Setting a variable from code with `toStyle` takes one more thing — a
+[range](#a-range-when-the-value-is-meant-to-move) saying what it may become.
 
-The same goes for `$` anywhere else in the file — a lookup table of values, an argument you pass
-around, a `toStyle` call. The rule is one line: **inside the CSS, no import; inside a `{ }`, the
-import**.
-
-Forget it and TypeScript says `Cannot find name '$'` — and then, because a bare `$` is jQuery to
-most of the world, offers to install `@types/jquery`. The name it cannot find is this one.
-
-**`css-system/` is written by the compiler**, and it is where `$` comes from. Run
+**`css-system/` is written by the compiler**, and it is where the groups come from. Run
 `npx ramonda-css codegen` once, or let the build plugin do it; either way the folder holds
-`index.ts` (the `$` object and this project's types) and `variables.css` (the values). Import the
+`index.ts` (one export per group — `$color`, `$space` — and this project's types) and `variables.css` (the values). Import the
 stylesheet once, wherever your app's CSS goes:
 
 ```ts
@@ -105,7 +110,7 @@ The kind is what the checker knows the variable IS, and it works in two directio
 
 ```tsx expect-error
 const wrong = @@(
-  padding-left: $.color.accent;
+  padding-left: $color.accent;
 );
 ```
 
@@ -136,10 +141,10 @@ theme moves it at run time, say what it may become:
 ```ts
 export default {
   variables: {
-    color: kind("color", {
+    $color: kind("color", {
       accent: { value: "#10b981", range: "any" },
     }),
-    space: kind("length", {
+    $space: kind("length", {
       gutter: { value: "16px", range: ["8px", "16px", "24px"] },
     }),
   },
@@ -162,13 +167,13 @@ export const angle = @@property(
 );
 
 const turn = @@keyframes(
-  from { {angle}: 0deg; }
-  to { {angle}: 180deg; }
+  from { $(angle): 0deg; }
+  to { $(angle): 180deg; }
 );
 
 const dial = @@(
-  transform: rotate(var({angle}));
-  animation: {turn} 1.2s linear infinite;
+  transform: rotate(var($(angle)));
+  animation: $(turn) 1.2s linear infinite;
 );
 ```
 
@@ -179,7 +184,7 @@ not inherit is not a design token.
 
 It is also the shorter road when there is one variable, local to one file, and no config yet.
 
-A misspelling is not a CSS problem here, it is an unresolved name: `var({ackcent})` is *Cannot find
+A misspelling is not a CSS problem here, it is an unresolved name: `var($(ackcent))` is *Cannot find
 name 'ackcent'. Did you mean 'accent'?*, from TypeScript, with the suggestion it already knows how
 to make.
 
@@ -199,7 +204,7 @@ const slide = @@keyframes(
 
 const panel = @@(
   font-family: "Brand", sans-serif;
-  animation: {slide} 240ms ease-out;
+  animation: $(slide) 240ms ease-out;
 );
 ```
 
@@ -211,7 +216,7 @@ written in two files is one rule.
 unresolved identifier. Written in a stylesheet instead, the name would be a string on both sides and
 `animation: slidein` would be one typo away from silence.
 
-A reference resolves **when the file compiles**, not on the element, so `{slide}` costs no custom
+A reference resolves **when the file compiles**, not on the element, so `$(slide)` costs no custom
 property.
 
 `@@font-face` names nothing — the `font-family` inside it is the handle, and that is the string
@@ -254,8 +259,8 @@ stylesheet:
 
 ```tsx
 const card = @@(
-  background: $.color.surface;
-  border-left: 4px solid $.color.accent;
+  background: $color.surface;
+  border-left: 4px solid $color.accent;
 );
 ```
 

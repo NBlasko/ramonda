@@ -49,7 +49,7 @@ what the page does:
 
 | written | why it is not split |
 |---|---|
-| `border: var(--b)`, `border: 1px solid $.color.line` | what a `var()` holds is known only when the page computes it, so which longhand gets which part is unknown — and a [`$` variable](/style-blocks/variables) is a `var()` |
+| `border: var(--b)`, `border: 1px solid $color.line` | what a `var()` holds is known only when the page computes it, so which longhand gets which part is unknown — and a [`$` variable](/style-blocks/variables) is a `var()` |
 | `font: caption` | a system font stands for values the browser fills in itself |
 | `text-box: cap`, `text-wrap: pretty` | one browser drops the whole declaration, and a split would still apply the rest there |
 | `all: unset` | it covers every property there is |

@@ -520,7 +520,7 @@ describe("what a project's config may not change", () => {
     undefined,
     { units: { length: ["px"] } },
     { properties: { "<color>": { variablesOnly: true } } },
-    { variables: { color: kind("color", { accent: "#10b981" }) } },
+    { variables: { $color: kind("color", { accent: "#10b981" }) } },
     { properties: { "*": { shorthand: false } } },
     { rules: { "unknown-unit": "off" } },
     { outDir: "somewhere-else" },

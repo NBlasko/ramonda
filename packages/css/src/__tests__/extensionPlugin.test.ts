@@ -167,6 +167,46 @@ describe("the plugin the extension contributes", () => {
     });
 
     /**
+     * A plugin that would not start is tried AGAIN once its file changes — and only then.
+     *
+     * Found in the editor: a rebuild of `@ramonda/css` empties `dist` first, a `tsserver` starting
+     * in that moment found no plugin, and the extension's copy answered until somebody restarted
+     * the server — with an older compiler that read new syntax as broken. The retry is on demand
+     * (a request, never a timer), at most once every few seconds, and only when the file is not the
+     * one that already failed, so a plugin that stays broken costs nothing.
+     */
+    function retried(scenario: "repaired" | "unchanged") {
+      const directory = project(
+        `globalThis.__loads = (globalThis.__loads ?? 0) + 1;\nthrow new Error("half built");\n`,
+      );
+      const file = join(directory, "node_modules", "@ramonda", "css", "plugin.js");
+      execFileSync("node", [join(EXTENSION, "build-plugin.mjs")], { stdio: "pipe" });
+      const { NODE_PATH: _hoisted, ...clean } = process.env;
+      return JSON.parse(
+        execFileSync(
+          "node",
+          [join(dirname(fileURLToPath(import.meta.url)), "retryTheShim.mjs"), EXTENSION, directory, file, scenario],
+          { env: clean, encoding: "utf8" },
+        ),
+      ) as { said: string[]; markers: string[]; loads: number };
+    }
+
+    test("a project plugin repaired after a failure is taken up without a restart", { timeout: 30000 }, () => {
+      const out = retried("repaired");
+
+      expect(out.markers).toEqual(["the extension's copy", "theirs", "theirs"]);
+      expect(out.said.join(" ")).toContain("stands aside");
+    });
+
+    test("a project plugin that stays broken is not tried again", { timeout: 30000 }, () => {
+      const out = retried("unchanged");
+
+      expect(out.markers).toEqual(["the extension's copy", "the extension's copy", "the extension's copy"]);
+      expect(out.loads).toBe(1);
+      expect(out.said.filter((one) => one.includes("would not start"))).toHaveLength(1);
+    });
+
+    /**
      * A module that is not a factory is treated as ABSENT, not as broken.
      *
      * The `try` around the hand-over would catch calling it anyway, so this is about the message: a

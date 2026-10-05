@@ -63,18 +63,18 @@ declare function kind<const K extends Kind, const T extends Written<ValueByKind[
 /* ── the config a person writes ─────────────────────────────────────────────────────────── */
 
 const variables = {
-  color: kind("color", {
+  $color: kind("color", {
     primary: { main: "#3b82f6", light: "#93c5fd" },
     surface: { base: "#ffffff", sunken: "#f3f4f6" },
     text: { primary: "#111827" },
   }),
-  size: kind("length", {
+  $size: kind("length", {
     control: { sm: "24px", md: "30px" },
     radius: { pill: "999px" },
     // a group may override the kind for its own subtree
     weight: kind("number", { bold: 700 }),
   }),
-  motion: kind("duration", { fast: "120ms", slow: "400ms" }),
+  $motion: kind("duration", { fast: "120ms", slow: "400ms" }),
 };
 
 /* ── what it produced, asserted rather than described ───────────────────────────────────── */

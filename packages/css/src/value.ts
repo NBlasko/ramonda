@@ -129,7 +129,7 @@ function nameOf(token: string): `--${string}` {
  * Declared variables and their values, as the custom properties an element carries.
  *
  * ```tsx
- * <div style={toStyle([[$.color.primary.main, tenant.primary]])}>…</div>
+ * <div style={toStyle([[$color.primary.main, tenant.primary]])}>…</div>
  * ```
  *
  * **This is not a theming mechanism and is not trying to be.** A theme may be a media query, an

@@ -49,9 +49,9 @@ export default {
   variables: {
     // A range where the project means to set it at run time — a variable declared with one value
     // says it never changes, and \`toStyle\` holds it to that.
-    color: kind("color", { primary: { main: { value: "#3b82f6", range: "any" } } }),
-    size: kind("length", { control: { md: { value: "30px", range: ["24px", "30px"] } }, weight: kind("number", { bold: 700 }) }),
-    space: kind("length", { inline: { "2xl": "48px" } }),
+    $color: kind("color", { primary: { main: { value: "#3b82f6", range: "any" } } }),
+    $size: kind("length", { control: { md: { value: "30px", range: ["24px", "30px"] } }, weight: kind("number", { bold: 700 }) }),
+    $space: kind("length", { inline: { "2xl": "48px" } }),
   },
 };
 `,
@@ -100,12 +100,12 @@ describe("the generated module", () => {
       [
         "--input-type=module",
         "-e",
-        `const { $ } = await import(${JSON.stringify(join(root, "ran.ts"))});
+        `const { $color, $size, $space } = await import(${JSON.stringify(join(root, "ran.ts"))});
          console.log(JSON.stringify({
-           colour: String($.color.primary.main),
-           length: String($.size.control.md),
-           nested: String($.size.weight.bold),
-           digits: String($.space.inline["2xl"]),
+           colour: String($color.primary.main),
+           length: String($size.control.md),
+           nested: String($size.weight.bold),
+           digits: String($space.inline["2xl"]),
          }));`,
       ],
       { encoding: "utf8" },
@@ -129,19 +129,19 @@ describe("the generated module", () => {
     writeFileSync(
       join(root, "src", "Card.tsx"),
       `import { read, toStyle } from "@ramonda/css";
-import { $, type Value } from "../css-system";
+import { $color, $size, type Value } from "../css-system";
 
-export const good = <div className={@@( color: $.color.primary.main; )}>x</div>;
-export const inACall = <div className={@@( width: calc($.size.control.md * 2); )}>x</div>;
-export const digits = <div className={@@( padding: $.space.inline.2xl; )}>x</div>;
-export const outside: string = $.color.primary.main;
+export const good = <div className={@@( color: $color.primary.main; )}>x</div>;
+export const inACall = <div className={@@( width: calc($size.control.md * 2); )}>x</div>;
+export const digits = <div className={@@( padding: $space.inline.2xl; )}>x</div>;
+export const outside: string = $color.primary.main;
 
 // The two things a project does with a variable outside a block, against the real generated object.
 export const theme = toStyle([
-  [$.color.primary.main, "#7c3aed"],
-  [$.size.control.md, "24px"],
+  [$color.primary.main, "#7c3aed"],
+  [$size.control.md, "24px"],
 ]);
-export const now: string = read($.color.primary.main, document.documentElement);
+export const now: string = read($color.primary.main, document.documentElement);
 
 // A value made outside a block, annotated with what the property accepts — the reason Value exists.
 // It does not go INTO a block: a runtime value in a declaration is refused.
@@ -187,8 +187,8 @@ export const gap: Value<"padding-left"> = "8px";
    * The rule and the types both see it, and measured, both spoke — two squiggles at two columns,
    * with the same suggestion in each:
    *
-   *     unknown-variable  `$.size.control.mdd` is not a variable this project declares.
-   *                       Did you mean `$.size.control.md`?
+   *     unknown-variable  `$size.control.mdd` is not a variable this project declares.
+   *                       Did you mean `$size.control.md`?
    *     TS2551            Property 'mdd' does not exist on type
    *                       'Readonly<{ md: Token<"length", "30px">; }>'. Did you mean 'md'?
    *
@@ -201,9 +201,9 @@ export const gap: Value<"padding-left"> = "8px";
    * wrong was only that two consumers both spoke where one fault existed.
    */
   test.each([
-    ["a mistyped leaf", "$.size.control.mdd"],
-    ["a path naming nothing at all", "$.nothing.like.it"],
-    ["a group, which is a path with no value", "$.size.control"],
+    ["a mistyped leaf", "$size.control.mdd"],
+    ["a path naming nothing at all", "$nothing.like.it"],
+    ["a group, which is a path with no value", "$size.control"],
   ])("%s is reported once, by the rule that names the project", (_what, path) => {
     const root = project();
     mkdirSync(join(root, "src"), { recursive: true });
@@ -326,7 +326,7 @@ describe("a variable of the wrong kind", () => {
       join(root, "src", "jsx.d.ts"),
       `declare namespace JSX {\n  interface IntrinsicElements { div: { id?: string; className?: string; children?: unknown } }\n  interface Element { readonly _brand: unique symbol }\n}\n`,
     );
-    writeFileSync(join(root, "src", "Card.tsx"), `import { $ } from "../css-system";\n\n${card}`);
+    writeFileSync(join(root, "src", "Card.tsx"), card);
     writeFileSync(
       join(root, "tsconfig.json"),
       JSON.stringify({
@@ -355,9 +355,7 @@ describe("a variable of the wrong kind", () => {
   };
 
   test("a colour in a length slot is refused, and the message names both kinds", () => {
-    const output = checkedWith(
-      `export const a = <div className={@@( padding-left: $.color.primary.main; )}>x</div>;\n`,
-    );
+    const output = checkedWith(`export const a = <div className={@@( padding-left: $color.primary.main; )}>x</div>;\n`);
 
     expect(output).toContain("problem");
     expect(output).toMatch(/"color"/);
@@ -366,7 +364,7 @@ describe("a variable of the wrong kind", () => {
 
   test("a length in a colour slot is refused", () => {
     const output = checkedWith(
-      `export const b = <div className={@@( background-color: $.size.control.md; )}>x</div>;\n`,
+      `export const b = <div className={@@( background-color: $size.control.md; )}>x</div>;\n`,
     );
 
     expect(output).toContain("problem");
@@ -377,7 +375,7 @@ describe("a variable of the wrong kind", () => {
    * TWO faults on ONE line, and the second one is the compiler's alone.
    *
    * The drops above are keyed on the LINE, which was right while a line held one declaration. It
-   * does not, and measured, `padding-left: $.size.control.mdd; color: $.size.control.md;` reported
+   * does not, and measured, `padding-left: $size.control.mdd; color: $size.control.md;` reported
    * ONE problem: the typo. The kind mismatch beside it vanished — and nothing else catches it,
    * because a kind is a TYPE, not a rule the build runs, so the fault left the tool entirely.
    *
@@ -386,9 +384,9 @@ describe("a variable of the wrong kind", () => {
    * fault that has to survive.
    */
   test.each([
-    ["a mistyped path beside it", `padding-left: $.size.control.mdd; background-color: $.size.control.md;`],
-    ["a quoted value beside it", `z-index: "1"; background-color: $.size.control.md;`],
-    ["a property typo beside it", `dsiplay: flex; background-color: $.size.control.md;`],
+    ["a mistyped path beside it", `padding-left: $size.control.mdd; background-color: $size.control.md;`],
+    ["a quoted value beside it", `z-index: "1"; background-color: $size.control.md;`],
+    ["a property typo beside it", `dsiplay: flex; background-color: $size.control.md;`],
   ])("%s is one fault, and the kind mismatch sharing its line is another", (_what, block) => {
     const output = checkedWith(`export const d = <div className={@@( ${block} )}>x</div>;\n`);
 
@@ -398,7 +396,7 @@ describe("a variable of the wrong kind", () => {
 
   test("and the matching kinds still go in, which is the half that must not regress", () => {
     const output = checkedWith(
-      `export const c = <div className={@@( padding-left: $.size.control.md; background-color: $.color.primary.main; )}>x</div>;\n`,
+      `export const c = <div className={@@( padding-left: $size.control.md; background-color: $color.primary.main; )}>x</div>;\n`,
     );
 
     expect(output).not.toContain("problem");
@@ -744,7 +742,7 @@ describe("a wrong config", () => {
 /**
  * A variable of the wrong kind in a SHORTHAND, which was accepted.
  *
- * Reported by the user: `gap: $.color.accent.main` compiled. `gap` was unclassified, so it was
+ * Reported by the user: `gap: $color.accent.main` compiled. `gap` was unclassified, so it was
  * `string | number`, and a token is a branded string. Two things in the grammar walk had to change —
  * `<'row-gap'>` references are followed now, and a functional type like `<anchor-size()>` no longer
  * counts as a second primitive — which took the classified set from 96 properties to 149.
@@ -786,14 +784,14 @@ describe("a shorthand's kind", () => {
   };
 
   test("a colour in a `gap` is refused, naming both kinds", () => {
-    const output = checkedWith(`export const a = <div className={@@( gap: $.color.primary.main; )}>x</div>;\n`);
+    const output = checkedWith(`export const a = <div className={@@( gap: $color.primary.main; )}>x</div>;\n`);
 
     expect(output).toMatch(/"color"/);
     expect(output).toMatch(/"length"/);
   });
 
   test("a length in a `gap` goes in", () => {
-    expect(checkedWith(`export const b = <div className={@@( gap: $.size.control.md; )}>x</div>;\n`)).not.toContain(
+    expect(checkedWith(`export const b = <div className={@@( gap: $size.control.md; )}>x</div>;\n`)).not.toContain(
       "problem",
     );
   });
@@ -815,11 +813,11 @@ describe("a shorthand's kind", () => {
 
   /**
    * A space at a text run's BOUNDARY is meaning, and the virtual file was trimming it: `gap: 4px
-   * $.space.gutter.tight` became `` `4px${…}` ``, one value rather than two. The emitted CSS was
+   * $space.gutter.tight` became `` `4px${…}` ``, one value rather than two. The emitted CSS was
    * always right; nothing read the virtual file's shape until a multi-value type did.
    */
   test("a value mixing text and a variable keeps the space between them", () => {
-    expect(checkedWith(`export const e = <div className={@@( gap: 4px $.size.control.md; )}>x</div>;\n`)).not.toContain(
+    expect(checkedWith(`export const e = <div className={@@( gap: 4px $size.control.md; )}>x</div>;\n`)).not.toContain(
       "problem",
     );
   });
@@ -881,13 +879,13 @@ describe("a variable against a property's range", () => {
 
   const CONFIG = `import { defineConfig, kind } from "@ramonda/css/config";
 export default defineConfig({
-  variables: { size: kind("length", { big: "30px", small: "8px" }) },
+  variables: { $size: kind("length", { big: "30px", small: "8px" }) },
   properties: { "letter-spacing": { values: ["4px", "8px"] }, "z-index": { values: [1, 2] } },
 });
 `;
 
   test("a variable outside the list is refused, and the message names the VALUE", () => {
-    const output = withBoth(CONFIG, `export const a = <div className={@@( letter-spacing: $.size.big; )}>x</div>;\n`);
+    const output = withBoth(CONFIG, `export const a = <div className={@@( letter-spacing: $size.big; )}>x</div>;\n`);
 
     // `Fixed<…>` because this variable was declared bare — the mark that it never changes. The
     // claim is unchanged: the message names the VALUE and the list it failed against, not the kind.
@@ -896,10 +894,10 @@ export default defineConfig({
 
   /**
    * **A closed list had no `Token` in it at all**, so no variable went in — however right. The user
-   * met it: `z-index: $.layer.modal` refused with the project's own list in the message.
+   * met it: `z-index: $layer.modal` refused with the project's own list in the message.
    */
   test("a variable INSIDE the list goes in, which no variable did", () => {
-    const output = withBoth(CONFIG, `export const b = <div className={@@( letter-spacing: $.size.small; )}>x</div>;\n`);
+    const output = withBoth(CONFIG, `export const b = <div className={@@( letter-spacing: $size.small; )}>x</div>;\n`);
 
     expect(output).not.toContain("problem");
   });
@@ -915,7 +913,7 @@ export default defineConfig({
       'size: kind("length", { big: "30px", small: "8px" })',
       'c: kind("color", { a: "#fff" })',
     );
-    const output = withBoth(config, `export const d = <div className={@@( letter-spacing: $.c.a; )}>x</div>;\n`);
+    const output = withBoth(config, `export const d = <div className={@@( letter-spacing: $c.a; )}>x</div>;\n`);
 
     expect(output).toMatch(/'"color"' is not assignable/);
   });
@@ -927,11 +925,11 @@ export default defineConfig({
   test("`units` is not a range: a px value goes into a px-only property", () => {
     const config = `import { defineConfig, kind } from "@ramonda/css/config";
 export default defineConfig({
-  variables: { size: kind("length", { big: "30px" }) },
+  variables: { $size: kind("length", { big: "30px" }) },
   properties: { "letter-spacing": { units: ["px"] } },
 });
 `;
-    const output = withBoth(config, `export const e = <div className={@@( letter-spacing: $.size.big; )}>x</div>;\n`);
+    const output = withBoth(config, `export const e = <div className={@@( letter-spacing: $size.big; )}>x</div>;\n`);
 
     expect(output).not.toContain("problem");
   });
@@ -946,7 +944,7 @@ export default defineConfig({
    *
    * **`0` is not a hardcoded length.** CSS lets a zero length go without a unit, `CssDimension` holds
    * `0 | "0"` for exactly that reason, and a project saying *lengths come from variables* is not
-   * saying it wants `$.space.none`. The narrowing threw the dimensionless zero out with the literals
+   * saying it wants `$space.none`. The narrowing threw the dimensionless zero out with the literals
    * because they lived in one type.
    *
    * The two spellings both arrive: a block is CSS, so `padding-left: 0` reaches the type as `"0"`,
@@ -959,7 +957,7 @@ export default defineConfig({
   describe("a dimensionless zero, where a kind is variables-only", () => {
     const CONFIG = `import { kind } from "@ramonda/css/config";
   export default {
-    variables: { space: kind("length", { gutter: { normal: "16px" } }) },
+    variables: { $space: kind("length", { gutter: { normal: "16px" } }) },
     properties: { "<length>": { variablesOnly: true } },
   };
   `;
@@ -968,7 +966,7 @@ export default defineConfig({
       ["a longhand", "padding-left: 0;"],
       ["another", "margin-top: 0;"],
       ["an inset", "top: 0;"],
-      ["beside a variable", "padding-left: $.space.gutter.normal; top: 0;"],
+      ["beside a variable", "padding-left: $space.gutter.normal; top: 0;"],
     ])("%s takes a bare zero", (_what, css) => {
       expect(withBoth(CONFIG, `export const a = <div className={@@( ${css} )}>x</div>;\n`)).not.toContain("problem");
     });
@@ -1015,7 +1013,7 @@ export default defineConfig({
   describe("`variablesOnly` as a selector inside `properties`", () => {
     const CONFIG = `import { kind } from "@ramonda/css/config";
 export default {
-  variables: { space: kind("length", { sm: "8px" }) },
+  variables: { $space: kind("length", { sm: "8px" }) },
   properties: {
     "<length>": { variablesOnly: true },
     "border-radius": { variablesOnly: false },
@@ -1026,7 +1024,7 @@ export default {
     test.each([
       ["a length written out", "padding-left: 8px;", true],
       ["another, reached only by the kind", "max-width: 320px;", true],
-      ["the variable it wanted", "padding-left: $.space.sm;", false],
+      ["the variable it wanted", "padding-left: $space.sm;", false],
       ["a dimensionless zero", "padding-left: 0;", false],
       ["the property exempted by name", "border-radius: 4px;", false],
     ])("%s", (_what, css, refused) => {
@@ -1067,7 +1065,7 @@ export default {
     test("a kind selector drives the RULE too, where a property has no type to narrow", () => {
       const config = `import { kind } from "@ramonda/css/config";
 export default {
-  variables: { brand: kind("color", { main: "#10b981" }) },
+  variables: { $brand: kind("color", { main: "#10b981" }) },
   properties: { "<color>": { variablesOnly: true } },
 };
 `;
@@ -1079,7 +1077,7 @@ export default {
     test("and a composite property exempted by name is left alone", () => {
       const config = `import { kind } from "@ramonda/css/config";
 export default {
-  variables: { brand: kind("color", { main: "#10b981" }) },
+  variables: { $brand: kind("color", { main: "#10b981" }) },
   properties: { "<color>": { variablesOnly: true }, border: { variablesOnly: false } },
 };
 `;
@@ -1092,7 +1090,7 @@ export default {
     test("`*` is overridden by the kind, and the kind by the property's own name", () => {
       const config = `import { kind } from "@ramonda/css/config";
 export default {
-  variables: { space: kind("length", { sm: "8px" }) },
+  variables: { $space: kind("length", { sm: "8px" }) },
   properties: {
     "*": { variablesOnly: false },
     "<length>": { variablesOnly: true },
@@ -1131,7 +1129,7 @@ export default {
     describe("a closed list, and what a variable owes it", () => {
       const CONFIG = `import { kind } from "@ramonda/css/config";
 export default {
-  variables: { s: kind("length", { ok: "8px", big: "30px" }) },
+  variables: { $s: kind("length", { ok: "8px", big: "30px" }) },
   properties: { "padding-left": { values: ["4px", "8px"] } },
 };
 `;
@@ -1139,8 +1137,8 @@ export default {
       test.each([
         ["a value from the list", "padding-left: 8px;", false],
         ["one outside it", "padding-left: 12px;", true],
-        ["a variable whose value is in the list", "padding-left: $.s.ok;", false],
-        ["a variable whose value is NOT", "padding-left: $.s.big;", true],
+        ["a variable whose value is in the list", "padding-left: $s.ok;", false],
+        ["a variable whose value is NOT", "padding-left: $s.big;", true],
       ])("%s", (_what, css, refused) => {
         expect(withBoth(CONFIG, `export const a = <div className={@@( ${css} )}>x</div>;\n`).includes("problem")).toBe(
           refused,
@@ -1150,8 +1148,8 @@ export default {
       /** `variablesOnly` removes the literal spelling and nothing else. The range still binds. */
       test.each([
         ["the literal, which the list permits but the project does not write", "padding-left: 8px;", true],
-        ["the variable, whose value the list permits", "padding-left: $.s.ok;", false],
-        ["the variable whose value it does not", "padding-left: $.s.big;", true],
+        ["the variable, whose value the list permits", "padding-left: $s.ok;", false],
+        ["the variable whose value it does not", "padding-left: $s.big;", true],
       ])("with `variablesOnly` beside the list: %s", (_what, css, refused) => {
         const config = CONFIG.replace('{ values: ["4px", "8px"] }', '{ values: ["4px", "8px"], variablesOnly: true }');
 
@@ -1197,7 +1195,7 @@ export default {
      *
      * **But asking exposed the message.** Measured, every refused setting came back the same way:
      *
-     *     toStyle([[$.space.gutter, "24px"]])
+     *     toStyle([[$space.gutter, "24px"]])
      *     TS2322: Type 'Token<"length", "16px">' is not assignable to type 'never'.
      *     TS2322: Type 'string' is not assignable to type 'never'.
      *
@@ -1213,19 +1211,26 @@ export default {
       const CONFIG = `import { kind } from "@ramonda/css/config";
 export default {
   variables: {
-    fixed: kind("length", { gutter: "16px" }),
-    themed: kind("length", { gutter: { value: "16px", range: ["8px", "16px"] } }),
-    open: kind("length", { gutter: { value: "16px", range: "any" } }),
+    $fixed: kind("length", { gutter: "16px" }),
+    $themed: kind("length", { gutter: { value: "16px", range: ["8px", "16px"] } }),
+    $open: kind("length", { gutter: { value: "16px", range: "any" } }),
   },
 };
 `;
-      /** `$` needs importing here: outside a block this is ordinary TypeScript, not our grammar. */
-      const HEAD = `import { toStyle } from "@ramonda/css";\nimport { $ } from "../css-system";\n`;
+      /**
+       * A group needs importing here: outside a block this is ordinary TypeScript, not our grammar —
+       * and the import names the group, as the block does.
+       */
+      const head = (group: string) =>
+        `import { toStyle } from "@ramonda/css";\nimport { ${group} } from "../css-system";\n`;
       const setting = (path: string, value: string) =>
-        withBoth(CONFIG, `${HEAD}export const t = toStyle([[${path}, ${JSON.stringify(value)}]]);\n`);
+        withBoth(
+          CONFIG,
+          `${head(path.split(".")[0])}export const t = toStyle([[${path}, ${JSON.stringify(value)}]]);\n`,
+        );
 
       test("a variable declared with ONE value says so, and says what to do about it", () => {
-        const output = setting("$.fixed.gutter", "24px");
+        const output = setting("$fixed.gutter", "24px");
 
         expect(output).toContain("this_variable_was_declared_with_one_value");
         expect(output).toContain("give_it_a_range");
@@ -1233,7 +1238,7 @@ export default {
       });
 
       test("one with a range names the values it may take", () => {
-        const output = setting("$.themed.gutter", "24px");
+        const output = setting("$themed.gutter", "24px");
 
         expect(output).toContain("this_variable_may_only_be");
         expect(output).toContain('"16px"');
@@ -1242,8 +1247,8 @@ export default {
       });
 
       test.each([
-        ["a value inside the range", "$.themed.gutter", "16px"],
-        ["any value, where the range is open", "$.open.gutter", "99px"],
+        ["a value inside the range", "$themed.gutter", "16px"],
+        ["any value, where the range is open", "$open.gutter", "99px"],
       ])("%s is set without complaint", (_what, path, value) => {
         expect(setting(path, value)).not.toContain("problem");
       });
@@ -1254,7 +1259,7 @@ export default {
           'open: kind("length", { gutter: { value: "16px", range: "any" } }),',
           'brand: kind("color", { main: { value: "#10b981", range: "any" } }),',
         );
-        const output = withBoth(config, `${HEAD}export const t = toStyle([[$.brand.main, "30px"]]);\n`);
+        const output = withBoth(config, `${head("$brand")}export const t = toStyle([[$brand.main, "30px"]]);\n`);
 
         expect(output).toContain("problem");
       });
@@ -1262,7 +1267,7 @@ export default {
       /** A marked token is still a token: it goes into a block exactly as it did. */
       test("a fixed variable still goes into a block", () => {
         expect(
-          withBoth(CONFIG, `export const a = <div className={@@( padding-left: $.fixed.gutter; )}>x</div>;\n`),
+          withBoth(CONFIG, `export const a = <div className={@@( padding-left: $fixed.gutter; )}>x</div>;\n`),
         ).not.toContain("problem");
       });
     });
@@ -1276,7 +1281,7 @@ export default {
      * is the variable's RANGE, and a value toggled between two variables has two ranges, neither of
      * which the author should have to name.
      *
-     * Inference already handles the local case — `const tone = toggle ? $.a : $.b` needs no
+     * Inference already handles the local case — `const tone = toggle ? $a : $b` needs no
      * annotation and goes into a hole. `Var<K>` is for the places inference cannot reach: a class
      * field, a function parameter, a return type.
      *
@@ -1287,17 +1292,17 @@ export default {
       const CONFIG = `import { kind } from "@ramonda/css/config";
 export default {
   variables: {
-    color: kind("color", { accent: { main: "#10b981", quiet: "#00b37e" } }),
-    size: kind("length", { radius: { pill: "999px" } }),
+    $color: kind("color", { accent: { main: "#10b981", quiet: "#00b37e" } }),
+    $size: kind("length", { radius: { pill: "999px" } }),
   },
 };
 `;
-      const HEAD = `import { $, type Var } from "../css-system";\ndeclare const toggle: boolean;\n`;
+      const HEAD = `import { $color, $size, type Var } from "../css-system";\ndeclare const toggle: boolean;\n`;
 
       test("a value toggled between two variables of a kind", () => {
         const output = withBoth(
           CONFIG,
-          `${HEAD}export const tone: Var<"color"> = toggle ? $.color.accent.quiet : $.color.accent.main;\n`,
+          `${HEAD}export const tone: Var<"color"> = toggle ? $color.accent.quiet : $color.accent.main;\n`,
         );
 
         expect(output).not.toContain("problem");
@@ -1314,8 +1319,8 @@ export default {
       test("and the block writes the choice out, with a `$` variable in each arm", () => {
         const output = withBoth(
           CONFIG,
-          `import { $ } from "../css-system";\ndeclare const tone: "loud" | "quiet";\n` +
-            `export const a = <div className={@@( color: match({tone}) { loud => $.color.accent.main; _ => $.color.accent.quiet; }; )}>x</div>;\n`,
+          `declare const tone: "loud" | "quiet";\n` +
+            `export const a = <div className={@@( color: match $(tone) { loud => $color.accent.main; _ => $color.accent.quiet; }; )}>x</div>;\n`,
         );
 
         expect(output).not.toContain("problem");
@@ -1323,7 +1328,7 @@ export default {
 
       /** Asserted on the REASON: both of these were refused before `Var` existed, for not existing. */
       test("and a variable of the WRONG kind is refused by it, as a kind", () => {
-        const output = withBoth(CONFIG, `${HEAD}const tone: Var<"color"> = $.size.radius.pill;\n`);
+        const output = withBoth(CONFIG, `${HEAD}const tone: Var<"color"> = $size.radius.pill;\n`);
 
         expect(output).toMatch(/Type '"length"' is not assignable to type '"color"'/);
       });
@@ -1346,13 +1351,13 @@ export default {
       });
 
       test("a kind this project declares nothing of is not a key", () => {
-        const output = withBoth(CONFIG, `${HEAD}const t: Var<"time"> = $.color.accent.main;\n`);
+        const output = withBoth(CONFIG, `${HEAD}const t: Var<"time"> = $color.accent.main;\n`);
 
         expect(output).toMatch(/'"time"'.*(?:not assignable|does not satisfy)/);
       });
 
       test("it survives a class field, which is where inference cannot help", () => {
-        const output = withBoth(CONFIG, `${HEAD}export class Box {\n  tone: Var<"color"> = $.color.accent.main;\n}\n`);
+        const output = withBoth(CONFIG, `${HEAD}export class Box {\n  tone: Var<"color"> = $color.accent.main;\n}\n`);
 
         expect(output).not.toContain("problem");
       });
@@ -1361,8 +1366,8 @@ export default {
       test("inference alone carries the local case", () => {
         const output = withBoth(
           CONFIG,
-          `import { $, type Var } from "../css-system";\ndeclare const toggle: boolean;\n` +
-            `const tone = toggle ? $.color.accent.quiet : $.color.accent.main;\n` +
+          `import { $color, type Var } from "../css-system";\ndeclare const toggle: boolean;\n` +
+            `const tone = toggle ? $color.accent.quiet : $color.accent.main;\n` +
             `export const held: Var<"color"> = tone;\n`,
         );
 

@@ -287,9 +287,17 @@ function scaffoldedPackages() {
 }
 
 const released = new Set(plan.releases.filter((release) => release.type !== "none").map((one) => one.name));
+/**
+ * The selftest plants BOTH halves of the fault: a scaffolded package released, and the scaffolder
+ * not. Planting only the second half made it depend on what happened to be pending — right after a
+ * release the plan bumped `@ramonda/css` alone, nothing scaffolded was being released, and the
+ * selftest reported the check asleep when the check was fine.
+ */
+if (selftest("scaffold")) {
+  released.add(scaffoldedPackages()[0]);
+  released.delete("create-ramonda");
+}
 const scaffolded = scaffoldedPackages().filter((name) => released.has(name));
-
-if (selftest("scaffold")) released.delete("create-ramonda");
 
 if (scaffolded.length > 0 && !released.has("create-ramonda")) {
   // A selftest that caught its break says so in one line: its details would read as a failure.

@@ -20,18 +20,18 @@ export default defineConfig({
    * every build and on `ramonda-css codegen`. `outDir` renames the folder.
    */
   variables: {
-    color: kind("color", {
+    $color: kind("color", {
       accent: { main: "#10b981", quiet: "#00b37e" },
       surface: { base: "#ffffff", sunken: "#f3f4f6" },
       text: { primary: "#111827", muted: "#6b7280" },
     }),
-    space: kind("length", {
+    $space: kind("length", {
       gutter: { tight: "8px", normal: "16px", wide: "24px" },
     }),
-    size: kind("length", {
+    $size: kind("length", {
       radius: { small: "4px", pill: "999px" },
     }),
-    motion: kind("time", {
+    $motion: kind("time", {
       quick: "120ms",
       calm: "400ms",
     }),

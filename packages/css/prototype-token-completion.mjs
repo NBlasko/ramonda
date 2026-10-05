@@ -5,7 +5,7 @@
  *
  * ## The question
  *
- * `DESIGN.md` weighs a `$.color.primary.main` spelling for tokens against generating the same names
+ * `DESIGN.md` weighs a `$color.primary.main` spelling for tokens against generating the same names
  * into the VALUE type as `var(--${Token})`. I claimed the union "recovers most of what the nested
  * spelling is attractive for", because an editor filters a string completion by prefix.
  *

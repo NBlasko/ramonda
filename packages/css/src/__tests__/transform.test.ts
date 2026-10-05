@@ -58,11 +58,11 @@ describe("what a block becomes", () => {
 
   /**
    * A RUNTIME VALUE never gets this far. The build runs the same rules the check does, so
-   * `color: {this.accent}` is refused here rather than compiled into a custom property — which is
+   * `color: $(this.accent)` is refused here rather than compiled into a custom property — which is
    * what these two tests used to measure, and what `hole-not-allowed` replaced.
    */
   test("a runtime value in a declaration is refused by the build, not compiled", () => {
-    expect(() => emit(`const a = <div className={@@( color: {this.accent}; )}>x</div>;\n`)).toThrow(/match/);
+    expect(() => emit(`const a = <div className={@@( color: $(this.accent); )}>x</div>;\n`)).toThrow(/match/);
   });
 
   test("the attribute keeps whatever name the author wrote", () => {
@@ -166,15 +166,15 @@ describe("the blocks it found", () => {
 describe("what it refuses, and where", () => {
   /** A custom property holds a value. Everything below is a position one cannot occupy. */
   test.each([
-    ["a hole as a property name", `<div className={@@( {name}: 24px; )}>x</div>`],
-    ["a hole in a selector", `<div className={@@( &:{state} { color: red; } )}>x</div>`],
-    ["a hole standing as a whole declaration", `<div className={@@( {cond ? "display:flex" : ""} )}>x</div>`],
+    ["a hole as a property name", `<div className={@@( $(name): 24px; )}>x</div>`],
+    ["a hole in a selector", `<div className={@@( &:$(state) { color: red; } )}>x</div>`],
+    ["a hole standing as a whole declaration", `<div className={@@( $(cond ? "display:flex" : "") )}>x</div>`],
   ])("%s", (_what, source) => {
     expect(() => emit(`const a = ${source};\n`)).toThrow(CssBlockError);
   });
 
   test("the refusal carries the file and the position of the hole itself", () => {
-    const source = `const a = (\n  <div className={@@(\n    {name}: 24px;\n  )}>x</div>\n);\n`;
+    const source = `const a = (\n  <div className={@@(\n    $(name): 24px;\n  )}>x</div>\n);\n`;
 
     try {
       emit(source);
@@ -246,7 +246,7 @@ describe("what it refuses, and where", () => {
    * read that would have named the right one.
    */
   test("a NUL in a named site is refused against this file, not against none", () => {
-    const source = `const brand = @@property(\n  syntax: "\u0000";\n);\nconst a = @@( color: {brand}; );\n`;
+    const source = `const brand = @@property(\n  syntax: "\u0000";\n);\nconst a = @@( color: $(brand); );\n`;
 
     try {
       emit(source);
@@ -298,7 +298,7 @@ describe("what it refuses, and where", () => {
 describe("what a second build gets", () => {
   const SOURCE =
     `declare const t: "a" | "b";\n` +
-    `const card = @@(\n  padding: 8px;\n  cursor: match({t}) { a => pointer; b => default; };\n` +
+    `const card = @@(\n  padding: 8px;\n  cursor: match $(t) { a => pointer; b => default; };\n` +
     `  @media (min-width: 40rem) { color: red; }\n  &[data-on] { gap: 2px; }\n);\n` +
     `const a = <div className={card}>x</div>;\n`;
 
@@ -529,20 +529,20 @@ describe("what the block's own text may contain", () => {
    * now, and a condition is the brace that still holds any expression an author can write.
    */
   test("an expression may contain braces, strings and parens of its own", () => {
-    const out = body(`const a = <div className={@@( if ({pick({ on: "}}" })}) { color: red; } )}>x</div>;\n`);
+    const out = body(`const a = <div className={@@( when $(pick({ on: "}}" })) { color: red; } )}>x</div>;\n`);
 
     expect(out).toContain(`pick({ on: "}}" })`);
   });
 
   test("an expression may be a template literal, substitutions and all", () => {
-    const out = body("const a = <div className={@@( if ({`rgb(${r}, ${g}, 0)`}) { color: red; } )}>x</div>;\n");
+    const out = body("const a = <div className={@@( when $(`rgb(${r}, ${g}, 0)`) { color: red; } )}>x</div>;\n");
 
     expect(out).toContain("`rgb(${r}, ${g}, 0)`");
   });
 
   test("a comment inside an expression is the expression's own", () => {
     const out = body(
-      `const a = <div className={@@( if ({/* why */ accent // and this\n}) { color: red; } )}>x</div>;\n`,
+      `const a = <div className={@@( when $(/* why */ accent // and this\n) { color: red; } )}>x</div>;\n`,
     );
 
     expect(out).toContain("/* why */ accent // and this\n");
@@ -584,7 +584,7 @@ describe("what the block's own text may contain", () => {
 
   test("a nested block is refused rather than silently left behind", () => {
     expect(() =>
-      emit(`const a = <div className={@@( color: { <b className={@@( color: red; )}/> }; )}>x</div>;\n`),
+      emit(`const a = <div className={@@( color: $( <b className={@@( color: red; )}/> ); )}>x</div>;\n`),
     ).toThrow(CssBlockError);
   });
 
@@ -608,9 +608,9 @@ describe("what the block's own text may contain", () => {
   });
 
   test("an escaped quote inside an expression's string does not end it", () => {
-    const out = body(`const a = <div className={@@( if ({{pick("a\\"}}b")}}) { color: red; } )}>x</div>;\n`);
+    const out = body(`const a = <div className={@@( when $(pick("a\\")b")) { color: red; } )}>x</div>;\n`);
 
-    expect(out).toContain(`pick("a\\"}}b")`);
+    expect(out).toContain(`pick("a\\")b")`);
   });
 
   test("an unterminated string inside an expression is refused, not run past", () => {
@@ -618,7 +618,7 @@ describe("what the block's own text may contain", () => {
   });
 
   test("a template with braces and strings in its substitutions is one expression", () => {
-    const out = body("const a = <div className={@@( if ({`a${ { x: `}` } }b`}) { color: red; } )}>x</div>;\n");
+    const out = body("const a = <div className={@@( when $(`a${ { x: `}` } }b`) { color: red; } )}>x</div>;\n");
 
     expect(out).toContain("`a${ { x: `}` } }b`");
   });
@@ -708,7 +708,7 @@ describe("a keyframes site", () => {
    * be applied to.
    */
   test("a hole in one is refused", () => {
-    expect(() => emit(`const slide = @@keyframes( from { opacity: {n}; } );\n`)).toThrow(/hole/);
+    expect(() => emit(`const slide = @@keyframes( from { opacity: $(n); } );\n`)).toThrow(/hole/);
   });
 
   test("an at-rule this package does not know is refused", () => {
@@ -723,9 +723,9 @@ describe("a keyframes site", () => {
  * right. A named site is not that — it is a constant this compiler produced itself, three lines up
  * — and treating a reference to one as a runtime hole is wrong in two ways, one slow and one fatal:
  *
- * - `animation: {{slide}} 3s` becomes `animation: var(--r-…-0) 3s` and a value set per element, for
+ * - `animation: $(slide) 3s` becomes `animation: var(--r-…-0) 3s` and a value set per element, for
  *   a string that was decided at build time;
- * - `var({{angle}})` becomes `var(var(--r-…-0))`, and **`var()` takes a literal name**, not another
+ * - `var($(angle))` becomes `var(var(--r-…-0))`, and **`var()` takes a literal name**, not another
  *   `var()`. Measured in Chromium: nothing resolves, and the declaration is dropped.
  *
  * So a hole whose expression is exactly the binding of a named site in the same file is not a hole
@@ -739,7 +739,7 @@ describe("a reference to a named site", () => {
    */
   test("is written in, and costs no custom property", () => {
     const out = emit(
-      `const slide = @@keyframes( from { opacity: 0; } );\nconst card = @@( animation: {slide} 3s; );\n`,
+      `const slide = @@keyframes( from { opacity: 0; } );\nconst card = @@( animation: $(slide) 3s; );\n`,
     );
 
     const [frames] = out?.blocks ?? [];
@@ -761,7 +761,7 @@ describe("a reference to a named site", () => {
   test("and one can be READ by a block, which is what `var()` needs a literal for", () => {
     const out = emit(
       `const angle = @@property( syntax: "<angle>"; inherits: false; initial-value: 0deg; );\n` +
-        `const card = @@( transform: rotate(var({angle})); );\n`,
+        `const card = @@( transform: rotate(var($(angle))); );\n`,
     );
 
     const [property, card] = out?.blocks ?? [];
@@ -772,7 +772,7 @@ describe("a reference to a named site", () => {
   test("and SET by one, which is the only way a registered property is worth registering", () => {
     const out = emit(
       `const angle = @@property( syntax: "<angle>"; inherits: false; initial-value: 0deg; );\n` +
-        `const card = @@( {angle}: 45deg; );\n`,
+        `const card = @@( $(angle): 45deg; );\n`,
     );
 
     const [property, card] = out?.blocks ?? [];
@@ -782,8 +782,8 @@ describe("a reference to a named site", () => {
   /** Two blocks with the same value are the same classes, so the second adds no rule at all. */
   test("two blocks referring to the same name are still one rule each", () => {
     const frames = `const slide = @@keyframes( from { opacity: 0; } );\n`;
-    const one = emit(`${frames}const a = @@( animation: {slide} 3s; );\n`);
-    const two = emit(`${frames}const a = @@( animation: {slide} 3s; );\nconst b = @@( animation: {slide} 3s; );\n`);
+    const one = emit(`${frames}const a = @@( animation: $(slide) 3s; );\n`);
+    const two = emit(`${frames}const a = @@( animation: $(slide) 3s; );\nconst b = @@( animation: $(slide) 3s; );\n`);
 
     expect(two?.blocks).toHaveLength(one?.blocks.length ?? 0);
   });
@@ -792,8 +792,8 @@ describe("a reference to a named site", () => {
     const out = emit(
       `const one = @@keyframes( from { opacity: 0; } );\n` +
         `const two = @@keyframes( to { opacity: 1; } );\n` +
-        `const a = @@( animation: {one} 3s; );\n` +
-        `const b = @@( animation: {two} 3s; );\n`,
+        `const a = @@( animation: $(one) 3s; );\n` +
+        `const b = @@( animation: $(two) 3s; );\n`,
     );
 
     const [, , a, b] = out?.blocks ?? [];
@@ -802,12 +802,12 @@ describe("a reference to a named site", () => {
 
   /** Anything else in a hole is a runtime value, and nothing about this makes one allowed. */
   test("an expression that is not one of them is refused as the runtime value it is", () => {
-    expect(() => emit(`const card = @@( animation: {name} 3s; );\n`)).toThrow(/match/);
+    expect(() => emit(`const card = @@( animation: $(name) 3s; );\n`)).toThrow(/match/);
   });
 
   /** A hole in a property name stays a refusal for everything that is not a registered property. */
   test("a hole that resolves to nothing cannot stand in a property name", () => {
-    expect(() => emit(`const card = @@( {whatever}: 45deg; );\n`)).toThrow(/@@property/);
+    expect(() => emit(`const card = @@( $(whatever): 45deg; );\n`)).toThrow(/@@property/);
   });
 });
 
@@ -1136,7 +1136,7 @@ describe("a refusal names the rule that made it", () => {
    */
   test.each([
     ["a block that cannot be read", "const a = @@(\n  color red;\n);\n"],
-    ["a hole where a property belongs", "const w = 1;\nconst a = @@(\n  {w}: red;\n);\n"],
+    ["a hole where a property belongs", "const w = 1;\nconst a = @@(\n  $(w): red;\n);\n"],
   ])("%s names no rule, because none made it", (_what, source) => {
     expect(refused(source)).not.toMatch(/^\/a\.tsx:\d+:\d+\s+[a-z-]+:/);
   });

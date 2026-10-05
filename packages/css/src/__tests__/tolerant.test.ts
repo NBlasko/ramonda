@@ -64,8 +64,8 @@ describe("what tolerance recovers", () => {
     expect(end).toBe(source.length - 1);
   });
 
-  test("a hole with no closing braces ends there too", () => {
-    const { block, holes } = read(`<div css=@@( color: {{accent`, true);
+  test("a hole with no closing paren ends there too", () => {
+    const { block, holes } = read(`<div css=@@( color: $(accent`, true);
 
     expect(holes).toHaveLength(1);
     expect(block.items).toMatchObject([{ property: "color" }]);
@@ -74,7 +74,7 @@ describe("what tolerance recovers", () => {
   test("and a hole in a position a custom property cannot occupy is kept as text", () => {
     // Refusing is right for a build and useless for an editor: the author is mid-thought, and taking
     // the whole file's completions away is not a way to tell them so. The CSS checker says it.
-    const { block } = read(`<div className={@@( {name}24px; )}>x</div>`, true);
+    const { block } = read(`<div className={@@( $(name)24px; )}>x</div>`, true);
 
     expect(block.items).toMatchObject([{ kind: "declaration" }]);
   });
@@ -85,7 +85,7 @@ describe("what strict still refuses, because a build has no correct answer", () 
     ["a property with no colon", `<div className={@@( disp )}>x</div>`],
     ["a block with no closing paren", `<div css=@@( display: flex;\n`],
     ["a hole with no closing braces", `<div css=@@( color: {{accent`],
-    ["a hole as a property name", `<div className={@@( {name}; )}>x</div>`],
+    ["a hole as a property name", `<div className={@@( $(name); )}>x</div>`],
   ])("%s", (_what, source) => {
     expect(() => read(source, false)).toThrow(CssBlockError);
   });
@@ -217,8 +217,8 @@ describe("what only the strict read refuses", () => {
 
     test.each([
       ["an ordinary value", "  color: red;"],
-      ["a hole", "  color: {accent};"],
-      ["a spread, which has no value by design", "  ...{base};"],
+      ["a hole", "  color: $(accent);"],
+      ["a spread, which has no value by design", "  ...$(base);"],
       ["a zero", "  opacity: 0;"],
     ])("%s is fine", (_what, css) => {
       expect(strict(css)).not.toThrow();

@@ -9,13 +9,13 @@ import { findBlocks } from "./scan";
  * ## Why a reference is resolved at BUILD time
  *
  * `const slide = @@keyframes( … )` compiles to a string, and a block that refers to it does so
- * through a hole — `animation: {{slide}} 3s`. A hole is ordinarily a custom property set on an
+ * through a hole — `animation: $(slide) 3s`. A hole is ordinarily a custom property set on an
  * element, which is exactly right for a value the runtime computes and wrong for this one in two
  * ways, one merely wasteful and one fatal:
  *
  * - the name was decided by this compiler three lines up, so an element carrying it as a variable is
  *   work done at run time for a constant;
- * - **`var()` takes a literal name.** `var({{angle}})` would become `var(var(--r-…-0))`, and
+ * - **`var()` takes a literal name.** `var($(angle))` would become `var(var(--r-…-0))`, and
  *   measured in Chromium nothing resolves — the declaration is dropped and the style is silently
  *   absent. A registered property could be READ by nothing.
  *
@@ -28,7 +28,7 @@ import { findBlocks } from "./scan";
  * `@keyframes r-… { … }` is a valid rule and `@property r-… { … }` is not: what `@property`
  * registers is a CUSTOM PROPERTY, and a custom property is spelled `--` and then a name. So the two
  * dashes are part of what it is called, in the stylesheet and in the string the site compiles to,
- * and `var({{angle}})` is `var(--r-…)` because that is the only thing it could be.
+ * and `var($(angle))` is `var(--r-…)` because that is the only thing it could be.
  *
  * ## Order
  *

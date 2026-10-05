@@ -12,13 +12,18 @@ export class CssBlockError extends Error {
   readonly line: number;
   /** 1-based. */
   readonly column: number;
+  /** The offset in the source, and the sentence without its position — what an editor shows. */
+  readonly offset?: number;
+  readonly reason?: string;
 
-  constructor(message: string, filename: string, line: number, column: number) {
+  constructor(message: string, filename: string, line: number, column: number, offset?: number) {
     super(`${filename}:${line}:${column}  ${message}`);
     this.name = "CssBlockError";
     this.filename = filename;
     this.line = line;
     this.column = column;
+    this.offset = offset;
+    this.reason = message;
   }
 }
 
@@ -43,7 +48,7 @@ export class CssBlockError extends Error {
  */
 export function holeOutOfPlace(what: "a declaration" | "a property name" | "a selector" | "a frame"): string {
   const door =
-    " A value that comes from data is declared with `@@property( … )` and read as `var({name})`; one" +
+    " A value that comes from data is declared with `@@property( … )` and read as `var($(name))`; one" +
     " that is a choice between a few is written out with `match`.";
   return what === "a declaration"
     ? `a hole cannot be a whole declaration — a declaration needs a property, and a block takes no runtime value in one.${door}`
@@ -68,5 +73,5 @@ export function positionOf(source: string, offset: number): { line: number; colu
 
 export function refuse(message: string, source: string, offset: number, filename: string): never {
   const { line, column } = positionOf(source, offset);
-  throw new CssBlockError(message, filename, line, column);
+  throw new CssBlockError(message, filename, line, column, offset);
 }

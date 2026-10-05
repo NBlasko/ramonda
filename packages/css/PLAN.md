@@ -1,5 +1,12 @@
 # Building `@ramonda/css` — the plan
 
+> **The spelling changed on 2026-10-02**, after most of this was written: code goes into a block as
+> `$( … )` (it was `{ … }`, and `{{ … }}` before that), a condition is `when $( … ) { … }` with
+> `else when` and `else` (it was `if ({ … })`, and `@@if` before that), a match is `match $( … ) { … }`
+> at both levels, a value may be a choice `$(c) ? a : b`, and a variable is `$group.path` (it was
+> `$.group.path`). Prose here has been moved to the new spelling where it names the construct; where
+> it records what an OLD spelling did, the old spelling is the point and stays.
+
 **Read `DESIGN.md` first, then `CONTRACT.md`.** `DESIGN.md` carries the reasoning and every
 measurement; `CONTRACT.md` carries the four decisions both halves are written against, and its code
 is in `src/`; this file carries only the order of work, what blocks what, and what may run beside
@@ -1096,7 +1103,7 @@ const variants = {
   ...button;                                 // merge another block's map, across files
   ...variants[this.variant];                 // exhaustive — TypeScript checks the key
 
-  if ({this.disabled}) {
+  when $(this.disabled) {
     opacity: 0.5;
     cursor: not-allowed;                     // beats `cursor: pointer` above, because it is BELOW
   }
@@ -1116,10 +1123,10 @@ than a bet, and `@@` is already this language's own marker. `@else` is dropped b
 (Conditional Rules 5) for environment conditions; a spread of a lookup object replaces it and gives
 exhaustiveness `@else` never had.
 
-**Changed 2026-09-10 to `if ({ … })`, on the user's reading and not mine.** The argument above is
+**Changed 2026-09-10 to `when $(…)`, on the user's reading and not mine.** The argument above is
 about safety and it is correct; what it did not weigh is that `@@if` was the ONE place `@@` appeared
 inside a block, which made the sigil mean two things — an entrance, and a keyword. Inside a block the
-language is already its own and spells itself without a sigil: `{expr}` is a hole and `...{expr}` a
+language is already its own and spells itself without a sigil: `{expr}` is a hole and `...$(expr)` a
 spread, both borrowed from JavaScript. `if (…)` is that rule extended rather than an exception to it.
 
 Measured in Chromium 151 before the change, and this is what the paragraph above was missing: a bare
@@ -1352,11 +1359,11 @@ because the sheet already emits longhands after shorthands.
 The second row is the thing that was impossible before this: precedence decided at the call site
 rather than by the stylesheet.
 
-**AC5 — `...{expr};` inside a block. DONE 2026-09-05.** It becomes an argument of the merge, in the
+**AC5 — `...$(expr);` inside a block. DONE 2026-09-05.** It becomes an argument of the merge, in the
 position it was written, so what is above it merges first — which is what *later wins* means.
 
 **The operand is inside `{ }` like every other expression in a block**, for the reason the user gave
-when they chose `if ({expr})`: TypeScript appears there and nowhere else. `...base;` would have
+when they chose `when $(expr)`: TypeScript appears there and nowhere else. `...base;` would have
 been prettier and would have been a second spelling for the same thing.
 
 **One fault it exposed, and it failed in the worst way — quietly and only sometimes.** A spread hands
@@ -1369,7 +1376,7 @@ non-enumerable symbol, and `compose` reads it back.
 
 The type for the operand is still to write — see AC7.
 
-**AC6 — `if ({ … }) { }`.** The parser already reads it as a nested rule with that prelude, and the
+**AC6 — `when $(…) { }`.** The parser already reads it as a nested rule with that prelude, and the
 scanner does NOT mistake it for a second block site (measured: one site, not two). Needs the condition
 type-checked in the author's scope, and exemption from `at-rule-out-of-place`.
 
@@ -1405,10 +1412,10 @@ position and there is no diagnostic of ours to write. Asserted through a real pr
 
 | written | answer |
 |---|---|
-| `if ({this.off})`, `if ({maybe})` where `maybe` may be `undefined` | silent |
-| `if ({this.method})` (not called), `if ({o})`, `if ({p})` (a promise) | *always truthy* |
-| `...{base}` where `base` is a block | silent |
-| `...{plain}`, `...{text}` | *only a style block can be spread*, at the author's line |
+| `when $(this.off)`, `when $(maybe)` where `maybe` may be `undefined` | silent |
+| `when $(this.method)` (not called), `when $(o)`, `when $(p)` (a promise) | *always truthy* |
+| `...$(base)` where `base` is a block | silent |
+| `...$(plain)`, `...$(text)` | *only a style block can be spread*, at the author's line |
 | a typo inside a group | the same `TS2561` and the same *did you mean* it is outside one |
 
 **The encoding is the measured one:** the condition and the spread are their own array ELEMENTS,
@@ -1419,7 +1426,7 @@ it comes back as three findings, on lines 3, 4 and 5.
 **Two more faults composition made possible, both found by asking where a spread cannot go:**
 
 - **A spread inside a selector or a `@media` compiled, and the context silently vanished.**
-  `&:hover { ...{base}; }` came out as `_merge(base)`, so a block meant for hover applied always.
+  `&:hover { ...$(base); }` came out as `_merge(base)`, so a block meant for hover applied always.
   It cannot mean anything else: a spread merges a whole block, and a block's map carries the context
   each of its own declarations was written in, so nesting one would have to re-scope every key it
   holds. Refused now, naming the two places it may go. A GUARD is still fine — `if` changes no key.

@@ -51,8 +51,8 @@ const CONFIG = `import { kind } from "@ramonda/css/config";
 
 export default {
   variables: {
-    color: kind("color", { primary: { main: "#3b82f6" } }),
-    size: kind("length", { control: { md: "30px" } }),
+    $color: kind("color", { primary: { main: "#3b82f6" } }),
+    $size: kind("length", { control: { md: "30px" } }),
   },
 };
 `;
@@ -136,7 +136,7 @@ describe("running codegen", () => {
     write(
       "ramonda.css.ts",
       `import { kind } from "@ramonda/css/config";
-export default { variables: { "a-b": kind("length", { c: "1px" }), a: kind("length", { "b-c": "2px" }) } };
+export default { variables: { $a: kind("length", { b: { c: "1px" }, "b-c": "2px" }) } };
 `,
     );
 
@@ -161,7 +161,7 @@ export default { variables: { "a-b": kind("length", { c: "1px" }), a: kind("leng
  */
 describe("a file already at the generated name", () => {
   const declaring = `import { kind } from "@ramonda/css/config";
-export default { variables: { space: kind("length", { sm: "8px" }) } };
+export default { variables: { $space: kind("length", { sm: "8px" }) } };
 `;
 
   test("one that is not ours is refused, and kept", () => {
@@ -224,7 +224,7 @@ export default { variables: { space: kind("length", { sm: "8px" }) } };
  */
 describe("where the generated files go", () => {
   const declaring = `import { kind } from "@ramonda/css/config";
-export default { variables: { space: kind("length", { sm: "8px" }) } };
+export default { variables: { $space: kind("length", { sm: "8px" }) } };
 `;
 
   test("into `css-system/` beside the config, by default", () => {

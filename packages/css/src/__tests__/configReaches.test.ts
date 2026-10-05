@@ -269,17 +269,17 @@ describe("`$` without an import", () => {
   const VARS = `{}`;
 
   test("completes one level at a time", () => {
-    const { offered } = editorWith(VARS, `const a = <div className={@@( color: $./*|*/ )}>x</div>;\n`, {
-      color: `kind("color", { accent: { main: "#10b981" } })`,
-      space: `kind("length", { gutter: { tight: "8px" } })`,
+    const { offered } = editorWith(VARS, `const a = <div className={@@( color: $/*|*/ )}>x</div>;\n`, {
+      $color: `kind("color", { accent: { main: "#10b981" } })`,
+      $space: `kind("length", { gutter: { tight: "8px" } })`,
     });
 
     expect(offered()).toEqual(expect.arrayContaining(["color", "space"]));
   });
 
   test("and the next level down", () => {
-    const { offered } = editorWith(VARS, `const b = <div className={@@( color: $.color.accent./*|*/ )}>x</div>;\n`, {
-      color: `kind("color", { accent: { main: "#10b981", quiet: "#00b37e" } })`,
+    const { offered } = editorWith(VARS, `const b = <div className={@@( color: $color.accent./*|*/ )}>x</div>;\n`, {
+      $color: `kind("color", { accent: { main: "#10b981", quiet: "#00b37e" } })`,
     });
 
     expect(offered()).toEqual(expect.arrayContaining(["main", "quiet"]));
@@ -288,10 +288,10 @@ describe("`$` without an import", () => {
   test("a path is silent, mixed into a value and alone", () => {
     const { reported } = editorWith(
       VARS,
-      `const c = <div className={@@( gap: 4px $.space.gutter.tight; color: $.color.accent.main; )}>x</div>;\n`,
+      `const c = <div className={@@( gap: 4px $space.gutter.tight; color: $color.accent.main; )}>x</div>;\n`,
       {
-        color: `kind("color", { accent: { main: "#10b981" } })`,
-        space: `kind("length", { gutter: { tight: "8px" } })`,
+        $color: `kind("color", { accent: { main: "#10b981" } })`,
+        $space: `kind("length", { gutter: { tight: "8px" } })`,
       },
     );
 
@@ -299,8 +299,8 @@ describe("`$` without an import", () => {
   });
 
   test("and nothing names jQuery, whatever else it says", () => {
-    const { reported } = editorWith(VARS, `const d = <div className={@@( color: $.nope.at.all; )}>x</div>;\n`, {
-      color: `kind("color", { accent: { main: "#10b981" } })`,
+    const { reported } = editorWith(VARS, `const d = <div className={@@( color: $nope.at.all; )}>x</div>;\n`, {
+      $color: `kind("color", { accent: { main: "#10b981" } })`,
     });
 
     expect(reported().join("\n")).not.toMatch(/jQuery/);
@@ -321,7 +321,7 @@ describe("`$` without an import", () => {
  */
 describe("a kind this project takes only from variables", () => {
   const ONLY = `{ "<color>": { variablesOnly: true } }`;
-  const VARIABLES = { brand: `kind("color", { main: "#10b981" })` };
+  const VARIABLES = { $brand: `kind("color", { main: "#10b981" })` };
 
   test("its keywords are not offered", () => {
     const { offered } = editorWith(ONLY, `const a = <div className={@@( color: /*|*/ )}>x</div>;\n`, VARIABLES);

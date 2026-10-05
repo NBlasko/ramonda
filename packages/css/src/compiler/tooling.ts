@@ -1,38 +1,33 @@
-import { canonicalDeclaration, canonicalPrelude } from "./normalise";
-import { MATCH, closingHole, opensAHole, readBlock } from "./read";
+import { canonicalDeclaration, canonicalPrelude, collapse } from "./normalise";
+import { MATCH, closingHole, opensCode, readBlock } from "./read";
 import { findBlocks, mayHoldABlock } from "./scan";
 
 /**
- * A hole with its braces against the expression, whatever was typed.
+ * An escape with its parens against the expression, whatever was typed.
  *
- * **Reported by a user, who had the same condition four ways in one file**: `if ({ this.roomy})`,
- * `if ({this.roomy })`, and both of the tidy spellings — because the formatter left every one of
- * them alone. Measured before this: all four survived unchanged.
+ * **Reported by a user, who had the same condition four ways in one file** — loose and tight on each
+ * side — because the formatter left every one of them alone. Measured before this: all four survived
+ * unchanged.
  *
- * Against the braces, and not `{ … }`, because a hole is the escape JSX already uses in the same
- * place — `css={@@( … )}`, `{this.tone}` — and JSX writes it tight. An object literal's spacing is a
- * different convention for a different thing; this is a delimiter.
- *
- * The whitespace immediately inside the braces is not part of the expression, so trimming it changes
- * nothing that runs. **One shape keeps its space**: an expression that itself begins or ends with a
- * brace, where trimming would produce `{{` or `}}` — a reader meeting that, in a language whose
- * holes were spelled `{{ }}` until this morning, deserves better than two characters saved.
+ * Tight, because `$( … )` is a delimiter, as a call's parens are, and a call is written tight. The
+ * whitespace just inside the parens is not part of the expression, so trimming it changes nothing
+ * that runs. An expression that begins or ends with a brace is closed up like any other: with `{ }`
+ * as the escape it kept its space, because closing it up wrote `{{`, and `$({` cannot be misread.
  */
 function tightened(hole: string, expression: PlaceholdOptions["expression"]): string {
-  const inner = hole.slice(1, -1);
+  // `$(` and `)` around it.
+  const inner = hole.slice(2, -1);
   const trimmed = inner.trim();
-  // An expression that itself begins or ends with a brace keeps every space it has — see above.
-  if (trimmed.startsWith("{") || trimmed.endsWith("}")) return hole;
 
   const laid = expression === undefined ? trimmed : formattedExpression(trimmed, expression);
-  return laid === inner ? hole : `{${laid}}`;
+  return laid === inner ? hole : `$(${laid})`;
 }
 
 /**
  * One hole's expression, laid out by the PROJECT's formatter — or exactly as the author wrote it.
  *
  * **Reported by a user**: *"formating unutar rupe ne radi"*, on
- * `color: {this.toggle ? $.color.accent.quiet    : $.color.accent.main}`. The braces were closed up
+ * `color: {this.toggle ? $color.accent.quiet    : $color.accent.main}`. The braces were closed up
  * and the interior was untouched, so the one part of a block that IS ordinary TypeScript was the
  * one part escaping the formatter — while `ramonda-css format` exists precisely so a file carrying
  * blocks is laid out by the project's own tools.
@@ -393,6 +388,19 @@ function relaid(
 }
 
 /**
+ * A whole block — `@@(` to `)` — with its inside laid out one `step` in, the way `relaid` lays
+ * it out in a file. For a printer that places the block itself and wants the CSS done the same way:
+ * the Prettier plugin, which handed the inside back as written until a review found a Prettier
+ * project had no road to this layout at all. A one-line block is returned untouched, as there.
+ */
+export function relaidInside(block: string, step: string): string {
+  const lines = block.split(/\r?\n/);
+  if (lines.length === 1) return block;
+  const body = lines.slice(1, -1).join("\n");
+  return [lines[0], ...layout(body, step, step, undefined), lines[lines.length - 1].trim()].join("\n");
+}
+
+/**
  * The CSS between a block's parens, one declaration to a line and a nested rule's body one step in.
  *
  * ## Why it works on the TEXT rather than on the parse
@@ -405,7 +413,7 @@ function relaid(
  *
  * A `;` or a brace inside a hole, a string, a comment or a function is not a boundary, and treating
  * one as a boundary is how a formatter breaks working code. Each of those is stepped over whole,
- * which is also what keeps `{{ … }}` byte-for-byte: the expression inside it is TypeScript and none
+ * which is also what keeps `$(…)` byte-for-byte: the expression inside it is TypeScript and none
  * of this may touch it.
  */
 function layout(body: string, indent: string, step: string, expression: PlaceholdOptions["expression"]): string[] {
@@ -487,8 +495,8 @@ function layout(body: string, indent: string, step: string, expression: Placehol
      * that opens a match body was read as a hole, and `closingHole` swallowed every arm as one run
      * of text. Reported by the user, and what came back was:
      *
-     *     color: match({this.tone}) {quiet => $.color.accent.quiet;
-     *       loud  => $.color.text.primary;};
+     *     color: match $(this.tone) {quiet => $color.accent.quiet;
+     *       loud  => $color.text.primary;};
      *
      * The arms line up on their `=>`, because a match IS a lookup table and a table reads aligned.
      * The cost is real and is the ordinary cost of alignment: an arm with a longer key than any
@@ -496,7 +504,7 @@ function layout(body: string, indent: string, step: string, expression: Placehol
      */
     if (code === 123 /* { */ && OPENS_A_MATCH.test(line)) {
       // `closingHole` answers just PAST the `}`, so the body is what lies between the braces.
-      const close = closingHole(body, index);
+      const close = closingBrace(body, index);
       const stop = close === -1 ? body.length : close - 1;
       const head = tightenedMatchHead(line.trim(), expression);
 
@@ -522,10 +530,10 @@ function layout(body: string, indent: string, step: string, expression: Placehol
       continue;
     }
 
-    if (code === 123 /* { */ && opensAHole(line)) {
-      const close = closingHole(body, index);
+    if (opensCode(body, index)) {
+      const close = closingHole(body, index + 1);
       const stop = close === -1 ? body.length : close;
-      line += tightened(body.slice(index, stop), expression);
+      line += reindented(tightened(body.slice(index, stop), expression), indent + step.repeat(depth + 1));
       index = stop - 1;
       continue;
     }
@@ -541,7 +549,42 @@ function layout(body: string, indent: string, step: string, expression: Placehol
       continue;
     }
 
+    /**
+     * A BLOCK match — `match $(t) { hot => ( … ); … }` at the head of an item — laid out as a value
+     * match is: one arm to a line, lined up on the arrow, and each arm's declarations inside one
+     * pair of parens. See `blockArmsIn`.
+     */
+    if (parens === 0 && code === 123 /* { */ && OPENS_A_BLOCK_MATCH.test(line.trim())) {
+      const close = closingBrace(body, index);
+      const stop = close === -1 ? body.length : close - 1;
+      out.push(indent + step.repeat(depth) + `${tightenedMatchHead(line.trim(), expression)} {`);
+      for (const arm of blockArmsIn(body.slice(index + 1, stop))) out.push(indent + step.repeat(depth + 1) + arm);
+      out.push(indent + step.repeat(depth) + "}");
+      line = "";
+      emitted = true;
+      fresh = false;
+      index = stop;
+      continue;
+    }
+
     if (parens === 0 && code === 123 /* { */) {
+      /**
+       * A branch rides the brace that closes the one before it — `} else {`, `} else when $(b) {` —
+       * the way JavaScript writes it, which is the user's choice. Only when that brace is the line
+       * right above: a comment between the two is the author's note and keeps its own line.
+       */
+      const closing = indent + step.repeat(depth) + "}";
+      const above = out[out.length - 1] ?? "";
+      // The brace may carry a comment of its own — `} /* x */ else {` — and it stays there.
+      const closes = above === closing || (above.startsWith(`${closing} /*`) && above.endsWith("*/"));
+      if (/^else\b/.test(line.trim()) && closes) {
+        out[out.length - 1] = `${above} ${canonicalPrelude(line.trim())} {`;
+        line = "";
+        emitted = true;
+        depth++;
+        continue;
+      }
+
       /**
        * A prelude, written the one way it may be written — see `canonicalCondition`.
        *
@@ -560,6 +603,8 @@ function layout(body: string, indent: string, step: string, expression: Placehol
       emit();
       depth = Math.max(0, depth - 1);
       out.push(indent + step.repeat(depth) + "}");
+      // A comment after the brace on its line belongs to it — `} /* x */ else {` stays one line.
+      emitted = true;
       continue;
     }
 
@@ -570,6 +615,14 @@ function layout(body: string, indent: string, step: string, expression: Placehol
        * this fixes it; before this line it did not, which is the shape a review already found in
        * `tools.ts`: two halves of one command disagreeing about one file.
        */
+      /** A CHOICE is laid out as a table rather than as one line — see `choiceLines`. */
+      const choice = choiceLines(line.trim());
+      if (choice !== undefined) {
+        for (const one of choice) out.push(indent + step.repeat(depth) + one);
+        line = "";
+        emitted = true;
+        continue;
+      }
       line = `${canonicalDeclaration(line.trim())};`;
       emit();
       continue;
@@ -609,18 +662,22 @@ function layout(body: string, indent: string, step: string, expression: Placehol
 /**
  * A declaration whose value is a `match(…)` waiting for its body — see where it is used.
  *
- * Anchored at the property, so `color: match({t})` is one and `background: url(a) match(b)` is not:
+ * Anchored at the property, so `color: match $(t)` is one and `background: url(a) match(b)` is not:
  * a match is the WHOLE value or it is not a match, which is what the reader already refuses.
  */
-const OPENS_A_MATCH = new RegExp(`:\\s*${MATCH}\\s*\\([\\s\\S]*\\)\\s*$`);
+const OPENS_A_MATCH = new RegExp(`:\\s*${MATCH}\\s*\\$\\([\\s\\S]*\\)\\s*$`);
 
-/** The head of a match — `color: match({…})` — with its subject laid out by the project's tools. */
+/**
+ * The head of a match — `color: match $(…)` — with its subject laid out by the project's tools, and
+ * one space between `match` and its escape.
+ */
 function tightenedMatchHead(line: string, expression: PlaceholdOptions["expression"]): string {
-  const open = line.indexOf("{");
+  const open = line.indexOf("$(");
   if (open === -1) return line;
-  const close = closingHole(line, open);
+  const close = closingHole(line, open + 1);
   if (close === -1) return line;
-  return line.slice(0, open) + tightened(line.slice(open, close), expression) + line.slice(close);
+  const before = line.slice(0, open).replace(/match\s*$/, "match ");
+  return before + tightened(line.slice(open, close), expression) + line.slice(close);
 }
 
 /**
@@ -668,6 +725,235 @@ function armsIn(body: string): string[] {
   return split.map(({ key, value }) =>
     value === "" ? `${key};` : `${key.padEnd(widest)} => ${canonicalDeclaration(`x:${value}`).slice(2)};`,
   );
+}
+
+/**
+ * Past the `}` that closes the CSS `{` at `open`, or -1 — read as CSS, not as TypeScript.
+ *
+ * The match bodies used `closingHole`, which is a TypeScript reader: `//` opens a comment there,
+ * so `url(http://x/y.png)` ended the line, the brace was found in the wrong place, and the arms
+ * came back rearranged into text that no longer compiled. Found in round 8. Here a string, a
+ * block comment and an escape are stepped over whole, and `//` is two characters.
+ */
+function closingBrace(text: string, open: number): number {
+  let depth = 0;
+  for (let index = open; index < text.length; index++) {
+    const code = text.charCodeAt(index);
+    if (code === 34 || code === 39) {
+      index = endOfString(text, index) - 1;
+      continue;
+    }
+    if (code === 47 && text.charCodeAt(index + 1) === 42) {
+      const close = text.indexOf("*/", index + 2);
+      if (close === -1) return -1;
+      index = close + 1;
+      continue;
+    }
+    if (opensCode(text, index)) {
+      const close = closingHole(text, index + 1);
+      if (close === -1) return -1;
+      index = close - 1;
+      continue;
+    }
+    if (code === 123) depth++;
+    if (code === 125) {
+      depth--;
+      if (depth === 0) return index + 1;
+    }
+  }
+  return -1;
+}
+
+/**
+ * An escape spread over several lines, its continuation lines one step past the line it opens on.
+ *
+ * The expression was kept byte for byte, its continuation at the column it had in the source — and
+ * Prettier then indents the block it sits in, so every pass pushed it two columns further: measured,
+ * `off)` at 6, 8, 10, 12. Re-based here, a second pass finds what the first wrote. An expression
+ * holding a template literal is left as written: its line breaks are part of the string.
+ */
+function reindented(escape: string, at: string): string {
+  if (!escape.includes("\n") || escape.includes("`")) return escape;
+  const [first, ...rest] = escape.split("\n");
+  const widths = rest.filter((one) => one.trim() !== "").map((one) => one.length - one.trimStart().length);
+  const base = widths.length === 0 ? 0 : Math.min(...widths);
+  return [first, ...rest.map((one) => (one.trim() === "" ? "" : at + one.slice(base)))].join("\n");
+}
+
+/**
+ * Whether a piece of an arm list is nothing but comments — a note that belongs to the arm before it.
+ *
+ * A scan rather than a regex. The regex was `^(\s*\/\*[\s\S]*?\*\/)+\s*$`, which can split a run of
+ * comments many ways and tries every one when the piece does not end where it should — CodeQL found
+ * it on the PR, and measured it was four times slower for every two more comments: a run of forty
+ * did not finish. This walks each character once.
+ */
+function onlyComments(piece: string): boolean {
+  let index = 0;
+  let any = false;
+  for (;;) {
+    while (index < piece.length && /\s/.test(piece[index])) index++;
+    if (index === piece.length) return any;
+    if (!piece.startsWith("/*", index)) return false;
+    const close = piece.indexOf("*/", index + 2);
+    if (close === -1) return false;
+    index = close + 2;
+    any = true;
+  }
+}
+
+/** A block-level match's head: the word at the start of an item, and its subject. */
+const OPENS_A_BLOCK_MATCH = new RegExp(`^${MATCH}\\s*\\$\\(`);
+
+/**
+ * Where `text` splits at depth zero on `separator` — outside strings, parens, brackets and braces.
+ * The pieces, untrimmed; the last one is whatever follows the final separator.
+ */
+function splitTop(text: string, separator: number): string[] {
+  const pieces: string[] = [];
+  let current = "";
+  let depth = 0;
+  for (let index = 0; index < text.length; index++) {
+    const code = text.charCodeAt(index);
+    if (code === 34 /* " */ || code === 39 /* ' */) {
+      const stop = endOfString(text, index);
+      current += text.slice(index, stop);
+      index = stop - 1;
+      continue;
+    }
+    if (opensCode(text, index)) {
+      const close = closingHole(text, index + 1);
+      const stop = close === -1 ? text.length : close;
+      current += text.slice(index, stop);
+      index = stop - 1;
+      continue;
+    }
+    if (code === 47 && text.charCodeAt(index + 1) === 42) {
+      const close = text.indexOf("*/", index + 2);
+      const stop = close === -1 ? text.length : close + 2;
+      current += text.slice(index, stop);
+      index = stop - 1;
+      continue;
+    }
+    if (code === 40 || code === 91 || code === 123) depth++;
+    if (code === 41 || code === 93 || code === 125) depth = Math.max(0, depth - 1);
+    if (depth === 0 && code === separator) {
+      pieces.push(current);
+      current = "";
+      continue;
+    }
+    current += String.fromCharCode(code);
+  }
+  pieces.push(current);
+  return pieces;
+}
+
+/** A value with the parens around ALL of it taken off — `(2px solid red)`, never `(1px) + (2px)`. */
+function unwrapped(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed.startsWith("(")) return trimmed;
+  let depth = 0;
+  for (let index = 0; index < trimmed.length; index++) {
+    const code = trimmed.charCodeAt(index);
+    if (code === 34 || code === 39) {
+      index = endOfString(trimmed, index) - 1;
+      continue;
+    }
+    if (code === 40) depth++;
+    if (code === 41) {
+      depth--;
+      if (depth === 0) return index === trimmed.length - 1 ? trimmed.slice(1, -1).trim() : trimmed;
+    }
+  }
+  return trimmed;
+}
+
+/** A value as the formatter writes it anywhere — the same function a declaration goes through. */
+const valueLaid = (value: string): string => canonicalDeclaration(`x:${collapse(value)}`).slice(2);
+
+/**
+ * A block match's arms: the key, the arrow lined up, and the arm's declarations inside one pair of
+ * parens with a space each side — `( )` for an empty one. A nested rule inside an arm keeps its
+ * text with the whitespace collapsed; it is rare, and laying it out over lines would break the table.
+ */
+function blockArmsIn(body: string): string[] {
+  // Collapsed outside strings only: `content: "a  b"` is two spaces the author meant.
+  const pieces = splitTop(body, 59 /* ; */)
+    .map((one) => collapse(one))
+    .filter((one) => one !== "");
+  /** A piece that is only a comment is a note on the arm before it, not an arm of its own. */
+  const grouped: { text: string; note: string }[] = [];
+  for (const piece of pieces) {
+    const last = grouped[grouped.length - 1];
+    if (onlyComments(piece) && last !== undefined) last.note += ` ${piece}`;
+    else grouped.push({ text: piece, note: "" });
+  }
+  const arms = grouped.map(({ text: one, note }) => {
+    const at = one.indexOf("=>");
+    if (at === -1) return { key: one, inside: undefined, note };
+    const inside = splitTop(unwrapped(one.slice(at + 2)), 59)
+      .map((piece) => piece.trim())
+      .filter((piece) => piece !== "")
+      .map((piece) => {
+        if (piece.includes("{") || onlyComments(piece)) return piece;
+        const colon = splitTop(piece, 58 /* : */);
+        return colon.length < 2 ? `${piece};` : `${colon[0].trim()}: ${valueLaid(colon.slice(1).join(":"))};`;
+      });
+    return { key: one.slice(0, at).trim(), inside, note };
+  });
+
+  const widest = arms.reduce((width, one) => Math.max(width, one.key.length), 0);
+  return arms.map(
+    ({ key, inside, note }) =>
+      (inside === undefined
+        ? `${key};`
+        : `${key.padEnd(widest)} => ( ${inside.length === 0 ? "" : `${inside.join(" ")} `});`) + note,
+  );
+}
+
+/**
+ * A declaration whose value is a CHOICE, as the lines it is written on — or nothing for any other.
+ *
+ * One condition is one line: `border: $(on) ? 2px solid red : 1px solid #ccc;`. A chain is a table,
+ * the user's choice: every new line starts with `:` under the declaration's colon, the `?`s line
+ * up, the values make a column and the last value sits in it too. Parens around a whole branch come
+ * off — the reader accepts them, and they are not the canonical spelling.
+ */
+function choiceLines(declaration: string): string[] | undefined {
+  const [property, ...rest] = splitTop(declaration, 58 /* : */);
+  if (rest.length === 0) return undefined;
+  let value = rest.join(":").trim();
+  const name = property.trim();
+
+  const conditions: string[] = [];
+  const values: string[] = [];
+  for (;;) {
+    if (!opensCode(value, 0)) break;
+    const close = closingHole(value, 1);
+    if (close === -1) return undefined;
+    const after = value.slice(close).trimStart();
+    if (!after.startsWith("?")) break;
+    conditions.push(value.slice(0, close));
+    const [branch, ...others] = splitTop(after.slice(1), 58 /* : */);
+    if (others.length === 0) return undefined;
+    values.push(valueLaid(unwrapped(branch)));
+    value = others.join(":").trim();
+  }
+  if (conditions.length === 0) return undefined;
+  const last = valueLaid(unwrapped(value));
+
+  if (conditions.length === 1) return [`${name}: ${conditions[0]} ? ${values[0]} : ${last};`];
+
+  const widest = conditions.reduce((width, one) => Math.max(width, one.length), 0);
+  const under = " ".repeat(name.length);
+  return [
+    ...conditions.map((one, index) =>
+      index === 0
+        ? `${name}: ${one.padEnd(widest)} ? ${values[index]}`
+        : `${under}: ${one.padEnd(widest)} ? ${values[index]}`,
+    ),
+    `${under}: ${" ".repeat(widest + 3)}${last};`,
+  ];
 }
 
 /** Past the closing quote of the string starting at `at`, or the end of the text. */

@@ -426,8 +426,8 @@ function inOrder(css: readonly Finding[], types: readonly Finding[], sources: Re
    *
    * Measured, one typo came back twice, at two columns, with the same suggestion in each:
    *
-   *     unknown-variable  `$.space.gutter.norml` is not a variable this project declares.
-   *                       Did you mean `$.space.gutter.normal`?
+   *     unknown-variable  `$space.gutter.norml` is not a variable this project declares.
+   *                       Did you mean `$space.gutter.normal`?
    *     TS2551            Property 'norml' does not exist on type
    *                       'Readonly<{ normal: Token<"length", "16px">; }>'. Did you mean 'normal'?
    *
@@ -536,7 +536,7 @@ const at = (finding: Finding) => `${finding.file}:${finding.line}:${finding.colu
  * fault, and they cannot use the position: the two land at different columns by construction — ours
  * on the value or on the whole `$` path, the compiler's on the property or on the segment that
  * failed. The line was the next thing up, and it was too much. A line holds as many declarations as
- * an author cares to write, and measured, `padding-left: $.size.control.mdd; color: $.size.control.md;`
+ * an author cares to write, and measured, `padding-left: $size.control.mdd; color: $size.control.md;`
  * reported ONE problem: the typo suppressed the KIND mismatch beside it, which nothing else catches
  * — a kind is a type, not a rule the build runs, so that fault left the tool altogether.
  *

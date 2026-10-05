@@ -301,7 +301,9 @@ const CSS_LINES = {
   "literal-not-allowed": "a value written out where your `ramonda.css.ts` takes that kind from variables",
   "declaration-does-nothing":
     "a declaration another one on the same element switches off — valid CSS the browser ignores",
-  "unknown-variable": "`$.…` naming a variable your `ramonda.css.ts` does not declare",
+  "unknown-variable": "`$group.…` naming a variable your `ramonda.css.ts` does not declare",
+  "variable-by-hand": "`var(--…)` written by hand for a variable your `ramonda.css.ts` declares — write `$group.…`",
+  "block-refused": "what the build refuses, shown in the editor in the build's own words — it cannot be switched off",
   "too-many-values": "more values than the property takes — in CSS, or in your `ramonda.css.ts`",
   "missing-semicolon": "a declaration with no `;`, which swallows the line written under it",
   "string-not-allowed": "a quoted value where the property takes a keyword",
@@ -324,7 +326,8 @@ const CSS_LINES = {
   "match-with-no-arms": "a `match` that sets nothing whatever its subject is",
   "variable-set-by-another-name": "a `var()` reading a name set with different capitals",
   "value-and-registered-syntax": "a value a registered custom property cannot hold",
-  "initial-value-and-syntax": "`@@property` with a syntax and no initial value",
+  "initial-value-and-syntax":
+    "`@@property` with no `initial-value`, or one its `syntax` does not accept — the browser drops the rule",
   "line-comment": "a `//` comment, which CSS does not have",
   "run-on-declaration": "a missing `;`, so the next line joined this value",
   "block-in-a-template":
@@ -338,9 +341,8 @@ const CSS_LINES = {
   "hole-out-of-place": "a hole where CSS needs text, like a property name",
   "hole-as-a-variable-name": "a hole naming a custom property rather than holding a value",
   "hole-in-a-named-block": "a hole in `@@keyframes( … )` and its kind, which have no element",
-  "glued-hole": "text written against a hole, which is not part of its value",
-  "spread-out-of-place": "`...{block}` somewhere a whole block cannot go",
-  "composition-in-a-named-block": "`...{block}` inside a named site, which composes nothing",
+  "spread-out-of-place": "`...$(block)` somewhere a whole block cannot go",
+  "composition-in-a-named-block": "`...$(block)` or `when` inside a named site, which composes nothing",
   "ignore-without-a-reason": "`ramonda-css-ignore` with nothing after it",
 };
 

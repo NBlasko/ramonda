@@ -35,10 +35,10 @@ generates one, so it cannot collide with anything and cannot be mistyped.
 ```tsx
 const width = @@property( syntax: "<percentage>"; initial-value: 0%; inherits: false; );
 
-const bar = @@( height: 8px; background: $.color.accent; width: var({width}); );
+const bar = @@( height: 8px; background: $color.accent; width: var($(width)); );
 ```
 
-`var({width})` is resolved when the block compiles, so `width` is written into the rule as text.
+`var($(width))` is resolved when the block compiles, so `width` is written into the rule as text.
 Nothing about this declaration is per-element: `bar` is one class, shared by every bar on the page.
 
 ## Setting it
@@ -58,7 +58,7 @@ is the same set with the type kept:
 import { toStyle } from "@ramonda/css";
 
 const done = @@property( syntax: "<percentage>"; initial-value: 0%; inherits: false; );
-const meter = @@( height: 8px; width: var({done}); );
+const meter = @@( height: 8px; width: var($(done)); );
 
 const Bar = (props: { at: number }) => (
   <div className={meter} style={toStyle([[done, `${props.at}%`]])} />
@@ -70,7 +70,7 @@ toStyle([[angle, "45deg"]]);     ✓
 toStyle([[angle, "45px"]]);      ✗  a length where `<angle>` was declared
 ```
 
-It takes several at once, and it takes declared variables — `$.color.accent` — in the same list, so
+It takes several at once, and it takes declared variables — `$color.accent` — in the same list, so
 one call sets everything an element carries.
 
 The binding's type is `CssVar<"angle">`, read from the `syntax` you wrote. That is also what a
@@ -134,7 +134,7 @@ browser understands actually moves:
 const angle = @@property( syntax: "<angle>"; initial-value: 0deg; inherits: false; );
 
 const dial = @@(
-  transform: rotate(var({angle}));
+  transform: rotate(var($(angle)));
   transition: transform 200ms ease-out;
 );
 ```
@@ -158,7 +158,7 @@ A component that takes a style from its parent takes a block — see
 
 ```tsx
 const width = @@property( syntax: "<percentage>"; initial-value: 0%; inherits: false; );
-const bar = @@( height: 8px; width: var({width}); );
+const bar = @@( height: 8px; width: var($(width)); );
 
 class Bar extends Component<{ done: number }> {
   render() {

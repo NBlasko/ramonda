@@ -69,12 +69,12 @@ const HELPERS = {
  * One block as its own module: the classes it hands back, and the stylesheet it imports.
  *
  * `shared` is written above the block in every module — a `@@keyframes` it names, say. A spread of
- * another block of the pair, `...{base}`, is that block IMPORTED from its own module, the way an
+ * another block of the pair, `...$(base)`, is that block IMPORTED from its own module, the way an
  * application spreads a base from another file: its classes are handed in as the import would.
  */
 function compile(name, source, shared, compiled) {
   const file = `${name}.tsx`;
-  const imports = Object.keys(compiled).filter((other) => source.includes(`...{${other}}`));
+  const imports = Object.keys(compiled).filter((other) => source.includes(`...$(${other})`));
   const header = imports.map((other) => `import { ${other} } from "./${other}";\n`).join("");
   const built = transform(`${header}${shared}export const ${name} = @@( ${source} );\n`, { filename: file });
   if (built === undefined) throw new Error(`${name}: nothing compiled`);

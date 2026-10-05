@@ -1,5 +1,5 @@
 /**
- * `$.color.primary.main` — one path, three spellings, and one function for each so they cannot drift.
+ * `$color.primary.main` — one path, three spellings, and one function for each so they cannot drift.
  *
  * A path is written in a block, becomes a custom property in the stylesheet, and becomes a
  * TypeScript member expression in the virtual file. Codegen writes the first spelling, the compiler
@@ -37,10 +37,10 @@ export function isIdentifier(segment: string): boolean {
 }
 
 /**
- * The path as a TypeScript expression, for the virtual file — `$.space.inline["2xl"]`.
+ * The path as a TypeScript expression, for the virtual file — `$space.inline["2xl"]`.
  *
  * **The two spellings differ on purpose, and only here.** `2xl` and `0` are ordinary names in a
- * design system, and the block is this package's grammar, so `$.space.inline.2xl` is writable there.
+ * design system, and the block is this package's grammar, so `$space.inline.2xl` is writable there.
  * Only the virtual file has to BE TypeScript, and measured, the dotted form does not parse —
  * `TS1351: An identifier or keyword cannot immediately follow a numeric literal` — while the
  * bracketed form does.
@@ -64,7 +64,7 @@ export function expressionFor(path: string, root = "$", open = false): string {
   /**
    * A trailing dot is kept, because it is what an editor is asked about.
    *
-   * `$.color.` emitted as `__vars.color` is a finished expression, and the language service answers
+   * `$color.` emitted as `__vars.color` is a finished expression, and the language service answers
    * a finished expression with nothing. With the dot it is a member access in progress and the
    * members are offered — which is the whole point of the spelling. Measured both ways.
    */

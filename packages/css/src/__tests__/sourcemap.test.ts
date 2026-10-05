@@ -29,7 +29,7 @@ export class Card extends Component<{ id: string }> {
         flex-direction: column;
         padding: 24px;
         background-color: #0f172a;
-        if ({this.accent}) { border-left: 4px solid #10b981; }
+        when $(this.accent) { border-left: 4px solid #10b981; }
       )}>
         <span>{this.id}</span>
       </div>
@@ -142,7 +142,7 @@ describe("a file whose registrations push everything down", () => {
     `declare const t: "a" | "b";\n` +
     // A `var()`: a shorthand the compiler SPLITS registers nothing, so it no longer contributes a
     // prologue line and the shift this test is about would be zero.
-    `const card = @@(\n  background: var(--b);\n  cursor: match({t}) { a => pointer; b => default; };\n` +
+    `const card = @@(\n  background: var(--b);\n  cursor: match $(t) { a => pointer; b => default; };\n` +
     `  @media (min-width: 40rem) { color: red; }\n);\n` +
     `const marker = 2;\n` +
     `const a = <div className={card}>x</div>;\n`;

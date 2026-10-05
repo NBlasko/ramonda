@@ -100,7 +100,7 @@ const positioned = @@(
 );
 
 const badge = @@(
-  ...{positioned};
+  ...$(positioned);
   top: 4px;      /* quiet: `positioned` is what makes this work */
 );
 ```

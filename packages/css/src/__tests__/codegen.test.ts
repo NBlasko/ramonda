@@ -23,6 +23,24 @@ const simple = {
 };
 
 describe("names", () => {
+  /**
+   * The group is declared the way a block reads it — `$color` — and the `$` is not part of the name.
+   *
+   * One spelling in three places: the config key, `$color.primary.main` in a block, and the
+   * `export const $color` code imports. The custom property stays `--color-primary-main`, as CSS
+   * declares `--x` and reads it as `var(--x)`.
+   */
+  test("a group declared as `$color` is the path `color.…` and the export `$color`", () => {
+    const declared = { $color: kind("color", { primary: { main: "#3b82f6" } }) };
+
+    expect(namesIn(declared).map((one) => [one.path, one.name])).toEqual([
+      ["color.primary.main", "--color-primary-main"],
+    ]);
+    const module = generate(declared).module;
+    expect(module).toContain("export const $color =");
+    expect(module).not.toContain("$$color");
+  });
+
   test("a name is the path, joined with a dash, spelled as a custom property", () => {
     expect(namesIn(simple).map((one) => one.name)).toEqual(["--color-primary-main", "--size-control-md"]);
   });
@@ -35,13 +53,12 @@ describe("names", () => {
 
   test("two paths that spell one name are refused, and BOTH are named", () => {
     const clashing = {
-      "a-b": kind("length", { c: "1px" }),
-      a: kind("length", { "b-c": "2px" }),
+      a: kind("length", { b: { c: "1px" }, "b-c": "2px" }),
     };
 
     // The walk answers and `verifyNames` decides — see its note. `generate` runs both.
     expect(() => verifyNames(namesIn(clashing))).toThrow(/--a-b-c/);
-    expect(() => generate(clashing)).toThrow(/a-b\.c/);
+    expect(() => generate(clashing)).toThrow(/a\.b\.c/);
     expect(() => generate(clashing)).toThrow(/a\.b-c/);
   });
 });
@@ -90,17 +107,25 @@ describe("the stylesheet", () => {
 });
 
 describe("the module", () => {
-  test("`$` reaches a variable by the path it was declared at", () => {
+  /**
+   * One export per GROUP, named as a block spells it — `$color.primary.main` is the same text in a
+   * block and in code, and a file imports only the groups it reads.
+   */
+  test("each group is its own export, and reaches a variable by the rest of its path", () => {
     const { module: written } = generate(simple);
 
     expect(written).toContain('"main": "var(--color-primary-main)" as Token<"color", Fixed<"#3b82f6">>');
-    expect(written).toMatch(/export const \$ = Object\.freeze\(\{/);
+    expect(written).toMatch(/export const \$color = Object\.freeze\(\{\s*"primary": Object\.freeze\(\{/);
+    expect(written).toMatch(/export const \$size = Object\.freeze\(\{/);
   });
 
-  test("it keeps the shape rather than flattening it", () => {
-    const { module: written } = generate(simple);
+  test("there is no `$` holding them all any more", () => {
+    expect(generate(simple).module).not.toMatch(/export const \$ =/);
+  });
 
-    expect(written).toMatch(/"color": Object\.freeze\(\{\s*"primary": Object\.freeze\(\{/);
+  test("a group's name that is no identifier is refused, saying why", () => {
+    expect(() => generate({ "$brand-x": kind("color", { a: "#fff" }) })).toThrow(/`\$brand-x` cannot name/);
+    expect(() => generate({ $2x: kind("length", { a: "1px" }) })).toThrow(/`\$\( … \)`|group/);
   });
 
   test("a number fallback stays a number, so `number` and `integer` are not stringified", () => {
@@ -140,11 +165,10 @@ describe("what the module refuses at run time", () => {
    * stylesheet at build time, so assigning to it changes what one module reads and nothing else, and
    * the page keeps the old value. `toStyle` is the way to change one.
    */
-  test("`$` cannot be mutated, at the top or at any level", () => {
+  test("a group cannot be mutated, at the top or at any level", () => {
     const { module: written } = generate(simple);
 
-    expect(written).toContain("export const $ = Object.freeze({");
-    expect(written).toContain('"color": Object.freeze({');
+    expect(written).toContain("export const $color = Object.freeze({");
     expect(written).toContain('"primary": Object.freeze({');
   });
 });
@@ -190,7 +214,7 @@ describe("a declaration that would break the stylesheet", () => {
    * A DOT in a key is not a fault — it reads as nesting, and reaching it works.
    *
    * `{ "b.c": "8px" }` becomes the path `space.b.c`, so `$` emits `space: { b: { c } }` and
-   * `$.space.b.c` reaches it. Written down because it looks like a hole in the set above and is
+   * `$space.b.c` reaches it. Written down because it looks like a hole in the set above and is
    * not: the one thing it could go wrong as — meeting a real `{ b: { c } }` — is a collision, and
    * `verifyNames` has refused those since before this.
    */

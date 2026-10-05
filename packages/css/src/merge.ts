@@ -227,13 +227,13 @@ function slotOf(key: string): number | undefined {
  * conditions are different keys, so the merge keeps both, both classes land, and the sheet breaks
  * the tie by how strongly each condition overrides — see `widthSlot`. Within one block
  * `override-out-of-order` reports where that contradicts the author's order. Across a SPREAD it
- * cannot: `...{base}` is a runtime value, and the compiler does not know what is in it.
+ * cannot: `...$(base)` is a runtime value, and the compiler does not know what is in it.
  *
  * Measured in Chromium, on the shape people write — a base carrying the theme and a modifier
  * adjusting it:
  *
  *     const base = @@( @media (prefers-color-scheme: dark) { color: white; } );
- *     const card = @@( ...{base}; @media (min-width: 40rem) { color: blue; } );
+ *     const card = @@( ...$(base); @media (min-width: 40rem) { color: blue; } );
  *
  * With the modes ordered against breakpoints the way Tailwind orders them this one is right, and the
  * mirror of it — a base with the breakpoint, a modifier with the mode — is the one that loses. Either
@@ -354,7 +354,7 @@ const context = (key: string): string => CONDITIONS.get(key) ?? "no condition";
  *
  * A subject can hold a value no arm was written for: a type can be cast, data can arrive from a
  * server, a union can grow. When that happens **no declaration applies** — nothing comes back, the
- * merge skips it, and whatever was set above it stands. That is the same answer `if ({false})`
+ * merge skips it, and whatever was set above it stands. That is the same answer `when $(false)`
  * gives, and it is the reason an arm can be a class at all: every outcome was decided when the
  * block compiled, including the outcome of not matching.
  *
@@ -395,7 +395,7 @@ export function pick(subject: unknown, arms: Readonly<Record<string, string>>, o
  * CSS's own cascade does. The other direction needs nothing: the sheet emits longhands after
  * shorthands, so a longhand written later already wins.
  *
- * **Associative**, which is what makes a nested `if` mean the same as a flattened one — and it is
+ * **Associative**, which is what makes a nested `when` mean the same as a flattened one — and it is
  * the property the clearing rule could have broken, since clearing removes keys rather than
  * replacing them. Measured over 50,301 random groupings drawn from one shorthand family: zero
  * disagreements.

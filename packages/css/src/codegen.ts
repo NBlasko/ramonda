@@ -49,6 +49,15 @@ export interface Named {
 export type Declarations = { readonly [name: string]: unknown };
 
 /**
+ * The groups at the top of `variables`, each named the way a block reads it — `$color`.
+ *
+ * The `$` is part of the config key so that one spelling holds in all three places: the config, a
+ * block's `$color.primary.main`, and the `$color` code imports. It is not part of the custom
+ * property — `--color-primary-main` — the way CSS declares `--x` and reads it as `var(--x)`.
+ */
+export type Groups = { readonly [group: `$${string}`]: unknown };
+
+/**
  * A `ConfigError`, because the fault is in the author's `ramonda.css.ts` and not in this package.
  *
  * It threw a raw `Error` until review pass 9 measured what that looked like:
@@ -80,7 +89,8 @@ export function namesIn(declarations: Declarations): readonly Named[] {
 
   const walk = (group: Declarations, trail: readonly string[]): void => {
     for (const [segment, one] of Object.entries(group)) {
-      const here = [...trail, segment];
+      // A group's `$` is how it is spelled, not part of its path — see `Groups`.
+      const here = [...trail, trail.length === 0 ? segment.replace(/^\$/, "") : segment];
 
       if (isVariable(one)) {
         found.push({
@@ -129,11 +139,24 @@ export function verifyNames(named: readonly Named[], path?: string): void {
      * `(?:\.[A-Za-z0-9_-]*)+`, so a segment outside it is a variable `$` can never reach — codegen
      * was writing one anyway. One rule, two consumers, and only one of them knew it.
      */
+    /**
+     * A GROUP is a TypeScript name as well as a CSS one — `$color` is what the module exports and
+     * what a block writes — so it is an identifier: no `-`, and no digit first.
+     */
+    const group = one.path.split(".")[0];
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(group)) {
+      refuse(
+        `\`$${group}\` cannot name a group of variables.\n\n        A group is written \`$${group}.…\` in a block and ` +
+          `exported as \`$${group}\` for code,\n        so it is a letter or \`_\` and then letters, digits and \`_\`.`,
+        path,
+      );
+    }
+
     for (const segment of one.path.split(".")) {
       if (!/^[A-Za-z0-9_-]+$/.test(segment)) {
         refuse(
           `\`${segment}\` cannot be part of a variable's name.\n\n` +
-            `        A name holds letters, digits, \`-\` and \`_\` — that is what \`$.\u2026\` can ` +
+            `        A name holds letters, digits, \`-\` and \`_\` — that is what \`$group.\u2026\` can ` +
             `reach, and\n        what a custom property may be called. Declared at \`${one.path}\`.`,
           path,
         );
@@ -280,7 +303,7 @@ function moduleTree(named: readonly Named[]): string {
   /**
    * **Frozen at every level, and `as const` is not enough.**
    *
-   * `as const` makes TypeScript refuse `$.color.accent.main = "…"`, which catches every reasonable
+   * `as const` makes TypeScript refuse `$color.accent.main = "…"`, which catches every reasonable
    * way somebody could do it. A cast walks past that — and this repository's own rule is to prove it
    * statically AND stop it anyway, because a type is not a defence.
    *
@@ -289,14 +312,26 @@ function moduleTree(named: readonly Named[]): string {
    * old value. The way to change a variable is `toStyle`, where the new value is checked against the
    * kind and lands on an element.
    */
-  return `Object.freeze({\n${write(root, "")}\n})`;
+  /**
+   * One EXPORT per group — `$color`, `$space` — so a variable is spelled the same in code as in a
+   * block, `$color.primary.main`, and a file imports only the groups it reads.
+   */
+  return Object.entries(root)
+    .map(([group, next]) => {
+      const value =
+        next !== null && typeof next === "object" && "name" in (next as Named)
+          ? `${JSON.stringify(`var(${(next as Named).name})`)} as Token<${JSON.stringify((next as Named).kind)}, ${rangeOf(next as Named)}>`
+          : `Object.freeze({\n${write(next as Record<string, unknown>, "")}\n})`;
+      return `/** The \`${group}\` variables, as a block writes them: \`$${group}.…\`. */\nexport const $${group} = ${value};\n`;
+    })
+    .join("\n");
 }
 
 /** What one run of codegen produces. Empty strings when a project declares nothing. */
 export interface Generated {
   /** `:root`, and one `@property` per variable that can be registered. */
   readonly css: string;
-  /** The `$` module, in TypeScript, for the project's own compiler to read. */
+  /** The module — one export per group and the project's types — for its own compiler to read. */
   readonly module: string;
 }
 
@@ -618,7 +653,7 @@ function propertyMap(rules: PropertyRules | undefined): Mapped {
     /**
      * **A variable of the right kind goes in too, and none did.**
      *
-     * A closed list had no `Token` in it at all, so `z-index: $.layer.modal` was refused — with the
+     * A closed list had no `Token` in it at all, so `z-index: $layer.modal` was refused — with the
      * project's own list in the message — however right the variable was. Measured; the user met it.
      * A declared variable IS one of these values when its own range fits inside the list, which is
      * what `Token<kind, permitted>` says.
@@ -688,7 +723,7 @@ function propertyMap(rules: PropertyRules | undefined): Mapped {
      *
      * `` `${string} ${string}` `` is what is left. It admits every multi-value value, and it still
      * refuses a TOKEN of the wrong kind — a branded string is not a two-word template — which is the
-     * fault this was reported for: `gap: $.color.accent.main` compiled.
+     * fault this was reported for: `gap: $color.accent.main` compiled.
      *
      * **The honest loss:** `gap: 8px red` passes. Before any of this it was `string | number` and so
      * did everything else; the count is the `too-many-values` rule's and the words are
@@ -741,7 +776,7 @@ function propertyMap(rules: PropertyRules | undefined): Mapped {
      * Measured, `variablesOnly: ["length"]` refused `padding-left: 0` — the most common declaration
      * in CSS — with `Narrowed<never, Token<…>>`. A zero length needs no unit in CSS, `CssDimension`
      * holds `0 | "0"` for that reason, and a project saying *lengths come from variables* is not
-     * asking for `$.space.none`. The dimensionless zero went out with the literals because the two
+     * asking for `$space.none`. The dimensionless zero went out with the literals because the two
      * lived in one type.
      *
      * Both spellings, because a block is CSS and `padding-left: 0` arrives as the string `"0"`,
@@ -774,7 +809,7 @@ function propertyMap(rules: PropertyRules | undefined): Mapped {
  * `Var<K>` — the variables this project declares of one kind, as a type.
  *
  * ```ts
- * const tone: Var<"color"> = toggle ? $.color.accent.quiet : $.color.accent.main;
+ * const tone: Var<"color"> = toggle ? $color.accent.quiet : $color.accent.main;
  * ```
  *
  * **Asked for by a user**, whose annotation could not be written: `Token<"color", …>` wants the
@@ -782,7 +817,7 @@ function propertyMap(rules: PropertyRules | undefined): Mapped {
  * ranges — neither of which the author should have to name, and one of which is a marker they
  * cannot guess.
  *
- * Inference already carries the local case: `const tone = toggle ? $.a : $.b` needs no annotation
+ * Inference already carries the local case: `const tone = toggle ? $a : $b` needs no annotation
  * and drops into a hole. This is for where inference cannot reach — a class field, a parameter, a
  * return type.
  *
@@ -795,7 +830,8 @@ function byKind(named: readonly Named[]): string {
   const kinds = new Map<string, string[]>();
   for (const one of named) {
     const already = kinds.get(one.kind) ?? [];
-    already.push(`typeof ${expressionFor(one.path)}`);
+    const [group, ...rest] = one.path.split(".");
+    already.push(`typeof ${expressionFor(rest.join("."), `$${group}`)}`);
     kinds.set(one.kind, already);
   }
   if (kinds.size === 0) return "";
@@ -835,7 +871,7 @@ function byKind(named: readonly Named[]): string {
     `\n${aliases}\n` +
     `/** Every variable this project declares, by kind — what \`Var\` reads. */\n` +
     `export interface VarByKind {\n${rows}\n}\n\n` +
-    `/** Any variable of a kind — \`const tone: Var<"color"> = toggle ? $.a.b : $.a.c\`. */\n` +
+    `/** Any variable of a kind — \`const tone: Var<"color"> = toggle ? $a.b : $a.c\`. */\n` +
     `export type Var<K extends keyof VarByKind> = VarByKind[K];\n`
   );
 }
@@ -957,14 +993,13 @@ export function generate(declarations: Declarations, rules?: PropertyRules, path
     `${HEADER}\n\n` +
     `import type { ${fromPackage} } from "@ramonda/css";\n` +
     `${IMPORTED}\n\n` +
-    `/** Every variable this project declares. Reach one by the path it was declared at. */\n` +
     /**
      * No `as const`: it is only legal on a literal, and `Object.freeze( … ) as const` is `TS1355`.
      *
      * Nothing is lost. Every leaf carries its own `as Token< … >`, which is where the literal types
      * come from, and `Object.freeze` returns `Readonly<T>` — so a group is readonly too.
      */
-    `export const $ = ${named.length === 0 ? "Object.freeze({})" : moduleTree(named)};\n\n` +
+    (named.length === 0 ? "" : `${moduleTree(named)}\n`) +
     `/** The ${narrowed} properties this project narrows, and what each takes. */\n` +
     `interface Narrowings {\n${rows}\n}\n\n` +
     `/** What this project's blocks are checked against — the shipped map, with those replaced. */\n` +

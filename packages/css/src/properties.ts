@@ -13,7 +13,7 @@ import type { CssVar, KindOfSyntax } from "./token";
  * |---|---|
  * | `display: flexx` | `TS2820 … Did you mean '"flex"'?` |
  * | `dsiplay: flex` | `TS2561 … Did you mean to write 'display'?` |
- * | `padding: {{nekaFunc()}}` | `TS2322`, against `padding`'s own type |
+ * | `padding: $(nekaFunc())` | `TS2322`, against `padding`'s own type |
  * | `&:hover { colr: … }` | `TS2561`, **inside the nested rule** |
  */
 
@@ -197,7 +197,7 @@ type FALSY = false | 0 | 0n | "" | null | undefined;
  *
  * **A block that may not be there is spreadable, and refusing one was the type being stricter than
  * the thing it describes.** `sx?: CssBlock` is the ordinary shape for a style a caller MAY send, so
- * it is the shape a constrained prop has nearly every time — and `...{cond && block}` is how a
+ * it is the shape a constrained prop has nearly every time — and `...$(cond && block)` is how a
  * group is written conditionally. Measured against the real `merge`: `undefined`, `null` and `false`
  * are each skipped and the neighbouring classes all arrive, which is what they have always done.
  * The refusal itself is unchanged, and asserted still to fire in `check.test.ts`.

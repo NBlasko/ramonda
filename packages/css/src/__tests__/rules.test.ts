@@ -269,7 +269,7 @@ describe("the same declaration written twice", () => {
   });
 
   test("the same property with a hole in one of them is not a repeat — it is a hole, which is its own finding", () => {
-    expect(rules("  color: red;\n  color: {accent};")).toEqual(["hole-not-allowed"]);
+    expect(rules("  color: red;\n  color: $(accent);")).toEqual(["hole-not-allowed"]);
   });
 });
 
@@ -282,9 +282,9 @@ describe("a hole where the stylesheet needs text", () => {
    * FIRST: in an editor, while it is being typed, rather than at the end of a build.
    */
   test.each([
-    ["a property name", "  {name}: 24px;"],
-    ["a whole declaration", `  {cond ? "display:flex" : ""};`],
-    ["a selector", "  &:{state} { color: red; }"],
+    ["a property name", "  $(name): 24px;"],
+    ["a whole declaration", `  $(cond ? "display:flex" : "");`],
+    ["a selector", "  &:$(state) { color: red; }"],
   ])("%s is named", (_what, css) => {
     const [only, ...rest] = check(css);
 
@@ -295,26 +295,26 @@ describe("a hole where the stylesheet needs text", () => {
   /**
    * **The advice has to name a door that is OPEN**, and it did not.
    *
-   * It read *a custom property holds a value, so write `property: {…}` and put the choice inside
+   * It read *a custom property holds a value, so write `property: $(…)` and put the choice inside
    * it* — written when a hole in a declaration compiled to a custom property on the element. A
    * runtime value in a declaration is refused everywhere now, so following that sentence moved
    * somebody from this rule to `hole-not-allowed`. Measured, all three spellings in one run:
    *
-   *     @@( {pick}; )             a hole cannot be a whole declaration
-   *     @@( color: {pick}; )      hole-not-allowed
-   *     @@( color: var({A}); )    clean
+   *     @@( $(pick); )           a hole cannot be a whole declaration
+   *     @@( color: $(pick); )    hole-not-allowed
+   *     @@( color: var($(A)); )  clean
    */
   test("and the advice names what works, not the next refusal", () => {
-    const [only] = check(`  {cond ? "display:flex" : ""};`);
+    const [only] = check(`  $(cond ? "display:flex" : "");`);
 
     expect(only.message).toContain("@@property");
     expect(only.message).toContain("match");
-    expect(only.message).not.toContain("write `property: {…}`");
+    expect(only.message).not.toContain("write `property: $(…)`");
   });
 
   test("and a hole in a value is where a hole at least PARSES, whatever else is said about it", () => {
     // `hole-not-allowed` refuses it; this rule is about the four places it cannot even be read.
-    expect(rules("  border-left: 4px solid {accent};")).toEqual(["hole-not-allowed"]);
+    expect(rules("  border-left: 4px solid $(accent);")).toEqual(["hole-not-allowed"]);
   });
 });
 
@@ -497,8 +497,8 @@ describe("a property that takes no keywords", () => {
 
   /** A hole has no unit to read, so this rule says nothing about one — `hole-not-allowed` does. */
   test.each([
-    ["a hole", `padding: {size};`],
-    ["a hole with a space after it", `padding: {size} 0;`],
+    ["a hole", `padding: $(size);`],
+    ["a hole with a space after it", `padding: $(size) 0;`],
   ])("%s is not this rule's business", (_what, css) => {
     expect(check(css).map((one) => one.rule)).toEqual(["hole-not-allowed"]);
   });
@@ -517,8 +517,8 @@ describe("a property that takes no keywords", () => {
  * A word touching a hole is part of the hole's value.
  *
  * Found by widening the rule to the seventy numeric properties, and it was already there: measured on
- * every property with a keyword row, `gap: {{n}}px` reported *`gap` does not accept `px`*. A false
- * report on correct CSS, and no test covered it — `padding: {{n}}px` was the case that did, and
+ * every property with a keyword row, `gap: $(n)px` reported *`gap` does not accept `px`*. A false
+ * report on correct CSS, and no test covered it — `padding: $(n)px` was the case that did, and
  * `padding` was one of the properties the rule was skipping.
  *
  * Whitespace is what separates one value from the next, so a piece with none between it and the hole
@@ -526,24 +526,23 @@ describe("a property that takes no keywords", () => {
  */
 describe("a hole and the text glued to it", () => {
   /** The two rules that fire on a hole without reading a word of it — see the assertion below. */
-  const SAYS_NOTHING_ABOUT_WORDS = new Set(["glued-hole", "hole-not-allowed"]);
+  const SAYS_NOTHING_ABOUT_WORDS = new Set(["hole-not-allowed"]);
 
   test.each([
-    ["a unit after a hole", `gap: {n}px;`],
-    ["one on a property that takes no keywords", `padding: {n}px;`],
-    ["two holes, one unit", `margin: {a} {b}px;`],
-    ["a unit in the middle of a shorthand", `border-left: {w}px solid red;`],
-    ["a word before a hole", `grid-template-columns: minmax(0,{n}fr);`],
+    ["a unit after a hole", `gap: $(n)px;`],
+    ["one on a property that takes no keywords", `padding: $(n)px;`],
+    ["two holes, one unit", `margin: $(a) $(b)px;`],
+    ["a unit in the middle of a shorthand", `border-left: $(w)px solid red;`],
+    ["a word before a hole", `grid-template-columns: minmax(0,$(n)fr);`],
   ])("%s says nothing about the WORD", (_what, css) => {
-    // The glued piece is not a value of its own, so no rule that reads words may judge it. It IS
-    // reported, by `glued-hole` — see that section — because the CSS it produces does not work, and
-    // by `hole-not-allowed`, which refuses every runtime value. Neither of those reads the word.
+    // The glued piece is not a value of its own, so no rule that reads words may judge it. The hole
+    // IS reported, by `hole-not-allowed`, which refuses every runtime value and does not read the word.
     expect(check(css).filter((finding) => !SAYS_NOTHING_ABOUT_WORDS.has(finding.rule))).toEqual([]);
   });
 
   test.each([
-    ["a typo beside a glued unit", `border-left: {w}px sollid red;`, "sollid"],
-    ["a separate word after a hole", `gap: {n} auto;`, "auto"],
+    ["a typo beside a glued unit", `border-left: $(w)px sollid red;`, "sollid"],
+    ["a separate word after a hole", `gap: $(n) auto;`, "auto"],
   ])("%s is still caught", (_what, css, word) => {
     expect(
       check(css)
@@ -610,7 +609,7 @@ describe("a line comment", () => {
     ["a quoted one", `content: "// not a comment";`],
     ["a single slash", `font: 12px/1.5 system-ui;`],
     ["a ratio", `aspect-ratio: 16 / 9;`],
-    ["one inside a hole", `color: {cond ? "red" : "blue"}; /* fine */`],
+    ["one inside a hole", `color: $(cond ? "red" : "blue"); /* fine */`],
   ])("%s is not one", (_what, css) => {
     expect(check(css).filter((finding) => finding.rule === "line-comment")).toEqual([]);
   });
@@ -668,7 +667,7 @@ describe("a value that has to be a property name", () => {
   });
 
   test("a hole names no property, so this rule says nothing about one", () => {
-    expect(check(`transition-property: {what};`).map((one) => one.rule)).toEqual(["hole-not-allowed"]);
+    expect(check(`transition-property: $(what);`).map((one) => one.rule)).toEqual(["hole-not-allowed"]);
   });
 
   /**
@@ -756,7 +755,7 @@ describe("a unit that is nearly one", () => {
     ["fr", `grid-template-columns: 1fr 2fr;`],
     ["a hex colour", `color: #10b981;`],
     ["a number inside a function", `width: calc(100% - 8px);`],
-    ["a unit beside a hole", `border-left: {w}px solid red;`],
+    ["a unit beside a hole", `border-left: $(w)px solid red;`],
     ["an angle", `rotate: 45deg;`],
     ["a resolution", `image-resolution: 300dpi;`],
   ])("%s is silent", (_what, css) => {
@@ -782,51 +781,23 @@ describe("a unit that is nearly one", () => {
 });
 
 /**
- * Text glued to a hole, which reads like the obvious way to write a length and does not work.
+ * Text glued to a hole is ONE fault, and it is the hole.
  *
- * ## Measured in a real browser, and it fails in the worst way
- *
- * A hole becomes one custom property, so `{{n}}px` becomes `var(--r-…-0)px`. Chromium, with
- * `--w: 12`:
- *
- * | written | computed |
- * |---|---|
- * | `padding-left: var(--w)px` | **`0px`** |
- * | `padding-left: 8px; padding-left: var(--w)px` | **`0px`** — the fallback above it is lost too |
- * | `padding-left: calc(var(--w) * 1px)` | `12px` |
- * | `--w: 12px; padding-left: var(--w)` | `12px` |
- *
- * A `var()` is substituted as TOKENS, so the `12` and the `px` never become one length. The
- * declaration is invalid at computed-value time, which is worse than being dropped at parse time:
- * the property falls back to its initial value and takes any earlier declaration of it with it.
- *
- * The word reader already steps over a glued piece — it has to, or `px` would be reported as a value
- * `padding` does not accept. That silence was measured as a false report and is now known to have
- * been a TRUE one with the wrong message, which is what this rule is.
+ * A runtime value in a declaration is refused, so text written against one has no value to be part
+ * of — the fix is the hole's, whatever is beside it. There used to be a second rule here,
+ * `glued-hole`, about what the text did to a value that became a custom property; that value is
+ * refused now, and the rule fired only beside `hole-not-allowed`, advising a change that landed on
+ * the same refusal.
  */
 describe("text glued to a hole", () => {
   test.each([
-    ["a unit after", `padding-left: {n}px;`],
-    ["inside a shorthand", `border-left: {w}px solid red;`],
-    ["a suffix that is not a unit", `grid-area: {name}-start;`],
-    ["something in front", `color: #{hex};`],
-    ["two holes with nothing between", `margin: {a}{b};`],
-  ])("%s is reported", (_what, css) => {
-    const found = check(css).filter((finding) => finding.rule === "glued-hole");
-
-    expect(found).toHaveLength(1);
-    expect(found[0].message).toContain("calc(");
-  });
-
-  test.each([
-    ["a hole with a space after it", `border-left: {w} solid red;`],
-    ["a whole value", `display: {how};`],
-    ["inside calc, spaced", `padding-left: calc({n} * 1px);`],
-    ["two holes with a space", `margin: {a} {b};`],
-    ["the unit inside the hole", "padding-left: {`${n}px`};"],
-    ["a hole ending a declaration", `color: {c};`],
-  ])("%s is fine", (_what, css) => {
-    expect(check(css).filter((finding) => finding.rule === "glued-hole")).toEqual([]);
+    ["a unit after", `padding-left: $(n)px;`, 1],
+    ["inside a shorthand", `border-left: $(w)px solid red;`, 1],
+    ["a suffix that is not a unit", `grid-area: $(name)-start;`, 1],
+    ["something in front", `color: #$(hex);`, 1],
+    ["two holes with nothing between", `margin: $(a)$(b);`, 2],
+  ])("%s is the hole, said once per hole", (_what, css, holes) => {
+    expect(check(css).map((finding) => finding.rule)).toEqual(Array(holes).fill("hole-not-allowed"));
   });
 });
 
@@ -1070,7 +1041,7 @@ describe("the shorthand table", () => {
   });
 
   /**
-   * **The merge built on this table is associative**, which is what makes a nested `if` mean the
+   * **The merge built on this table is associative**, which is what makes a nested `when` mean the
    * same as a flattened one — and it is the property the clearing rule could have broken, since
    * clearing removes keys rather than replacing them.
    *
@@ -1485,15 +1456,15 @@ describe("the abbreviation map", () => {
 /**
  * Setting one variable and reading another, when the author meant one.
  *
- * A named `@@property` block is a TypeScript binding, and `var({{accent}})` resolves at build time to
- * the name that block generated. Setting it with the SAME binding works end to end — `{{accent}}:
+ * A named `@@property` block is a TypeScript binding, and `var($(accent))` resolves at build time to
+ * the name that block generated. Setting it with the SAME binding works end to end — `$(accent):
  * blue` writes `--r-…: blue` and the `var()` reads it back.
  *
  * **Writing the literal name instead is two variables, and nothing said so.** Measured:
  *
  * ```
  * --accent: blue;               ->  .r-… { --accent: blue }       ONE variable
- * background: var({{accent}});  ->  reads --r-k8u6ISIlk           ANOTHER
+ * background: var($(accent));  ->  reads --r-k8u6ISIlk           ANOTHER
  * ```
  *
  * The author believes they set what they read. The background is the `@property` `initial-value`
@@ -1512,7 +1483,7 @@ describe("a variable set by one name and read by another", () => {
   };
 
   test("setting the literal name while reading the binding is reported", () => {
-    const found = bound("  --accent: blue;\n  background: var({accent});");
+    const found = bound("  --accent: blue;\n  background: var($(accent));");
 
     expect(found).toHaveLength(1);
     expect(found[0].rule).toBe("variable-set-by-another-name");
@@ -1520,21 +1491,21 @@ describe("a variable set by one name and read by another", () => {
   });
 
   test("the message says what to write instead", () => {
-    expect(bound("  --accent: blue;\n  background: var({accent});")[0].message).toContain("{accent}");
+    expect(bound("  --accent: blue;\n  background: var($(accent));")[0].message).toContain("$(accent)");
   });
 
   test("it lands on the declaration the author has to change", () => {
-    const found = bound("  --accent: blue;\n  background: var({accent});");
+    const found = bound("  --accent: blue;\n  background: var($(accent));");
     // The SET is the mistake — the read is what they meant.
     expect(found[0].length).toBe("--accent".length);
   });
 
   describe("what it must not report", () => {
     test.each([
-      ["setting it with the binding, which is the right way", "  {accent}: blue;\n  background: var({accent});"],
-      ["reading the binding and setting nothing", "  background: var({accent});"],
+      ["setting it with the binding, which is the right way", "  $(accent): blue;\n  background: var($(accent));"],
+      ["reading the binding and setting nothing", "  background: var($(accent));"],
       ["setting a literal nobody reads as a binding", "  --gap: 8px;\n  gap: var(--gap);"],
-      ["a literal whose name matches nothing bound", "  --tone: blue;\n  background: var({accent});"],
+      ["a literal whose name matches nothing bound", "  --tone: blue;\n  background: var($(accent));"],
       ["setting the literal and reading the literal", "  --accent: blue;\n  background: var(--accent);"],
     ])("%s", (_what, css) => {
       expect(bound(css)).toEqual([]);
@@ -1546,7 +1517,7 @@ describe("a variable set by one name and read by another", () => {
  * A reference to a named site, checked as the TEXT it resolves to — and it must answer exactly as
  * the same text written by hand does.
  *
- * A `{{ … }}` that names a `@@keyframes` or `@@property` site is not a hole: it becomes text this
+ * A `$(…)` that names a `@@keyframes` or `@@property` site is not a hole: it becomes text this
  * compiler decided, part of the hash, with no custom property. **So the block a checker sees is the
  * block the author would have written literally, and the two must be reported the same way.**
  *
@@ -1555,7 +1526,7 @@ describe("a variable set by one name and read by another", () => {
  * | written | reported |
  * |---|---|
  * | `transform: rotate(var(--r-KJ03bK3La))` | nothing |
- * | `transform: rotate(var({{angle}}))`, resolving to that name | ``transform` does not accept …` |
+ * | `transform: rotate(var($(angle)))`, resolving to that name | ``transform` does not accept …` |
  *
  * The cause is that `words()` steps over a function within ONE text part, and a resolved reference
  * arrived as a part of its own — so `rotate(var(` , the name, and `))` were three parts and the
@@ -1586,7 +1557,7 @@ describe("a reference to a named site is checked as the text it became", () => {
   test("a resolved name inside `var()` reports nothing, as the literal does not", () => {
     const source =
       `const angle = @@property( syntax: "<angle>"; inherits: false; initial-value: 0deg; );\n` +
-      `const card = @@( transform: rotate(var({angle})); );\n`;
+      `const card = @@( transform: rotate(var($(angle))); );\n`;
 
     expect(findings(source)).toEqual([]);
   });
@@ -1594,7 +1565,7 @@ describe("a reference to a named site is checked as the text it became", () => {
   test("a resolved `@@keyframes` name in `animation` reports nothing either", () => {
     const source =
       `const spin = @@keyframes( from { opacity: 0; } to { opacity: 1; } );\n` +
-      `const card = @@( animation: {spin} 3s linear; );\n`;
+      `const card = @@( animation: $(spin) 3s linear; );\n`;
 
     expect(findings(source)).toEqual([]);
   });
@@ -1606,7 +1577,7 @@ describe("a reference to a named site is checked as the text it became", () => {
   test("but a real fault in the same declaration is still reported", () => {
     const source =
       `const spin = @@keyframes( from { opacity: 0; } to { opacity: 1; } );\n` +
-      `const card = @@( transition: {spin} 3s liner; );\n`;
+      `const card = @@( transition: $(spin) 3s liner; );\n`;
 
     expect(findings(source).map((one) => one.rule)).toContain("unknown-value");
   });
@@ -1630,10 +1601,10 @@ describe("a reference to a named site is checked as the text it became", () => {
  * **This package already knew, and emitted it anyway.** `references.ts` says so in its own words,
  * and it is the shape an IMPORTED binding produces: `namedSites` reads one file, so
  * `import { accent } from "./theme"` is not a name it can resolve and the reference stays a hole.
- * Measured: `background: var({{accent}})` on an imported binding compiled to
+ * Measured: `background: var($(accent))` on an imported binding compiled to
  * `background:var(var(--r-rfpVZr3es-0))` with nothing reported.
  *
- * The FALLBACK is a different position and is left alone — `var(--x, {{colour}})` is a value where a
+ * The FALLBACK is a different position and is left alone — `var(--x, $(colour))` is a value where a
  * value belongs, and `var(--unset, var(--hole))` was measured resolving correctly. Only the first
  * argument is a name.
  */
@@ -1642,38 +1613,38 @@ describe("a hole where `var()` takes a name", () => {
   const rules = (source: string) => of(source).map((one) => one.rule);
 
   test("directly inside `var(`", () => {
-    expect(rules(`@@(\n  background: var({accent});\n)`)).toEqual(["hole-as-a-variable-name", "hole-not-allowed"]);
+    expect(rules(`@@(\n  background: var($(accent));\n)`)).toEqual(["hole-as-a-variable-name", "hole-not-allowed"]);
   });
 
   test("with whitespace between, which changes nothing", () => {
-    expect(rules(`@@(\n  background: var(  {accent} );\n)`)).toEqual(["hole-as-a-variable-name", "hole-not-allowed"]);
+    expect(rules(`@@(\n  background: var(  $(accent) );\n)`)).toEqual(["hole-as-a-variable-name", "hole-not-allowed"]);
   });
 
   test("and nested in a fallback's own `var(`, which is still a name position", () => {
-    expect(rules(`@@(\n  background: var(--brand, var({accent}));\n)`)).toEqual([
+    expect(rules(`@@(\n  background: var(--brand, var($(accent)));\n)`)).toEqual([
       "hole-as-a-variable-name",
       "hole-not-allowed",
     ]);
   });
 
   test("the squiggle covers the hole the author wrote", () => {
-    const source = `@@(\n  background: var({accent});\n)`;
+    const source = `@@(\n  background: var($(accent));\n)`;
     const [finding] = of(source);
 
-    expect(source.slice(finding.at, finding.at + finding.length)).toBe("{accent}");
+    expect(source.slice(finding.at, finding.at + finding.length)).toBe("$(accent)");
   });
 
   test("the message says what `var()` needs", () => {
-    expect(of(`@@(\n  background: var({accent});\n)`)[0].message).toContain("literal name");
+    expect(of(`@@(\n  background: var($(accent));\n)`)[0].message).toContain("literal name");
   });
 
   describe("what it must not report", () => {
     test("a hole in the FALLBACK, which is a name position no longer", () => {
-      expect(rules(`@@(\n  background: var(--brand, {fallback});\n)`)).not.toContain("hole-as-a-variable-name");
+      expect(rules(`@@(\n  background: var(--brand, $(fallback));\n)`)).not.toContain("hole-as-a-variable-name");
     });
 
     test("an ordinary hole, which is refused for being a hole and not for standing in a name", () => {
-      expect(rules(`@@(\n  background: {accent};\n)`)).toEqual(["hole-not-allowed"]);
+      expect(rules(`@@(\n  background: $(accent);\n)`)).toEqual(["hole-not-allowed"]);
     });
 
     test("a literal name, which is what `var()` wants", () => {
@@ -1681,14 +1652,14 @@ describe("a hole where `var()` takes a name", () => {
     });
 
     /**
-     * The legitimate use, and the reason this rule cannot simply refuse every `{{ }}` after `var(`:
+     * The legitimate use, and the reason this rule cannot simply refuse every `$( )` after `var(`:
      * a reference to a named site in the SAME file is resolved to text before any rule sees it, so
      * there is no hole left to report. That is the case the whole named-site design exists for.
      */
     test("a reference to a named site in the same file, which resolves to a literal", () => {
       const source =
         `const accent = @@property( syntax: "<color>"; inherits: true; initial-value: #10b981; );\n` +
-        `const card = @@( background: var({accent}); );\n`;
+        `const card = @@( background: var($(accent)); );\n`;
       const references = namedSites(source);
       const sites = findBlocks(source);
       const site = sites[sites.length - 1];
@@ -1738,6 +1709,20 @@ describe("an initial-value its own syntax does not accept", () => {
   };
   const rules = (source: string) => of(source).map((one) => one.rule);
   const property = (body: string) => `const t = @@property(\n  ${body}\n);`;
+
+  /**
+   * No `initial-value` at all. CSS requires one for every syntax but `"*"`, and without it the
+   * browser drops the whole registration — measured in Chromium, Firefox and WebKit. The type cannot
+   * say so, since `"*"` is a string like any other, so the rule does.
+   */
+  test("no initial-value, where the syntax needs one", () => {
+    expect(rules(property(`syntax: "<percentage>"; inherits: false;`))).toEqual(["initial-value-and-syntax"]);
+    expect(rules(property(`syntax: "<custom-ident>+"; inherits: false;`))).toEqual(["initial-value-and-syntax"]);
+  });
+
+  test("and none is needed for the universal syntax", () => {
+    expect(rules(property(`syntax: "*"; inherits: false;`))).toEqual([]);
+  });
 
   test("a length where a colour was declared", () => {
     expect(rules(property(`syntax: "<color>"; inherits: false; initial-value: 12px;`))).toEqual([
@@ -1822,7 +1807,7 @@ describe("an initial-value its own syntax does not accept", () => {
      * staying quiet: a syntax it cannot read is not a syntax it may judge.
      */
     test("a syntax written as a hole, which cannot be read", () => {
-      const found = rules(property(`syntax: {shape}; inherits: false; initial-value: 12px;`));
+      const found = rules(property(`syntax: $(shape); inherits: false; initial-value: 12px;`));
 
       expect(found).not.toContain("initial-value-and-syntax");
       expect(found).toEqual(["hole-in-a-named-block"]);
@@ -1952,59 +1937,75 @@ describe("a registered property set to a value its syntax refuses", () => {
   const rules = (source: string) => of(source).map((one) => one.rule);
 
   test("a length where an angle was registered", () => {
-    expect(rules(`${angle}const s = @@( {angle}: 12px; );\n`)).toEqual(["value-and-registered-syntax"]);
+    expect(rules(`${angle}const s = @@( $(angle): 12px; );\n`)).toEqual(["value-and-registered-syntax"]);
   });
 
   test("a word where a colour was registered", () => {
-    expect(rules(`${colour}const s = @@( {accent}: 12px; );\n`)).toEqual(["value-and-registered-syntax"]);
+    expect(rules(`${colour}const s = @@( $(accent): 12px; );\n`)).toEqual(["value-and-registered-syntax"]);
   });
 
   test("the message names the syntax and the value", () => {
-    const [finding] = of(`${angle}const s = @@( {angle}: 12px; );\n`);
+    const [finding] = of(`${angle}const s = @@( $(angle): 12px; );\n`);
 
     expect(finding.message).toContain("<angle>");
     expect(finding.message).toContain("12px");
   });
 
   test("inside a `@@keyframes` frame, which is where an animation stops moving", () => {
-    const source = `${angle}const spin = @@keyframes( from { {angle}: 0deg; } to { {angle}: 12px; } );\n`;
+    const source = `${angle}const spin = @@keyframes( from { $(angle): 0deg; } to { $(angle): 12px; } );\n`;
 
     expect(rules(source)).toEqual(["value-and-registered-syntax"]);
   });
 
   describe("what it must not report", () => {
     test.each([
-      ["the right type", `${angle}const s = @@( {angle}: 45deg; );\n`],
-      ["a colour for a colour", `${colour}const s = @@( {accent}: #f05; );\n`],
+      ["the right type", `${angle}const s = @@( $(angle): 45deg; );\n`],
+      ["a colour for a colour", `${colour}const s = @@( $(accent): #f05; );\n`],
       ["a plain custom property nothing registered", `const s = @@( --angle: 12px; );\n`],
-      ["a CSS-wide keyword, which every property takes", `${angle}const s = @@( {angle}: inherit; );\n`],
-      ["a `var()`, whose value is not known here", `${angle}const s = @@( {angle}: var(--x); );\n`],
+      ["a CSS-wide keyword, which every property takes", `${angle}const s = @@( $(angle): inherit; );\n`],
+      ["a `var()`, whose value is not known here", `${angle}const s = @@( $(angle): var(--x); );\n`],
       /**
        * Five a review measured as FALSE REPORTS, which is the one outcome this rule may not produce.
        */
       // `!important` on a custom property is valid CSS and is how a variable is made to win.
-      ["a value with `!important`", `${angle}const s = @@( {angle}: 90deg !important; );\n`],
-      ["and a colour with it", `${colour}const s = @@( {accent}: red !important; );\n`],
+      ["a value with `!important`", `${angle}const s = @@( $(angle): 90deg !important; );\n`],
+      ["and a colour with it", `${colour}const s = @@( $(accent): red !important; );\n`],
+      // CSS allows space between `!` and the word, and the word in any case.
+      ["`! IMPORTANT`, spaced and in capitals", `${angle}const s = @@( $(angle): 90deg ! IMPORTANT; );\n`],
       // CSS keywords are ASCII case-insensitive; the escape set was matched by exact case.
-      ["a CSS-wide keyword in capitals", `${angle}const s = @@( {angle}: INHERIT; );\n`],
-      ["one in mixed case", `${angle}const s = @@( {angle}: Inherit; );\n`],
-      ["a `VAR()` in capitals, for the same reason", `${angle}const s = @@( {angle}: VAR(--x); );\n`],
+      ["a CSS-wide keyword in capitals", `${angle}const s = @@( $(angle): INHERIT; );\n`],
+      ["one in mixed case", `${angle}const s = @@( $(angle): Inherit; );\n`],
+      ["a `VAR()` in capitals, for the same reason", `${angle}const s = @@( $(angle): VAR(--x); );\n`],
       // A `<number-token>` may carry an exponent — css-syntax-3 §4.3.12. `1e2px` is 100px.
-      ["a dimension in scientific notation", `${angle}const s = @@( {angle}: 1e2deg; );\n`],
-      ["a negative exponent", `${angle}const s = @@( {angle}: 1.5e-2deg; );\n`],
+      ["a dimension in scientific notation", `${angle}const s = @@( $(angle): 1e2deg; );\n`],
+      ["a negative exponent", `${angle}const s = @@( $(angle): 1.5e-2deg; );\n`],
     ])("%s", (_what, source) => {
       expect(rules(source)).toEqual([]);
     });
 
+    /**
+     * A long run of spaces inside a value, which the `!important` strip once read in quadratic time.
+     *
+     * Found by CodeQL on the PR: `/\s*!\s*important\s*$/` starts again at every space. Measured,
+     * twice the spaces took four times as long — 40 000 took 2.5 s, on every check of the file.
+     */
+    test("a value with a long run of spaces is read in linear time", () => {
+      const started = performance.now();
+
+      rules(`${angle}const s = @@( $(angle): 1deg${" ".repeat(40000)}2deg; );\n`);
+
+      expect(performance.now() - started).toBeLessThan(500);
+    });
+
     /** A hole's value is not known here, and is refused for being one at all. */
     test("a hole, which this rule cannot read and `hole-not-allowed` refuses outright", () => {
-      expect(rules(`${angle}const s = @@( {angle}: {turn}; );\n`)).toEqual(["hole-not-allowed"]);
+      expect(rules(`${angle}const s = @@( $(angle): $(turn); );\n`)).toEqual(["hole-not-allowed"]);
     });
 
     test("a syntax with no matcher silences it, as it does for `initial-value`", () => {
       const list = `const t = @@property( syntax: "<transform-list>"; inherits: false; initial-value: none; );\n`;
 
-      expect(rules(`${list}const s = @@( {t}: 12px; );\n`)).toEqual([]);
+      expect(rules(`${list}const s = @@( $(t): 12px; );\n`)).toEqual([]);
     });
   });
 });
@@ -2077,7 +2078,7 @@ describe("a quoted string where the property has no place for one", () => {
   });
 
   test("a value that is entirely a hole holds no string this rule can see", () => {
-    expect(rules("  color: {brand};")).toEqual(["hole-not-allowed"]);
+    expect(rules("  color: $(brand);")).toEqual(["hole-not-allowed"]);
   });
 
   test("a single-quoted one is the same mistake", () => {
@@ -2143,7 +2144,7 @@ describe("a property name holding whitespace", () => {
     ["a custom property", "  --brand: red;"],
     ["a vendor prefix", "  -webkit-mask: none;"],
     ["a value with spaces in it, which is ordinary", "  border-left: 1px solid red;"],
-    ["a spread, which is not a property at all", "  ...{base};"],
+    ["a spread, which is not a property at all", "  ...$(base);"],
   ])("%s says nothing", (_what, css) => {
     expect(rules(css)).not.toContain("property-not-a-name");
   });
@@ -2896,10 +2897,10 @@ describe("a keyword written in capitals", () => {
  * And the data was already there. `HolePart` carries `at` and `length`, and its own note says why:
  * *"for a squiggle over the hole itself … it is what lets a rule about a hole's POSITION point at
  * the hole rather than at the declaration holding it."* `hole-as-a-variable-name` reads it.
- * `hole-in-a-named-block` and `glued-hole` did not — one question, two answers, which is this
+ * `hole-in-a-named-block` did not — one question, two answers, which is this
  * repository's recurring fault.
  *
- * Measured, `@@font-face( src: url({n}); )`:
+ * Measured, `@@font-face( src: url($(n)); )`:
  *
  *     at 43, length 1, covering "u"      the `u` of `url(`, one character, mid-word
  *
@@ -2912,15 +2913,15 @@ describe("a squiggle about a hole", () => {
 
   describe("in a named block", () => {
     test.each([
-      ["a hole inside a function", "const n = 1;\nconst a = @@font-face(\n  src: url({n});\n);\n", "{n}"],
-      ["a hole as the whole value", "const n = 1;\nconst a = @@font-face(\n  src: {n};\n);\n", "{n}"],
-      ["a longer name", "const weight = 1;\nconst a = @@font-face(\n  src: url({weight});\n);\n", "{weight}"],
+      ["a hole inside a function", "const n = 1;\nconst a = @@font-face(\n  src: url($(n));\n);\n", "$(n)"],
+      ["a hole as the whole value", "const n = 1;\nconst a = @@font-face(\n  src: $(n);\n);\n", "$(n)"],
+      ["a longer name", "const weight = 1;\nconst a = @@font-face(\n  src: url($(weight));\n);\n", "$(weight)"],
       [
         "in @@property",
-        'const n = 1;\nconst a = @@property(\n  syntax: "<color>";\n  inherits: false;\n  initial-value: {n};\n);\n',
-        "{n}",
+        'const n = 1;\nconst a = @@property(\n  syntax: "<color>";\n  inherits: false;\n  initial-value: $(n);\n);\n',
+        "$(n)",
       ],
-      ["in @@keyframes", "const n = 1;\nconst a = @@keyframes(\n  from { opacity: {n}; }\n);\n", "{n}"],
+      ["in @@keyframes", "const n = 1;\nconst a = @@keyframes(\n  from { opacity: $(n); }\n);\n", "$(n)"],
     ])("%s is squiggled over the hole", (_what, source, hole) => {
       const [found] = checkSource(source, "/a.tsx").filter((one) => one.rule === "hole-in-a-named-block");
 
@@ -2929,41 +2930,42 @@ describe("a squiggle about a hole", () => {
     });
 
     test("every hole is reported, not only the first", () => {
-      const source = "const n = 1;\nconst m = 2;\nconst a = @@font-face(\n  src: url({n});\n  font-weight: {m};\n);\n";
+      const source =
+        "const n = 1;\nconst m = 2;\nconst a = @@font-face(\n  src: url($(n));\n  font-weight: $(m);\n);\n";
 
       const found = checkSource(source, "/a.tsx").filter((one) => one.rule === "hole-in-a-named-block");
 
       expect(found).toHaveLength(2);
-      expect(found.map((one) => covered(source, one))).toEqual(["{n}", "{m}"]);
+      expect(found.map((one) => covered(source, one))).toEqual(["$(n)", "$(m)"]);
     });
 
     test("and two holes in ONE declaration are two squiggles, because each must go", () => {
-      const source = "const a1 = 1;\nconst b1 = 2;\nconst a = @@font-face(\n  src: url({a1}) format({b1});\n);\n";
+      const source = "const a1 = 1;\nconst b1 = 2;\nconst a = @@font-face(\n  src: url($(a1)) format($(b1));\n);\n";
 
       const found = checkSource(source, "/a.tsx").filter((one) => one.rule === "hole-in-a-named-block");
 
-      expect(found.map((one) => covered(source, one))).toEqual(["{a1}", "{b1}"]);
+      expect(found.map((one) => covered(source, one))).toEqual(["$(a1)", "$(b1)"]);
     });
   });
 
   describe("glued to text", () => {
     test.each([
-      ["a unit after it", "const w = 1;\nconst a = @@(\n  gap: 8px{w};\n);\n", "{w}"],
-      ["a unit written after", "const w = 1;\nconst a = @@(\n  gap: {w}px;\n);\n", "{w}"],
-      ["a longer name", "const spacing = 1;\nconst a = @@(\n  gap: {spacing}px;\n);\n", "{spacing}"],
+      ["a unit before it", "const w = 1;\nconst a = @@(\n  gap: 8px$(w);\n);\n", "$(w)"],
+      ["a unit written after", "const w = 1;\nconst a = @@(\n  gap: $(w)px;\n);\n", "$(w)"],
+      ["a longer name", "const spacing = 1;\nconst a = @@(\n  gap: $(spacing)px;\n);\n", "$(spacing)"],
     ])("%s is squiggled over the hole", (_what, source, hole) => {
-      const [found] = checkSource(source, "/a.tsx").filter((one) => one.rule === "glued-hole");
+      const found = checkSource(source, "/a.tsx", { tolerant: true }).filter((one) => one.rule === "hole-not-allowed");
 
-      expect(found).toBeDefined();
-      expect(covered(source, found)).toBe(hole);
+      expect(found).toHaveLength(1);
+      expect(covered(source, found[0])).toBe(hole);
     });
 
     test("every glued hole is reported", () => {
-      const source = "const w = 1;\nconst h = 2;\nconst a = @@(\n  margin: {w}px {h}px;\n);\n";
+      const source = "const w = 1;\nconst h = 2;\nconst a = @@(\n  margin: $(w)px $(h)px;\n);\n";
 
-      const found = checkSource(source, "/a.tsx").filter((one) => one.rule === "glued-hole");
+      const found = checkSource(source, "/a.tsx", { tolerant: true }).filter((one) => one.rule === "hole-not-allowed");
 
-      expect(found.map((one) => covered(source, one))).toEqual(["{w}", "{h}"]);
+      expect(found.map((one) => covered(source, one))).toEqual(["$(w)", "$(h)"]);
     });
   });
 
@@ -2974,9 +2976,9 @@ describe("a squiggle about a hole", () => {
   test("every finding is inside the file and covers at least one character", () => {
     const sources = [
       "const a = @@(\n  flex-dirction: row;\n  color: bleu;\n  gap: 8pxx;\n);\n",
-      "const w = 1;\nconst a = @@(\n  gap: 8px{w};\n  color: var({w});\n);\n",
+      "const w = 1;\nconst a = @@(\n  gap: 8px$(w);\n  color: var($(w));\n);\n",
       "const a = @@(\n  @medai (min-widht: 40rem) { color: red; }\n  -wdebkit-line-clamp: 3;\n);\n",
-      "const n = 1;\nconst a = @@font-face(\n  src: url({n});\n);\n",
+      "const n = 1;\nconst a = @@font-face(\n  src: url($(n));\n);\n",
       "const a = @@(\n  // a note\n  &:HOVER { color: RED; }\n);\n",
     ];
 
@@ -3091,7 +3093,7 @@ describe("every line comment", () => {
    * and is not this rule's business — and one inside a `/* … *` + `/` is the author's prose.
    */
   test.each([
-    ["inside a hole", "const w = 1;\nconst a = @@(\n  gap: {w /* px */};\n);\n"],
+    ["inside a hole", "const w = 1;\nconst a = @@(\n  gap: $(w /* px */);\n);\n"],
     ["inside a block comment", "const a = @@(\n  /* not // a comment */\n  gap: 8px;\n);\n"],
     ["inside a string", 'const a = @@(\n  content: "// not a comment";\n);\n'],
     ["a url with two slashes", "const a = @@(\n  background: url(https://example.com/a.png);\n);\n"],
@@ -3272,7 +3274,7 @@ describe("more values than this project allows", () => {
   });
 
   test("a hole is one value, so this rule says nothing about it", () => {
-    expect(rulesWith("padding: {gap};", ONE)).not.toContain("too-many-values");
+    expect(rulesWith("padding: $(gap);", ONE)).not.toContain("too-many-values");
   });
 
   test("no arity anywhere is silence", () => {
@@ -3373,7 +3375,7 @@ describe("a declaration with no semicolon", () => {
   test.each([
     ["a run-on", "  padding: 8px\n  border-left: 4px solid red;", "run-on-declaration"],
     ["a string that is never closed", `  display: "flexx`, "string-not-allowed"],
-    ["a hole where a property name goes", `  {cond ? "display:flex" : ""}`, "hole-out-of-place"],
+    ["a hole where a property name goes", `  $(cond ? "display:flex" : "")`, "hole-out-of-place"],
   ])("%s is left to the rule that explains it", (_what, css, only) => {
     expect(rules(css)).toEqual([only]);
   });
@@ -3414,9 +3416,9 @@ describe("a colour written out, where the project said variables only", () => {
   test("a variable is what it is asking for, and says nothing", () => {
     // Declared, because `unknown-variable` would otherwise speak about the path and this test would
     // be measuring that rule instead of this one.
-    const declared: Config = { ...ONLY, variables: { color: kind("color", { accent: { main: "#10b981" } }) } };
+    const declared: Config = { ...ONLY, variables: { $color: kind("color", { accent: { main: "#10b981" } }) } };
 
-    expect(rulesWith("  border-left: 4px solid $.color.accent.main;", declared)).toEqual([]);
+    expect(rulesWith("  border-left: 4px solid $color.accent.main;", declared)).toEqual([]);
   });
 
   test("`currentcolor` and `var()` go in, because neither is a colour somebody wrote out", () => {
@@ -3543,7 +3545,7 @@ describe("units, by family", () => {
  * same answer `unknown-variable` got. It also fixes the message: `Narrowed<never, Token<…>>` names
  * neither the project nor the config file, and this names both.
  *
- * **A CALL is an escape hatch and is not read into.** `calc($.space.md * 2)` has a `2` in it that is
+ * **A CALL is an escape hatch and is not read into.** `calc($space.md * 2)` has a `2` in it that is
  * not a hardcoded length, and nothing in this rule can tell it from one that is. `var()`, a bare
  * `0`, the CSS-wide keywords and a property's own keywords are all left alone for the same reason:
  * none of them is a value somebody wrote out instead of reaching for a token.
@@ -3572,7 +3574,7 @@ describe("a literal where the project said that kind comes from variables", () =
 
   test.each([
     ["a bare zero, which needs no unit in CSS", "padding-left: 0"],
-    ["a declared variable, which is the point", "padding-left: $.space.gutter"],
+    ["a declared variable, which is the point", "padding-left: $space.gutter"],
     ["`var()`, the escape CSS itself provides", "padding-left: var(--x)"],
     ["a CSS-wide keyword", "padding-left: inherit"],
     ["the property's own keyword", "width: auto"],
@@ -3582,12 +3584,12 @@ describe("a literal where the project said that kind comes from variables", () =
   });
 
   test("a hole holds no literal this rule can read", () => {
-    expect(under("<length>", "padding-left: {gap}")).toEqual(["hole-not-allowed"]);
+    expect(under("<length>", "padding-left: $(gap)")).toEqual(["hole-not-allowed"]);
   });
 
   test("another kind, said on its own selector", () => {
     expect(under("<time>", "transition-duration: 200ms")).toEqual(["literal-not-allowed"]);
-    expect(under("<time>", "transition-duration: $.motion.quick")).toEqual([]);
+    expect(under("<time>", "transition-duration: $motion.quick")).toEqual([]);
     // A length is not a time, and this selector said nothing about lengths.
     expect(under("<time>", "padding-left: 8px")).toEqual([]);
   });
@@ -3668,7 +3670,7 @@ describe("the slash form, and the correct CSS it must not refuse", () => {
  */
 describe("a literal that reached the page anyway", () => {
   const ONLY: Config = {
-    variables: { brand: kind("color", { main: "#10b981" }), space: kind("length", { sm: "8px" }) },
+    variables: { $brand: kind("color", { main: "#10b981" }), $space: kind("length", { sm: "8px" }) },
     properties: { "<color>": { variablesOnly: true }, "<length>": { variablesOnly: true } },
   };
   const of = (decl: string) =>
@@ -3695,7 +3697,7 @@ describe("a literal that reached the page anyway", () => {
   });
 
   test.each([
-    ["a declared variable, which is the point", "--own: $.brand.main"],
+    ["a declared variable, which is the point", "--own: $brand.main"],
     ["a colour word inside a STRING, which is text", '--label: "red"'],
     ["a bare number, which has no kind at all", "--n: 3"],
     ["a keyword", "--mode: dark"],
@@ -3883,18 +3885,18 @@ describe("a setting the types enforced and the build did not", () => {
     const none: Config = {};
 
     test.each([
-      ["a whole value", "color: {this.brand}"],
-      ["part of one", "border-left: 4px solid {this.brand}"],
-      ["a custom property's value", "--brand: {this.brand}"],
+      ["a whole value", "color: $(this.brand)"],
+      ["part of one", "border-left: 4px solid $(this.brand)"],
+      ["a custom property's value", "--brand: $(this.brand)"],
     ])("%s is reported", (_what, css) => {
       expect(under(none, css)).toEqual(["hole-not-allowed"]);
     });
 
     /** With no config at all, which is what a project that never wrote one has. */
     test("and it is reported with no `ramonda.css.ts` in the project", () => {
-      expect(checkBlock(readBlock("@@(\n  color: {this.brand};\n)", 2, "C.tsx").block).map((one) => one.rule)).toEqual([
-        "hole-not-allowed",
-      ]);
+      expect(checkBlock(readBlock("@@(\n  color: $(this.brand);\n)", 2, "C.tsx").block).map((one) => one.rule)).toEqual(
+        ["hole-not-allowed"],
+      );
     });
 
     test.each([
@@ -3907,33 +3909,33 @@ describe("a setting the types enforced and the build did not", () => {
     /**
      * Asserted as *not this rule* rather than as nothing at all: a fixture that declares no
      * variables trips `unknown-variable`, which is a different rule being right about a different
-     * thing. What matters here is that a bare `$.…` is a `VariablePart` and never a hole.
+     * thing. What matters here is that a bare `$group.…` is a `VariablePart` and never a hole.
      */
     test("a declared variable written bare is not a hole", () => {
-      expect(under(none, "color: $.color.brand")).not.toContain("hole-not-allowed");
+      expect(under(none, "color: $color.brand")).not.toContain("hole-not-allowed");
     });
 
     /**
-     * The braces decide, not what is inside them. Measured: `color: $.color.brand` parses as a
-     * `variable` and `color: {$.color.brand}` as a `hole` — the same variable, and only the second
+     * The braces decide, not what is inside them. Measured: `color: $color.brand` parses as a
+     * `variable` and `color: $($color.brand)` as a `hole` — the same variable, and only the second
      * set a custom property on the element. So the second is reported and the fix is to drop the
      * braces.
      */
     test("the same variable IN braces is a hole, and is reported", () => {
-      expect(under(none, "color: {$.color.brand}")).toEqual(["hole-not-allowed"]);
+      expect(under(none, "color: $($.color.brand)")).toEqual(["hole-not-allowed"]);
     });
 
     test("a condition is not a hole, so a variant is still sayable", () => {
-      expect(under(none, "color: red;\n  if ({this.on}) { color: blue; }")).toEqual([]);
+      expect(under(none, "color: red;\n  when $(this.on) { color: blue; }")).toEqual([]);
     });
 
     /** And the other replacement: every arm is a literal, so a match writes nothing on the element. */
     test("a match is not a hole either", () => {
-      expect(under(none, "color: match({this.tone}) {\n    hot => red;\n    _ => blue;\n  }")).toEqual([]);
+      expect(under(none, "color: match $(this.tone) {\n    hot => red;\n    _ => blue;\n  }")).toEqual([]);
     });
 
     test("and it reaches inside a nested rule", () => {
-      expect(under(none, "&:hover { color: {this.brand}; }")).toEqual(["hole-not-allowed"]);
+      expect(under(none, "&:hover { color: $(this.brand); }")).toEqual(["hole-not-allowed"]);
     });
 
     /**
@@ -3945,7 +3947,7 @@ describe("a setting the types enforced and the build did not", () => {
      * refuses all four outright, so there is no fifth place to walk.
      */
     test.each([
-      ["a selector", "&:{this.state} { color: red; }"],
+      ["a selector", "&:$(this.state) { color: red; }"],
       ["an at-rule's query", "@media {this.q} { color: red; }"],
       ["a property name", "{this.prop}: red;"],
       ["a custom property's name", "--{this.name}: red;"],
@@ -3961,20 +3963,20 @@ describe("a setting the types enforced and the build did not", () => {
      * A false report on any of them is a build that refuses valid CSS.
      */
     test.each([
-      ["a brace in a string value", 'content: "{a}";'],
-      ["a brace in a comment", "padding: /* {x} */ 8px;"],
+      ["a brace in a string value", 'content: "$(a)";'],
+      ["a brace in a comment", "padding: /* $(x) */ 8px;"],
       ["a brace in a url", 'background: url("a{b}.png");'],
-      ["a brace in a grid-area string", 'grid-template-areas: "{a} {b}";'],
-      ["a match, which holds braces", "color: match({t}) {\n    a => red;\n    _ => blue;\n  };"],
-      ["a condition, which holds one", "if ({on}) { color: red; }"],
-      ["a spread, which holds one", "...{base};"],
+      ["a brace in a grid-area string", 'grid-template-areas: "{a} $(b)";'],
+      ["a match, which holds braces", "color: match $(t) {\n    a => red;\n    _ => blue;\n  };"],
+      ["a condition, which holds one", "when $(on) { color: red; }"],
+      ["a spread, which holds one", "...$(base);"],
     ])("%s is not a runtime value", (_what, css) => {
       expect(under(none, css)).not.toContain("hole-not-allowed");
     });
 
     /** The message sends a person to both doors, because which one applies is theirs to know. */
     test("the message names `match` and `@@property`", () => {
-      const [found] = checkBlock(readBlock("@@(\n  color: {this.brand};\n)", 2, "C.tsx").block);
+      const [found] = checkBlock(readBlock("@@(\n  color: $(this.brand);\n)", 2, "C.tsx").block);
 
       expect(found.message).toContain("match");
       expect(found.message).toContain("@@property");
@@ -4107,7 +4109,7 @@ describe("a config rule inside a nested rule", () => {
       padding: { shorthand: false },
       "transition-duration": { units: ["ms"] },
     },
-    variables: { color: kind("color", { primary: { main: "#3b82f6" } }) },
+    variables: { $color: kind("color", { primary: { main: "#3b82f6" } }) },
   };
 
   const under = (css: string) => {
@@ -4150,7 +4152,7 @@ describe("a config rule inside a nested rule", () => {
   test.each([
     ["a bare zero", "padding-top: 0;"],
     ["a value that is not of the forbidden kind", "color: 2px;"],
-    ["a variable, which is the point of the setting", "color: $.color.primary.main;"],
+    ["a variable, which is the point of the setting", "color: $color.primary.main;"],
     ["a `var()` call", "color: var(--anything);"],
   ])("%s stays silent inside a nested rule too", (_what, css) => {
     expect(under(`  &:hover {\n    ${css}\n  }`)).toEqual([]);
@@ -4196,7 +4198,7 @@ describe("a declaration that breaks more than one of a project's rules", () => {
       padding: { shorthand: true, arity: 1 },
       "z-index": { values: [0, 1] },
     },
-    variables: { space: kind("length", { gutter: "16px" }) },
+    variables: { $space: kind("length", { gutter: "16px" }) },
   };
 
   const under = (css: string) => {
@@ -4239,7 +4241,7 @@ describe("a declaration that breaks more than one of a project's rules", () => {
   test.each([
     ["a colour written out", "  color: #ff0000;", "literal-not-allowed"],
     ["a value outside a closed list", "  z-index: 5;", "value-not-allowed"],
-    ["a shorthand with a variable in it", "  margin: $.space.gutter;", "shorthand-not-allowed"],
+    ["a shorthand with a variable in it", "  margin: $space.gutter;", "shorthand-not-allowed"],
   ])("%s is still reported on its own", (_what, css, rule) => {
     expect(under(css)).toEqual([rule]);
   });
@@ -4252,7 +4254,7 @@ describe("a declaration that breaks more than one of a project's rules", () => {
   /** A unit refused where the kind is NOT taken from variables still says which unit. */
   test("a forbidden unit alone still names the unit", () => {
     expect(under("  transition-duration: 2s;")).toEqual([]);
-    expect(under("  letter-spacing: $.space.gutter;")).toEqual([]);
+    expect(under("  letter-spacing: $space.gutter;")).toEqual([]);
   });
 });
 
@@ -4443,7 +4445,7 @@ describe("a property name in the wrong case", () => {
  *
  * ## And why silence is the default
  *
- * `flatten` drops a spread: `...{base}` merges declarations this never sees. So the rule may only
+ * `flatten` drops a spread: `...$(base)` merges declarations this never sees. So the rule may only
  * read a disabling declaration that is PRESENT, never infer one from an absence — `top: 20px` alone
  * says nothing, because the block spread above it may be what positions the element.
  */
@@ -4479,7 +4481,7 @@ describe("a declaration another one on the same element switches off", () => {
     // A spread may be what sets `display`, and this cannot see one.
     ["gap: 12px;"],
     // Nothing here knows what the hole holds, or what a global keyword resolves to.
-    ["display: {0}; gap: 12px;"],
+    ["display: $(0); gap: 12px;"],
     ["display: inherit; gap: 12px;"],
     // An element with no box makes EVERY declaration inert; naming one of them would be noise.
     ["display: none; gap: 12px;"],
@@ -4723,7 +4725,7 @@ describe("a word the longhand has no place for", () => {
    */
   test.each([
     ["a `var()`", "place-items: left var(--x);"],
-    ["a hole", "place-items: left {this.how};"],
+    ["a hole", "place-items: left $(this.how);"],
   ])("%s is silent, because what it holds is not written here", (_what, css) => {
     expect(found(css)).not.toContain("word-out-of-its-longhand");
   });

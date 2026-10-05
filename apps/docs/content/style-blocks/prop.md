@@ -13,7 +13,7 @@ Without a type it has no answer at all.
 ```tsx
 class Card extends Component<{ css?: CssBlock }> {
   render() {
-    return <div className={@@( display: flex; ...{this.props.css}; )}>…</div>;
+    return <div className={@@( display: flex; ...$(this.props.css); )}>…</div>;
   }
 }
 ```
@@ -23,7 +23,7 @@ display — anything — and the component finds out when something looks wrong 
 
 **`CssBlock` is a type you import**, and where from depends on whether your project has a
 [`ramonda.css.ts`](/style-blocks/config). With one, codegen puts it in the generated `css-system`
-beside `$` and `Var`, which is the one import a component needs:
+beside the variable groups and `Var`, which is the one import a component needs:
 
 ```ts
 import type { CssBlock, Var } from "./css-system";
@@ -45,7 +45,7 @@ type CardStyle = {
 
 class Card extends Component<{ css?: CssBlock<CardStyle> }> {
   render() {
-    return <div className={@@( display: flex; gap: 8px; ...{this.props.css}; )}>…</div>;
+    return <div className={@@( display: flex; gap: 8px; ...$(this.props.css); )}>…</div>;
   }
 }
 ```
@@ -78,7 +78,7 @@ On the thing the author got wrong, never on the call:
 
 | a caller writes | what they are told |
 |---|---|
-| `color: $.color.accent` | nothing — it is a declared colour |
+| `color: $color.accent` | nothing — it is a declared colour |
 | `color: red` | on the **value** — a bare colour where a declared one is wanted |
 | `color: inherit` | nothing — see below |
 | `padding: 4px` | on the **property** — `padding` is not in `{ color?: …; gap?: …; "&:hover"?: … }` |
@@ -108,8 +108,8 @@ class Card extends Component<{
 }> {
   render() {
     return (
-      <div className={@@( display: flex; ...{this.props.css}; )}>
-        <h2 className={@@( ...{this.props.titleCss}; )}>…</h2>
+      <div className={@@( display: flex; ...$(this.props.css); )}>
+        <h2 className={@@( ...$(this.props.titleCss); )}>…</h2>
       </div>
     );
   }
@@ -131,7 +131,7 @@ A value computed while rendering cannot go into a declaration in any block — a
 everywhere — so nothing a caller writes into `css` costs anything per element, and the allow-list is
 the whole of what they may change. A value that really varies per element is sent as data instead:
 see [values that come from data](/style-blocks/dynamic), and [composing](/style-blocks/composing)
-for `if`, `match` and the spread.
+for `when`, `match` and the spread.
 
 ## Five things the checker watches
 
@@ -145,7 +145,7 @@ to another prop that takes a block.
 ```tsx
 class Broken extends Component<{ css?: CssBlock<{ "padding-left"?: string }> }> {
   render() {
-    return <div className={@@( ...{this.props.css}; padding: 8px; )}>…</div>;
+    return <div className={@@( ...$(this.props.css); padding: 8px; )}>…</div>;
   }
 }
 ```
@@ -165,9 +165,9 @@ one line by [the ignore directive](/style-blocks/checking#when-a-rule-is-wrong).
 
 ## Next
 
-- **[Composing, and who wins](/style-blocks/composing)** — the spread and `if`, and the order a
+- **[Composing, and who wins](/style-blocks/composing)** — the spread, `when` and `match`, and the order a
   merge settles.
-- **[Names the stylesheet sees](/style-blocks/variables)** — where `Token<"color">` and `$` come
+- **[Names the stylesheet sees](/style-blocks/variables)** — where `Token<"color">` and `$color` come
   from.
 - **[Project settings](/style-blocks/settings)** — the same constraints written once for a whole
   project.

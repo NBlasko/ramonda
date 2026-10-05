@@ -49,8 +49,8 @@ describe("the names a block reads", () => {
     ["an ident that merely ends in `var`", "  font-family: mysvar(--x);"],
     ["and one ending in it after a dash, which CSS idents may hold", "  color: my-var(--x);"],
     /**
-     * A NAME CUT OFF BY A HOLE. `var(--brand-{n})` is refused by `glued-hole` — text written against
-     * a hole is not part of its value — and this reported `--brand-` as well, so one fault came back
+     * A NAME CUT OFF BY A HOLE. `var(--brand-$(n))` is refused by `hole-not-allowed`, as a runtime value in a
+     * declaration is — and this reported `--brand-` as well, so one fault came back
      * as two and the second named a variable nobody wrote. A run that ends at the part boundary is a
      * name this cannot read, and an unreadable call is not evidence of a missing name either way,
      * which is what the code already says about the character after it.
@@ -60,7 +60,7 @@ describe("the names a block reads", () => {
      * `var(--brand\n)`, because the tolerant read carries the block's own closing paren into it. The
      * shape cannot be made, so it is not asserted.
      */
-    ["a name a hole finishes", "  color: var(--brand-{n});"],
+    ["a name a hole finishes", "  color: var(--brand-$(n));"],
   ])("%s is not a read", (_what, css) => {
     expect(names(css)).toEqual([]);
   });

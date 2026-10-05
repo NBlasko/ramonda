@@ -1,5 +1,5 @@
 import type { BlockItem, ValuePart, VariablePart } from "./ast";
-import { CONDITION, SPREAD, holeIn } from "./read";
+import { MATCH, SPREAD, branchOf, holeIn } from "./read";
 import { selectorOf } from "./flatten";
 import { expressionFor, isIdentifier } from "./dollar";
 import { collapse, propertyName } from "./normalise";
@@ -28,7 +28,7 @@ import { type Imported, namedSites } from "./references";
  *   Any other shape — a call with strings, a tagged template — throws that away.
  *
  * ```
- *   <div css=@@( display: flex; border-left: 4px solid {this.accent}; )>
+ *   <div css=@@( display: flex; border-left: 4px solid $(this.accent); )>
  *
  *   <div css={__block({ "display":"flex", "border-left":`4px solid ${this.accent}` })}>
  * ```
@@ -65,8 +65,8 @@ import { type Imported, namedSites } from "./references";
  * |---|---|---|
  * | `dsiplay: flex` | `TS2561`, *did you mean 'display'* | the property |
  * | `display: flexx` | `TS2820`, *did you mean "flex"* | the property |
- * | `padding: {{this.size}}` | `TS2322`, `boolean` not assignable | the property |
- * | `color: {{missing}}` | `TS2304`, cannot find name | the **expression** |
+ * | `padding: $(this.size)` | `TS2322`, `boolean` not assignable | the property |
+ * | `color: $(missing)` | `TS2304`, cannot find name | the **expression** |
  *
  * TypeScript reports an object literal's assignability errors at the property assignment, whose start
  * is the key; an error about a name inside an expression is reported on the name. Both map home
@@ -114,7 +114,7 @@ export interface VirtualFile {
     readonly block: string;
     readonly from: string;
     readonly hole: string;
-    /** The guard's marker — `if ({on})` — which a typed rule reads as "what follows may not apply". */
+    /** The guard's marker — `when $(on)` — which a typed rule reads as "what follows may not apply". */
     readonly cond?: string;
     /** What `$` is bound to — `__vars.border.thin` is a `var()` in the sheet. */
     readonly vars?: string;
@@ -408,14 +408,15 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
    * TypeScript offered `import { $ } from "@ramonda/css/properties"`, a type that exists only to
    * carry a sentence, beside the real `$` from their own generated module.
    *
-   * The conditional keeps both cases in one line: a generated module HAS a `$` and that is the
-   * project's own object; the shipped map has none and the sentence stands in. The sentence is a
+   * The conditional keeps both cases in one line: a generated module exports one `$group` per group,
+   * and the groups are gathered back into one object here — `$color` as `__vars.color` — so a block
+   * still needs no import; the shipped map exports none and the sentence stands in. The sentence is a
    * type rather than `never` for the reason measured in `properties.ts` — `never` says *Property
    * 'color' does not exist on type 'never'*, and this says what to do.
    */
   write(
-    `declare var ${variables}: typeof import(${from}) extends { $: infer V } ? V : ` +
-      `"Declare your variables in ramonda.css.ts, then run \`ramonda-css codegen\`.";`,
+    `declare var ${variables}: typeof import(${from}) extends infer M ? ({ [K in keyof M as K extends \`$\${infer G}\` ? G : never]: M[K] } extends infer V ? (keyof V extends never ? ` +
+      `"Declare your variables in ramonda.css.ts, then run \`ramonda-css codegen\`." : V) : never) : never;`,
   );
 
   const condition = binding(source, "__cond");
@@ -446,7 +447,7 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
    * `color` is still a `TS2322` about `color`, and `display: flexx` still gets its *did you mean*.
    */
   /**
-   * `match({subject}) { key => value; … }`, as something TypeScript can judge.
+   * `match $(subject) { key => value; … }`, as something TypeScript can judge.
    *
    * Three things are checked and each is worth the parameter it costs:
    *
@@ -464,7 +465,21 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
    * `_` is left out of the keys, because it stands for everything the others did not and there is
    * no type for that.
    */
-  write(`declare function ${lookup}<S, const K extends readonly S[]>(subject: S, keys: K): never;`);
+  /**
+   * And, with no `_`, **every value the subject can be has an arm** — the third argument, written
+   * only then, at the word `match`. Its type is `true` when the keys cover the subject and a
+   * sentence naming what is missing when they do not, so the error lands on the word and says it.
+   * `const S`, so a subject written as a literal stays that literal instead of widening to
+   * `string` — reported by the user: `$("nepostojecaVrednost")` took keys it can never be.
+   * Only a finite union of strings is asked: a plain `string` has no list to cover, and a subject
+   * that may be `undefined` needs no arm for it — nothing is picked then.
+   */
+  write(
+    `declare function ${lookup}<const S, const K extends readonly S[]>(subject: S, keys: K, whole?: ` +
+      "[NonNullable<S>] extends [string] ? string extends NonNullable<S> ? true : " +
+      "[Exclude<NonNullable<S>, K[number]>] extends [never] ? true : " +
+      "`this match has no arm for ${Exclude<NonNullable<S>, K[number]> & string} — add one, or a _ arm for the rest` : true): never;",
+  );
 
   const hole = binding(source, "__val");
   write(`declare function ${hole}<T extends import(${from}).CssValue>(value: T): T;`);
@@ -689,18 +704,23 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
        * at once. The grouping itself is written down nowhere, because nothing about it is a type
        * question — a declaration inside a group is checked exactly like one outside it.
        */
-      const guard = item.kind === "rule" ? holeIn(item.prelude, CONDITION) : undefined;
-      if (guard !== undefined && item.kind === "rule") {
+      /**
+       * A branch of a chain is checked exactly as a `when` is: its condition beside it, and its
+       * declarations beside that. A bare `else` has no condition, so only its declarations go.
+       */
+      const branch = item.kind === "rule" ? branchOf(item.prelude) : undefined;
+      const guard = branch !== undefined && branch.kind !== "else" ? branch.hole : undefined;
+      if (branch !== undefined && item.kind === "rule") {
         /**
          * A named block's body is a SINGLE object literal, and a call is not one of its members.
          *
-         * Composition belongs to an element and a named block is not one, so `if` cannot go in one
+         * Composition belongs to an element and a named block is not one, so `when` cannot go in one
          * — `composition-in-a-named-block` reports it. Written here anyway, it produced
          * `{__cond((on)),"& from":[…]}`, which does not parse, and a file that does not parse has
          * nothing checked in it at all. The `single ? ")," : "),"` ternary that used to stand here
          * had identical branches: the difference was seen and never made.
          */
-        if (!single) {
+        if (!single && guard !== undefined) {
           write(`${condition}(`);
           expression(holes[guard]);
           write("),");
@@ -720,9 +740,79 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
        * **The virtual file does not mirror the runtime shape and does not have to.** What it owes
        * is the same questions, asked where an author can act on the answers.
        */
+      /**
+       * A BLOCK match, the same two questions at the level of a group: the subject against its keys,
+       * once, and then every arm's declarations beside it, each judged by its own property. The key's
+       * span is the key alone, so a key the subject can never be is squiggled where it is written.
+       */
+      if (item.kind === "match") {
+        // A forgiving read can hand a subject no hole holds; there is then nothing to check it against.
+        if (!single && holes[item.hole] !== undefined) {
+          write(`${lookup}(`);
+          expression(holes[item.hole]);
+          write(", [");
+          const keys = item.arms.filter((arm) => !arm.otherwise);
+          for (const [index, arm] of keys.entries()) {
+            if (index > 0) write(", ");
+            const quoted = arm.at !== undefined && (source[arm.at] === '"' || source[arm.at] === "'");
+            derived(JSON.stringify(arm.key), arm.at, arm.key.length + (quoted ? 2 : 0));
+          }
+          write("]");
+          if (!item.arms.some((arm) => arm.otherwise)) {
+            write(", ");
+            derived("true", item.at, MATCH.length);
+          }
+          write("),");
+        }
+        for (const arm of item.arms) items(arm.items, holes, keepLine, single);
+        keepLine(item.end);
+        continue;
+      }
+
+      /**
+       * A CHOICE, the same way: each condition beside, as a `when`'s is, and every branch as a
+       * declaration of its own, so a wrong value lands on the branch that holds it.
+       */
+      const choice = item.kind === "declaration" ? item.value.find((part) => part.kind === "choice") : undefined;
+      if (choice !== undefined && choice.kind === "choice" && item.kind === "declaration") {
+        if (!single) {
+          for (const branch of choice.branches) {
+            // A condition that resolved to a name — a keyframes block — holds no expression to check.
+            if (holes[branch.hole] === undefined) continue;
+            write(`${condition}(`);
+            expression(holes[branch.hole]);
+            write("),");
+          }
+          const branches = [
+            ...choice.branches.map((one) => ({ value: one.value, at: one.at, length: one.length })),
+            { value: choice.otherwise, at: undefined, length: undefined },
+          ];
+          for (const one of branches) {
+            // A runtime value is `hole-in-a-match-arm`'s to report; the type would say it again.
+            if (one.value.length === 0 || one.value.some((part) => part.kind === "hole")) continue;
+            const first = one.value[0];
+            const last = one.value[one.value.length - 1];
+            const from = first.at ?? one.at;
+            const to = (last.at ?? 0) + (last.kind === "text" ? last.text.length : (last.length ?? 0));
+            write("{");
+            /**
+             * The KEY stands for the branch's value, not for the property: TypeScript reports a value
+             * the property does not take on the key, and two branches on one line share the property,
+             * so a squiggle there could not say which branch is wrong.
+             */
+            derived(key(propertyName(item.property)), from, from === undefined ? undefined : to - from);
+            write(":");
+            value(one.value, from, to, holes);
+            write("},");
+          }
+        }
+        keepLine(item.end);
+        continue;
+      }
+
       const chosen = item.kind === "declaration" ? item.value.find((part) => part.kind === "match") : undefined;
       if (chosen !== undefined && chosen.kind === "match" && item.kind === "declaration") {
-        if (!single) {
+        if (!single && holes[chosen.hole] !== undefined) {
           write(`${lookup}(`);
           expression(holes[chosen.hole]);
           write(", [");
@@ -731,10 +821,16 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
             if (index > 0) write(", ");
             derived(JSON.stringify(arm.key), arm.at, arm.length);
           }
-          write("]),");
+          write("]");
+          if (!chosen.arms.some((arm) => arm.otherwise)) {
+            write(", ");
+            derived("true", chosen.at, MATCH.length);
+          }
+          write("),");
 
           for (const arm of chosen.arms) {
-            if (arm.value.length === 0) continue;
+            // A runtime value is `hole-in-a-match-arm`'s to report; the type would say it again.
+            if (arm.value.length === 0 || arm.value.some((part) => part.kind === "hole")) continue;
             write("{");
             derived(key(propertyName(item.property)), item.at, item.property.length);
             write(":");
@@ -773,7 +869,7 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
          * left alone, which is the split `flatten` makes one line further down.
          */
         const key =
-          item.prelude.trimStart().startsWith("@") || holeIn(item.prelude, CONDITION) !== undefined
+          item.prelude.trimStart().startsWith("@") || branchOf(item.prelude) !== undefined
             ? item.prelude
             : selectorOf(item.prelude);
         derived(quoted(key), item.at, (item.preludeEnd ?? item.at ?? 0) - (item.at ?? 0));
@@ -797,10 +893,10 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
    * Three shapes, and the choice is what decides which diagnostic the author gets:
    *
    * - **the whole value is one hole** — the expression itself, so it is checked against the
-   *   property's own type and `padding: {{nekaFunc()}}` is a `TS2322` about `padding`;
+   *   property's own type and `padding: $(nekaFunc())` is a `TS2322` about `padding`;
    * - **no holes at all** — a string literal, so a union-typed property gives `TS2820` with *did you
    *   mean*, which a template literal would not;
-   * - **text and holes together** — a template literal, so `padding: {{n}}px` is checked against
+   * - **text and holes together** — a template literal, so `padding: $(n)px` is checked against
    *   `` `${number}px` `` rather than collapsing to `string`.
    */
   function value(
@@ -820,7 +916,7 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
      * A value that is ONE variable is written bare, for the same reason one hole is.
      *
      * Wrapped in a template literal it would be a `string`, and the property's own type would have
-     * nothing left to judge. Written bare, `color: $.size.control.md` is checked against what `color`
+     * nothing left to judge. Written bare, `color: $size.control.md` is checked against what `color`
      * accepts — which is the kind check, and it costs nothing to get because the expression is real.
      */
     /**
@@ -833,7 +929,7 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
      * offered nothing exactly where the variable groups belong.
      *
      * Whitespace counts as nothing here because it is: a value is collapsed before it is compared,
-     * so `color: $.color.accent.main ` and the same without the space are one declaration.
+     * so `color: $color.accent.main ` and the same without the space are one declaration.
      */
     const written = parts.filter((part) => part.kind !== "text" || part.text.trim() !== "");
     if (written.length === 1 && written[0].kind === "variable") {
@@ -874,7 +970,7 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
          * the whole value at once, so that space is interior there — and nothing depended on the
          * virtual file's version until a property's own type started reading the SHAPE of it.
          *
-         * Found answering `gap: 4px $.space.gutter.tight`, which a multi-value type refused because
+         * Found answering `gap: 4px $space.gutter.tight`, which a multi-value type refused because
          * the two values had been run together into one.
          */
         const collapsed = collapse(part.text);
@@ -885,7 +981,7 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
         continue;
       }
       /**
-       * `$.color.primary.main` — written as the TypeScript expression it is, inside the template.
+       * `$color.primary.main` — written as the TypeScript expression it is, inside the template.
        *
        * **This is where the spelling earns its keep**, and it is the whole reason a variable reaches
        * the AST as its own part instead of as resolved text. Here it becomes a real member
@@ -895,7 +991,7 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
        * `$` is BOUND by the virtual file rather than left to the author's imports — see the
        * declaration in the preamble for the measurement that settled that.
        *
-       * The expression is `derived` rather than copied: `$.space.inline.2xl` is writable in a block
+       * The expression is `derived` rather than copied: `$space.inline.2xl` is writable in a block
        * and does not parse as TypeScript, so the virtual file spells that segment `["2xl"]` and the
        * two lengths differ. Mapping the whole path to its own span is what puts a diagnostic on the
        * path and a caret inside it.
@@ -906,7 +1002,7 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
         write("}");
         continue;
       }
-      if (part.kind === "match") continue;
+      if (part.kind === "match" || part.kind === "choice") continue;
       write("${");
       valueHole(holes[part.index]);
       write("}");
@@ -918,9 +1014,9 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
    * A `$` path, emitted SEGMENT BY SEGMENT rather than as one run.
    *
    * `DESIGN.md` said this and the first implementation did not do it, so every caret inside a path
-   * mapped by raw offset into a virtual string of a different length: `$.color.accent.` is 15
+   * mapped by raw offset into a virtual string of a different length: `$color.accent.` is 15
    * characters and `__vars.color.accent.` is 20, so a caret at the end of the author's text landed
-   * in the middle of `accent` and the editor offered the members of `$.color`. One level too
+   * in the middle of `accent` and the editor offered the members of `$color`. One level too
    * shallow, silently.
    *
    * Each segment is its own run against its own author span, so a caret anywhere in the path maps
@@ -935,16 +1031,41 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
     }
 
     const written = source.slice(at, at + part.length);
+    /**
+     * A `$` alone, being typed: the dot is ours, so the caret after the `$` asks for the groups. The
+     * dot stands for the `$`, one character for one, so that caret lands AFTER it — a rewritten run
+     * would place it inside `__vars`, where TypeScript offers every global instead.
+     */
+    if (written === "$" && part.open === true) {
+      code += variables;
+      derived(".", at, 1);
+      return;
+    }
     derived(variables, at, 1);
+
+    /**
+     * The group follows the `$` with no dot — `$color` is `__vars.color` — so the first segment is
+     * its own run, with the dot the TypeScript needs written by us.
+     */
+    {
+      const from = 1;
+      let end = from;
+      while (end < written.length && written[end] !== ".") end += 1;
+      if (end > from) {
+        const segment = written.slice(from, end);
+        derived(isIdentifier(segment) ? `.${segment}` : `[${JSON.stringify(segment)}]`, at + from, end - from);
+      }
+    }
 
     /**
      * Walked rather than split, because a split loses which dot is which.
      *
-     * `$.color.accent.` splits to `["", "color", "accent", ""]` and the empty ends are the leading
+     * `$color.accent.` splits to `["", "color", "accent", ""]` and the empty ends are the leading
      * and trailing dots — indistinguishable from each other once they are array elements, and the
      * first version emitted two dots for one. Walking keeps every character where it was written.
      */
     let index = 1;
+    while (index < written.length && written[index] !== ".") index += 1;
     while (index < written.length) {
       if (written[index] !== ".") break;
       const dot = index;

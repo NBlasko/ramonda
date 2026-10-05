@@ -8,7 +8,7 @@ import { ConfigError, findConfig, readConfig } from "./config";
  * Codegen, actually run — the step that turns everything else about `$` into something a project
  * can use.
  *
- * Without this, `$.color.primary.main` parses, compiles, colours and checks, and a project still has
+ * Without this, `$color.primary.main` parses, compiles, colours and checks, and a project still has
  * no `$` to import and no stylesheet setting the variables. Three callers need it and must agree:
  * the CLI, for CI and for the first run; and both bundler plugins, so an ordinary `dev` needs no
  * command at all.
@@ -17,7 +17,7 @@ import { ConfigError, findConfig, readConfig } from "./config";
  *
  * Beside the config, named after it:
  *
- *     ramonda.css.ts   ->   css-system/index.ts       the `$` object and its types
+ *     ramonda.css.ts   ->   css-system/index.ts       one export per group, and the types
  *                      ->   css-system/variables.css  `:root`, and an `@property` for each
  *
  * **A folder, committed, and its name is the project's.** They were two files beside the config and

@@ -11,8 +11,8 @@ import { withoutSourceMarks } from "../sources";
 
 const SOURCE = `import { base } from "./base";
 export const card = @@( padding: 8px; );
-export const wide = @@( ...{base}; padding-left: 40px; );
-export const loud = (on: boolean) => @@( color: red; if ({on}) { color: blue; } );
+export const wide = @@( ...$(base); padding-left: 40px; );
+export const loud = (on: boolean) => @@( color: red; when $(on) { color: blue; } );
 `;
 
 const compiled = (marks?: string) => transform(SOURCE, { filename: "/p/src/Card.tsx", marks })?.code ?? "";
@@ -40,7 +40,7 @@ describe("what the compiler writes", () => {
   });
 
   test("a block that is only a spread still names itself", () => {
-    const code = transform(`import { base } from "./base";\nexport const a = @@( ...{base}; );\n`, {
+    const code = transform(`import { base } from "./base";\nexport const a = @@( ...$(base); );\n`, {
       filename: "/p/src/A.tsx",
       marks: "src/A.tsx",
     })?.code;
@@ -100,7 +100,7 @@ describe("withoutSourceMarks", () => {
   });
 
   /**
-   * A spread's operand is often an optional prop — `...{props.css}` — and the merge takes `undefined`,
+   * A spread's operand is often an optional prop — `...$(props.css)` — and the merge takes `undefined`,
    * `null` and `false` for a part that is not there. Found on the playground's dev server: the
    * first version read `.includes` off `undefined` and the page threw.
    */

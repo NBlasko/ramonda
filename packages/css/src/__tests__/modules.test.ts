@@ -41,7 +41,7 @@ describe("a named site imported from another module", () => {
 
   test("a named import resolves to the same name the declaring file gives it", () => {
     const own = namedSites(theme);
-    const there = namedSites(`import { accent } from "./theme";\nconst card = @@( color: var({accent}); );\n`, {
+    const there = namedSites(`import { accent } from "./theme";\nconst card = @@( color: var($(accent)); );\n`, {
       filename: "/src/Card.tsx",
       read: reader({ "./theme": theme }),
     });
@@ -51,7 +51,7 @@ describe("a named site imported from another module", () => {
   });
 
   test("an alias resolves under the name the importing file uses", () => {
-    const there = namedSites(`import { accent as brand } from "./theme";\nconst c = @@( color: var({brand}); );\n`, {
+    const there = namedSites(`import { accent as brand } from "./theme";\nconst c = @@( color: var($(brand)); );\n`, {
       filename: "/src/Card.tsx",
       read: reader({ "./theme": theme }),
     });
@@ -225,7 +225,7 @@ describe("a named site imported from another module", () => {
 describe("the two maps a named site appears in", () => {
   const THEME =
     'const base  = @@property( syntax: "<color>"; inherits: true;  initial-value: red; );\n' +
-    'const other = @@property( syntax: "<color>"; inherits: false; initial-value: var({base}); );\n';
+    'const other = @@property( syntax: "<color>"; inherits: false; initial-value: var($(base)); );\n';
 
   test("every name in one is a name in the other", () => {
     const names = [...namedSites(THEME).values()];
@@ -235,8 +235,8 @@ describe("the two maps a named site appears in", () => {
   });
 
   test.each([
-    ["one whose body names nothing", "{base}"],
-    ["one whose body names another token", "{other}"],
+    ["one whose body names nothing", "$(base)"],
+    ["one whose body names another token", "$(other)"],
   ])("a wrong value is refused for %s", (_what, token) => {
     const source = `${THEME}const a = <div className={@@( ${token}: 12px; )}>x</div>;\n`;
 
@@ -281,7 +281,7 @@ describe("two named sites with identical bodies", () => {
     const source =
       'export const accent  = @@property( syntax: "<color>"; inherits: true; initial-value: #10b981; );\n' +
       'export const surface = @@property( syntax: "<color>"; inherits: true; initial-value: #10b981; );\n' +
-      "const card = <div className={@@( {accent}: red; {surface}: blue; )}>x</div>;\n";
+      "const card = <div className={@@( $(accent): red; $(surface): blue; )}>x</div>;\n";
     const line =
       transform(source, { filename: "C.tsx" })
         ?.code.split("\n")
@@ -312,7 +312,7 @@ describe("the rule an imported token declared", () => {
   const emit = (source: string) => transform(source, { filename: "/src/Card.tsx", read });
 
   test("is emitted by the file that reads it", () => {
-    const out = emit(`import { accent } from "./theme";\nconst c = @@( color: var({accent}); );\n`);
+    const out = emit(`import { accent } from "./theme";\nconst c = @@( color: var($(accent)); );\n`);
     const rules = (out?.blocks ?? []).filter((one) => one.at === "property");
 
     expect(rules).toHaveLength(1);
@@ -321,15 +321,15 @@ describe("the rule an imported token declared", () => {
   });
 
   test("under the same name the declaring module gives it", () => {
-    const there = emit(`import { accent } from "./theme";\nconst c = @@( color: var({accent}); );\n`);
-    const own = transform(`${theme}const c = @@( color: var({accent}); );\n`, { filename: "/src/theme.tsx" });
+    const there = emit(`import { accent } from "./theme";\nconst c = @@( color: var($(accent)); );\n`);
+    const own = transform(`${theme}const c = @@( color: var($(accent)); );\n`, { filename: "/src/theme.tsx" });
 
     const nameIn = (result: typeof there) => (result?.blocks ?? []).find((one) => one.at === "property")?.className;
     expect(nameIn(there)).toBe(nameIn(own));
   });
 
   test("and the reading declaration is a STATIC atom, with no custom property on the element", () => {
-    const out = emit(`import { accent } from "./theme";\nconst c = @@( color: var({accent}); );\n`);
+    const out = emit(`import { accent } from "./theme";\nconst c = @@( color: var($(accent)); );\n`);
     const atom = (out?.blocks ?? []).find((one) => one.at === undefined);
 
     expect(atom?.properties).toEqual([]);
@@ -338,7 +338,7 @@ describe("the rule an imported token declared", () => {
 
   test("once, however many declarations read it", () => {
     const out = emit(
-      `import { accent } from "./theme";\nconst c = @@( color: var({accent}); border-color: var({accent}); );\n`,
+      `import { accent } from "./theme";\nconst c = @@( color: var($(accent)); border-color: var($(accent)); );\n`,
     );
 
     expect((out?.blocks ?? []).filter((one) => one.at === "property")).toHaveLength(1);

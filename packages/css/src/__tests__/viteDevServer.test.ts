@@ -222,7 +222,7 @@ test("a save that cannot compile is not reported by the watcher, and is reported
 test("saving the config regenerates the variables stylesheet", async () => {
   const gutter = (value: string) =>
     `import { kind } from "@ramonda/css/config";\n` +
-    `export default { variables: { space: kind("length", { gutter: "${value}" }) } };\n`;
+    `export default { variables: { $space: kind("length", { gutter: "${value}" }) } };\n`;
 
   const { saveConfig, firstLoad, variable } = await serve(withDisplay("flex"), gutter("16px"));
   await firstLoad();

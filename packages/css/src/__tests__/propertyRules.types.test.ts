@@ -1,5 +1,6 @@
 import { describe, test } from "vitest";
 import { defineConfig } from "../configEntry";
+import { kind } from "../declared";
 
 /**
  * The CONFIG's own type, which is what guides somebody writing one.
@@ -91,5 +92,20 @@ describe("what it accepts", () => {
   test("a property CSS does not measure in numbers still takes either", () => {
     defineConfig({ properties: { "transition-duration": { values: ["120ms", "400ms"] } } });
     defineConfig({ properties: { "<color>": { values: ["#10b981"] } } });
+  });
+});
+
+/**
+ * A group is declared the way a block reads it and code imports it — `$color` — and the type says
+ * so in the editor, before the config is ever loaded.
+ */
+describe("what the config type says about a group's name", () => {
+  test("a group without its `$` is refused", () => {
+    // @ts-expect-error — `color` must be written `$color`
+    defineConfig({ variables: { color: kind("color", { accent: "#00f" }) } });
+  });
+
+  test("and one with it is accepted", () => {
+    defineConfig({ variables: { $color: kind("color", { accent: "#00f" }) } });
   });
 });
