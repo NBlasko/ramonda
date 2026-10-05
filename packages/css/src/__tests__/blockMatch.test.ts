@@ -129,6 +129,8 @@ describe("how a block match must be written", () => {
     ["a spread", "  match $(t) {\n    hot => ( ...$(base); );\n  }"],
     ["another match", "  match $(t) {\n    hot => ( match $(u) { a => ( color: red; ); } );\n  }"],
     ["a value match", "  match $(t) {\n    hot => ( color: match $(u) { a => red; }; );\n  }"],
+    // Found in round 8: it compiled into an internal error — the condition had nowhere to be written.
+    ["a choice", "  match $(t) {\n    hot => ( color: $(u) ? red : blue; );\n  }"],
   ])("%s inside an arm is refused", (_what, block) => {
     expect(refusal(block)).toContain("an arm holds declarations");
   });

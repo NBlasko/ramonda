@@ -670,7 +670,9 @@ export function readBlock(source: string, open: number, filename: string, option
 
       skipTrivia();
       if (source.startsWith("=>", at)) at += 2;
-      const value = readValue(125 /* } */);
+      // An arm is a value known when the block compiles, so a choice is not read in one: its
+      // condition stays a runtime value in the arm, which `hole-in-a-match-arm` reports.
+      const value = readValue(125 /* } */, false, true);
       if (source.charCodeAt(at) === 59 /* ; */) at++;
 
       arms.push({ key, otherwise: key === "_", value, at: keyAt, length: at - keyAt });
@@ -1032,7 +1034,17 @@ export function readBlock(source: string, open: number, filename: string, option
     if (!opensCode(source, from)) return false;
     let index = closingHole(source, from + 1);
     if (index === -1) return false;
-    while (index < source.length && isSpace(source.charCodeAt(index))) index++;
+    // Whitespace and comments, as everywhere a block reads: `$(on) /* why */ ? red : blue`.
+    for (;;) {
+      while (index < source.length && isSpace(source.charCodeAt(index))) index++;
+      if (source.startsWith("/*", index)) {
+        const close = source.indexOf("*/", index + 2);
+        if (close === -1) return false;
+        index = close + 2;
+        continue;
+      }
+      break;
+    }
     return source.charCodeAt(index) === 63 /* ? */;
   }
 
@@ -1246,7 +1258,7 @@ export function readBlock(source: string, open: number, filename: string, option
        */
       if (!tolerant && OLD_CONDITION.test(source.slice(at, at + 16))) refuse(TO_CONDITION, source, at, filename);
 
-      // A forgiving read waits for the subject: until \`$(\` follows, \`match\` is a word being typed,
+      // A forgiving read waits for the subject: until `$(` follows, `match` is a word being typed,
       // and a match with no subject would hand every reader below an index nothing holds.
       if (
         OPENS_A_BLOCK_MATCH.test(source.slice(at, at + MATCH.length + 1)) &&
@@ -1414,7 +1426,7 @@ export function readBlock(source: string, open: number, filename: string, option
 
 /**
  * Where the first piece of composition in an arm's items stands — a condition or its branch, a
- * spread, a match at either level — or nothing.
+ * spread, a match at either level, a choice — or nothing.
  */
 function compositionIn(items: readonly BlockItem[]): number | undefined {
   for (const item of items) {
@@ -1426,7 +1438,8 @@ function compositionIn(items: readonly BlockItem[]): number | undefined {
       continue;
     }
     if (isSpread(item.property)) return item.at ?? 0;
-    if (item.value.some((part) => part.kind === "match")) return item.valueAt ?? item.at ?? 0;
+    // A choice is a condition too, and has nowhere to be written inside an arm's classes.
+    if (item.value.some((part) => part.kind === "match" || part.kind === "choice")) return item.valueAt ?? item.at ?? 0;
   }
   return undefined;
 }

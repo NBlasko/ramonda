@@ -154,7 +154,7 @@ describe("what a block becomes", () => {
     expect(preamble).not.toMatch(/\btype __|interface __/);
     // `match`'s own helper: the subject, the keys it may be, and the arms — see its declaration.
     expect(preamble).toContain(
-      `declare function __match<S, const K extends readonly S[]>(subject: S, keys: K, whole?: `,
+      `declare function __match<const S, const K extends readonly S[]>(subject: S, keys: K, whole?: `,
     );
     expect(preamble).toContain(`__cond<T>(condition: import("./properties").CssCondition<T>): never;`);
     expect(preamble).toContain(`__from<T>(block: import("./properties").CssSpreadable<T>): never;`);
@@ -577,6 +577,19 @@ describe("through tsc, and back to the author's own file", () => {
       expect(rest).toEqual([]);
       expect({ line: only.line, column: only.column }).toEqual(where);
       expect(only.says).toContain("this match has no arm for large — add one, or a _ arm for the rest");
+    });
+
+    /**
+     * A subject written as a literal is that literal, not \`string\`. Reported by the user: TypeScript
+     * widened \`$("nepostojecaVrednost")\` to \`string\`, so a match whose keys it can never be was
+     * silent — while the same value through a \`const\` was refused.
+     */
+    test("a literal subject is checked as itself", () => {
+      const source = `const x = @@(\n  match $("nepostojecaVrednost") {\n    quiet => ( padding: 2px; );\n    loud => ( padding: 4px; );\n  }\n);\nexport default x;\n`;
+      const found = check(source).map((one) => one.message);
+
+      expect(found).toHaveLength(2);
+      expect(found[0]).toContain(`Type '"quiet"' is not assignable to type '"nepostojecaVrednost"'`);
     });
 
     test.each([

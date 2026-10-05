@@ -107,8 +107,8 @@ export function checkedSource(
      * A forgiving read still asks the STRICT one, so the editor says what the build will.
      *
      * An editor reads a half-typed block without refusing it, which is what keeps completion alive —
-     * and which also let a block the build refuses outright come back clean: \`else\` first in a
-     * block, \`when $(a) $(b)\`, a condition inside a match arm. The sentence is the reader's own, so
+     * and which also let a block the build refuses outright come back clean: `else` first in a
+     * block, `when $(a) $(b)`, a condition inside a match arm. The sentence is the reader's own, so
      * the two cannot drift; where a rule already names the fault at that spot, the rule says it.
      */
     if (tolerant) {

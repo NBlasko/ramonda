@@ -466,14 +466,16 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
    * no type for that.
    */
   /**
-   * And, with no \`_\`, **every value the subject can be has an arm** — the third argument, written
-   * only then, at the word \`match\`. Its type is \`true\` when the keys cover the subject and a
+   * And, with no `_`, **every value the subject can be has an arm** — the third argument, written
+   * only then, at the word `match`. Its type is `true` when the keys cover the subject and a
    * sentence naming what is missing when they do not, so the error lands on the word and says it.
-   * Only a finite union of strings is asked: a plain \`string\` has no list to cover, and a subject
-   * that may be \`undefined\` needs no arm for it — nothing is picked then.
+   * `const S`, so a subject written as a literal stays that literal instead of widening to
+   * `string` — reported by the user: `$("nepostojecaVrednost")` took keys it can never be.
+   * Only a finite union of strings is asked: a plain `string` has no list to cover, and a subject
+   * that may be `undefined` needs no arm for it — nothing is picked then.
    */
   write(
-    `declare function ${lookup}<S, const K extends readonly S[]>(subject: S, keys: K, whole?: ` +
+    `declare function ${lookup}<const S, const K extends readonly S[]>(subject: S, keys: K, whole?: ` +
       "[NonNullable<S>] extends [string] ? string extends NonNullable<S> ? true : " +
       "[Exclude<NonNullable<S>, K[number]>] extends [never] ? true : " +
       "`this match has no arm for ${Exclude<NonNullable<S>, K[number]> & string} — add one, or a _ arm for the rest` : true): never;",

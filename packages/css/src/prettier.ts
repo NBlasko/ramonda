@@ -26,7 +26,7 @@ import { markerFor, placehold, relaidInside } from "./compiler/tooling";
  * is: asked about the string literal standing in for a block, it hands back the block's own lines,
  * and Prettier lays them out where the node was, at the indentation it chose for that position.
  *
- * The block's inside is laid out by the same function \`ramonda-css format\` uses, so a project on
+ * The block's inside is laid out by the same function `ramonda-css format` uses, so a project on
  * Prettier gets the same CSS a project on biome does.
  */
 
@@ -93,7 +93,7 @@ const plugin: Plugin = {
         const block = blockAt(path, options as Carried);
         if (block === undefined) return printer.embed?.(path, options) ?? null;
 
-        // The inside laid out as \`ramonda-css format\` lays it — one step in, the step Prettier uses.
+        // The inside laid out as `ramonda-css format` lays it — one step in, the step Prettier uses.
         const step = options.useTabs === true ? "\t" : " ".repeat(options.tabWidth ?? 2);
         return () => laid(relaidInside(block, step));
       },
@@ -119,8 +119,8 @@ function blockAt(path: AstPath, options: Carried): string | undefined {
  *
  * The block's own relative shape is kept and its absolute indentation is not — the printer has just
  * decided where this sits, and re-using the author's columns would drift a step further in every
- * time somebody formatted the file. The CSS inside has already been laid out by \`relaidInside\`,
- * the layout \`ramonda-css format\` uses, so the two formatters give one answer about one block.
+ * time somebody formatted the file. The CSS inside has already been laid out by `relaidInside`,
+ * the layout `ramonda-css format` uses, so the two formatters give one answer about one block.
  *
  * **Every line used to be trimmed, which is precisely what destroys the relative shape.** Measured:
  *

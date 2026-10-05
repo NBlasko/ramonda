@@ -2,6 +2,9 @@ import { describe, expect, test } from "vitest";
 import { checkSource } from "../compiler/source";
 import { placehold } from "../compiler/tooling";
 import { formatText } from "../tooling";
+import prettier from "prettier";
+import { transform } from "../compiler/transform";
+import prettierPlugin from "../prettier";
 
 /**
  * What a formatter can be given, and what comes back.
@@ -1110,4 +1113,59 @@ describe("a choice", () => {
       ["  &:hover {", "    color: $(a) ? red", "         : $(b) ? blue", "         :        gray;", "  }"].join("\n"),
     );
   });
+});
+
+/**
+ * Odd but legal text, through both formatters: the CSS it compiles to must not change, and a second
+ * pass must change nothing. Each shape is one round 8 found doing one or the other.
+ */
+describe("odd text keeps its meaning and settles", () => {
+  const HEAD =
+    'declare const on: boolean;\ndeclare const off: boolean;\ndeclare const t: "a" | "b";\nexport const x = (k: number) => @@(\n';
+  const TAIL = "\n);\n";
+  const meaning = (text: string) => {
+    const result = transform(text, { filename: "A.tsx" });
+    return JSON.stringify([result?.blocks.map((one) => one.css).sort(), result?.code.replace(/\s+/g, "")]);
+  };
+
+  test.each([
+    ["a comment after the brace before `else`", "  when $(on) { color: red; } /* x */ else { color: blue; }"],
+    [
+      "a condition over several lines",
+      "  when $(\n    on &&\n    off\n  ) {\n    color: red;\n  } else {\n    color: blue;\n  }",
+    ],
+    ["a comment before a choice's `?`", "  color: $(on) /* why */ ? red : blue;"],
+    [
+      "comments around a match's arms",
+      "  match $(t) {\n    /* first */ a => ( color: red; );\n    _ => ( color: blue; ); /* last */\n  }",
+    ],
+    ["a url in a value match's arm", "  background: match $(t) { a => url(http://x/y.png); _ => none; };"],
+    [
+      "a url in a block match's arm",
+      "  match $(t) {\n    a => ( background: url(http://x/y.png); );\n    _ => ( background: none; );\n  }",
+    ],
+    [
+      "a comment holding `;` in an arm",
+      "  match $(t) {\n    a => ( color: red; /* a;b */ );\n    _ => ( color: blue; );\n  }",
+    ],
+    [
+      "a string with two spaces in an arm",
+      '  match $(t) {\n    a => ( content: "a  b"; );\n    _ => ( content: "c"; );\n  }',
+    ],
+  ])("%s, with either line ending", async (_what, body) => {
+    for (const source of [`${HEAD}${body}${TAIL}`, `${HEAD}${body}${TAIL}`.replace(/\n/g, "\r\n")])
+      await settles(source);
+  });
+
+  const settles = async (source: string) => {
+    const before = meaning(source);
+
+    const once = formatText(source, "A.tsx", (text) => text);
+    expect(meaning(once)).toBe(before);
+    expect(formatText(once, "A.tsx", (text) => text)).toBe(once);
+
+    const pretty = await prettier.format(source, { parser: "typescript", plugins: [prettierPlugin] });
+    expect(meaning(pretty)).toBe(before);
+    expect(await prettier.format(pretty, { parser: "typescript", plugins: [prettierPlugin] })).toBe(pretty);
+  };
 });

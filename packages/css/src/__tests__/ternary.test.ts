@@ -118,6 +118,22 @@ describe("how a choice must be written", () => {
     expect(refusal("  color: $(on) ? blue : $(tint);")).toContain("hole-in-a-match-arm");
   });
 
+  /**
+   * A choice has no place inside an arm, where every value is a class already: found in round 8,
+   * both compiled into an internal error. In a value match's arm the condition is read as what it
+   * is there — a runtime value — and reported by that arm's own rule; in a block match's arm it is
+   * refused with the arm's words.
+   */
+  test("inside a value match's arm, the condition is a runtime value in the arm", () => {
+    expect(refusal("  color: match $(t) { a => $(on) ? red : blue; _ => gray; };")).toContain("hole-in-a-match-arm");
+  });
+
+  test("inside a block match's arm, it is refused as composition", () => {
+    expect(refusal("  match $(t) {\n    a => ( color: $(on) ? red : blue; );\n  }")).toContain(
+      "an arm holds declarations",
+    );
+  });
+
   test("a forgiving read keeps it, for an editor", () => {
     const source = "@@(\n  color: $(on) ? red : blue;\n)";
     const [item] = readBlock(source, 2, "C.tsx", { tolerant: true }).block.items;
