@@ -382,7 +382,7 @@ export function transform(source: string, options: TransformOptions = {}): Trans
         ? siteFindings
         : [
             ...checkText(source, site.open, read.end),
-            ...checkBlock(read.block, { at: site.at, references, syntaxes, config: options.config }),
+            ...checkBlock(read.block, { at: site.at, start: site.start, references, syntaxes, config: options.config }),
           ]
     )
       .filter((one) => !isIgnored(source, ignored, one))

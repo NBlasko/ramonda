@@ -180,6 +180,7 @@ export const RULE_IDS = [
   "variable-set-by-another-name",
   "hole-as-a-variable-name",
   "initial-value-and-syntax",
+  "property-descriptor-missing",
   "unknown-media-feature",
   "value-and-registered-syntax",
   "unit-not-allowed",
@@ -416,6 +417,15 @@ export function checkText(source: string, open: number, end: number): Finding[] 
 export interface CheckOptions {
   /** The at-rule this block IS, when it is a named site — `property`, `keyframes`, `font-face`. */
   readonly at?: string;
+  /**
+   * Where the site's `@@` is in the author's file — for a fault about something MISSING, which has
+   * no character of its own to stand on. See `propertyDescriptorMissing`.
+   *
+   * **Passed by the build only.** The editor and `ramonda-check` run the type check, whose
+   * `CssPropertyDescriptors` already says a descriptor is missing; giving them this too would report
+   * one fault twice. The build runs no type check, so there it is the only thing that says so.
+   */
+  readonly start?: number;
   /** Binding -> the generated name it resolves to. See {@link namedSites}. */
   readonly references?: ReadonlyMap<string, string>;
   /** Generated name -> the `syntax` its `@@property` declared. See {@link syntaxesIn}. */
@@ -425,7 +435,7 @@ export interface CheckOptions {
 }
 
 export function checkBlock(written: AnyBlock, options: CheckOptions = {}): Finding[] {
-  const { at, references, syntaxes, config } = options;
+  const { at, start, references, syntaxes, config } = options;
   const findings: Finding[] = [];
   blockMatchArms(written.items, findings);
   // Asked of the block as written: the arms below become groups, and their keys go with them.
@@ -461,6 +471,7 @@ export function checkBlock(written: AnyBlock, options: CheckOptions = {}): Findi
   // descriptors rather than an element's declarations, and `hole-in-a-named-block` already reports a
   // hole in one — in its own words, about its own shape. Two reports on one character is one too many.
   if (at === undefined) holeNotAllowed(block, findings);
+  if (at?.toLowerCase() === "property" && start !== undefined) propertyDescriptorMissing(block, at, start, findings);
   if (at?.toLowerCase() === "property") initialValueAndSyntax(block, findings);
   if (references !== undefined && references.size > 0) setByAnotherName(block, references, findings);
   if (config !== undefined) unknownVariable(block, config, findings);
@@ -1799,6 +1810,38 @@ const ACCEPTS: Readonly<Record<string, (value: string) => boolean>> = {
  *
  * See {@link ACCEPTS} for why it is matchers, and for the reports deliberately given up.
  */
+/**
+ * A `@@property` without `syntax` or without `inherits`, which CSS requires.
+ *
+ * The browser drops such a registration whole and says nothing — the reason `initial-value-and-syntax`
+ * exists, one descriptor over. The TYPE requires both, so the editor already says so; the build does
+ * not run the type check, and measured, it compiled all three shapes. Reported on `@@property`, the
+ * only place a missing thing can be pointed at, and once for both. A descriptor written with a hole
+ * counts as written: `hole-in-a-named-block` reports that in its own words.
+ */
+/** What to write for each descriptor `propertyDescriptorMissing` asks for. */
+const WRITE_DESCRIPTOR: Readonly<Record<string, string>> = {
+  syntax: '`syntax: "<length>"` — the type it holds, or `"*"` for anything —',
+  inherits: "`inherits: false`",
+};
+
+function propertyDescriptorMissing(block: Block, at: string, start: number, findings: Finding[]): void {
+  const written = new Set(block.items.flatMap((item) => (item.kind === "declaration" ? [item.property] : [])));
+  const missing = ["syntax", "inherits"].filter((one) => !written.has(one));
+  if (missing.length === 0) return;
+
+  findings.push({
+    rule: "property-descriptor-missing",
+    at: start,
+    length: `@@${at}`.length,
+    message:
+      `This \`@@property\` has no ${missing.map((one) => `\`${one}\``).join(" and ")}, and without ` +
+      `${missing.length > 1 ? "them" : "it"} the browser drops the whole registration. Add ` +
+      missing.map((one) => WRITE_DESCRIPTOR[one]).join(" and ") +
+      ".",
+  });
+}
+
 function initialValueAndSyntax(block: Block, findings: Finding[]): void {
   let syntax: string | undefined;
   let syntaxAt = 0;

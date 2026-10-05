@@ -1705,10 +1705,37 @@ describe("an initial-value its own syntax does not accept", () => {
   const of = (source: string): Finding[] => {
     const sites = findBlocks(source);
     const site = sites[sites.length - 1];
-    return checkBlock(readBlock(source, site.open, "C.tsx").block, { at: site.at });
+    return checkBlock(readBlock(source, site.open, "C.tsx").block, { at: site.at, start: site.start });
   };
   const rules = (source: string) => of(source).map((one) => one.rule);
   const property = (body: string) => `const t = @@property(\n  ${body}\n);`;
+
+  /**
+   * `syntax` and `inherits` are required by CSS, and a registration missing either is dropped whole,
+   * in silence — the same reason as a missing `initial-value`. The TYPE requires both, so the editor
+   * says so; this is for the build, which does not run the type check. Reported on `@@property`,
+   * because what is missing has no place of its own.
+   */
+  test.each([
+    ["no syntax", `inherits: false; initial-value: 0%;`, "`syntax`"],
+    ["no inherits", `syntax: "<percentage>"; initial-value: 0%;`, "`inherits`"],
+    ["neither", `initial-value: 0%;`, "`syntax` and `inherits`"],
+    ["nothing at all", ``, "`syntax` and `inherits`"],
+  ])("a registration with %s is refused, once, on the word", (_what, body, names) => {
+    const source = property(body);
+    const found = of(source);
+
+    expect(found.map((one) => one.rule)).toEqual(["property-descriptor-missing"]);
+    expect(found[0].at).toBe(source.indexOf("@@property"));
+    expect(found[0].length).toBe("@@property".length);
+    expect(found[0].message).toContain(`has no ${names}`);
+  });
+
+  test("all three written is not, and a descriptor written with a hole counts as written", () => {
+    expect(rules(property(`syntax: "<percentage>"; inherits: false; initial-value: 0%;`))).toEqual([]);
+    expect(rules(property(`syntax: "*"; inherits: true;`))).toEqual([]);
+    expect(rules(property(`syntax: "*"; inherits: $(x);`))).not.toContain("property-descriptor-missing");
+  });
 
   /**
    * No `initial-value` at all. CSS requires one for every syntax but `"*"`, and without it the

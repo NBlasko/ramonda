@@ -206,7 +206,7 @@ describe("what a match may not hold", () => {
  */
 describe("setting a registered property", () => {
   test("the binding is the generated name, and one property is one name however often it is read", () => {
-    const source = `const pad = @@property( syntax: "<length>"; initial-value: 0px; );
+    const source = `const pad = @@property( syntax: "<length>"; inherits: false; initial-value: 0px; );
 const box = @@( padding-left: var($(pad)); padding-right: var($(pad)); );`;
     const out = transform(source, { filename: "Card.tsx" });
     if (out === undefined) throw new Error("not transformed");

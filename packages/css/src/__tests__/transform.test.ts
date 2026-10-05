@@ -1141,3 +1141,19 @@ describe("a refusal names the rule that made it", () => {
     expect(refused(source)).not.toMatch(/^\/a\.tsx:\d+:\d+\s+[a-z-]+:/);
   });
 });
+
+/**
+ * The build refuses a `@@property` the browser would drop, missing `syntax` or `inherits`, as it
+ * already refused one missing `initial-value`. It does not run the type check, which says so in the
+ * editor — measured, it compiled both before.
+ */
+describe("a @@property missing a descriptor CSS requires", () => {
+  test.each([
+    ["syntax", `inherits: false; initial-value: 0%;`],
+    ["inherits", `syntax: "<percentage>"; initial-value: 0%;`],
+  ])("without `%s` stops the build, naming it", (name, body) => {
+    expect(() => transform(`const w = @@property( ${body} );\nexport default w;\n`)).toThrow(
+      new RegExp(`property-descriptor-missing: .*has no \`${name}\``),
+    );
+  });
+});
