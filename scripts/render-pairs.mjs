@@ -189,4 +189,82 @@ export const PAIRS = [
     markup: `<div class="a" id="hovered" style="${BOX}">hover me</div>`,
     hover: "#hovered",
   },
+
+  /*
+   * The block's logic, one pair per STATE — `shared` fixes the condition, and the hand-written page
+   * is what that state means in plain CSS. Each pair puts a choice, a chain or a match against the
+   * things that decide the cascade here: a split shorthand, the layer, a later longhand, a spread.
+   */
+  {
+    // A branch's shorthand after an unconditional longhand clears it, as a later shorthand does.
+    name: "a branch's shorthand after a longhand",
+    shared: "const on = true;\n",
+    hand: `.a { padding-left: 40px; background: #ddd; } .b { padding: 8px; }`,
+    blocks: { a: "padding-left: 40px; background: #ddd;", b: "when $(on) { padding: 8px; } else { padding: 2px; }" },
+    markup: `<div class="a b" style="${BOX}">text</div>`,
+  },
+  {
+    // The `else` of the same chain: the other branch, and nothing of the first.
+    name: "the else of a chain",
+    shared: "const on = false;\n",
+    hand: `.a { padding-left: 40px; background: #ddd; } .b { padding: 2px; }`,
+    blocks: { a: "padding-left: 40px; background: #ddd;", b: "when $(on) { padding: 8px; } else { padding: 2px; }" },
+    markup: `<div class="a b" style="${BOX}">text</div>`,
+  },
+  {
+    // A choice between two shorthands, then a longhand after it: the longhand wins, by the layer.
+    name: "a choice of shorthands, then a longhand",
+    shared: "const on = true;\n",
+    hand: `.a { border: 6px solid red; border-top-color: blue; background: #ddd; }`,
+    blocks: { a: "border: $(on) ? 6px solid red : 1px solid #ccc; border-top-color: blue; background: #ddd;" },
+    markup: `<div class="a" style="${BOX} height: 40px;"></div>`,
+  },
+  {
+    // The other branch of the same choice — its shorthand clears what the first would have set.
+    name: "the other branch of a choice",
+    shared: "const on = false;\n",
+    hand: `.a { border: 1px solid #ccc; border-top-color: blue; background: #ddd; }`,
+    blocks: { a: "border: $(on) ? 6px solid red : 1px solid #ccc; border-top-color: blue; background: #ddd;" },
+    markup: `<div class="a" style="${BOX} height: 40px;"></div>`,
+  },
+  {
+    // A chain of choices, middle branch.
+    name: "the middle of a choice chain",
+    shared: "const a = false;\nconst b = true;\n",
+    hand: `.x { background: #9cf; height: 30px; }`,
+    blocks: { x: "background: $(a) ? red : $(b) ? #9cf : gray; height: 30px;" },
+    markup: `<div class="x" style="${BOX}"></div>`,
+  },
+  {
+    // A match over whole groups, a shorthand in its arm, and a longhand after the match.
+    name: "a match arm's shorthand, then a longhand",
+    shared: 'const size = "large";\n',
+    hand: `.a { padding: 6px 12px; font-size: 18px; padding-left: 40px; background: #ddd; }`,
+    blocks: {
+      a: "match $(size) { small => ( padding: 2px 6px; font-size: 12px; ); large => ( padding: 6px 12px; font-size: 18px; ); } padding-left: 40px; background: #ddd;",
+    },
+    markup: `<div class="a" style="${BOX}">text</div>`,
+  },
+  {
+    // An arm holding a nested rule: the hover lands with the arm.
+    name: "a match arm with a hover in it",
+    shared: 'const tone = "hot";\n',
+    hand: `.a { color: red; background: #eee; } .a:hover { color: darkred; background: #9cf; }`,
+    blocks: {
+      a: "match $(tone) { hot => ( color: red; background: #eee; &:hover { color: darkred; background: #9cf; } ); _ => ( color: gray; ); }",
+    },
+    markup: `<div class="a" id="hovered" style="${BOX}">hover me</div>`,
+    hover: "#hovered",
+  },
+  {
+    // A spread inside an `else`: the base lands whole, and a later declaration still wins.
+    name: "a spread in an else",
+    shared: "const off = false;\n",
+    hand: `.card { padding: 8px; background: #ddd; padding-left: 40px; }`,
+    blocks: {
+      base: "padding: 8px; background: #ddd;",
+      card: "when $(off) { color: red; } else { ...$(base); } padding-left: 40px;",
+    },
+    markup: `<div class="card" style="${BOX}">text</div>`,
+  },
 ];
