@@ -119,6 +119,14 @@ const TO_ARM_END = "every arm ends with `;` — `key => ( … );`, then the next
 const TO_ARM_BODY =
   "an arm holds declarations and nested rules, which are classes known when the block compiles — a condition, " +
   "a spread or another match cannot go in one. Write it beside the match instead.";
+/**
+ * A condition at the level that does not take it — the composing page's table: `when` chooses a
+ * group and the choice chooses a value. Each names the spelling its level takes, rather than failing
+ * as something else (`color` not accepting `when`, a hole as a declaration).
+ */
+const WHEN_IN_A_VALUE = /^when\s*\$\(/;
+const TO_VALUE_CHOICE = "`when` chooses a group — for a value, write `$(c) ? a : b`.";
+const TO_GROUP_WHEN = "a choice picks a value — for a group, write `when $(c) { … } else { … }`.";
 /** What opens a block-level match: the word, alone, at the start of an item. */
 const OPENS_A_BLOCK_MATCH = new RegExp(`^${MATCH}(?![\\w-])`);
 const TO_BRANCH_PLACE =
@@ -890,6 +898,36 @@ export function readBlock(source: string, open: number, filename: string, option
   }
 
   /** The lookahead's copy of {@link pastHole}: it must not number a hole it is only stepping over. */
+  /** Whether the hole at `at` is followed by `?`, which makes the item a choice. Moves nothing. */
+  function choiceOverGroups(): boolean {
+    const mark = at;
+    pastHoleWithoutRecording();
+    skipTrivia();
+    const choice = source.charCodeAt(at) === 63; /* ? */
+    at = mark;
+    return choice;
+  }
+
+  /**
+   * Past one item a forgiving read gives up on: to the `;` that ends it, or to the bracket that
+   * closes what holds it. Strings and comments are not read — it only has to land somewhere sane.
+   */
+  function pastItem(): void {
+    let depth = 0;
+    while (at < source.length) {
+      const code = source.charCodeAt(at);
+      if (code === 40 || code === 91 || code === 123) depth++;
+      else if (code === 41 || code === 93 || code === 125) {
+        if (depth === 0) return;
+        depth--;
+      } else if (code === 59 && depth === 0) {
+        at++;
+        return;
+      }
+      at++;
+    }
+  }
+
   function pastHoleWithoutRecording(): void {
     const kept = holes.length;
     pastHole();
@@ -1118,6 +1156,18 @@ export function readBlock(source: string, open: number, filename: string, option
       skipTrivia();
       const found = MATCH_HEAD.exec(source.slice(at));
       if (found !== null) return [readMatch()];
+      if (WHEN_IN_A_VALUE.test(source.slice(at))) {
+        if (!tolerant) refuse(TO_VALUE_CHOICE, source, at, filename);
+        /**
+         * Forgiving, the value is read to its end and kept as NOTHING. What it holds is not a value at
+         * all, so every rule that read it would say something beside the point — `color` not taking
+         * the word `when`, a runtime value in a declaration — and cover the character the build's own
+         * sentence stands on. With nothing kept, `block-refused` says that sentence alone.
+         */
+        at += "when".length;
+        readValue(closer, toColon, true);
+        return [];
+      }
       // A choice inside a branch would leave its `:` to the branch around it: read as a hole, it is
       // refused there by `hole-in-a-match-arm` rather than misread.
       if (!inABranch && opensAChoice(at)) return [readChoice(closer)];
@@ -1257,6 +1307,18 @@ export function readBlock(source: string, open: number, filename: string, option
        * where the reader refuses one and would name that instead.
        */
       if (!tolerant && OLD_CONDITION.test(source.slice(at, at + 16))) refuse(TO_CONDITION, source, at, filename);
+
+      /**
+       * A choice written over groups — `$(c) ? ( … ) : ( … );` — refused with the spelling a group
+       * takes. Forgiving, the whole item is passed over and nothing recorded: read as a property
+       * whose name holds a hole, it drew two reports beside the point and covered the character the
+       * build's own sentence stands on.
+       */
+      if (source.startsWith(ESCAPE, at) && choiceOverGroups()) {
+        if (!tolerant) refuse(TO_GROUP_WHEN, source, at, filename);
+        pastItem();
+        continue;
+      }
 
       // A forgiving read waits for the subject: until `$(` follows, `match` is a word being typed,
       // and a match with no subject would hand every reader below an index nothing holds.

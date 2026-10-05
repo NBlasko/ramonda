@@ -1157,3 +1157,38 @@ describe("a @@property missing a descriptor CSS requires", () => {
     );
   });
 });
+
+/**
+ * A condition written at the wrong level is refused with the spelling that level takes.
+ *
+ * `when` chooses a group and the choice chooses a value — the composing page's table. Written the
+ * other way round, the build refused all three, but with a sentence about something else: `color`
+ * not accepting the word `when`, braces versus `$( )`, a hole as a declaration. The editor and the
+ * build must say the same, so both are asked.
+ */
+describe("a condition at the wrong level", () => {
+  const block = (body: string) => `declare const a: boolean;\nconst x = @@( ${body} );\nexport default x;\n`;
+  const editor = (body: string) => checkSource(block(body), "/a.tsx", { tolerant: true }).map((one) => one.message);
+
+  test.each([
+    ["`when` in a value", `color: when $(a) red;`],
+    ["`when … else` in a value", `color: when $(a) { red } else { blue };`],
+  ])("%s names the choice", (_what, body) => {
+    expect(() => transform(block(body))).toThrow(/`when` chooses a group — for a value, write `\$\(c\) \? a : b`/);
+    expect(editor(body)).toEqual([
+      expect.stringContaining("`when` chooses a group — for a value, write `$(c) ? a : b`"),
+    ]);
+  });
+
+  test.each([
+    ["in parens", `$(a) ? ( color: red; ) : ( color: blue; );`],
+    ["in braces", `$(a) ? { color: red; } : { color: blue; }`],
+  ])("a choice over groups, %s, names `when`", (_what, body) => {
+    expect(() => transform(block(body))).toThrow(
+      /a choice picks a value — for a group, write `when \$\(c\) \{ … \} else \{ … \}`/,
+    );
+    expect(editor(body)).toEqual([
+      expect.stringContaining("a choice picks a value — for a group, write `when $(c) { … } else { … }`"),
+    ]);
+  });
+});
