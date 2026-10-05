@@ -93,7 +93,7 @@
     "format": "biome format --write src"
   },
   "dependencies": {
-    "magic-string": "^0.30.21"
+    "magic-string": "^1.4.2"
   },
   "peerDependencies": {
     "typescript": ">=5.4.0",
