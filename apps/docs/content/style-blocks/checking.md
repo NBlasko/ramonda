@@ -25,6 +25,10 @@ There is no `check` verb: the bare command IS the check, and `format`, `lint`, `
 `explain` are the ones that are not. It exits non-zero when it reports anything, so it is a CI step
 as it stands.
 
+**A build stops on every CSS rule below, and it does not run the type check.** What only the types
+catch — a `match` key its subject can never be, or a value of the subject with no arm — is reported
+by this command and by your editor, not by Vite or esbuild. Run it in CI beside the build.
+
 ## What your editor tells you
 
 - **A property that does not exist** is TypeScript's own *did you mean*, on the property.

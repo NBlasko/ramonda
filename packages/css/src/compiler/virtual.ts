@@ -786,7 +786,8 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
             { value: choice.otherwise, at: undefined, length: undefined },
           ];
           for (const one of branches) {
-            if (one.value.length === 0) continue;
+            // A runtime value is `hole-in-a-match-arm`'s to report; the type would say it again.
+            if (one.value.length === 0 || one.value.some((part) => part.kind === "hole")) continue;
             const first = one.value[0];
             const last = one.value[one.value.length - 1];
             const from = first.at ?? one.at;
@@ -826,7 +827,8 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
           write("),");
 
           for (const arm of chosen.arms) {
-            if (arm.value.length === 0) continue;
+            // A runtime value is `hole-in-a-match-arm`'s to report; the type would say it again.
+            if (arm.value.length === 0 || arm.value.some((part) => part.kind === "hole")) continue;
             write("{");
             derived(key(propertyName(item.property)), item.at, item.property.length);
             write(":");

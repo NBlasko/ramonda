@@ -624,6 +624,21 @@ describe("through tsc, and back to the author's own file", () => {
     expect(check(source)).toEqual([]);
   });
 
+  /**
+   * A runtime value in an arm or a branch is said once, by `hole-in-a-match-arm`. The virtual file
+   * wrote the arm anyway, as a template string, and the type said it again in its own words —
+   * *Type '`${string}`' is not assignable…* — on the PROPERTY for a match arm. Measured in round 7.
+   */
+  test.each([
+    ["a value match's arm", "  display: match $(t) { a => $(base); b => flex; };"],
+    ["a choice's branch", "  display: $(on) ? $(base) : flex;"],
+    ["the last branch of a choice", "  display: $(on) ? flex : $(base);"],
+  ])("a runtime value in %s is left to its rule", (_what, css) => {
+    const source = `declare const t: "a" | "b";\ndeclare const on: boolean;\ndeclare const base: string;\nconst x = @@(\n${css}\n);\nexport default x;\n`;
+
+    expect(check(source)).toEqual([]);
+  });
+
   test("a block that is right reports nothing at all", () => {
     const source = `const size = "8px" as const;\nconst a = (\n  <div className={@@(\n    display: flex;\n    padding: $(size);\n    &:hover { color: red; }\n    --brand: red;\n  )}>x</div>\n);\n`;
 
