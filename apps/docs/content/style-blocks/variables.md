@@ -49,6 +49,10 @@ const card = @@(
 `$color.accent` compiles to `var(--color-accent)`. The name is the path, so the stylesheet is
 readable, and the path is the only spelling — there is no string to get wrong.
 
+**Hover a variable to see what it is** — in a block or in code. The editor shows its kind, the custom
+property it is written as (`var(--color-accent)`, the name your browser's style panel shows), what it
+starts as, and whether it may change: fixed, or the `range` it may take.
+
 **The group is `$color` everywhere**: in the config, in a block, and in the `import { $color }` code
 uses. A group written without its `$` — `color: kind(…)` — is refused by the config's type and when
 the config loads. The `$` is not part of the CSS name: `--color-accent`, not `--$color-accent`.

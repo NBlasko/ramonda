@@ -331,3 +331,36 @@ describe("the generated header", () => {
     }
   });
 });
+
+/**
+ * A hover on `$color.accent.quiet` names what the type does not: the kind, the custom property it
+ * really is, what it starts as, and whether it may change. The type alone said
+ * `Token<"color", Fixed<"#00b37e">>`, which is not the name a style panel shows.
+ */
+describe("what a hover on a variable says", () => {
+  const declared = {
+    $color: kind("color", {
+      quiet: "#00b37e",
+      moving: { value: "#ffffff", range: ["#ffffff", "#111827"] },
+      free: { value: "#ffffff", range: "any" },
+    }),
+  };
+
+  test("each variable carries a doc comment with its kind, its name, its start and its range", () => {
+    const module = generate(declared).module;
+
+    expect(module).toContain(
+      "  /**\n   * `$color.quiet` — a `color`, written to CSS as `var(--color-quiet)`.\n   *\n" +
+        "   * Starts as `#00b37e`. Fixed: declared without a `range`, so nothing may set it.\n   */\n" +
+        '  "quiet": "var(--color-quiet)"',
+    );
+    expect(module).toContain("   * Starts as `#ffffff`. May be `#ffffff`, `#111827`.\n");
+    expect(module).toContain("   * Starts as `#ffffff`. May be any `color`.\n");
+  });
+
+  test("a value that would end the comment is written so it cannot", () => {
+    const module = generate({ $x: kind("any", { odd: "a */ b" }) }).module;
+
+    expect(module).toContain("`a *\\/ b`");
+  });
+});

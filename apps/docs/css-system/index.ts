@@ -6,12 +6,27 @@ import type { CssProperties as Base, CssBlock, CssCondition, CssFontFaceDescript
 
 /** The `color` variables, as a block writes them: `$color.…`. */
 export const $color = Object.freeze({
+  /**
+   * `$color.accent` — a `color`, written to CSS as `var(--color-accent)`.
+   *
+   * Starts as `#10b981`. Fixed: declared without a `range`, so nothing may set it.
+   */
   "accent": "var(--color-accent)" as Token<"color", Fixed<"#10b981">>,
+  /**
+   * `$color.surface` — a `color`, written to CSS as `var(--color-surface)`.
+   *
+   * Starts as `#ffffff`. Fixed: declared without a `range`, so nothing may set it.
+   */
   "surface": "var(--color-surface)" as Token<"color", Fixed<"#ffffff">>,
 });
 
 /** The `space` variables, as a block writes them: `$space.…`. */
 export const $space = Object.freeze({
+  /**
+   * `$space.gutter` — a `length`, written to CSS as `var(--space-gutter)`.
+   *
+   * Starts as `16px`. Fixed: declared without a `range`, so nothing may set it.
+   */
   "gutter": "var(--space-gutter)" as Token<"length", Fixed<"16px">>,
 });
 

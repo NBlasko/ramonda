@@ -7,15 +7,45 @@ import type { CssProperties as Base, CssBlock, CssCondition, CssFontFaceDescript
 /** The `color` variables, as a block writes them: `$color.…`. */
 export const $color = Object.freeze({
   "accent": Object.freeze({
+    /**
+     * `$color.accent.main` — a `color`, written to CSS as `var(--color-accent-main)`.
+     *
+     * Starts as `#10b981`. Fixed: declared without a `range`, so nothing may set it.
+     */
     "main": "var(--color-accent-main)" as Token<"color", Fixed<"#10b981">>,
+    /**
+     * `$color.accent.quiet` — a `color`, written to CSS as `var(--color-accent-quiet)`.
+     *
+     * Starts as `#00b37e`. Fixed: declared without a `range`, so nothing may set it.
+     */
     "quiet": "var(--color-accent-quiet)" as Token<"color", Fixed<"#00b37e">>,
   }),
   "surface": Object.freeze({
+    /**
+     * `$color.surface.base` — a `color`, written to CSS as `var(--color-surface-base)`.
+     *
+     * Starts as `#ffffff`. Fixed: declared without a `range`, so nothing may set it.
+     */
     "base": "var(--color-surface-base)" as Token<"color", Fixed<"#ffffff">>,
+    /**
+     * `$color.surface.sunken` — a `color`, written to CSS as `var(--color-surface-sunken)`.
+     *
+     * Starts as `#f3f4f6`. Fixed: declared without a `range`, so nothing may set it.
+     */
     "sunken": "var(--color-surface-sunken)" as Token<"color", Fixed<"#f3f4f6">>,
   }),
   "text": Object.freeze({
+    /**
+     * `$color.text.primary` — a `color`, written to CSS as `var(--color-text-primary)`.
+     *
+     * Starts as `#111827`. Fixed: declared without a `range`, so nothing may set it.
+     */
     "primary": "var(--color-text-primary)" as Token<"color", Fixed<"#111827">>,
+    /**
+     * `$color.text.muted` — a `color`, written to CSS as `var(--color-text-muted)`.
+     *
+     * Starts as `#6b7280`. Fixed: declared without a `range`, so nothing may set it.
+     */
     "muted": "var(--color-text-muted)" as Token<"color", Fixed<"#6b7280">>,
   }),
 });
@@ -23,8 +53,23 @@ export const $color = Object.freeze({
 /** The `space` variables, as a block writes them: `$space.…`. */
 export const $space = Object.freeze({
   "gutter": Object.freeze({
+    /**
+     * `$space.gutter.tight` — a `length`, written to CSS as `var(--space-gutter-tight)`.
+     *
+     * Starts as `8px`. Fixed: declared without a `range`, so nothing may set it.
+     */
     "tight": "var(--space-gutter-tight)" as Token<"length", Fixed<"8px">>,
+    /**
+     * `$space.gutter.normal` — a `length`, written to CSS as `var(--space-gutter-normal)`.
+     *
+     * Starts as `16px`. Fixed: declared without a `range`, so nothing may set it.
+     */
     "normal": "var(--space-gutter-normal)" as Token<"length", Fixed<"16px">>,
+    /**
+     * `$space.gutter.wide` — a `length`, written to CSS as `var(--space-gutter-wide)`.
+     *
+     * Starts as `24px`. Fixed: declared without a `range`, so nothing may set it.
+     */
     "wide": "var(--space-gutter-wide)" as Token<"length", Fixed<"24px">>,
   }),
 });
@@ -32,14 +77,34 @@ export const $space = Object.freeze({
 /** The `size` variables, as a block writes them: `$size.…`. */
 export const $size = Object.freeze({
   "radius": Object.freeze({
+    /**
+     * `$size.radius.small` — a `length`, written to CSS as `var(--size-radius-small)`.
+     *
+     * Starts as `4px`. Fixed: declared without a `range`, so nothing may set it.
+     */
     "small": "var(--size-radius-small)" as Token<"length", Fixed<"4px">>,
+    /**
+     * `$size.radius.pill` — a `length`, written to CSS as `var(--size-radius-pill)`.
+     *
+     * Starts as `999px`. Fixed: declared without a `range`, so nothing may set it.
+     */
     "pill": "var(--size-radius-pill)" as Token<"length", Fixed<"999px">>,
   }),
 });
 
 /** The `motion` variables, as a block writes them: `$motion.…`. */
 export const $motion = Object.freeze({
+  /**
+   * `$motion.quick` — a `time`, written to CSS as `var(--motion-quick)`.
+   *
+   * Starts as `120ms`. Fixed: declared without a `range`, so nothing may set it.
+   */
   "quick": "var(--motion-quick)" as Token<"time", Fixed<"120ms">>,
+  /**
+   * `$motion.calm` — a `time`, written to CSS as `var(--motion-calm)`.
+   *
+   * Starts as `400ms`. Fixed: declared without a `range`, so nothing may set it.
+   */
   "calm": "var(--motion-calm)" as Token<"time", Fixed<"400ms">>,
 });
 

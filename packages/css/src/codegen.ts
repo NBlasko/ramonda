@@ -269,6 +269,34 @@ function rangeOf(one: Named): string {
   return one.range.map((each) => JSON.stringify(each)).join(" | ");
 }
 
+/**
+ * What a hover on a variable says — the four things its type does not.
+ *
+ * The type is `Token<"color", Fixed<"#00b37e">>`, which names the kind and the start but not the
+ * custom property the browser sees, and says "fixed" only to someone who knows what `Fixed` means.
+ * Asked for by the user while debugging: the name in the style panel is `--color-accent-quiet`, and
+ * nothing in the editor connected it to `$color.accent.quiet`.
+ *
+ * A value is the author's own text, so a `*\/` in it would end the comment and turn the rest of the
+ * module into code; it is written so it cannot.
+ */
+function docFor(one: Named, indent: string): string {
+  const quoted = (value: string | number) => `\`${String(value).replaceAll("*/", "*\\/")}\``;
+  const may =
+    one.range === undefined
+      ? "Fixed: declared without a `range`, so nothing may set it."
+      : one.range === "any"
+        ? `May be any \`${one.kind}\`.`
+        : `May be ${one.range.map(quoted).join(", ")}.`;
+  return (
+    `${indent}/**\n` +
+    `${indent} * \`$${one.path}\` — a \`${one.kind}\`, written to CSS as \`var(${one.name})\`.\n` +
+    `${indent} *\n` +
+    `${indent} * Starts as ${quoted(one.value)}. ${may}\n` +
+    `${indent} */`
+  );
+}
+
 /** The TypeScript identifier-safe spelling of a path segment, for the emitted object. */
 function key(segment: string): string {
   return JSON.stringify(segment);
@@ -293,7 +321,7 @@ function moduleTree(named: readonly Named[]): string {
       if (next !== null && typeof next === "object" && "name" in (next as Named)) {
         const one = next as Named;
         const token = `Token<${JSON.stringify(one.kind)}, ${rangeOf(one)}>`;
-        return `${indent}  ${key(segment)}: ${JSON.stringify(`var(${one.name})`)} as ${token},`;
+        return `${docFor(one, `${indent}  `)}\n${indent}  ${key(segment)}: ${JSON.stringify(`var(${one.name})`)} as ${token},`;
       }
       return `${indent}  ${key(segment)}: Object.freeze({\n${write(next as Record<string, unknown>, `${indent}  `)}\n${indent}  }),`;
     });
@@ -322,7 +350,11 @@ function moduleTree(named: readonly Named[]): string {
         next !== null && typeof next === "object" && "name" in (next as Named)
           ? `${JSON.stringify(`var(${(next as Named).name})`)} as Token<${JSON.stringify((next as Named).kind)}, ${rangeOf(next as Named)}>`
           : `Object.freeze({\n${write(next as Record<string, unknown>, "")}\n})`;
-      return `/** The \`${group}\` variables, as a block writes them: \`$${group}.…\`. */\nexport const $${group} = ${value};\n`;
+      const doc =
+        next !== null && typeof next === "object" && "name" in (next as Named)
+          ? docFor(next as Named, "")
+          : `/** The \`${group}\` variables, as a block writes them: \`$${group}.…\`. */`;
+      return `${doc}\nexport const $${group} = ${value};\n`;
     })
     .join("\n");
 }
