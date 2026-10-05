@@ -59,6 +59,20 @@ For a choice between several blocks you already have, spread a *lookup* — the 
 the variant. TypeScript then checks the map covers the union, so adding a third variant and
 forgetting the map is reported.
 
+## Which one to write
+
+Three forms, and each works at one level or both — a **group** is one or more whole declarations, a
+**value** is what follows one property's `:`.
+
+| | a group | a value |
+|---|---|---|
+| a condition | [`when $(…) { … } else when $(…) { … } else { … }`](#when-else-when-else) | [`$(…) ? a : b`](#a-choice-between-two-values), chainable |
+| one value, several outcomes | [`match $(…) { k => ( … ); }`](#a-match-over-whole-groups) | [`match $(…) { k => v; }`](#match-one-value-several-outcomes) |
+
+So a condition has one spelling at each level: `when` never stands in a value, and a choice never
+picks a group. A value that applies only when something holds is a group of one declaration, in a
+`when`; two declarations under one choice are a `when … else`.
+
 ## `when`, `else when`, `else`
 
 A condition can go on, the way it does in JavaScript. **The first condition that holds brings its
