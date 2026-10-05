@@ -267,4 +267,44 @@ export const PAIRS = [
     },
     markup: `<div class="card" style="${BOX}">text</div>`,
   },
+
+  /* The logic NESTED, where two of the things that decide a cascade meet inside each other. */
+  {
+    name: "a chain in a hover in a media query",
+    shared: "const p = false;\nconst q = true;\n",
+    hand: `.a { background: #ddd; height: 30px; } @media (min-width: 1px) { .a:hover { background: #9cf; } }`,
+    blocks: {
+      a: "background: #ddd; height: 30px; @media (min-width: 1px) { &:hover { when $(p) { background: red; } else when $(q) { background: #9cf; } else { background: gray; } } }",
+    },
+    markup: `<div class="a" id="hovered" style="${BOX}"></div>`,
+    hover: "#hovered",
+  },
+  {
+    name: "a block match inside a condition",
+    shared: 'const on = true;\nconst size = "large";\n',
+    hand: `.a { padding: 6px 12px; background: #ddd; }`,
+    blocks: {
+      a: "padding: 1px; when $(on) { match $(size) { small => ( padding: 2px 6px; ); large => ( padding: 6px 12px; ); } } background: #ddd;",
+    },
+    markup: `<div class="a" style="${BOX}">text</div>`,
+  },
+  {
+    name: "a choice on a nested element",
+    shared: "const on = true;\n",
+    hand: `.a { background: #eee; } .a span { color: red; border-bottom: 3px solid red; }`,
+    blocks: {
+      a: "background: #eee; & span { color: $(on) ? red : blue; border-bottom: $(on) ? 3px solid red : none; }",
+    },
+    markup: `<div class="a" style="${BOX}"><span>text</span></div>`,
+  },
+  {
+    name: "a block match beside a spread, in an else",
+    shared: 'const off = false;\nconst t = "x";\n',
+    hand: `.card { padding: 8px; background: #ddd; padding-left: 40px; }`,
+    blocks: {
+      base: "padding: 8px; background: #ddd;",
+      card: "when $(off) { color: red; } else { ...$(base); match $(t) { x => ( padding-left: 40px; ); _ => ( padding-left: 2px; ); } }",
+    },
+    markup: `<div class="card" style="${BOX}">text</div>`,
+  },
 ];
