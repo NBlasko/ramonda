@@ -64,8 +64,8 @@ import { kind } from "@ramonda/css/config";
 
 export default {
   variables: {
-    color: kind("color", { accent: "#10b981" }),
-    space: kind("length", { gutter: "16px" }),
+    $color: kind("color", { accent: "#10b981" }),
+    $space: kind("length", { gutter: "16px" }),
   },
 };
 ```

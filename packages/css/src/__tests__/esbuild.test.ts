@@ -517,7 +517,7 @@ describe("codegen through the plugin", () => {
   test("the pair is written into the build's own root, before anything is resolved", async () => {
     const root = project({
       "index.tsx": `const a = <div className={@@( color: $color.primary.main; )}>x</div>;\nexport default a;\n`,
-      "ramonda.css.ts": `import { kind } from "@ramonda/css/config";\nexport default { variables: { color: kind("color", { primary: { main: "#3b82f6" } }) } };\n`,
+      "ramonda.css.ts": `import { kind } from "@ramonda/css/config";\nexport default { variables: { $color: kind("color", { primary: { main: "#3b82f6" } }) } };\n`,
     });
 
     await build(root, { absWorkingDir: root });

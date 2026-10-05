@@ -24,7 +24,7 @@ The last three have somewhere else to go, and a variable has two.
 
 ## A variable your project declares
 
-Declare it in `ramonda.css.ts` and read it with `$` and the group's name:
+Declare it in `ramonda.css.ts` and read it the way it is declared — a group's name starts with `$`:
 
 ```ts
 // ramonda.css.ts
@@ -32,8 +32,8 @@ import { kind } from "@ramonda/css/config";
 
 export default {
   variables: {
-    color: kind("color", { accent: "#10b981", surface: "#ffffff" }),
-    space: kind("length", { gutter: "16px" }),
+    $color: kind("color", { accent: "#10b981", surface: "#ffffff" }),
+    $space: kind("length", { gutter: "16px" }),
   },
 };
 ```
@@ -48,6 +48,10 @@ const card = @@(
 
 `$color.accent` compiles to `var(--color-accent)`. The name is the path, so the stylesheet is
 readable, and the path is the only spelling — there is no string to get wrong.
+
+**The group is `$color` everywhere**: in the config, in a block, and in the `import { $color }` code
+uses. A group written without its `$` — `color: kind(…)` — is refused by the config's type and when
+the config loads. The `$` is not part of the CSS name: `--color-accent`, not `--$color-accent`.
 
 `$` and a name is only ever a variable. A group the project does not have — `$props.size` — is
 reported with the groups it does have, because the usual cause is reaching for a value from code,
@@ -137,10 +141,10 @@ theme moves it at run time, say what it may become:
 ```ts
 export default {
   variables: {
-    color: kind("color", {
+    $color: kind("color", {
       accent: { value: "#10b981", range: "any" },
     }),
-    space: kind("length", {
+    $space: kind("length", {
       gutter: { value: "16px", range: ["8px", "16px", "24px"] },
     }),
   },

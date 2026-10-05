@@ -1621,7 +1621,7 @@ function unknownVariable(block: Block, config: Config, findings: Finding[]): voi
             : declared.size === 0
               ? `\`${written}\` names a variable, and this project declares no variables.\n\n` +
                 `        Declare them in \`ramonda.css.ts\`, with a kind and a fallback each:\n` +
-                `        variables: { color: kind("color", { primary: { main: "#3b82f6" } }) }`
+                `        variables: { $color: kind("color", { primary: { main: "#3b82f6" } }) }`
               : groups.has(part.path)
                 ? `\`${written}\` names a group of variables rather than one of them. Write a variable.`
                 : !groups.has(part.path.split(".")[0])

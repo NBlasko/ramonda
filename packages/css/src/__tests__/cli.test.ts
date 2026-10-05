@@ -406,7 +406,7 @@ describe("codegen", () => {
 
   test("writes the pair, says what it wrote, and exits 0", () => {
     const root = bare(
-      `import { kind } from "@ramonda/css/config";\nexport default { variables: { color: kind("color", { primary: { main: "#3b82f6" } }) } };\n`,
+      `import { kind } from "@ramonda/css/config";\nexport default { variables: { $color: kind("color", { primary: { main: "#3b82f6" } }) } };\n`,
     );
     const { output, status } = runIn(root);
 
@@ -435,7 +435,7 @@ describe("codegen", () => {
    * compares before writing for an unrelated reason.
    */
   describe("`--check`", () => {
-    const declaring = `import { kind } from "@ramonda/css/config";\nexport default { variables: { color: kind("color", { primary: { main: "#3b82f6" } }) } };\n`;
+    const declaring = `import { kind } from "@ramonda/css/config";\nexport default { variables: { $color: kind("color", { primary: { main: "#3b82f6" } }) } };\n`;
 
     test("a project with no generated pair at all is stale, and nothing is written", () => {
       const root = bare(declaring);
@@ -479,7 +479,7 @@ describe("codegen", () => {
 
   test("a collision stops it, with both paths named", () => {
     const root = bare(
-      `import { kind } from "@ramonda/css/config";\nexport default { variables: { a: kind("length", { b: { c: "1px" }, "b-c": "2px" }) } };\n`,
+      `import { kind } from "@ramonda/css/config";\nexport default { variables: { $a: kind("length", { b: { c: "1px" }, "b-c": "2px" }) } };\n`,
     );
     const { output, status } = runIn(root);
 
@@ -518,7 +518,7 @@ describe("codegen", () => {
    */
   test("a declaration `kind` refuses is said once, with the file and the reason", () => {
     const root = bare(
-      `import { kind } from "@ramonda/css/config";\nexport default { variables: { a: kind("length", { b: { value: "8px", range: [] } }) } };\n`,
+      `import { kind } from "@ramonda/css/config";\nexport default { variables: { $a: kind("length", { b: { value: "8px", range: [] } }) } };\n`,
     );
     const { output, status } = runIn(root);
 

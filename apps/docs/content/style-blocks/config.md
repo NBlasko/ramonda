@@ -20,7 +20,7 @@ import { kind } from "@ramonda/css/config";
 
 export default {
   variables: {
-    color: kind("color", { accent: "#10b981" }),
+    $color: kind("color", { accent: "#10b981" }),
   },
   properties: {
     "<color>": { variablesOnly: true },

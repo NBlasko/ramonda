@@ -23,6 +23,24 @@ const simple = {
 };
 
 describe("names", () => {
+  /**
+   * The group is declared the way a block reads it — `$color` — and the `$` is not part of the name.
+   *
+   * One spelling in three places: the config key, `$color.primary.main` in a block, and the
+   * `export const $color` code imports. The custom property stays `--color-primary-main`, as CSS
+   * declares `--x` and reads it as `var(--x)`.
+   */
+  test("a group declared as `$color` is the path `color.…` and the export `$color`", () => {
+    const declared = { $color: kind("color", { primary: { main: "#3b82f6" } }) };
+
+    expect(namesIn(declared).map((one) => [one.path, one.name])).toEqual([
+      ["color.primary.main", "--color-primary-main"],
+    ]);
+    const module = generate(declared).module;
+    expect(module).toContain("export const $color =");
+    expect(module).not.toContain("$$color");
+  });
+
   test("a name is the path, joined with a dash, spelled as a custom property", () => {
     expect(namesIn(simple).map((one) => one.name)).toEqual(["--color-primary-main", "--size-control-md"]);
   });
@@ -106,8 +124,8 @@ describe("the module", () => {
   });
 
   test("a group's name that is no identifier is refused, saying why", () => {
-    expect(() => generate({ "brand-x": kind("color", { a: "#fff" }) })).toThrow(/`brand-x`/);
-    expect(() => generate({ "2x": kind("length", { a: "1px" }) })).toThrow(/`\$\( … \)`|group/);
+    expect(() => generate({ "$brand-x": kind("color", { a: "#fff" }) })).toThrow(/`\$brand-x` cannot name/);
+    expect(() => generate({ $2x: kind("length", { a: "1px" }) })).toThrow(/`\$\( … \)`|group/);
   });
 
   test("a number fallback stays a number, so `number` and `integer` are not stringified", () => {

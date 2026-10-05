@@ -49,6 +49,15 @@ export interface Named {
 export type Declarations = { readonly [name: string]: unknown };
 
 /**
+ * The groups at the top of `variables`, each named the way a block reads it — `$color`.
+ *
+ * The `$` is part of the config key so that one spelling holds in all three places: the config, a
+ * block's `$color.primary.main`, and the `$color` code imports. It is not part of the custom
+ * property — `--color-primary-main` — the way CSS declares `--x` and reads it as `var(--x)`.
+ */
+export type Groups = { readonly [group: `$${string}`]: unknown };
+
+/**
  * A `ConfigError`, because the fault is in the author's `ramonda.css.ts` and not in this package.
  *
  * It threw a raw `Error` until review pass 9 measured what that looked like:
@@ -80,7 +89,8 @@ export function namesIn(declarations: Declarations): readonly Named[] {
 
   const walk = (group: Declarations, trail: readonly string[]): void => {
     for (const [segment, one] of Object.entries(group)) {
-      const here = [...trail, segment];
+      // A group's `$` is how it is spelled, not part of its path — see `Groups`.
+      const here = [...trail, trail.length === 0 ? segment.replace(/^\$/, "") : segment];
 
       if (isVariable(one)) {
         found.push({
@@ -136,7 +146,7 @@ export function verifyNames(named: readonly Named[], path?: string): void {
     const group = one.path.split(".")[0];
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(group)) {
       refuse(
-        `\`${group}\` cannot name a group of variables.\n\n        A group is written \`$${group}.…\` in a block and ` +
+        `\`$${group}\` cannot name a group of variables.\n\n        A group is written \`$${group}.…\` in a block and ` +
           `exported as \`$${group}\` for code,\n        so it is a letter or \`_\` and then letters, digits and \`_\`.`,
         path,
       );

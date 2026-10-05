@@ -563,7 +563,7 @@ describe("codegen through the vite plugin", () => {
     );
     writeFileSync(
       join(root, "ramonda.css.ts"),
-      `import { kind } from "@ramonda/css/config";\nexport default { variables: { color: kind("color", { primary: { main: "#3b82f6" } }) } };\n`,
+      `import { kind } from "@ramonda/css/config";\nexport default { variables: { $color: kind("color", { primary: { main: "#3b82f6" } }) } };\n`,
     );
 
     const result = build(root);

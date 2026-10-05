@@ -3400,7 +3400,7 @@ describe("a colour written out, where the project said variables only", () => {
   test("a variable is what it is asking for, and says nothing", () => {
     // Declared, because `unknown-variable` would otherwise speak about the path and this test would
     // be measuring that rule instead of this one.
-    const declared: Config = { ...ONLY, variables: { color: kind("color", { accent: { main: "#10b981" } }) } };
+    const declared: Config = { ...ONLY, variables: { $color: kind("color", { accent: { main: "#10b981" } }) } };
 
     expect(rulesWith("  border-left: 4px solid $color.accent.main;", declared)).toEqual([]);
   });
@@ -3654,7 +3654,7 @@ describe("the slash form, and the correct CSS it must not refuse", () => {
  */
 describe("a literal that reached the page anyway", () => {
   const ONLY: Config = {
-    variables: { brand: kind("color", { main: "#10b981" }), space: kind("length", { sm: "8px" }) },
+    variables: { $brand: kind("color", { main: "#10b981" }), $space: kind("length", { sm: "8px" }) },
     properties: { "<color>": { variablesOnly: true }, "<length>": { variablesOnly: true } },
   };
   const of = (decl: string) =>
@@ -4093,7 +4093,7 @@ describe("a config rule inside a nested rule", () => {
       padding: { shorthand: false },
       "transition-duration": { units: ["ms"] },
     },
-    variables: { color: kind("color", { primary: { main: "#3b82f6" } }) },
+    variables: { $color: kind("color", { primary: { main: "#3b82f6" } }) },
   };
 
   const under = (css: string) => {
@@ -4182,7 +4182,7 @@ describe("a declaration that breaks more than one of a project's rules", () => {
       padding: { shorthand: true, arity: 1 },
       "z-index": { values: [0, 1] },
     },
-    variables: { space: kind("length", { gutter: "16px" }) },
+    variables: { $space: kind("length", { gutter: "16px" }) },
   };
 
   const under = (css: string) => {

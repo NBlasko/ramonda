@@ -11,6 +11,10 @@ refused with an error that names its replacement.
   was `$.color.primary.main`). In code, the generated `css-system` exports one name per group:
   `import { $color, $space } from "./css-system"`, so a variable is spelled the same in a block and
   in TypeScript. There is no `$` export any more, and a group's name must be an identifier.
+- **A group is declared with its `$` too**: `variables: { $color: kind("color", { … }) }`. One
+  spelling in the config, in a block and in code. `color: kind(…)` is refused — by the config's type
+  in the editor, and when the config loads, with the message writing `$color`. The CSS names do not
+  change: `$color.accent` is still `var(--color-accent)`.
 - **A condition is `when $( … ) { … }`**, and it gains `else when $( … ) { … }` and `else { … }`.
   The first condition that holds brings its group.
 - **`match $( … ) { … }` works at both levels**: `color: match $(t) { a => red; _ => blue; };` picks a

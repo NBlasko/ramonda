@@ -812,15 +812,15 @@ Measured: 5,133 instantiations against 4,776 for an empty program, 0.39s either 
 ```ts
 export default defineConfig({
   variables: {
-    color: kind("color", {
+    $color: kind("color", {
       primary: { main: "#3b82f6", light: "#93c5fd" },
       surface: { base: "#ffffff", sunken: "#f3f4f6" },
     }),
-    size: kind("length", {
+    $size: kind("length", {
       control: { sm: "24px", md: "30px" },
       weight: kind("number", { bold: 700 }),
     }),
-    motion: kind("duration", { fast: "120ms", slow: "400ms" }),
+    $motion: kind("duration", { fast: "120ms", slow: "400ms" }),
   },
 });
 ```
@@ -897,12 +897,12 @@ import { defineConfig, kind } from "@ramonda/css/config";
 
 export default defineConfig({
   variables: {
-    color: kind("color", {
+    $color: kind("color", {
       primary: { main: "#3b82f6", light: "#93c5fd" },
       surface: { base: "#ffffff" },
     }),
-    size: kind("length", { control: { sm: "24px", md: "30px" } }),
-    motion: kind("duration", { fast: "120ms" }),
+    $size: kind("length", { control: { sm: "24px", md: "30px" } }),
+    $motion: kind("duration", { fast: "120ms" }),
   },
   rules: { /* … as today … */ },
 });

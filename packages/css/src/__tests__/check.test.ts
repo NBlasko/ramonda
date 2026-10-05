@@ -2631,8 +2631,8 @@ describe("a `$` variable in a whole shorthand from another block", () => {
   const CONFIG =
     `import { kind } from ${JSON.stringify(join(PACKAGE, "dist", "config.js"))};\n` +
     `export default { variables: {\n` +
-    `  border: kind("any", { thin: "1px solid red", top: "2px solid blue" }),\n` +
-    `  color: kind("color", { a: "#000" }),\n} };\n`;
+    `  $border: kind("any", { thin: "1px solid red", top: "2px solid blue" }),\n` +
+    `  $color: kind("color", { a: "#000" }),\n} };\n`;
   const findings = (base: string, card: string) =>
     checkProject(
       project(

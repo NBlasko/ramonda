@@ -323,6 +323,8 @@ describe("the project's config", () => {
       // A custom property begins with two dashes. `brand` is a property name, and a list of those
       // would silence a rule about names it was never given.
       ["a name in alsoSets with no dashes", `{ alsoSets: ["brand"] }`, /two dashes/],
+      // A group is declared the way a block reads it, so the message writes the `$` in.
+      ["a group without its `$`", `{ variables: { color: {} } }`, /\$color/],
     ])("%s is refused, naming what is wrong", (_what, body, says) => {
       expect(refused(body)).toThrow(says);
     });
@@ -545,6 +547,7 @@ describe("the project's config", () => {
       ["a rule silenced", `{ rules: { "unknown-unit": "off" } }`],
       ["a rule set to error, which is the default", `{ rules: { "unknown-unit": "error" } }`],
       ["an empty object", `{}`],
+      ["a group declared with its `$`", `{ variables: { $color: {} } }`],
     ])("%s is accepted", (_what, body) => {
       expect(refused(body)).not.toThrow();
     });

@@ -187,8 +187,8 @@ function refuse(message: string): never {
  *
  * ```ts
  * variables: {
- *   color: kind("color", { primary: { main: "#3b82f6" } }),
- *   size: kind("length", { control: { md: "30px" }, weight: kind("number", { bold: 700 }) }),
+ *   $color: kind("color", { primary: { main: "#3b82f6" } }),
+ *   $size: kind("length", { control: { md: "30px" }, weight: kind("number", { bold: 700 }) }),
  * }
  * ```
  *

@@ -49,9 +49,9 @@ export default {
   variables: {
     // A range where the project means to set it at run time — a variable declared with one value
     // says it never changes, and \`toStyle\` holds it to that.
-    color: kind("color", { primary: { main: { value: "#3b82f6", range: "any" } } }),
-    size: kind("length", { control: { md: { value: "30px", range: ["24px", "30px"] } }, weight: kind("number", { bold: 700 }) }),
-    space: kind("length", { inline: { "2xl": "48px" } }),
+    $color: kind("color", { primary: { main: { value: "#3b82f6", range: "any" } } }),
+    $size: kind("length", { control: { md: { value: "30px", range: ["24px", "30px"] } }, weight: kind("number", { bold: 700 }) }),
+    $space: kind("length", { inline: { "2xl": "48px" } }),
   },
 };
 `,
@@ -879,7 +879,7 @@ describe("a variable against a property's range", () => {
 
   const CONFIG = `import { defineConfig, kind } from "@ramonda/css/config";
 export default defineConfig({
-  variables: { size: kind("length", { big: "30px", small: "8px" }) },
+  variables: { $size: kind("length", { big: "30px", small: "8px" }) },
   properties: { "letter-spacing": { values: ["4px", "8px"] }, "z-index": { values: [1, 2] } },
 });
 `;
@@ -925,7 +925,7 @@ export default defineConfig({
   test("`units` is not a range: a px value goes into a px-only property", () => {
     const config = `import { defineConfig, kind } from "@ramonda/css/config";
 export default defineConfig({
-  variables: { size: kind("length", { big: "30px" }) },
+  variables: { $size: kind("length", { big: "30px" }) },
   properties: { "letter-spacing": { units: ["px"] } },
 });
 `;
@@ -957,7 +957,7 @@ export default defineConfig({
   describe("a dimensionless zero, where a kind is variables-only", () => {
     const CONFIG = `import { kind } from "@ramonda/css/config";
   export default {
-    variables: { space: kind("length", { gutter: { normal: "16px" } }) },
+    variables: { $space: kind("length", { gutter: { normal: "16px" } }) },
     properties: { "<length>": { variablesOnly: true } },
   };
   `;
@@ -1013,7 +1013,7 @@ export default defineConfig({
   describe("`variablesOnly` as a selector inside `properties`", () => {
     const CONFIG = `import { kind } from "@ramonda/css/config";
 export default {
-  variables: { space: kind("length", { sm: "8px" }) },
+  variables: { $space: kind("length", { sm: "8px" }) },
   properties: {
     "<length>": { variablesOnly: true },
     "border-radius": { variablesOnly: false },
@@ -1065,7 +1065,7 @@ export default {
     test("a kind selector drives the RULE too, where a property has no type to narrow", () => {
       const config = `import { kind } from "@ramonda/css/config";
 export default {
-  variables: { brand: kind("color", { main: "#10b981" }) },
+  variables: { $brand: kind("color", { main: "#10b981" }) },
   properties: { "<color>": { variablesOnly: true } },
 };
 `;
@@ -1077,7 +1077,7 @@ export default {
     test("and a composite property exempted by name is left alone", () => {
       const config = `import { kind } from "@ramonda/css/config";
 export default {
-  variables: { brand: kind("color", { main: "#10b981" }) },
+  variables: { $brand: kind("color", { main: "#10b981" }) },
   properties: { "<color>": { variablesOnly: true }, border: { variablesOnly: false } },
 };
 `;
@@ -1090,7 +1090,7 @@ export default {
     test("`*` is overridden by the kind, and the kind by the property's own name", () => {
       const config = `import { kind } from "@ramonda/css/config";
 export default {
-  variables: { space: kind("length", { sm: "8px" }) },
+  variables: { $space: kind("length", { sm: "8px" }) },
   properties: {
     "*": { variablesOnly: false },
     "<length>": { variablesOnly: true },
@@ -1129,7 +1129,7 @@ export default {
     describe("a closed list, and what a variable owes it", () => {
       const CONFIG = `import { kind } from "@ramonda/css/config";
 export default {
-  variables: { s: kind("length", { ok: "8px", big: "30px" }) },
+  variables: { $s: kind("length", { ok: "8px", big: "30px" }) },
   properties: { "padding-left": { values: ["4px", "8px"] } },
 };
 `;
@@ -1211,9 +1211,9 @@ export default {
       const CONFIG = `import { kind } from "@ramonda/css/config";
 export default {
   variables: {
-    fixed: kind("length", { gutter: "16px" }),
-    themed: kind("length", { gutter: { value: "16px", range: ["8px", "16px"] } }),
-    open: kind("length", { gutter: { value: "16px", range: "any" } }),
+    $fixed: kind("length", { gutter: "16px" }),
+    $themed: kind("length", { gutter: { value: "16px", range: ["8px", "16px"] } }),
+    $open: kind("length", { gutter: { value: "16px", range: "any" } }),
   },
 };
 `;
@@ -1292,8 +1292,8 @@ export default {
       const CONFIG = `import { kind } from "@ramonda/css/config";
 export default {
   variables: {
-    color: kind("color", { accent: { main: "#10b981", quiet: "#00b37e" } }),
-    size: kind("length", { radius: { pill: "999px" } }),
+    $color: kind("color", { accent: { main: "#10b981", quiet: "#00b37e" } }),
+    $size: kind("length", { radius: { pill: "999px" } }),
   },
 };
 `;

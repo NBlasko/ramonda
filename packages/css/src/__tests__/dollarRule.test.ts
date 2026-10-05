@@ -20,8 +20,8 @@ import { kind } from "../declared";
 
 const declared: Config = {
   variables: {
-    color: kind("color", { primary: { main: "#3b82f6", light: "#93c5fd" } }),
-    size: kind("length", { control: { md: "30px" } }),
+    $color: kind("color", { primary: { main: "#3b82f6", light: "#93c5fd" } }),
+    $size: kind("length", { control: { md: "30px" } }),
   },
 };
 

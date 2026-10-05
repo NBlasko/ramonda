@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
-import { type Declarations, namesIn } from "./codegen";
+import { type Groups, namesIn } from "./codegen";
 import { KINDS } from "./declared";
 import { PRIMITIVE, PROPERTIES, UNIT_TYPE } from "./compiler/keywords.generated";
 import type { Kind } from "./token";
@@ -67,8 +67,8 @@ export interface Config {
    *
    * ```ts
    * variables: {
-   *   color: kind("color",  { primary: { main: "#3b82f6" } }),
-   *   size:  kind("length", { control: { md: "30px" } }),
+   *   $color: kind("color",  { primary: { main: "#3b82f6" } }),
+   *   $size:  kind("length", { control: { md: "30px" } }),
    * }
    * ```
    *
@@ -80,7 +80,7 @@ export interface Config {
    * naming nothing here is reported — see the `unknown-variable` rule, which is the only thing
    * standing between a typo and a `var()` into a name nothing sets.
    */
-  readonly variables?: Declarations;
+  readonly variables?: Groups;
   /**
    * Custom property names this compiler cannot see, so a `var()` reading one is not reported.
    *
@@ -868,11 +868,25 @@ function validate(config: Record<string, unknown>, path: string): void {
         `sets \`variables\` to a list. That was its old meaning — names this compiler cannot see — ` +
           `and those go in \`alsoSets\` now.\n\n` +
           `        \`variables\` declares what this project OWNS, with a kind and a fallback each:\n` +
-          `        variables: { color: kind("color", { primary: { main: "#3b82f6" } }) }`,
+          `        variables: { $color: kind("color", { primary: { main: "#3b82f6" } }) }`,
       );
     }
     if (typeof variables !== "object" || variables === null) {
       refuse(`sets \`variables\` to ${describe(variables)}. It takes groups made with \`kind( … )\`.`);
+    }
+    /**
+     * A group without its `$`, refused with the spelling written in.
+     *
+     * The `$` is what makes the config key, a block's `$color.…` and the `$color` code imports one
+     * name — see `Groups`. The type says so too; this is for a config nothing typechecks.
+     */
+    for (const group of Object.keys(variables as object)) {
+      if (!group.startsWith("$")) {
+        refuse(
+          `declares the group \`${group}\` without its \`$\`. Write \`$${group}\` — a group is declared the ` +
+            `way a block reads it, \`$${group}.…\`, and the way code imports it.`,
+        );
+      }
     }
   }
 
