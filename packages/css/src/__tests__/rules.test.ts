@@ -1970,6 +1970,8 @@ describe("a registered property set to a value its syntax refuses", () => {
       // `!important` on a custom property is valid CSS and is how a variable is made to win.
       ["a value with `!important`", `${angle}const s = @@( $(angle): 90deg !important; );\n`],
       ["and a colour with it", `${colour}const s = @@( $(accent): red !important; );\n`],
+      // CSS allows space between `!` and the word, and the word in any case.
+      ["`! IMPORTANT`, spaced and in capitals", `${angle}const s = @@( $(angle): 90deg ! IMPORTANT; );\n`],
       // CSS keywords are ASCII case-insensitive; the escape set was matched by exact case.
       ["a CSS-wide keyword in capitals", `${angle}const s = @@( $(angle): INHERIT; );\n`],
       ["one in mixed case", `${angle}const s = @@( $(angle): Inherit; );\n`],
@@ -1979,6 +1981,20 @@ describe("a registered property set to a value its syntax refuses", () => {
       ["a negative exponent", `${angle}const s = @@( $(angle): 1.5e-2deg; );\n`],
     ])("%s", (_what, source) => {
       expect(rules(source)).toEqual([]);
+    });
+
+    /**
+     * A long run of spaces inside a value, which the `!important` strip once read in quadratic time.
+     *
+     * Found by CodeQL on the PR: `/\s*!\s*important\s*$/` starts again at every space. Measured,
+     * twice the spaces took four times as long — 40 000 took 2.5 s, on every check of the file.
+     */
+    test("a value with a long run of spaces is read in linear time", () => {
+      const started = performance.now();
+
+      rules(`${angle}const s = @@( $(angle): 1deg${" ".repeat(40000)}2deg; );\n`);
+
+      expect(performance.now() - started).toBeLessThan(500);
     });
 
     /** A hole's value is not known here, and is refused for being one at all. */

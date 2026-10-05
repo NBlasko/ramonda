@@ -1938,6 +1938,19 @@ function typedInto(written: string): string | undefined {
  *
  * A value holding a hole or a `var()` is not judged: what it will be is not known here.
  */
+/**
+ * A value with a trailing `!important` taken off — `!`, any space, and the word in any case.
+ *
+ * Read from the end rather than by regex. The regex was `\s*!\s*important\s*$`, which starts again
+ * at every space: CodeQL found it on the PR, and measured, 40 000 spaces inside a value took 2.5 s.
+ */
+function withoutImportant(value: string): string {
+  const end = value.trimEnd();
+  if (!end.toLowerCase().endsWith("important")) return value;
+  const before = end.slice(0, -"important".length).trimEnd();
+  return before.endsWith("!") ? before.slice(0, -1).trimEnd() : value;
+}
+
 function againstRegisteredSyntax(block: Block, syntaxes: ReadonlyMap<string, string>, findings: Finding[]): void {
   const walkItems = (items: readonly BlockItem[]): void => {
     for (const item of items) {
@@ -1958,7 +1971,7 @@ function againstRegisteredSyntax(block: Block, syntaxes: ReadonlyMap<string, str
        * how a variable is made to win. A review measured `{angle}: 90deg !important` reported as a
        * value `<angle>` does not accept, because the flag went into the matcher with the value.
        */
-      const written = value.replace(/\s*!\s*important\s*$/i, "");
+      const written = withoutImportant(value);
       /**
        * A CSS-wide keyword and `var()`, both asked CASE-INSENSITIVELY, because CSS keywords and
        * function names are — css-values-4 §Textual Data Types. `INHERIT` was reported, and the
@@ -4233,8 +4246,8 @@ const A_REAL_DISPLAY = (display: string): boolean => {
   const known = KEYWORDS.display;
   if (known === undefined) return true;
   const words = new Set(known.split(" "));
-  return display
-    .replace(/\s*!\s*important\s*$/i, "")
+  // The canonical text has its spaces collapsed already; the shared strip is for one rule, not speed.
+  return withoutImportant(display)
     .split(/\s+/)
     .filter((one) => one !== "")
     .every((one) => words.has(one) || GLOBAL.has(one));
