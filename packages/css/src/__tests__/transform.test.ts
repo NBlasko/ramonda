@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import { CssBlockError } from "../compiler/errors";
 import { checkSource } from "../compiler/source";
 import { transform } from "../compiler/transform";
+import { kind } from "../declared";
 import { namedSites } from "../compiler/references";
 
 /**
@@ -1191,4 +1192,13 @@ describe("a condition at the wrong level", () => {
       expect.stringContaining("a choice picks a value — for a group, write `when $(c) { … } else { … }`"),
     ]);
   });
+});
+
+/** The build refuses a fixed declared variable set in a block — see `dollarRule.test.ts` for the rest. */
+test("a fixed declared variable set in a block stops the build", () => {
+  const config = { variables: { $color: kind("color", { sunken: "#f3f4f6" }) } };
+
+  expect(() => transform(`const x = @@( --color-sunken: red; );\nexport default x;\n`, { config })).toThrow(
+    /variable-set-against-its-declaration: `\$color\.sunken` is declared without a `range`/,
+  );
 });

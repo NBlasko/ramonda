@@ -144,3 +144,62 @@ describe("a declared variable read with a hand-written `var()`", () => {
     expect(check("color: var(--color-primary-main);", undefined)).toEqual([]);
   });
 });
+
+/**
+ * A declared variable SET in a block, against what its declaration allows.
+ *
+ * A bare declaration means it never changes — the hover says `Fixed<…>` and `toStyle` refuses to set
+ * it — and a `range` lists what it may become. Both were promises only `toStyle` kept: measured, a
+ * block wrote `--color-surface-sunken: red` over a fixed variable, and a value outside a range, in
+ * silence. `@property` cannot forbid it; CSS lets anything set a custom property.
+ */
+describe("a declared variable set in a block", () => {
+  const themed: Config = {
+    variables: {
+      $color: kind("color", {
+        sunken: "#f3f4f6",
+        moving: { value: "#ffffff", range: ["#ffffff", "#111827"] },
+        free: { value: "#ffffff", range: "any" },
+      }),
+    },
+  };
+  const set = (css: string) => check(css, themed);
+
+  test.each([
+    ["at the top", "--color-sunken: red;"],
+    ["to its own value", "--color-sunken: #f3f4f6;"],
+    ["in a nested rule", "&:hover { --color-sunken: red; }"],
+    ["in a `when`", "when $(a) { --color-sunken: red; }"],
+    ["in a match arm", "match $(t) { a => ( --color-sunken: red; ); _ => (); }"],
+  ])("a FIXED one is refused %s, naming the variable and `range`", (_what, css) => {
+    const found = set(css).filter((one) => one.rule === "variable-set-against-its-declaration");
+
+    expect(found).toHaveLength(1);
+    expect(found[0].message).toContain("`$color.sunken`");
+    expect(found[0].message).toContain("range");
+  });
+
+  test.each([
+    ["outside the range", "--color-moving: red;", "red"],
+    ["one branch of a choice outside it", "--color-moving: $(a) ? #ffffff : red;", "red"],
+    ["one arm of a match outside it", "--color-moving: match $(t) { a => #111827; _ => blue; };", "blue"],
+  ])("a value %s is refused, naming it and the range", (_what, css, value) => {
+    const found = set(css).filter((one) => one.rule === "variable-set-against-its-declaration");
+
+    expect(found).toHaveLength(1);
+    expect(found[0].message).toContain(`\`${value}\``);
+    expect(found[0].message).toContain("#ffffff, #111827");
+  });
+
+  test.each([
+    ["a value in the range", "--color-moving: #111827;"],
+    ["in another case", "--color-moving: #FFFFFF;"],
+    ["with `!important`", "--color-moving: #111827 !important;"],
+    ["a choice inside it", "--color-moving: $(a) ? #ffffff : #111827;"],
+    ["a range of `any`", "--color-free: red;"],
+    ["a value from a `var()`, which is not known here", "--color-moving: var(--elsewhere);"],
+    ["a name the project did not declare", "--brand: red;"],
+  ])("%s is not", (_what, css) => {
+    expect(set(css).map((one) => one.rule)).not.toContain("variable-set-against-its-declaration");
+  });
+});

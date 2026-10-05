@@ -1,4 +1,4 @@
-import { NARROW, namesIn, ruleFor, variablesOnlyKinds } from "../codegen";
+import { NARROW, type Named, namesIn, ruleFor, variablesOnlyKinds } from "../codegen";
 import { nearest } from "./nearest";
 import { GRAMMAR_SHAPES } from "./grammarShapes.generated";
 import { RESETS_DIFFER } from "./leaves.generated";
@@ -181,6 +181,7 @@ export const RULE_IDS = [
   "hole-as-a-variable-name",
   "initial-value-and-syntax",
   "property-descriptor-missing",
+  "variable-set-against-its-declaration",
   "unknown-media-feature",
   "value-and-registered-syntax",
   "unit-not-allowed",
@@ -476,6 +477,7 @@ export function checkBlock(written: AnyBlock, options: CheckOptions = {}): Findi
   if (references !== undefined && references.size > 0) setByAnotherName(block, references, findings);
   if (config !== undefined) unknownVariable(block, config, findings);
   if (config !== undefined) variableByHand(block, config, findings);
+  if (config !== undefined) setAgainstItsDeclaration(block, config, findings);
   tooManyValues(block, config?.properties, findings);
   literalNotAllowed(block, config?.properties, findings);
   doesNothing(block, findings);
@@ -1536,6 +1538,90 @@ function pathsDeclaredBy(config: Config): ReadonlySet<string> {
   const paths = new Set(config.variables === undefined ? [] : namesIn(config.variables).map((one) => one.path));
   declaredPaths.set(config, paths);
   return paths;
+}
+
+/** Every declared variable by its custom property, for {@link setAgainstItsDeclaration}. */
+const declaredByName = new WeakMap<Config, ReadonlyMap<string, Named>>();
+
+/**
+ * A declared variable SET in a block, against what its declaration allows.
+ *
+ * A bare declaration means the variable never changes — its type is `Fixed<…>` and `toStyle` refuses
+ * to set it — and a `range` lists what it may become. Both were kept only by `toStyle`: measured, a
+ * block wrote `--color-surface-sunken: red` over a fixed variable, and a value outside a range, and
+ * nothing said a word. `@property` cannot forbid it, because CSS lets anything set a custom property.
+ *
+ * A value this cannot read — a `var()`, a `$` variable, a value from code — is left alone; so is a
+ * range of `"any"`. A choice or a match is judged branch by branch, and the first branch outside
+ * the range is the one named.
+ */
+function setAgainstItsDeclaration(block: Block, config: Config, findings: Finding[]): void {
+  if (config.variables === undefined) return;
+  let byName = declaredByName.get(config);
+  if (byName === undefined) {
+    byName = new Map(namesIn(config.variables).map((one) => [one.name, one]));
+    declaredByName.set(config, byName);
+  }
+  const named = byName;
+
+  /** The plain text of a value, or `undefined` when it holds anything this cannot read. */
+  const textOf = (value: readonly ValuePart[]): string | undefined => {
+    if (!value.every((part) => part.kind === "text")) return undefined;
+    const text = withoutImportant(
+      value
+        .map((part) => (part.kind === "text" ? part.text : ""))
+        .join("")
+        .trim(),
+    );
+    return text === "" || holdsVar(text) ? undefined : text;
+  };
+  /** Every value the declaration may put there — one, or one per branch or arm. */
+  const outcomes = (value: readonly ValuePart[]): (string | undefined)[] => {
+    const [only] = value;
+    if (value.length === 1 && only.kind === "choice") {
+      return [...only.branches.map((branch) => textOf(branch.value)), textOf(only.otherwise)];
+    }
+    if (value.length === 1 && only.kind === "match") return only.arms.map((arm) => textOf(arm.value));
+    return [textOf(value)];
+  };
+
+  const walkItems = (items: readonly BlockItem[]): void => {
+    for (const item of items) {
+      if (item.kind === "rule") {
+        walkItems(item.items);
+        continue;
+      }
+      const one = named.get(item.property.trim());
+      if (one === undefined || item.at === undefined) continue;
+      const variable = `\`$${one.path}\``;
+
+      if (one.range === undefined) {
+        findings.push({
+          rule: "variable-set-against-its-declaration",
+          at: item.at,
+          length: item.property.trim().length,
+          message:
+            `${variable} is declared without a \`range\`, so it never changes and nothing may set it. ` +
+            `To let it change, give it one in ramonda.css.ts: \`{ value: ${JSON.stringify(one.value)}, range: [ … ] }\`.`,
+        });
+        continue;
+      }
+      if (one.range === "any") continue;
+
+      const allowed = one.range.map((each) => String(each).toLowerCase());
+      const outside = outcomes(item.value).find((text) => text !== undefined && !allowed.includes(text.toLowerCase()));
+      if (outside === undefined) continue;
+      findings.push({
+        rule: "variable-set-against-its-declaration",
+        at: item.at,
+        length: item.property.trim().length,
+        message:
+          `\`${outside}\` is not in the \`range\` of ${variable}, which may be ${one.range.join(", ")}. ` +
+          "Set one of those, or add it to the range in ramonda.css.ts.",
+      });
+    }
+  };
+  walkItems(block.items);
 }
 
 /**

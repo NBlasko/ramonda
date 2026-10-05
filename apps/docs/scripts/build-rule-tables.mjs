@@ -328,6 +328,8 @@ const CSS_LINES = {
   "value-and-registered-syntax": "a value a registered custom property cannot hold",
   "initial-value-and-syntax":
     "`@@property` with no `initial-value`, or one its `syntax` does not accept — the browser drops the rule",
+  "variable-set-against-its-declaration":
+    "a declared variable set in a block when it has no `range`, or to a value outside it",
   "property-descriptor-missing":
     "`@@property` with no `syntax` or no `inherits` — the browser drops the rule; the build's own words for what the editor's type says",
   "line-comment": "a `//` comment, which CSS does not have",
