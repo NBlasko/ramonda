@@ -1,5 +1,5 @@
 import type { BlockItem, ValuePart, VariablePart } from "./ast";
-import { SPREAD, branchOf, holeIn } from "./read";
+import { MATCH, SPREAD, branchOf, holeIn } from "./read";
 import { selectorOf } from "./flatten";
 import { expressionFor, isIdentifier } from "./dollar";
 import { collapse, propertyName } from "./normalise";
@@ -465,7 +465,19 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
    * `_` is left out of the keys, because it stands for everything the others did not and there is
    * no type for that.
    */
-  write(`declare function ${lookup}<S, const K extends readonly S[]>(subject: S, keys: K): never;`);
+  /**
+   * And, with no \`_\`, **every value the subject can be has an arm** — the third argument, written
+   * only then, at the word \`match\`. Its type is \`true\` when the keys cover the subject and a
+   * sentence naming what is missing when they do not, so the error lands on the word and says it.
+   * Only a finite union of strings is asked: a plain \`string\` has no list to cover, and a subject
+   * that may be \`undefined\` needs no arm for it — nothing is picked then.
+   */
+  write(
+    `declare function ${lookup}<S, const K extends readonly S[]>(subject: S, keys: K, whole?: ` +
+      "[NonNullable<S>] extends [string] ? string extends NonNullable<S> ? true : " +
+      "[Exclude<NonNullable<S>, K[number]>] extends [never] ? true : " +
+      "`this match has no arm for ${Exclude<NonNullable<S>, K[number]> & string} — add one, or a _ arm for the rest` : true): never;",
+  );
 
   const hole = binding(source, "__val");
   write(`declare function ${hole}<T extends import(${from}).CssValue>(value: T): T;`);
@@ -742,7 +754,12 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
             const quoted = arm.at !== undefined && (source[arm.at] === '"' || source[arm.at] === "'");
             derived(JSON.stringify(arm.key), arm.at, arm.key.length + (quoted ? 2 : 0));
           }
-          write("]),");
+          write("]");
+          if (!item.arms.some((arm) => arm.otherwise)) {
+            write(", ");
+            derived("true", item.at, MATCH.length);
+          }
+          write("),");
         }
         for (const arm of item.arms) items(arm.items, holes, keepLine, single);
         keepLine(item.end);
@@ -798,7 +815,12 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
             if (index > 0) write(", ");
             derived(JSON.stringify(arm.key), arm.at, arm.length);
           }
-          write("]),");
+          write("]");
+          if (!chosen.arms.some((arm) => arm.otherwise)) {
+            write(", ");
+            derived("true", chosen.at, MATCH.length);
+          }
+          write("),");
 
           for (const arm of chosen.arms) {
             if (arm.value.length === 0) continue;

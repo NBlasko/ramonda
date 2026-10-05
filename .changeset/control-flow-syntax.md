@@ -32,6 +32,9 @@ refused with an error that names its replacement.
 - **`glued-hole` is gone.** It fired only beside `hole-not-allowed`, about a value that is refused
   anyway, and its advice led to that same refusal. A `rules` entry naming it is now refused as not a
   rule; take it out.
+- **A `match` with no `_` must name every value its subject can be** — `match $(size) { small => … }`
+  over `"small" | "large"` is reported on `match`, naming `large`. The docs said this was checked;
+  it was not, at either level.
 - A condition holding operators — `when $(p ? q : r)` — compiled to the wrong expression. It is one
   condition now.
 

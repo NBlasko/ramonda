@@ -126,7 +126,9 @@ One expression, one value per arm. There is no destructuring, no guard and no cu
 you want those, compute the subject before the block and match on what comes out.
 
 - **The keys are checked against the subject's type.** An arm for a value the subject can never hold
-  is a fault on the key, and a missing one is a fault too unless there is a `_`.
+  is a fault on the key, and a missing one is a fault too unless there is a `_` — reported on the
+  word `match`, naming the value with no arm. A subject typed as a plain `string` has no list to
+  cover, so for it only the keys are asked.
 - **`_` answers for everything the arms above did not.** Without it, a subject that names no arm sets
   **nothing at all**, and whatever was written above it stands — the same answer `when` gives.
 - **An arm holds a literal.** `hot => $(this.x)` is refused (`hole-in-a-match-arm`): an arm carrying

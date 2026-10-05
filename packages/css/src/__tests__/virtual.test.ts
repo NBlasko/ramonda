@@ -154,7 +154,7 @@ describe("what a block becomes", () => {
     expect(preamble).not.toMatch(/\btype __|interface __/);
     // `match`'s own helper: the subject, the keys it may be, and the arms — see its declaration.
     expect(preamble).toContain(
-      `declare function __match<S, const K extends readonly S[]>(subject: S, keys: K): never;`,
+      `declare function __match<S, const K extends readonly S[]>(subject: S, keys: K, whole?: `,
     );
     expect(preamble).toContain(`__cond<T>(condition: import("./properties").CssCondition<T>): never;`);
     expect(preamble).toContain(`__from<T>(block: import("./properties").CssSpreadable<T>): never;`);
@@ -547,6 +547,51 @@ describe("through tsc, and back to the author's own file", () => {
 
     expect(found).toHaveLength(1);
     expect(found[0].line).toBe(4);
+  });
+
+  /**
+   * A match with no `_` has to name every value its subject can be — the composing page said so,
+   * and measured, neither level checked it: `match $(size) { small => … }` over `"small" | "large"`
+   * was silent, and a `large` element got nothing.
+   */
+  describe("a match with no `_`", () => {
+    const at = (source: string) => {
+      const found = check(source);
+      return found.map((one) => ({ line: one.line, column: one.column, says: one.message }));
+    };
+
+    test.each([
+      [
+        "in a value",
+        `declare const size: "small" | "large";\nconst x = @@(\n  padding: match $(size) { small => 2px; };\n);\nexport default x;\n`,
+        { line: 3, column: 12 },
+      ],
+      [
+        "over whole groups",
+        `declare const size: "small" | "large";\nconst x = @@(\n  match $(size) {\n    small => ( padding: 2px; );\n  }\n);\nexport default x;\n`,
+        { line: 3, column: 3 },
+      ],
+    ])("%s names the value it has no arm for, on the word", (_what, source, where) => {
+      const [only, ...rest] = at(source);
+
+      expect(rest).toEqual([]);
+      expect({ line: only.line, column: only.column }).toEqual(where);
+      expect(only.says).toContain("this match has no arm for large — add one, or a _ arm for the rest");
+    });
+
+    test.each([
+      ["every value named", `match $(size) { small => ( padding: 2px; ); large => ( padding: 4px; ); }`],
+      ["a `_` for the rest", `match $(size) { small => ( padding: 2px; ); _ => ( padding: 4px; ); }`],
+      ["a plain string subject, which no list could cover", `match $(name) { a => ( padding: 2px; ); }`],
+      [
+        "a subject that may be undefined, every value named",
+        `match $(maybe) { small => ( padding: 2px; ); large => ( padding: 4px; ); }`,
+      ],
+    ])("%s is quiet", (_what, block) => {
+      const source = `declare const size: "small" | "large";\ndeclare const name: string;\ndeclare const maybe: "small" | "large" | undefined;\nconst x = @@(\n  ${block}\n);\nexport default x;\n`;
+
+      expect(check(source)).toEqual([]);
+    });
   });
 
   test("a block match that is right reports nothing", () => {
