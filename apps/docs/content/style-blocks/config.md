@@ -161,6 +161,23 @@ the compiler never sees — a design system you install, a theme file — list i
 externalCustomProperties: ["--brand-hue", "--brand-chroma"],
 ```
 
+### `unknownCustomProperties` — no names made up on the spot
+
+```ts
+unknownCustomProperties: false,
+```
+
+`--brand: red;` and `var(--brand)` are then refused in a block and in a `style` attribute — any name
+that is not a token and not in `externalCustomProperties`. A name invented in one place and read in
+another works by agreement, and a typo breaks the agreement in silence. With this off, every custom
+property comes through a door that is checked:
+
+- a design value is a **token** — `$color.accent`;
+- a value from code is a **`@@property( … )`**, read as `var($(name))`;
+- a name an outside stylesheet sets goes in **`externalCustomProperties`**.
+
+Left out, any name is allowed, as in CSS. Stylesheets of your own are not checked for it.
+
 ### `outDir` — where `css-system/` goes
 
 ```ts

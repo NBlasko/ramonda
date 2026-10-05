@@ -1,6 +1,14 @@
 import ts from "typescript";
 import type { Config } from "../config";
-import { againstDeclaration, declaredByName, plainValue, settingsIn } from "./declaredSet";
+import {
+  againstDeclaration,
+  declaredByName,
+  plainValue,
+  readsIn,
+  refusedAsUnknown,
+  settingsIn,
+  unknownMessage,
+} from "./declaredSet";
 import { conflict, covers } from "./flatten";
 import { AT_RULE_LINKS, NOT_IN_A_RULE, PROPERTIES, SHORTHANDS } from "./keywords.generated";
 import { readBlock } from "./read";
@@ -54,6 +62,7 @@ export const TYPED_RULES = [
   "narrower-after-a-whole-shorthand",
   "allow-list-not-css",
   "token-set-against-its-declaration",
+  "unknown-custom-property",
 ] as const;
 
 /** A finding about a file, at an offset in the AUTHOR's own text. */
@@ -508,8 +517,57 @@ export function typedFindingsFor(
   allowListNotCss(checker, file, report);
   // The `style` attribute's half of what a block and a stylesheet are asked — see `declaredSet.ts`.
   if (config !== undefined) styleSetsADeclared(file, config, reportAt);
+  if (config?.unknownCustomProperties === false) styleMakesOneUp(file, config, reportAt);
 
   return findings;
+}
+
+/**
+ * A custom property made up in a `style` attribute, in a project that switched that off — the
+ * attribute's half of `unknown-custom-property`; the block's is in `rules.ts`. A key that sets one
+ * (`"--brand": …`), and a `var(--brand)` in a value — in an object, or in a `style` string. What it
+ * cannot see is the same as the other attribute check's: a computed key, an object built elsewhere.
+ */
+function styleMakesOneUp(
+  file: ts.SourceFile,
+  config: Config,
+  reportAt: (start: number, length: number, what: Omit<TypedFinding, "file" | "at" | "length">) => void,
+): void {
+  const say = (name: string, start: number, length: number): void => {
+    if (refusedAsUnknown(config, name))
+      reportAt(start, length, { rule: "unknown-custom-property", message: unknownMessage(name) });
+  };
+  /** Every name a piece of CSS text sets or reads, starting at `start` in the file. */
+  const css = (text: string, start: number): void => {
+    for (const setting of settingsIn(text)) say(setting.name, start + setting.at, setting.name.length);
+    for (const read of readsIn(text)) say(read.name, start + read.at, read.length);
+  };
+  const literalText = (node: ts.Node): string | undefined =>
+    ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node) ? node.text : undefined;
+
+  const visit = (node: ts.Node): void => {
+    if (ts.isJsxAttribute(node) && node.name.getText(file) === "style" && node.initializer !== undefined) {
+      const value = node.initializer;
+      const inner = ts.isJsxExpression(value) ? value.expression : value;
+      if (inner !== undefined && ts.isObjectLiteralExpression(inner)) {
+        for (const property of inner.properties) {
+          if (!ts.isPropertyAssignment(property)) continue;
+          const key = literalText(property.name);
+          if (key?.startsWith("--")) say(key, property.name.getStart(file) + 1, key.length);
+          const text = literalText(property.initializer);
+          if (text !== undefined) {
+            for (const read of readsIn(text))
+              say(read.name, property.initializer.getStart(file) + 1 + read.at, read.length);
+          }
+        }
+      } else if (inner !== undefined) {
+        const text = literalText(inner);
+        if (text !== undefined) css(text, inner.getStart(file) + 1);
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
 }
 
 /**

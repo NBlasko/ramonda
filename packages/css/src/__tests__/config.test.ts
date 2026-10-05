@@ -329,6 +329,7 @@ describe("the project's config", () => {
       ["a name in externalCustomProperties with no dashes", `{ externalCustomProperties: ["brand"] }`, /two dashes/],
       // Tokens stopped being called "variables": each old key is refused with the new name in it.
       ["the old `variables`", `{ variables: {} }`, /`tokens`/],
+      ["unknownCustomProperties as a word", `{ unknownCustomProperties: "no" }`, /true or false/],
       ["the old `alsoSets`", `{ alsoSets: ["--brand"] }`, /`externalCustomProperties`/],
       ["a rule by its old name", `{ rules: { "literal-not-allowed": "off" } }`, /`hardcoded-not-allowed`/],
       ["another rule by its old name", `{ rules: { "unknown-variable": "off" } }`, /`unknown-token`/],

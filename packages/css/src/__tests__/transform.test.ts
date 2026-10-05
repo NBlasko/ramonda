@@ -1202,3 +1202,15 @@ test("a fixed declared variable set in a block stops the build", () => {
     /token-set-against-its-declaration: `\$color\.sunken` is declared without a `range`/,
   );
 });
+
+/** A made-up custom property stops the build when the project switched them off — see `dollarRule.test.ts`. */
+test("a made-up custom property stops the build under `unknownCustomProperties: false`", () => {
+  const config = { tokens: { $color: kind("color", { a: "#000" }) }, unknownCustomProperties: false };
+
+  expect(() => transform(`const x = @@( color: var(--brand); );\nexport default x;\n`, { config })).toThrow(
+    /unknown-custom-property: `--brand` is a custom property this project does not declare/,
+  );
+  expect(
+    transform(`const x = @@( color: var(--brand); );\nexport default x;\n`, { config: { tokens: config.tokens } }),
+  ).toBeDefined();
+});

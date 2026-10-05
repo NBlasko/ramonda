@@ -328,6 +328,8 @@ const CSS_LINES = {
   "value-and-registered-syntax": "a value a registered custom property cannot hold",
   "initial-value-and-syntax":
     "`@@property` with no `initial-value`, or one its `syntax` does not accept — the browser drops the rule",
+  "unknown-custom-property":
+    "a custom property made up in a block or a `style` attribute, when `unknownCustomProperties` is `false`",
   "token-set-against-its-declaration":
     "a declared variable set with no `range`, or outside it — in a block, a project stylesheet, or a `style` attribute",
   "property-descriptor-missing":

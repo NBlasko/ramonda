@@ -101,6 +101,12 @@ export interface Config {
    */
   readonly externalCustomProperties?: readonly string[];
   /**
+   * `false` refuses a custom property made up in a block or a `style` attribute — any name that is
+   * not a token and not in {@link externalCustomProperties}. A value from code goes through
+   * `@@property( … )` instead, which is read by its binding. Left out, any name is allowed, as in CSS.
+   */
+  readonly unknownCustomProperties?: boolean;
+  /**
    * How strict this project is about each property — what codegen turns into its own types.
    *
    * ```ts
@@ -333,7 +339,15 @@ export function environmentOf(production?: boolean): ConfigEnvironment {
 const IDENTITY = new Set(["prefix", "hash", "normalise", "normalize", "names", "layer"]);
 
 /** Everything a config may hold. An unknown key is a typo, and a typo that is ignored is invisible. */
-const KNOWN = new Set(["units", "tokens", "externalCustomProperties", "properties", "outDir", "rules"]);
+const KNOWN = new Set([
+  "units",
+  "tokens",
+  "externalCustomProperties",
+  "unknownCustomProperties",
+  "properties",
+  "outDir",
+  "rules",
+]);
 
 /** Keys that were a setting and are one somewhere ELSE now. `validate` writes out where. */
 const MOVED = new Set(["variablesOnly", "variables", "alsoSets"]);
@@ -902,6 +916,11 @@ function validate(config: Record<string, unknown>, path: string): void {
         );
       }
     }
+  }
+
+  const unknown = config.unknownCustomProperties;
+  if (unknown !== undefined && typeof unknown !== "boolean") {
+    refuse(`sets \`unknownCustomProperties\` to ${describe(unknown)}. It is true or false.`);
   }
 
   const external = config.externalCustomProperties;

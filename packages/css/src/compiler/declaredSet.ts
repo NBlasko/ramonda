@@ -50,6 +50,35 @@ export function againstDeclaration(one: Named, outcomes: readonly (string | unde
   );
 }
 
+/**
+ * Whether a project that switched off made-up custom properties — `unknownCustomProperties: false`
+ * — refuses this name: one that is neither a token nor a name an outside stylesheet sets. A
+ * `@@property` never reaches here by name; it is read through its binding, `var($(name))`.
+ */
+export function refusedAsUnknown(config: Config | undefined, name: string): boolean {
+  if (config?.unknownCustomProperties !== false) return false;
+  if (declaredByName(config).has(name)) return false;
+  return !(config.externalCustomProperties ?? []).includes(name);
+}
+
+/** What `unknown-custom-property` says, the same in a block and in a `style` attribute. */
+export function unknownMessage(name: string): string {
+  return (
+    `\`${name}\` is a custom property this project does not declare, and \`unknownCustomProperties: false\` ` +
+    "refuses one made up here. Put a design value in `tokens`, a value from code in `@@property( … )`, " +
+    "or a name an outside stylesheet sets in `externalCustomProperties`."
+  );
+}
+
+/** Every `var(--name` a piece of text reads, with where the `var(` is. */
+export function readsIn(text: string): { readonly name: string; readonly at: number; readonly length: number }[] {
+  return [...text.matchAll(/var\(\s*(--[\w-]+)/gi)].map((found) => ({
+    name: found[1],
+    at: found.index ?? 0,
+    length: found[0].length,
+  }));
+}
+
 /** A value's text without a trailing `!important` and its spaces, or `undefined` for one not readable. */
 export function plainValue(text: string): string | undefined {
   let value = text.trim();

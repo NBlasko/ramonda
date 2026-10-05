@@ -203,3 +203,51 @@ describe("a declared variable set in a block", () => {
     expect(set(css).map((one) => one.rule)).not.toContain("token-set-against-its-declaration");
   });
 });
+
+/**
+ * `unknownCustomProperties: false` — a project that wants no custom property made up on the spot.
+ *
+ * Asked for by the user: a name invented in one block and read in another works by luck and breaks
+ * by a typo, and this project has three doors that are checked — tokens, `@@property`, and the
+ * names an outside stylesheet sets. With the switch off, any other name is refused.
+ */
+describe("a custom property nobody declared, with `unknownCustomProperties: false`", () => {
+  const strict: Config = {
+    tokens: { $color: kind("color", { accent: "#00f" }) },
+    externalCustomProperties: ["--mui-primary"],
+    unknownCustomProperties: false,
+  };
+  const found = (css: string, config: Config = strict) =>
+    check(css, config)
+      .filter((one) => one.rule === "unknown-custom-property")
+      .map((one) => one.message);
+
+  test.each([
+    ["set", "--brand: red;", "--brand"],
+    ["read", "color: var(--brand);", "--brand"],
+    ["read with a fallback", "color: var(--brand, blue);", "--brand"],
+    ["read inside a function", "color: color-mix(in srgb, var(--brand), white);", "--brand"],
+    ["read in a choice branch", "color: $(a) ? var(--brand) : blue;", "--brand"],
+    ["set in a nested rule", "&:hover { --brand: red; }", "--brand"],
+  ])("is refused, %s", (_what, css, name) => {
+    const [only, ...rest] = found(css);
+
+    expect(rest).toEqual([]);
+    expect(only).toContain(`\`${name}\``);
+    expect(only).toContain("`tokens`");
+    expect(only).toContain("`@@property");
+    expect(only).toContain("`externalCustomProperties`");
+  });
+
+  test.each([
+    ["a token set by name", "--color-accent: #00f;"],
+    ["an outside name, read and set", "--mui-primary: red; color: var(--mui-primary);"],
+    ["a registered property, through its binding", "color: var($(w));"],
+  ])("is not: %s", (_what, css) => {
+    expect(found(css)).toEqual([]);
+  });
+
+  test("and nothing is refused when the switch is left alone", () => {
+    expect(found("--brand: red; color: var(--brand);", { tokens: strict.tokens })).toEqual([]);
+  });
+});

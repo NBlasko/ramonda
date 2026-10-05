@@ -2791,3 +2791,30 @@ describe("a `style` attribute setting a declared variable", () => {
     expect(found(jsx)).toEqual([]);
   });
 });
+
+/** The `style` attribute's half of `unknown-custom-property` — see `dollarRule.test.ts` for the block's. */
+describe("a made-up custom property in a `style` attribute, with `unknownCustomProperties: false`", () => {
+  const CONFIG =
+    `import { kind } from ${JSON.stringify(join(PACKAGE, "dist", "config.js"))};\n` +
+    `export default { tokens: { $color: kind("color", { moving: { value: "#fff", range: "any" } }) },\n` +
+    `  externalCustomProperties: ["--mui-primary"], unknownCustomProperties: false };\n`;
+  const found = (jsx: string) =>
+    checkProject(project({ "ramonda.css.ts": CONFIG, "Card.tsx": `export const Card = () => ${jsx};\n` }))
+      .findings.filter((one) => one.code === "unknown-custom-property")
+      .map((one) => one.message.split(" is ")[0]);
+
+  test.each([
+    ["set as an object key", `<p style={{ "--brand": "red" }}>x</p>`, ["`--brand`"]],
+    ["read in an object value", `<p style={{ color: "var(--brand)" }}>x</p>`, ["`--brand`"]],
+    ["set and read in a string", `<p style="--a: red; color: var(--b)">x</p>`, ["`--a`", "`--b`"]],
+  ])("is reported: %s", (_what, jsx, names) => {
+    expect(found(jsx)).toEqual(names);
+  });
+
+  test.each([
+    ["a token set by name", `<p style={{ "--color-moving": "red" }}>x</p>`],
+    ["an outside name", `<p style={{ "--mui-primary": "red", color: "var(--mui-primary)" }}>x</p>`],
+  ])("is not: %s", (_what, jsx) => {
+    expect(found(jsx)).toEqual([]);
+  });
+});

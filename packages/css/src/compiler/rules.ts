@@ -1,12 +1,26 @@
 import { NARROW, namesIn, ruleFor, tokensOnlyKinds } from "../codegen";
-import { againstDeclaration, declaredByName, plainValue } from "./declaredSet";
+import {
+  againstDeclaration,
+  declaredByName,
+  plainValue,
+  readsIn,
+  refusedAsUnknown,
+  unknownMessage,
+} from "./declaredSet";
 import { nearest } from "./nearest";
 import { GRAMMAR_SHAPES } from "./grammarShapes.generated";
 import { RESETS_DIFFER } from "./leaves.generated";
 import { SHAPES } from "./shapes.generated";
 import { holdsVar, misplacedWord } from "./split";
 import type { Config, PropertyRules, UnitsByFamily } from "../config";
-import type { Block as AnyBlock, BlockItem as AnyItem, Declaration, NestedRule as AnyRule, ValuePart } from "./ast";
+import type {
+  Block as AnyBlock,
+  BlockItem as AnyItem,
+  Declaration,
+  NestedRule as AnyRule,
+  TextPart,
+  ValuePart,
+} from "./ast";
 import { childrenOf, runtimeValuesIn } from "./ast";
 import { nameFor } from "./dollar";
 import { HOLE } from "./normalise";
@@ -196,6 +210,7 @@ export const RULE_IDS = [
   "initial-value-and-syntax",
   "property-descriptor-missing",
   "token-set-against-its-declaration",
+  "unknown-custom-property",
   "unknown-media-feature",
   "value-and-registered-syntax",
   "unit-not-allowed",
@@ -492,6 +507,7 @@ export function checkBlock(written: AnyBlock, options: CheckOptions = {}): Findi
   if (config !== undefined) unknownVariable(block, config, findings);
   if (config !== undefined) variableByHand(block, config, findings);
   if (config !== undefined) setAgainstItsDeclaration(block, config, findings);
+  if (config?.unknownCustomProperties === false) unknownCustomProperty(block, config, findings);
   tooManyValues(block, config?.properties, findings);
   literalNotAllowed(block, config?.properties, findings);
   doesNothing(block, findings);
@@ -1550,6 +1566,54 @@ function pathsDeclaredBy(config: Config): ReadonlySet<string> {
   const paths = new Set(config.tokens === undefined ? [] : namesIn(config.tokens).map((one) => one.path));
   declaredPaths.set(config, paths);
   return paths;
+}
+
+/**
+ * A custom property made up in a block, in a project that switched that off — the block's half of
+ * `unknown-custom-property`; the `style` attribute's is in `typed.ts`. Set or read: `--brand: red`
+ * and `var(--brand)`, at any depth, in a choice's branches and a match's arms too.
+ */
+function unknownCustomProperty(block: Block, config: Config, findings: Finding[]): void {
+  const texts = (value: readonly ValuePart[]): TextPart[] =>
+    value.flatMap((part) =>
+      part.kind === "text"
+        ? [part]
+        : part.kind === "choice"
+          ? [...part.branches.flatMap((branch) => texts(branch.value)), ...texts(part.otherwise)]
+          : part.kind === "match"
+            ? part.arms.flatMap((arm) => texts(arm.value))
+            : [],
+    );
+  const walkItems = (items: readonly BlockItem[]): void => {
+    for (const item of items) {
+      if (item.kind === "rule") {
+        walkItems(item.items);
+        continue;
+      }
+      const property = item.property.trim();
+      if (property.startsWith("--") && item.at !== undefined && refusedAsUnknown(config, property)) {
+        findings.push({
+          rule: "unknown-custom-property",
+          at: item.at,
+          length: property.length,
+          message: unknownMessage(property),
+        });
+      }
+      for (const part of texts(item.value)) {
+        if (part.at === undefined) continue;
+        for (const read of readsIn(part.text)) {
+          if (!refusedAsUnknown(config, read.name)) continue;
+          findings.push({
+            rule: "unknown-custom-property",
+            at: part.at + read.at,
+            length: read.length,
+            message: unknownMessage(read.name),
+          });
+        }
+      }
+    }
+  };
+  walkItems(block.items);
 }
 
 /**
