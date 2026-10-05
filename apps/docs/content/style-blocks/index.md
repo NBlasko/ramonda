@@ -115,6 +115,10 @@ code --install-extension ramonda.css
 
 Or search **Ramonda CSS** in the Extensions panel.
 
+**Update it when you update `@ramonda/css`.** The colours follow the syntax of the version the
+extension was made for, so after a new spelling an older extension colours it wrong — the checks
+are still your project's own, and still right.
+
 Formatting then depends on what your project already uses, and the two answers are opposite.
 
 **Using Prettier? Keep Prettier, and do not touch `editor.defaultFormatter`.** `@ramonda/css` ships a
