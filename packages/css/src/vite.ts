@@ -1,10 +1,11 @@
-import { CssBlockError } from "./compiler/errors";
+import { CssBlockError, positionOf } from "./compiler/errors";
 import { readFileSync } from "node:fs";
 import { basename, dirname, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { knownNames, type Config, configReader, environmentOf } from "./config";
 import { forgetGenerated, variablesSheetFor, writeGenerated } from "./generate";
+import { settingsAgainst } from "./compiler/declaredSet";
 import { warnIfStale } from "./stale";
 import { readModule } from "./modules";
 import { loaderFor } from "./esbuild";
@@ -202,6 +203,31 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
    *
    * `styled` is what makes that free: a file that never had a block is not looked up at all.
    */
+  /**
+   * A project stylesheet setting a declared variable its declaration does not allow.
+   *
+   * A theme is plain CSS, and plain CSS is where a fixed variable gets changed: measured, this
+   * plugin is handed every stylesheet the app loads — imported, a CSS module, and one linked from
+   * `index.html` — in a build and on the dev server, as written, since it runs first. The judgement
+   * is the one a block gets (`declaredSet.ts`). The generated `variables.css` is skipped: it is where
+   * every variable is SET to its initial, which is the declaration itself.
+   */
+  function checkStylesheet(file: string, code: string): void {
+    const config = configFor(file);
+    if (config === undefined || config.rules?.["variable-set-against-its-declaration"] === "off") return;
+    if (variablesSheetFor(file) === resolve(file)) return;
+    const [first] = settingsAgainst(code, config);
+    if (first === undefined) return;
+    const { line, column } = positionOf(code, first.at);
+    throw Object.assign(
+      new Error(`${file}:${line}:${column}  variable-set-against-its-declaration: ${first.message}`),
+      {
+        id: file,
+        loc: { line, column: column - 1 },
+      },
+    );
+  }
+
   function compile(file: string, code: string) {
     /**
      * Asked first, and it is half the key.
@@ -451,6 +477,10 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
       if (id.endsWith(SUFFIX)) return null;
 
       const file = id.split("?")[0];
+      if (file.endsWith(".css") && !file.includes("node_modules") && !id.startsWith("\0")) {
+        checkStylesheet(file, code);
+        return null;
+      }
       // A query string is Vite's — `?used`, `?v=hash`, `?worker`. A file skipped because of one is a
       // file whose blocks silently do not compile.
       if (!fileMayHoldABlock(file) || file.includes("node_modules") || id.startsWith("\0")) return null;

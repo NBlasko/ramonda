@@ -266,6 +266,11 @@ const card = @@(
 
 The values on `:root` come from `variables.css`, so the override is the only CSS you write.
 
+**A variable with no `range` cannot be overridden.** It was declared as one value, so setting it
+anywhere is refused — in a block, in a stylesheet the app loads (by the Vite or esbuild plugin, at the
+file and line), and in a `style` attribute (in the editor and `ramonda-check`). The message says to
+give it a `range`. A value outside a `range` is refused the same way.
+
 ### `light-dark()` resolves where the variable is set
 
 A declared variable is registered with `@property`, which gives it a type and a computed value —

@@ -313,7 +313,12 @@ export function checkProject(tsconfig: string, options: CheckOptions = {}): Repo
    */
   const candidates = registered.filter(({ site }) => readsRegistered.has(site.name) && !blockSets.has(site.name));
 
-  for (const found of [...typedFindings(program, overlays), ...registeredNeverSet(program, overlays, candidates)]) {
+  for (const found of [
+    ...typedFindings(program, overlays, (fileName) =>
+      fileName.includes("node_modules") ? undefined : configFor(fileName),
+    ),
+    ...registeredNeverSet(program, overlays, candidates),
+  ]) {
     const text = overlays.get(found.file)?.source ?? program.getSourceFile(found.file)?.text;
     if (text === undefined) continue;
 

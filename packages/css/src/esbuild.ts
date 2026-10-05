@@ -4,7 +4,8 @@ import ts from "typescript";
 import { knownNames, configReader, environmentOf } from "./config";
 import { variablesSheetFor, writeGenerated } from "./generate";
 import { readModule } from "./modules";
-import { CssBlockError } from "./compiler/errors";
+import { CssBlockError, positionOf } from "./compiler/errors";
+import { settingsAgainst } from "./compiler/declaredSet";
 import { fileMayHoldABlock, mayHoldABlock } from "./compiler/scan";
 import { Sheet } from "./compiler/sheet";
 import { transform } from "./compiler/transform";
@@ -242,6 +243,30 @@ export function ramondaCss(options: EsbuildCssPluginOptions = {}): EsbuildCssPlu
         contents: sheet.cssFor(args.path.slice(0, -SUFFIX.length)),
         loader: "css",
       }));
+
+      /**
+       * A project stylesheet setting a declared variable its declaration does not allow — the same
+       * judgement a block gets, for the plain CSS a theme is written in. See `checkStylesheet` in
+       * `vite.ts`. Declined when it is fine, so esbuild loads it with its own `css` loader.
+       */
+      build.onLoad({ filter: /\.css$/ }, (args) => {
+        if (args.path.includes("node_modules")) return undefined;
+        const config = configFor(args.path);
+        if (config === undefined || config.rules?.["variable-set-against-its-declaration"] === "off") return undefined;
+        if (variablesSheetFor(args.path) === resolve(args.path)) return undefined;
+        const code = readFileSync(args.path, "utf8");
+        const [first] = settingsAgainst(code, config);
+        if (first === undefined) return undefined;
+        const { line, column } = positionOf(code, first.at);
+        return {
+          errors: [
+            {
+              text: `variable-set-against-its-declaration: ${first.message}`,
+              location: { file: args.path, line, column: column - 1 },
+            },
+          ],
+        };
+      });
 
       build.onLoad({ filter: options.filter ?? SOURCE }, (args) => {
         // The regex above is esbuild's own coarse filter; this is the question every consumer asks.

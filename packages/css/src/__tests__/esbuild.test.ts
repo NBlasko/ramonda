@@ -538,3 +538,37 @@ describe("codegen through the plugin", () => {
     expect(existsSync(join(root, join("css-system", "index.ts")))).toBe(false);
   });
 });
+
+/** A theme stylesheet setting a fixed declared variable stops the esbuild build too — see `viteBuild.test.ts`. */
+describe("a stylesheet setting a declared variable", () => {
+  const CONFIG_FIXED = `import { kind } from "@ramonda/css/config";\nexport default { variables: { $color: kind("color", { sunken: "#f3f4f6" }) } };\n`;
+
+  test("a fixed one stops the build, at the file and line", async () => {
+    const root = project({
+      "index.tsx": `import "./theme.css";\nexport const x = 1;\n`,
+      "theme.css": `[data-theme="dark"] {\n  --color-sunken: #111827;\n}\n`,
+      "ramonda.css.ts": CONFIG_FIXED,
+    });
+
+    const failure = await build(root).then(
+      () => undefined,
+      (error: esbuild.BuildFailure) => error,
+    );
+
+    expect(failure).toBeDefined();
+    expect(spoken(failure as esbuild.BuildFailure)).toContain("`$color.sunken` is declared without a `range`");
+    expect(failure?.errors[0].location).toMatchObject({ line: 2, column: 2 });
+  });
+
+  test("and one that sets nothing declared builds, through esbuild's own css loader", async () => {
+    const root = project({
+      "index.tsx": `import "./theme.css";\nexport const x = 1;\n`,
+      "theme.css": `.x { --brand: red; color: var(--color-sunken); }\n`,
+      "ramonda.css.ts": CONFIG_FIXED,
+    });
+
+    const result = await build(root);
+
+    expect(outputs(result).css).toContain("--brand: red");
+  });
+});

@@ -2741,3 +2741,53 @@ describe("the allow-list check, second review", () => {
     expect(report).not.toContain("allow-list-not-css");
   });
 });
+
+/**
+ * A `style` attribute setting a declared variable its declaration does not allow — the attribute's
+ * half of `variable-set-against-its-declaration`. Measured before: both spellings passed while
+ * `toStyle` refused the same setting.
+ */
+describe("a `style` attribute setting a declared variable", () => {
+  const CONFIG =
+    `import { kind } from ${JSON.stringify(join(PACKAGE, "dist", "config.js"))};\n` +
+    `export default { variables: { $color: kind("color", {\n` +
+    `  sunken: "#f3f4f6",\n` +
+    `  moving: { value: "#ffffff", range: ["#ffffff", "#111827"] },\n` +
+    `}) } };\n`;
+  const found = (jsx: string) => {
+    const card = `export const Card = (on: boolean, v: string) => ${jsx};\n`;
+    const out = checkProject(project({ "ramonda.css.ts": CONFIG, "Card.tsx": card })).findings;
+    return out
+      .filter((one) => one.code === "variable-set-against-its-declaration")
+      .map((one) => ({ column: one.column, message: one.message }));
+  };
+
+  test.each([
+    ["an object key", `<p style={{ "--color-sunken": "red" }}>x</p>`, 62],
+    ["an object key with a value from code", `<p style={{ "--color-sunken": v }}>x</p>`, 62],
+    ["a string", `<p style="color: red; --color-sunken: red">x</p>`, 71],
+    ["a string in braces", `<p style={"--color-sunken: red"}>x</p>`, 60],
+  ])("a FIXED one is reported: %s, on the name", (_what, jsx, column) => {
+    const [only, ...rest] = found(jsx);
+
+    expect(rest).toEqual([]);
+    expect(only.column).toBe(column);
+    expect(only.message).toContain("`$color.sunken` is declared without a `range`");
+  });
+
+  test.each([
+    ["a value outside it", `<p style={{ "--color-moving": "red" }}>x</p>`],
+    ["one arm of a ternary outside it", `<p style={{ "--color-moving": on ? "#111827" : "red" }}>x</p>`],
+  ])("a ranged one is reported for %s", (_what, jsx) => {
+    expect(found(jsx).map((one) => one.message)).toEqual([expect.stringContaining("`red` is not in the `range`")]);
+  });
+
+  test.each([
+    ["a value in the range", `<p style={{ "--color-moving": on ? "#111827" : "#ffffff" }}>x</p>`],
+    ["a value from code for a ranged one", `<p style={{ "--color-moving": v }}>x</p>`],
+    ["a name nobody declared", `<p style={{ "--brand": "red" }}>x</p>`],
+    ["an ordinary property", `<p style={{ color: "red" }}>x</p>`],
+  ])("nothing for %s", (_what, jsx) => {
+    expect(found(jsx)).toEqual([]);
+  });
+});

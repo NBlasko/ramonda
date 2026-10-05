@@ -368,6 +368,7 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
           program.getTypeChecker(),
           source,
           file === undefined ? undefined : { virtual: file },
+          projectConfig(fileName),
         );
         return ours(found, cache.get(fileName)?.author);
       };
