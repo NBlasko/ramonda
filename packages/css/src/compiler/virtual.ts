@@ -416,7 +416,7 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
    */
   write(
     `declare var ${variables}: typeof import(${from}) extends infer M ? ({ [K in keyof M as K extends \`$\${infer G}\` ? G : never]: M[K] } extends infer V ? (keyof V extends never ? ` +
-      `"Declare your variables in ramonda.css.ts, then run \`ramonda-css codegen\`." : V) : never) : never;`,
+      `"Declare your tokens in ramonda.css.ts, then run \`ramonda-css codegen\`." : V) : never) : never;`,
   );
 
   const condition = binding(source, "__cond");

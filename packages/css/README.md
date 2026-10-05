@@ -55,7 +55,7 @@ line, because an editor stops consulting syntax injections the moment it enters 
 and Prettier rewrote it to the braced form anyway, so the file you saved was not the file you
 wrote.
 
-## Variables a project declares
+## Tokens a project declares
 
 Declare them once, in a `ramonda.css.ts` beside your `tsconfig.json`, and read them by path:
 
@@ -63,7 +63,7 @@ Declare them once, in a `ramonda.css.ts` beside your `tsconfig.json`, and read t
 import { kind } from "@ramonda/css/config";
 
 export default {
-  variables: {
+  tokens: {
     $color: kind("color", { accent: "#10b981" }),
     $space: kind("length", { gutter: "16px" }),
   },
@@ -81,11 +81,11 @@ const card = @@(
 misspell, and a typo is a TypeScript error with the suggestion it already knows how to make.
 
 The **kind** is checked in both directions. `padding-left: $color.accent` is refused before
-anything runs; and `codegen` writes an `@property` registration for every variable, so a value the
+anything runs; and `codegen` writes an `@property` registration for every token, so a value the
 browser cannot use falls back to the declared one instead of collapsing the element that reads it.
 
 `npx ramonda-css codegen` writes `css-system/` beside the config — one export per group (`$color`,
-`$space`) for code, this project's narrowed types, and a `variables.css` your app imports once. Both bundler plugins run it for you.
+`$space`) for code, this project's narrowed types, and a `tokens.css` your app imports once. Both bundler plugins run it for you.
 Commit the folder: your editor reads it, so a fresh clone is checked before anything is built.
 
 The same file is where a project narrows what a block may say at all — which units, which values,

@@ -11,7 +11,7 @@ import {
 } from "./compiler/keywords.generated";
 import { CONDITION, MATCH, type Span, readBlock } from "./compiler/read";
 import { NAMED_BLOCKS, REPLACED_CODES, SPEAKS_OVER_TYPES, type Finding } from "./compiler/rules";
-import { variablesOnlyKinds } from "./codegen";
+import { tokensOnlyKinds } from "./codegen";
 import { checkedSource } from "./compiler/source";
 import { fileMayHoldABlock, findBlocks } from "./compiler/scan";
 import { typedFindingsFor } from "./compiler/typed";
@@ -204,7 +204,7 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
        * What it also took was every RULE, in silence. Measured across nine broken configs, with a
        * block breaking two of the project's own settings:
        *
-       *     GOOD             [unit-not-allowed] … | [literal-not-allowed] …
+       *     GOOD             [unit-not-allowed] … | [hardcoded-not-allowed] …
        *     a syntax error   (nothing)
        *     units: "px"      (nothing)            … and six more, every one silent
        *
@@ -1831,14 +1831,14 @@ function valueWords(property: string, config: Config): readonly string[] | undef
    *
    * The trap `DESIGN.md` named before any of this was built: *"the offer has to match what the rule
    * accepts, or the editor suggests what the checker reports."* Measured, it had gone wrong exactly
-   * here — `"<color>": { variablesOnly: true }` and typing `color: ` still offered all 210 colour
-   * keywords, every one of which `literal-not-allowed` then refuses.
+   * here — `"<color>": { hardcoded: false }` and typing `color: ` still offered all 210 colour
+   * keywords, every one of which `hardcoded-not-allowed` then refuses.
    *
    * What stays is what the SETTING itself leaves alone, so the two agree by construction rather
    * than by a second list: `currentcolor` is a reference to the inherited colour rather than one
    * anybody wrote, and the CSS-wide keywords below are not values either.
    */
-  const kinds = variablesOnlyKinds(config.properties);
+  const kinds = tokensOnlyKinds(config.properties);
   const primitive = PRIMITIVE[property];
   const literal =
     primitive !== undefined && kinds.includes(primitive) ? (word: string) => word === "currentcolor" : () => true;

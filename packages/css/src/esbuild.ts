@@ -252,7 +252,7 @@ export function ramondaCss(options: EsbuildCssPluginOptions = {}): EsbuildCssPlu
       build.onLoad({ filter: /\.css$/ }, (args) => {
         if (args.path.includes("node_modules")) return undefined;
         const config = configFor(args.path);
-        if (config === undefined || config.rules?.["variable-set-against-its-declaration"] === "off") return undefined;
+        if (config === undefined || config.rules?.["token-set-against-its-declaration"] === "off") return undefined;
         if (variablesSheetFor(args.path) === resolve(args.path)) return undefined;
         const code = readFileSync(args.path, "utf8");
         const [first] = settingsAgainst(code, config);
@@ -261,7 +261,7 @@ export function ramondaCss(options: EsbuildCssPluginOptions = {}): EsbuildCssPlu
         return {
           errors: [
             {
-              text: `variable-set-against-its-declaration: ${first.message}`,
+              text: `token-set-against-its-declaration: ${first.message}`,
               location: { file: args.path, line, column: column - 1 },
             },
           ],

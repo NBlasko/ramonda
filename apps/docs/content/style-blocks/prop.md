@@ -23,10 +23,10 @@ display — anything — and the component finds out when something looks wrong 
 
 **`CssBlock` is a type you import**, and where from depends on whether your project has a
 [`ramonda.css.ts`](/style-blocks/config). With one, codegen puts it in the generated `css-system`
-beside the variable groups and `Var`, which is the one import a component needs:
+beside the token groups and `AnyToken`, which is the one import a component needs:
 
 ```ts
-import type { CssBlock, Var } from "./css-system";
+import type { AnyToken, CssBlock } from "./css-system";
 ```
 
 Without a config there is no `css-system`, and it comes from `@ramonda/css/properties`.
@@ -67,9 +67,9 @@ type-checks, it builds, and the caller it stops protecting is told nothing.
 `Token<"color">` is any declared colour, and it comes from `@ramonda/css`. A caller may recolour a
 card and may not write `#ff0055`, so the palette stays the one place colours are decided.
 
-A project usually wants the narrower one. Codegen writes `Var<"color">` into the `css-system` beside
+A project usually wants the narrower one. Codegen writes `AnyToken<"color">` into the `css-system` beside
 `ramonda.css.ts`, and it is **this project's own** colours rather than any declared anywhere — the
-same shape, one step tighter. [Names the stylesheet sees](/style-blocks/variables) is where both
+same shape, one step tighter. [Names the stylesheet sees](/style-blocks/tokens) is where both
 come from.
 
 ## Where a fault lands
@@ -167,7 +167,7 @@ one line by [the ignore directive](/style-blocks/checking#when-a-rule-is-wrong).
 
 - **[Composing, and who wins](/style-blocks/composing)** — the spread, `when` and `match`, and the order a
   merge settles.
-- **[Names the stylesheet sees](/style-blocks/variables)** — where `Token<"color">` and `$color` come
+- **[Names the stylesheet sees](/style-blocks/tokens)** — where `Token<"color">` and `$color` come
   from.
 - **[Project settings](/style-blocks/settings)** — the same constraints written once for a whole
   project.

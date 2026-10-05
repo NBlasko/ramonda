@@ -130,7 +130,7 @@ somebody meets, instead of one they would have to go looking for.
 Everything above is CSS being checked against itself, and it needs no config. A
 [`ramonda.css.ts`](/style-blocks/config) adds reports that are yours rather than CSS's — a unit this
 project does not use, a value outside a list it gave, a shorthand it switched off, a colour written
-out where it takes colours from variables, a `$` path it does not declare. Each is a row in the
+out where it takes colours from tokens, a `$` path it does not declare. Each is a row in the
 table below, and each fails the build the same way.
 
 **If that file cannot be read, your editor says so on the block.** The completions keep working, but
@@ -166,11 +166,11 @@ Every one of them fails the build. 61 of them, and each is a key you can switch 
 | `declaration-out-of-place` | a declaration where only a rule belongs |
 | `rule-out-of-place` | a nested rule where only declarations belong |
 | `override-out-of-order` | a declaration written to override one that will win anyway |
-| `variable-set-by-another-name` | a `var()` reading a name set with different capitals |
-| `hole-as-a-variable-name` | a hole naming a custom property rather than holding a value |
+| `custom-property-set-by-another-name` | a `var()` reading a name set with different capitals |
+| `hole-as-a-custom-property-name` | a hole naming a custom property rather than holding a value |
 | `initial-value-and-syntax` | `@@property` with no `initial-value`, or one its `syntax` does not accept — the browser drops the rule |
 | `property-descriptor-missing` | `@@property` with no `syntax` or no `inherits` — the browser drops the rule; the build's own words for what the editor's type says |
-| `variable-set-against-its-declaration` | a declared variable set with no `range`, or outside it — in a block, a project stylesheet, or a `style` attribute |
+| `token-set-against-its-declaration` | a declared variable set with no `range`, or outside it — in a block, a project stylesheet, or a `style` attribute |
 | `unknown-media-feature` | a media feature that will never match |
 | `value-and-registered-syntax` | a value a registered custom property cannot hold |
 | `unit-not-allowed` | a unit your `ramonda.css.ts` does not allow |
@@ -195,12 +195,12 @@ Every one of them fails the build. 61 of them, and each is a key you can switch 
 | `unknown-selector` | a pseudo-class or pseudo-element that is not one — the whole rule is dropped |
 | `unknown-flag` | a `!` at the end of a value that is not `!important` |
 | `unclosed-call` | a `(` in a value that no `)` closes — the value runs past the end of the block |
-| `unknown-variable` | `$group.…` naming a variable your `ramonda.css.ts` does not declare |
-| `variable-by-hand` | `var(--…)` written by hand for a variable your `ramonda.css.ts` declares — write `$group.…` |
+| `unknown-token` | `$group.…` naming a variable your `ramonda.css.ts` does not declare |
+| `token-by-hand` | `var(--…)` written by hand for a variable your `ramonda.css.ts` declares — write `$group.…` |
 | `block-refused` | what the build refuses, shown in the editor in the build's own words — it cannot be switched off |
 | `too-many-values` | more values than the property takes — in CSS, or in your `ramonda.css.ts` |
 | `missing-semicolon` | a declaration with no `;`, which swallows the line written under it |
-| `literal-not-allowed` | a value written out where your `ramonda.css.ts` takes that kind from variables |
+| `hardcoded-not-allowed` | a value written out where your `ramonda.css.ts` takes that kind from variables |
 | `declaration-does-nothing` | a declaration another one on the same element switches off — valid CSS the browser ignores |
 | `style-prop-never-used` | a prop that takes a style block and never puts it on an element |
 | `style-prop-overridden` | a declaration below the spread that clears what a caller may send |

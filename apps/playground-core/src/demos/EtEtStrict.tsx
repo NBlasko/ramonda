@@ -8,7 +8,7 @@ export class EtEtStrict extends Component {
    * its own class, so the subject picks between classes that are already in the stylesheet.
    *
    * The arms are `$` paths and need no import, because an arm is CSS — this file imports nothing
-   * from `css-system` at all now, which is the rule working. `Var<"color">` is still what an
+   * from `css-system` at all now, which is the rule working. `AnyToken<"color">` is still what an
    * annotation says when the choice is made in TypeScript and handed to `toStyle`.
    */
   tone: "quiet" | "loud" = "quiet";

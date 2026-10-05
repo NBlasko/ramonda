@@ -79,7 +79,7 @@ export function checkedSource(
   /** Every `@@property( … )` this file declares — see {@link RegisteredSite}. */
   const registered: RegisteredSite[] = [];
   // The same reader the build uses, or none — and none means a cross-module reference stays a hole,
-  // which `hole-as-a-variable-name` reports. A checker that resolved less than the build would call
+  // which `hole-as-a-custom-property-name` reports. A checker that resolved less than the build would call
   // a working theme a fault; one that resolved more would miss one. Both consumers pass the same.
   const references = namedSites(source, { filename: fileName, read });
   // What each registered property may HOLD, beside what it is called — see `syntaxesIn`.

@@ -1486,7 +1486,7 @@ describe("a variable set by one name and read by another", () => {
     const found = bound("  --accent: blue;\n  background: var($(accent));");
 
     expect(found).toHaveLength(1);
-    expect(found[0].rule).toBe("variable-set-by-another-name");
+    expect(found[0].rule).toBe("custom-property-set-by-another-name");
     expect(found[0].message).toContain("accent");
   });
 
@@ -1613,16 +1613,22 @@ describe("a hole where `var()` takes a name", () => {
   const rules = (source: string) => of(source).map((one) => one.rule);
 
   test("directly inside `var(`", () => {
-    expect(rules(`@@(\n  background: var($(accent));\n)`)).toEqual(["hole-as-a-variable-name", "hole-not-allowed"]);
+    expect(rules(`@@(\n  background: var($(accent));\n)`)).toEqual([
+      "hole-as-a-custom-property-name",
+      "hole-not-allowed",
+    ]);
   });
 
   test("with whitespace between, which changes nothing", () => {
-    expect(rules(`@@(\n  background: var(  $(accent) );\n)`)).toEqual(["hole-as-a-variable-name", "hole-not-allowed"]);
+    expect(rules(`@@(\n  background: var(  $(accent) );\n)`)).toEqual([
+      "hole-as-a-custom-property-name",
+      "hole-not-allowed",
+    ]);
   });
 
   test("and nested in a fallback's own `var(`, which is still a name position", () => {
     expect(rules(`@@(\n  background: var(--brand, var($(accent)));\n)`)).toEqual([
-      "hole-as-a-variable-name",
+      "hole-as-a-custom-property-name",
       "hole-not-allowed",
     ]);
   });
@@ -1640,7 +1646,7 @@ describe("a hole where `var()` takes a name", () => {
 
   describe("what it must not report", () => {
     test("a hole in the FALLBACK, which is a name position no longer", () => {
-      expect(rules(`@@(\n  background: var(--brand, $(fallback));\n)`)).not.toContain("hole-as-a-variable-name");
+      expect(rules(`@@(\n  background: var(--brand, $(fallback));\n)`)).not.toContain("hole-as-a-custom-property-name");
     });
 
     test("an ordinary hole, which is refused for being a hole and not for standing in a name", () => {
@@ -2923,7 +2929,7 @@ describe("a keyword written in capitals", () => {
  *
  * And the data was already there. `HolePart` carries `at` and `length`, and its own note says why:
  * *"for a squiggle over the hole itself … it is what lets a rule about a hole's POSITION point at
- * the hole rather than at the declaration holding it."* `hole-as-a-variable-name` reads it.
+ * the hole rather than at the declaration holding it."* `hole-as-a-custom-property-name` reads it.
  * `hole-in-a-named-block` did not — one question, two answers, which is this
  * repository's recurring fault.
  *
@@ -3430,20 +3436,20 @@ describe("a declaration with no semicolon", () => {
  * `4px solid red` as well. So this reads those, and only those: one mechanism per property.
  */
 describe("a colour written out, where the project said variables only", () => {
-  const ONLY: Config = { properties: { "<color>": { variablesOnly: true } } };
+  const ONLY: Config = { properties: { "<color>": { hardcoded: false } } };
 
   test.each([
     ["a named colour inside a shorthand", "  border-left: 4px solid red;"],
     ["a hex", "  box-shadow: 0 1px 2px #00000022;"],
     ["a colour function", "  background: linear-gradient(rgb(0 0 0), white);"],
   ])("%s is reported", (_what, css) => {
-    expect(rulesWith(css, ONLY)).toEqual(["literal-not-allowed"]);
+    expect(rulesWith(css, ONLY)).toEqual(["hardcoded-not-allowed"]);
   });
 
   test("a variable is what it is asking for, and says nothing", () => {
-    // Declared, because `unknown-variable` would otherwise speak about the path and this test would
+    // Declared, because `unknown-token` would otherwise speak about the path and this test would
     // be measuring that rule instead of this one.
-    const declared: Config = { ...ONLY, variables: { $color: kind("color", { accent: { main: "#10b981" } }) } };
+    const declared: Config = { ...ONLY, tokens: { $color: kind("color", { accent: { main: "#10b981" } }) } };
 
     expect(rulesWith("  border-left: 4px solid $color.accent.main;", declared)).toEqual([]);
   });
@@ -3465,8 +3471,8 @@ describe("a colour written out, where the project said variables only", () => {
    * reason was really asking for.
    */
   test("a property whose grammar says it takes a colour is read here too", () => {
-    expect(rulesWith("  color: red;", ONLY)).toEqual(["literal-not-allowed"]);
-    expect(rulesWith("  background-color: #fff;", ONLY)).toEqual(["literal-not-allowed"]);
+    expect(rulesWith("  color: red;", ONLY)).toEqual(["hardcoded-not-allowed"]);
+    expect(rulesWith("  background-color: #fff;", ONLY)).toEqual(["hardcoded-not-allowed"]);
   });
 
   test("a property that takes no colour has nothing to find", () => {
@@ -3562,14 +3568,14 @@ describe("units, by family", () => {
  *     padding-left: 8px       []                        the build compiled it
  *     width: 200px            []                        and this
  *     color: red              []                        and this
- *     border: 1px solid red   [literal-not-allowed]     only the composite was caught
+ *     border: 1px solid red   [hardcoded-not-allowed]     only the composite was caught
  *
  * So a project could set `variablesOnly`, watch `ramonda-css check` refuse a file, and watch the
  * dev server serve it. One rule, three consumers, and two of them silent — the repository's
  * recurring fault, found once more by asking what a setting means.
  *
  * The rule speaks for every property now and `inOrder` drops the compiler's duplicate, which is the
- * same answer `unknown-variable` got. It also fixes the message: `Narrowed<never, Token<…>>` names
+ * same answer `unknown-token` got. It also fixes the message: `Narrowed<never, Token<…>>` names
  * neither the project nor the config file, and this names both.
  *
  * **A CALL is an escape hatch and is not read into.** `calc($space.md * 2)` has a `2` in it that is
@@ -3578,7 +3584,7 @@ describe("units, by family", () => {
  * none of them is a value somebody wrote out instead of reaching for a token.
  */
 describe("a literal where the project said that kind comes from variables", () => {
-  /** Declared, because `unknown-variable` would otherwise speak about the `$` paths below. */
+  /** Declared, because `unknown-token` would otherwise speak about the `$` paths below. */
   const VARIABLES = {
     space: kind("length", { gutter: "16px" }),
     motion: kind("time", { quick: "120ms" }),
@@ -3586,7 +3592,7 @@ describe("a literal where the project said that kind comes from variables", () =
 
   const under = (selector: string, decl: string) =>
     checkBlock(readBlock(`@@(\n  ${decl};\n)`, 2, "C.tsx").block, {
-      config: { variables: VARIABLES, properties: { [selector]: { variablesOnly: true } } },
+      config: { tokens: VARIABLES, properties: { [selector]: { hardcoded: false } } },
     }).map((one) => one.rule);
 
   test.each([
@@ -3596,7 +3602,7 @@ describe("a literal where the project said that kind comes from variables", () =
     ["a shorthand with several", "padding: 8px 16px"],
     ["a percentage, which this property also takes", "padding-left: 50%"],
   ])("%s is reported", (_what, decl) => {
-    expect(under("<length>", decl)).toEqual(["literal-not-allowed"]);
+    expect(under("<length>", decl)).toEqual(["hardcoded-not-allowed"]);
   });
 
   test.each([
@@ -3615,7 +3621,7 @@ describe("a literal where the project said that kind comes from variables", () =
   });
 
   test("another kind, said on its own selector", () => {
-    expect(under("<time>", "transition-duration: 200ms")).toEqual(["literal-not-allowed"]);
+    expect(under("<time>", "transition-duration: 200ms")).toEqual(["hardcoded-not-allowed"]);
     expect(under("<time>", "transition-duration: $motion.quick")).toEqual([]);
     // A length is not a time, and this selector said nothing about lengths.
     expect(under("<time>", "padding-left: 8px")).toEqual([]);
@@ -3623,23 +3629,23 @@ describe("a literal where the project said that kind comes from variables", () =
 
   test("a property exempting itself by name is left alone", () => {
     const config: Config = {
-      properties: { "<length>": { variablesOnly: true }, "border-radius": { variablesOnly: false } },
+      properties: { "<length>": { hardcoded: false }, "border-radius": { hardcoded: true } },
     };
     const of = (decl: string) =>
       checkBlock(readBlock(`@@(\n  ${decl};\n)`, 2, "C.tsx").block, { config }).map((one) => one.rule);
 
     expect(of("border-radius: 4px")).toEqual([]);
-    expect(of("padding-left: 8px")).toEqual(["literal-not-allowed"]);
+    expect(of("padding-left: 8px")).toEqual(["hardcoded-not-allowed"]);
   });
 
   test("the message names the project and the way out", () => {
     const [found] = checkBlock(readBlock(`@@(\n  padding-left: 8px;\n)`, 2, "C.tsx").block, {
-      config: { properties: { "<length>": { variablesOnly: true } } },
+      config: { properties: { "<length>": { hardcoded: false } } },
     });
 
     expect(found.message).toContain("`8px`");
     expect(found.message).toContain("ramonda.css.ts");
-    expect(found.message).toContain("variablesOnly");
+    expect(found.message).toContain("hardcoded");
   });
 
   test("and with no `variablesOnly` anywhere, every one of these is silent", () => {
@@ -3697,8 +3703,8 @@ describe("the slash form, and the correct CSS it must not refuse", () => {
  */
 describe("a literal that reached the page anyway", () => {
   const ONLY: Config = {
-    variables: { $brand: kind("color", { main: "#10b981" }), $space: kind("length", { sm: "8px" }) },
-    properties: { "<color>": { variablesOnly: true }, "<length>": { variablesOnly: true } },
+    tokens: { $brand: kind("color", { main: "#10b981" }), $space: kind("length", { sm: "8px" }) },
+    properties: { "<color>": { hardcoded: false }, "<length>": { hardcoded: false } },
   };
   const of = (decl: string) =>
     checkBlock(readBlock(`@@(\n  ${decl};\n)`, 2, "C.tsx").block, { config: ONLY }).map((one) => one.rule);
@@ -3708,7 +3714,7 @@ describe("a literal that reached the page anyway", () => {
     ["a hex in one", "background-color: #ff0000"],
     ["a colour function", "border-top-color: rgb(255 0 0)"],
   ])("%s is reported", (_what, decl) => {
-    expect(of(decl)).toEqual(["literal-not-allowed"]);
+    expect(of(decl)).toEqual(["hardcoded-not-allowed"]);
   });
 
   test.each([
@@ -3716,11 +3722,11 @@ describe("a literal that reached the page anyway", () => {
     ["a hex put into one", "--own: #ff0000"],
     ["a length put into one", "--gap: 8px"],
   ])("%s is reported", (_what, decl) => {
-    expect(of(decl)).toEqual(["literal-not-allowed"]);
+    expect(of(decl)).toEqual(["hardcoded-not-allowed"]);
   });
 
   test("the whole bypass, which is what this is for", () => {
-    expect(of("--own: red; color: var(--own)")).toEqual(["literal-not-allowed"]);
+    expect(of("--own: red; color: var(--own)")).toEqual(["hardcoded-not-allowed"]);
   });
 
   test.each([
@@ -3935,7 +3941,7 @@ describe("a setting the types enforced and the build did not", () => {
 
     /**
      * Asserted as *not this rule* rather than as nothing at all: a fixture that declares no
-     * variables trips `unknown-variable`, which is a different rule being right about a different
+     * variables trips `unknown-token`, which is a different rule being right about a different
      * thing. What matters here is that a bare `$group.…` is a `VariablePart` and never a hole.
      */
     test("a declared variable written bare is not a hole", () => {
@@ -4062,7 +4068,7 @@ describe("a setting the types enforced and the build did not", () => {
  * It says it better in the CHECKER. The build runs no TypeScript, so `dsiplay: flex` and even
  * `zzz: flex` compiled into the stylesheet with nothing said anywhere. The rule speaks for both
  * now, and `inOrder` drops the compiler's word on the line — the same arrangement
- * `unknown-variable` and `variablesOnly` already have.
+ * `unknown-token` and `variablesOnly` already have.
  */
 describe("what the bundlers see and the checker saw", () => {
   const under = (css: string, config: Config = {}) =>
@@ -4124,19 +4130,19 @@ describe("a config rule inside a nested rule", () => {
   const config: Config = {
     /**
      * `time` as well as `length`, so a unit can be refused on a property whose KIND this config does
-     * not also take from variables — otherwise `literal-not-allowed` answers first and the unit
+     * not also take from variables — otherwise `hardcoded-not-allowed` answers first and the unit
      * rules below would be asserting something else's presence. See "a declaration that breaks more
      * than one of a project's rules".
      */
     units: { length: ["px"], time: ["ms"] },
     properties: {
-      "<color>": { variablesOnly: true },
-      "<length>": { variablesOnly: true },
+      "<color>": { hardcoded: false },
+      "<length>": { hardcoded: false },
       "z-index": { values: [0, 1] },
       padding: { shorthand: false },
       "transition-duration": { units: ["ms"] },
     },
-    variables: { $color: kind("color", { primary: { main: "#3b82f6" } }) },
+    tokens: { $color: kind("color", { primary: { main: "#3b82f6" } }) },
   };
 
   const under = (css: string) => {
@@ -4147,8 +4153,8 @@ describe("a config rule inside a nested rule", () => {
   };
 
   test.each([
-    ["a colour written out", "color: #ff0000;", "literal-not-allowed"],
-    ["a length written out", "padding-top: 8px;", "literal-not-allowed"],
+    ["a colour written out", "color: #ff0000;", "hardcoded-not-allowed"],
+    ["a length written out", "padding-top: 8px;", "hardcoded-not-allowed"],
     ["a value outside the closed list", "z-index: 5;", "value-not-allowed"],
     ["a shorthand switched off", "padding: 8px;", "shorthand-not-allowed"],
     ["a unit this property does not take", "transition-duration: 2s;", "unit-not-allowed"],
@@ -4167,7 +4173,7 @@ describe("a config rule inside a nested rule", () => {
    * exactly where somebody would set one.
    */
   test("a custom property holding a forbidden value is read inside a nested rule", () => {
-    expect(under(`  &:hover {\n    --own: #ff0000;\n  }`)).toContain("literal-not-allowed");
+    expect(under(`  &:hover {\n    --own: #ff0000;\n  }`)).toContain("hardcoded-not-allowed");
   });
 
   /**
@@ -4189,13 +4195,13 @@ describe("a config rule inside a nested rule", () => {
 /**
  * ONE mistake, ONE finding — when a project narrows several things at once.
  *
- * `literal-not-allowed` is the widest of the config's rules: it fires on any written-out value of a
+ * `hardcoded-not-allowed` is the widest of the config's rules: it fires on any written-out value of a
  * kind taken from variables, so it landed beside every narrower rule that also fired. Measured under
  * a config narrowing units, shorthands, arity and a kind at the same time:
  *
- *     letter-spacing: 2rem     literal-not-allowed + unit-not-allowed
- *     margin: 8px              shorthand-not-allowed + literal-not-allowed
- *     padding-left: 1px 2px    too-many-values + literal-not-allowed
+ *     letter-spacing: 2rem     hardcoded-not-allowed + unit-not-allowed
+ *     margin: 8px              shorthand-not-allowed + hardcoded-not-allowed
+ *     padding-left: 1px 2px    too-many-values + hardcoded-not-allowed
  *
  * Each is one gesture by the author, and two reports for one gesture is what the whole `inOrder`
  * machinery exists to stop on the other side of the tool.
@@ -4207,25 +4213,25 @@ describe("a config rule inside a nested rule", () => {
  *
  *     shorthand-not-allowed   the property itself
  *     too-many-values         how many values it takes
- *     literal-not-allowed     where the value comes from
+ *     hardcoded-not-allowed     where the value comes from
  *     unit-not-allowed        how that value is spelt
  *
  * Reading `unit-not-allowed` first is the case that shows why: it sends the author to `2px`, which
- * their own config still refuses — a round trip that ends where `literal-not-allowed` would have
+ * their own config still refuses — a round trip that ends where `hardcoded-not-allowed` would have
  * started them.
  */
 describe("a declaration that breaks more than one of a project's rules", () => {
   const config: Config = {
     units: { length: ["px"] },
     properties: {
-      "<length>": { variablesOnly: true },
-      "<color>": { variablesOnly: true },
+      "<length>": { hardcoded: false },
+      "<color>": { hardcoded: false },
       "*": { shorthand: false },
       // Exempt, so `too-many-values` can be reached without `shorthand-not-allowed` answering first.
       padding: { shorthand: true, arity: 1 },
       "z-index": { values: [0, 1] },
     },
-    variables: { $space: kind("length", { gutter: "16px" }) },
+    tokens: { $space: kind("length", { gutter: "16px" }) },
   };
 
   const under = (css: string) => {
@@ -4236,7 +4242,7 @@ describe("a declaration that breaks more than one of a project's rules", () => {
   };
 
   test.each([
-    ["a forbidden unit on a kind taken from variables", "  letter-spacing: 2rem;", "literal-not-allowed"],
+    ["a forbidden unit on a kind taken from variables", "  letter-spacing: 2rem;", "hardcoded-not-allowed"],
     ["a shorthand that is switched off", "  margin: 8px;", "shorthand-not-allowed"],
     ["more values than the project allows", "  padding: 1px 2px;", "too-many-values"],
   ])("%s is one finding, the outermost", (_what, css, rule) => {
@@ -4247,10 +4253,10 @@ describe("a declaration that breaks more than one of a project's rules", () => {
    * A value outside a closed list, written in a unit the project also refuses.
    *
    * Its own config, because the fixture above takes every length from variables and
-   * `literal-not-allowed` answers first there. Both rules here are the project's own and both are
+   * `hardcoded-not-allowed` answers first there. Both rules here are the project's own and both are
    * about one word, so the list is the question to ask: the unit is a detail of a value that is not
    * on the list. Reading the unit first sends the author to `2px`, which the list still refuses —
-   * the round trip the note above describes for `literal-not-allowed`.
+   * the round trip the note above describes for `hardcoded-not-allowed`.
    */
   test("a value outside a closed list, in a forbidden unit, is one finding", () => {
     const narrow: Config = {
@@ -4266,7 +4272,7 @@ describe("a declaration that breaks more than one of a project's rules", () => {
 
   /** Each alone is untouched — the collapse may not cost a report that stands on its own. */
   test.each([
-    ["a colour written out", "  color: #ff0000;", "literal-not-allowed"],
+    ["a colour written out", "  color: #ff0000;", "hardcoded-not-allowed"],
     ["a value outside a closed list", "  z-index: 5;", "value-not-allowed"],
     ["a shorthand with a variable in it", "  margin: $space.gutter;", "shorthand-not-allowed"],
   ])("%s is still reported on its own", (_what, css, rule) => {
@@ -4275,7 +4281,7 @@ describe("a declaration that breaks more than one of a project's rules", () => {
 
   /** And two faults in two DECLARATIONS are still two, which is the line this must not cross. */
   test("a second declaration keeps its own finding", () => {
-    expect(under("  margin: 8px;\n  color: #ff0000;")).toEqual(["shorthand-not-allowed", "literal-not-allowed"]);
+    expect(under("  margin: 8px;\n  color: #ff0000;")).toEqual(["shorthand-not-allowed", "hardcoded-not-allowed"]);
   });
 
   /** A unit refused where the kind is NOT taken from variables still says which unit. */

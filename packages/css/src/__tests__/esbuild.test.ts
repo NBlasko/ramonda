@@ -517,12 +517,12 @@ describe("codegen through the plugin", () => {
   test("the pair is written into the build's own root, before anything is resolved", async () => {
     const root = project({
       "index.tsx": `const a = <div className={@@( color: $color.primary.main; )}>x</div>;\nexport default a;\n`,
-      "ramonda.css.ts": `import { kind } from "@ramonda/css/config";\nexport default { variables: { $color: kind("color", { primary: { main: "#3b82f6" } }) } };\n`,
+      "ramonda.css.ts": `import { kind } from "@ramonda/css/config";\nexport default { tokens: { $color: kind("color", { primary: { main: "#3b82f6" } }) } };\n`,
     });
 
     await build(root, { absWorkingDir: root });
 
-    expect(readFileSync(join(root, join("css-system", "variables.css")), "utf8")).toContain(
+    expect(readFileSync(join(root, join("css-system", "tokens.css")), "utf8")).toContain(
       "--color-primary-main: #3b82f6;",
     );
     expect(readFileSync(join(root, join("css-system", "index.ts")), "utf8")).toContain("--color-primary-main");
@@ -541,7 +541,7 @@ describe("codegen through the plugin", () => {
 
 /** A theme stylesheet setting a fixed declared variable stops the esbuild build too — see `viteBuild.test.ts`. */
 describe("a stylesheet setting a declared variable", () => {
-  const CONFIG_FIXED = `import { kind } from "@ramonda/css/config";\nexport default { variables: { $color: kind("color", { sunken: "#f3f4f6" }) } };\n`;
+  const CONFIG_FIXED = `import { kind } from "@ramonda/css/config";\nexport default { tokens: { $color: kind("color", { sunken: "#f3f4f6" }) } };\n`;
 
   test("a fixed one stops the build, at the file and line", async () => {
     const root = project({

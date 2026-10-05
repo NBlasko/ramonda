@@ -5,7 +5,7 @@ import { PRIMITIVE, PROPERTIES, UNIT_TYPE } from "./compiler/keywords.generated"
 import type { Kind } from "./token";
 import type { CssArity, CssNumeric, CssProperties, CssShorthand } from "./properties.generated";
 import type { CssUnit, CssUnitFamily } from "./units.generated";
-import { RULE_IDS, nearest } from "./compiler/rules";
+import { RENAMED_RULES, RULE_IDS, nearest } from "./compiler/rules";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { dirname, join, resolve, sep } from "node:path";
@@ -77,10 +77,10 @@ export interface Config {
    * a number kept in step by hand.
    *
    * `$color.primary.main` in a block then compiles to `var(--color-primary-main)`, and a path
-   * naming nothing here is reported — see the `unknown-variable` rule, which is the only thing
+   * naming nothing here is reported — see the `unknown-token` rule, which is the only thing
    * standing between a typo and a `var()` into a name nothing sets.
    */
-  readonly variables?: Groups;
+  readonly tokens?: Groups;
   /**
    * Custom property names this compiler cannot see, so a `var()` reading one is not reported.
    *
@@ -99,7 +99,7 @@ export interface Config {
    * reader — a function returning `{ name, value, where }`, so a project's own theme file can be
    * checked rather than trusted — and a plain list of names is the first form of it.
    */
-  readonly alsoSets?: readonly string[];
+  readonly externalCustomProperties?: readonly string[];
   /**
    * How strict this project is about each property — what codegen turns into its own types.
    *
@@ -157,8 +157,8 @@ export interface Config {
  * is declared is a name `var()` may read, and nothing has to say so a second time.
  */
 export function knownNames(config: Config): readonly string[] {
-  const declared = config.variables === undefined ? [] : namesIn(config.variables).map((one) => one.name);
-  return [...declared, ...(config.alsoSets ?? [])];
+  const declared = config.tokens === undefined ? [] : namesIn(config.tokens).map((one) => one.name);
+  return [...declared, ...(config.externalCustomProperties ?? [])];
 }
 
 /**
@@ -234,8 +234,8 @@ export type PropertyRule<P extends PropertyName | "*" | KindSelector = PropertyN
      * Whether a value here may only be a declared VARIABLE, never a literal.
      *
      * ```ts
-     * "<color>": { variablesOnly: true },      // no colour is written out anywhere
-     * "border":  { variablesOnly: false },     // except in this one
+     * "<color>": { hardcoded: false },      // no colour is written out anywhere
+     * "border":  { hardcoded: true },     // except in this one
      * ```
      *
      * Asked for by the user, in their words: *"za boje moze reci da hoce samo kroz tokene i
@@ -249,12 +249,12 @@ export type PropertyRule<P extends PropertyName | "*" | KindSelector = PropertyN
      *
      * Two machineries answer it and both are needed. A property that says what it takes is narrowed
      * by its TYPE, which is exact. A composite one — `border-left: 4px solid red` — has no type
-     * worth narrowing, and the `literal-not-allowed` rule reads its value instead.
+     * worth narrowing, and the `hardcoded-not-allowed` rule reads its value instead.
      *
      * `currentcolor`, a bare `0`, the CSS-wide keywords and `var()` all still go in: none of them is
      * a value somebody hardcoded, and refusing them would be refusing what CSS itself provides.
      */
-    readonly variablesOnly?: boolean;
+    readonly hardcoded?: boolean;
   };
 
 /**
@@ -279,8 +279,8 @@ export type KindSelector = `<${Kind}>`;
  * ```ts
  * properties: {
  *   "*":             { shorthand: false },      // every property
- *   "<length>":      { variablesOnly: true },   // every property whose value is a length
- *   "border-radius": { variablesOnly: false },  // this one, overriding the kind
+ *   "<length>":      { hardcoded: false },   // every property whose value is a length
+ *   "border-radius": { hardcoded: true },  // this one, overriding the kind
  * }
  * ```
  *
@@ -333,10 +333,10 @@ export function environmentOf(production?: boolean): ConfigEnvironment {
 const IDENTITY = new Set(["prefix", "hash", "normalise", "normalize", "names", "layer"]);
 
 /** Everything a config may hold. An unknown key is a typo, and a typo that is ignored is invisible. */
-const KNOWN = new Set(["units", "variables", "alsoSets", "properties", "outDir", "rules"]);
+const KNOWN = new Set(["units", "tokens", "externalCustomProperties", "properties", "outDir", "rules"]);
 
 /** Keys that were a setting and are one somewhere ELSE now. `validate` writes out where. */
-const MOVED = new Set(["variablesOnly"]);
+const MOVED = new Set(["variablesOnly", "variables", "alsoSets"]);
 
 /**
  * Keys that were a setting and are not, with the sentence that says where the answer comes from now.
@@ -738,9 +738,19 @@ function settings(key: string, entry: unknown, refuse: (says: string) => never):
     );
   }
 
-  const known = ["units", "values", "shorthand", "variablesOnly", "arity"];
+  const known = ["units", "values", "shorthand", "hardcoded", "arity"];
   for (const [name, value] of Object.entries(entry as Record<string, unknown>)) {
     const at = `properties[${JSON.stringify(key)}].${name}`;
+    /**
+     * The old name, refused with the new one written out — and the value turned over, since
+     * `variablesOnly: true` said what was REQUIRED and `hardcoded: false` says what is refused.
+     */
+    if (name === "variablesOnly") {
+      refuse(
+        `sets \`${at}\`, which is \`hardcoded\` now, the other way round: write ` +
+          `\`hardcoded: ${value === true ? "false" : "true"}\` — a value written out is ${value === true ? "refused" : "allowed"}.`,
+      );
+    }
     if (!known.includes(name)) {
       const meant = nearest(name, known);
       refuse(
@@ -796,7 +806,7 @@ function settings(key: string, entry: unknown, refuse: (says: string) => never):
       }
     }
 
-    if ((name === "shorthand" || name === "variablesOnly") && typeof value !== "boolean") {
+    if ((name === "shorthand" || name === "hardcoded") && typeof value !== "boolean") {
       refuse(`sets \`${at}\` to ${describe(value)}. It is true or false.`);
     }
 
@@ -854,25 +864,29 @@ function validate(config: Record<string, unknown>, path: string): void {
     }
   }
 
-  const variables = config.variables;
-  if (variables !== undefined) {
-    /**
-     * A LIST here is the old spelling, and it is worth saying so rather than describing the shape.
-     *
-     * `variables: ["--brand"]` was this key until the declarations took it, and a project carrying
-     * the old form would otherwise be told only that an object was expected — true, and no help at
-     * all about where its list should go now.
-     */
-    if (Array.isArray(variables)) {
-      refuse(
-        `sets \`variables\` to a list. That was its old meaning — names this compiler cannot see — ` +
-          `and those go in \`alsoSets\` now.\n\n` +
-          `        \`variables\` declares what this project OWNS, with a kind and a fallback each:\n` +
-          `        variables: { $color: kind("color", { primary: { main: "#3b82f6" } }) }`,
-      );
-    }
-    if (typeof variables !== "object" || variables === null) {
-      refuse(`sets \`variables\` to ${describe(variables)}. It takes groups made with \`kind( … )\`.`);
+  /**
+   * The keys this config had before tokens were called tokens, each refused with the new spelling.
+   *
+   * `variables` held the project's TOKENS — and CSS calls a custom property a "variable", so a config
+   * with `variables` beside settings about custom properties read as one thing said twice. The user
+   * could not tell them apart when reading a config. `alsoSets` named the outside ones without saying
+   * so. A list in `variables` is older still, and its names belong in the second key too.
+   */
+  if (config.variables !== undefined) {
+    refuse(
+      Array.isArray(config.variables)
+        ? "sets `variables` to a list. Names something else sets go in `externalCustomProperties` now."
+        : 'sets `variables`, which is `tokens` now — the same groups: tokens: { $color: kind("color", { … }) }.',
+    );
+  }
+  if (config.alsoSets !== undefined) {
+    refuse("sets `alsoSets`, which is `externalCustomProperties` now — the same list of names.");
+  }
+
+  const tokens = config.tokens;
+  if (tokens !== undefined) {
+    if (typeof tokens !== "object" || tokens === null || Array.isArray(tokens)) {
+      refuse(`sets \`tokens\` to ${describe(tokens)}. It takes groups made with \`kind( … )\`.`);
     }
     /**
      * A group without its `$`, refused with the spelling written in.
@@ -880,7 +894,7 @@ function validate(config: Record<string, unknown>, path: string): void {
      * The `$` is what makes the config key, a block's `$color.…` and the `$color` code imports one
      * name — see `Groups`. The type says so too; this is for a config nothing typechecks.
      */
-    for (const group of Object.keys(variables as object)) {
+    for (const group of Object.keys(tokens as object)) {
       if (!group.startsWith("$")) {
         refuse(
           `declares the group \`${group}\` without its \`$\`. Write \`$${group}\` — a group is declared the ` +
@@ -890,17 +904,19 @@ function validate(config: Record<string, unknown>, path: string): void {
     }
   }
 
-  const alsoSets = config.alsoSets;
-  if (alsoSets !== undefined) {
-    if (!Array.isArray(alsoSets)) {
-      refuse(`sets \`alsoSets\` to ${describe(alsoSets)}. It takes a list, like ["--brand"].`);
+  const external = config.externalCustomProperties;
+  if (external !== undefined) {
+    if (!Array.isArray(external)) {
+      refuse(`sets \`externalCustomProperties\` to ${describe(external)}. It takes a list, like ["--brand"].`);
     }
-    for (const one of alsoSets as unknown[]) {
+    for (const one of external as unknown[]) {
       if (typeof one !== "string") {
-        refuse(`lists ${describe(one)} in \`alsoSets\`. Every name is a string, like "--brand".`);
+        refuse(`lists ${describe(one)} in \`externalCustomProperties\`. Every name is a string, like "--brand".`);
       }
       if (!(one as string).startsWith("--")) {
-        refuse(`lists \`${one}\` in \`alsoSets\`. A custom property begins with two dashes, like "--brand".`);
+        refuse(
+          `lists \`${one}\` in \`externalCustomProperties\`. A custom property begins with two dashes, like "--brand".`,
+        );
       }
     }
   }
@@ -921,7 +937,7 @@ function validate(config: Record<string, unknown>, path: string): void {
       ? (variablesOnly as unknown[]).filter((one) => typeof one === "string")
       : [];
     const written = (kinds.length === 0 ? ["color"] : kinds).map(
-      (one) => `          "<${one}>": { variablesOnly: true },`,
+      (one) => `          "<${one}>": { hardcoded: false },`,
     );
     refuse(
       `sets \`variablesOnly\`, which is a selector inside \`properties\` now — same reach, and a ` +
@@ -1000,6 +1016,8 @@ function validate(config: Record<string, unknown>, path: string): void {
       refuse(`sets \`rules\` to ${describe(rules)}. It takes an object, like { "unknown-unit": "off" }.`);
     }
     for (const [id, severity] of Object.entries(rules as Record<string, unknown>)) {
+      const renamed = RENAMED_RULES[id];
+      if (renamed !== undefined) refuse(`silences \`${id}\`, which is called \`${renamed}\` now. Write that instead.`);
       if (!(RULE_IDS as readonly string[]).includes(id)) {
         const meant = nearest(id, RULE_IDS as readonly string[]);
         refuse(`silences \`${id}\`, which is not a rule.` + (meant === undefined ? "" : ` Did you mean \`${meant}\`?`));
@@ -1040,7 +1058,7 @@ function validate(config: Record<string, unknown>, path: string): void {
  * Measured, that makes the same gesture mean two different things:
  *
  *     "*": { arity: 1 }                    too-many-values off  ->  accepted
- *     "<length>": { variablesOnly: true }  literal-not-allowed off  ->  TS2322, still refused
+ *     "<length>": { hardcoded: false }  hardcoded-not-allowed off  ->  TS2322, still refused
  *     "<length>": { units: ["px"] }        unit-not-allowed off  ->  TS2322, still refused
  *
  * So an author who silences one to ship is not unblocked: the error stays and the MESSAGE GETS
@@ -1057,12 +1075,12 @@ function whatTurnedOn(id: string, config: Record<string, unknown>): { setting: s
   const wherever = (key: string) =>
     entries.find(([, rule]) => rule !== null && typeof rule === "object" && rule[key] !== undefined);
 
-  if (id === "literal-not-allowed") {
-    const found = entries.find(([, rule]) => rule !== null && typeof rule === "object" && rule.variablesOnly === true);
+  if (id === "hardcoded-not-allowed") {
+    const found = entries.find(([, rule]) => rule !== null && typeof rule === "object" && rule.hardcoded === false);
     if (found === undefined) return undefined;
     return {
-      setting: `properties[${JSON.stringify(found[0])}].variablesOnly`,
-      instead: `properties: { ${JSON.stringify(found[0])}: { variablesOnly: false } }`,
+      setting: `properties[${JSON.stringify(found[0])}].hardcoded`,
+      instead: `properties: { ${JSON.stringify(found[0])}: { hardcoded: true } }`,
     };
   }
 

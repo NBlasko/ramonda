@@ -4,7 +4,7 @@
 import type { CssColor, CssDimension, CssLengthUnit, CssTimeUnit, Fixed, Token } from "@ramonda/css";
 import type { CssProperties as Base, CssBlock, CssCondition, CssFontFaceDescriptors, CssGlobal, CssKeyframesShape, CssPropertyDescriptors, CssRegistered, CssSpreadable, CssValue, CssVar, Keyword, Narrowed, StyleValue } from "@ramonda/css/properties";
 
-/** The `color` variables, as a block writes them: `$color.…`. */
+/** The `color` tokens, as a block writes them: `$color.…`. */
 export const $color = Object.freeze({
   /**
    * `$color.accent` — a `color`, written to CSS as `var(--color-accent)`.
@@ -20,7 +20,7 @@ export const $color = Object.freeze({
   "surface": "var(--color-surface)" as Token<"color", Fixed<"#ffffff">>,
 });
 
-/** The `space` variables, as a block writes them: `$space.…`. */
+/** The `space` tokens, as a block writes them: `$space.…`. */
 export const $space = Object.freeze({
   /**
    * `$space.gutter` — a `length`, written to CSS as `var(--space-gutter)`.
@@ -470,17 +470,17 @@ export type {
 /** What one property accepts in this project — `const gap: Value<"padding-left"> = "8px"`. */
 export type Value<P extends keyof CssProperties> = CssProperties[P];
 
-/** Every `color` variable this project declares. */
-export type ColorVar = typeof $color.accent | typeof $color.surface;
+/** Every `color` token this project declares. */
+export type ColorToken = typeof $color.accent | typeof $color.surface;
 
-/** Every `length` variable this project declares. */
-export type LengthVar = typeof $space.gutter;
+/** Every `length` token this project declares. */
+export type LengthToken = typeof $space.gutter;
 
-/** Every variable this project declares, by kind — what `Var` reads. */
-export interface VarByKind {
-  "color": ColorVar;
-  "length": LengthVar;
+/** Every token this project declares, by kind — what `AnyToken` reads. */
+export interface TokenByKind {
+  "color": ColorToken;
+  "length": LengthToken;
 }
 
-/** Any variable of a kind — `const tone: Var<"color"> = toggle ? $a.b : $a.c`. */
-export type Var<K extends keyof VarByKind> = VarByKind[K];
+/** Any token of a kind — `const tone: AnyToken<"color"> = toggle ? $a.b : $a.c`. */
+export type AnyToken<K extends keyof TokenByKind> = TokenByKind[K];

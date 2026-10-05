@@ -239,7 +239,7 @@ export function checkProject(tsconfig: string, options: CheckOptions = {}): Repo
     css.push({
       file: one.file,
       ...(source === undefined ? { line: 1, column: 1 } : positionOf(source, one.read.at)),
-      code: "variable-not-set",
+      code: "custom-property-not-set",
       message: messageFor(one),
     });
   }
@@ -431,7 +431,7 @@ function inOrder(css: readonly Finding[], types: readonly Finding[], sources: Re
    *
    * Measured, one typo came back twice, at two columns, with the same suggestion in each:
    *
-   *     unknown-variable  `$space.gutter.norml` is not a variable this project declares.
+   *     unknown-token  `$space.gutter.norml` is not a variable this project declares.
    *                       Did you mean `$space.gutter.normal`?
    *     TS2551            Property 'norml' does not exist on type
    *                       'Readonly<{ normal: Token<"length", "16px">; }>'. Did you mean 'normal'?
@@ -450,7 +450,7 @@ function inOrder(css: readonly Finding[], types: readonly Finding[], sources: Re
    * only thing that speaks in the BUILD — vite and esbuild run these rules over a block and never
    * run TypeScript over it, so a `var()` into a name nothing sets would compile clean.
    */
-  const pathRefused = new Set(css.filter((finding) => finding.code === "unknown-variable").map(where));
+  const pathRefused = new Set(css.filter((finding) => finding.code === "unknown-token").map(where));
 
   /**
    * A LINE where a literal was refused by `variablesOnly`, so the compiler's word about it goes.

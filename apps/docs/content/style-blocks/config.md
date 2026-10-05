@@ -1,6 +1,6 @@
 ---
 title: The config file
-description: What ramonda.css.ts holds — the variables a project declares, and the CSS it decides not to allow.
+description: What ramonda.css.ts holds — the tokens a project declares, and the CSS it decides not to allow.
 section: Style blocks
 order: 116
 ---
@@ -8,7 +8,7 @@ order: 116
 # The config file
 
 `ramonda.css.ts` sits at the root of a project and does two jobs. It **declares** what the project
-owns — the variables [`$` reads](/style-blocks/variables) — and it **narrows** what a block may
+owns — the tokens [`$` reads](/style-blocks/tokens) — and it **narrows** what a block may
 say. Both reach every consumer: your editor, `ramonda-css`, and the build.
 
 It is TypeScript rather than JSON because a setting may depend on the environment, and because you
@@ -19,11 +19,11 @@ get completion for the property names.
 import { kind } from "@ramonda/css/config";
 
 export default {
-  variables: {
+  tokens: {
     $color: kind("color", { accent: "#10b981" }),
   },
   properties: {
-    "<color>": { variablesOnly: true },
+    "<color>": { hardcoded: false },
   },
 };
 ```
@@ -50,7 +50,7 @@ shipping without them.
 export default {
   properties: {
     "*": { shorthand: false }, // every property
-    "<length>": { variablesOnly: true }, // every property that takes a length
+    "<length>": { hardcoded: false }, // every property that takes a length
     "padding-left": { units: ["px"] }, // this one
   },
 };
@@ -63,8 +63,8 @@ written where the exception is:
 ```ts alternatives
 export default {
   properties: {
-    "<length>": { variablesOnly: true },
-    "border-radius": { variablesOnly: false }, // except here
+    "<length>": { hardcoded: false },
+    "border-radius": { hardcoded: true }, // except here
   },
 };
 ```
@@ -78,7 +78,7 @@ $ npx ramonda-css explain padding-left
   padding-left   a length or a percentage
 
     shorthand      false        "*"
-    variablesOnly  true         "<length>"
+    hardcoded      false        "<length>"
     units          px           "padding-left"
 
   from ramonda.css.ts
@@ -106,14 +106,15 @@ separate:
 properties: { "padding-left": { units: ["px"] } },
 ```
 
-### `variablesOnly` — no values written out
+### `hardcoded: false` — no values written out
 
 ```ts
-properties: { "<color>": { variablesOnly: true } },
+properties: { "<color>": { hardcoded: false } },
 ```
 
-`color: #ff0000` is then refused and `color: $color.accent` is not. It is the setting that turns a
-palette from a recommendation into something the build enforces.
+`color: #ff0000` is then refused and `color: $color.accent` is not — a colour has to come from a
+token. It is the setting that turns a palette from a recommendation into something the build
+enforces. `hardcoded: true` on one property exempts it again.
 
 Two things it deliberately lets through: a bare `0`, which needs no unit and is nobody's hardcoded
 brand colour, and `var()`, which is the escape CSS itself provides.
@@ -151,13 +152,13 @@ properties: { "padding": { arity: 2 } },
 
 ## The other keys
 
-### `alsoSets` — names from a stylesheet this does not compile
+### `externalCustomProperties` — names from a stylesheet this does not compile
 
 A `var(--name)` is checked against every name the build sets. When the name comes from a stylesheet
 the compiler never sees — a design system you install, a theme file — list it:
 
 ```ts
-alsoSets: ["--brand-hue", "--brand-chroma"],
+externalCustomProperties: ["--brand-hue", "--brand-chroma"],
 ```
 
 ### `outDir` — where `css-system/` goes

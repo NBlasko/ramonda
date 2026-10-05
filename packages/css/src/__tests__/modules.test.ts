@@ -17,7 +17,7 @@ import { transform } from "../compiler/transform";
  *     -> background:var(var(--r-rfpVZr3es-0));
  *
  * `var(var(…))` computes to nothing in Chromium and the declaration is dropped, while the one beside
- * it is applied. `hole-as-a-variable-name` reports it now, so it fails loudly — but reporting a
+ * it is applied. `hole-as-a-custom-property-name` reports it now, so it fails loudly — but reporting a
  * theme module is not the same as supporting one.
  *
  * ## The three limits, and each is a decision rather than a shortcut
@@ -82,7 +82,7 @@ describe("a named site imported from another module", () => {
    * The clause shapes people write, and one that resolved NOTHING.
    *
    * `import d, { accent } from "./theme"` was not matched at all, so the token degraded silently to
-   * a hole. Loud in the end, through `hole-as-a-variable-name` — but it is a shape none of the three
+   * a hole. Loud in the end, through `hole-as-a-custom-property-name` — but it is a shape none of the three
    * documented limits mentions, and nothing about a default import makes the named ones unreadable.
    */
   test.each([

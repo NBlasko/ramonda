@@ -51,7 +51,7 @@ const NAMED_OPENING = /@@[A-Za-z0-9_-]/;
  *
  * A DEFAULT import before the clause is allowed, and used not to be: `import d, { accent } from
  * "./theme"` resolved nothing at all, so the token silently degraded to a hole. Loud, through
- * `hole-as-a-variable-name` — but it is a shape none of the three documented limits mentions, and
+ * `hole-as-a-custom-property-name` — but it is a shape none of the three documented limits mentions, and
  * nothing about a default import makes the named ones unreadable.
  */
 const AN_IMPORT = /^[ \t]*import\s+(?:[A-Za-z_$][\w$]*\s*,\s*)?\{([^}]*)\}\s+from\s+["'](\.[^"']*)["']/gm;
@@ -70,7 +70,7 @@ const AN_IMPORT = /^[ \t]*import\s+(?:[A-Za-z_$][\w$]*\s*,\s*)?\{([^}]*)\}\s+fro
  *
  * A scan, not a parse: a `/*` written inside a string swallows the rest of the file, so an import
  * below it goes unread. That is the direction this is allowed to be wrong in — an unresolved
- * reference stays a hole and `hole-as-a-variable-name` reports it, which is the closed failure the
+ * reference stays a hole and `hole-as-a-custom-property-name` reports it, which is the closed failure the
  * note claimed and did not have.
  */
 function outsideComments(source: string): string {

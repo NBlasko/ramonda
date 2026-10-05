@@ -1,4 +1,4 @@
-import { NARROW, namesIn, ruleFor, variablesOnlyKinds } from "../codegen";
+import { NARROW, namesIn, ruleFor, tokensOnlyKinds } from "../codegen";
 import { againstDeclaration, declaredByName, plainValue } from "./declaredSet";
 import { nearest } from "./nearest";
 import { GRAMMAR_SHAPES } from "./grammarShapes.generated";
@@ -162,6 +162,19 @@ export interface Finding {
  * hand-kept array next to it would be two lists that must agree: exactly the fault this repository
  * keeps finding. Here there is one list, and `RuleId` cannot name anything absent from it.
  */
+/**
+ * Rules that were renamed when tokens stopped being called "variables" — a config or a directive
+ * naming the old id is told the new one, rather than that it is not a rule at all.
+ */
+export const RENAMED_RULES: Readonly<Record<string, string>> = {
+  "literal-not-allowed": "hardcoded-not-allowed",
+  "unknown-variable": "unknown-token",
+  "variable-by-hand": "token-by-hand",
+  "variable-set-against-its-declaration": "token-set-against-its-declaration",
+  "variable-set-by-another-name": "custom-property-set-by-another-name",
+  "hole-as-a-variable-name": "hole-as-a-custom-property-name",
+};
+
 export const RULE_IDS = [
   "unknown-property",
   "unknown-value",
@@ -178,11 +191,11 @@ export const RULE_IDS = [
   "declaration-out-of-place",
   "rule-out-of-place",
   "override-out-of-order",
-  "variable-set-by-another-name",
-  "hole-as-a-variable-name",
+  "custom-property-set-by-another-name",
+  "hole-as-a-custom-property-name",
   "initial-value-and-syntax",
   "property-descriptor-missing",
-  "variable-set-against-its-declaration",
+  "token-set-against-its-declaration",
   "unknown-media-feature",
   "value-and-registered-syntax",
   "unit-not-allowed",
@@ -208,12 +221,12 @@ export const RULE_IDS = [
   "unknown-selector",
   "unknown-flag",
   "unclosed-call",
-  "unknown-variable",
-  "variable-by-hand",
+  "unknown-token",
+  "token-by-hand",
   "block-refused",
   "too-many-values",
   "missing-semicolon",
-  "literal-not-allowed",
+  "hardcoded-not-allowed",
   "declaration-does-nothing",
   // The three that need a `ts.Program`. They live in `typed.ts` — see its header for why they cannot
   // be in this file — but their ids belong here, because this is the list a config is checked
@@ -524,10 +537,10 @@ export function checkBlock(written: AnyBlock, options: CheckOptions = {}): Findi
 const NESTED: readonly RuleId[] = [
   "shorthand-not-allowed",
   "too-many-values",
-  "literal-not-allowed",
+  "hardcoded-not-allowed",
   // The closed LIST before the unit: the unit is a detail of a value that is not on the list, and
   // reading it first sends the author to `2px` — which the list still refuses. The same round trip
-  // `literal-not-allowed` is placed above `unit-not-allowed` to avoid.
+  // `hardcoded-not-allowed` is placed above `unit-not-allowed` to avoid.
   "value-not-allowed",
   "unit-not-allowed",
 ];
@@ -538,7 +551,7 @@ const NESTED: readonly RuleId[] = [
  * **Per DECLARATION, which is the unit review pass 8 arrived at for the same question** on the other
  * side of the tool: a line holds as many declarations as an author cares to write, and two faults on
  * one line are two faults. The positions do not line up either — `shorthand-not-allowed` sits on the
- * property and `literal-not-allowed` on the value — so nothing narrower than the declaration could
+ * property and `hardcoded-not-allowed` on the value — so nothing narrower than the declaration could
  * group them.
  *
  * Anything outside this list is left alone on purpose. These five are the ones a project SWITCHED
@@ -846,7 +859,7 @@ const HEX = /#[0-9a-fA-F]{3,8}(?![\w-])/;
  * `var()` is the escape CSS itself provides. Neither is reported.
  */
 function literalNotAllowed(block: Block, rules: PropertyRules | undefined, findings: Finding[]): void {
-  const kinds = variablesOnlyKinds(rules);
+  const kinds = tokensOnlyKinds(rules);
   if (kinds.length === 0) return;
   dimensionNotAllowed(block, rules, findings);
   if (!kinds.includes("color")) return;
@@ -868,11 +881,9 @@ function literalNotAllowed(block: Block, rules: PropertyRules | undefined, findi
        *
        * Asked of the property rather than of the kind, because a composite property HAS no kind —
        * `border` is a width, a style and a colour at once, so `"<color>"` never reaches it and only
-       * `border: { variablesOnly: false }` can speak for it.
+       * `border: { hardcoded: true }` can speak for it.
        */
-      if (
-        (rules?.[property as keyof PropertyRules] as { variablesOnly?: boolean } | undefined)?.variablesOnly === false
-      ) {
+      if ((rules?.[property as keyof PropertyRules] as { hardcoded?: boolean } | undefined)?.hardcoded === true) {
         continue;
       }
 
@@ -883,13 +894,13 @@ function literalNotAllowed(block: Block, rules: PropertyRules | undefined, findi
         if (found === null) continue;
 
         findings.push({
-          rule: "literal-not-allowed",
+          rule: "hardcoded-not-allowed",
           at: part.at + found.index,
           length: found[0].length,
           message:
             `\`${found[0].trim()}\` is a colour written out, and this project takes colours only from its ` +
-            `own variables.\n\n        Declare it in \`ramonda.css.ts\` and write \`$group.name\`, or set ` +
-            `\`${JSON.stringify(property)}: { variablesOnly: false }\` beside \`"<color>"\`.`,
+            `own tokens.\n\n        Declare it in \`ramonda.css.ts\` and write \`$group.name\`, or set ` +
+            `\`${JSON.stringify(property)}: { hardcoded: true }\` beside \`"<color>"\`.`,
         });
         break;
       }
@@ -909,11 +920,11 @@ function literalNotAllowed(block: Block, rules: PropertyRules | undefined, findi
  *
  *     padding-left: 8px       []                     compiled
  *     width: 200px            []                     compiled
- *     border: 1px solid red   [literal-not-allowed]  only the composite was caught
+ *     border: 1px solid red   [hardcoded-not-allowed]  only the composite was caught
  *
  * It also answers the message. `Narrowed<never, Token<…>>` names neither the project nor the config
  * file; this names both, and `inOrder` drops the compiler's word where this one has spoken — the
- * same answer `unknown-variable` got.
+ * same answer `unknown-token` got.
  *
  * ## What is deliberately NOT a literal
  *
@@ -923,7 +934,7 @@ function literalNotAllowed(block: Block, rules: PropertyRules | undefined, findi
  * HOLE evaluates at render and is nobody's to read. A keyword is not a dimension at all.
  */
 function dimensionNotAllowed(block: Block, rules: PropertyRules | undefined, findings: Finding[]): void {
-  const kinds = variablesOnlyKinds(rules);
+  const kinds = tokensOnlyKinds(rules);
 
   const walkItems = (items: readonly BlockItem[]): void => {
     for (const item of items) {
@@ -960,12 +971,12 @@ function dimensionNotAllowed(block: Block, rules: PropertyRules | undefined, fin
           if (found === undefined || Number(text) === 0) continue;
 
           findings.push({
-            rule: "literal-not-allowed",
+            rule: "hardcoded-not-allowed",
             at: value.at,
             length: text.length,
             message:
               `\`${text}\` is ${NARROW[found]?.said ?? "a value"} written out, and this project takes ` +
-              `them only from its own variables.` +
+              `them only from its own tokens.` +
               `\n\n        A custom property set here is still a value this project ships. Declare it in ` +
               `\n        \`ramonda.css.ts\` and write \`$group.name\`.`,
           });
@@ -979,7 +990,7 @@ function dimensionNotAllowed(block: Block, rules: PropertyRules | undefined, fin
       // A colour inside one is the colour walk's, which reads the value rather than the type.
       if (primitive === undefined) continue;
       const rule = ruleFor(rules, property);
-      if (rule.variablesOnly !== true) continue;
+      if (rule.hardcoded !== false) continue;
 
       for (const value of topLevelValues(item.value)) {
         const text = value.text;
@@ -999,14 +1010,14 @@ function dimensionNotAllowed(block: Block, rules: PropertyRules | undefined, fin
         if (Number(text) === 0) continue;
 
         findings.push({
-          rule: "literal-not-allowed",
+          rule: "hardcoded-not-allowed",
           at: value.at,
           length: text.length,
           message:
             `\`${text}\` is ${NARROW[primitive]?.said ?? "a value"} written out, and this project takes ` +
-            `them only from its own variables.` +
+            `them only from its own tokens.` +
             `\n\n        Declare it in \`ramonda.css.ts\` and write \`$group.name\`, or set ` +
-            `\`${JSON.stringify(property)}: { variablesOnly: false }\`.`,
+            `\`${JSON.stringify(property)}: { hardcoded: true }\`.`,
         });
         break;
       }
@@ -1536,7 +1547,7 @@ function pathsDeclaredBy(config: Config): ReadonlySet<string> {
   const already = declaredPaths.get(config);
   if (already !== undefined) return already;
 
-  const paths = new Set(config.variables === undefined ? [] : namesIn(config.variables).map((one) => one.path));
+  const paths = new Set(config.tokens === undefined ? [] : namesIn(config.tokens).map((one) => one.path));
   declaredPaths.set(config, paths);
   return paths;
 }
@@ -1578,7 +1589,7 @@ function setAgainstItsDeclaration(block: Block, config: Config, findings: Findin
       const message = againstDeclaration(one, outcomes(item.value));
       if (message === undefined) continue;
       findings.push({
-        rule: "variable-set-against-its-declaration",
+        rule: "token-set-against-its-declaration",
         at: item.at,
         length: item.property.trim().length,
         message,
@@ -1618,7 +1629,7 @@ function setAgainstItsDeclaration(block: Block, config: Config, findings: Findin
  *
  * It renders the same as `$color.accent`, and it is the one spelling of a declared variable nothing
  * checks: rename the variable in `ramonda.css.ts` and this goes on reading the old name, which
- * nothing sets — measured for `unknown-variable`, an unset `var()` lays the element out as if the
+ * nothing sets — measured for `unknown-token`, an unset `var()` lays the element out as if the
  * property were never written. A `var()` with a fallback is left alone, because `$` cannot say one.
  */
 function variableByHand(block: Block, config: Config, findings: Finding[]): void {
@@ -1637,11 +1648,11 @@ function variableByHand(block: Block, config: Config, findings: Finding[]): void
           const path = byName.get(found[1]);
           if (path === undefined) continue;
           findings.push({
-            rule: "variable-by-hand",
+            rule: "token-by-hand",
             at: part.at + (found.index ?? 0),
             length: found[0].length,
             message:
-              `\`${found[0]}\` reads a variable this project declares, and nothing checks it written this way. ` +
+              `\`${found[0]}\` reads a token this project declares, and nothing checks it written this way. ` +
               `Write \`$${path}\`, which follows the config.`,
           });
         }
@@ -1678,26 +1689,26 @@ function unknownVariable(block: Block, config: Config, findings: Finding[]): voi
 
         const message =
           part.path === ""
-            ? "a `$` on its own names nothing — write `$group.name` for a theme variable, or `$( … )` for code."
+            ? "a `$` on its own names nothing — write `$group.name` for a token, or `$( … )` for code."
             : declared.size === 0
-              ? `\`${written}\` names a variable, and this project declares no variables.\n\n` +
+              ? `\`${written}\` names a token, and this project declares no tokens.\n\n` +
                 `        Declare them in \`ramonda.css.ts\`, with a kind and a fallback each:\n` +
-                `        variables: { $color: kind("color", { primary: { main: "#3b82f6" } }) }`
+                `        tokens: { $color: kind("color", { primary: { main: "#3b82f6" } }) }`
               : groups.has(part.path)
-                ? `\`${written}\` names a group of variables rather than one of them. Write a variable.`
+                ? `\`${written}\` names a group of tokens rather than one of them. Write a token.`
                 : !groups.has(part.path.split(".")[0])
                   ? /**
                      * A GROUP the project does not have: `$` and a name is only ever a theme
                      * variable, so `$props.tone` is most likely a reach for a value from code.
                      */
-                    `\`${written}\` names no group of variables this project has — its groups are ` +
+                    `\`${written}\` names no group of tokens this project has — its groups are ` +
                     `${[...tops].map((one) => `\`$${one}\``).join(", ")}.` +
                     (meant === undefined ? "" : ` Did you mean \`$${meant}\`?`) +
                     " A value from code is written `$( … )`."
-                  : `\`${written}\` is not a variable this project declares.` +
+                  : `\`${written}\` is not a token this project declares.` +
                     (meant === undefined ? "" : ` Did you mean \`$${meant}\`?`);
 
-        findings.push({ rule: "unknown-variable", at: part.at, length: part.length ?? written.length, message });
+        findings.push({ rule: "unknown-token", at: part.at, length: part.length ?? written.length, message });
       }
     }
   };
@@ -1756,7 +1767,7 @@ function setByAnotherName(block: Block, references: ReadonlyMap<string, string>,
     if (!read.has(binding)) continue;
 
     findings.push({
-      rule: "variable-set-by-another-name",
+      rule: "custom-property-set-by-another-name",
       at: one.at,
       length: one.name.length,
       message:
@@ -2242,7 +2253,7 @@ function rootInABlock(block: Block, findings: Finding[]): void {
         message:
           `\`${prelude}\` inside a block means the root under this element, and the root is nobody's ` +
           "descendant, so this rule applies nowhere. Set a theme's values in your own stylesheet, and " +
-          "this project's variables in `ramonda.css.ts`.",
+          "this project's tokens in `ramonda.css.ts`.",
       });
     }
   };
@@ -2357,7 +2368,7 @@ function holeInANamedBlock(block: Block, at: string, findings: Finding[]): void 
        *
        * `HolePart` carries `at` and `length` and its own note says why: *"for a squiggle over the
        * hole itself … what lets a rule about a hole's POSITION point at the hole rather than at the
-       * declaration holding it."* `hole-as-a-variable-name` reads it; this did not.
+       * declaration holding it."* `hole-as-a-custom-property-name` reads it; this did not.
        *
        * One finding per HOLE rather than per declaration, because each is a separate thing to
        * remove — `src: url({a}) format({b})` is two edits.
@@ -2401,7 +2412,7 @@ function holeInANamedBlock(block: Block, at: string, findings: Finding[]): void 
  * assignable*; `TS2561` is the compiler's own *did you mean* for a bare property name.
  */
 export const SPEAKS_OVER_TYPES: readonly RuleId[] = [
-  "literal-not-allowed",
+  "hardcoded-not-allowed",
   "unit-not-allowed",
   "value-not-allowed",
   "shorthand-not-allowed",
@@ -2595,7 +2606,7 @@ function holeAsAVariableName(block: Block, findings: Finding[]): void {
         if (before.kind !== "text" || !OPENS_A_VAR.test(before.text)) continue;
 
         findings.push({
-          rule: "hole-as-a-variable-name",
+          rule: "hole-as-a-custom-property-name",
           at: part.at ?? item.valueAt ?? item.at ?? 0,
           length: part.length ?? 2,
           /**
@@ -3064,7 +3075,7 @@ function unknownPrefix(item: Declaration, findings: Finding[]): void {
  * same question about the same file.
  *
  * So it speaks for both now, and `inOrder` drops the compiler's word on the line — the arrangement
- * `unknown-variable` and `variablesOnly` already have. A name with no near miss is reported too,
+ * `unknown-token` and `variablesOnly` already have. A name with no near miss is reported too,
  * without a suggestion: the types are not there to say it in the build.
  */
 function unknownProperty(item: Declaration, findings: Finding[], body?: string): void {

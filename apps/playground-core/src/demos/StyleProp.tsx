@@ -1,5 +1,5 @@
 import { Component, state } from "@ramonda/core";
-import type { CssBlock, Var } from "../../css-system";
+import type { AnyToken, CssBlock } from "../../css-system";
 
 /**
  * **`$` is not imported, and that is not an omission.** A variable written in a block is resolved
@@ -23,15 +23,15 @@ import type { CssBlock, Var } from "../../css-system";
 /**
  * The root's allow-list: two colours from the theme, one of two radii, and a hover colour.
  *
- * `Var<"color">` is every variable this project declares of that kind, so a caller may recolour a
- * chip and may NOT write `#ff0055` — the palette stays the one place colours are decided. `Var` and
+ * `AnyToken<"color">` is every token this project declares of that kind, so a caller may recolour a
+ * chip and may NOT write `#ff0055` — the palette stays the one place colours are decided. `AnyToken` and
  * `$` are both written by codegen from `ramonda.css.ts`, so editing that file moves this.
  */
 type ChipStyle = {
-  color?: Var<"color">;
-  "background-color"?: Var<"color">;
-  "border-radius"?: Var<"length">;
-  "&:hover"?: { "background-color"?: Var<"color"> }[];
+  color?: AnyToken<"color">;
+  "background-color"?: AnyToken<"color">;
+  "border-radius"?: AnyToken<"length">;
+  "&:hover"?: { "background-color"?: AnyToken<"color"> }[];
 };
 
 /**
@@ -49,7 +49,7 @@ type ChipStyle = {
  */
 type ChipLabelStyle = {
   "font-weight"?: 400 | 600;
-  "letter-spacing"?: Var<"length">;
+  "letter-spacing"?: AnyToken<"length">;
 };
 
 export class Chip extends Component<{

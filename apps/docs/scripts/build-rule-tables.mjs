@@ -298,11 +298,11 @@ const CSS_LINES = {
   "allow-list-not-css": "a value in an allow-list that is not CSS — every caller sending it is refused",
   "narrower-after-a-whole-shorthand":
     "a narrower shorthand after a wider one, both reaching the stylesheet whole — no order keeps it winning",
-  "literal-not-allowed": "a value written out where your `ramonda.css.ts` takes that kind from variables",
+  "hardcoded-not-allowed": "a value written out where your `ramonda.css.ts` takes that kind from variables",
   "declaration-does-nothing":
     "a declaration another one on the same element switches off — valid CSS the browser ignores",
-  "unknown-variable": "`$group.…` naming a variable your `ramonda.css.ts` does not declare",
-  "variable-by-hand": "`var(--…)` written by hand for a variable your `ramonda.css.ts` declares — write `$group.…`",
+  "unknown-token": "`$group.…` naming a variable your `ramonda.css.ts` does not declare",
+  "token-by-hand": "`var(--…)` written by hand for a variable your `ramonda.css.ts` declares — write `$group.…`",
   "block-refused": "what the build refuses, shown in the editor in the build's own words — it cannot be switched off",
   "too-many-values": "more values than the property takes — in CSS, or in your `ramonda.css.ts`",
   "missing-semicolon": "a declaration with no `;`, which swallows the line written under it",
@@ -324,11 +324,11 @@ const CSS_LINES = {
   "hole-in-a-match-arm": "an arm holding a value the render computes, where a class belongs",
   "match-arm-repeated": "an arm that can never run, because one above it answers first",
   "match-with-no-arms": "a `match` that sets nothing whatever its subject is",
-  "variable-set-by-another-name": "a `var()` reading a name set with different capitals",
+  "custom-property-set-by-another-name": "a `var()` reading a name set with different capitals",
   "value-and-registered-syntax": "a value a registered custom property cannot hold",
   "initial-value-and-syntax":
     "`@@property` with no `initial-value`, or one its `syntax` does not accept — the browser drops the rule",
-  "variable-set-against-its-declaration":
+  "token-set-against-its-declaration":
     "a declared variable set with no `range`, or outside it — in a block, a project stylesheet, or a `style` attribute",
   "property-descriptor-missing":
     "`@@property` with no `syntax` or no `inherits` — the browser drops the rule; the build's own words for what the editor's type says",
@@ -343,7 +343,7 @@ const CSS_LINES = {
   "layer-in-a-block": "`@layer` inside a block, which the sheet already decides",
   "root-in-a-block": "`:root` or `html` inside a block, which puts the root under the element — it applies nowhere",
   "hole-out-of-place": "a hole where CSS needs text, like a property name",
-  "hole-as-a-variable-name": "a hole naming a custom property rather than holding a value",
+  "hole-as-a-custom-property-name": "a hole naming a custom property rather than holding a value",
   "hole-in-a-named-block": "a hole in `@@keyframes( … )` and its kind, which have no element",
   "spread-out-of-place": "`...$(block)` somewhere a whole block cannot go",
   "composition-in-a-named-block": "`...$(block)` or `when` inside a named site, which composes nothing",

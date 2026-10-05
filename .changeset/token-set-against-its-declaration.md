@@ -3,7 +3,7 @@
 ---
 
 **A declared variable set in a block is checked against its declaration**
-(`variable-set-against-its-declaration`). One declared without a `range` never changes — its type
+(`token-set-against-its-declaration`). One declared without a `range` never changes — its type
 says `Fixed<…>` and `toStyle` already refused to set it — so `--color-surface-sunken: red;` in a
 block is refused too, naming the variable and how to give it a range. One with a `range` may only be
 set to a value in it, branch by branch for a choice or a match.

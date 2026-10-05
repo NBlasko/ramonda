@@ -8,7 +8,7 @@ import { kind } from "@ramonda/css/config";
  * example would start failing for a reason no page mentions.
  */
 export default {
-  variables: {
+  tokens: {
     $color: kind("color", { accent: "#10b981", surface: "#ffffff" }),
     $space: kind("length", { gutter: "16px" }),
   },

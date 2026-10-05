@@ -1,6 +1,6 @@
 ---
 title: Names the stylesheet sees
-description: Variables declared in ramonda.css.ts and read with $, keyframes and font faces as blocks of their own, and why a theme lives on :root.
+description: Tokens declared in ramonda.css.ts and read with $, keyframes and font faces as blocks of their own, and why a theme lives on :root.
 section: Style blocks
 order: 110
 ---
@@ -20,9 +20,9 @@ which no browser resolves. So it is reported:
 @property --brand { … }             ✗  reported
 ```
 
-The last three have somewhere else to go, and a variable has two.
+The last three have somewhere else to go, and a custom property has two: a token your project declares, or one `@@property` of its own.
 
-## A variable your project declares
+## A token your project declares
 
 Declare it in `ramonda.css.ts` and read it the way it is declared — a group's name starts with `$`:
 
@@ -31,7 +31,7 @@ Declare it in `ramonda.css.ts` and read it the way it is declared — a group's 
 import { kind } from "@ramonda/css/config";
 
 export default {
-  variables: {
+  tokens: {
     $color: kind("color", { accent: "#10b981", surface: "#ffffff" }),
     $space: kind("length", { gutter: "16px" }),
   },
@@ -49,7 +49,7 @@ const card = @@(
 `$color.accent` compiles to `var(--color-accent)`. The name is the path, so the stylesheet is
 readable, and the path is the only spelling — there is no string to get wrong.
 
-**Hover a variable to see what it is** — in a block or in code. The editor shows its kind, the custom
+**Hover a token to see what it is** — in a block or in code. The editor shows its kind, the custom
 property it is written as (`var(--color-accent)`, the name your browser's style panel shows), what it
 starts as, and whether it may change: fixed, or the `range` it may take.
 
@@ -57,14 +57,14 @@ starts as, and whether it may change: fixed, or the `range` it may take.
 uses. A group written without its `$` — `color: kind(…)` — is refused by the config's type and when
 the config loads. The `$` is not part of the CSS name: `--color-accent`, not `--$color-accent`.
 
-`$` and a name is only ever a variable. A group the project does not have — `$props.size` — is
+`$` and a name is only ever a token. A group the project does not have — `$props.size` — is
 reported with the groups it does have, because the usual cause is reaching for a value from code,
 which is written `$( … )`.
 
 ### Where a group needs importing, and where it does not
 
 A block is CSS, not TypeScript, and the compiler puts every group in scope while it checks one. So
-**anywhere in a block you write a variable bare**, with no import anywhere in the file — in a value,
+**anywhere in a block you write a token bare**, with no import anywhere in the file — in a value,
 in a `match` arm, in either branch of a choice:
 
 ```tsx
@@ -91,16 +91,16 @@ const now = read(tone, document.body);
 ```
 
 The rule is one line: **inside the CSS, no import; in code, import the group.** `$color.accent` is
-the same text in both places. Setting a variable from code with `toStyle` takes one more thing — a
+the same text in both places. Setting a token from code with `toStyle` takes one more thing — a
 [range](#a-range-when-the-value-is-meant-to-move) saying what it may become.
 
 **`css-system/` is written by the compiler**, and it is where the groups come from. Run
 `npx ramonda-css codegen` once, or let the build plugin do it; either way the folder holds
-`index.ts` (one export per group — `$color`, `$space` — and this project's types) and `variables.css` (the values). Import the
+`index.ts` (one export per group — `$color`, `$space` — and this project's types) and `tokens.css` (the values). Import the
 stylesheet once, wherever your app's CSS goes:
 
 ```ts
-import "../css-system/variables.css";
+import "../css-system/tokens.css";
 ```
 
 Commit that folder. It is generated, and it is also what your editor reads to check a block, so a
@@ -108,9 +108,9 @@ fresh clone that has not built anything yet still gets the checking.
 
 ## What `kind` buys, and it is not only spelling
 
-The kind is what the checker knows the variable IS, and it works in two directions.
+The kind is what the checker knows the token IS, and it works in two directions.
 
-**A variable of the wrong kind is refused where it is used**, before anything runs:
+**A token of the wrong kind is refused where it is used**, before anything runs:
 
 ```tsx expect-error
 const wrong = @@(
@@ -122,7 +122,7 @@ const wrong = @@(
 > `Narrowed<never, CssDimension<…> | Token<"length" | "percentage" | "length-percentage">>`
 
 **And the browser holds the same line.** `codegen` writes an `@property` registration for every
-variable, so the kind is declared to the engine too:
+token, so the kind is declared to the engine too:
 
 ```css
 @property --color-accent {
@@ -139,12 +139,12 @@ value is ignored, `height` gets the `16px` the registration declares, and the pa
 
 ## A range, when the value is meant to move
 
-A variable declared with one value says it never changes, and the checker holds you to that. When a
+A token declared with one value says it never changes, and the checker holds you to that. When a
 theme moves it at run time, say what it may become:
 
 ```ts
 export default {
-  variables: {
+  tokens: {
     $color: kind("color", {
       accent: { value: "#10b981", range: "any" },
     }),
@@ -159,9 +159,9 @@ export default {
 `range` is what the TYPE permits: `"any"` for a value only the run time knows, or the closed list
 when there are three sizes and no fourth.
 
-## One variable without a config
+## One custom property without a config
 
-A `@@property` block declares a variable on its own, and it is a binding like any other:
+A `@@property` block declares a custom property on its own, and it is a binding like any other:
 
 ```tsx
 export const angle = @@property(
@@ -186,7 +186,7 @@ be animated at all — an unregistered custom property is a string to the engine
 interpolate — and `inherits: false` is a choice `$` does not offer, because a design token that does
 not inherit is not a design token.
 
-It is also the shorter road when there is one variable, local to one file, and no config yet.
+It is also the shorter road when there is one custom property, local to one file, and no config yet.
 
 A misspelling is not a CSS problem here, it is an unresolved name: `var($(ackcent))` is *Cannot find
 name 'ackcent'. Did you mean 'accent'?*, from TypeScript, with the suggestion it already knows how
@@ -242,7 +242,7 @@ const row = @@( height: var(--row-height); );
 A name nothing sets is reported, with the four things that would make it exist:
 
 > nothing in this build sets `--brnad`. Did you mean `--brand`?
-> Set it in a block, register it with `@@property`, add it to `alsoSets` in `ramonda.css.ts` if it
+> Set it in a block, register it with `@@property`, add it to `externalCustomProperties` in `ramonda.css.ts` if it
 > comes from a stylesheet this does not compile, or give it a fallback — `var(--brnad, <value>)` —
 > which says it may be absent.
 
@@ -268,18 +268,18 @@ const card = @@(
 );
 ```
 
-The values on `:root` come from `variables.css`, so the override is the only CSS you write.
+The values on `:root` come from `tokens.css`, so the override is the only CSS you write.
 
-**A variable with no `range` cannot be overridden.** It was declared as one value, so setting it
+**A token with no `range` cannot be overridden.** It was declared as one value, so setting it
 anywhere is refused — in a block, in a stylesheet the app loads (by the Vite or esbuild plugin, at the
 file and line), and in a `style` attribute (in the editor and `ramonda-check`). The message says to
 give it a `range`. A value outside a `range` is refused the same way.
 
-### `light-dark()` resolves where the variable is set
+### `light-dark()` resolves where the token is set
 
-A declared variable is registered with `@property`, which gives it a type and a computed value —
+A token is registered with `@property`, which gives it a type and a computed value —
 and that is what makes `light-dark()` behave differently here than in a hand-written stylesheet. The
-pair is resolved on the element that **sets** the variable, and every descendant inherits the
+pair is resolved on the element that **sets** the token, and every descendant inherits the
 answer. A `color-scheme` further down does not change it:
 
 ```css
@@ -295,7 +295,7 @@ expecting the pair to follow:
 ```
 
 That is also the form that works for every kind. `light-dark()` is colour only — a length written
-that way is dropped, and the variable keeps its `initial-value`.
+that way is dropped, and the token keeps its `initial-value`.
 
 ### A value on the element is not a theme
 

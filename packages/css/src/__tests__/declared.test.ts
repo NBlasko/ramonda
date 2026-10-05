@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { IS_VARIABLE, isVariable, kind } from "../declared";
+import { IS_TOKEN, isTokenDeclaration, kind } from "../declared";
 
 /**
  * `kind( … )` is the whole authoring surface for a project's variables, so this file is what decides
@@ -13,7 +13,7 @@ import { IS_VARIABLE, isVariable, kind } from "../declared";
 
 /** What a boxed leaf holds, read without depending on the symbol's spelling. */
 const seen = (leaf: unknown) =>
-  isVariable(leaf)
+  isTokenDeclaration(leaf)
     ? { kind: leaf.kind, value: leaf.value, ...(leaf.range === undefined ? {} : { range: leaf.range }) }
     : leaf;
 
@@ -48,7 +48,7 @@ describe("kind()", () => {
     kind("color", written);
 
     expect(written).toEqual({ main: "#3b82f6" });
-    expect(isVariable((written as Record<string, unknown>).main)).toBe(false);
+    expect(isTokenDeclaration((written as Record<string, unknown>).main)).toBe(false);
   });
 
   test("a number is a value, because `number` and `integer` are kinds", () => {
@@ -65,7 +65,7 @@ describe("kind()", () => {
   });
 
   test("the marker is a registered symbol, so two copies of this package agree", () => {
-    expect(IS_VARIABLE).toBe(Symbol.for("ramonda.css.variable"));
+    expect(IS_TOKEN).toBe(Symbol.for("ramonda.css.token"));
   });
 });
 

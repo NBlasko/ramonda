@@ -1,6 +1,6 @@
 import { expectTypeOf } from "vitest";
 import { describe, test } from "vitest";
-import { type Variable, kind } from "../declared";
+import { type TokenDeclaration, kind } from "../declared";
 
 /**
  * The TYPE half of `kind( … )`, which is the half a runtime test cannot reach.
@@ -22,14 +22,14 @@ describe("what kind() produces, as a type", () => {
       weight: kind("number", { bold: 700 }),
     });
 
-    expectTypeOf(variables.control.md).toEqualTypeOf<Variable<"length", "30px">>();
-    expectTypeOf(variables.weight.bold).toEqualTypeOf<Variable<"number", 700>>();
+    expectTypeOf(variables.control.md).toEqualTypeOf<TokenDeclaration<"length", "30px">>();
+    expectTypeOf(variables.weight.bold).toEqualTypeOf<TokenDeclaration<"number", 700>>();
   });
 
   test("a colour keeps its literal, which is what a narrowed slot reads", () => {
     const variables = kind("color", { primary: { main: "#3b82f6" } });
 
-    expectTypeOf(variables.primary.main).toEqualTypeOf<Variable<"color", "#3b82f6">>();
+    expectTypeOf(variables.primary.main).toEqualTypeOf<TokenDeclaration<"color", "#3b82f6">>();
   });
 
   test("the fallback is narrowed by the kind", () => {

@@ -57,7 +57,7 @@ export interface TransformOptions {
    * two different texts would generate two different names for one token, and the editor would then
    * report a fault the build does not have.
    *
-   * Omitted, a cross-module reference stays a hole and `hole-as-a-variable-name` reports it — which
+   * Omitted, a cross-module reference stays a hole and `hole-as-a-custom-property-name` reports it — which
    * is what every caller that has not opted in gets, and it is the safe direction.
    */
   readonly read?: Imported["read"];

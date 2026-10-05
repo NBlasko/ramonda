@@ -53,7 +53,7 @@ export const TYPED_RULES = [
   "allow-list-is-an-interface",
   "narrower-after-a-whole-shorthand",
   "allow-list-not-css",
-  "variable-set-against-its-declaration",
+  "token-set-against-its-declaration",
 ] as const;
 
 /** A finding about a file, at an offset in the AUTHOR's own text. */
@@ -547,7 +547,7 @@ function styleSetsADeclared(
     const one = declared.get(name);
     if (one === undefined) return;
     const message = againstDeclaration(one, values);
-    if (message !== undefined) reportAt(start, name.length, { rule: "variable-set-against-its-declaration", message });
+    if (message !== undefined) reportAt(start, name.length, { rule: "token-set-against-its-declaration", message });
   };
 
   const visit = (node: ts.Node): void => {
@@ -1328,7 +1328,7 @@ function compiledFaults(property: string, value: string): string[] {
  * nothing itself: the TYPE is well-formed, and the value only fails when somebody tries to send it.
  * Only the component's author can fix it, so it is reported at the value, where they wrote it.
  *
- * Only LITERAL types are asked — a string or a number. `Var<"color">`, `Token<…>` and `string` have
+ * Only LITERAL types are asked — a string or a number. `AnyToken<"color">`, `Token<…>` and `string` have
  * nothing to judge; measured in this repository, 5 of 12 allow-list entries are literals. A nested
  * state (`"&:hover"?: { … }[]`) is read the same way. Each declaration is reported once, however
  * many slots name its type.

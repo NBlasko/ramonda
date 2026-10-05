@@ -4,7 +4,7 @@
 import type { CssColor, CssDimension, CssLengthUnit, CssTimeUnit, Fixed, Token } from "@ramonda/css";
 import type { CssProperties as Base, CssBlock, CssCondition, CssFontFaceDescriptors, CssGlobal, CssKeyframesShape, CssPropertyDescriptors, CssRegistered, CssSpreadable, CssValue, CssVar, Keyword, Narrowed, StyleValue } from "@ramonda/css/properties";
 
-/** The `color` variables, as a block writes them: `$color.…`. */
+/** The `color` tokens, as a block writes them: `$color.…`. */
 export const $color = Object.freeze({
   "accent": Object.freeze({
     /**
@@ -50,7 +50,7 @@ export const $color = Object.freeze({
   }),
 });
 
-/** The `space` variables, as a block writes them: `$space.…`. */
+/** The `space` tokens, as a block writes them: `$space.…`. */
 export const $space = Object.freeze({
   "gutter": Object.freeze({
     /**
@@ -74,7 +74,7 @@ export const $space = Object.freeze({
   }),
 });
 
-/** The `size` variables, as a block writes them: `$size.…`. */
+/** The `size` tokens, as a block writes them: `$size.…`. */
 export const $size = Object.freeze({
   "radius": Object.freeze({
     /**
@@ -92,7 +92,7 @@ export const $size = Object.freeze({
   }),
 });
 
-/** The `motion` variables, as a block writes them: `$motion.…`. */
+/** The `motion` tokens, as a block writes them: `$motion.…`. */
 export const $motion = Object.freeze({
   /**
    * `$motion.quick` — a `time`, written to CSS as `var(--motion-quick)`.
@@ -550,21 +550,21 @@ export type {
 /** What one property accepts in this project — `const gap: Value<"padding-left"> = "8px"`. */
 export type Value<P extends keyof CssProperties> = CssProperties[P];
 
-/** Every `color` variable this project declares. */
-export type ColorVar = typeof $color.accent.main | typeof $color.accent.quiet | typeof $color.surface.base | typeof $color.surface.sunken | typeof $color.text.primary | typeof $color.text.muted;
+/** Every `color` token this project declares. */
+export type ColorToken = typeof $color.accent.main | typeof $color.accent.quiet | typeof $color.surface.base | typeof $color.surface.sunken | typeof $color.text.primary | typeof $color.text.muted;
 
-/** Every `length` variable this project declares. */
-export type LengthVar = typeof $space.gutter.tight | typeof $space.gutter.normal | typeof $space.gutter.wide | typeof $size.radius.small | typeof $size.radius.pill;
+/** Every `length` token this project declares. */
+export type LengthToken = typeof $space.gutter.tight | typeof $space.gutter.normal | typeof $space.gutter.wide | typeof $size.radius.small | typeof $size.radius.pill;
 
-/** Every `time` variable this project declares. */
-export type TimeVar = typeof $motion.quick | typeof $motion.calm;
+/** Every `time` token this project declares. */
+export type TimeToken = typeof $motion.quick | typeof $motion.calm;
 
-/** Every variable this project declares, by kind — what `Var` reads. */
-export interface VarByKind {
-  "color": ColorVar;
-  "length": LengthVar;
-  "time": TimeVar;
+/** Every token this project declares, by kind — what `AnyToken` reads. */
+export interface TokenByKind {
+  "color": ColorToken;
+  "length": LengthToken;
+  "time": TimeToken;
 }
 
-/** Any variable of a kind — `const tone: Var<"color"> = toggle ? $a.b : $a.c`. */
-export type Var<K extends keyof VarByKind> = VarByKind[K];
+/** Any token of a kind — `const tone: AnyToken<"color"> = toggle ? $a.b : $a.c`. */
+export type AnyToken<K extends keyof TokenByKind> = TokenByKind[K];

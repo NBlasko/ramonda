@@ -406,13 +406,13 @@ describe("codegen", () => {
 
   test("writes the pair, says what it wrote, and exits 0", () => {
     const root = bare(
-      `import { kind } from "@ramonda/css/config";\nexport default { variables: { $color: kind("color", { primary: { main: "#3b82f6" } }) } };\n`,
+      `import { kind } from "@ramonda/css/config";\nexport default { tokens: { $color: kind("color", { primary: { main: "#3b82f6" } }) } };\n`,
     );
     const { output, status } = runIn(root);
 
     expect(status).toBe(0);
-    expect(output).toContain("1 variable");
-    expect(existsSync(join(root, join("css-system", "variables.css")))).toBe(true);
+    expect(output).toContain("1 token");
+    expect(existsSync(join(root, join("css-system", "tokens.css")))).toBe(true);
     expect(existsSync(join(root, join("css-system", "index.ts")))).toBe(true);
   });
 
@@ -435,7 +435,7 @@ describe("codegen", () => {
    * compares before writing for an unrelated reason.
    */
   describe("`--check`", () => {
-    const declaring = `import { kind } from "@ramonda/css/config";\nexport default { variables: { $color: kind("color", { primary: { main: "#3b82f6" } }) } };\n`;
+    const declaring = `import { kind } from "@ramonda/css/config";\nexport default { tokens: { $color: kind("color", { primary: { main: "#3b82f6" } }) } };\n`;
 
     test("a project with no generated pair at all is stale, and nothing is written", () => {
       const root = bare(declaring);
@@ -479,13 +479,13 @@ describe("codegen", () => {
 
   test("a collision stops it, with both paths named", () => {
     const root = bare(
-      `import { kind } from "@ramonda/css/config";\nexport default { variables: { $a: kind("length", { b: { c: "1px" }, "b-c": "2px" }) } };\n`,
+      `import { kind } from "@ramonda/css/config";\nexport default { tokens: { $a: kind("length", { b: { c: "1px" }, "b-c": "2px" }) } };\n`,
     );
     const { output, status } = runIn(root);
 
     expect(status).toBe(1);
     expect(output).toContain("--a-b-c");
-    expect(existsSync(join(root, join("css-system", "variables.css")))).toBe(false);
+    expect(existsSync(join(root, join("css-system", "tokens.css")))).toBe(false);
   });
 
   /**
@@ -518,7 +518,7 @@ describe("codegen", () => {
    */
   test("a declaration `kind` refuses is said once, with the file and the reason", () => {
     const root = bare(
-      `import { kind } from "@ramonda/css/config";\nexport default { variables: { $a: kind("length", { b: { value: "8px", range: [] } }) } };\n`,
+      `import { kind } from "@ramonda/css/config";\nexport default { tokens: { $a: kind("length", { b: { value: "8px", range: [] } }) } };\n`,
     );
     const { output, status } = runIn(root);
 
@@ -578,8 +578,8 @@ describe("`explain`", () => {
   const CONFIG = `export default {
   properties: {
     "*": { shorthand: false, arity: 1 },
-    "<length>": { variablesOnly: true, units: ["px", "rem"] },
-    "border-radius": { variablesOnly: false },
+    "<length>": { hardcoded: false, units: ["px", "rem"] },
+    "border-radius": { hardcoded: true },
   },
 };
 `;

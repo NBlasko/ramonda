@@ -139,9 +139,9 @@ const TO_ONE_CONDITION =
   `\`${CONDITION}\` takes one \`$( … )\` and nothing else — everything the condition needs goes ` +
   "inside it, where it is ordinary TypeScript. To select an element named " +
   `\`${CONDITION}\` instead, name the parent: \`& ${CONDITION} { … }\`.`;
-const LONE_DOLLAR = "a `$` on its own names nothing — write `$group.name` for a theme variable, or `$( … )` for code.";
+const LONE_DOLLAR = "a `$` on its own names nothing — write `$group.name` for a token, or `$( … )` for code.";
 const TO_VARIABLE = (path: string) =>
-  `a variable is written \`$${path}\` — the group's name right after the \`$\`. \`$( … )\` is code.`;
+  `a token is written \`$${path}\` — the group's name right after the \`$\`. \`$( … )\` is code.`;
 
 /** What opens a spread of another block's map. */
 export const SPREAD = "...";

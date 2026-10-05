@@ -563,13 +563,13 @@ describe("codegen through the vite plugin", () => {
     );
     writeFileSync(
       join(root, "ramonda.css.ts"),
-      `import { kind } from "@ramonda/css/config";\nexport default { variables: { $color: kind("color", { primary: { main: "#3b82f6" } }) } };\n`,
+      `import { kind } from "@ramonda/css/config";\nexport default { tokens: { $color: kind("color", { primary: { main: "#3b82f6" } }) } };\n`,
     );
 
     const result = build(root);
 
     expect(result.ok).toBe(true);
-    expect(readFileSync(join(root, join("css-system", "variables.css")), "utf8")).toContain(
+    expect(readFileSync(join(root, join("css-system", "tokens.css")), "utf8")).toContain(
       "--color-primary-main: #3b82f6;",
     );
     // The emitted rule reads the variable and carries no fallback — the registration is the
@@ -580,7 +580,7 @@ describe("codegen through the vite plugin", () => {
 
 /**
  * A project stylesheet setting a declared variable its declaration does not allow — the theme half
- * of `variable-set-against-its-declaration`. A theme is plain CSS, and plain CSS is where a fixed
+ * of `token-set-against-its-declaration`. A theme is plain CSS, and plain CSS is where a fixed
  * variable gets changed; the plugin is handed every stylesheet the app loads.
  */
 describe("a stylesheet setting a declared variable", () => {
@@ -592,7 +592,7 @@ describe("a stylesheet setting a declared variable", () => {
     );
     writeFileSync(
       join(root, "ramonda.css.ts"),
-      `import { kind } from "@ramonda/css/config";\nexport default { variables: { $color: kind("color", { sunken: ${declared} }) }${rules} };\n`,
+      `import { kind } from "@ramonda/css/config";\nexport default { tokens: { $color: kind("color", { sunken: ${declared} }) }${rules} };\n`,
     );
     return build(root);
   };
@@ -618,7 +618,7 @@ describe("a stylesheet setting a declared variable", () => {
     const result = themed(
       `[data-theme="dark"] { --color-sunken: #111827; }\n`,
       `"#f3f4f6"`,
-      `, rules: { "variable-set-against-its-declaration": "off" }`,
+      `, rules: { "token-set-against-its-declaration": "off" }`,
     );
 
     expect(result.ok).toBe(true);

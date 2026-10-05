@@ -19,7 +19,7 @@ const byConfig = new WeakMap<Config, ReadonlyMap<string, Named>>();
 export function declaredByName(config: Config): ReadonlyMap<string, Named> {
   const already = byConfig.get(config);
   if (already !== undefined) return already;
-  const found = new Map(config.variables === undefined ? [] : namesIn(config.variables).map((one) => [one.name, one]));
+  const found = new Map(config.tokens === undefined ? [] : namesIn(config.tokens).map((one) => [one.name, one]));
   byConfig.set(config, found);
   return found;
 }

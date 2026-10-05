@@ -70,7 +70,7 @@ toStyle([[angle, "45deg"]]);     ✓
 toStyle([[angle, "45px"]]);      ✗  a length where `<angle>` was declared
 ```
 
-It takes several at once, and it takes declared variables — `$color.accent` — in the same list, so
+It takes several at once, and it takes tokens — `$color.accent` — in the same list, so
 one call sets everything an element carries.
 
 The binding's type is `CssVar<"angle">`, read from the `syntax` you wrote. That is also what a
@@ -108,7 +108,7 @@ set. Those consumers are not in the program, so there is nothing for it to see. 
 
 ## Declared once, read anywhere
 
-A declared property is **one variable however many declarations read it**. A block reading one
+A declared property is **one custom property however many declarations read it**. A block reading one
 property twice compiles to:
 
 ```
@@ -182,7 +182,7 @@ truly its own.
 
 ## Next
 
-- **[Names the stylesheet sees](/style-blocks/variables)** — the other kind of variable: the ones
+- **[Names the stylesheet sees](/style-blocks/tokens)** — the other kind of custom property: the ones
   your project declares in `ramonda.css.ts`, which are the same for everybody.
 - **[Styles a caller may send](/style-blocks/prop)** — a prop that takes a block, and a type that
   says which declarations may go in it.

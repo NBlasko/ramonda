@@ -19,7 +19,7 @@ import { kind } from "../declared";
  */
 
 const declared: Config = {
-  variables: {
+  tokens: {
     $color: kind("color", { primary: { main: "#3b82f6", light: "#93c5fd" } }),
     $size: kind("length", { control: { md: "30px" } }),
   },
@@ -42,30 +42,30 @@ describe("a `$` path the project did not declare", () => {
   });
 
   test("an undeclared path is reported, and a near miss is offered", () => {
-    expect(rules("color: $color.primary.mian;")).toEqual(["unknown-variable"]);
+    expect(rules("color: $color.primary.mian;")).toEqual(["unknown-token"]);
     expect(messages("color: $color.primary.mian;")[0]).toContain("color.primary.main");
   });
 
   test("a path with nothing like it gets no invented suggestion", () => {
-    expect(rules("color: $nothing.like.it;")).toEqual(["unknown-variable"]);
+    expect(rules("color: $nothing.like.it;")).toEqual(["unknown-token"]);
     expect(messages("color: $nothing.like.it;")[0]).not.toContain("Did you mean");
   });
 
   test("a GROUP is reported too, because a group is not a value", () => {
-    expect(rules("color: $color.primary;")).toEqual(["unknown-variable"]);
+    expect(rules("color: $color.primary;")).toEqual(["unknown-token"]);
     expect(messages("color: $color.primary;")[0]).toMatch(/group/i);
   });
 
   test("`$` with nothing after it is reported rather than compiled", () => {
-    expect(rules("color: $;")).toEqual(["unknown-variable"]);
+    expect(rules("color: $;")).toEqual(["unknown-token"]);
     expect(messages("color: $;")[0]).toContain("`$( … )`");
   });
 
   test("a project that declared NO variables is told so, not quietly allowed", () => {
     // The user's own instruction on defaults: a config that permits everything when it was never
     // set means people can do as they like without ever learning the config exists.
-    expect(rules("color: $color.primary.main;", {})).toEqual(["unknown-variable"]);
-    expect(messages("color: $color.primary.main;", {})[0]).toMatch(/declares no variables/i);
+    expect(rules("color: $color.primary.main;", {})).toEqual(["unknown-token"]);
+    expect(messages("color: $color.primary.main;", {})[0]).toMatch(/declares no tokens/i);
   });
 
   test("no config object at all is silence, because nothing was asked", () => {
@@ -92,7 +92,7 @@ describe("a `$` path the project did not declare", () => {
  */
 describe("a `$` naming a group the project does not have", () => {
   test("names the groups there are, and `$( … )` for a value from code", () => {
-    expect(rules("color: $props.tone;")).toEqual(["unknown-variable"]);
+    expect(rules("color: $props.tone;")).toEqual(["unknown-token"]);
     const [message] = messages("color: $props.tone;");
 
     expect(message).toContain("`$color`");
@@ -118,7 +118,7 @@ describe("a `$` naming a group the project does not have", () => {
  */
 describe("a declared variable read with a hand-written `var()`", () => {
   test("is reported, naming the spelling to write instead", () => {
-    expect(rules("color: var(--color-primary-main);")).toEqual(["variable-by-hand"]);
+    expect(rules("color: var(--color-primary-main);")).toEqual(["token-by-hand"]);
     expect(messages("color: var(--color-primary-main);")[0]).toContain("`$color.primary.main`");
   });
 
@@ -155,7 +155,7 @@ describe("a declared variable read with a hand-written `var()`", () => {
  */
 describe("a declared variable set in a block", () => {
   const themed: Config = {
-    variables: {
+    tokens: {
       $color: kind("color", {
         sunken: "#f3f4f6",
         moving: { value: "#ffffff", range: ["#ffffff", "#111827"] },
@@ -172,7 +172,7 @@ describe("a declared variable set in a block", () => {
     ["in a `when`", "when $(a) { --color-sunken: red; }"],
     ["in a match arm", "match $(t) { a => ( --color-sunken: red; ); _ => (); }"],
   ])("a FIXED one is refused %s, naming the variable and `range`", (_what, css) => {
-    const found = set(css).filter((one) => one.rule === "variable-set-against-its-declaration");
+    const found = set(css).filter((one) => one.rule === "token-set-against-its-declaration");
 
     expect(found).toHaveLength(1);
     expect(found[0].message).toContain("`$color.sunken`");
@@ -184,7 +184,7 @@ describe("a declared variable set in a block", () => {
     ["one branch of a choice outside it", "--color-moving: $(a) ? #ffffff : red;", "red"],
     ["one arm of a match outside it", "--color-moving: match $(t) { a => #111827; _ => blue; };", "blue"],
   ])("a value %s is refused, naming it and the range", (_what, css, value) => {
-    const found = set(css).filter((one) => one.rule === "variable-set-against-its-declaration");
+    const found = set(css).filter((one) => one.rule === "token-set-against-its-declaration");
 
     expect(found).toHaveLength(1);
     expect(found[0].message).toContain(`\`${value}\``);
@@ -200,6 +200,6 @@ describe("a declared variable set in a block", () => {
     ["a value from a `var()`, which is not known here", "--color-moving: var(--elsewhere);"],
     ["a name the project did not declare", "--brand: red;"],
   ])("%s is not", (_what, css) => {
-    expect(set(css).map((one) => one.rule)).not.toContain("variable-set-against-its-declaration");
+    expect(set(css).map((one) => one.rule)).not.toContain("token-set-against-its-declaration");
   });
 });

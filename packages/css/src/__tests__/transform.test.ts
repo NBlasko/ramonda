@@ -1196,9 +1196,9 @@ describe("a condition at the wrong level", () => {
 
 /** The build refuses a fixed declared variable set in a block — see `dollarRule.test.ts` for the rest. */
 test("a fixed declared variable set in a block stops the build", () => {
-  const config = { variables: { $color: kind("color", { sunken: "#f3f4f6" }) } };
+  const config = { tokens: { $color: kind("color", { sunken: "#f3f4f6" }) } };
 
   expect(() => transform(`const x = @@( --color-sunken: red; );\nexport default x;\n`, { config })).toThrow(
-    /variable-set-against-its-declaration: `\$color\.sunken` is declared without a `range`/,
+    /token-set-against-its-declaration: `\$color\.sunken` is declared without a `range`/,
   );
 });

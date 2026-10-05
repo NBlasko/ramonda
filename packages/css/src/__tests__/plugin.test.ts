@@ -3161,14 +3161,14 @@ describe("logic being typed", () => {
   });
 });
 
-/** The `style` attribute's half of `variable-set-against-its-declaration`, in the editor — see `check.test.ts`. */
+/** The `style` attribute's half of `token-set-against-its-declaration`, in the editor — see `check.test.ts`. */
 describe("a `style` attribute setting a declared variable, in the editor", () => {
   test("a fixed one is reported on the name, and an undeclared one is not", () => {
     const dir = mkdtempSync(join(tmpdir(), "ramonda-editor-style-"));
     writeFileSync(
       join(dir, "ramonda.css.ts"),
       `import { kind } from ${JSON.stringify(join(PACKAGE, "dist", "config.js"))};\n` +
-        `export default { variables: { $color: kind("color", { sunken: "#f3f4f6" }) } };\n`,
+        `export default { tokens: { $color: kind("color", { sunken: "#f3f4f6" }) } };\n`,
     );
     const file = join(dir, "Card.tsx");
     const source = `export const a = <p style={{ "--color-sunken": "red", "--brand": "red" }}>x</p>;\n`;
@@ -3204,7 +3204,7 @@ describe("a `style` attribute setting a declared variable, in the editor", () =>
     const found = service
       .getSemanticDiagnostics(file)
       .filter((one) =>
-        ts.flattenDiagnosticMessageText(one.messageText, " ").includes("[variable-set-against-its-declaration]"),
+        ts.flattenDiagnosticMessageText(one.messageText, " ").includes("[token-set-against-its-declaration]"),
       );
 
     expect(found.map((one) => one.start)).toEqual([source.indexOf("--color-sunken")]);

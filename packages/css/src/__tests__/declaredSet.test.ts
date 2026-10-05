@@ -7,7 +7,7 @@ import { kind } from "../declared";
  * may be set to a value — and the reader that finds what a piece of CSS sets.
  */
 const config = {
-  variables: {
+  tokens: {
     $color: kind("color", {
       sunken: "#f3f4f6",
       moving: { value: "#ffffff", range: ["#ffffff", "#111827"] },

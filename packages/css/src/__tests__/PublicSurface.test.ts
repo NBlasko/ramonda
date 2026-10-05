@@ -135,7 +135,7 @@ const COMPILER = [
  * `ramonda.css.ts` imports from here and nothing else does. `defineConfig` and `kind` are what a
  * config file calls; the five types are what it is checked against.
  */
-const CONFIG = ["Config", "Declared", "Kind", "ValueByKind", "Variable", "defineConfig", "kind"];
+const CONFIG = ["Config", "Declared", "Kind", "ValueByKind", "TokenDeclaration", "defineConfig", "kind"];
 
 /**
  * The types a COMPONENT is written against, and the entry a reader is sent to for them.

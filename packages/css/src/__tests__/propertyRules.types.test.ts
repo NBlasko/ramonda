@@ -102,10 +102,10 @@ describe("what it accepts", () => {
 describe("what the config type says about a group's name", () => {
   test("a group without its `$` is refused", () => {
     // @ts-expect-error — `color` must be written `$color`
-    defineConfig({ variables: { color: kind("color", { accent: "#00f" }) } });
+    defineConfig({ tokens: { color: kind("color", { accent: "#00f" }) } });
   });
 
   test("and one with it is accepted", () => {
-    defineConfig({ variables: { $color: kind("color", { accent: "#00f" }) } });
+    defineConfig({ tokens: { $color: kind("color", { accent: "#00f" }) } });
   });
 });

@@ -209,23 +209,20 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
    * A theme is plain CSS, and plain CSS is where a fixed variable gets changed: measured, this
    * plugin is handed every stylesheet the app loads — imported, a CSS module, and one linked from
    * `index.html` — in a build and on the dev server, as written, since it runs first. The judgement
-   * is the one a block gets (`declaredSet.ts`). The generated `variables.css` is skipped: it is where
+   * is the one a block gets (`declaredSet.ts`). The generated `tokens.css` is skipped: it is where
    * every variable is SET to its initial, which is the declaration itself.
    */
   function checkStylesheet(file: string, code: string): void {
     const config = configFor(file);
-    if (config === undefined || config.rules?.["variable-set-against-its-declaration"] === "off") return;
+    if (config === undefined || config.rules?.["token-set-against-its-declaration"] === "off") return;
     if (variablesSheetFor(file) === resolve(file)) return;
     const [first] = settingsAgainst(code, config);
     if (first === undefined) return;
     const { line, column } = positionOf(code, first.at);
-    throw Object.assign(
-      new Error(`${file}:${line}:${column}  variable-set-against-its-declaration: ${first.message}`),
-      {
-        id: file,
-        loc: { line, column: column - 1 },
-      },
-    );
+    throw Object.assign(new Error(`${file}:${line}:${column}  token-set-against-its-declaration: ${first.message}`), {
+      id: file,
+      loc: { line, column: column - 1 },
+    });
   }
 
   function compile(file: string, code: string) {
@@ -318,7 +315,7 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
    * It reached here and returned at the first line: `recompile` takes files that hold a block, and a
    * config holds none. Measured on a running server, both halves were stale and both were silent:
    *
-   * - `css-system/variables.css` is written by `buildStart` and never again, so a token changed from
+   * - `css-system/tokens.css` is written by `buildStart` and never again, so a token changed from
    *   `16px` to `40px` still served `16px`. It is a plain stylesheet the project imports once —
    *   nothing else was ever going to regenerate it.
    * - every already-compiled file kept the rules the OLD config gave it, so a narrowed `units` or a

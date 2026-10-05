@@ -73,7 +73,7 @@ export type { Kind, Token, ValueByKind } from "./token";
  * A symbol rather than a `kind` field, because a group is the author's own object and may well hold
  * a variable named `kind` or `value`. Those are ordinary names for a design system to use.
  */
-export const IS_VARIABLE: unique symbol = Symbol.for("ramonda.css.variable");
+export const IS_TOKEN: unique symbol = Symbol.for("ramonda.css.token");
 
 /**
  * One declared variable: what it is, what it starts as, and what it may become.
@@ -87,8 +87,8 @@ export const IS_VARIABLE: unique symbol = Symbol.for("ramonda.css.variable");
  * as the `initial-value`. The two were one field until a user asked how a theme is supposed to work,
  * and the answer was that they are two questions.
  */
-export interface Variable<K extends Kind = Kind, V = unknown> {
-  readonly [IS_VARIABLE]: true;
+export interface TokenDeclaration<K extends Kind = Kind, V = unknown> {
+  readonly [IS_TOKEN]: true;
   readonly kind: K;
   /** The initial — what the stylesheet sets and what `@property` registers. */
   readonly value: string | number;
@@ -116,8 +116,8 @@ declare const RANGE: unique symbol;
  * It is a phantom: nothing reads `[TOKEN]` at runtime, and nothing is there to read.
  */
 /** Whether a leaf has been declared, asked without depending on how the marker is spelled. */
-export function isVariable(one: unknown): one is Variable {
-  return typeof one === "object" && one !== null && (one as Partial<Variable>)[IS_VARIABLE] === true;
+export function isTokenDeclaration(one: unknown): one is TokenDeclaration {
+  return typeof one === "object" && one !== null && (one as Partial<TokenDeclaration>)[IS_TOKEN] === true;
 }
 
 /** Any group, before its leaves are judged — the shape `T` is inferred from. */
@@ -127,7 +127,7 @@ type Group = { readonly [name: string]: unknown };
  * The same group with every bare leaf REPLACED by what the kind accepts, which is the constraint.
  *
  * **A mapped type rather than a recursive union, and that is not a preference.** The first version
- * constrained the argument to `V | Variable | { [name: string]: Written<V> }`, and `tsc` refused it
+ * constrained the argument to `V | TokenDeclaration | { [name: string]: Written<V> }`, and `tsc` refused it
  * outright — `TS2590: Expression produces a union type that is too complex to represent` — as soon
  * as a group held a nested `kind( … )`. Of course it did: `V` for a length is 49 units times
  * `${number}`, and a recursive union multiplies that by every level.
@@ -143,7 +143,7 @@ interface Ranged<V> {
 }
 
 type Leaves<K extends Kind, T> = {
-  readonly [N in keyof T]: T[N] extends Variable
+  readonly [N in keyof T]: T[N] extends TokenDeclaration
     ? T[N]
     : T[N] extends string | number
       ? ValueByKind[K]
@@ -160,15 +160,15 @@ type Leaves<K extends Kind, T> = {
  * naming the offending VALUE rather than the variable.
  */
 export type Declared<K extends Kind, T> = {
-  readonly [N in keyof T]: T[N] extends Variable<infer VK, infer VV>
-    ? Variable<VK, VV>
+  readonly [N in keyof T]: T[N] extends TokenDeclaration<infer VK, infer VV>
+    ? TokenDeclaration<VK, VV>
     : T[N] extends string | number
-      ? Variable<K, T[N]>
+      ? TokenDeclaration<K, T[N]>
       : T[N] extends { readonly range: infer R }
         ? R extends "any"
-          ? Variable<K, ValueByKind[K]>
+          ? TokenDeclaration<K, ValueByKind[K]>
           : R extends readonly (infer One)[]
-            ? Variable<K, One>
+            ? TokenDeclaration<K, One>
             : never
         : Declared<K, T[N]>;
 };
@@ -186,7 +186,7 @@ function refuse(message: string): never {
  * Declares a kind for a whole group of variables.
  *
  * ```ts
- * variables: {
+ * tokens: {
  *   $color: kind("color", { primary: { main: "#3b82f6" } }),
  *   $size: kind("length", { control: { md: "30px" }, weight: kind("number", { bold: 700 }) }),
  * }
@@ -212,9 +212,9 @@ export function kind<const K extends Kind, const T extends Group>(of: K, group: 
   }
 
   const box = (one: unknown, trail: readonly string[]): unknown => {
-    if (isVariable(one)) return one;
+    if (isTokenDeclaration(one)) return one;
     if (typeof one === "string" || typeof one === "number") {
-      return { [IS_VARIABLE]: true, kind: of, value: one } satisfies Variable<K, typeof one>;
+      return { [IS_TOKEN]: true, kind: of, value: one } satisfies TokenDeclaration<K, typeof one>;
     }
 
     /**
@@ -241,17 +241,17 @@ export function kind<const K extends Kind, const T extends Group>(of: K, group: 
       }
 
       return {
-        [IS_VARIABLE]: true,
+        [IS_TOKEN]: true,
         kind: of,
         value,
         ...(range === undefined ? {} : { range }),
-      } as Variable<K, unknown>;
+      } as TokenDeclaration<K, unknown>;
     }
     if (typeof one !== "object" || one === null || Array.isArray(one)) {
       refuse(
         `\`${pathOf(trail)}\` is ${one === null ? "null" : Array.isArray(one) ? "a list" : typeof one}, ` +
           `which is neither a value nor a group.` +
-          `\n\n        A variable's fallback is a string or a number, and anything else here is a group of them.`,
+          `\n\n        A token's fallback is a string or a number, and anything else here is a group of them.`,
       );
     }
     const copy: Record<string, unknown> = {};

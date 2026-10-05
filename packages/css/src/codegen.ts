@@ -1,7 +1,7 @@
 import { expressionFor, nameFor } from "./compiler/dollar";
 import { ARITY, KEYWORDS, PRIMITIVE, SHORTHANDS } from "./compiler/keywords.generated";
 import { ConfigError, type PropertyRules } from "./config";
-import { SYNTAX, type Kind, isVariable } from "./declared";
+import { SYNTAX, type Kind, isTokenDeclaration } from "./declared";
 
 /**
  * What a project's declared variables become: a stylesheet, and a module to write them with.
@@ -65,7 +65,7 @@ export type Groups = { readonly [group: `$${string}`]: unknown };
  *     file:///…/dist/chunk-U7N5QK5K.js:1620
  *       throw new Error(`[ramonda-css] ${message}`);
  *             ^
- *     Error: [ramonda-css] `a}b` cannot be part of a variable's name.
+ *     Error: [ramonda-css] `a}b` cannot be part of a token's name.
  *         at refuse (…)  at verifyNames (…)  at writeGenerated (…)
  *
  * The note above `said` in `cli.ts` says that shape was fixed — *all six ways `ramonda.css.ts` can
@@ -92,7 +92,7 @@ export function namesIn(declarations: Declarations): readonly Named[] {
       // A group's `$` is how it is spelled, not part of its path — see `Groups`.
       const here = [...trail, trail.length === 0 ? segment.replace(/^\$/, "") : segment];
 
-      if (isVariable(one)) {
+      if (isTokenDeclaration(one)) {
         found.push({
           path: here.join("."),
           name: nameFor(here.join(".")),
@@ -146,7 +146,7 @@ export function verifyNames(named: readonly Named[], path?: string): void {
     const group = one.path.split(".")[0];
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(group)) {
       refuse(
-        `\`$${group}\` cannot name a group of variables.\n\n        A group is written \`$${group}.…\` in a block and ` +
+        `\`$${group}\` cannot name a group of tokens.\n\n        A group is written \`$${group}.…\` in a block and ` +
           `exported as \`$${group}\` for code,\n        so it is a letter or \`_\` and then letters, digits and \`_\`.`,
         path,
       );
@@ -155,7 +155,7 @@ export function verifyNames(named: readonly Named[], path?: string): void {
     for (const segment of one.path.split(".")) {
       if (!/^[A-Za-z0-9_-]+$/.test(segment)) {
         refuse(
-          `\`${segment}\` cannot be part of a variable's name.\n\n` +
+          `\`${segment}\` cannot be part of a token's name.\n\n` +
             `        A name holds letters, digits, \`-\` and \`_\` — that is what \`$group.\u2026\` can ` +
             `reach, and\n        what a custom property may be called. Declared at \`${one.path}\`.`,
           path,
@@ -182,7 +182,7 @@ export function verifyNames(named: readonly Named[], path?: string): void {
       const said = broken[0] === "\n" || broken[0] === "\r" ? "a line break" : `\`${broken[0]}\``;
       refuse(
         `\`${one.path}\` has a value holding ${said}, which cannot go in a stylesheet.\n\n` +
-          `        A variable is written as \`--name: value;\` inside \`:root\`, so a \`;\`, a brace ` +
+          `        A token is written as \`--name: value;\` inside \`:root\`, so a \`;\`, a brace ` +
           `or a\n        line break ends the declaration or leaves the rule. The value was ` +
           `\`${value.replace(/[\r\n]/g, "\u23ce").slice(0, 40)}\`.`,
         path,
@@ -192,7 +192,7 @@ export function verifyNames(named: readonly Named[], path?: string): void {
     const already = claimed.get(one.name);
     if (already !== undefined) {
       refuse(
-        `two variables spell one custom property.\n\n` +
+        `two tokens spell one custom property.\n\n` +
           `        \`${already}\` and \`${one.path}\` both become \`${one.name}\`.\n\n` +
           `        A level is joined to the next with a dash, and a name may hold one too, so\n` +
           `        two paths can meet. Rename either.`,
@@ -353,7 +353,7 @@ function moduleTree(named: readonly Named[]): string {
       const doc =
         next !== null && typeof next === "object" && "name" in (next as Named)
           ? docFor(next as Named, "")
-          : `/** The \`${group}\` variables, as a block writes them: \`$${group}.…\`. */`;
+          : `/** The \`${group}\` tokens, as a block writes them: \`$${group}.…\`. */`;
       return `${doc}\nexport const $${group} = ${value};\n`;
     })
     .join("\n");
@@ -447,7 +447,7 @@ interface AnyRule {
   readonly arity?: number;
   readonly units?: readonly string[];
   readonly values?: readonly (string | number)[];
-  readonly variablesOnly?: boolean;
+  readonly hardcoded?: boolean;
 }
 
 /**
@@ -558,15 +558,15 @@ export function explain(rules: PropertyRules | undefined, property: string): Exp
  *
  * A kind selector is the only place this can come from: `border-left: 4px solid red` has no kind of
  * its own, so nothing about that property says a colour inside it was hardcoded. What the rule then
- * owns is the value; what exempts a property is its own `variablesOnly: false`, asked separately.
+ * owns is the value; what exempts a property is its own `hardcoded: true`, asked separately.
  */
-export function variablesOnlyKinds(rules: PropertyRules | undefined): readonly string[] {
+export function tokensOnlyKinds(rules: PropertyRules | undefined): readonly string[] {
   if (rules === undefined) return [];
 
   const kinds: string[] = [];
   for (const [key, rule] of Object.entries(rules)) {
     const kind = /^<(.+)>$/.exec(key);
-    if (kind !== null && (rule as AnyRule).variablesOnly === true) kinds.push(kind[1]);
+    if (kind !== null && (rule as AnyRule).hardcoded === false) kinds.push(kind[1]);
   }
   return kinds;
 }
@@ -705,10 +705,10 @@ function propertyMap(rules: PropertyRules | undefined): Mapped {
      * A property with no kind cannot express that — nothing can check a variable into it — so the
      * literals stay rather than the property being narrowed to nothing a person could write.
      */
-    const onlyVariables = rule.variablesOnly === true && kinds !== undefined;
+    const onlyVariables = rule.hardcoded === false && kinds !== undefined;
     const written = onlyVariables ? "" : `${permitted.join(" | ")}`;
     const said = onlyVariables
-      ? `only the ${values.length} value(s) this project permits, and only as one of its variables`
+      ? `only the ${values.length} value(s) this project permits, and only as one of its tokens`
       : `only the ${values.length} value(s) this project permits`;
     /**
      * The quoted spellings, explained where a reader meets them — which is on HOVER.
@@ -743,7 +743,7 @@ function propertyMap(rules: PropertyRules | undefined): Mapped {
      * it is not a colour anybody hardcoded, it is a reference to the inherited one. Refusing it
      * would be refusing an escape hatch CSS itself provides.
      */
-    const onlyVariables = ruleFor(rules, property).variablesOnly === true;
+    const onlyVariables = ruleFor(rules, property).hardcoded === false;
     const value = withUnits(narrow.value, ruleFor(rules, property).units);
 
     /**
@@ -838,10 +838,10 @@ function propertyMap(rules: PropertyRules | undefined): Mapped {
 }
 
 /**
- * `Var<K>` — the variables this project declares of one kind, as a type.
+ * `AnyToken<K>` — the variables this project declares of one kind, as a type.
  *
  * ```ts
- * const tone: Var<"color"> = toggle ? $color.accent.quiet : $color.accent.main;
+ * const tone: AnyToken<"color"> = toggle ? $color.accent.quiet : $color.accent.main;
  * ```
  *
  * **Asked for by a user**, whose annotation could not be written: `Token<"color", …>` wants the
@@ -855,7 +855,7 @@ function propertyMap(rules: PropertyRules | undefined): Mapped {
  *
  * An INTERFACE keyed by kind rather than a conditional over a union, for two reasons. Hovering it
  * shows the variables themselves rather than a computation. And a kind this project declares nothing
- * of is simply not a key, so `Var<"time">` in a project with no times is refused by the constraint
+ * of is simply not a key, so `AnyToken<"time">` in a project with no times is refused by the constraint
  * with the kinds it does have — rather than resolving to `never` and failing later against a value.
  */
 function byKind(named: readonly Named[]): string {
@@ -874,25 +874,25 @@ function byKind(named: readonly Named[]): string {
    * A kind's variables are a union of branded tokens, and a union EXPANDS wherever TypeScript
    * prints it: refusing one colour used to read `Token<"color", Fixed<"#10b981">> | Token<…> | …
    * 5 more …`, in which a reader cannot find the property they got wrong. Measured, the same
-   * refusal under a named alias prints `ColorVar`.
+   * refusal under a named alias prints `ColorToken`.
    *
    * It is the shape `Keyword<…>` already uses in the property map, arrived at from the other side:
-   * `Keyword<K>` survives printing because `K` stands naked in its union, while `VarByKind[K]` is
+   * `Keyword<K>` survives printing because `K` stands naked in its union, while `TokenByKind[K]` is
    * an indexed access TypeScript resolves on sight — so the alias has to be given a name of its own
-   * rather than made lazy. Measured: it then prints by name through `Var<"color">` as well.
+   * rather than made lazy. Measured: it then prints by name through `AnyToken<"color">` as well.
    */
   const aliasFor = (kind: string) =>
     `${kind
       .split("-")
       .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-      .join("")}Var`;
+      .join("")}Token`;
 
   const ordered = [...kinds.entries()].sort(([a], [b]) => a.localeCompare(b));
 
   const aliases = ordered
     .map(
       ([kind, each]) =>
-        `/** Every \`${kind}\` variable this project declares. */\n` +
+        `/** Every \`${kind}\` token this project declares. */\n` +
         `export type ${aliasFor(kind)} = ${each.join(" | ")};\n`,
     )
     .join("\n");
@@ -901,10 +901,10 @@ function byKind(named: readonly Named[]): string {
 
   return (
     `\n${aliases}\n` +
-    `/** Every variable this project declares, by kind — what \`Var\` reads. */\n` +
-    `export interface VarByKind {\n${rows}\n}\n\n` +
-    `/** Any variable of a kind — \`const tone: Var<"color"> = toggle ? $a.b : $a.c\`. */\n` +
-    `export type Var<K extends keyof VarByKind> = VarByKind[K];\n`
+    `/** Every token this project declares, by kind — what \`AnyToken\` reads. */\n` +
+    `export interface TokenByKind {\n${rows}\n}\n\n` +
+    `/** Any token of a kind — \`const tone: AnyToken<"color"> = toggle ? $a.b : $a.c\`. */\n` +
+    `export type AnyToken<K extends keyof TokenByKind> = TokenByKind[K];\n`
   );
 }
 

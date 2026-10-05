@@ -81,7 +81,7 @@ describe("a value that may not be written", () => {
     ["a `}`", "--brand}"],
     ["nothing after the dashes", "--"],
   ])("a name carrying %s is refused", (_what, token) => {
-    expect(() => toStyle([[token as never, "red" as never]])).toThrow(/not a variable this package wrote/);
+    expect(() => toStyle([[token as never, "red" as never]])).toThrow(/not a token this package wrote/);
   });
 
   /** The control: the names this package really writes are accepted, measured from a real build. */

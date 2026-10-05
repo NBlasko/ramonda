@@ -1200,7 +1200,7 @@ describe("a variable nothing in the project sets", () => {
     });
 
     expect(report.findings).toHaveLength(1);
-    expect(report.findings[0].code).toBe("variable-not-set");
+    expect(report.findings[0].code).toBe("custom-property-not-set");
     expect(report.findings[0].line).toBe(2);
     expect(report.findings[0].column).toBe(14);
     expect(report.findings[0].message).toContain("nothing in this build sets `--brand`");
@@ -2630,7 +2630,7 @@ describe("a `$` variable in a whole shorthand from another block", () => {
     `export declare const $border: { thin: string; top: string };\nexport declare const $color: { a: string };\n`;
   const CONFIG =
     `import { kind } from ${JSON.stringify(join(PACKAGE, "dist", "config.js"))};\n` +
-    `export default { variables: {\n` +
+    `export default { tokens: {\n` +
     `  $border: kind("any", { thin: "1px solid red", top: "2px solid blue" }),\n` +
     `  $color: kind("color", { a: "#000" }),\n} };\n`;
   const findings = (base: string, card: string) =>
@@ -2744,13 +2744,13 @@ describe("the allow-list check, second review", () => {
 
 /**
  * A `style` attribute setting a declared variable its declaration does not allow — the attribute's
- * half of `variable-set-against-its-declaration`. Measured before: both spellings passed while
+ * half of `token-set-against-its-declaration`. Measured before: both spellings passed while
  * `toStyle` refused the same setting.
  */
 describe("a `style` attribute setting a declared variable", () => {
   const CONFIG =
     `import { kind } from ${JSON.stringify(join(PACKAGE, "dist", "config.js"))};\n` +
-    `export default { variables: { $color: kind("color", {\n` +
+    `export default { tokens: { $color: kind("color", {\n` +
     `  sunken: "#f3f4f6",\n` +
     `  moving: { value: "#ffffff", range: ["#ffffff", "#111827"] },\n` +
     `}) } };\n`;
@@ -2758,7 +2758,7 @@ describe("a `style` attribute setting a declared variable", () => {
     const card = `export const Card = (on: boolean, v: string) => ${jsx};\n`;
     const out = checkProject(project({ "ramonda.css.ts": CONFIG, "Card.tsx": card })).findings;
     return out
-      .filter((one) => one.code === "variable-set-against-its-declaration")
+      .filter((one) => one.code === "token-set-against-its-declaration")
       .map((one) => ({ column: one.column, message: one.message }));
   };
 
