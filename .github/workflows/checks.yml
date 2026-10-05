@@ -380,6 +380,7 @@ jobs:
       - name: Type-check the documentation examples
         run: |
           SELFTEST=block node scripts/check-examples.mjs
+          SELFTEST=system node scripts/check-examples.mjs
           node scripts/check-examples.mjs
 
       # Here for the same reason, and it needs the build even more directly: it asks a bundler what

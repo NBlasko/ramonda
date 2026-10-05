@@ -218,21 +218,21 @@ const gap: Value<"gap"> = `${n}px`;
 One property, one name, and the answer moves when the config does.
 
 And `Var<"color">` is *any variable this project declares of that kind* — which is what you want when
-a function chooses between them and hands the one it picked to `toStyle`:
+a function chooses between them and hands the one it picked on:
 
 ```tsx
-import { toStyle } from "@ramonda/css";
+import { read } from "@ramonda/css";
 import { $color } from "../css-system";
 import type { Var } from "../css-system";
 
 declare const loud: boolean;
 
 const pick = (): Var<"color"> => (loud ? $color.accent : $color.surface);
-const theme = toStyle([[pick(), "#10b981"]]);
+const now = read(pick(), document.body);
 ```
 
-**Inside a block, a choice between two variables is a [`match`](/style-blocks/composing#match-one-value-several-outcomes)
-instead** — each arm holds a `$` path, and the arms become classes.
+**Inside a block, a choice between two variables is a [choice](/style-blocks/composing#a-choice-between-two-values)
+instead** — `color: $(loud) ? $color.accent : $color.surface;` — and both become classes.
 
 ## Comments
 

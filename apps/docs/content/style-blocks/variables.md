@@ -73,17 +73,18 @@ file: a lookup table of values, an argument you pass around, a `toStyle` call. T
 group by the name it has in a block:
 
 ```tsx
-import { toStyle } from "@ramonda/css";
+import { read } from "@ramonda/css";
 import { $color } from "../css-system";
 
 declare const dark: boolean;
 
 const tone = dark ? $color.accent : $color.surface;
-const theme = toStyle([[tone, "#0e9f6e"]]);
+const now = read(tone, document.body);
 ```
 
 The rule is one line: **inside the CSS, no import; in code, import the group.** `$color.accent` is
-the same text in both places.
+the same text in both places. Setting a variable from code with `toStyle` takes one more thing — a
+[range](#a-range-when-the-value-is-meant-to-move) saying what it may become.
 
 **`css-system/` is written by the compiler**, and it is where the groups come from. Run
 `npx ramonda-css codegen` once, or let the build plugin do it; either way the folder holds
