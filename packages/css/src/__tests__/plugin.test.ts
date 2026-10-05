@@ -3128,3 +3128,35 @@ describe("a block the build refuses", () => {
     expect(ts.flattenDiagnosticMessageText(found[0].messageText, " ")).toContain("`else` belongs right after");
   });
 });
+
+/**
+ * Logic half typed, which is the state an editor is in most.
+ *
+ * Found by typing every new construct one character at a time through the plugin: `match`, `match `
+ * and `match $` at the head of an item threw — the forgiving read made a match with no subject, and
+ * the virtual file wrote a subject that did not exist. Every request the editor makes failed while
+ * the word was being typed.
+ */
+describe("logic being typed", () => {
+  const HEAD = `declare const tone: "hot" | "cold";\nconst slide = @@keyframes( from { opacity: 0; } );\nexport const a = <div className={@@(\n  display: flex;\n  `;
+  const TAIL = `\n)}>x</div>;\n`;
+
+  test.each([
+    ["the word `match` alone", `match${CARET}`],
+    ["`match` and a space", `match ${CARET}`],
+    ["`match $`", `match $${CARET}`],
+    ["`match $(`", `match $(${CARET}`],
+    ["a block match with no arms yet", `match $(tone) {${CARET}`],
+    ["a choice whose condition names a keyframes block", `animation-name: $(slide) ? a : b;${CARET}`],
+    ["`when` alone", `when${CARET}`],
+    ["`else` alone", `else${CARET}`],
+    ["a choice with no `:` yet", `color: $(true) ? red${CARET}`],
+  ])("%s answers every request", (_what, typed) => {
+    const { service, caret } = editor(`${HEAD}${typed}${TAIL}`);
+
+    expect(() => service.getSyntacticDiagnostics(FILE)).not.toThrow();
+    expect(() => service.getSemanticDiagnostics(FILE)).not.toThrow();
+    expect(() => service.getCompletionsAtPosition(FILE, caret, undefined)).not.toThrow();
+    expect(() => service.getQuickInfoAtPosition(FILE, Math.max(0, caret - 1))).not.toThrow();
+  });
+});

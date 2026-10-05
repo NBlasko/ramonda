@@ -744,7 +744,8 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
        * span is the key alone, so a key the subject can never be is squiggled where it is written.
        */
       if (item.kind === "match") {
-        if (!single) {
+        // A forgiving read can hand a subject no hole holds; there is then nothing to check it against.
+        if (!single && holes[item.hole] !== undefined) {
           write(`${lookup}(`);
           expression(holes[item.hole]);
           write(", [");
@@ -774,6 +775,8 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
       if (choice !== undefined && choice.kind === "choice" && item.kind === "declaration") {
         if (!single) {
           for (const branch of choice.branches) {
+            // A condition that resolved to a name — a keyframes block — holds no expression to check.
+            if (holes[branch.hole] === undefined) continue;
             write(`${condition}(`);
             expression(holes[branch.hole]);
             write("),");
@@ -806,7 +809,7 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
 
       const chosen = item.kind === "declaration" ? item.value.find((part) => part.kind === "match") : undefined;
       if (chosen !== undefined && chosen.kind === "match" && item.kind === "declaration") {
-        if (!single) {
+        if (!single && holes[chosen.hole] !== undefined) {
           write(`${lookup}(`);
           expression(holes[chosen.hole]);
           write(", [");

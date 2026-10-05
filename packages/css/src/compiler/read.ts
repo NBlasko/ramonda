@@ -1246,7 +1246,12 @@ export function readBlock(source: string, open: number, filename: string, option
        */
       if (!tolerant && OLD_CONDITION.test(source.slice(at, at + 16))) refuse(TO_CONDITION, source, at, filename);
 
-      if (OPENS_A_BLOCK_MATCH.test(source.slice(at, at + MATCH.length + 1))) {
+      // A forgiving read waits for the subject: until \`$(\` follows, \`match\` is a word being typed,
+      // and a match with no subject would hand every reader below an index nothing holds.
+      if (
+        OPENS_A_BLOCK_MATCH.test(source.slice(at, at + MATCH.length + 1)) &&
+        (!tolerant || MATCH_HEAD.test(source.slice(at)))
+      ) {
         items.push(readBlockMatch());
         continue;
       }
