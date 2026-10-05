@@ -40,6 +40,7 @@
  * and needs no keying by it.
  */
 
+const { existsSync, statSync } = require("node:fs");
 const { createRequire } = require("node:module");
 const { join } = require("node:path");
 
@@ -57,15 +58,21 @@ const bundled = require(BUNDLED);
 const NO_COMPILER = bundled.NO_COMPILER ?? "@ramonda/css:no-compiler-in-the-project";
 
 /**
- * The project's own plugin, or nothing.
+ * The project's own plugin — `{ factory }` — or why there is none: `{ reason }` when it has a
+ * `@ramonda/css` that did not load, nothing at all when it has none.
  *
  * `createRequire` against a path inside the project, so resolution starts where the project is
- * rather than where this extension lives. A project with no `@ramonda/css` throws, which is the
- * ordinary case for every unrelated project an editor opens and is not worth a log line.
+ * rather than where this extension lives. A project with no `@ramonda/css` is the ordinary case for
+ * every unrelated project an editor opens, and is not worth a log line or a second look.
  */
 function projectsOwn(directory) {
+  let from;
   try {
-    const from = createRequire(join(directory, "package.json"));
+    from = createRequire(join(directory, "package.json"));
+  } catch {
+    return {};
+  }
+  try {
     /**
      * Never this copy, compared by RESOLVED PATH rather than by a name inside it.
      *
@@ -73,15 +80,39 @@ function projectsOwn(directory) {
      * tree. An installed extension lives in `ramonda.css-<version>` — measured in
      * `~/.vscode/extensions` — so that test was dead everywhere it would have mattered.
      */
-    if (from.resolve("@ramonda/css/plugin") === BUNDLED) return undefined;
+    if (from.resolve("@ramonda/css/plugin") === BUNDLED) return {};
 
     const found = from("@ramonda/css/plugin");
     const factory = found && found.__esModule ? found.default : found;
-    return typeof factory === "function" ? factory : undefined;
-  } catch {
-    return undefined;
+    return typeof factory === "function" ? { factory } : {};
+  } catch (error) {
+    return installedIn(from) ? { reason: String(error) } : {};
   }
 }
+
+/** Whether a `@ramonda/css` is installed where the project would look, built or not. */
+function installedIn(from) {
+  const paths = from.resolve.paths("@ramonda/css") ?? [];
+  return paths.some((one) => existsSync(join(one, "@ramonda", "css", "package.json")));
+}
+
+/**
+ * What the project's plugin file is right now — its path and when it was written — or "missing".
+ *
+ * A failed plugin is tried again only when this has changed, which is what keeps a plugin that
+ * stays broken from costing anything after the first try.
+ */
+function stampOf(directory) {
+  try {
+    const path = createRequire(join(directory, "package.json")).resolve("@ramonda/css/plugin");
+    return `${path}@${statSync(path).mtimeMs}`;
+  } catch {
+    return "missing";
+  }
+}
+
+/** The shortest time between two tries of a plugin that failed — a rebuild writes many files. */
+const RETRY_AFTER_MS = 3000;
 
 module.exports = function init(modules) {
   const mine = bundled(modules);
@@ -103,22 +134,30 @@ module.exports = function init(modules) {
       try {
         own = projectsOwn(info.project.getCurrentDirectory());
       } catch {
-        own = undefined;
+        own = {};
       }
 
-      if (own !== undefined) {
+      /** Theirs, started: the service, or why it would not start. */
+      const start = (factory) => {
         try {
-          const theirs = own(modules);
+          const theirs = factory(modules);
           const service = theirs.create(info);
           serving = theirs;
           say(info, "the project has its own @ramonda/css/plugin; the extension's copy stands aside");
-          return service;
+          return { service };
         } catch (error) {
-          // Theirs is the copy that should have run, so the line has to say which one answered.
-          say(info, `the project's own @ramonda/css/plugin would not start (${error}); using the extension's copy`);
+          return { reason: String(error) };
         }
+      };
+
+      let failed = own.reason;
+      if (own.factory !== undefined) {
+        const started = start(own.factory);
+        if (started.service !== undefined) return started.service;
+        failed = started.reason;
       }
 
+      let fallback;
       try {
         /**
          * The copy in here is answering, so the project has no `@ramonda/css` and cannot build a
@@ -129,13 +168,69 @@ module.exports = function init(modules) {
          * `info` is a plain object literal in `tsserver`'s `enableProxy`, so a spread carries
          * everything and mutates nothing that belongs to the project.
          */
-        return mine.create({ ...info, config: { ...info.config, [NO_COMPILER]: true } });
+        fallback = mine.create({ ...info, config: { ...info.config, [NO_COMPILER]: true } });
       } catch (error) {
         // The last fallback is what `tsserver` had before any of this. Blocks go unchecked in the
         // editor, which is what would have happened anyway — and now something says so.
         say(info, `the style-block plugin would not start (${error}); blocks are not checked here`);
-        return info.languageService;
+        fallback = info.languageService;
       }
+      if (failed === undefined) return fallback;
+
+      /**
+       * The project HAS a plugin and it did not start — so this copy answers for now, and the
+       * project's is tried again once its file changes.
+       *
+       * Found in the editor: a rebuild of `@ramonda/css` empties `dist` first, and a `tsserver`
+       * starting in that moment found nothing, so this older copy answered until a restart — and
+       * read the project's newer syntax as broken. The service is a proxy over whichever one is
+       * serving, so the switch needs no restart. It is tried on a REQUEST, never on a timer, at most
+       * once every `RETRY_AFTER_MS`, and only when the file is not the one that already failed: a
+       * plugin that stays broken costs one stat every few seconds and nothing else.
+       */
+      say(
+        info,
+        `the project's own @ramonda/css/plugin would not start (${failed}); using the extension's copy until it changes`,
+      );
+      const directory = info.project.getCurrentDirectory();
+      let current = fallback;
+      let settled = false;
+      let stamp = stampOf(directory);
+      let triedAt = Date.now();
+
+      const retry = () => {
+        if (settled || Date.now() - triedAt < RETRY_AFTER_MS) return;
+        triedAt = Date.now();
+        const now = stampOf(directory);
+        if (now === stamp || now === "missing") return;
+        stamp = now;
+        try {
+          // A failed load leaves nothing in the cache; a file that loaded broken would, so drop it.
+          delete require.cache[now.slice(0, now.lastIndexOf("@"))];
+        } catch {
+          // Nothing to drop.
+        }
+        const again = projectsOwn(directory);
+        if (again.factory === undefined) return;
+        const started = start(again.factory);
+        if (started.service === undefined) return;
+        current = started.service;
+        settled = true;
+      };
+
+      return new Proxy(
+        {},
+        {
+          get(_target, key) {
+            retry();
+            const value = current[key];
+            return typeof value === "function" ? value.bind(current) : value;
+          },
+          has(_target, key) {
+            return key in current;
+          },
+        },
+      );
     },
 
     /**

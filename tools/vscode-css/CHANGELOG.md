@@ -14,6 +14,12 @@
     colour the word, the subject, the keys and the arrows; the declarations in an arm are CSS.
   - `$(c) ? a : b` colours `?` and `:` as operators and keeps the two values CSS.
 
+- **A project's own plugin that fails to start is tried again once it changes.** It used to be tried
+  once, when the TypeScript server started: a rebuild of `@ramonda/css` caught at that moment left
+  the extension's own copy answering until a restart, with whatever syntax that copy knew. The retry
+  happens on a request, at most once every few seconds, and only after the plugin's file changed —
+  one that stays broken costs nothing, and the reason is written once in the TS server log.
+
 ## 0.2.0
 
 - **The `useSyntaxServer` setting is no longer needed.** An editor runs two TypeScript servers, and
