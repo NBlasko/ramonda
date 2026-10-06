@@ -5,7 +5,7 @@ import { PREFIXED } from "../prefixed.generated";
 import { type Declaration } from "../ast";
 import { nearest } from "../nearest";
 import { DESCRIPTORS, PROPERTIES } from "../keywords.generated";
-import { KNOWN, type Block, type BlockItem, type NestedRule } from "./shared";
+import { KNOWN, type Block, type NestedRule, rulesIn } from "./shared";
 import { type Finding } from "./index";
 
 /**
@@ -57,27 +57,22 @@ export function onlyCase(written: string, canonical: string): boolean {
 }
 
 export function spelling(block: Block, findings: Finding[]): void {
-  const walkItems = (items: readonly BlockItem[]): void => {
-    for (const item of items) {
-      if (item.kind !== "rule") continue;
-      walkItems(item.items);
-      if (item.at === undefined) continue;
+  for (const item of rulesIn(block)) {
+    if (item.at === undefined) continue;
 
-      const written = item.prelude.trim();
-      const canonical = canonicalPrelude(written);
-      if (canonical === written || onlyCase(written, canonical)) continue;
+    const written = item.prelude.trim();
+    const canonical = canonicalPrelude(written);
+    if (canonical === written || onlyCase(written, canonical)) continue;
 
-      findings.push({
-        rule: "non-canonical-spelling",
-        at: item.at,
-        length: item.prelude.length,
-        message:
-          `write this as \`${canonical}\` — the two are the same CSS, and one spelling is what lets a ` +
-          `declaration here override the same one written elsewhere. \`ramonda-css format\` fixes it.`,
-      });
-    }
-  };
-  walkItems(block.items);
+    findings.push({
+      rule: "non-canonical-spelling",
+      at: item.at,
+      length: item.prelude.length,
+      message:
+        `write this as \`${canonical}\` — the two are the same CSS, and one spelling is what lets a ` +
+        `declaration here override the same one written elsewhere. \`ramonda-css format\` fixes it.`,
+    });
+  }
 }
 
 /**

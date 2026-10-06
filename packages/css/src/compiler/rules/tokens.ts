@@ -2,7 +2,7 @@
 
 import { type Config } from "../../config/config";
 import { namesIn } from "../../config/codegen";
-import { type Declaration, type TextPart, type ValuePart } from "../ast";
+import { type ValuePart, textOnly, textPartsOf } from "../ast";
 import {
   againstDeclaration,
   declaredByName,
@@ -14,7 +14,7 @@ import {
 } from "../declaredSet";
 import { nameFor } from "../dollar";
 import { nearest } from "../nearest";
-import { type Block, type BlockItem, declarationsIn } from "./shared";
+import { type Block, declarationsIn } from "./shared";
 import { type Finding } from "./index";
 
 /**
@@ -51,29 +51,12 @@ export function unknownCustomProperty(
    * setting one were refused, which broke a correct build.
    */
   const registered = new Set([...(references?.values() ?? [])].filter((name) => name.startsWith("--")));
-  const texts = (value: readonly ValuePart[]): TextPart[] =>
-    value.flatMap((part) =>
-      part.kind === "text"
-        ? [part]
-        : part.kind === "choice"
-          ? [...part.branches.flatMap((branch) => texts(branch.value)), ...texts(part.otherwise)]
-          : part.kind === "match"
-            ? part.arms.flatMap((arm) => texts(arm.value))
-            : [],
-    );
-  const declarations: Declaration[] = [];
-  const collect = (items: readonly BlockItem[]): void => {
-    for (const item of items) {
-      if (item.kind === "rule") collect(item.items);
-      else declarations.push(item);
-    }
-  };
-  collect(block.items);
+  const declarations = declarationsIn(block);
 
   // What this block sets and reads, at any depth — the locals `"same-block"` allows.
   const sets = declarations.map((item) => item.property.trim()).filter((name) => name.startsWith("--"));
   const reads = declarations.flatMap((item) =>
-    texts(item.value).flatMap((part) => readsIn(part.text).map((one) => one.name)),
+    textPartsOf(item.value).flatMap((part) => readsIn(part.text).map((one) => one.name)),
   );
   const local = localNames(sets, reads);
 
@@ -92,7 +75,7 @@ export function unknownCustomProperty(
         message: unknownMessage(property, config, "set"),
       });
     }
-    for (const part of texts(item.value)) {
+    for (const part of textPartsOf(item.value)) {
       if (part.at === undefined) continue;
       for (const read of readsIn(part.text)) {
         if (registered.has(read.name) || !refusedAsUnknown(config, read.name, local)) continue;
@@ -119,10 +102,10 @@ export function setAgainstItsDeclaration(block: Block, config: Config, findings:
   const named = declaredByName(config);
   if (named.size === 0) return;
 
-  const textOf = (value: readonly ValuePart[]): string | undefined =>
-    value.every((part) => part.kind === "text")
-      ? plainValue(value.map((part) => (part.kind === "text" ? part.text : "")).join(""))
-      : undefined;
+  const textOf = (value: readonly ValuePart[]): string | undefined => {
+    const written = textOnly(value);
+    return written === undefined ? undefined : plainValue(written);
+  };
   /** Every value the declaration may put there — one, or one per branch or arm. */
   const outcomes = (value: readonly ValuePart[]): (string | undefined)[] => {
     const [only] = value;

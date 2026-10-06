@@ -2,6 +2,7 @@ import { bindingForSite, nameForSite } from "./names";
 import { normalise } from "./normalise";
 import { tryReadBlock } from "./read";
 import { findBlocks } from "./scan";
+import { textOnly } from "./ast";
 
 /**
  * Every named site in a file, as the binding it is assigned to and the CSS name it becomes.
@@ -241,12 +242,9 @@ export function syntaxesIn(
     for (const item of read.block.items) {
       if (item.kind !== "declaration" || item.property !== "syntax") continue;
       // A syntax written with a hole cannot be read, and neither can one this loop did not reach.
-      if (!item.value.every((part) => part.kind === "text")) continue;
-      const text = item.value
-        .map((part) => (part.kind === "text" ? part.text : ""))
-        .join("")
-        .trim()
-        .replace(/^["']|["']$/g, "");
+      const written = textOnly(item.value);
+      if (written === undefined) continue;
+      const text = written.trim().replace(/^["']|["']$/g, "");
       out.set(nameForSite("property", site.name, normalise(read.block)), text);
     }
   }

@@ -315,3 +315,36 @@ export function runtimeValuesIn(block: Block): readonly { declaration: Declarati
   inItems(block.items);
   return found;
 }
+
+/**
+ * A value's text when it is text and nothing else — no hole, no `$` token, no choice, no match — or
+ * `undefined` when it holds any of those.
+ *
+ * Seven readers asked this the same way, each with its own copy of the check and the join; a value
+ * that holds anything but text is decided somewhere else, and each of them stops there.
+ */
+export function textOnly(value: readonly ValuePart[]): string | undefined {
+  let text = "";
+  for (const part of value) {
+    if (part.kind !== "text") return undefined;
+    text += part.text;
+  }
+  return text;
+}
+
+/**
+ * Every run of plain text a value holds, including inside each branch of a choice and each arm of a
+ * match — the text a value may put on an element, wherever it sits. Two rules read a value this way
+ * and each carried its own copy.
+ */
+export function textPartsOf(value: readonly ValuePart[]): TextPart[] {
+  return value.flatMap((part) =>
+    part.kind === "text"
+      ? [part]
+      : part.kind === "choice"
+        ? [...part.branches.flatMap((branch) => textPartsOf(branch.value)), ...textPartsOf(part.otherwise)]
+        : part.kind === "match"
+          ? part.arms.flatMap((arm) => textPartsOf(arm.value))
+          : [],
+  );
+}

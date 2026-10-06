@@ -5,6 +5,7 @@ import { holdsVar } from "../split";
 import { SPREAD, branchOf, holeIn } from "../read";
 import { GLOBAL, type Block, type BlockItem, withoutImportant, declarationsIn } from "./shared";
 import { type Finding } from "./index";
+import { textOnly } from "../ast";
 
 /**
  * What a `syntax` component accepts, as a test on the value's own text.
@@ -147,12 +148,7 @@ export function initialValueAndSyntax(block: Block, findings: Finding[]): void {
     if (item.kind !== "declaration") continue;
     if (item.property === "initial-value") initial = true;
     // A descriptor written with a hole cannot be read, and a hole is the author's business.
-    const text = item.value.every((part) => part.kind === "text")
-      ? item.value
-          .map((part) => (part.kind === "text" ? part.text : ""))
-          .join("")
-          .trim()
-      : undefined;
+    const text = textOnly(item.value)?.trim();
     if (text === undefined) continue;
 
     if (item.property === "syntax") {
@@ -265,12 +261,8 @@ export function againstRegisteredSyntax(
   for (const item of declarationsIn(block)) {
     const syntax = syntaxes.get(item.property);
     if (syntax === undefined || syntax === "*") continue;
-    if (!item.value.every((part) => part.kind === "text")) continue;
-
-    const value = item.value
-      .map((part) => (part.kind === "text" ? part.text : ""))
-      .join("")
-      .trim();
+    const value = textOnly(item.value)?.trim();
+    if (value === undefined) continue;
     /**
      * `!important` is not part of the value, and on a custom property it is ordinary CSS — it is
      * how a variable is made to win. A review measured `{angle}: 90deg !important` reported as a

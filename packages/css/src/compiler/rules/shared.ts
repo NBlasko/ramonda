@@ -278,3 +278,27 @@ export function declarationsIn(block: Block): readonly Declaration[] {
   }
   return found;
 }
+
+/**
+ * Every nested rule in a block, at any depth — the rules inside one before the rule itself, which is
+ * the order the four rules reading a rule's prelude walked them in, so they report in the same order.
+ */
+const rulesByBlock = new WeakMap<Block, readonly NestedRule[]>();
+
+export function rulesIn(block: Block): readonly NestedRule[] {
+  let found = rulesByBlock.get(block);
+  if (found === undefined) {
+    const out: NestedRule[] = [];
+    const walk = (items: readonly BlockItem[]): void => {
+      for (const item of items) {
+        if (item.kind !== "rule") continue;
+        walk(item.items);
+        out.push(item);
+      }
+    };
+    walk(block.items);
+    found = out;
+    rulesByBlock.set(block, found);
+  }
+  return found;
+}

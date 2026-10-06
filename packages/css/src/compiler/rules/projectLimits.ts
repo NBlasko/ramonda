@@ -11,6 +11,7 @@ import { GLOBAL, namedColour, type Block, declarationsIn } from "./shared";
 import { type Finding } from "./index";
 import { KNOWN_UNITS, topLevelValues, unitsIn } from "./values";
 import { A_DIMENSION, A_NUMBER } from "./namedSites";
+import { textOnly } from "../ast";
 
 /** Every bare word the `<color>` grammar reaches, minus the one that is not a colour anybody wrote. */
 export const COLOUR_WORDS = new Set(
@@ -307,12 +308,8 @@ export function valueNotAllowed(block: Block, rules: PropertyRules | undefined, 
   for (const item of declarationsIn(block)) {
     const property = propertyName(item.property);
     const values = ruleFor(rules, property).values;
-    if (values === undefined || item.value.some((part) => part.kind !== "text")) continue;
-
-    const written = item.value
-      .map((part) => (part.kind === "text" ? part.text : ""))
-      .join("")
-      .trim();
+    const written = textOnly(item.value)?.trim();
+    if (values === undefined || written === undefined) continue;
     if (written === "" || GLOBAL.has(written.toLowerCase()) || written.startsWith("var(")) continue;
     /**
      * A QUOTED value is `string-not-allowed`'s, and this one used to speak beside it.

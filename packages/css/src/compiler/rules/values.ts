@@ -3,7 +3,7 @@
 import { type PropertyRules, type UnitsByFamily } from "../../config/config";
 import { ARITY, KEYWORDS, PROPERTIES, PROPERTY_NAMED, UNITS, UNIT_TYPE } from "../keywords.generated";
 import { canonicalValue, propertyName } from "../normalise";
-import { type Declaration, type TextPart, type ValuePart } from "../ast";
+import { type Declaration, type ValuePart, textOnly, textPartsOf } from "../ast";
 import { urlsIn, withoutQuery } from "../urlsIn";
 import { wordSet } from "../wordSet";
 import { nearest } from "../nearest";
@@ -184,18 +184,8 @@ export function urlNotFound(
   file: string,
   findings: Finding[],
 ): void {
-  const texts = (value: readonly ValuePart[]): TextPart[] =>
-    value.flatMap((part) =>
-      part.kind === "text"
-        ? [part]
-        : part.kind === "choice"
-          ? [...part.branches.flatMap((branch) => texts(branch.value)), ...texts(part.otherwise)]
-          : part.kind === "match"
-            ? part.arms.flatMap((arm) => texts(arm.value))
-            : [],
-    );
   for (const item of declarationsIn(block)) {
-    for (const part of texts(item.value)) {
+    for (const part of textPartsOf(item.value)) {
       if (part.at === undefined) continue;
       // Read by `urlsIn`, not a regex — see it for the two CodeQL found.
       for (const { path, at } of urlsIn(part.text)) {
@@ -288,9 +278,7 @@ export function unknownValue(item: Declaration, findings: Finding[]): void {
    * existed such a declaration got `unknown-value` and a message that was false, so silence is
    * already the better of the two.
    */
-  const written = item.value.every((part) => part.kind === "text")
-    ? item.value.map((part) => (part.kind === "text" ? part.text : "")).join("")
-    : undefined;
+  const written = textOnly(item.value);
   if (written === undefined) return;
 
   const canonical = canonicalValue(item.property, written);
@@ -366,8 +354,8 @@ function propertyNames(item: Declaration, accepted: string, findings: Finding[])
  */
 export function unknownFlag(item: Declaration, findings: Finding[]): void {
   // A value carrying a hole is decided at render, so the text here is not the text that ships.
-  if (!item.value.every((part) => part.kind === "text")) return;
-  const written = item.value.map((part) => (part.kind === "text" ? part.text : "")).join("");
+  const written = textOnly(item.value);
+  if (written === undefined) return;
 
   const bang = lastBangOutsideAString(written);
   if (bang === -1) return;

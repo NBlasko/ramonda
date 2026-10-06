@@ -3,7 +3,7 @@
 import { AT_RULE_LINKS, MEDIA_FEATURES, NOT_IN_A_RULE, SELECTORS } from "../keywords.generated";
 import { nearest } from "../nearest";
 import { branchOf } from "../read";
-import { selectorsOf, type Block, type BlockItem, type NestedRule } from "./shared";
+import { selectorsOf, type Block, type BlockItem, type NestedRule, rulesIn } from "./shared";
 import { type Finding } from "./index";
 import { typedInto } from "./namedSites";
 import { PREFIXES } from "./properties";
@@ -91,32 +91,27 @@ const KNOWN_FEATURES = new Set(MEDIA_FEATURES);
  * holds; for one it does not, both are false. That is the oracle a stylesheet parse is not.
  */
 export function mediaFeatures(block: Block, findings: Finding[]): void {
-  const walkItems = (items: readonly BlockItem[]): void => {
-    for (const item of items) {
-      if (item.kind !== "rule") continue;
-      walkItems(item.items);
-      if (!item.prelude.startsWith("@media") || item.at === undefined) continue;
+  for (const item of rulesIn(block)) {
+    if (!item.prelude.startsWith("@media") || item.at === undefined) continue;
 
-      for (const found of item.prelude.matchAll(A_FEATURE)) {
-        const name = found[1];
-        // A browser's own feature is not in CSS's list and is not a typo of anything in it.
-        if (name.startsWith("-") || KNOWN_FEATURES.has(name)) continue;
+    for (const found of item.prelude.matchAll(A_FEATURE)) {
+      const name = found[1];
+      // A browser's own feature is not in CSS's list and is not a typo of anything in it.
+      if (name.startsWith("-") || KNOWN_FEATURES.has(name)) continue;
 
-        const meant = nearest(name, MEDIA_FEATURES as string[]) ?? typedInto(name);
-        if (meant === undefined) continue;
+      const meant = nearest(name, MEDIA_FEATURES as string[]) ?? typedInto(name);
+      if (meant === undefined) continue;
 
-        findings.push({
-          rule: "unknown-media-feature",
-          at: item.at + (found.index ?? 0) + found[0].indexOf(name),
-          length: name.length,
-          message:
-            `\`${name}\` is not a media feature, so this condition never matches and the rules inside ` +
-            `it never apply — a browser keeps it rather than refusing it. Did you mean \`${meant}\`?`,
-        });
-      }
+      findings.push({
+        rule: "unknown-media-feature",
+        at: item.at + (found.index ?? 0) + found[0].indexOf(name),
+        length: name.length,
+        message:
+          `\`${name}\` is not a media feature, so this condition never matches and the rules inside ` +
+          `it never apply — a browser keeps it rather than refusing it. Did you mean \`${meant}\`?`,
+      });
     }
-  };
-  walkItems(block.items);
+  }
 }
 
 /**
@@ -159,28 +154,22 @@ export function mediaFeatures(block: Block, findings: Finding[]): void {
  * fix, and it is not pretended at here.
  */
 export function layerInABlock(block: Block, findings: Finding[]): void {
-  const walkItems = (items: readonly BlockItem[]): void => {
-    for (const item of items) {
-      if (item.kind !== "rule") continue;
-      walkItems(item.items);
+  for (const item of rulesIn(block)) {
+    const prelude = item.prelude.trim();
+    if (item.at === undefined || !/^@layer\b/i.test(prelude)) continue;
 
-      const prelude = item.prelude.trim();
-      if (item.at === undefined || !/^@layer\b/i.test(prelude)) continue;
-
-      findings.push({
-        rule: "layer-in-a-block",
-        at: item.at,
-        length: item.prelude.length,
-        message:
-          "a style block cannot hold `@layer`. Everything compiled here is already emitted inside " +
-          "`@layer ramonda`, so a layer written in a block is a sublayer of it — and which sublayer " +
-          "wins is decided by the order the stylesheet happens to write them in, not by anything " +
-          "written here. Declare your layers in your own stylesheet, where the order can be given: " +
-          "`@layer app, ramonda;` puts this package's output wherever you want it among them.",
-      });
-    }
-  };
-  walkItems(block.items);
+    findings.push({
+      rule: "layer-in-a-block",
+      at: item.at,
+      length: item.prelude.length,
+      message:
+        "a style block cannot hold `@layer`. Everything compiled here is already emitted inside " +
+        "`@layer ramonda`, so a layer written in a block is a sublayer of it — and which sublayer " +
+        "wins is decided by the order the stylesheet happens to write them in, not by anything " +
+        "written here. Declare your layers in your own stylesheet, where the order can be given: " +
+        "`@layer app, ramonda;` puts this package's output wherever you want it among them.",
+    });
+  }
 }
 
 /**
@@ -197,26 +186,20 @@ export function layerInABlock(block: Block, findings: Finding[]): void {
  * and only after the last `&` — what comes before it is an ancestor, and an ancestor may be the root.
  */
 export function rootInABlock(block: Block, findings: Finding[]): void {
-  const walkItems = (items: readonly BlockItem[]): void => {
-    for (const item of items) {
-      if (item.kind !== "rule") continue;
-      walkItems(item.items);
+  for (const item of rulesIn(block)) {
+    const prelude = item.prelude.trim();
+    if (item.at === undefined || prelude.startsWith("@") || !selectorsOf(prelude).some(rootUnderTheElement)) continue;
 
-      const prelude = item.prelude.trim();
-      if (item.at === undefined || prelude.startsWith("@") || !selectorsOf(prelude).some(rootUnderTheElement)) continue;
-
-      findings.push({
-        rule: "root-in-a-block",
-        at: item.at,
-        length: item.prelude.length,
-        message:
-          `\`${prelude}\` inside a block means the root under this element, and the root is nobody's ` +
-          "descendant, so this rule applies nowhere. Set a theme's values in your own stylesheet, and " +
-          "this project's tokens in `ramonda.css.ts`.",
-      });
-    }
-  };
-  walkItems(block.items);
+    findings.push({
+      rule: "root-in-a-block",
+      at: item.at,
+      length: item.prelude.length,
+      message:
+        `\`${prelude}\` inside a block means the root under this element, and the root is nobody's ` +
+        "descendant, so this rule applies nowhere. Set a theme's values in your own stylesheet, and " +
+        "this project's tokens in `ramonda.css.ts`.",
+    });
+  }
 }
 
 /** Whether one selector of a list puts the root BELOW the element — see {@link rootInABlock}. */
