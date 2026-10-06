@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { transform } from "../compiler/transform";
-import { mergeClassNames } from "../merge";
-import { withoutSourceMarks } from "../sources";
+import { mergeClassNames } from "../runtime/merge";
+import { withoutSourceMarks } from "../runtime/sources";
 
 /**
  * SOURCE MARKS — DESIGN.md §19. On the dev server each block's classes carry one more,

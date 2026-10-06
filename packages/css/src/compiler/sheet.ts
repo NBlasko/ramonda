@@ -53,7 +53,7 @@ import {
   sheetRank,
   withParent,
 } from "./flatten";
-import { keyIn } from "../key";
+import { keyIn } from "../runtime/key";
 import { escapeClass, keyTextOf } from "./names";
 import { sourceMapFor } from "./cssMap";
 import type { EmittedBlock, Origin, SourceMap } from "./transform";

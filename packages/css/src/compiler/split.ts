@@ -1,4 +1,4 @@
-import { holdsVar } from "../holdsVar";
+import { holdsVar } from "./holdsVar";
 import { BY_HAND } from "./splitByHand";
 import { GRAMMAR_SHAPES, type GrammarLeaf, type GrammarShape } from "./grammarShapes.generated";
 import { INITIAL_VALUES } from "./initials.generated";

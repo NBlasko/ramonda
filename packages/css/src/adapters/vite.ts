@@ -1,17 +1,17 @@
-import { CssBlockError, positionOf } from "./compiler/errors";
+import { CssBlockError, positionOf } from "../compiler/errors";
 import { readFileSync } from "node:fs";
 import { basename, dirname, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
-import { knownNames, type Config, configReader, environmentOf } from "./config";
-import { forgetGenerated, variablesSheetFor, writeGenerated } from "./generate";
-import { settingsAgainst } from "./compiler/declaredSet";
+import { knownNames, type Config, configReader, environmentOf } from "../config/config";
+import { forgetGenerated, variablesSheetFor, writeGenerated } from "../config/generate";
+import { settingsAgainst } from "../compiler/declaredSet";
 import { warnIfStale } from "./stale";
 import { readModule } from "./modules";
 import { loaderFor } from "./esbuild";
-import { fileMayHoldABlock, mayHoldABlock } from "./compiler/scan";
-import { Sheet } from "./compiler/sheet";
-import { type SourceMap, transform } from "./compiler/transform";
+import { fileMayHoldABlock, mayHoldABlock } from "../compiler/scan";
+import { Sheet } from "../compiler/sheet";
+import { type SourceMap, transform } from "../compiler/transform";
 
 /**
  * `@ramonda/css/vite` — the plugin that makes a block render.

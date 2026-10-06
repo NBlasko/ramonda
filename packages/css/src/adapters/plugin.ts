@@ -1,5 +1,5 @@
 import type ts from "typescript";
-import { type BlockItem, childrenOf } from "./compiler/ast";
+import { type BlockItem, childrenOf } from "../compiler/ast";
 import {
   PROPERTIES,
   PRIMITIVE,
@@ -8,18 +8,18 @@ import {
   VALUE_WORDS,
   SELECTORS,
   AT_RULE_LINKS,
-} from "./compiler/keywords.generated";
-import { CONDITION, MATCH, type Span, readBlock } from "./compiler/read";
-import { NAMED_BLOCKS, REPLACED_CODES, SPEAKS_OVER_TYPES, type Finding } from "./compiler/rules";
-import { tokensOnlyKinds } from "./codegen";
-import { checkedSource } from "./compiler/source";
-import { fileMayHoldABlock, findBlocks } from "./compiler/scan";
-import { typedFindingsFor } from "./compiler/typed";
-import { type VirtualFile, virtualFile } from "./compiler/virtual";
-import { type Config, configReader, environmentOf } from "./config";
-import { propertiesFor } from "./generate";
+} from "../compiler/keywords.generated";
+import { CONDITION, MATCH, type Span, readBlock } from "../compiler/read";
+import { NAMED_BLOCKS, REPLACED_CODES, SPEAKS_OVER_TYPES, type Finding } from "../compiler/rules";
+import { tokensOnlyKinds } from "../config/codegen";
+import { checkedSource } from "../compiler/source";
+import { fileMayHoldABlock, findBlocks } from "../compiler/scan";
+import { typedFindingsFor } from "../compiler/typed";
+import { type VirtualFile, virtualFile } from "../compiler/virtual";
+import { type Config, configReader, environmentOf } from "../config/config";
+import { propertiesFor } from "../config/generate";
 import { warnIfStale } from "./stale";
-import { type Imported, namedSites } from "./compiler/references";
+import { type Imported, namedSites } from "../compiler/references";
 
 /**
  * The TypeScript language service plugin: what makes a block writable rather than merely correct.

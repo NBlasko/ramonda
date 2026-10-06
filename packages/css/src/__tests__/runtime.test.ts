@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, expectTypeOf, test } from "vitest";
-import type { Token } from "../token";
+import type { Token } from "../runtime/token";
 import type { CssColor } from "../values.generated";
 import type { CssDimension } from "../units.generated";
-import { read, toStyle } from "../value";
+import { read, toStyle } from "../runtime/value";
 
 /**
  * The two things a project does with a token OUTSIDE a block.

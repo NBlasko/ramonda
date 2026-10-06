@@ -28,7 +28,7 @@ afterEach(() => {
 
 describe("an error that is not a refusal", () => {
   test("comes out as itself", async () => {
-    const { checkProject } = await import("../check");
+    const { checkProject } = await import("../adapters/check");
 
     const root = mkdtempSync(join(tmpdir(), "ramonda-css-"));
     projects.push(root);

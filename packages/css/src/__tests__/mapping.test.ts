@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "vitest";
-import { checkProject } from "../check";
+import { checkProject } from "../adapters/check";
 
 const PACKAGE = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const JSX = `declare namespace JSX {\n  interface IntrinsicElements { div: { id?: string; className?: string; css?: unknown; children?: unknown } }\n  interface Element { readonly _brand: unique symbol }\n}\n`;

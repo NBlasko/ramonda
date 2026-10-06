@@ -13,7 +13,7 @@ export default defineConfig([
    * all. It needs no `magic-string`: the plugin reads the virtual file and never emits.
    */
   {
-    entry: { plugin: "src/plugin.cjs.ts" },
+    entry: { plugin: "src/adapters/plugin.cjs.ts" },
     format: ["cjs"],
     target: "es2022",
     outExtension() {
@@ -39,16 +39,21 @@ export default defineConfig([
     outDir: "dist",
   },
   {
-    entry: [
-      "src/index.ts",
-      "src/compiler/index.ts",
-      "src/properties.ts",
-      "src/cli.ts",
-      "src/vite.ts",
-      "src/esbuild.ts",
-      "src/plugin.ts",
-      "src/prettier.ts",
-    ],
+    /**
+     * Named, so a file's place in `src` does not decide its name in `dist`: the adapters live in
+     * `src/adapters/`, and `exports` names `./dist/vite.js`. An array would have written
+     * `dist/adapters/vite.js` and broken every import of the package.
+     */
+    entry: {
+      index: "src/index.ts",
+      "compiler/index": "src/compiler/index.ts",
+      properties: "src/properties.ts",
+      cli: "src/adapters/cli.ts",
+      vite: "src/adapters/vite.ts",
+      esbuild: "src/adapters/esbuild.ts",
+      plugin: "src/adapters/plugin.ts",
+      prettier: "src/adapters/prettier.ts",
+    },
     format: ["esm"],
     dts: true,
     target: "es2022",
@@ -64,7 +69,7 @@ export default defineConfig([
    * loads and it imports nothing.
    */
   {
-    entry: { config: "src/configEntry.ts" },
+    entry: { config: "src/config/entry.ts" },
     format: ["esm", "cjs"],
     dts: true,
     target: "es2022",

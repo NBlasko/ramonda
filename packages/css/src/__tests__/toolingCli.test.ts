@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { beforeAll, afterEach, describe, expect, test } from "vitest";
-import { biomeFormatter, oxlintLinter } from "../tools";
+import { biomeFormatter, oxlintLinter } from "../adapters/tools";
 import { builtFromThisSource } from "./built";
 
 /** This file runs the BUILD, so a stale `dist` would measure a previous version — see `built.ts`. */

@@ -1,5 +1,5 @@
 import ts from "typescript";
-import type { Config } from "../config";
+import type { Config } from "../config/config";
 import {
   againstDeclaration,
   declaredByName,

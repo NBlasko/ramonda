@@ -3,7 +3,7 @@ import { type EmittedBlock, transform } from "../compiler/transform";
 import { CssBlockError } from "../compiler/errors";
 import { BREADTH_LAYERS, LAYER_ORDER, layerPathFor } from "../compiler/flatten";
 import { SHORTHANDS } from "../compiler/keywords.generated";
-import { forget, mergeClassNames, shorthands } from "../merge";
+import { forget, mergeClassNames, shorthands } from "../runtime/merge";
 
 /**
  * The layer a rule lands in, from the same function the sheet uses.

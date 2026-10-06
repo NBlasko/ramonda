@@ -2,8 +2,8 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
-import { ToolFailed } from "../tools";
-import { filesUnder, formatFile, formatText, lintFile, readReport, toolIn } from "../tooling";
+import { ToolFailed } from "../adapters/tools";
+import { filesUnder, formatFile, formatText, lintFile, readReport, toolIn } from "../adapters/tooling";
 
 /**
  * What the wrappers DECIDE, asked with a tool that does exactly what a test says.

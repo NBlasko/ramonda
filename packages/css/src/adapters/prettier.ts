@@ -3,7 +3,7 @@ import * as babel from "prettier/plugins/babel";
 import * as estree from "prettier/plugins/estree";
 import * as typescript from "prettier/plugins/typescript";
 import type { AstPath, Doc, Options, Parser, Plugin, Printer } from "prettier";
-import { markerFor, placehold, relaidInside } from "./compiler/tooling";
+import { markerFor, placehold, relaidInside } from "../compiler/tooling";
 
 /**
  * Prettier, taught the syntax — the third tool that cannot parse a file holding a block.

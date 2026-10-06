@@ -20,7 +20,7 @@ vi.mock("../compiler/transform", async (importOriginal) => {
 
 describe("an error that is not a refusal", () => {
   test("comes out as itself, with no position attached", async () => {
-    const { ramondaCss } = await import("../vite");
+    const { ramondaCss } = await import("../adapters/vite");
     const plugin = ramondaCss();
     const transform = plugin.transform as (this: unknown, code: string, id: string) => unknown;
 

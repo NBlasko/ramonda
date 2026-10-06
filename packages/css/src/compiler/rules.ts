@@ -1,4 +1,4 @@
-import { NARROW, namesIn, ruleFor, tokensOnlyKinds } from "../codegen";
+import { NARROW, namesIn, ruleFor, tokensOnlyKinds } from "../config/codegen";
 import {
   againstDeclaration,
   declaredByName,
@@ -14,7 +14,7 @@ import { GRAMMAR_SHAPES } from "./grammarShapes.generated";
 import { RESETS_DIFFER } from "./leaves.generated";
 import { SHAPES } from "./shapes.generated";
 import { holdsVar, misplacedWord } from "./split";
-import type { Config, PropertyRules, UnitsByFamily } from "../config";
+import type { Config, PropertyRules, UnitsByFamily } from "../config/config";
 import type {
   Block as AnyBlock,
   BlockItem as AnyItem,

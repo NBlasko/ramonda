@@ -1,5 +1,5 @@
-import { expressionFor, nameFor } from "./compiler/dollar";
-import { ARITY, KEYWORDS, PRIMITIVE, SHORTHANDS } from "./compiler/keywords.generated";
+import { expressionFor, nameFor } from "../compiler/dollar";
+import { ARITY, KEYWORDS, PRIMITIVE, SHORTHANDS } from "../compiler/keywords.generated";
 import { ConfigError, type PropertyRules } from "./config";
 import { SYNTAX, type Kind, type TokenDeclaration, isTokenDeclaration } from "./declared";
 

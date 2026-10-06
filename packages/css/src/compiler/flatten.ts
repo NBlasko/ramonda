@@ -2,7 +2,7 @@ import type { Block, BlockItem, ValuePart } from "./ast";
 import { nameFor } from "./dollar";
 import { HOLE, canonicalValue, collapse, propertyName } from "./normalise";
 import { MAY_CLEAR, PROPERTIES, SHORTHANDS } from "./keywords.generated";
-import { widthSlot } from "../conditions";
+import { widthSlot } from "../runtime/conditions";
 import { SPREAD, branchOf, holeIn } from "./read";
 import { IMPORTANT, splitOf } from "./split";
 
@@ -132,7 +132,7 @@ function breadthOf(declaration: { property?: string }): number {
   return covered?.length ?? 0;
 }
 
-export { exclusive, widthSlot } from "../conditions";
+export { exclusive, widthSlot } from "../runtime/conditions";
 
 /**
  * Where a declaration's rule goes in the stylesheet, and it is a RULE rather than an accident.

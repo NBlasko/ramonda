@@ -3,11 +3,11 @@ import { existsSync, readFileSync, statSync, writeSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import ts from "typescript";
 import { checkProject } from "./check";
-import { NARROW, explain } from "./codegen";
-import { PRIMITIVE } from "./compiler/keywords.generated";
-import { nearest } from "./compiler/nearest";
-import { writeGenerated } from "./generate";
-import { ConfigError, environmentOf, findConfig, readConfig } from "./config";
+import { NARROW, explain } from "../config/codegen";
+import { PRIMITIVE } from "../compiler/keywords.generated";
+import { nearest } from "../compiler/nearest";
+import { writeGenerated } from "../config/generate";
+import { ConfigError, environmentOf, findConfig, readConfig } from "../config/config";
 import { filesUnder, formatFile, formatText, lintFile, toolIn } from "./tooling";
 import { ToolFailed, biomeFormatter, oxlintLinter } from "./tools";
 

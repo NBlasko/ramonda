@@ -4,8 +4,8 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { afterEach, describe, expect, test } from "vitest";
-import { init } from "../plugin";
-import { forgetGenerated, writeGenerated } from "../generate";
+import { init } from "../adapters/plugin";
+import { forgetGenerated, writeGenerated } from "../config/generate";
 
 /**
  * **The config reaching the EDITOR, which is the half a person checks first.**

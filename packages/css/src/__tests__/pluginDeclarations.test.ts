@@ -2,7 +2,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
 import ts from "typescript";
-import { init } from "../plugin";
+import { init } from "../adapters/plugin";
 
 const PACKAGE = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const CARD = join(PACKAGE, "src", "__tests__", "Card.tsx");

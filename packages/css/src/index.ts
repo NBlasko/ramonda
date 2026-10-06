@@ -39,8 +39,8 @@ export type { CssColor, CssColorKeyword } from "./values.generated";
  * takes *any angle property this app registered* says so with `CssVar<"angle">`, and `toStyle`
  * refuses a length against it.
  */
-export type { CssVar, Fixed, Kind, Token, ValueByKind } from "./token";
-export type { StyleValue } from "./types";
+export type { CssVar, Fixed, Kind, Token, ValueByKind } from "./runtime/token";
+export type { StyleValue } from "./runtime/types";
 /**
  * What a project does with a declared variable OUTSIDE a block.
  *
@@ -48,8 +48,8 @@ export type { StyleValue } from "./types";
  * theme whose values arrive at run time, and the rare read back out. Neither is a theming mechanism
  * — what is owed is the name and the kind check, not the logic.
  */
-export { read, toStyle } from "./value";
-export type { Setting } from "./value";
+export { read, toStyle } from "./runtime/value";
+export type { Setting } from "./runtime/value";
 /**
  * `shorthands` and `conditionsOf` are called by EMITTED code and by nothing anybody writes.
  *
@@ -58,6 +58,6 @@ export type { Setting } from "./value";
  * pays for the shorthands it writes rather than for a table of all ninety-eight. They are part of
  * the surface because a build imports them by name, which is the same reason `mergeClassNames` and `pick` are.
  */
-export { conditionsOf, mergeClassNames, namesOf, pick, shorthands } from "./merge";
+export { conditionsOf, mergeClassNames, namesOf, pick, shorthands } from "./runtime/merge";
 /** Called by a development build's emitted code for a spread — see `sources.ts`. */
-export { withoutSourceMarks } from "./sources";
+export { withoutSourceMarks } from "./runtime/sources";

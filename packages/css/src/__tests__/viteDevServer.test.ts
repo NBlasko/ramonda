@@ -16,7 +16,7 @@ import { fileURLToPath } from "node:url";
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
 import { createServer, type ViteDevServer } from "vite";
 import { afterEach, expect, test } from "vitest";
-import { ramondaCss } from "../vite";
+import { ramondaCss } from "../adapters/vite";
 
 /**
  * A real dev server, saving a file — the only thing that can say what an author SEES after a save.

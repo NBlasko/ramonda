@@ -6,7 +6,7 @@ import { CssBlockError } from "../compiler/errors";
 import { checkSource } from "../compiler/source";
 import { transform } from "../compiler/transform";
 import { Sheet } from "../compiler/sheet";
-import { kind } from "../declared";
+import { kind } from "../config/declared";
 import { namedSites } from "../compiler/references";
 
 /**

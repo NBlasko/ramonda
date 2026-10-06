@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, test } from "vitest";
-import { checkProject } from "../check";
+import { checkProject } from "../adapters/check";
 
 /**
  * The check command's own half: a real tsconfig, real files on disk, a real `ts.Program`.

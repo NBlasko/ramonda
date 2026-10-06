@@ -195,12 +195,12 @@ describe("public API surface", () => {
    * cannot see a type, and `./properties` is nothing but types.
    */
   test.each([
-    ["configEntry.ts", CONFIG],
+    ["config/entry.ts", CONFIG],
     ["properties.ts", PROPERTIES],
-    ["vite.ts", VITE],
-    ["esbuild.ts", ESBUILD],
-    ["prettier.ts", ONE_DEFAULT],
-    ["plugin.cjs.ts", ONE_DEFAULT],
+    ["adapters/vite.ts", VITE],
+    ["adapters/esbuild.ts", ESBUILD],
+    ["adapters/prettier.ts", ONE_DEFAULT],
+    ["adapters/plugin.cjs.ts", ONE_DEFAULT],
   ])("%s exports exactly what it means to", (file, expected) => {
     const entry = join(dirname(fileURLToPath(import.meta.url)), "..", file);
 

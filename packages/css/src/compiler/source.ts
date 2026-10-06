@@ -1,6 +1,6 @@
 import { CssBlockError } from "./errors";
 import { urlCheckFor } from "./urls";
-import type { Config } from "../config";
+import type { Config } from "../config/config";
 import { type Imported, namedSites, syntaxesIn } from "./references";
 import { readBlock } from "./read";
 import { type Finding, checkBlock, checkNamedSite, checkSite, checkTemplates, checkText } from "./rules";

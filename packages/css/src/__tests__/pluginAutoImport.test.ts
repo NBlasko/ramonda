@@ -2,7 +2,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { describe, expect, test } from "vitest";
-import { init } from "../plugin";
+import { init } from "../adapters/plugin";
 
 /**
  * Auto-import, in a file that carries a block — its own harness, because it needs a second module.

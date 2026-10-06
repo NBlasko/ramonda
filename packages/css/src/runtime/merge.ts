@@ -1,4 +1,4 @@
-import { CLEARS_TABLE } from "./clears.generated";
+import { CLEARS_TABLE } from "../clears.generated";
 import { widthSlot } from "./conditions";
 import { keyIn, partsOf } from "./key";
 import type { StyleValue } from "./types";

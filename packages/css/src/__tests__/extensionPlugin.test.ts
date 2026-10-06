@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
-import { NO_COMPILER } from "../plugin";
+import { NO_COMPILER } from "../adapters/plugin";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
 const EXTENSION = join(ROOT, "tools", "vscode-css");

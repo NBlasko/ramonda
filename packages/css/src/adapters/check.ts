@@ -1,21 +1,21 @@
 import { dirname, resolve } from "node:path";
 import ts from "typescript";
-import { CssBlockError } from "./compiler/errors";
-import { REPLACED_CODES, SPEAKS_OVER_TYPES } from "./compiler/rules";
-import { Sheet, messageFor } from "./compiler/sheet";
-import { type Ignored, ignoredIn, isIgnored } from "./compiler/ignore";
-import { checkedSource } from "./compiler/source";
-import { positionOf } from "./compiler/errors";
-import { knownNames, configReader, environmentOf } from "./config";
-import { findConfig } from "./config";
-import { propertiesFor } from "./generate";
+import { CssBlockError } from "../compiler/errors";
+import { REPLACED_CODES, SPEAKS_OVER_TYPES } from "../compiler/rules";
+import { Sheet, messageFor } from "../compiler/sheet";
+import { type Ignored, ignoredIn, isIgnored } from "../compiler/ignore";
+import { checkedSource } from "../compiler/source";
+import { positionOf } from "../compiler/errors";
+import { knownNames, configReader, environmentOf } from "../config/config";
+import { findConfig } from "../config/config";
+import { propertiesFor } from "../config/generate";
 import { readModule } from "./modules";
-import { checkTemplates } from "./compiler/rules";
-import { fileMayHoldABlock, mayHoldABlock } from "./compiler/scan";
-import { TYPED_RULES, registeredNeverSet, typedFindings } from "./compiler/typed";
-import { refusedAsUnknown } from "./compiler/declaredSet";
-import type { RegisteredSite } from "./compiler/variables";
-import { type VirtualFile, virtualFile } from "./compiler/virtual";
+import { checkTemplates } from "../compiler/rules";
+import { fileMayHoldABlock, mayHoldABlock } from "../compiler/scan";
+import { TYPED_RULES, registeredNeverSet, typedFindings } from "../compiler/typed";
+import { refusedAsUnknown } from "../compiler/declaredSet";
+import type { RegisteredSite } from "../compiler/variables";
+import { type VirtualFile, virtualFile } from "../compiler/virtual";
 
 /**
  * Type-checking a whole project whose source TypeScript cannot parse.

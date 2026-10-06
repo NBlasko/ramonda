@@ -1,5 +1,5 @@
-import { nearest } from "./compiler/rules";
-import type { Kind, ValueByKind } from "./token";
+import { nearest } from "../compiler/rules";
+import type { Kind, ValueByKind } from "../runtime/token";
 
 /**
  * The variables a project DECLARES — their names, their kinds, and the fallback each one carries.
@@ -60,7 +60,7 @@ export const SYNTAX: Record<Kind, string> = {
 
 /** The kinds, as a list, for the message a wrong one gets. */
 export const KINDS = Object.keys(SYNTAX) as readonly Kind[];
-export type { Kind, Token, ValueByKind } from "./token";
+export type { Kind, Token, ValueByKind } from "../runtime/token";
 
 /**
  * The marker on a boxed leaf.

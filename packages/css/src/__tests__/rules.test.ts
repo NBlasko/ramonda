@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
-import type { Config } from "../config";
-import { kind } from "../declared";
+import type { Config } from "../config/config";
+import { kind } from "../config/declared";
 import { ABBREVIATIONS, KEYWORDS, PROPERTIES, SHORTHANDS } from "../compiler/keywords.generated";
 import { readBlock } from "../compiler/read";
 import { nearest } from "../compiler/rules";
@@ -51,7 +51,7 @@ const rules = (css: string) => check(css).map((finding) => finding.rule);
 const messages = (css: string) => check(css).map((finding) => finding.message);
 
 /** The rule ids for one block, checked with a project config — for the config-driven rules. */
-function rulesWith(css: string, config: import("../config").Config): string[] {
+function rulesWith(css: string, config: import("../config/config").Config): string[] {
   const source = `<div className={@@(\n${css}\n)}>x</div>`;
   const [site] = findBlocks(source);
   const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
@@ -59,7 +59,7 @@ function rulesWith(css: string, config: import("../config").Config): string[] {
 }
 
 /** The same, as messages — for the rules whose WORDING is the thing being asserted. */
-function messagesWith(css: string, config: import("../config").Config): string[] {
+function messagesWith(css: string, config: import("../config/config").Config): string[] {
   const source = `<div className={@@(\n${css}\n)}>x</div>`;
   const [site] = findBlocks(source);
   const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });

@@ -2,7 +2,7 @@ import { chmodSync, mkdirSync, mkdtempSync, symlinkSync, utimesSync, writeFileSy
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
-import { warnIfStale } from "../stale";
+import { warnIfStale } from "../adapters/stale";
 
 /**
  * The warning that says a built package is behind its sources.

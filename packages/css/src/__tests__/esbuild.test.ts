@@ -4,7 +4,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as esbuild from "esbuild";
 import { afterAll, describe, expect, test } from "vitest";
-import { ramondaCss } from "../esbuild";
+import { ramondaCss } from "../adapters/esbuild";
 
 /**
  * The esbuild adapter, measured by running esbuild.

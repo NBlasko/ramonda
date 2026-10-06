@@ -13,7 +13,7 @@ import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { writeGenerated } from "../generate";
+import { writeGenerated } from "../config/generate";
 
 /**
  * Codegen actually running, which is what turns every other piece of this feature into something a

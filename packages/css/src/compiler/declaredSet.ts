@@ -1,5 +1,5 @@
-import { type Named, namesIn } from "../codegen";
-import type { Config } from "../config";
+import { type Named, namesIn } from "../config/codegen";
+import type { Config } from "../config/config";
 
 /**
  * Whether a declared variable may be SET to a value — the one answer three places ask.

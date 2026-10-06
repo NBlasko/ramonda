@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { IS_TOKEN, isTokenDeclaration, kind } from "../declared";
+import { IS_TOKEN, isTokenDeclaration, kind } from "../config/declared";
 
 /**
  * `kind( … )` is the whole authoring surface for a project's variables, so this file is what decides

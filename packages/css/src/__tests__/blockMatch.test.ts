@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { mergeClassNames, pick } from "../merge";
+import { mergeClassNames, pick } from "../runtime/merge";
 import { readBlock } from "../compiler/read";
 import { checkSource } from "../compiler/source";
 import { transform } from "../compiler/transform";

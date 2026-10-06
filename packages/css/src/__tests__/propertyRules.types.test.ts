@@ -1,6 +1,6 @@
 import { describe, test } from "vitest";
-import { defineConfig } from "../configEntry";
-import { kind } from "../declared";
+import { defineConfig } from "../config/entry";
+import { kind } from "../config/declared";
 
 /**
  * The CONFIG's own type, which is what guides somebody writing one.

@@ -2,8 +2,8 @@ import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
-import { type Declarations, generate, namesIn, verifyNames } from "../codegen";
-import { kind } from "../declared";
+import { type Declarations, generate, namesIn, verifyNames } from "../config/codegen";
+import { kind } from "../config/declared";
 
 const PACKAGE = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 

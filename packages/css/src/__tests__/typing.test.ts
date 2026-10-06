@@ -2,8 +2,8 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
-import type { Config } from "../config";
-import { kind } from "../declared";
+import type { Config } from "../config/config";
+import { kind } from "../config/declared";
 import { checkSource } from "../compiler/source";
 import { virtualFile } from "../compiler/virtual";
 

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
-import type { CssVar } from "../token";
-import { toStyle } from "../value";
+import type { CssVar } from "../runtime/token";
+import { toStyle } from "../runtime/value";
 
 /**
  * SETTING a value on an element, which is the one place a value the render decided still reaches

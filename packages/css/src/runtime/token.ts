@@ -1,5 +1,5 @@
-import type { CssAngleUnit, CssDimension, CssLengthUnit, CssResolutionUnit, CssTimeUnit } from "./units.generated";
-import type { CssColor } from "./values.generated";
+import type { CssAngleUnit, CssDimension, CssLengthUnit, CssResolutionUnit, CssTimeUnit } from "../units.generated";
+import type { CssColor } from "../values.generated";
 
 /**
  * What a declared variable IS, as a value — and a module with no RUNTIME, which is the point.

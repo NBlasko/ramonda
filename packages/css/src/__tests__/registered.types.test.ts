@@ -1,6 +1,6 @@
 import { describe, test } from "vitest";
-import type { CssVar } from "../token";
-import { toStyle } from "../value";
+import type { CssVar } from "../runtime/token";
+import { toStyle } from "../runtime/value";
 
 /**
  * Setting a REGISTERED property at run time, checked against the `syntax` it declared.

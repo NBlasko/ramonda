@@ -1,5 +1,5 @@
 import { readdirSync, statSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 
 /**
  * Whether the built package is older than the sources it was built from.
@@ -67,7 +67,12 @@ function newest(directory: string): number {
  * never have.
  */
 export function warnIfStale(from: string, say: (message: string) => void): void {
-  const root = dirname(dirname(from));
+  // The package root holds `dist` and `src`, so it is the parent of the nearest of them above `from` —
+  // `dist/vite.js` once built, `src/adapters/vite.ts` in a test. Counting two folders up gave two
+  // different answers once the adapters moved into a folder of their own.
+  let below = dirname(from);
+  while (!["dist", "src"].includes(basename(below)) && dirname(below) !== below) below = dirname(below);
+  const root = dirname(below);
   /**
    * Each walk answers for itself, and a review is the reason. Both used to sit inside ONE `try`, so
    * anything thrown anywhere in either — a directory nobody may read, a file a running build deletes

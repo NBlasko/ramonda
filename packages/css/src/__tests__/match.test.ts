@@ -5,7 +5,7 @@ import { checkBlock } from "../compiler/rules";
 import { findBlocks } from "../compiler/scan";
 import { Sheet } from "../compiler/sheet";
 import { transform } from "../compiler/transform";
-import { mergeClassNames, pick } from "../merge";
+import { mergeClassNames, pick } from "../runtime/merge";
 
 /**
  * `match`, which turns a value that varies into a choice between values that do not.

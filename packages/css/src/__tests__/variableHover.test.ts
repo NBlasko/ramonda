@@ -4,9 +4,9 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { expect, test } from "vitest";
-import { generate } from "../codegen";
-import { kind } from "../declared";
-import { init } from "../plugin";
+import { generate } from "../config/codegen";
+import { kind } from "../config/declared";
+import { init } from "../adapters/plugin";
 const PACKAGE = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const REPO = resolve(PACKAGE, "..", "..");
 /**

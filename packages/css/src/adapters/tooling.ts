@@ -1,10 +1,10 @@
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
-import { placehold } from "./compiler/tooling";
-import { positionOf } from "./compiler/errors";
-import { mayHoldABlock } from "./compiler/scan";
-import { virtualFile } from "./compiler/virtual";
+import { placehold } from "../compiler/tooling";
+import { positionOf } from "../compiler/errors";
+import { mayHoldABlock } from "../compiler/scan";
+import { virtualFile } from "../compiler/virtual";
 
 /**
  * Running the formatter and the linter over a file whose syntax neither can parse.

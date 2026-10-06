@@ -8,7 +8,7 @@ import { afterEach, beforeAll, describe, expect, test } from "vitest";
 import { readBlock } from "../compiler/read";
 import { checkBlock } from "../compiler/rules";
 import { findBlocks } from "../compiler/scan";
-import { writeGenerated } from "../generate";
+import { writeGenerated } from "../config/generate";
 import { builtFromThisSource } from "./built";
 
 /** The generated module is IMPORTED, so a stale `dist` would measure a previous version. */

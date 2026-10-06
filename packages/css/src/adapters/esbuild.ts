@@ -1,14 +1,14 @@
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import ts from "typescript";
-import { knownNames, configReader, environmentOf } from "./config";
-import { variablesSheetFor, writeGenerated } from "./generate";
+import { knownNames, configReader, environmentOf } from "../config/config";
+import { variablesSheetFor, writeGenerated } from "../config/generate";
 import { readModule } from "./modules";
-import { CssBlockError, positionOf } from "./compiler/errors";
-import { settingsAgainst } from "./compiler/declaredSet";
-import { fileMayHoldABlock, mayHoldABlock } from "./compiler/scan";
-import { Sheet } from "./compiler/sheet";
-import { transform } from "./compiler/transform";
+import { CssBlockError, positionOf } from "../compiler/errors";
+import { settingsAgainst } from "../compiler/declaredSet";
+import { fileMayHoldABlock, mayHoldABlock } from "../compiler/scan";
+import { Sheet } from "../compiler/sheet";
+import { transform } from "../compiler/transform";
 
 /**
  * `@ramonda/css/esbuild` — the same feature for a build that has no Vite in it.

@@ -4,7 +4,7 @@ import { nearest } from "./nearest";
 import { type Guard, sameGuard, segments } from "./flatten";
 import type { AtomicDeclaration } from "./flatten";
 import { SHORTHANDS } from "./keywords.generated";
-import { keyIn } from "../key";
+import { keyIn } from "../runtime/key";
 import {
   bindingForSite,
   classNameFor,
@@ -15,7 +15,7 @@ import {
   variableNameFor,
   writableProperty,
 } from "./names";
-import type { Config } from "../config";
+import type { Config } from "../config/config";
 import { type Imported, importedSites, namedSites, syntaxesIn } from "./references";
 import { normalise } from "./normalise";
 import { type VariableRead, type Variables, variablesIn } from "./variables";
