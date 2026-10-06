@@ -39,6 +39,10 @@ jobs:
       # `build` has a `dependsOn` that a direct filter would skip.
       - name: Build the CLI that `pnpm lint` runs
         run: pnpm exec turbo run build --filter=@ramonda/css
+      # The benchmark on five files, so the script cannot rot. Its timings are not a gate — they
+      # differ between machines — and `pnpm bench:css` is how somebody measures for real.
+      - name: The CSS benchmark still runs
+        run: node scripts/bench-css.mjs 5
       # oxlint over the whole monorepo in one pass (config: .oxlintrc.json). Hard
       # gate: the tree is clean today (0 errors).
       - name: Lint (oxlint)

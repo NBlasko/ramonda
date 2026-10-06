@@ -575,8 +575,15 @@ export function splitByGrammar(shape: GrammarShape, value: string): Record<strin
  * brackets: `[Dense]` and `[None]` are names spelled like keywords, and folding them made the split
  * name a different line than the shorthand, in all three engines. A review found it.
  */
+/** A property's foldable words, made once per property — they were made on every value. */
+const foldable = new Map<string, ReadonlySet<string>>();
+
 function keywordsFolded(property: string, value: string): string {
-  const words = new Set((VALUE_WORDS[property] ?? "").split(" ").filter((one) => one !== "" && !one.endsWith("()")));
+  let words = foldable.get(property);
+  if (words === undefined) {
+    words = new Set((VALUE_WORDS[property] ?? "").split(" ").filter((one) => one !== "" && !one.endsWith("()")));
+    foldable.set(property, words);
+  }
   if (words.size === 0) return value;
   let out = "";
   let word = "";

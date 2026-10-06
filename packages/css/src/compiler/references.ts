@@ -92,6 +92,11 @@ export interface Imported {
   /** For resolving a relative specifier. The importing file's own path. */
   readonly filename?: string;
   /**
+   * What this file's imports already resolved to, when the caller has it — so the imported modules
+   * are not read and parsed again. See {@link importedSites}.
+   */
+  readonly importedNames?: ReadonlyMap<string, string>;
+  /**
    * The text of a module a specifier resolves to, or `undefined` for one that cannot be read.
    *
    * **Injected rather than `fs`, and that is the whole reason this is a parameter.** A build reads
@@ -106,6 +111,27 @@ export interface Imported {
    * which is enough.
    */
   readonly read?: (specifier: string, from: string) => string | undefined;
+}
+
+/**
+ * The named sites one imported MODULE declares, worked out once per module text.
+ *
+ * Every file importing a module read it and parsed it again — measured on 1000 files importing one
+ * shared module (`scripts/bench-css.mjs`), the shared module was read 2000 times and parsed as often.
+ * Keyed by the text, so an edited module is a new key and nothing stale is ever answered; bounded,
+ * so a dev server that sees a thousand edits does not keep a thousand old texts.
+ */
+const moduleSites = new Map<string, Map<string, string>>();
+const MODULES_KEPT = 256;
+
+function sitesOfAModule(text: string): Map<string, string> {
+  let found = moduleSites.get(text);
+  if (found === undefined) {
+    found = namedSites(text);
+    if (moduleSites.size >= MODULES_KEPT) moduleSites.delete(moduleSites.keys().next().value as string);
+    moduleSites.set(text, found);
+  }
+  return found;
 }
 
 /**
@@ -134,7 +160,7 @@ function imported(source: string, options: Imported, texts?: string[]): Map<stri
     if (text === undefined || !NAMED_OPENING.test(text)) continue;
 
     // No `read` passed on: the hop stops here, so the imported file's own imports stay unresolved.
-    const theirs = namedSites(text);
+    const theirs = sitesOfAModule(text);
     let used = false;
     for (const one of names) {
       const [exported, local] = one.split(/\s+as\s+/);
@@ -182,7 +208,11 @@ export function importedSites(source: string, options: Imported): { names: Map<s
  * that file is where a value it refuses would be written — so following the import buys nothing
  * here and would make this a second place that resolves modules.
  */
-export function syntaxesIn(source: string, options: Imported = {}): Map<string, string> {
+export function syntaxesIn(
+  source: string,
+  options: Imported = {},
+  known?: ReadonlyMap<string, string>,
+): Map<string, string> {
   const out = new Map<string, string>();
   if (!NAMED_OPENING.test(source)) return out;
 
@@ -200,7 +230,8 @@ export function syntaxesIn(source: string, options: Imported = {}): Map<string, 
    * and `{other}: 12px` on a `<color>` property COMPILED, which is the exact failure
    * `value-and-registered-syntax` exists to prevent. `{base}: 12px` was refused on the same run.
    */
-  const references = namedSites(source, options);
+  // The caller's, when it has already worked them out — every caller had, and this did it again.
+  const references = known ?? namedSites(source, options);
 
   for (const site of findBlocks(source)) {
     if (site.at !== "property") continue;
@@ -225,8 +256,13 @@ export function syntaxesIn(source: string, options: Imported = {}): Map<string, 
 
 export function namedSites(source: string, options: Imported = {}): Map<string, string> {
   // What another module declares, first — so a site declared HERE overwrites it, which is what a
-  // local binding does to an imported one in TypeScript.
-  const found = source.includes("import") ? imported(source, options) : new Map<string, string>();
+  // local binding does to an imported one in TypeScript. Taken from the caller when it has it.
+  const found =
+    options.importedNames !== undefined
+      ? new Map(options.importedNames)
+      : source.includes("import")
+        ? imported(source, options)
+        : new Map<string, string>();
   // The same bargain as `mayHoldABlock`, and for the same reason: this runs beside every read of
   // every file, and a NAMED site needs a name character after the two `@`. Measured on a 40-block
   // file with none, the full walk was 0.029 ms against the virtual file's 0.35 — real, and avoidable

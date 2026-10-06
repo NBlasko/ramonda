@@ -155,11 +155,25 @@ export const SPREAD = "...";
  * fall through to being read as what they look like and are refused there.
  */
 export function holeIn(head: string, marker: string): number | undefined {
-  // The escape brings its own parentheses, so neither marker wraps it in more: `when $(on)` and
-  // `...$(base)`.
-  const escaped = marker === SPREAD ? "\\.\\.\\." : marker.replace(" ", "\\s+");
-  const found = new RegExp(`^\\s*${escaped}\\s*${HOLE}(\\d+)${HOLE}\\s*$`).exec(head);
+  const found = headPattern(marker).exec(head);
   return found === null ? undefined : Number(found[1]);
+}
+
+/**
+ * The pattern for one marker, compiled once — it was compiled on every call, and `holeIn` runs for
+ * every head of every block: 5.6% of a build, measured by `scripts/bench-css.mjs`.
+ */
+const headPatterns = new Map<string, RegExp>();
+function headPattern(marker: string): RegExp {
+  let pattern = headPatterns.get(marker);
+  if (pattern === undefined) {
+    // The escape brings its own parentheses, so neither marker wraps it in more: `when $(on)` and
+    // `...$(base)`.
+    const escaped = marker === SPREAD ? "\\.\\.\\." : marker.replace(" ", "\\s+");
+    pattern = new RegExp(`^\\s*${escaped}\\s*${HOLE}(\\d+)${HOLE}\\s*$`);
+    headPatterns.set(marker, pattern);
+  }
+  return pattern;
 }
 
 /** The head of a spread: the marker and one hole, and nothing else. */

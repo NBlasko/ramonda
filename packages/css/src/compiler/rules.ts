@@ -26,6 +26,7 @@ import type {
 import { childrenOf, runtimeValuesIn } from "./ast";
 import { nameFor } from "./dollar";
 import { HOLE } from "./normalise";
+import { wordSet } from "./wordSet";
 
 /**
  * A block as the rules read it: declarations and nested rules, and nothing else.
@@ -931,7 +932,7 @@ function literalNotAllowed(block: Block, rules: PropertyRules | undefined, findi
       // A property whose grammar SAYS it takes a colour is the types' to refuse — see above.
       if (PRIMITIVE[property] === "color") continue;
       // One that does not accept a colour at all has nothing here to find.
-      if (!(KEYWORDS[property] ?? "").split(" ").includes("rebeccapurple")) continue;
+      if (!wordSet(KEYWORDS[property] ?? "").has("rebeccapurple")) continue;
       /**
        * Exempted by its own name, which is the thing the top-level list could not express.
        *
@@ -3453,9 +3454,8 @@ function unknownValue(item: Declaration, findings: Finding[]): void {
   const accepted = KEYWORDS[item.property];
   if (accepted === undefined) return;
 
-  // An EMPTY row is a property that accepts no keyword at all — see the generator. Splitting `""`
-  // would give a set holding one empty string, which matches nothing and reads as a bug later.
-  const keywords = new Set(accepted === "" ? [] : accepted.split(" "));
+  // An EMPTY row is a property that accepts no keyword at all — `wordSet` gives it an empty set.
+  const keywords = wordSet(accepted);
   /** Whether any word's only fault was its case — see the note beside the check below. */
   let miscased = false;
 
@@ -3545,7 +3545,7 @@ function unknownValue(item: Declaration, findings: Finding[]): void {
  * author's own word. And a CSS-wide keyword is accepted everywhere.
  */
 function propertyNames(item: Declaration, accepted: string, findings: Finding[]): void {
-  const keywords = new Set(accepted === "" ? [] : accepted.split(" "));
+  const keywords = wordSet(accepted);
 
   for (const word of words(item.value)) {
     if (word.text.startsWith("-")) continue;

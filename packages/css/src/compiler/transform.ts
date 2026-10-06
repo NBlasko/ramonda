@@ -226,9 +226,10 @@ export function transform(source: string, options: TransformOptions = {}): Trans
    * that works.
    */
   const from = importedSites(source, { filename, read: options.read });
-  const references = namedSites(source, { filename, read: options.read });
+  // The imports once: `from` already read them, so the names and the syntaxes are handed what it found.
+  const references = namedSites(source, { filename, read: options.read, importedNames: from.names });
   // What each registered property may HOLD, beside what it is called — see `syntaxesIn`.
-  const syntaxes = syntaxesIn(source, { filename, read: options.read });
+  const syntaxes = syntaxesIn(source, { filename, read: options.read }, references);
   const resolve = (expression: string): string | undefined => references.get(expression);
   /**
    * A `$(name)` refused as a runtime value that is one letter off a binding this file can see — a

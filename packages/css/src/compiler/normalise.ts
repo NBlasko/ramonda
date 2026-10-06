@@ -1,6 +1,7 @@
 import type { Block, BlockItem, ValuePart } from "./ast";
 import { nameFor } from "./dollar";
 import { AT_RULE_LINKS, KEYWORDS, MEDIA_FEATURES, PROPERTIES, SELECTORS } from "./keywords.generated";
+import { wordSet } from "./wordSet";
 
 /**
  * The canonical text of a block, which is the definition of its identity.
@@ -376,7 +377,7 @@ export function canonicalValue(property: string, value: string): string {
   if (property.startsWith("--")) return value;
   const accepted = KEYWORDS[propertyName(property)];
   if (accepted === undefined || accepted === "") return value;
-  const keywords = new Set(accepted.split(" "));
+  const keywords = wordSet(accepted);
 
   let out = "";
   let depth = 0;
