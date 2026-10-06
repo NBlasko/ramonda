@@ -1,5 +1,99 @@
 # @ramonda/css
 
+## 0.7.0
+
+### Minor Changes
+
+- ac0b94f: **`styleOtherElements: false` keeps a block to its own element.** A selector whose subject is another
+  element — a child (`.title`, `& > img`, `&:hover .icon`) or a sibling (`& + .card`) — is refused
+  (`styles-another-element`); `&:hover`, `&::before`, `&.active`, `&:has(…)` and `[data-theme] &` still
+  style the element itself. Left out, nothing changes.
+- 7240c60: **Breaking: a project's tokens are called tokens.** CSS calls a custom property a "variable", so a
+  config holding `variables` beside settings about custom properties read as one thing said twice.
+  Every old name is refused with the new one in the message.
+
+  | Was                                                 | Is                                                             |
+  | --------------------------------------------------- | -------------------------------------------------------------- |
+  | `variables: { $color: kind(…) }`                    | `tokens: { $color: kind(…) }`                                  |
+  | `alsoSets: ["--x"]`                                 | `externalCustomProperties: ["--x"]`                            |
+  | `"<color>": { variablesOnly: true }`                | `"<color>": { hardcoded: false }` — the value turns over       |
+  | rule `literal-not-allowed`                          | `hardcoded-not-allowed`                                        |
+  | rule `unknown-variable`                             | `unknown-token`                                                |
+  | rule `variable-by-hand`                             | `token-by-hand`                                                |
+  | rule `variable-set-against-its-declaration`         | `token-set-against-its-declaration`                            |
+  | rule `variable-set-by-another-name`                 | `custom-property-set-by-another-name`                          |
+  | rule `hole-as-a-variable-name`                      | `hole-as-a-custom-property-name`                               |
+  | `css-system/variables.css`                          | `css-system/tokens.css`                                        |
+  | `ColorVar`, `LengthVar`, … · `Var<K>` · `VarByKind` | `ColorToken`, `LengthToken`, … · `AnyToken<K>` · `TokenByKind` |
+  | `Variable` from `@ramonda/css/config`               | `TokenDeclaration`                                             |
+
+  Run `ramonda-css codegen` once after updating: it writes `tokens.css` and removes the old
+  `variables.css` it wrote (one somebody wrote by hand is left alone). An import of
+  `css-system/variables.css` in your own code becomes `css-system/tokens.css`. The docs page moved to
+  `/style-blocks/tokens`; the old address redirects.
+
+- c5aa404: **`unknownCustomProperties: "same-block"` allows a made-up name as a local.** One block may set a
+  name and read it — `--gap: 4px; padding: var(--gap);` — and nothing else may: a read the block does
+  not set is refused, and so is a setting it does not read. A `style` attribute counts as one block.
+- 03ea4ff: **`unknownCustomProperties: false` refuses a custom property made up on the spot.** With it, a block
+  or a `style` attribute may only set or read a token, a `@@property( … )` through its binding, or a
+  name listed in `externalCustomProperties`; `--brand: red;` and `var(--brand)` anywhere else are
+  refused (`unknown-custom-property`) in the build, the editor and `ramonda-check`. Left out, nothing
+  changes.
+
+### Patch Changes
+
+- 510a06e: **A condition written at the wrong level names the spelling that level takes.** `color: when $(a) red;`
+  says _`when` chooses a group — for a value, write `$(c) ? a : b`_, and `$(a) ? ( … ) : ( … );` says
+  _a choice picks a value — for a group, write `when $(c) { … } else { … }`_. Both were refused before,
+  with a sentence about something else; the editor and the build now say the same one.
+- a6487d6: **A `@@font-face` binding is the family it declares.** `font-family: $(brand)` compiled to a hash
+  the `@font-face` rule never declared, so the font silently never loaded. `$(brand)` — and `brand` in
+  code — is now the family exactly as written, `"Brand"`: a reference, so a typo is an error and a
+  rename is one edit. Two faces of one family (two weights) are still two rules.
+- 7517eaf: **Setting a token is not a hardcoded value.** Under `hardcoded: false` (`variablesOnly` before),
+  `--color-surface: #111827;` — a token set to a value its `range` permits — was refused as a colour
+  written out, while the range said it may be. Setting a token is where a theme writes its colours; the
+  value is judged against the token's range instead, and an ordinary property is refused as before.
+- f70dc8f: - **A registered property only an animation sets is no longer reported as set by nothing.** A
+  `@@keyframes` frame writing `$(angle): 90deg` sets it on the element it animates, and
+  `registered-never-set` now counts that — it reported the very pattern the docs show for animating
+  a registered property.
+  - **A relative `url( … )` in a block builds through esbuild.** It failed with _Could not resolve_
+    with the file right beside the source: the block's stylesheet had no folder to read the path from.
+    It is read from the folder of the file that holds the block, as Vite reads it.
+- cd735eb: **A `match` over a number or a boolean says what to write instead.** It was refused with a raw
+  `Type 'string' is not assignable to type '2 | 1'`, once per key, naming neither `match` nor the fix.
+  It is now refused once, on the subject: `match takes a string — for a boolean, write $(on) ? a : b`,
+  or `— name the cases in code, $(n > 2 ? 'large' : 'small')`. An arm's key is a written word, so
+  `match` takes a string; nothing that worked before changes.
+- 0b2b887: **The build refuses a `@@property` with no `syntax` or no `inherits`** (`property-descriptor-missing`).
+  CSS requires both, and the browser drops a registration missing either, in silence. The editor
+  already said so through the type; the build, which does not run the type check, compiled it.
+- 4ac3e87: **A token group written without `kind( … )` is refused.** `tokens: { $color: { accent: "#10b981" } }`
+  loaded, declared nothing and wrote an empty sheet — the first `$color.accent` was then told the
+  project declares no tokens. The config's type now takes only what `kind( … )` makes, and loading the
+  config names the group: _declares `tokens.$color` without `kind( … )`_.
+- 9fb2922: **A hover on a token says what it is.** `$color.accent.quiet`, in a block or in code, now shows its
+  kind, the custom property it is written as (`var(--color-accent-quiet)` — the name a browser's style
+  panel shows), what it starts as, and whether it may change. Codegen writes it as a doc comment above
+  each token, so run `ramonda-css codegen` once after updating.
+- 7240c60: **A token set anywhere is checked against its declaration** (`token-set-against-its-declaration`).
+  One declared without a `range` never changes — its type says `Fixed<…>` and `toStyle` already
+  refused to set it — so `--color-surface-sunken: red;` in a block is refused too, naming the token and
+  how to give it a range. One with a `range` may only be set to a value in it, branch by branch for a
+  choice or a match.
+
+  The same check covers the two other places a theme sets a token: **a project stylesheet** — the Vite
+  and esbuild plugins stop the build at the file and line — and **a `style` attribute**, in the editor
+  and `ramonda-check`. The generated `tokens.css` is left alone.
+
+- 4710ebd: **A relative `url( … )` that points at no file is refused** (`url-not-found`). `url("./img/hero.png")`
+  with no such file built without a word and shipped a 404 — a moved image, or a component moved away
+  from its image, broke nothing anyone saw. The file is now looked for beside the source file, in the
+  build, the editor and `ramonda-check`, and `@@font-face`'s `src` with it. A path from the site's
+  root (`/hero.png`), another site and `data:` are left alone.
+
 ## 0.6.0
 
 ### Minor Changes
