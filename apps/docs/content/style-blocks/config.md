@@ -116,8 +116,10 @@ properties: { "<color>": { hardcoded: false } },
 token. It is the setting that turns a palette from a recommendation into something the build
 enforces. `hardcoded: true` on one property exempts it again.
 
-Two things it deliberately lets through: a bare `0`, which needs no unit and is nobody's hardcoded
-brand colour, and `var()`, which is the escape CSS itself provides.
+Three things it deliberately lets through: a bare `0`, which needs no unit and is nobody's hardcoded
+brand colour (`0px` is refused); `var()`, which is the escape CSS itself provides; and a word that
+names another value rather than being one — `currentcolor`, and CSS's own `inherit`, `initial`,
+`unset` and `revert`. `transparent` is a colour, and is refused like any other.
 
 ### `values` — a closed list
 

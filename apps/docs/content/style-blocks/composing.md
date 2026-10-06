@@ -155,7 +155,8 @@ you want those, compute the subject before the block and match on what comes out
 
 An arm's key is a written word, so `match` takes a string. Against a number or a boolean, `1 =>` and
 `true =>` would leave you asking whether the key is the value or its spelling — so either one is
-refused on the subject, and the message says what to write instead:
+reported on the subject, and the message says what to write instead. It is the type check that says
+so: the editor and `ramonda-check` report it, and the build, which does not type-check, does not.
 
 - **a boolean** is a two-way choice, which has its own spelling:
   [`$(on) ? a : b`](#a-choice-between-two-values), and `when` for whole groups;

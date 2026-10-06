@@ -298,11 +298,11 @@ const CSS_LINES = {
   "allow-list-not-css": "a value in an allow-list that is not CSS — every caller sending it is refused",
   "narrower-after-a-whole-shorthand":
     "a narrower shorthand after a wider one, both reaching the stylesheet whole — no order keeps it winning",
-  "hardcoded-not-allowed": "a value written out where your `ramonda.css.ts` takes that kind from variables",
+  "hardcoded-not-allowed": "a value written out where your `ramonda.css.ts` takes that kind from tokens",
   "declaration-does-nothing":
     "a declaration another one on the same element switches off — valid CSS the browser ignores",
-  "unknown-token": "`$group.…` naming a variable your `ramonda.css.ts` does not declare",
-  "token-by-hand": "`var(--…)` written by hand for a variable your `ramonda.css.ts` declares — write `$group.…`",
+  "unknown-token": "`$group.…` naming a token your `ramonda.css.ts` does not declare",
+  "token-by-hand": "`var(--…)` written by hand for a token your `ramonda.css.ts` declares — write `$group.…`",
   "block-refused": "what the build refuses, shown in the editor in the build's own words — it cannot be switched off",
   "too-many-values": "more values than the property takes — in CSS, or in your `ramonda.css.ts`",
   "missing-semicolon": "a declaration with no `;`, which swallows the line written under it",
@@ -376,16 +376,44 @@ if (undescribed.length > 0 || stale.length > 0) {
   process.exit(1);
 }
 
+/**
+ * The rules that need the TYPE check, read from the code rather than listed again: an id in
+ * `typed.ts`'s `TYPED_RULES` that `rules.ts` never reports itself. The build does not type-check, so
+ * these come from the editor and `ramonda-check` only. Review round 3: the sentence above the table
+ * said every rule fails the build, and these do not.
+ */
+const TYPED = join(here, "..", "..", "..", "packages", "css", "src", "compiler", "typed.ts");
+const rulesText = readFileSync(CSS_RULES, "utf8");
+const typedOnly = new Set(
+  [
+    ...readFileSync(TYPED, "utf8")
+      .split("TYPED_RULES = [")[1]
+      .split("] as const")[0]
+      .matchAll(/"([a-z-]+)"/g),
+  ]
+    .map((one) => one[1])
+    .filter((id) => !rulesText.includes(`rule: "${id}"`)),
+);
+/** What the build refuses whatever a config says — `config.ts` refuses "off" for exactly these. */
+const UNSILENCEABLE = ["block-in-a-template", "block-refused"];
+// Read from code, so a reading that went wrong would say "0 marked" and look like a fact.
+if (typedOnly.size === 0) throw new Error("[rules] found no type-check rules in typed.ts — the reading is broken");
+for (const id of [...typedOnly, ...UNSILENCEABLE]) {
+  if (!cssIds.includes(id)) throw new Error(`[rules] ${id} is named above the table and is not a rule`);
+}
+
 const cssRegion = [
   CSS_START,
   "",
-  `Every one of them fails the build. ${cssIds.length} of them, and each is a key you can switch off — ` +
-    "except `block-in-a-template`, which names no key because there is nothing safe to switch off: a " +
-    "block inside a `${ … }` reaches the bundler as `@@(`, and silencing the report would ship that.",
+  `${cssIds.length} rules. Every rule that reads a block fails the build. The ${typedOnly.size} marked *type check* ` +
+    "need TypeScript's answer about a type, so the editor and `ramonda-check` report them and the build — " +
+    "which does not type-check — does not. Each is a key you can switch off, except `block-in-a-template` and " +
+    "`block-refused`: the build refuses those whatever a config says, so switching one off would only quiet " +
+    "the editor.",
   "",
   "| rule | reported when |",
   "|---|---|",
-  ...cssIds.map((id) => `| \`${id}\` | ${CSS_LINES[id]} |`),
+  ...cssIds.map((id) => `| \`${id}\` | ${CSS_LINES[id]}${typedOnly.has(id) ? " — *type check*" : ""} |`),
   "",
   CSS_END,
 ].join("\n");

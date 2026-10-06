@@ -1335,3 +1335,24 @@ describe("a block reaching another element under `styleOtherElements: false`", (
     expect(() => transform(source, { config })).not.toThrow();
   });
 });
+
+/**
+ * A misspelt binding in a block. Review round 3: the docs say a typo in `$(brand)` is an error, and
+ * the build's error said only that a block takes no runtime value — true, and pointing away from the
+ * typo. The editor has TypeScript's *did you mean*; the build now says it too.
+ */
+describe("a misspelt binding in a block", () => {
+  const source = (written: string) =>
+    `const brand = @@font-face( font-family: "B"; src: url("/b.woff2"); );\n` +
+    `export const t = @@( font-family: ${written}, serif; );\nexport { brand };\n`;
+
+  test("names the binding it was probably meant to be", () => {
+    expect(() => transform(source("$(brnd)"), { filename: "C.tsx" })).toThrow(
+      /Did you mean `\$\(brand\)`, declared in this file\?/,
+    );
+  });
+
+  test("and says nothing of the kind about a name close to none", () => {
+    expect(() => transform(source("$(somethingElse)"), { filename: "C.tsx" })).toThrow(/^(?![\s\S]*Did you mean)/);
+  });
+});
