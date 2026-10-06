@@ -380,7 +380,7 @@ describe("an argument that is not a project", () => {
  * `ramonda-css codegen`, which is the command that makes `$` usable at all.
  *
  * A project with no generated module has no `$` to import, so this is not a convenience: it is the
- * step between a declared variable and a written one. In a bundler it runs on its own; this is for
+ * step between a token and a written one. In a bundler it runs on its own; this is for
  * CI, for a fresh clone, and for a project that builds with neither plugin.
  */
 describe("codegen", () => {

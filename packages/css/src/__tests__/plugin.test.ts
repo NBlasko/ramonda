@@ -3162,7 +3162,7 @@ describe("logic being typed", () => {
 });
 
 /** The `style` attribute's half of `token-set-against-its-declaration`, in the editor — see `check.test.ts`. */
-describe("a `style` attribute setting a declared variable, in the editor", () => {
+describe("a `style` attribute setting a token, in the editor", () => {
   test("a fixed one is reported on the name, and an undeclared one is not", () => {
     const dir = mkdtempSync(join(tmpdir(), "ramonda-editor-style-"));
     writeFileSync(

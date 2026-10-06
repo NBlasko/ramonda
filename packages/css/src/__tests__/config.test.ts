@@ -518,7 +518,7 @@ describe("the project's config", () => {
       ["shorthand as a word", `{ properties: { "padding": { shorthand: "no" } } }`, /shorthand/],
       ["hardcoded as a word", `{ properties: { "<color>": { hardcoded: "yes" } } }`, /hardcoded/],
       // The old name, refused with the new one and its value turned over.
-      ["the old `variablesOnly`", `{ properties: { "<color>": { variablesOnly: true } } }`, /`hardcoded: false`/],
+      ["the old `hardcoded: false`", `{ properties: { "<color>": { variablesOnly: true } } }`, /`hardcoded: false`/],
       ["arity as a string", `{ properties: { "padding": { arity: "2" } } }`, /arity/],
       ["a setting that is not one", `{ properties: { "padding": { unknownKey: true } } }`, /unknownKey/],
       ["an entry that is not an object", `{ properties: { "padding": true } }`, /padding/],

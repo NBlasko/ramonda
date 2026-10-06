@@ -8,7 +8,7 @@ import { kind } from "../declared";
 const PACKAGE = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 /**
- * What codegen writes from a project's declared variables, which is the whole reason the config
+ * What codegen writes from a project's tokens, which is the whole reason the config
  * holds a fallback and a kind at all.
  *
  * The asymmetry: a variable that is declared and NOT emitted fails silently — `$` has a name for it,
@@ -88,7 +88,7 @@ describe("the stylesheet", () => {
     );
   });
 
-  test("every declared variable is registered, because that is what makes a bare `var()` safe", () => {
+  test("every token is registered, because that is what makes a bare `var()` safe", () => {
     // `$` compiles to `var(--name)` with no fallback, so the registration is the only thing standing
     // between a variable nothing sets and a property that silently becomes something else. A kind
     // that skipped registration would be a hole in that, with nothing to report it.
@@ -363,4 +363,18 @@ describe("what a hover on a variable says", () => {
 
     expect(module).toContain("`a *\\/ b`");
   });
+});
+
+/**
+ * The module a project opens says "token", never "variable" — CSS calls a custom property a variable,
+ * and the two were renamed apart. The first rename missed the property docs this module carries,
+ * which every hover in the editor shows: "this project's variables of that kind", 200 times over.
+ */
+test("the generated module says token, not variable", () => {
+  const { module } = generate(
+    { $color: kind("color", { a: "#000" }), $size: kind("length", { b: "1px" }) },
+    { "<color>": { hardcoded: false } },
+  );
+
+  expect(module.match(/\bvariables?\b/gi) ?? []).toEqual([]);
 });

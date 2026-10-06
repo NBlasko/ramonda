@@ -914,7 +914,7 @@ describe("what the rule reports, the formatter writes", () => {
 });
 
 /**
- * A declared variable through the formatter, which is the one consumer that had nothing to do.
+ * A token through the formatter, which is the one consumer that had nothing to do.
  *
  * `$` reaches the grammar, the checker, the compiler and the virtual file, and each had to learn it.
  * The formatter did not — a block's innards are never reformatted, only put back at the indentation
@@ -922,7 +922,7 @@ describe("what the rule reports, the formatter writes", () => {
  * to be true: it is the kind of claim that stops being true quietly, and a path rewritten by a
  * formatter would be a compile of `var()` into the wrong name.
  */
-describe("a declared variable is not a formatter's business", () => {
+describe("a token is not a formatter's business", () => {
   const reindent = (text: string) => text.replace(/^ {2}/gm, "    ");
   const identity = (text: string) => text;
 

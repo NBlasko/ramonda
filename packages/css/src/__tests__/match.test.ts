@@ -73,7 +73,7 @@ describe("reading a match", () => {
     );
   });
 
-  test("an arm may name a declared variable", () => {
+  test("an arm may name a token", () => {
     const one = matched(`color: match $(this.tone) {\n  loud => $color.accent;\n}`);
 
     expect(one.arms[0].value.some((part) => part.kind === "variable")).toBe(true);
@@ -202,7 +202,7 @@ describe("what a match may not hold", () => {
  * a key where the value is set.
  *
  * What `toStyle` adds is the half a string cannot have: the value is checked against the `syntax`
- * the property declared, by the same machinery a declared variable's range already uses.
+ * the property declared, by the same machinery a token's range already uses.
  */
 describe("setting a registered property", () => {
   test("the binding is the generated name, and one property is one name however often it is read", () => {

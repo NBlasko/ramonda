@@ -1,7 +1,7 @@
 import { Component, RamondaNode } from "@ramonda/core";
 export class EtEtStrict extends Component {
   /**
-   * A choice between two declared variables, written in the BLOCK.
+   * A choice between two tokens, written in the BLOCK.
    *
    * It used to be a hole holding a ternary, and a hole in a declaration is refused: it put a custom
    * property on every element for a value that is one of two. Each `match` arm is its own rule and

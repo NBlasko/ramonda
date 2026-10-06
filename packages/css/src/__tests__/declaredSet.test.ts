@@ -3,7 +3,7 @@ import { settingsAgainst, settingsIn } from "../compiler/declaredSet";
 import { kind } from "../declared";
 
 /**
- * The judgement a block, a stylesheet and a `style` attribute share — whether a declared variable
+ * The judgement a block, a stylesheet and a `style` attribute share — whether a token
  * may be set to a value — and the reader that finds what a piece of CSS sets.
  */
 const config = {

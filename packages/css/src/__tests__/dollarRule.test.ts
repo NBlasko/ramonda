@@ -87,7 +87,7 @@ describe("a `$` path the project did not declare", () => {
 /**
  * A `$` whose GROUP the project does not have — the case most likely to be a reach for code.
  *
- * `$` and a name is only ever a theme variable, so `$theme.dark` or `$props.size` is somebody who
+ * `$` and a name is only ever a token, so `$theme.dark` or `$props.size` is somebody who
  * meant a value from TypeScript. The message names the groups that DO exist, and the door for code.
  */
 describe("a `$` naming a group the project does not have", () => {
@@ -116,7 +116,7 @@ describe("a `$` naming a group the project does not have", () => {
  * in `ramonda.css.ts` and this keeps reading the old name, which nothing sets. `$color.primary.main`
  * is checked against the config, so the message names it.
  */
-describe("a declared variable read with a hand-written `var()`", () => {
+describe("a token read with a hand-written `var()`", () => {
   test("is reported, naming the spelling to write instead", () => {
     expect(rules("color: var(--color-primary-main);")).toEqual(["token-by-hand"]);
     expect(messages("color: var(--color-primary-main);")[0]).toContain("`$color.primary.main`");
@@ -146,14 +146,14 @@ describe("a declared variable read with a hand-written `var()`", () => {
 });
 
 /**
- * A declared variable SET in a block, against what its declaration allows.
+ * A token SET in a block, against what its declaration allows.
  *
  * A bare declaration means it never changes — the hover says `Fixed<…>` and `toStyle` refuses to set
  * it — and a `range` lists what it may become. Both were promises only `toStyle` kept: measured, a
  * block wrote `--color-surface-sunken: red` over a fixed variable, and a value outside a range, in
  * silence. `@property` cannot forbid it; CSS lets anything set a custom property.
  */
-describe("a declared variable set in a block", () => {
+describe("a token set in a block", () => {
   const themed: Config = {
     tokens: {
       $color: kind("color", {

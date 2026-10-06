@@ -80,7 +80,7 @@ describe("running codegen", () => {
     expect(readFileSync(join(project, join("css-system", "index.ts")), "utf8")).toContain("--color-primary-main");
   });
 
-  test("every declared variable is registered, which is what makes a bare `var()` safe", () => {
+  test("every token is registered, which is what makes a bare `var()` safe", () => {
     write("ramonda.css.ts", CONFIG);
     writeGenerated(project, ts);
 

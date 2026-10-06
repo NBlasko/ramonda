@@ -935,7 +935,7 @@ export default defineConfig({
   });
 
   /**
-   * A bare `0` under `variablesOnly`, which is the most common declaration in CSS.
+   * A bare `0` under `hardcoded: false`, which is the most common declaration in CSS.
    *
    * Measured before this, a variables-only `<length>` refused `padding-left: 0`:
    *
@@ -990,7 +990,7 @@ export default defineConfig({
   });
 
   /**
-   * `variablesOnly` said as a SELECTOR inside `properties`, which is where it belongs.
+   * `hardcoded: false` said as a SELECTOR inside `properties`, which is where it belongs.
    *
    * It was a top-level key listing kinds — `variablesOnly: ["length"]` — which made it the one
    * setting keyed by kind while every other was keyed by property. The user asked whether it could
@@ -1007,10 +1007,10 @@ export default defineConfig({
    *
    * Nothing new to learn: `<length>` is the same word already written in `kind("length", …)`, and
    * the merge is the key-by-key merge presets already depend on. What it buys that the top-level
-   * key could not is the EXEMPTION — `variablesOnly` was all-or-nothing per kind, so a project
+   * key could not is the EXEMPTION — `hardcoded: false` was all-or-nothing per kind, so a project
    * could not say *lengths from variables, except `border-radius`*.
    */
-  describe("`variablesOnly` as a selector inside `properties`", () => {
+  describe("`hardcoded: false` as a selector inside `properties`", () => {
     const CONFIG = `import { kind } from "@ramonda/css/config";
 export default {
   tokens: { $space: kind("length", { sm: "8px" }) },
@@ -1115,16 +1115,16 @@ export default {
      * The branch that writes a closed list walked `Object.entries(rules)` — the keys somebody typed —
      * while every other setting asks `ruleFor(property)`. That was invisible while the only keys were
      * property names and `"*"`. Three faults fell out of it the moment a user asked what
-     * `variablesOnly` means beside a range:
+     * `hardcoded: false` means beside a range:
      *
-     *     values + variablesOnly      the literal went in anyway; `variablesOnly` was never consulted
+     *     values + variablesOnly      the literal went in anyway; `hardcoded: false` was never consulted
      *     "<time>": { values: [...] } emitted a row literally NAMED `"<time>"`, constraining nothing
      *     "*": { values: [...] }      silently did nothing at all
      *
      * The user's own position settled the first, and it was already the behaviour everywhere else:
      * *"variabla takodje mora da postuje range. Ako im se ne svidja, pa onda prosiri range."* A
      * variable is checked against the list by its declared value — `Token<kind, permitted>` — so
-     * `variablesOnly` only ever removes the LITERAL spelling. It is not a way around a range.
+     * `hardcoded: false` only ever removes the LITERAL spelling. It is not a way around a range.
      */
     describe("a closed list, and what a variable owes it", () => {
       const CONFIG = `import { kind } from "@ramonda/css/config";
@@ -1145,12 +1145,12 @@ export default {
         );
       });
 
-      /** `variablesOnly` removes the literal spelling and nothing else. The range still binds. */
+      /** `hardcoded: false` removes the literal spelling and nothing else. The range still binds. */
       test.each([
         ["the literal, which the list permits but the project does not write", "padding-left: 8px;", true],
         ["the variable, whose value the list permits", "padding-left: $s.ok;", false],
         ["the variable whose value it does not", "padding-left: $s.big;", true],
-      ])("with `variablesOnly` beside the list: %s", (_what, css, refused) => {
+      ])("with `hardcoded: false` beside the list: %s", (_what, css, refused) => {
         const config = CONFIG.replace('{ values: ["4px", "8px"] }', '{ values: ["4px", "8px"], hardcoded: false }');
 
         expect(withBoth(config, `export const a = <div className={@@( ${css} )}>x</div>;\n`).includes("problem")).toBe(
@@ -1316,7 +1316,7 @@ export default {
        * where each arm is its own class and nothing is decided while the page renders. The arms are
        * `$` paths, which is what makes this a replacement rather than a loss.
        */
-      test("and the block writes the choice out, with a `$` variable in each arm", () => {
+      test("and the block writes the choice out, with a `$` token in each arm", () => {
         const output = withBoth(
           CONFIG,
           `declare const tone: "loud" | "quiet";\n` +

@@ -1201,8 +1201,8 @@ describe("a condition at the wrong level", () => {
   });
 });
 
-/** The build refuses a fixed declared variable set in a block — see `dollarRule.test.ts` for the rest. */
-test("a fixed declared variable set in a block stops the build", () => {
+/** The build refuses a fixed token set in a block — see `dollarRule.test.ts` for the rest. */
+test("a fixed token set in a block stops the build", () => {
   const config = { tokens: { $color: kind("color", { sunken: "#f3f4f6" }) } };
 
   expect(() => transform(`const x = @@( --color-sunken: red; );\nexport default x;\n`, { config })).toThrow(

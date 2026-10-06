@@ -170,7 +170,7 @@ Every one of them fails the build. 64 of them, and each is a key you can switch 
 | `hole-as-a-custom-property-name` | a hole naming a custom property rather than holding a value |
 | `initial-value-and-syntax` | `@@property` with no `initial-value`, or one its `syntax` does not accept — the browser drops the rule |
 | `property-descriptor-missing` | `@@property` with no `syntax` or no `inherits` — the browser drops the rule; the build's own words for what the editor's type says |
-| `token-set-against-its-declaration` | a declared variable set with no `range`, or outside it — in a block, a project stylesheet, or a `style` attribute |
+| `token-set-against-its-declaration` | a token set with no `range`, or outside it — in a block, a project stylesheet, or a `style` attribute |
 | `unknown-custom-property` | a custom property made up in a block or a `style` attribute, when `unknownCustomProperties` is `false` |
 | `url-not-found` | a relative `url( … )` naming a file that is not there, next to the file that holds the block |
 | `styles-another-element` | a selector on another element — a child or a sibling — when `styleOtherElements` is `false` |

@@ -838,7 +838,7 @@ function propertyMap(rules: PropertyRules | undefined): Mapped {
     const literals = onlyVariables ? "" : `${value} | `;
 
     rows.push(
-      `  /** \`${property}\` — ${narrow.said}${onlyVariables ? ", and only as one of this project's variables" : ", and this project's variables of that kind"}. */\n` +
+      `  /** \`${property}\` — ${narrow.said}${onlyVariables ? ", and only as one of this project's tokens" : ", and this project's tokens of that kind"}. */\n` +
         `  ${JSON.stringify(property)}: Narrowed<${kept}, ${literals}Token<${kinds}${ranged}>${several}${zero}>;`,
     );
   }
@@ -1012,7 +1012,7 @@ export function generate(declarations: Declarations, rules?: PropertyRules, path
    * opening this file still sees both.
    */
   const { rows, narrowed, removed, uses } = propertyMap(rules);
-  /** `ValueByKind` is named only by a variable whose range is `"any"` — see `rangeOf`. */
+  /** `ValueByKind` is named only by a token whose range is `"any"` — see `rangeOf`. */
   const open = named.some((one) => one.range === "any");
   /** And `Fixed` only by one declared BARE, which is the mark that it never changes. */
   const bare = named.some((one) => one.range === undefined);

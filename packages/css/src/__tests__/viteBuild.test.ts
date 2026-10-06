@@ -579,11 +579,11 @@ describe("codegen through the vite plugin", () => {
 });
 
 /**
- * A project stylesheet setting a declared variable its declaration does not allow — the theme half
+ * A project stylesheet setting a token its declaration does not allow — the theme half
  * of `token-set-against-its-declaration`. A theme is plain CSS, and plain CSS is where a fixed
  * variable gets changed; the plugin is handed every stylesheet the app loads.
  */
-describe("a stylesheet setting a declared variable", () => {
+describe("a stylesheet setting a token", () => {
   const themed = (theme: string, declared: string, rules = "") => {
     const root = project(
       `export const Card = () => <div className={@@( color: $color.sunken; )}>x</div>;\n`,

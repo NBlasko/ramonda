@@ -3480,7 +3480,7 @@ describe("a colour written out, where the project said variables only", () => {
     expect(rulesWith('  grid-template-areas: "a b";', ONLY)).toEqual([]);
   });
 
-  test("and with no `variablesOnly` anywhere, none of this happens", () => {
+  test("and with no `hardcoded: false` anywhere, none of this happens", () => {
     expect(rulesWith("  border-left: 4px solid red;", {})).toEqual([]);
   });
 });
@@ -3570,7 +3570,7 @@ describe("units, by family", () => {
  *     color: red              []                        and this
  *     border: 1px solid red   [hardcoded-not-allowed]     only the composite was caught
  *
- * So a project could set `variablesOnly`, watch `ramonda-css check` refuse a file, and watch the
+ * So a project could set `hardcoded: false`, watch `ramonda-css check` refuse a file, and watch the
  * dev server serve it. One rule, three consumers, and two of them silent — the repository's
  * recurring fault, found once more by asking what a setting means.
  *
@@ -3607,7 +3607,7 @@ describe("a literal where the project said that kind comes from variables", () =
 
   test.each([
     ["a bare zero, which needs no unit in CSS", "padding-left: 0"],
-    ["a declared variable, which is the point", "padding-left: $space.gutter"],
+    ["a token, which is the point", "padding-left: $space.gutter"],
     ["`var()`, the escape CSS itself provides", "padding-left: var(--x)"],
     ["a CSS-wide keyword", "padding-left: inherit"],
     ["the property's own keyword", "width: auto"],
@@ -3648,7 +3648,7 @@ describe("a literal where the project said that kind comes from variables", () =
     expect(found.message).toContain("hardcoded");
   });
 
-  test("and with no `variablesOnly` anywhere, every one of these is silent", () => {
+  test("and with no `hardcoded: false` anywhere, every one of these is silent", () => {
     const of = (decl: string) => checkBlock(readBlock(`@@(\n  ${decl};\n)`, 2, "C.tsx").block, {}).map((o) => o.rule);
 
     for (const decl of ["padding-left: 8px", "width: 200px", "transition-duration: 200ms"]) {
@@ -3686,7 +3686,7 @@ describe("the slash form, and the correct CSS it must not refuse", () => {
 });
 
 /**
- * The two ways a literal still reached the page after `variablesOnly` was said.
+ * The two ways a literal still reached the page after `hardcoded: false` was said.
  *
  * **A colour LONGHAND did not reach the build.** The dimension half was extended and the colour
  * half was not: `literalNotAllowed` skipped a property whose grammar says `<color>` as *the types'
@@ -3730,7 +3730,7 @@ describe("a literal that reached the page anyway", () => {
   });
 
   test.each([
-    ["a declared variable, which is the point", "--own: $brand.main"],
+    ["a token, which is the point", "--own: $brand.main"],
     ["a colour word inside a STRING, which is text", '--label: "red"'],
     ["a bare number, which has no kind at all", "--n: 3"],
     ["a keyword", "--mode: dark"],
@@ -3741,7 +3741,7 @@ describe("a literal that reached the page anyway", () => {
   });
 
   /** And none of it happens to a project that said nothing. */
-  test("with no `variablesOnly`, every one of these is silent", () => {
+  test("with no `hardcoded: false`, every one of these is silent", () => {
     const plain = (decl: string) =>
       checkBlock(readBlock(`@@(\n  ${decl};\n)`, 2, "C.tsx").block, {}).map((one) => one.rule);
 
@@ -3810,10 +3810,10 @@ describe("case and the atomic class", () => {
  *     properties["z-index"].values  z-index: 5            checker refuses, build serves
  *     properties["*"].shorthand     padding: 8px          checker refuses, build serves
  *
- * The other three — the project-wide `units`, `arity` and `variablesOnly` — already spoke in both.
+ * The other three — the project-wide `units`, `arity` and `hardcoded: false` — already spoke in both.
  * So half the config was enforced everywhere and half in one place, with nothing saying which.
  *
- * The precedent is the one `variablesOnly` set: *a project could watch `ramonda-css check` refuse a
+ * The precedent is the one `hardcoded: false` set: *a project could watch `ramonda-css check` refuse a
  * file and watch the dev server serve it.* `inOrder` drops the compiler's word where these speak, so
  * an author still meets one report rather than two.
  */
@@ -3944,7 +3944,7 @@ describe("a setting the types enforced and the build did not", () => {
      * variables trips `unknown-token`, which is a different rule being right about a different
      * thing. What matters here is that a bare `$group.…` is a `VariablePart` and never a hole.
      */
-    test("a declared variable written bare is not a hole", () => {
+    test("a token written bare is not a hole", () => {
       expect(under(none, "color: $color.brand")).not.toContain("hole-not-allowed");
     });
 
@@ -4068,7 +4068,7 @@ describe("a setting the types enforced and the build did not", () => {
  * It says it better in the CHECKER. The build runs no TypeScript, so `dsiplay: flex` and even
  * `zzz: flex` compiled into the stylesheet with nothing said anywhere. The rule speaks for both
  * now, and `inOrder` drops the compiler's word on the line — the same arrangement
- * `unknown-token` and `variablesOnly` already have.
+ * `unknown-token` and `hardcoded: false` already have.
  */
 describe("what the bundlers see and the checker saw", () => {
   const under = (css: string, config: Config = {}) =>
@@ -4123,7 +4123,7 @@ describe("what the bundlers see and the checker saw", () => {
  * every test happened to put them.
  *
  * **They reach it, at any depth**, which is what these assert. A nested rule is where a hover
- * colour and a focus ring are written, so a `variablesOnly` that stopped at the top level would
+ * colour and a focus ring are written, so a `hardcoded: false` that stopped at the top level would
  * have exempted the declarations most likely to hold a hardcoded one.
  */
 describe("a config rule inside a nested rule", () => {
@@ -4169,7 +4169,7 @@ describe("a config rule inside a nested rule", () => {
   /**
    * A custom property nested too, which is the walk `dimensionNotAllowed` has of its own.
    *
-   * `--own: red; color: var(--own)` walks around `variablesOnly` in one line, and a nested rule is
+   * `--own: red; color: var(--own)` walks around `hardcoded: false` in one line, and a nested rule is
    * exactly where somebody would set one.
    */
   test("a custom property holding a forbidden value is read inside a nested rule", () => {
@@ -4180,7 +4180,7 @@ describe("a config rule inside a nested rule", () => {
    * The two silences, which are DELIBERATE and are asserted so they stay that way.
    *
    * A bare zero needs no unit in CSS and is nobody's hardcoded value; a non-colour in a colour
-   * property is not what `variablesOnly` is for, and the types refuse it anyway.
+   * property is not what `hardcoded: false` is for, and the types refuse it anyway.
    */
   test.each([
     ["a bare zero", "padding-top: 0;"],

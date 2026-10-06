@@ -2617,14 +2617,14 @@ describe("a narrower whole shorthand after a wider one from another block", () =
 });
 
 /**
- * §17: a `$` variable is a `var()` to the sheet, so a shorthand holding one reaches it WHOLE — in a
+ * §17: a `$` token is a `var()` to the sheet, so a shorthand holding one reaches it WHOLE — in a
  * spread's block and in the block after it. The virtual file writes it as a property access,
  * `__vars.border.thin`, or inside a template when it is part of a value, and the walk read only
  * string literals, so these went unreported.
  *
  * The project declares its variables the way codegen does: its properties module exports one name per group.
  */
-describe("a `$` variable in a whole shorthand from another block", () => {
+describe("a `$` token in a whole shorthand from another block", () => {
   const PROPS =
     `export * from ${JSON.stringify(join(PACKAGE, "src", "properties"))};\n` +
     `export declare const $border: { thin: string; top: string };\nexport declare const $color: { a: string };\n`;
@@ -2743,11 +2743,11 @@ describe("the allow-list check, second review", () => {
 });
 
 /**
- * A `style` attribute setting a declared variable its declaration does not allow — the attribute's
+ * A `style` attribute setting a token its declaration does not allow — the attribute's
  * half of `token-set-against-its-declaration`. Measured before: both spellings passed while
  * `toStyle` refused the same setting.
  */
-describe("a `style` attribute setting a declared variable", () => {
+describe("a `style` attribute setting a token", () => {
   const CONFIG =
     `import { kind } from ${JSON.stringify(join(PACKAGE, "dist", "config.js"))};\n` +
     `export default { tokens: { $color: kind("color", {\n` +

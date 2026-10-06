@@ -334,7 +334,7 @@ const CSS_LINES = {
   "unknown-custom-property":
     "a custom property made up in a block or a `style` attribute, when `unknownCustomProperties` is `false`",
   "token-set-against-its-declaration":
-    "a declared variable set with no `range`, or outside it — in a block, a project stylesheet, or a `style` attribute",
+    "a token set with no `range`, or outside it — in a block, a project stylesheet, or a `style` attribute",
   "property-descriptor-missing":
     "`@@property` with no `syntax` or no `inherits` — the browser drops the rule; the build's own words for what the editor's type says",
   "line-comment": "a `//` comment, which CSS does not have",

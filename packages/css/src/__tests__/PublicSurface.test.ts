@@ -40,7 +40,7 @@ const RUNTIME = [
    * build imports is part of the surface whether anybody writes it themselves or not.
    */
   "pick",
-  // A declared variable OUTSIDE a block: setting one for a runtime theme, and reading one back.
+  // A token OUTSIDE a block: setting one for a runtime theme, and reading one back.
   // Inside a block `$` is compiled away, so these are the only two that ever ship.
   "read",
   "shorthands",

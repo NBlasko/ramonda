@@ -539,8 +539,8 @@ describe("codegen through the plugin", () => {
   });
 });
 
-/** A theme stylesheet setting a fixed declared variable stops the esbuild build too — see `viteBuild.test.ts`. */
-describe("a stylesheet setting a declared variable", () => {
+/** A theme stylesheet setting a fixed token stops the esbuild build too — see `viteBuild.test.ts`. */
+describe("a stylesheet setting a token", () => {
   const CONFIG_FIXED = `import { kind } from "@ramonda/css/config";\nexport default { tokens: { $color: kind("color", { sunken: "#f3f4f6" }) } };\n`;
 
   test("a fixed one stops the build, at the file and line", async () => {
