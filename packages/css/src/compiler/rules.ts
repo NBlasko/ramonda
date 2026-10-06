@@ -9,6 +9,7 @@ import {
   unknownMessage,
 } from "./declaredSet";
 import { nearest } from "./nearest";
+import { urlsIn, withoutQuery } from "./urlsIn";
 import { GRAMMAR_SHAPES } from "./grammarShapes.generated";
 import { RESETS_DIFFER } from "./leaves.generated";
 import { SHAPES } from "./shapes.generated";
@@ -1689,13 +1690,13 @@ function urlNotFound(block: Block, exists: (relative: string) => boolean, file: 
       }
       for (const part of texts(item.value)) {
         if (part.at === undefined) continue;
-        for (const found of part.text.matchAll(/url\(\s*(["']?)([^"')]*)\1\s*\)/gi)) {
-          const path = found[2].trim();
+        // Read by `urlsIn`, not a regex — see it for the two CodeQL found.
+        for (const { path, at } of urlsIn(part.text)) {
           if (!path.startsWith("./") && !path.startsWith("../")) continue;
-          if (exists(path.replace(/[?#].*$/, ""))) continue;
+          if (exists(withoutQuery(path))) continue;
           findings.push({
             rule: "url-not-found",
-            at: part.at + (found.index ?? 0) + found[0].indexOf(path),
+            at: part.at + at,
             length: path.length,
             message:
               `\`${path}\` does not exist next to \`${file}\`, so the browser gets a 404 for it. Fix the path, ` +
