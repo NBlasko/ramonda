@@ -46,6 +46,10 @@ const card = @@(
 );
 ```
 
+**Every group is made with `kind( … )`**, and the kind is what checks each value in it — a colour
+group takes colours. A group written as a plain object is refused, by the config's type and when the
+config loads, rather than declaring nothing.
+
 `$color.accent` compiles to `var(--color-accent)`. The name is the path, so the stylesheet is
 readable, and the path is the only spelling — there is no string to get wrong.
 

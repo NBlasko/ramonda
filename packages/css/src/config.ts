@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { type Groups, namesIn } from "./codegen";
+import { isTokenDeclaration } from "./declared";
 import { KINDS } from "./declared";
 import { PRIMITIVE, PROPERTIES, UNIT_TYPE } from "./compiler/keywords.generated";
 import type { Kind } from "./token";
@@ -708,6 +709,18 @@ function load(path: string, source: string, typescript: typeof ts, environment: 
 }
 
 /**
+ * Whether a token group is what `kind( … )` makes — a token, or an object of them at any depth.
+ *
+ * A plain object holding values was accepted and declared nothing at all; see `TokenGroup`. An empty
+ * group is allowed — it declares nothing, but nothing was written that it lost.
+ */
+function madeByKind(value: unknown): boolean {
+  if (isTokenDeclaration(value)) return true;
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  return Object.values(value).every(madeByKind);
+}
+
+/**
  * The VALUES, which used to be a cast and nothing else.
  *
  * A review traced where an unchecked value lands, and it is not a diagnostic: `units: "px"` reaches
@@ -908,7 +921,13 @@ function validate(config: Record<string, unknown>, path: string): void {
      * The `$` is what makes the config key, a block's `$color.…` and the `$color` code imports one
      * name — see `Groups`. The type says so too; this is for a config nothing typechecks.
      */
-    for (const group of Object.keys(tokens as object)) {
+    for (const [group, value] of Object.entries(tokens as object)) {
+      if (!madeByKind(value)) {
+        refuse(
+          `declares \`tokens.${group}\` without \`kind( … )\`, so it declares no tokens. Write ` +
+            `\`${group}: kind("color", { … })\` with the group's own kind — the kind is what checks every value in it.`,
+        );
+      }
       if (!group.startsWith("$")) {
         refuse(
           `declares the group \`${group}\` without its \`$\`. Write \`$${group}\` — a group is declared the ` +

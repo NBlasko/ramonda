@@ -1,7 +1,7 @@
 import { expressionFor, nameFor } from "./compiler/dollar";
 import { ARITY, KEYWORDS, PRIMITIVE, SHORTHANDS } from "./compiler/keywords.generated";
 import { ConfigError, type PropertyRules } from "./config";
-import { SYNTAX, type Kind, isTokenDeclaration } from "./declared";
+import { SYNTAX, type Kind, type TokenDeclaration, isTokenDeclaration } from "./declared";
 
 /**
  * What a project's declared variables become: a stylesheet, and a module to write them with.
@@ -55,7 +55,16 @@ export type Declarations = { readonly [name: string]: unknown };
  * block's `$color.primary.main`, and the `$color` code imports. It is not part of the custom
  * property — `--color-primary-main` — the way CSS declares `--x` and reads it as `var(--x)`.
  */
-export type Groups = { readonly [group: `$${string}`]: unknown };
+export type Groups = { readonly [group: `$${string}`]: TokenGroup };
+
+/**
+ * What a group's value must be: what `kind( … )` makes — a token, or a group of them.
+ *
+ * A plain object was accepted and declared NOTHING: measured, `$color: { accent: "#10b981" }` loaded,
+ * wrote an empty sheet, and the first `$color.accent` was told the project declares no tokens. The
+ * kind is what makes a value a token, so without it there is no token to have.
+ */
+export type TokenGroup = TokenDeclaration | { readonly [name: string]: TokenGroup };
 
 /**
  * A `ConfigError`, because the fault is in the author's `ramonda.css.ts` and not in this package.

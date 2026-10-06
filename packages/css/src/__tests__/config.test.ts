@@ -2,11 +2,14 @@ import { describe, expect, test } from "vitest";
 import ts from "typescript";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { Config } from "../config";
 import { configReader, environmentOf, findConfig, readConfig } from "../config";
 import { readBlock } from "../compiler/read";
 import { checkBlock } from "../compiler/rules";
+
+const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 /**
  * The project's own settings, read from a `ramonda.css.ts`.
@@ -329,6 +332,18 @@ describe("the project's config", () => {
       ["a name in externalCustomProperties with no dashes", `{ externalCustomProperties: ["brand"] }`, /two dashes/],
       // Tokens stopped being called "variables": each old key is refused with the new name in it.
       ["the old `variables`", `{ variables: {} }`, /`tokens`/],
+      // A group written without `kind( … )` declared nothing, in silence — the kind is what makes a
+      // value a token, so a plain object is refused and the message names the group.
+      [
+        "a token group without `kind`",
+        `{ tokens: { $color: { accent: "#10b981" } } }`,
+        /declares `tokens\.\$color` without `kind\( … \)`/,
+      ],
+      [
+        "the long form without `kind`",
+        `{ tokens: { $color: { accent: { value: "#10b981", range: "any" } } } }`,
+        /declares `tokens\.\$color` without `kind/,
+      ],
       ["unknownCustomProperties as a word", `{ unknownCustomProperties: "no" }`, /true or false/],
       ["the old `alsoSets`", `{ alsoSets: ["--brand"] }`, /`externalCustomProperties`/],
       ["a rule by its old name", `{ rules: { "literal-not-allowed": "off" } }`, /`hardcoded-not-allowed`/],
@@ -857,4 +872,16 @@ describe("what a config is allowed to use", () => {
 
     expect(readConfig(findConfig(dir), ts)).toEqual({ units: { length: ["px"] } });
   });
+});
+
+/** A group made with `kind( … )` beside one that was not: the message names the one that was not. */
+test("a mixed config names the group written without `kind`", () => {
+  const dir = mkdtempSync(join(tmpdir(), "ramonda-kindless-"));
+  writeFileSync(
+    join(dir, "ramonda.css.ts"),
+    `import { kind } from ${JSON.stringify(join(PACKAGE_ROOT, "dist", "config.js"))};\n` +
+      `export default { tokens: { $color: kind("color", { a: "#000" }), $space: { gutter: "16px" } } };\n`,
+  );
+
+  expect(() => readConfig(findConfig(dir), ts)).toThrow(/declares `tokens\.\$space` without `kind\( … \)`/);
 });
