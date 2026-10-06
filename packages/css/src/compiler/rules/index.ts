@@ -8,7 +8,7 @@ import { declaredByName } from "../declaredSet";
 import { nearest } from "../nearest";
 import { endOfString, missingSemicolon, unclosedCall } from "./text";
 import { blockMatchArms, holeNotAllowed, matchArms, spreadOutOfPlace } from "./logic";
-import { asGroups, type Block, type BlockItem } from "./shared";
+import { asGroups, type Block, type BlockItem, declarationsIn } from "./shared";
 import { narrowerAfterAWholeShorthand, overrideOutOfOrder, walk } from "./cascade";
 import { resetsDifferAcrossEngines, valueDiffersAcrossEngines } from "./engines";
 import {
@@ -524,28 +524,20 @@ function outermost(block: Block, findings: readonly Finding[]): Finding[] {
   if (findings.length < 2) return [...findings];
 
   const dropped = new Set<Finding>();
-  const walkItems = (items: readonly BlockItem[]): void => {
-    for (const item of items) {
-      if (item.kind === "rule") {
-        walkItems(item.items);
-        continue;
-      }
-      if (item.at === undefined || item.end === undefined) continue;
+  for (const item of declarationsIn(block)) {
+    if (item.at === undefined || item.end === undefined) continue;
 
-      const here = findings.filter((one) => NESTED.includes(one.rule) && one.at >= item.at! && one.at <= item.end!);
-      if (here.length < 2) continue;
+    const here = findings.filter((one) => NESTED.includes(one.rule) && one.at >= item.at! && one.at <= item.end!);
+    if (here.length < 2) continue;
 
-      const keep = here.reduce((a, b) => (NESTED.indexOf(a.rule) <= NESTED.indexOf(b.rule) ? a : b));
-      /**
-       * Only a DIFFERENT rule is dropped. Two findings of the SAME one are two faults, not two words
-       * about one — measured, `padding: 2rem 3em` names both units, and collapsing them would fix
-       * one and re-report the other on the next save.
-       */
-      for (const one of here) if (one.rule !== keep.rule) dropped.add(one);
-    }
-  };
-
-  walkItems(block.items);
+    const keep = here.reduce((a, b) => (NESTED.indexOf(a.rule) <= NESTED.indexOf(b.rule) ? a : b));
+    /**
+     * Only a DIFFERENT rule is dropped. Two findings of the SAME one are two faults, not two words
+     * about one — measured, `padding: 2rem 3em` names both units, and collapsing them would fix
+     * one and re-report the other on the next save.
+     */
+    for (const one of here) if (one.rule !== keep.rule) dropped.add(one);
+  }
   return findings.filter((one) => !dropped.has(one));
 }
 

@@ -14,7 +14,7 @@ import {
 } from "../declaredSet";
 import { nameFor } from "../dollar";
 import { nearest } from "../nearest";
-import { type Block, type BlockItem } from "./shared";
+import { type Block, type BlockItem, declarationsIn } from "./shared";
 import { type Finding } from "./index";
 
 /**
@@ -133,25 +133,18 @@ export function setAgainstItsDeclaration(block: Block, config: Config, findings:
     return [textOf(value)];
   };
 
-  const walkItems = (items: readonly BlockItem[]): void => {
-    for (const item of items) {
-      if (item.kind === "rule") {
-        walkItems(item.items);
-        continue;
-      }
-      const one = named.get(item.property.trim());
-      if (one === undefined || item.at === undefined) continue;
-      const message = againstDeclaration(one, outcomes(item.value));
-      if (message === undefined) continue;
-      findings.push({
-        rule: "token-set-against-its-declaration",
-        at: item.at,
-        length: item.property.trim().length,
-        message,
-      });
-    }
-  };
-  walkItems(block.items);
+  for (const item of declarationsIn(block)) {
+    const one = named.get(item.property.trim());
+    if (one === undefined || item.at === undefined) continue;
+    const message = againstDeclaration(one, outcomes(item.value));
+    if (message === undefined) continue;
+    findings.push({
+      rule: "token-set-against-its-declaration",
+      at: item.at,
+      length: item.property.trim().length,
+      message,
+    });
+  }
 }
 
 /**
@@ -191,30 +184,23 @@ export function variableByHand(block: Block, config: Config, findings: Finding[]
   const byName = new Map([...pathsDeclaredBy(config)].map((path) => [nameFor(path) as string, path]));
   if (byName.size === 0) return;
 
-  const walkItems = (items: readonly BlockItem[]): void => {
-    for (const item of items) {
-      if (item.kind === "rule") {
-        walkItems(item.items);
-        continue;
-      }
-      for (const part of item.value) {
-        if (part.kind !== "text" || part.at === undefined) continue;
-        for (const found of part.text.matchAll(/var\(\s*(--[\w-]+)\s*\)/g)) {
-          const path = byName.get(found[1]);
-          if (path === undefined) continue;
-          findings.push({
-            rule: "token-by-hand",
-            at: part.at + (found.index ?? 0),
-            length: found[0].length,
-            message:
-              `\`${found[0]}\` reads a token this project declares, and nothing checks it written this way. ` +
-              `Write \`$${path}\`, which follows the config.`,
-          });
-        }
+  for (const item of declarationsIn(block)) {
+    for (const part of item.value) {
+      if (part.kind !== "text" || part.at === undefined) continue;
+      for (const found of part.text.matchAll(/var\(\s*(--[\w-]+)\s*\)/g)) {
+        const path = byName.get(found[1]);
+        if (path === undefined) continue;
+        findings.push({
+          rule: "token-by-hand",
+          at: part.at + (found.index ?? 0),
+          length: found[0].length,
+          message:
+            `\`${found[0]}\` reads a token this project declares, and nothing checks it written this way. ` +
+            `Write \`$${path}\`, which follows the config.`,
+        });
       }
     }
-  };
-  walkItems(block.items);
+  }
 }
 
 export function unknownVariable(block: Block, config: Config, findings: Finding[]): void {
@@ -229,46 +215,38 @@ export function unknownVariable(block: Block, config: Config, findings: Finding[
   const among = [...declared];
   const tops = new Set([...declared].map((path) => path.split(".")[0]));
 
-  const walkItems = (items: readonly BlockItem[]): void => {
-    for (const item of items) {
-      if (item.kind === "rule") {
-        walkItems(item.items);
-        continue;
-      }
-      for (const part of item.value) {
-        if (part.kind !== "variable" || part.at === undefined) continue;
-        if (declared.has(part.path)) continue;
+  for (const item of declarationsIn(block)) {
+    for (const part of item.value) {
+      if (part.kind !== "variable" || part.at === undefined) continue;
+      if (declared.has(part.path)) continue;
 
-        const written = `$${part.path}`;
-        const meant = nearest(part.path, among);
+      const written = `$${part.path}`;
+      const meant = nearest(part.path, among);
 
-        const message =
-          part.path === ""
-            ? "a `$` on its own names nothing — write `$group.name` for a token, or `$( … )` for code."
-            : declared.size === 0
-              ? `\`${written}\` names a token, and this project declares no tokens.\n\n` +
-                `        Declare them in \`ramonda.css.ts\`, with a kind and a fallback each:\n` +
-                `        tokens: { $color: kind("color", { primary: { main: "#3b82f6" } }) }`
-              : groups.has(part.path)
-                ? `\`${written}\` names a group of tokens rather than one of them. Write a token.`
-                : !groups.has(part.path.split(".")[0])
-                  ? /**
-                     * A GROUP the project does not have: `$` and a name is only ever a theme
-                     * variable, so `$props.tone` is most likely a reach for a value from code.
-                     */
-                    `\`${written}\` names no group of tokens this project has — its groups are ` +
-                    `${[...tops].map((one) => `\`$${one}\``).join(", ")}.` +
-                    (meant === undefined ? "" : ` Did you mean \`$${meant}\`?`) +
-                    " A value from code is written `$( … )`."
-                  : `\`${written}\` is not a token this project declares.` +
-                    (meant === undefined ? "" : ` Did you mean \`$${meant}\`?`);
+      const message =
+        part.path === ""
+          ? "a `$` on its own names nothing — write `$group.name` for a token, or `$( … )` for code."
+          : declared.size === 0
+            ? `\`${written}\` names a token, and this project declares no tokens.\n\n` +
+              `        Declare them in \`ramonda.css.ts\`, with a kind and a fallback each:\n` +
+              `        tokens: { $color: kind("color", { primary: { main: "#3b82f6" } }) }`
+            : groups.has(part.path)
+              ? `\`${written}\` names a group of tokens rather than one of them. Write a token.`
+              : !groups.has(part.path.split(".")[0])
+                ? /**
+                   * A GROUP the project does not have: `$` and a name is only ever a theme
+                   * variable, so `$props.tone` is most likely a reach for a value from code.
+                   */
+                  `\`${written}\` names no group of tokens this project has — its groups are ` +
+                  `${[...tops].map((one) => `\`$${one}\``).join(", ")}.` +
+                  (meant === undefined ? "" : ` Did you mean \`$${meant}\`?`) +
+                  " A value from code is written `$( … )`."
+                : `\`${written}\` is not a token this project declares.` +
+                  (meant === undefined ? "" : ` Did you mean \`$${meant}\`?`);
 
-        findings.push({ rule: "unknown-token", at: part.at, length: part.length ?? written.length, message });
-      }
+      findings.push({ rule: "unknown-token", at: part.at, length: part.length ?? written.length, message });
     }
-  };
-
-  walkItems(block.items);
+  }
 }
 
 /**
@@ -299,23 +277,16 @@ export function setByAnotherName(block: Block, references: ReadonlyMap<string, s
   const read = new Set<string>();
   const set: { name: string; at: number }[] = [];
 
-  const walkItems = (items: readonly BlockItem[]): void => {
-    for (const item of items) {
-      if (item.kind === "rule") {
-        walkItems(item.items);
-        continue;
-      }
-      if (item.property.startsWith("--") && item.at !== undefined) {
-        set.push({ name: item.property, at: item.at });
-      }
-      for (const part of item.value) {
-        if (part.kind !== "text") continue;
-        const binding = generated.get(part.text);
-        if (binding !== undefined) read.add(binding);
-      }
+  for (const item of declarationsIn(block)) {
+    if (item.property.startsWith("--") && item.at !== undefined) {
+      set.push({ name: item.property, at: item.at });
     }
-  };
-  walkItems(block.items);
+    for (const part of item.value) {
+      if (part.kind !== "text") continue;
+      const binding = generated.get(part.text);
+      if (binding !== undefined) read.add(binding);
+    }
+  }
 
   for (const one of set) {
     const binding = one.name.slice(2);
@@ -364,41 +335,34 @@ const OPENS_A_VAR = /var\(\s*$/i;
  * argument is a name.
  */
 export function holeAsAVariableName(block: Block, findings: Finding[]): void {
-  const walkItems = (items: readonly BlockItem[]): void => {
-    for (const item of items) {
-      if (item.kind === "rule") {
-        walkItems(item.items);
-        continue;
-      }
-      for (const [position, part] of item.value.entries()) {
-        if (part.kind !== "hole" || position === 0) continue;
-        const before = item.value[position - 1];
-        if (before.kind !== "text" || !OPENS_A_VAR.test(before.text)) continue;
+  for (const item of declarationsIn(block)) {
+    for (const [position, part] of item.value.entries()) {
+      if (part.kind !== "hole" || position === 0) continue;
+      const before = item.value[position - 1];
+      if (before.kind !== "text" || !OPENS_A_VAR.test(before.text)) continue;
 
-        findings.push({
-          rule: "hole-as-a-custom-property-name",
-          at: part.at ?? item.valueAt ?? item.at ?? 0,
-          length: part.length ?? 2,
-          /**
-           * **What the last sentence used to say had stopped being true.** It read "one imported
-           * from another module is not", which was the state of things before cross-module
-           * references resolved — and both the build and `ramonda-css` supply a reader now, so an
-           * imported `@@property` is written straight into the text like a local one.
-           *
-           * What is left when this fires is a reference that did not resolve, and the reasons are
-           * specific: a bare package specifier, which `namedSites` refuses because resolving one
-           * needs a bundler's resolver; a file that is not there; or a name the module does not
-           * export. Naming the CATEGORY instead sent an author to rewrite architecture that works.
-           */
-          message:
-            "`var()` takes a literal name, and a hole is a value — this compiles to " +
-            "`var(var(--\u2026))`, which resolves to nothing and drops the declaration in silence. " +
-            "A `@@property( \u2026 )` is a name it can read, in this file or imported from a " +
-            "relative module — so this one did not resolve: check the path, the export, and that " +
-            "the specifier begins with `.`, since a package name needs a bundler's resolver.",
-        });
-      }
+      findings.push({
+        rule: "hole-as-a-custom-property-name",
+        at: part.at ?? item.valueAt ?? item.at ?? 0,
+        length: part.length ?? 2,
+        /**
+         * **What the last sentence used to say had stopped being true.** It read "one imported
+         * from another module is not", which was the state of things before cross-module
+         * references resolved — and both the build and `ramonda-css` supply a reader now, so an
+         * imported `@@property` is written straight into the text like a local one.
+         *
+         * What is left when this fires is a reference that did not resolve, and the reasons are
+         * specific: a bare package specifier, which `namedSites` refuses because resolving one
+         * needs a bundler's resolver; a file that is not there; or a name the module does not
+         * export. Naming the CATEGORY instead sent an author to rewrite architecture that works.
+         */
+        message:
+          "`var()` takes a literal name, and a hole is a value — this compiles to " +
+          "`var(var(--\u2026))`, which resolves to nothing and drops the declaration in silence. " +
+          "A `@@property( \u2026 )` is a name it can read, in this file or imported from a " +
+          "relative module — so this one did not resolve: check the path, the export, and that " +
+          "the specifier begins with `.`, since a package name needs a bundler's resolver.",
+      });
     }
-  };
-  walkItems(block.items);
+  }
 }

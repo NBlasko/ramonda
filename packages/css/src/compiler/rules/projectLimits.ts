@@ -7,7 +7,7 @@ import { propertyName } from "../normalise";
 import { wordSet } from "../wordSet";
 import { SHAPES } from "../shapes.generated";
 import { holdsVar, misplacedWord } from "../split";
-import { GLOBAL, namedColour, type Block, type BlockItem } from "./shared";
+import { GLOBAL, namedColour, type Block, declarationsIn } from "./shared";
 import { type Finding } from "./index";
 import { KNOWN_UNITS, topLevelValues, unitsIn } from "./values";
 import { A_DIMENSION, A_NUMBER } from "./namedSites";
@@ -41,50 +41,41 @@ export function literalNotAllowed(block: Block, rules: PropertyRules | undefined
   dimensionNotAllowed(block, rules, findings);
   if (!kinds.includes("color")) return;
 
-  const walkItems = (items: readonly BlockItem[]): void => {
-    for (const item of items) {
-      if (item.kind === "rule") {
-        walkItems(item.items);
-        continue;
-      }
-
-      const property = propertyName(item.property);
-      // A property whose grammar SAYS it takes a colour is the types' to refuse — see above.
-      if (PRIMITIVE[property] === "color") continue;
-      // One that does not accept a colour at all has nothing here to find.
-      if (!wordSet(KEYWORDS[property] ?? "").has("rebeccapurple")) continue;
-      /**
-       * Exempted by its own name, which is the thing the top-level list could not express.
-       *
-       * Asked of the property rather than of the kind, because a composite property HAS no kind —
-       * `border` is a width, a style and a colour at once, so `"<color>"` never reaches it and only
-       * `border: { hardcoded: true }` can speak for it.
-       */
-      if ((rules?.[property as keyof PropertyRules] as { hardcoded?: boolean } | undefined)?.hardcoded === true) {
-        continue;
-      }
-
-      for (const part of item.value) {
-        if (part.kind !== "text" || part.at === undefined) continue;
-
-        const found = HEX.exec(part.text) ?? COLOUR_CALL.exec(part.text) ?? namedColour(part.text);
-        if (found === null) continue;
-
-        findings.push({
-          rule: "hardcoded-not-allowed",
-          at: part.at + found.index,
-          length: found[0].length,
-          message:
-            `\`${found[0].trim()}\` is a colour written out, and this project takes colours only from its ` +
-            `own tokens.\n\n        Declare it in \`ramonda.css.ts\` and write \`$group.name\`, or set ` +
-            `\`${JSON.stringify(property)}: { hardcoded: true }\` beside \`"<color>"\`.`,
-        });
-        break;
-      }
+  for (const item of declarationsIn(block)) {
+    const property = propertyName(item.property);
+    // A property whose grammar SAYS it takes a colour is the types' to refuse — see above.
+    if (PRIMITIVE[property] === "color") continue;
+    // One that does not accept a colour at all has nothing here to find.
+    if (!wordSet(KEYWORDS[property] ?? "").has("rebeccapurple")) continue;
+    /**
+     * Exempted by its own name, which is the thing the top-level list could not express.
+     *
+     * Asked of the property rather than of the kind, because a composite property HAS no kind —
+     * `border` is a width, a style and a colour at once, so `"<color>"` never reaches it and only
+     * `border: { hardcoded: true }` can speak for it.
+     */
+    if ((rules?.[property as keyof PropertyRules] as { hardcoded?: boolean } | undefined)?.hardcoded === true) {
+      continue;
     }
-  };
 
-  walkItems(block.items);
+    for (const part of item.value) {
+      if (part.kind !== "text" || part.at === undefined) continue;
+
+      const found = HEX.exec(part.text) ?? COLOUR_CALL.exec(part.text) ?? namedColour(part.text);
+      if (found === null) continue;
+
+      findings.push({
+        rule: "hardcoded-not-allowed",
+        at: part.at + found.index,
+        length: found[0].length,
+        message:
+          `\`${found[0].trim()}\` is a colour written out, and this project takes colours only from its ` +
+          `own tokens.\n\n        Declare it in \`ramonda.css.ts\` and write \`$group.name\`, or set ` +
+          `\`${JSON.stringify(property)}: { hardcoded: true }\` beside \`"<color>"\`.`,
+      });
+      break;
+    }
+  }
 }
 
 /**
@@ -113,95 +104,86 @@ export function literalNotAllowed(block: Block, rules: PropertyRules | undefined
 function dimensionNotAllowed(block: Block, rules: PropertyRules | undefined, findings: Finding[]): void {
   const kinds = tokensOnlyKinds(rules);
 
-  const walkItems = (items: readonly BlockItem[]): void => {
-    for (const item of items) {
-      if (item.kind === "rule") {
-        walkItems(item.items);
-        continue;
-      }
+  for (const item of declarationsIn(block)) {
+    const property = propertyName(item.property);
 
-      const property = propertyName(item.property);
-
-      /**
-       * A CUSTOM PROPERTY has no kind, so only a value that can be nothing else is read.
-       *
-       * `--own: red; color: var(--own)` walked around the whole setting in one line — two
-       * declarations this compiler reads and neither was looked at. But a custom property holds
-       * anything: `--n: 3` is not a length and `--label: "red"` is text. So a bare number is left
-       * alone and a quoted string never matches, because `topLevelValues` keeps the quotes.
-       *
-       * Reported against EVERY forbidden kind at once, since nothing here says which was meant.
-       */
-      if (property.startsWith("--")) {
-        for (const value of topLevelValues(item.value)) {
-          const text = value.text;
-          if (text === undefined || value.at === undefined) continue;
-
-          const unit = A_DIMENSION.exec(text)?.[2]?.toLowerCase();
-          const family = unit === undefined ? undefined : UNIT_TYPE[unit];
-          const dimension = family !== undefined && kinds.includes(family) ? family : undefined;
-          const colour =
-            kinds.includes("color") && (HEX.test(text) || COLOUR_CALL.test(text) || COLOUR_WORDS.has(text))
-              ? "color"
-              : undefined;
-          const found = colour ?? dimension;
-          if (found === undefined || Number(text) === 0) continue;
-
-          findings.push({
-            rule: "hardcoded-not-allowed",
-            at: value.at,
-            length: text.length,
-            message:
-              `\`${text}\` is ${NARROW[found]?.said ?? "a value"} written out, and this project takes ` +
-              `them only from its own tokens.` +
-              `\n\n        A custom property set here is still a value this project ships. Declare it in ` +
-              `\n        \`ramonda.css.ts\` and write \`$group.name\`.`,
-          });
-          break;
-        }
-        continue;
-      }
-
-      const primitive = PRIMITIVE[property];
-      // No kind, no answer: nothing can say what a composite property's pieces should have been.
-      // A colour inside one is the colour walk's, which reads the value rather than the type.
-      if (primitive === undefined) continue;
-      const rule = ruleFor(rules, property);
-      if (rule.hardcoded !== false) continue;
-
+    /**
+     * A CUSTOM PROPERTY has no kind, so only a value that can be nothing else is read.
+     *
+     * `--own: red; color: var(--own)` walked around the whole setting in one line — two
+     * declarations this compiler reads and neither was looked at. But a custom property holds
+     * anything: `--n: 3` is not a length and `--label: "red"` is text. So a bare number is left
+     * alone and a quoted string never matches, because `topLevelValues` keeps the quotes.
+     *
+     * Reported against EVERY forbidden kind at once, since nothing here says which was meant.
+     */
+    if (property.startsWith("--")) {
       for (const value of topLevelValues(item.value)) {
         const text = value.text;
         if (text === undefined || value.at === undefined) continue;
 
-        /**
-         * A colour LONGHAND is read here too, and was not.
-         *
-         * `literalNotAllowed` skipped a property whose grammar says `<color>` as *the types' to
-         * refuse* — true of the checker and false of the BUILD, which runs no TypeScript. Forty
-         * properties, `color: red` the first of them, compiled by vite and esbuild.
-         */
-        const isColour = primitive === "color" && (HEX.test(text) || COLOUR_CALL.test(text) || COLOUR_WORDS.has(text));
-        if (!isColour && !A_DIMENSION.test(text) && !A_NUMBER.test(text)) continue;
-        if (primitive === "color" && !isColour) continue;
-        // A zero needs no unit in CSS and is not a value anybody wrote instead of reaching for one.
-        if (Number(text) === 0) continue;
+        const unit = A_DIMENSION.exec(text)?.[2]?.toLowerCase();
+        const family = unit === undefined ? undefined : UNIT_TYPE[unit];
+        const dimension = family !== undefined && kinds.includes(family) ? family : undefined;
+        const colour =
+          kinds.includes("color") && (HEX.test(text) || COLOUR_CALL.test(text) || COLOUR_WORDS.has(text))
+            ? "color"
+            : undefined;
+        const found = colour ?? dimension;
+        if (found === undefined || Number(text) === 0) continue;
 
         findings.push({
           rule: "hardcoded-not-allowed",
           at: value.at,
           length: text.length,
           message:
-            `\`${text}\` is ${NARROW[primitive]?.said ?? "a value"} written out, and this project takes ` +
+            `\`${text}\` is ${NARROW[found]?.said ?? "a value"} written out, and this project takes ` +
             `them only from its own tokens.` +
-            `\n\n        Declare it in \`ramonda.css.ts\` and write \`$group.name\`, or set ` +
-            `\`${JSON.stringify(property)}: { hardcoded: true }\`.`,
+            `\n\n        A custom property set here is still a value this project ships. Declare it in ` +
+            `\n        \`ramonda.css.ts\` and write \`$group.name\`.`,
         });
         break;
       }
+      continue;
     }
-  };
 
-  walkItems(block.items);
+    const primitive = PRIMITIVE[property];
+    // No kind, no answer: nothing can say what a composite property's pieces should have been.
+    // A colour inside one is the colour walk's, which reads the value rather than the type.
+    if (primitive === undefined) continue;
+    const rule = ruleFor(rules, property);
+    if (rule.hardcoded !== false) continue;
+
+    for (const value of topLevelValues(item.value)) {
+      const text = value.text;
+      if (text === undefined || value.at === undefined) continue;
+
+      /**
+       * A colour LONGHAND is read here too, and was not.
+       *
+       * `literalNotAllowed` skipped a property whose grammar says `<color>` as *the types' to
+       * refuse* — true of the checker and false of the BUILD, which runs no TypeScript. Forty
+       * properties, `color: red` the first of them, compiled by vite and esbuild.
+       */
+      const isColour = primitive === "color" && (HEX.test(text) || COLOUR_CALL.test(text) || COLOUR_WORDS.has(text));
+      if (!isColour && !A_DIMENSION.test(text) && !A_NUMBER.test(text)) continue;
+      if (primitive === "color" && !isColour) continue;
+      // A zero needs no unit in CSS and is not a value anybody wrote instead of reaching for one.
+      if (Number(text) === 0) continue;
+
+      findings.push({
+        rule: "hardcoded-not-allowed",
+        at: value.at,
+        length: text.length,
+        message:
+          `\`${text}\` is ${NARROW[primitive]?.said ?? "a value"} written out, and this project takes ` +
+          `them only from its own tokens.` +
+          `\n\n        Declare it in \`ramonda.css.ts\` and write \`$group.name\`, or set ` +
+          `\`${JSON.stringify(property)}: { hardcoded: true }\`.`,
+      });
+      break;
+    }
+  }
 }
 
 /**
@@ -224,43 +206,36 @@ function dimensionNotAllowed(block: Block, rules: PropertyRules | undefined, fin
 export function unitNotAllowedPerProperty(block: Block, rules: PropertyRules | undefined, findings: Finding[]): void {
   if (rules === undefined) return;
 
-  const walkItems = (items: readonly BlockItem[]): void => {
-    for (const item of items) {
-      if (item.kind === "rule") {
-        walkItems(item.items);
-        continue;
-      }
-      const property = propertyName(item.property);
-      const allowed = ruleFor(rules, property).units;
-      if (allowed === undefined) continue;
+  for (const item of declarationsIn(block)) {
+    const property = propertyName(item.property);
+    const allowed = ruleFor(rules, property).units;
+    if (allowed === undefined) continue;
 
-      const permitted = new Set(allowed.map((one) => one.toLowerCase()));
-      for (const part of item.value) {
-        if (part.kind !== "text" || part.at === undefined) continue;
-        for (const found of unitsIn(part.text, part.at)) {
-          const unit = found.unit.toLowerCase();
-          // A unit CSS does not have is `unknown-unit`'s, which names it — two rules on one fault
-          // reads as two faults. And a family this property said nothing about is not constrained.
-          if (!KNOWN_UNITS.has(unit) || permitted.has(unit)) continue;
-          if (![...permitted].some((one) => UNIT_TYPE[one] === UNIT_TYPE[unit])) continue;
+    const permitted = new Set(allowed.map((one) => one.toLowerCase()));
+    for (const part of item.value) {
+      if (part.kind !== "text" || part.at === undefined) continue;
+      for (const found of unitsIn(part.text, part.at)) {
+        const unit = found.unit.toLowerCase();
+        // A unit CSS does not have is `unknown-unit`'s, which names it — two rules on one fault
+        // reads as two faults. And a family this property said nothing about is not constrained.
+        if (!KNOWN_UNITS.has(unit) || permitted.has(unit)) continue;
+        if (![...permitted].some((one) => UNIT_TYPE[one] === UNIT_TYPE[unit])) continue;
 
-          // Said once. The project-wide sweep runs first and may already have named this exact unit
-          // at this exact position — see the note beside the call.
-          if (findings.some((one) => one.rule === "unit-not-allowed" && one.at === found.at)) continue;
+        // Said once. The project-wide sweep runs first and may already have named this exact unit
+        // at this exact position — see the note beside the call.
+        if (findings.some((one) => one.rule === "unit-not-allowed" && one.at === found.at)) continue;
 
-          findings.push({
-            rule: "unit-not-allowed",
-            at: found.at,
-            length: found.length,
-            message:
-              `\`${found.unit}\` is a unit \`${property}\` does not take in this project. ` +
-              `\`ramonda.css.ts\` allows ${[...permitted].sort().join(", ")}.`,
-          });
-        }
+        findings.push({
+          rule: "unit-not-allowed",
+          at: found.at,
+          length: found.length,
+          message:
+            `\`${found.unit}\` is a unit \`${property}\` does not take in this project. ` +
+            `\`ramonda.css.ts\` allows ${[...permitted].sort().join(", ")}.`,
+        });
       }
     }
-  };
-  walkItems(block.items);
+  }
 }
 
 /**
@@ -282,47 +257,40 @@ export function unitNotAllowedPerProperty(block: Block, rules: PropertyRules | u
  * a word would report `important` as a value `place-items` has no place for.
  */
 export function wordOutOfItsLonghand(block: Block, findings: Finding[]): void {
-  const walkItems = (items: readonly BlockItem[]): void => {
-    for (const item of items) {
-      if (item.kind === "rule") {
-        walkItems(item.items);
-        continue;
-      }
-      const shape = SHAPES[propertyName(item.property)];
-      if (shape === undefined) continue;
+  for (const item of declarationsIn(block)) {
+    const shape = SHAPES[propertyName(item.property)];
+    if (shape === undefined) continue;
 
-      const [part] = item.value;
-      if (item.value.length !== 1 || part === undefined || part.kind !== "text" || part.at === undefined) continue;
-      if (holdsVar(part.text)) continue;
+    const [part] = item.value;
+    if (item.value.length !== 1 || part === undefined || part.kind !== "text" || part.at === undefined) continue;
+    if (holdsVar(part.text)) continue;
 
-      const bare = part.text.replace(/!\s*important\s*$/i, "");
-      const misplaced = misplacedWord(shape, bare.trim());
-      if (misplaced === undefined) continue;
+    const bare = part.text.replace(/!\s*important\s*$/i, "");
+    const misplaced = misplacedWord(shape, bare.trim());
+    if (misplaced === undefined) continue;
 
-      // Where the WORD is, not where the value starts: the reader is looking for the one token.
-      const offset = bare.indexOf(misplaced.word);
-      const at = part.at + (offset < 0 ? 0 : offset);
-      /**
-       * Said once. `unknown-value` asks whether the PROPERTY takes the word at all and gets there
-       * first for most of them — `place-items: start space-between` is not a `place-items` value
-       * either way, and two reports on one character is one too many. What is left for this rule is
-       * the word the property DOES take and the longhand it lands on does not: measured over every
-       * family in the table, five values, and `place-items: left anchor-center` is one — ignored by
-       * all three engines and named by nothing else.
-       */
-      if (findings.some((one) => one.at === at)) continue;
-      findings.push({
-        rule: "word-out-of-its-longhand",
-        at,
-        length: misplaced.word.length,
-        message:
-          `\`${misplaced.longhand}\` has no \`${misplaced.word}\`, and that is the part of the value ` +
-          `reaching it. A browser drops the whole declaration, so this line sets nothing — set each ` +
-          `longhand on its own.`,
-      });
-    }
-  };
-  walkItems(block.items);
+    // Where the WORD is, not where the value starts: the reader is looking for the one token.
+    const offset = bare.indexOf(misplaced.word);
+    const at = part.at + (offset < 0 ? 0 : offset);
+    /**
+     * Said once. `unknown-value` asks whether the PROPERTY takes the word at all and gets there
+     * first for most of them — `place-items: start space-between` is not a `place-items` value
+     * either way, and two reports on one character is one too many. What is left for this rule is
+     * the word the property DOES take and the longhand it lands on does not: measured over every
+     * family in the table, five values, and `place-items: left anchor-center` is one — ignored by
+     * all three engines and named by nothing else.
+     */
+    if (findings.some((one) => one.at === at)) continue;
+    findings.push({
+      rule: "word-out-of-its-longhand",
+      at,
+      length: misplaced.word.length,
+      message:
+        `\`${misplaced.longhand}\` has no \`${misplaced.word}\`, and that is the part of the value ` +
+        `reaching it. A browser drops the whole declaration, so this line sets nothing — set each ` +
+        `longhand on its own.`,
+    });
+  }
 }
 
 /**
@@ -336,84 +304,70 @@ export function wordOutOfItsLonghand(block: Block, findings: Finding[]): void {
 export function valueNotAllowed(block: Block, rules: PropertyRules | undefined, findings: Finding[]): void {
   if (rules === undefined) return;
 
-  const walkItems = (items: readonly BlockItem[]): void => {
-    for (const item of items) {
-      if (item.kind === "rule") {
-        walkItems(item.items);
-        continue;
-      }
-      const property = propertyName(item.property);
-      const values = ruleFor(rules, property).values;
-      if (values === undefined || item.value.some((part) => part.kind !== "text")) continue;
+  for (const item of declarationsIn(block)) {
+    const property = propertyName(item.property);
+    const values = ruleFor(rules, property).values;
+    if (values === undefined || item.value.some((part) => part.kind !== "text")) continue;
 
-      const written = item.value
-        .map((part) => (part.kind === "text" ? part.text : ""))
-        .join("")
-        .trim();
-      if (written === "" || GLOBAL.has(written.toLowerCase()) || written.startsWith("var(")) continue;
-      /**
-       * A QUOTED value is `string-not-allowed`'s, and this one used to speak beside it.
-       *
-       * Reported by the user, who read the type and the rule together and saw a contradiction:
-       * `z-index: "1"` gave two findings, and the second said *takes only 0, 1, 10 … and this is
-       * `"1"`* — naming a value that IS in the list. The fault is the quoting, not the number, and
-       * the other rule says exactly that.
-       *
-       * The string spellings in the TYPE are a different thing and are not a widening of what the
-       * project permitted: a block is CSS, so `z-index: 1` reaches the type as `"1"`. Both
-       * spellings mean one declaration, and a hole may hand over either.
-       */
-      if (written.startsWith('"') || written.startsWith("'")) continue;
-      // Both spellings, because a block is CSS: `z-index: 5` arrives as the string `"5"`.
-      if (values.some((one) => String(one) === written)) continue;
+    const written = item.value
+      .map((part) => (part.kind === "text" ? part.text : ""))
+      .join("")
+      .trim();
+    if (written === "" || GLOBAL.has(written.toLowerCase()) || written.startsWith("var(")) continue;
+    /**
+     * A QUOTED value is `string-not-allowed`'s, and this one used to speak beside it.
+     *
+     * Reported by the user, who read the type and the rule together and saw a contradiction:
+     * `z-index: "1"` gave two findings, and the second said *takes only 0, 1, 10 … and this is
+     * `"1"`* — naming a value that IS in the list. The fault is the quoting, not the number, and
+     * the other rule says exactly that.
+     *
+     * The string spellings in the TYPE are a different thing and are not a widening of what the
+     * project permitted: a block is CSS, so `z-index: 1` reaches the type as `"1"`. Both
+     * spellings mean one declaration, and a hole may hand over either.
+     */
+    if (written.startsWith('"') || written.startsWith("'")) continue;
+    // Both spellings, because a block is CSS: `z-index: 5` arrives as the string `"5"`.
+    if (values.some((one) => String(one) === written)) continue;
 
-      findings.push({
-        rule: "value-not-allowed",
-        at: item.valueAt ?? item.at ?? 0,
-        length: written.length,
-        message:
-          `\`${property}\` takes only ${values.map((one) => String(one)).join(", ")} in this project, ` +
-          `and this is \`${written}\`.\n\n        Add it to \`values\` in \`ramonda.css.ts\`, or use ` +
-          `one of those.`,
-      });
-    }
-  };
-  walkItems(block.items);
+    findings.push({
+      rule: "value-not-allowed",
+      at: item.valueAt ?? item.at ?? 0,
+      length: written.length,
+      message:
+        `\`${property}\` takes only ${values.map((one) => String(one)).join(", ")} in this project, ` +
+        `and this is \`${written}\`.\n\n        Add it to \`values\` in \`ramonda.css.ts\`, or use ` +
+        `one of those.`,
+    });
+  }
 }
 
 export function shorthandNotAllowed(block: Block, rules: PropertyRules | undefined, findings: Finding[]): void {
   if (rules === undefined) return;
 
-  const walkItems = (items: readonly BlockItem[]): void => {
-    for (const item of items) {
-      if (item.kind === "rule") {
-        walkItems(item.items);
-        continue;
-      }
-      const property = propertyName(item.property);
-      if (ruleFor(rules, property).shorthand !== false || SHORTHANDS[property] === undefined) continue;
+  for (const item of declarationsIn(block)) {
+    const property = propertyName(item.property);
+    if (ruleFor(rules, property).shorthand !== false || SHORTHANDS[property] === undefined) continue;
 
-      /**
-       * A few of the longhands and the count, rather than all of them or an arbitrary four.
-       *
-       * `SHORTHANDS` holds every longhand a shorthand sets, TRANSITIVELY and sorted — `margin` has
-       * ten, and the first four alphabetically are the logical ones rather than the four sides
-       * somebody is looking for. Naming three and the number is honest about both: what to write,
-       * and that there is more to choose from.
-       */
-      const all = SHORTHANDS[property];
-      const shown = all.slice(0, 3).join(", ");
-      const rest = all.length > 3 ? ` and ${all.length - 3} more` : "";
+    /**
+     * A few of the longhands and the count, rather than all of them or an arbitrary four.
+     *
+     * `SHORTHANDS` holds every longhand a shorthand sets, TRANSITIVELY and sorted — `margin` has
+     * ten, and the first four alphabetically are the logical ones rather than the four sides
+     * somebody is looking for. Naming three and the number is honest about both: what to write,
+     * and that there is more to choose from.
+     */
+    const all = SHORTHANDS[property];
+    const shown = all.slice(0, 3).join(", ");
+    const rest = all.length > 3 ? ` and ${all.length - 3} more` : "";
 
-      findings.push({
-        rule: "shorthand-not-allowed",
-        at: item.at ?? 0,
-        length: item.property.length,
-        message:
-          `\`${property}\` is a shorthand this project does not use.\n\n        Write a longhand ` +
-          `instead — ${shown}${rest} — or name it in \`properties\` with \`shorthand: true\`.`,
-      });
-    }
-  };
-  walkItems(block.items);
+    findings.push({
+      rule: "shorthand-not-allowed",
+      at: item.at ?? 0,
+      length: item.property.length,
+      message:
+        `\`${property}\` is a shorthand this project does not use.\n\n        Write a longhand ` +
+        `instead — ${shown}${rest} — or name it in \`properties\` with \`shorthand: true\`.`,
+    });
+  }
 }

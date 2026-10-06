@@ -250,3 +250,31 @@ export function words(parts: readonly ValuePart[]): Word[] {
 const isSpace = (code: number) => code === 32 || code === 9 || code === 10 || code === 13 || code === 12;
 const isWordStart = (code: number) => (code >= 97 && code <= 122) || (code >= 65 && code <= 90);
 const isWordCharacter = (code: number) => isWordStart(code) || (code >= 48 && code <= 57) || code === 45 || code === 95;
+
+/**
+ * Every declaration in a block, at any depth inside its nested rules, in source order — the walk
+ * most rules make, done once per block.
+ *
+ * Twenty-one rules each carried their own copy of this walk, the same eight lines around the line
+ * that mattered. A rule now reads `for (const item of declarationsIn(block))`, and the list is made
+ * by whichever of them asks first. The rules that look at a nested rule's SELECTOR still walk the
+ * rules themselves.
+ */
+const declarationsByBlock = new WeakMap<Block, readonly Declaration[]>();
+
+export function declarationsIn(block: Block): readonly Declaration[] {
+  let found = declarationsByBlock.get(block);
+  if (found === undefined) {
+    const out: Declaration[] = [];
+    const walk = (items: readonly BlockItem[]): void => {
+      for (const item of items) {
+        if (item.kind === "rule") walk(item.items);
+        else out.push(item);
+      }
+    };
+    walk(block.items);
+    found = out;
+    declarationsByBlock.set(block, found);
+  }
+  return found;
+}

@@ -8,7 +8,7 @@ import { urlsIn, withoutQuery } from "../urlsIn";
 import { wordSet } from "../wordSet";
 import { nearest } from "../nearest";
 import { NUMBERLESS } from "../numberless.generated";
-import { GLOBAL, KNOWN, STRINGS_FIT, type Block, type BlockItem, words } from "./shared";
+import { GLOBAL, KNOWN, STRINGS_FIT, type Block, words, declarationsIn } from "./shared";
 import { type Finding } from "./index";
 import { bareColon, endOfCall, endOfString, terminator } from "./text";
 import { onlyCase } from "./properties";
@@ -63,67 +63,58 @@ export function tooManyValues(block: Block, rules: PropertyRules | undefined, fi
     return said < css ? { most: said, whose: "project" } : { most: css, whose: "css" };
   };
 
-  const walkItems = (items: readonly BlockItem[]): void => {
-    for (const item of items) {
-      if (item.kind === "rule") {
-        walkItems(item.items);
-        continue;
-      }
+  for (const item of declarationsIn(block)) {
+    const property = propertyName(item.property);
+    const limit = allowed(property);
+    if (limit === undefined || item.at === undefined) continue;
 
-      const property = propertyName(item.property);
-      const limit = allowed(property);
-      if (limit === undefined || item.at === undefined) continue;
+    /**
+     * A declaration that swallowed the next one is `run-on-declaration`'s to report, not this.
+     *
+     * `padding: 8px border-left: 4px solid red` parses as one declaration with a great many
+     * values, so this counted them and spoke — two reports for one mistake, and the other one
+     * names the actual fault and the missing `;`. Measured as a regression the moment CSS's own
+     * maximum started applying without a config.
+     *
+     * The tell is the same one that rule uses: a bare colon in a value, which CSS values do not
+     * contain.
+     */
+    if (item.value.some((part) => part.kind === "text" && bareColon(part.text) !== -1)) continue;
 
-      /**
-       * A declaration that swallowed the next one is `run-on-declaration`'s to report, not this.
-       *
-       * `padding: 8px border-left: 4px solid red` parses as one declaration with a great many
-       * values, so this counted them and spoke — two reports for one mistake, and the other one
-       * names the actual fault and the missing `;`. Measured as a regression the moment CSS's own
-       * maximum started applying without a config.
-       *
-       * The tell is the same one that rule uses: a bare colon in a value, which CSS values do not
-       * contain.
-       */
-      if (item.value.some((part) => part.kind === "text" && bareColon(part.text) !== -1)) continue;
+    /**
+     * `!important` is a FLAG, not a value, and counting it as one refused correct CSS.
+     *
+     * `padding: 4px 0 0 0 !important` is four values; this counted five and said CSS gives four,
+     * and every finding these rules produce refuses the build — so a page every browser renders
+     * did not compile. It stayed hidden because the families whose maximum is four had room for
+     * the flag underneath it; `place-items`, which takes two, showed it the day it entered the
+     * positional table.
+     *
+     * The spelling is the one `split.ts` already uses, where `!important` is taken off before a
+     * value is read at all: optional space after the bang, any case.
+     */
+    const written = topLevelValues(item.value);
+    const last = (written.at(-1)?.text ?? "").trim();
+    const before = (written.at(-2)?.text ?? "").trim();
+    // `! important` is two values to a splitter and one flag to CSS — measured honoured in all
+    // three engines, which is why `split.ts` puts every spelling of it back verbatim.
+    const flag = /^!\s*important$/i.test(last) ? 1 : last.toLowerCase() === "important" && before === "!" ? 2 : 0;
+    const values = written.length - flag;
+    if (values <= limit.most) continue;
 
-      /**
-       * `!important` is a FLAG, not a value, and counting it as one refused correct CSS.
-       *
-       * `padding: 4px 0 0 0 !important` is four values; this counted five and said CSS gives four,
-       * and every finding these rules produce refuses the build — so a page every browser renders
-       * did not compile. It stayed hidden because the families whose maximum is four had room for
-       * the flag underneath it; `place-items`, which takes two, showed it the day it entered the
-       * positional table.
-       *
-       * The spelling is the one `split.ts` already uses, where `!important` is taken off before a
-       * value is read at all: optional space after the bang, any case.
-       */
-      const written = topLevelValues(item.value);
-      const last = (written.at(-1)?.text ?? "").trim();
-      const before = (written.at(-2)?.text ?? "").trim();
-      // `! important` is two values to a splitter and one flag to CSS — measured honoured in all
-      // three engines, which is why `split.ts` puts every spelling of it back verbatim.
-      const flag = /^!\s*important$/i.test(last) ? 1 : last.toLowerCase() === "important" && before === "!" ? 2 : 0;
-      const values = written.length - flag;
-      if (values <= limit.most) continue;
+    const takes = limit.most === 1 ? "one value" : `at most ${limit.most} values`;
 
-      const takes = limit.most === 1 ? "one value" : `at most ${limit.most} values`;
-
-      findings.push({
-        rule: "too-many-values",
-        at: item.valueAt ?? item.at,
-        length: (item.end ?? item.at) - (item.valueAt ?? item.at),
-        message:
-          limit.whose === "css"
-            ? `\`${property}\` takes ${takes} in CSS, and this is ${values}.`
-            : `\`${property}\` takes ${takes} in this project, and this is ${values}.` +
-              `\n\n        Set each side on its own, or raise \`arity\` in \`ramonda.css.ts\`.`,
-      });
-    }
-  };
-
-  walkItems(block.items);
+    findings.push({
+      rule: "too-many-values",
+      at: item.valueAt ?? item.at,
+      length: (item.end ?? item.at) - (item.valueAt ?? item.at),
+      message:
+        limit.whose === "css"
+          ? `\`${property}\` takes ${takes} in CSS, and this is ${values}.`
+          : `\`${property}\` takes ${takes} in this project, and this is ${values}.` +
+            `\n\n        Set each side on its own, or raise \`arity\` in \`ramonda.css.ts\`.`,
+    });
+  }
 }
 
 /** One top-level value of a declaration, and where it starts. See {@link topLevelValues}. */
@@ -203,31 +194,24 @@ export function urlNotFound(
             ? part.arms.flatMap((arm) => texts(arm.value))
             : [],
     );
-  const walkItems = (items: readonly BlockItem[]): void => {
-    for (const item of items) {
-      if (item.kind === "rule") {
-        walkItems(item.items);
-        continue;
-      }
-      for (const part of texts(item.value)) {
-        if (part.at === undefined) continue;
-        // Read by `urlsIn`, not a regex — see it for the two CodeQL found.
-        for (const { path, at } of urlsIn(part.text)) {
-          if (!path.startsWith("./") && !path.startsWith("../")) continue;
-          if (exists(withoutQuery(path))) continue;
-          findings.push({
-            rule: "url-not-found",
-            at: part.at + at,
-            length: path.length,
-            message:
-              `\`${path}\` does not exist next to \`${file}\`, so the browser gets a 404 for it. Fix the path, ` +
-              "or put the file back — a relative `url()` is read from the folder of the file that holds the block.",
-          });
-        }
+  for (const item of declarationsIn(block)) {
+    for (const part of texts(item.value)) {
+      if (part.at === undefined) continue;
+      // Read by `urlsIn`, not a regex — see it for the two CodeQL found.
+      for (const { path, at } of urlsIn(part.text)) {
+        if (!path.startsWith("./") && !path.startsWith("../")) continue;
+        if (exists(withoutQuery(path))) continue;
+        findings.push({
+          rule: "url-not-found",
+          at: part.at + at,
+          length: path.length,
+          message:
+            `\`${path}\` does not exist next to \`${file}\`, so the browser gets a 404 for it. Fix the path, ` +
+            "or put the file back — a relative `url()` is read from the folder of the file that holds the block.",
+        });
       }
     }
-  };
-  walkItems(block.items);
+  }
 }
 
 /**
@@ -538,37 +522,30 @@ export function unitNotAllowed(block: Block, allowed: UnitsByFamily, findings: F
     Object.entries(allowed).map(([family, units]) => [family, new Set((units ?? []).map((one) => one.toLowerCase()))]),
   );
 
-  const walkItems = (items: readonly BlockItem[]): void => {
-    for (const item of items) {
-      if (item.kind === "rule") {
-        walkItems(item.items);
-        continue;
-      }
-      for (const part of item.value) {
-        if (part.kind !== "text" || part.at === undefined) continue;
+  for (const item of declarationsIn(block)) {
+    for (const part of item.value) {
+      if (part.kind !== "text" || part.at === undefined) continue;
 
-        for (const found of unitsIn(part.text, part.at)) {
-          const unit = found.unit.toLowerCase();
-          if (!KNOWN_UNITS.has(unit)) continue;
+      for (const found of unitsIn(part.text, part.at)) {
+        const unit = found.unit.toLowerCase();
+        if (!KNOWN_UNITS.has(unit)) continue;
 
-          const family = UNIT_TYPE[unit];
-          const allowedHere = family === undefined ? undefined : permitted.get(family);
-          if (allowedHere === undefined || allowedHere.has(unit)) continue;
+        const family = UNIT_TYPE[unit];
+        const allowedHere = family === undefined ? undefined : permitted.get(family);
+        if (allowedHere === undefined || allowedHere.has(unit)) continue;
 
-          const listed = [...allowedHere].sort().join(", ");
-          findings.push({
-            rule: "unit-not-allowed",
-            at: found.at,
-            length: found.length,
-            message:
-              `\`${found.unit}\` is a ${family} this project does not use. \`ramonda.css.ts\` allows ` +
-              `${listed === "" ? `no ${family} at all` : listed}.`,
-          });
-        }
+        const listed = [...allowedHere].sort().join(", ");
+        findings.push({
+          rule: "unit-not-allowed",
+          at: found.at,
+          length: found.length,
+          message:
+            `\`${found.unit}\` is a ${family} this project does not use. \`ramonda.css.ts\` allows ` +
+            `${listed === "" ? `no ${family} at all` : listed}.`,
+        });
       }
     }
-  };
-  walkItems(block.items);
+  }
 }
 
 /**

@@ -4,7 +4,7 @@ import { propertyName } from "../normalise";
 import { RESETS_DIFFER } from "../leaves.generated";
 import { standardFormOf } from "../flatten";
 import { GRAMMAR_SHAPES } from "../grammarShapes.generated";
-import { type Block, type BlockItem } from "./shared";
+import { type Block, declarationsIn } from "./shared";
 import { type Finding } from "./index";
 
 /**
@@ -24,32 +24,25 @@ import { type Finding } from "./index";
  * engine has `mask`.
  */
 export function resetsDifferAcrossEngines(block: Block, findings: Finding[]): void {
-  const walkItems = (items: readonly BlockItem[]): void => {
-    for (const item of items) {
-      if (item.kind === "rule") {
-        walkItems(item.items);
-        continue;
-      }
-      const property = propertyName(item.property);
-      const kept = RESETS_DIFFER[property];
-      if (kept === undefined) continue;
+  for (const item of declarationsIn(block)) {
+    const property = propertyName(item.property);
+    const kept = RESETS_DIFFER[property];
+    if (kept === undefined) continue;
 
-      const standard = standardFormOf(property);
-      const instead =
-        standard !== undefined && RESETS_DIFFER[standard] === undefined
-          ? `Write \`${standard}\`, or set the longhands yourself.`
-          : "Set the longhands yourself.";
-      findings.push({
-        rule: "resets-differ-across-engines",
-        at: item.at ?? 0,
-        length: item.property.length,
-        message:
-          `\`${property}\` resets ${kept.map((one) => `\`${one}\``).join(", ")} in some browsers and not in ` +
-          `others, so this line renders differently in each. ${instead}`,
-      });
-    }
-  };
-  walkItems(block.items);
+    const standard = standardFormOf(property);
+    const instead =
+      standard !== undefined && RESETS_DIFFER[standard] === undefined
+        ? `Write \`${standard}\`, or set the longhands yourself.`
+        : "Set the longhands yourself.";
+    findings.push({
+      rule: "resets-differ-across-engines",
+      at: item.at ?? 0,
+      length: item.property.length,
+      message:
+        `\`${property}\` resets ${kept.map((one) => `\`${one}\``).join(", ")} in some browsers and not in ` +
+        `others, so this line renders differently in each. ${instead}`,
+    });
+  }
 }
 
 /**
@@ -59,40 +52,33 @@ export function resetsDifferAcrossEngines(block: Block, findings: Finding[]): vo
  * differently is: a value this package cannot make render one way is not an option.
  */
 export function valueDiffersAcrossEngines(block: Block, findings: Finding[]): void {
-  const walkItems = (items: readonly BlockItem[]): void => {
-    for (const item of items) {
-      if (item.kind === "rule") {
-        walkItems(item.items);
-        continue;
-      }
-      const property = propertyName(item.property);
-      const contested = GRAMMAR_SHAPES[property]?.contested;
-      if (contested === undefined) continue;
-      for (const part of item.value) {
-        if (part.kind !== "text" || part.at === undefined) continue;
-        // The WORD's own position — not the first place its letters appear, inside `autoslide`.
-        let word: string | undefined;
-        let at = 0;
-        for (const one of part.text.split(/([\s,]+)/)) {
-          // In any case: the splitter lower-cases before it refuses, so the rule must too.
-          if (contested.includes(one.toLowerCase())) {
-            word = one;
-            break;
-          }
-          at += one.length;
+  for (const item of declarationsIn(block)) {
+    const property = propertyName(item.property);
+    const contested = GRAMMAR_SHAPES[property]?.contested;
+    if (contested === undefined) continue;
+    for (const part of item.value) {
+      if (part.kind !== "text" || part.at === undefined) continue;
+      // The WORD's own position — not the first place its letters appear, inside `autoslide`.
+      let word: string | undefined;
+      let at = 0;
+      for (const one of part.text.split(/([\s,]+)/)) {
+        // In any case: the splitter lower-cases before it refuses, so the rule must too.
+        if (contested.includes(one.toLowerCase())) {
+          word = one;
+          break;
         }
-        if (word === undefined) continue;
-        findings.push({
-          rule: "value-differs-across-engines",
-          at: part.at + at,
-          length: word.length,
-          message:
-            `\`${word}\` in \`${property}\` is read differently by different browsers, so this line renders ` +
-            `differently in each. Set the longhand you mean yourself.`,
-        });
-        break;
+        at += one.length;
       }
+      if (word === undefined) continue;
+      findings.push({
+        rule: "value-differs-across-engines",
+        at: part.at + at,
+        length: word.length,
+        message:
+          `\`${word}\` in \`${property}\` is read differently by different browsers, so this line renders ` +
+          `differently in each. Set the longhand you mean yourself.`,
+      });
+      break;
     }
-  };
-  walkItems(block.items);
+  }
 }

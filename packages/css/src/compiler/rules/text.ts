@@ -1,7 +1,7 @@
 /** Rules over a block's raw text, before it is read: a missing `;`, a `//` comment, a call left open. */
 
 import { type Declaration } from "../ast";
-import { type Block, type BlockItem } from "./shared";
+import { type Block, declarationsIn } from "./shared";
 import { type Finding } from "./index";
 
 /**
@@ -41,50 +41,42 @@ export function missingSemicolon(block: Block, findings: Finding[]): void {
     item.end !== undefined &&
     findings.some((one) => one.at >= item.at! && one.at <= item.end!);
 
-  const walkItems = (items: readonly BlockItem[]): void => {
-    for (const item of items) {
-      if (item.kind === "rule") {
-        walkItems(item.items);
-        continue;
-      }
-      if (item.terminated === true || item.end === undefined) continue;
-      // A spread is its own shape and has its own rules; it is not a declaration missing anything.
-      if (item.property.startsWith("...")) continue;
-      /**
-       * A property name holding a BRACE is wreckage, whatever recovered from it.
-       *
-       * A name is an identifier, so a `{` or `}` in one means the parser rebuilt something from a
-       * shape nobody wrote — a hole standing where a property goes, the body a broken selector left
-       * behind. The rule that explains it reports at its own position, which is not always inside
-       * this declaration's span, so `spoken` alone does not see it.
-       */
-      if (item.property.includes("{") || item.property.includes("}")) continue;
+  for (const item of declarationsIn(block)) {
+    if (item.terminated === true || item.end === undefined) continue;
+    // A spread is its own shape and has its own rules; it is not a declaration missing anything.
+    if (item.property.startsWith("...")) continue;
+    /**
+     * A property name holding a BRACE is wreckage, whatever recovered from it.
+     *
+     * A name is an identifier, so a `{` or `}` in one means the parser rebuilt something from a
+     * shape nobody wrote — a hole standing where a property goes, the body a broken selector left
+     * behind. The rule that explains it reports at its own position, which is not always inside
+     * this declaration's span, so `spoken` alone does not see it.
+     */
+    if (item.property.includes("{") || item.property.includes("}")) continue;
 
-      /**
-       * A declaration with NO VALUE yet, which is the state an editor is in most.
-       *
-       * `padding: ` while it is being typed has no value and no `;`, and saying so on every
-       * keystroke is noise. The strict read refuses a valueless declaration outright, so nothing
-       * reaches a build this way — and in the tolerant read it is also what the wreckage of a
-       * malformed selector looks like, which another rule explains.
-       */
-      if (item.value.length === 0) continue;
+    /**
+     * A declaration with NO VALUE yet, which is the state an editor is in most.
+     *
+     * `padding: ` while it is being typed has no value and no `;`, and saying so on every
+     * keystroke is noise. The strict read refuses a valueless declaration outright, so nothing
+     * reaches a build this way — and in the tolerant read it is also what the wreckage of a
+     * malformed selector looks like, which another rule explains.
+     */
+    if (item.value.length === 0) continue;
 
-      if (spoken(item)) continue;
+    if (spoken(item)) continue;
 
-      findings.push({
-        rule: "missing-semicolon",
-        at: item.end,
-        length: 0,
-        message:
-          `this declaration has no \`;\`. CSS lets the last one in a block go without, and this does not:` +
-          `\n\n        a declaration with no \`;\` swallows whatever is written under it next, so the` +
-          `\n        line somebody adds tomorrow is the one that gets reported.`,
-      });
-    }
-  };
-
-  walkItems(block.items);
+    findings.push({
+      rule: "missing-semicolon",
+      at: item.end,
+      length: 0,
+      message:
+        `this declaration has no \`;\`. CSS lets the last one in a block go without, and this does not:` +
+        `\n\n        a declaration with no \`;\` swallows whatever is written under it next, so the` +
+        `\n        line somebody adds tomorrow is the one that gets reported.`,
+    });
+  }
 }
 
 /* ── the rules ─────────────────────────────────────────────────────────────────────────────── */
@@ -190,58 +182,49 @@ function isNameCharacter(code: number): boolean {
  * their cursor wants.
  */
 export function unclosedCall(block: Block, findings: Finding[]): void {
-  const walkItems = (items: readonly BlockItem[]): void => {
-    for (const item of items) {
-      if (item.kind === "rule") {
-        walkItems(item.items);
-        continue;
-      }
-
-      /** Every `(` still open at the end of the value, innermost last. */
-      const open: { at: number; name: string }[] = [];
-      for (const part of item.value) {
-        if (part.kind !== "text" || part.at === undefined) continue;
-        /**
-         * Only as far as the `;`, because the value has ALREADY swallowed the block's closer.
-         *
-         * That is the fault itself, seen from inside: `content: url(;` comes back as the single
-         * value `url(;\n)}>x</div>`, so a count over the whole part meets the block's own `)` and
-         * calls it balanced. The declaration ends at its `;` whatever the scanner did with the rest,
-         * and everything past that belongs to somebody else.
-         */
-        const text = part.text.slice(0, terminator(part.text));
-        for (let index = 0; index < text.length; index++) {
-          const code = text.charCodeAt(index);
-          if (code === 34 || code === 39) {
-            index = endOfString(text, index);
-            continue;
-          }
-          if (code === 40) {
-            let from = index;
-            while (from > 0 && /[\w-]/.test(text[from - 1] ?? "")) from--;
-            open.push({ at: part.at + from, name: `${text.slice(from, index)}(` });
-          } else if (code === 41) {
-            open.pop();
-          }
+  for (const item of declarationsIn(block)) {
+    /** Every `(` still open at the end of the value, innermost last. */
+    const open: { at: number; name: string }[] = [];
+    for (const part of item.value) {
+      if (part.kind !== "text" || part.at === undefined) continue;
+      /**
+       * Only as far as the `;`, because the value has ALREADY swallowed the block's closer.
+       *
+       * That is the fault itself, seen from inside: `content: url(;` comes back as the single
+       * value `url(;\n)}>x</div>`, so a count over the whole part meets the block's own `)` and
+       * calls it balanced. The declaration ends at its `;` whatever the scanner did with the rest,
+       * and everything past that belongs to somebody else.
+       */
+      const text = part.text.slice(0, terminator(part.text));
+      for (let index = 0; index < text.length; index++) {
+        const code = text.charCodeAt(index);
+        if (code === 34 || code === 39) {
+          index = endOfString(text, index);
+          continue;
+        }
+        if (code === 40) {
+          let from = index;
+          while (from > 0 && /[\w-]/.test(text[from - 1] ?? "")) from--;
+          open.push({ at: part.at + from, name: `${text.slice(from, index)}(` });
+        } else if (code === 41) {
+          open.pop();
         }
       }
-
-      const last = open.at(-1);
-      if (last === undefined) continue;
-
-      findings.push({
-        rule: "unclosed-call",
-        at: last.at,
-        length: last.name.length,
-        message:
-          `\`${last.name}\` is never closed — it needs a \`)\`.\n\n        Until it is, the value runs ` +
-          `past the end of the block, and what gets reported is\n        whatever your own code says ` +
-          `after it.`,
-      });
     }
-  };
 
-  walkItems(block.items);
+    const last = open.at(-1);
+    if (last === undefined) continue;
+
+    findings.push({
+      rule: "unclosed-call",
+      at: last.at,
+      length: last.name.length,
+      message:
+        `\`${last.name}\` is never closed — it needs a \`)\`.\n\n        Until it is, the value runs ` +
+        `past the end of the block, and what gets reported is\n        whatever your own code says ` +
+        `after it.`,
+    });
+  }
 }
 
 /**

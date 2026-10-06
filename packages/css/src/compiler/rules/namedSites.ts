@@ -3,7 +3,7 @@
 import { MEDIA_FEATURES, UNIT_TYPE } from "../keywords.generated";
 import { holdsVar } from "../split";
 import { SPREAD, branchOf, holeIn } from "../read";
-import { GLOBAL, type Block, type BlockItem, withoutImportant } from "./shared";
+import { GLOBAL, type Block, type BlockItem, withoutImportant, declarationsIn } from "./shared";
 import { type Finding } from "./index";
 
 /**
@@ -262,51 +262,44 @@ export function againstRegisteredSyntax(
   syntaxes: ReadonlyMap<string, string>,
   findings: Finding[],
 ): void {
-  const walkItems = (items: readonly BlockItem[]): void => {
-    for (const item of items) {
-      if (item.kind === "rule") {
-        walkItems(item.items);
-        continue;
-      }
-      const syntax = syntaxes.get(item.property);
-      if (syntax === undefined || syntax === "*") continue;
-      if (!item.value.every((part) => part.kind === "text")) continue;
+  for (const item of declarationsIn(block)) {
+    const syntax = syntaxes.get(item.property);
+    if (syntax === undefined || syntax === "*") continue;
+    if (!item.value.every((part) => part.kind === "text")) continue;
 
-      const value = item.value
-        .map((part) => (part.kind === "text" ? part.text : ""))
-        .join("")
-        .trim();
-      /**
-       * `!important` is not part of the value, and on a custom property it is ordinary CSS — it is
-       * how a variable is made to win. A review measured `{angle}: 90deg !important` reported as a
-       * value `<angle>` does not accept, because the flag went into the matcher with the value.
-       */
-      const written = withoutImportant(value);
-      /**
-       * A CSS-wide keyword and `var()`, both asked CASE-INSENSITIVELY, because CSS keywords and
-       * function names are — css-values-4 §Textual Data Types. `INHERIT` was reported, and the
-       * `var(` escape was matched with no `i` while `variableReads` beside it explains at length why
-       * it matches `var` case-insensitively. One question, two answers, in one file.
-       */
-      if (written === "" || GLOBAL.has(written.toLowerCase()) || holdsVar(written)) continue;
+    const value = item.value
+      .map((part) => (part.kind === "text" ? part.text : ""))
+      .join("")
+      .trim();
+    /**
+     * `!important` is not part of the value, and on a custom property it is ordinary CSS — it is
+     * how a variable is made to win. A review measured `{angle}: 90deg !important` reported as a
+     * value `<angle>` does not accept, because the flag went into the matcher with the value.
+     */
+    const written = withoutImportant(value);
+    /**
+     * A CSS-wide keyword and `var()`, both asked CASE-INSENSITIVELY, because CSS keywords and
+     * function names are — css-values-4 §Textual Data Types. `INHERIT` was reported, and the
+     * `var(` escape was matched with no `i` while `variableReads` beside it explains at length why
+     * it matches `var` case-insensitively. One question, two answers, in one file.
+     */
+    if (written === "" || GLOBAL.has(written.toLowerCase()) || holdsVar(written)) continue;
 
-      const components = syntax.split("|").map((one) => one.trim());
-      if (components.some((one) => /[+#]$/.test(one) || (one.startsWith("<") && ACCEPTS[one] === undefined))) continue;
+    const components = syntax.split("|").map((one) => one.trim());
+    if (components.some((one) => /[+#]$/.test(one) || (one.startsWith("<") && ACCEPTS[one] === undefined))) continue;
 
-      const accepted = components.some((one) => (one.startsWith("<") ? ACCEPTS[one](written) : one === written));
-      if (accepted) continue;
+    const accepted = components.some((one) => (one.startsWith("<") ? ACCEPTS[one](written) : one === written));
+    if (accepted) continue;
 
-      findings.push({
-        rule: "value-and-registered-syntax",
-        at: item.valueAt ?? item.at ?? 0,
-        length: value.length,
-        message:
-          `this property is registered as \`${syntax}\` and does not accept \`${written}\` — measured, the ` +
-          `browser keeps the \`initial-value\` instead and says nothing, so the element shows the default.`,
-      });
-    }
-  };
-  walkItems(block.items);
+    findings.push({
+      rule: "value-and-registered-syntax",
+      at: item.valueAt ?? item.at ?? 0,
+      length: value.length,
+      message:
+        `this property is registered as \`${syntax}\` and does not accept \`${written}\` — measured, the ` +
+        `browser keeps the \`initial-value\` instead and says nothing, so the element shows the default.`,
+    });
+  }
 }
 
 /**
@@ -317,43 +310,36 @@ export function againstRegisteredSyntax(
  * rule happened to land. Refused by the build for that reason, and reported here for the same one.
  */
 export function holeInANamedBlock(block: Block, at: string, findings: Finding[]): void {
-  const walkItems = (items: readonly BlockItem[]): void => {
-    for (const item of items) {
-      if (item.kind === "rule") {
-        walkItems(item.items);
-        continue;
-      }
-      /**
-       * **Over the HOLE, and every one of them.**
-       *
-       * This pointed at the start of the VALUE with a length of 1 — measured on
-       * `@@font-face( src: url($(n)); )`, a one-character squiggle over the `u` of `url(`, which is
-       * mid-word and is not the fault. And it stopped after the first hole, so an author fixed one,
-       * re-ran, and met the next.
-       *
-       * `HolePart` carries `at` and `length` and its own note says why: *"for a squiggle over the
-       * hole itself … what lets a rule about a hole's POSITION point at the hole rather than at the
-       * declaration holding it."* `hole-as-a-custom-property-name` reads it; this did not.
-       *
-       * One finding per HOLE rather than per declaration, because each is a separate thing to
-       * remove — `src: url({a}) format({b})` is two edits.
-       */
-      for (const hole of item.value) {
-        if (hole.kind !== "hole") continue;
-        findings.push({
-          rule: "hole-in-a-named-block",
-          at: hole.at ?? item.valueAt ?? item.at ?? 0,
-          length: hole.length ?? 1,
-          message:
-            `a hole cannot go in \`@@${at}( … )\` — this names something the whole stylesheet uses, ` +
-            `and there is no element here for a value to come from. Declare the value with ` +
-            `\`@@property( … )\`, read it as \`var($(name))\` inside this site, and set it on the ` +
-            `element that uses it.`,
-        });
-      }
+  for (const item of declarationsIn(block)) {
+    /**
+     * **Over the HOLE, and every one of them.**
+     *
+     * This pointed at the start of the VALUE with a length of 1 — measured on
+     * `@@font-face( src: url($(n)); )`, a one-character squiggle over the `u` of `url(`, which is
+     * mid-word and is not the fault. And it stopped after the first hole, so an author fixed one,
+     * re-ran, and met the next.
+     *
+     * `HolePart` carries `at` and `length` and its own note says why: *"for a squiggle over the
+     * hole itself … what lets a rule about a hole's POSITION point at the hole rather than at the
+     * declaration holding it."* `hole-as-a-custom-property-name` reads it; this did not.
+     *
+     * One finding per HOLE rather than per declaration, because each is a separate thing to
+     * remove — `src: url({a}) format({b})` is two edits.
+     */
+    for (const hole of item.value) {
+      if (hole.kind !== "hole") continue;
+      findings.push({
+        rule: "hole-in-a-named-block",
+        at: hole.at ?? item.valueAt ?? item.at ?? 0,
+        length: hole.length ?? 1,
+        message:
+          `a hole cannot go in \`@@${at}( … )\` — this names something the whole stylesheet uses, ` +
+          `and there is no element here for a value to come from. Declare the value with ` +
+          `\`@@property( … )\`, read it as \`var($(name))\` inside this site, and set it on the ` +
+          `element that uses it.`,
+      });
     }
-  };
-  walkItems(block.items);
+  }
 }
 
 /**
