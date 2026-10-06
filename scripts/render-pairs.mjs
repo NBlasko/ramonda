@@ -171,6 +171,24 @@ export const PAIRS = [
     markup: `<div class="a"></div>`,
   },
   {
+    // A REGISTERED property animated by compiled frames and read by a block — `@@property`, then
+    // `@@keyframes` setting it through its binding, then `var($(angle))`. Only a registered `<angle>`
+    // interpolates, so a registration that went wrong leaves the bar unturned; the picture is the
+    // last frame, which `forwards` keeps.
+    name: "a registered property turned by an animation",
+    hand:
+      `@property --angle { syntax: "<angle>"; inherits: false; initial-value: 0deg; } ` +
+      `@keyframes turn { from { --angle: 0deg; } to { --angle: 60deg; } } ` +
+      `.a { background: #9cf; width: 120px; height: 16px; transform: rotate(var(--angle)); animation: turn 1s linear forwards; }`,
+    shared:
+      `const angle = @@property( syntax: "<angle>"; inherits: false; initial-value: 0deg; );\n` +
+      `const turn = @@keyframes( from { $(angle): 0deg; } to { $(angle): 60deg; } );\n`,
+    blocks: {
+      a: "background: #9cf; width: 120px; height: 16px; transform: rotate(var($(angle))); animation: $(turn) 1s linear forwards;",
+    },
+    markup: `<div class="a"></div>`,
+  },
+  {
     // A spread of a block from ANOTHER module, then a longhand below it — the base's split pieces
     // against the card's written longhand, each from its own stylesheet.
     name: "a spread from another module, then a longhand",
