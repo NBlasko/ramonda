@@ -230,9 +230,35 @@ formatter takes them off.
 ## Why the condition is inside `$( )`
 
 Because that is the one rule this syntax has: **TypeScript appears inside `$( )` and nowhere else.**
-`when this.disabled` would be shorter and would be a second way for code to get into a block — and
-the moment there are two, every reader has to learn which one a given line is. The word is `when`
-rather than `if` because CSS has an `if()` of its own.
+A component whose state decides a group:
+
+```tsx
+class Toggle extends Component {
+  @state disabled = false;
+
+  render() {
+    return (
+      <button className={@@(
+        cursor: pointer;
+        when $(this.disabled) { opacity: 0.5; }
+      )}>press</button>
+    );
+  }
+}
+```
+
+`this.disabled` is TypeScript — a field of the component — so it is written inside `$( )`. Leaving
+the `$( )` off is refused:
+
+```
+when $(this.disabled) { opacity: 0.5; }   ✓  the condition is code, so it is inside $( )
+when this.disabled { opacity: 0.5; }      ✗  refused — `when` takes one $( … ) and nothing else
+```
+
+The second would be shorter, and it would be a second way for code to get into a block — and the
+moment there are two, every reader has to learn which one a given line is. With one, anything inside
+`$( )` is TypeScript and everything outside it is CSS, whatever line you are reading. The word is
+`when` rather than `if` because CSS has an `if()` of its own.
 
 ## What is checked in a group
 
