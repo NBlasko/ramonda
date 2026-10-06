@@ -1,4 +1,5 @@
 import MagicString from "magic-string";
+import { urlCheckFor } from "./urls";
 import { type Guard, sameGuard, segments } from "./flatten";
 import type { AtomicDeclaration } from "./flatten";
 import { SHORTHANDS } from "./keywords.generated";
@@ -187,6 +188,8 @@ export interface TransformResult {
 const SIMPLE_OPERAND = /^!*[A-Za-z_$][\w$]*(?:\??\.[A-Za-z_$][\w$]*)*$/;
 
 export function transform(source: string, options: TransformOptions = {}): TransformResult | undefined {
+  // The disk, for `url-not-found` — only when the file is really there to look beside.
+  const disk = urlCheckFor(options.filename);
   if (!mayHoldABlock(source)) return undefined;
 
   const filename = options.filename ?? "unknown.tsx";
@@ -391,7 +394,14 @@ export function transform(source: string, options: TransformOptions = {}): Trans
         ? siteFindings
         : [
             ...checkText(source, site.open, read.end),
-            ...checkBlock(read.block, { at: site.at, start: site.start, references, syntaxes, config: options.config }),
+            ...checkBlock(read.block, {
+              at: site.at,
+              start: site.start,
+              references,
+              syntaxes,
+              config: options.config,
+              ...disk,
+            }),
           ]
     )
       .filter((one) => !isIgnored(source, ignored, one))

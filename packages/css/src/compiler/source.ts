@@ -1,4 +1,5 @@
 import { CssBlockError } from "./errors";
+import { urlCheckFor } from "./urls";
 import type { Config } from "../config";
 import { type Imported, namedSites, syntaxesIn } from "./references";
 import { readBlock } from "./read";
@@ -71,6 +72,8 @@ export function checkedSource(
   ignored: readonly Ignored[];
 } {
   const { read, config, tolerant } = options;
+  // The disk, for `url-not-found` — see `urlCheckFor`.
+  const disk = urlCheckFor(fileName);
   const out: Finding[] = [];
   /** What a BLOCK declares, which is the half that answers whether anything ever sets a name. */
   const blockSets: string[] = [];
@@ -153,7 +156,7 @@ export function checkedSource(
         ? []
         : [
             ...checkText(source, site.open, read.end),
-            ...checkBlock(read.block, { at: site.at, references, syntaxes, config }),
+            ...checkBlock(read.block, { at: site.at, references, syntaxes, config, ...disk }),
           ]),
     );
 

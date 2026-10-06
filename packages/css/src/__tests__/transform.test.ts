@@ -1,3 +1,6 @@
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import { CssBlockError } from "../compiler/errors";
 import { checkSource } from "../compiler/source";
@@ -1255,5 +1258,58 @@ describe("a @@font-face binding", () => {
     );
 
     expect(css.match(/@font-face/g)).toHaveLength(2);
+  });
+});
+
+/**
+ * A relative `url( … )` that points at no file.
+ *
+ * Measured through a real Vite build: `url("./img/missing.png")` built without a word and shipped as
+ * written, a 404 in the browser — so an image moved, or a component moved away from its image,
+ * broke nothing anyone saw. TypeScript does not help either: the `*.png` declaration a Vite project
+ * has accepts any path, existing or not. So the file is asked of the disk, beside the source file.
+ */
+describe("a url() that points at no file", () => {
+  const dir = mkdtempSync(join(tmpdir(), "ramonda-url-"));
+  mkdirSync(join(dir, "img"));
+  mkdirSync(join(dir, "fonts"));
+  writeFileSync(join(dir, "img", "a.png"), "PNG");
+  writeFileSync(join(dir, "img", "icons.svg"), "<svg/>");
+  const file = join(dir, "Card.tsx");
+  const block = (body: string) => `export const x = @@( ${body} );\n`;
+
+  test.each([
+    ["a missing image", `background: url("./img/missing.png");`, "./img/missing.png"],
+    ["unquoted", `background: url(./img/missing.png);`, "./img/missing.png"],
+    ["one folder up", `background: url('../nowhere.png');`, "../nowhere.png"],
+  ])("stops the build: %s", (_what, body, path) => {
+    expect(() => transform(block(body), { filename: file })).toThrow(
+      new RegExp(`url-not-found: \`${path.replace(/[.]/g, "\\.")}\` does not exist next to \`Card\\.tsx\``),
+    );
+  });
+
+  test("in a @@font-face too", () => {
+    const source = `const f = @@font-face( font-family: "X"; src: url("./fonts/x.woff2") format("woff2"); );\nexport { f };\n`;
+
+    expect(() => transform(source, { filename: file })).toThrow(/url-not-found: `\.\/fonts\/x\.woff2`/);
+  });
+
+  test.each([
+    ["an image that is there", `background: url("./img/a.png");`],
+    ["a fragment or a query on one that is there", `background: url("./img/icons.svg#home"), url("./img/a.png?v=2");`],
+    ["a path from the site's root, which this cannot place", `background: url("/hero.png");`],
+    ["another site", `background: url("https://example.com/a.png");`],
+    ["data", `background: url("data:image/png;base64,AAAA");`],
+  ])("leaves alone %s", (_what, body) => {
+    expect(() => transform(block(body), { filename: file })).not.toThrow();
+  });
+
+  test("and the editor reports it on the path", () => {
+    const source = block(`background: url("./img/missing.png");`);
+    const found = checkSource(source, file, { tolerant: true }).filter((one) => one.rule === "url-not-found");
+
+    expect(found.map((one) => [one.at, one.length])).toEqual([
+      [source.indexOf("./img/missing.png"), "./img/missing.png".length],
+    ]);
   });
 });

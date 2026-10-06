@@ -212,6 +212,7 @@ export const RULE_IDS = [
   "property-descriptor-missing",
   "token-set-against-its-declaration",
   "unknown-custom-property",
+  "url-not-found",
   "unknown-media-feature",
   "value-and-registered-syntax",
   "unit-not-allowed",
@@ -457,6 +458,12 @@ export interface CheckOptions {
    * one fault twice. The build runs no type check, so there it is the only thing that says so.
    */
   readonly start?: number;
+  /**
+   * Whether a RELATIVE `url( … )` names a file that exists, beside the source file — and that file's
+   * name, for the message. Handed in by whoever has the disk (`urlCheckFor`); absent, the rule is off.
+   */
+  readonly urlExists?: (relative: string) => boolean;
+  readonly fileName?: string;
   /** Binding -> the generated name it resolves to. See {@link namedSites}. */
   readonly references?: ReadonlyMap<string, string>;
   /** Generated name -> the `syntax` its `@@property` declared. See {@link syntaxesIn}. */
@@ -508,6 +515,7 @@ export function checkBlock(written: AnyBlock, options: CheckOptions = {}): Findi
   if (config !== undefined) unknownVariable(block, config, findings);
   if (config !== undefined) variableByHand(block, config, findings);
   if (config !== undefined) setAgainstItsDeclaration(block, config, findings);
+  if (options.urlExists !== undefined) urlNotFound(block, options.urlExists, options.fileName ?? "this file", findings);
   if (config?.unknownCustomProperties === false || config?.unknownCustomProperties === "same-block") {
     unknownCustomProperty(block, config, findings);
   }
@@ -1569,6 +1577,54 @@ function pathsDeclaredBy(config: Config): ReadonlySet<string> {
   const paths = new Set(config.tokens === undefined ? [] : namesIn(config.tokens).map((one) => one.path));
   declaredPaths.set(config, paths);
   return paths;
+}
+
+/**
+ * A relative `url( … )` that points at no file.
+ *
+ * Measured through a real Vite build: `url("./img/missing.png")` built without a word and shipped as
+ * written — a 404 in the browser, so a moved image broke nothing anyone saw. TypeScript cannot help:
+ * the `*.png` declaration a Vite project has accepts any path, existing or not. So the disk is asked,
+ * beside the source file. Only `./` and `../` paths: one from the site's root (`/hero.png`) lives
+ * wherever the bundler's public folder is, which this does not guess; a query or a fragment is not
+ * part of the file. Reported on the path itself.
+ */
+function urlNotFound(block: Block, exists: (relative: string) => boolean, file: string, findings: Finding[]): void {
+  const texts = (value: readonly ValuePart[]): TextPart[] =>
+    value.flatMap((part) =>
+      part.kind === "text"
+        ? [part]
+        : part.kind === "choice"
+          ? [...part.branches.flatMap((branch) => texts(branch.value)), ...texts(part.otherwise)]
+          : part.kind === "match"
+            ? part.arms.flatMap((arm) => texts(arm.value))
+            : [],
+    );
+  const walkItems = (items: readonly BlockItem[]): void => {
+    for (const item of items) {
+      if (item.kind === "rule") {
+        walkItems(item.items);
+        continue;
+      }
+      for (const part of texts(item.value)) {
+        if (part.at === undefined) continue;
+        for (const found of part.text.matchAll(/url\(\s*(["']?)([^"')]*)\1\s*\)/gi)) {
+          const path = found[2].trim();
+          if (!path.startsWith("./") && !path.startsWith("../")) continue;
+          if (exists(path.replace(/[?#].*$/, ""))) continue;
+          findings.push({
+            rule: "url-not-found",
+            at: part.at + (found.index ?? 0) + found[0].indexOf(path),
+            length: path.length,
+            message:
+              `\`${path}\` does not exist next to \`${file}\`, so the browser gets a 404 for it. Fix the path, ` +
+              "or put the file back — a relative `url()` is read from the folder of the file that holds the block.",
+          });
+        }
+      }
+    }
+  };
+  walkItems(block.items);
 }
 
 /**
