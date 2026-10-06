@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import { CssBlockError } from "../compiler/errors";
 import { checkSource } from "../compiler/source";
 import { transform } from "../compiler/transform";
+import { Sheet } from "../compiler/sheet";
 import { kind } from "../declared";
 import { namedSites } from "../compiler/references";
 
@@ -851,8 +852,11 @@ describe("the reference map and the emitted rule", () => {
     ["nested rules and odd spacing", `const x = @@keyframes(\n\n  from   {\n opacity:0;\n  }\n\n);\n`],
   ])("agree for %s", (_what, source) => {
     const out = emit(source);
+    // What `x` compiles to in code is what `$(x)` resolves to in a block — the BINDING, which for a
+    // face is its family and for the rest is the rule's name. See `bindingForSite`.
+    const bound = JSON.parse(/const x = ("(?:[^"\\]|\\.)*")/.exec(out?.code ?? "")?.[1] ?? "null");
 
-    expect(namedSites(source).get("x")).toBe(out?.blocks[0].className);
+    expect(namedSites(source).get("x")).toBe(bound);
   });
 });
 
@@ -1213,4 +1217,43 @@ test("a made-up custom property stops the build under `unknownCustomProperties: 
   expect(
     transform(`const x = @@( color: var(--brand); );\nexport default x;\n`, { config: { tokens: config.tokens } }),
   ).toBeDefined();
+});
+
+/**
+ * A `@@font-face` binding stands for the family it declares.
+ *
+ * Measured before: `const brand = @@font-face( font-family: "Brand"; … )` bound `brand` to a hash,
+ * so `font-family: $(brand)` asked the browser for a family called `r-…` while the rule declared
+ * `"Brand"` — the font silently never loaded. The binding is what makes the family a reference: a
+ * typo is a TypeScript error, and renaming the font is one edit.
+ */
+describe("a @@font-face binding", () => {
+  const sheetOf = (source: string) => {
+    const result = transform(source, { filename: "C.tsx" });
+    if (result === undefined) throw new Error("not transformed");
+    const sheet = new Sheet();
+    sheet.add("C.tsx", result.blocks);
+    return { code: result.code, css: sheet.css() };
+  };
+
+  test("is the family as written, in a block and in code", () => {
+    const { code, css } = sheetOf(
+      `const brand = @@font-face( font-family: "Brand"; src: url("/b.woff2") format("woff2"); );\n` +
+        `export const title = @@( font-family: $(brand), sans-serif; );\nexport { brand };\n`,
+    );
+
+    expect(css).toContain(`font-family:"Brand", sans-serif;`);
+    expect(css).not.toMatch(/font-family:r-/);
+    expect(code).toContain(`const brand = "\\"Brand\\""`);
+  });
+
+  test("two faces of one family — two weights — stay two rules", () => {
+    const { css } = sheetOf(
+      `const regular = @@font-face( font-family: "Brand"; src: url("/r.woff2"); font-weight: 400; );\n` +
+        `const bold = @@font-face( font-family: "Brand"; src: url("/b.woff2"); font-weight: 700; );\n` +
+        `export { regular, bold };\n`,
+    );
+
+    expect(css.match(/@font-face/g)).toHaveLength(2);
+  });
 });

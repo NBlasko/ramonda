@@ -211,7 +211,7 @@ const slide = @@keyframes(
 );
 
 const panel = @@(
-  font-family: "Brand", sans-serif;
+  font-family: $(brand), sans-serif;
   animation: $(slide) 240ms ease-out;
 );
 ```
@@ -227,11 +227,13 @@ unresolved identifier. Written in a stylesheet instead, the name would be a stri
 A reference resolves **when the file compiles**, not on the element, so `$(slide)` costs no custom
 property.
 
-`@@font-face` names nothing — the `font-family` inside it is the handle, and that is the string
-other rules match on, so its block is written for its own sake. The other two name something, and
+**`$(brand)` is the family the face declares** — `"Brand"`, exactly as written — so the family is a
+reference rather than a string to repeat: a typo is an error, and renaming the font is one edit. The
+rule itself keeps a hashed identity, so two faces of one family, a regular and a bold, stay two rules.
+
 `@@property` names a **custom** property, so what it compiles to is `--r-…` with the dashes: that is
-the one name `{ }` may stand in where a property name goes, which is how the frames in the previous
-example set it.
+the one name `$( … )` may stand in where a property name goes, which is how the frames in the
+previous example set it.
 
 ## A name nothing sets
 

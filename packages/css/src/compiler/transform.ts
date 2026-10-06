@@ -3,7 +3,16 @@ import { type Guard, sameGuard, segments } from "./flatten";
 import type { AtomicDeclaration } from "./flatten";
 import { SHORTHANDS } from "./keywords.generated";
 import { keyIn } from "../key";
-import { classNameFor, markerFor, nameForSite, nameFor, substitute, variableNameFor, writableProperty } from "./names";
+import {
+  bindingForSite,
+  classNameFor,
+  markerFor,
+  nameForSite,
+  nameFor,
+  substitute,
+  variableNameFor,
+  writableProperty,
+} from "./names";
 import type { Config } from "../config";
 import { type Imported, importedSites, namedSites, syntaxesIn } from "./references";
 import { normalise } from "./normalise";
@@ -439,7 +448,7 @@ export function transform(source: string, options: TransformOptions = {}): Trans
         named.set(className, emitted);
         emittedNamed.push(emitted);
       }
-      magic.overwrite(site.start, read.end + 1, JSON.stringify(className));
+      magic.overwrite(site.start, read.end + 1, JSON.stringify(bindingForSite(site.at, site.name, canonical)));
       continue;
     }
 

@@ -101,6 +101,23 @@ export function nameForSite(at: string, name: string, normalised: string): strin
 }
 
 /**
+ * What a named site's BINDING stands for — `$(brand)` in a block, `const brand` in code.
+ *
+ * The name of a `@@keyframes` or a `@@property` IS what other rules refer to, so it is the binding.
+ * A `@@font-face` is different: what a block refers to is the `font-family` declared inside it, and
+ * the hash is only the rule's identity (two faces of one family — two weights — are two rules).
+ * Measured before this: the binding was the hash, so `font-family: $(brand)` asked for a family
+ * called `r-…` and the font silently never loaded. So the binding is the family, exactly as written.
+ */
+export function bindingForSite(at: string, name: string, normalised: string): string {
+  if (at === "font-face") {
+    const family = /(?:^|[;{])\s*font-family\s*:\s*([^;}]+)/i.exec(normalised)?.[1]?.trim();
+    if (family !== undefined && family !== "") return family;
+  }
+  return nameForSite(at, name, normalised);
+}
+
+/**
  * `r-` plus the hash of the normalised block.
  *
  * The prefix is not decoration: a CSS class may not begin with a digit, and half of all hashes do.

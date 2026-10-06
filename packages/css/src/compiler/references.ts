@@ -1,4 +1,4 @@
-import { nameForSite } from "./names";
+import { bindingForSite, nameForSite } from "./names";
 import { normalise } from "./normalise";
 import { tryReadBlock } from "./read";
 import { findBlocks } from "./scan";
@@ -243,7 +243,7 @@ export function namedSites(source: string, options: Imported = {}): Map<string, 
     // properly — saying it twice, from here, would say it about the wrong thing.
     const read = tryReadBlock(source, site.open, { resolve: (name) => found.get(name) });
     if (read === undefined) continue;
-    found.set(site.name, nameForSite(site.at, site.name, normalise(read.block)));
+    found.set(site.name, bindingForSite(site.at, site.name, normalise(read.block)));
   }
 
   return found;
