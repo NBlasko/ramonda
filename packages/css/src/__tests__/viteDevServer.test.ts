@@ -152,9 +152,9 @@ async function serve(source: string, config?: string, alongside?: string) {
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
 
-  /** What `css-system/variables.css` currently says one variable is. */
+  /** What `css-system/tokens.css` currently says one variable is. */
   const variable = () => {
-    const sheet = join(root, "css-system", "variables.css");
+    const sheet = join(root, "css-system", "tokens.css");
     if (!existsSync(sheet)) return "(no file)";
     return /--space-gutter:\s*([^;]+)/.exec(readFileSync(sheet, "utf8"))?.[1] ?? "(not in it)";
   };
@@ -213,7 +213,7 @@ test("a save that cannot compile is not reported by the watcher, and is reported
  *
  * - every already-compiled file keeps the rules the OLD config gave it, so a narrowed `units` or a
  *   newly forbidden property is not enforced until each file is touched by hand;
- * - `css-system/variables.css` is written by codegen at `buildStart` and never again, so a design
+ * - `css-system/tokens.css` is written by codegen at `buildStart` and never again, so a design
  *   token changed from `16px` to `40px` still served `16px`. That file is a plain stylesheet the
  *   project imports once — nothing else was ever going to regenerate it.
  *
@@ -222,7 +222,7 @@ test("a save that cannot compile is not reported by the watcher, and is reported
 test("saving the config regenerates the variables stylesheet", async () => {
   const gutter = (value: string) =>
     `import { kind } from "@ramonda/css/config";\n` +
-    `export default { variables: { $space: kind("length", { gutter: "${value}" }) } };\n`;
+    `export default { tokens: { $space: kind("length", { gutter: "${value}" }) } };\n`;
 
   const { saveConfig, firstLoad, variable } = await serve(withDisplay("flex"), gutter("16px"));
   await firstLoad();

@@ -1,10 +1,11 @@
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import ts from "typescript";
 import { knownNames, configReader, environmentOf } from "./config";
 import { variablesSheetFor, writeGenerated } from "./generate";
 import { readModule } from "./modules";
-import { CssBlockError } from "./compiler/errors";
+import { CssBlockError, positionOf } from "./compiler/errors";
+import { settingsAgainst } from "./compiler/declaredSet";
 import { fileMayHoldABlock, mayHoldABlock } from "./compiler/scan";
 import { Sheet } from "./compiler/sheet";
 import { transform } from "./compiler/transform";
@@ -123,6 +124,8 @@ interface Loaded {
    * resemble it.
    */
   loader?: "tsx" | "ts" | "jsx" | "js" | "css";
+  /** The folder a relative path in the contents is read from. */
+  resolveDir?: string;
   errors?: { text: string; location: { file: string; line: number; column: number } }[];
 }
 
@@ -238,10 +241,40 @@ export function ramondaCss(options: EsbuildCssPluginOptions = {}): EsbuildCssPlu
 
       build.onResolve({ filter: /\?ramonda-css\.css$/ }, (args) => ({ path: args.path, namespace: NAMESPACE }));
 
-      build.onLoad({ filter: /.*/, namespace: NAMESPACE }, (args) => ({
-        contents: sheet.cssFor(args.path.slice(0, -SUFFIX.length)),
-        loader: "css",
-      }));
+      /**
+       * `resolveDir` is the folder of the file that holds the block, so a relative `url( … )` in it
+       * is read from there — as Vite reads it, and as `url-not-found` checks it. Without it the
+       * stylesheet, in a namespace of its own, had no folder at all: measured in review round 2,
+       * `url("./a.png")` failed the build with the file right beside it.
+       */
+      build.onLoad({ filter: /.*/, namespace: NAMESPACE }, (args) => {
+        const file = args.path.slice(0, -SUFFIX.length);
+        return { contents: sheet.cssFor(file), loader: "css", resolveDir: dirname(file) };
+      });
+
+      /**
+       * A project stylesheet setting a declared variable its declaration does not allow — the same
+       * judgement a block gets, for the plain CSS a theme is written in. See `checkStylesheet` in
+       * `vite.ts`. Declined when it is fine, so esbuild loads it with its own `css` loader.
+       */
+      build.onLoad({ filter: /\.css$/ }, (args) => {
+        if (args.path.includes("node_modules")) return undefined;
+        const config = configFor(args.path);
+        if (config === undefined || config.rules?.["token-set-against-its-declaration"] === "off") return undefined;
+        if (variablesSheetFor(args.path) === resolve(args.path)) return undefined;
+        const code = readFileSync(args.path, "utf8");
+        const [first] = settingsAgainst(code, config);
+        if (first === undefined) return undefined;
+        const { line, column } = positionOf(code, first.at);
+        return {
+          errors: [
+            {
+              text: `token-set-against-its-declaration: ${first.message}`,
+              location: { file: args.path, line, column: column - 1 },
+            },
+          ],
+        };
+      });
 
       build.onLoad({ filter: options.filter ?? SOURCE }, (args) => {
         // The regex above is esbuild's own coarse filter; this is the question every consumer asks.

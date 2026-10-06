@@ -102,10 +102,22 @@ describe("what it accepts", () => {
 describe("what the config type says about a group's name", () => {
   test("a group without its `$` is refused", () => {
     // @ts-expect-error — `color` must be written `$color`
-    defineConfig({ variables: { color: kind("color", { accent: "#00f" }) } });
+    defineConfig({ tokens: { color: kind("color", { accent: "#00f" }) } });
   });
 
   test("and one with it is accepted", () => {
-    defineConfig({ variables: { $color: kind("color", { accent: "#00f" }) } });
+    defineConfig({ tokens: { $color: kind("color", { accent: "#00f" }) } });
+  });
+});
+
+/** A token group has to be made with `kind( … )`; a plain object declared nothing, in silence. */
+describe("what the config type says about a token group's value", () => {
+  test("a plain object is refused", () => {
+    // @ts-expect-error — `$color` is not made with `kind( … )`
+    defineConfig({ tokens: { $color: { accent: "#00f" } } });
+  });
+
+  test("and one made with `kind` is accepted", () => {
+    defineConfig({ tokens: { $color: kind("color", { accent: "#00f" }) } });
   });
 });

@@ -2,11 +2,14 @@ import { describe, expect, test } from "vitest";
 import ts from "typescript";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { Config } from "../config";
 import { configReader, environmentOf, findConfig, readConfig } from "../config";
 import { readBlock } from "../compiler/read";
 import { checkBlock } from "../compiler/rules";
+
+const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 /**
  * The project's own settings, read from a `ramonda.css.ts`.
@@ -224,7 +227,7 @@ describe("the project's config", () => {
    * TypeScript's error recovery is the trap. `transpileModule` does not report a syntax error
    * unless it is asked to, and it emits whatever it managed to build — measured,
    *
-   *     export default { variables: {{{ };     →     exports.default = { variables: {} };
+   *     export default { tokens: {{{ };     →     exports.default = { tokens: {} };
    *
    * so the config LOADED, valid and empty. Nothing threw, nothing was undefined, and every consumer
    * that does not type-check `ramonda.css.ts` ran with no settings at all. Measured through a real
@@ -285,7 +288,7 @@ describe("the project's config", () => {
     };
 
     test.each([
-      ["a brace that never opens an object", `export default { variables: {{{ };\n`],
+      ["a brace that never opens an object", `export default { tokens: {{{ };\n`],
       ["a string that is never closed", `export default { outDir: "css-system };\n`],
       ["a bracket left open", `export default { properties: { "z-index": { values: [1, 2 } };\n`],
     ])("%s is refused, not loaded as an empty config", (_what, body) => {
@@ -293,7 +296,7 @@ describe("the project's config", () => {
     });
 
     test("and the message says WHERE, because a parse error is a place", () => {
-      expect(refused(`export default {\n  variables: {{{ };\n`)).toThrow(/ramonda\.css\.ts/);
+      expect(refused(`export default {\n  tokens: {{{ };\n`)).toThrow(/ramonda\.css\.ts/);
     });
   });
 
@@ -314,17 +317,40 @@ describe("the project's config", () => {
       ["a rule set to a boolean", `{ rules: { "unknown-unit": false } }`, /unknown-unit/],
       ["a rule set to a word that is not a severity", `{ rules: { "unknown-unit": "quiet" } }`, /quiet/],
       ["variables as a bare string", `{ variables: "--brand" }`, /variables/],
-      // The old spelling of this key, which is now `alsoSets` — the message says where the list goes
+      // The old spelling of this key, which is now `externalCustomProperties` — the message says where the list goes
       // rather than only that an object was wanted, because a project carrying the old form needs to
       // be told the destination, not the shape.
-      ["variables as the list it used to be", `{ variables: ["--brand"] }`, /alsoSets/],
-      ["alsoSets as a bare string", `{ alsoSets: "--brand" }`, /alsoSets/],
-      ["alsoSets holding a number", `{ alsoSets: [1] }`, /alsoSets/],
+      ["variables as the list it used to be", `{ variables: ["--brand"] }`, /externalCustomProperties/],
+      [
+        "externalCustomProperties as a bare string",
+        `{ externalCustomProperties: "--brand" }`,
+        /externalCustomProperties/,
+      ],
+      ["externalCustomProperties holding a number", `{ externalCustomProperties: [1] }`, /externalCustomProperties/],
       // A custom property begins with two dashes. `brand` is a property name, and a list of those
       // would silence a rule about names it was never given.
-      ["a name in alsoSets with no dashes", `{ alsoSets: ["brand"] }`, /two dashes/],
+      ["a name in externalCustomProperties with no dashes", `{ externalCustomProperties: ["brand"] }`, /two dashes/],
+      // Tokens stopped being called "variables": each old key is refused with the new name in it.
+      ["the old `variables`", `{ variables: {} }`, /`tokens`/],
+      // A group written without `kind( … )` declared nothing, in silence — the kind is what makes a
+      // value a token, so a plain object is refused and the message names the group.
+      [
+        "a token group without `kind`",
+        `{ tokens: { $color: { accent: "#10b981" } } }`,
+        /declares `tokens\.\$color` without `kind\( … \)`/,
+      ],
+      [
+        "the long form without `kind`",
+        `{ tokens: { $color: { accent: { value: "#10b981", range: "any" } } } }`,
+        /declares `tokens\.\$color` without `kind/,
+      ],
+      ["unknownCustomProperties as a word", `{ unknownCustomProperties: "local" }`, /true, false or "same-block"/],
+      ["styleOtherElements as a word", `{ styleOtherElements: "no" }`, /styleOtherElements.*true or false/],
+      ["the old `alsoSets`", `{ alsoSets: ["--brand"] }`, /`externalCustomProperties`/],
+      ["a rule by its old name", `{ rules: { "literal-not-allowed": "off" } }`, /`hardcoded-not-allowed`/],
+      ["another rule by its old name", `{ rules: { "unknown-variable": "off" } }`, /`unknown-token`/],
       // A group is declared the way a block reads it, so the message writes the `$` in.
-      ["a group without its `$`", `{ variables: { color: {} } }`, /\$color/],
+      ["a group without its `$`", `{ tokens: { color: {} } }`, /\$color/],
     ])("%s is refused, naming what is wrong", (_what, body, says) => {
       expect(refused(body)).toThrow(says);
     });
@@ -366,8 +392,8 @@ describe("the project's config", () => {
       const thrown = refused(`{ variablesOnly: ["color", "length"] }`);
 
       expect(thrown).toThrow(/selector inside/);
-      expect(thrown).toThrow(/"<color>": \{ variablesOnly: true \}/);
-      expect(thrown).toThrow(/"<length>": \{ variablesOnly: true \}/);
+      expect(thrown).toThrow(/"<color>": \{ hardcoded: false \}/);
+      expect(thrown).toThrow(/"<length>": \{ hardcoded: false \}/);
     });
 
     /** A closed list for all 935 properties is not a thing anybody means, and it did nothing. */
@@ -386,7 +412,7 @@ describe("the project's config", () => {
      * `rules: "off"` can only silence the rule:
      *
      *     "*": { arity: 1 }                   too-many-values OFF  ->  accepted
-     *     "<length>": { variablesOnly: true } literal-not-allowed OFF -> TS2322, still refused
+     *     "<length>": { hardcoded: false } hardcoded-not-allowed OFF -> TS2322, still refused
      *     "<length>": { units: ["px"] }       unit-not-allowed OFF ->  TS2322, still refused
      *
      * So an author who turns the rule off to ship is not unblocked: the error stays and the message
@@ -399,9 +425,9 @@ describe("the project's config", () => {
      */
     test.each([
       [
-        "`literal-not-allowed`, against `variablesOnly`",
-        `{ properties: { "<length>": { variablesOnly: true } }, rules: { "literal-not-allowed": "off" } }`,
-        /variablesOnly/,
+        "`hardcoded-not-allowed`, against `hardcoded`",
+        `{ properties: { "<length>": { hardcoded: false } }, rules: { "hardcoded-not-allowed": "off" } }`,
+        /hardcoded/,
       ],
       [
         "`unit-not-allowed`, against a property's `units`",
@@ -426,13 +452,13 @@ describe("the project's config", () => {
     });
 
     test.each([
-      ["one nothing in this config turned on", `{ rules: { "literal-not-allowed": "off" } }`],
+      ["one nothing in this config turned on", `{ rules: { "hardcoded-not-allowed": "off" } }`],
       ["`too-many-values` where no `arity` is set", `{ rules: { "too-many-values": "off" } }`],
       [
         "a rule that reads no config at all",
-        `{ properties: { "<length>": { variablesOnly: true } }, rules: { "unknown-unit": "off" } }`,
+        `{ properties: { "<length>": { hardcoded: false } }, rules: { "unknown-unit": "off" } }`,
       ],
-      ["the setting on its own", `{ properties: { "<length>": { variablesOnly: true } } }`],
+      ["the setting on its own", `{ properties: { "<length>": { hardcoded: false } } }`],
       [
         "the rule set to error, which changes nothing",
         `{ properties: { "*": { arity: 1 } }, rules: { "too-many-values": "error" } }`,
@@ -450,7 +476,7 @@ describe("the project's config", () => {
     });
 
     test("a `properties` key wrapped in angle brackets that is not a kind is refused", () => {
-      expect(refused(`{ properties: { "<lenght>": { variablesOnly: true } } }`)).toThrow(/Did you mean `<length>`/);
+      expect(refused(`{ properties: { "<lenght>": { hardcoded: false } } }`)).toThrow(/Did you mean `<length>`/);
     });
 
     /**
@@ -490,7 +516,9 @@ describe("the project's config", () => {
       ["values as an object", `{ properties: { "z-index": { values: { a: 1 } } } }`, /values/],
       ["values holding something that is neither", `{ properties: { "z-index": { values: [1, true] } } }`, /values/],
       ["shorthand as a word", `{ properties: { "padding": { shorthand: "no" } } }`, /shorthand/],
-      ["variablesOnly as a word", `{ properties: { "<color>": { variablesOnly: "yes" } } }`, /variablesOnly/],
+      ["hardcoded as a word", `{ properties: { "<color>": { hardcoded: "yes" } } }`, /hardcoded/],
+      // The old name, refused with the new one and its value turned over.
+      ["the old `hardcoded: false`", `{ properties: { "<color>": { variablesOnly: true } } }`, /`hardcoded: false`/],
       ["arity as a string", `{ properties: { "padding": { arity: "2" } } }`, /arity/],
       ["a setting that is not one", `{ properties: { "padding": { unknownKey: true } } }`, /unknownKey/],
       ["an entry that is not an object", `{ properties: { "padding": true } }`, /padding/],
@@ -513,10 +541,10 @@ describe("the project's config", () => {
     });
 
     test.each([
-      ["a kind selector", `{ properties: { "<color>": { variablesOnly: true } } }`],
+      ["a kind selector", `{ properties: { "<color>": { hardcoded: false } } }`],
       [
         "one beside a property exempting itself",
-        `{ properties: { "<length>": { variablesOnly: true }, "border-radius": { variablesOnly: false } } }`,
+        `{ properties: { "<length>": { hardcoded: false }, "border-radius": { hardcoded: true } } }`,
       ],
       [
         "the sweep, a kind and a property at once",
@@ -541,13 +569,17 @@ describe("the project's config", () => {
 
     test.each([
       ["one unit", `{ units: { length: ["px"] } }`],
-      ["a name this compiler cannot see", `{ alsoSets: ["--brand"] }`],
+      ["a name this compiler cannot see", `{ externalCustomProperties: ["--brand"] }`],
       ["several families", `{ units: { length: ["px", "rem"], time: ["ms"] } }`],
       ["a family banned outright", `{ units: { flex: [] } }`],
       ["a rule silenced", `{ rules: { "unknown-unit": "off" } }`],
       ["a rule set to error, which is the default", `{ rules: { "unknown-unit": "error" } }`],
       ["an empty object", `{}`],
-      ["a group declared with its `$`", `{ variables: { $color: {} } }`],
+      ["a group declared with its `$`", `{ tokens: { $color: {} } }`],
+      // Loaded from a real file, which is the one way the rule tests never ask: they hand the config
+      // in. Measured, the key was missing from the list and a real config was refused.
+      ["a block kept to its own element", `{ styleOtherElements: false }`],
+      ["made-up custom properties kept local", `{ unknownCustomProperties: "same-block" }`],
     ])("%s is accepted", (_what, body) => {
       expect(refused(body)).not.toThrow();
     });
@@ -845,4 +877,25 @@ describe("what a config is allowed to use", () => {
 
     expect(readConfig(findConfig(dir), ts)).toEqual({ units: { length: ["px"] } });
   });
+});
+
+/** A group made with `kind( … )` beside one that was not: the message names the one that was not. */
+test("a mixed config names the group written without `kind`", () => {
+  const dir = mkdtempSync(join(tmpdir(), "ramonda-kindless-"));
+  writeFileSync(
+    join(dir, "ramonda.css.ts"),
+    `import { kind } from ${JSON.stringify(join(PACKAGE_ROOT, "dist", "config.js"))};\n` +
+      `export default { tokens: { $color: kind("color", { a: "#000" }), $space: { gutter: "16px" } } };\n`,
+  );
+
+  expect(() => readConfig(findConfig(dir), ts)).toThrow(/declares `tokens\.\$space` without `kind\( … \)`/);
+});
+
+/** Review round 4: a group without `kind` is not told to make it a colour group. */
+test("a group without `kind` is not told which kind to use", () => {
+  const dir = mkdtempSync(join(tmpdir(), "ramonda-kindless-space-"));
+  writeFileSync(join(dir, "ramonda.css.ts"), `export default { tokens: { $space: { gutter: "16px" } } };\n`);
+
+  expect(() => readConfig(findConfig(dir), ts)).toThrow(/`\$space: kind\("…", \{ … \}\)`/);
+  expect(() => readConfig(findConfig(dir), ts)).not.toThrow(/kind\("color"/);
 });

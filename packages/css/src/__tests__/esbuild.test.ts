@@ -517,12 +517,12 @@ describe("codegen through the plugin", () => {
   test("the pair is written into the build's own root, before anything is resolved", async () => {
     const root = project({
       "index.tsx": `const a = <div className={@@( color: $color.primary.main; )}>x</div>;\nexport default a;\n`,
-      "ramonda.css.ts": `import { kind } from "@ramonda/css/config";\nexport default { variables: { $color: kind("color", { primary: { main: "#3b82f6" } }) } };\n`,
+      "ramonda.css.ts": `import { kind } from "@ramonda/css/config";\nexport default { tokens: { $color: kind("color", { primary: { main: "#3b82f6" } }) } };\n`,
     });
 
     await build(root, { absWorkingDir: root });
 
-    expect(readFileSync(join(root, join("css-system", "variables.css")), "utf8")).toContain(
+    expect(readFileSync(join(root, join("css-system", "tokens.css")), "utf8")).toContain(
       "--color-primary-main: #3b82f6;",
     );
     expect(readFileSync(join(root, join("css-system", "index.ts")), "utf8")).toContain("--color-primary-main");
@@ -537,4 +537,55 @@ describe("codegen through the plugin", () => {
 
     expect(existsSync(join(root, join("css-system", "index.ts")))).toBe(false);
   });
+});
+
+/** A theme stylesheet setting a fixed token stops the esbuild build too — see `viteBuild.test.ts`. */
+describe("a stylesheet setting a token", () => {
+  const CONFIG_FIXED = `import { kind } from "@ramonda/css/config";\nexport default { tokens: { $color: kind("color", { sunken: "#f3f4f6" }) } };\n`;
+
+  test("a fixed one stops the build, at the file and line", async () => {
+    const root = project({
+      "index.tsx": `import "./theme.css";\nexport const x = 1;\n`,
+      "theme.css": `[data-theme="dark"] {\n  --color-sunken: #111827;\n}\n`,
+      "ramonda.css.ts": CONFIG_FIXED,
+    });
+
+    const failure = await build(root).then(
+      () => undefined,
+      (error: esbuild.BuildFailure) => error,
+    );
+
+    expect(failure).toBeDefined();
+    expect(spoken(failure as esbuild.BuildFailure)).toContain("`$color.sunken` is declared without a `range`");
+    expect(failure?.errors[0].location).toMatchObject({ line: 2, column: 2 });
+  });
+
+  test("and one that sets nothing declared builds, through esbuild's own css loader", async () => {
+    const root = project({
+      "index.tsx": `import "./theme.css";\nexport const x = 1;\n`,
+      "theme.css": `.x { --brand: red; color: var(--color-sunken); }\n`,
+      "ramonda.css.ts": CONFIG_FIXED,
+    });
+
+    const result = await build(root);
+
+    expect(outputs(result).css).toContain("--brand: red");
+  });
+});
+
+/**
+ * A relative `url( … )` in a block, through esbuild. Review round 2 measured it failing a build
+ * with the file right there — *Could not resolve "./img/a.png"* — because the block's stylesheet is
+ * loaded from a namespace of its own and esbuild had no folder to read the path from. It is read from
+ * the folder of the file that holds the block, as Vite reads it and as `url-not-found` checks it.
+ */
+test("a relative url() in a block resolves beside the file that holds it", async () => {
+  const root = project({
+    "index.tsx": `export const x = @@( background: url("./a.png"); );\n`,
+    "a.png": "PNG",
+  });
+
+  const result = await build(root, { loader: { ".png": "dataurl" } });
+
+  expect(outputs(result).css).toContain("url(data:image/png,PNG)");
 });

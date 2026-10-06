@@ -43,7 +43,7 @@ const USAGE = `ramonda-css — the tools for a project whose source TypeScript c
   ramonda-css [tsconfig.json]      type-check the project, mapping every diagnostic home
   ramonda-css format <paths…>      format through the project's own biome (--check to report)
   ramonda-css lint <paths…>        lint through the project's own oxlint
-  ramonda-css codegen              write the variables this project declares, and their types
+  ramonda-css codegen              write the tokens this project declares, and their types
                                    (--check reports a stale css-system instead of writing)
   ramonda-css explain <property>   what your config does to one property, and which line decided it
 
@@ -373,12 +373,12 @@ function runCodegen(only: boolean): never {
   const result = writeGenerated(process.cwd(), ts, { write: !only });
 
   if (result.config === undefined) {
-    console.log(`${TAG} no \`ramonda.css.ts\` in this project, so there are no variables to write.`);
+    console.log(`${TAG} no \`ramonda.css.ts\` in this project, so there are no tokens to write.`);
     process.exit(0);
   }
 
   if (result.declared === 0) {
-    console.log(`${TAG} ${where(result.config)} declares no variables, so nothing was written.`);
+    console.log(`${TAG} ${where(result.config)} declares no tokens, so nothing was written.`);
     process.exit(0);
   }
 
@@ -413,7 +413,7 @@ function runCodegen(only: boolean): never {
   const said = changed.length === 0 ? "already up to date" : changed.map((one) => where(one.path)).join(", ");
 
   console.log(
-    `${TAG} ${result.declared} variable${result.declared === 1 ? "" : "s"} from ${where(result.config)} — ${said}`,
+    `${TAG} ${result.declared} token${result.declared === 1 ? "" : "s"} from ${where(result.config)} — ${said}`,
   );
   process.exit(0);
 }

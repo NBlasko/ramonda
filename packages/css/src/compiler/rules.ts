@@ -1,11 +1,28 @@
-import { NARROW, namesIn, ruleFor, variablesOnlyKinds } from "../codegen";
+import { NARROW, namesIn, ruleFor, tokensOnlyKinds } from "../codegen";
+import {
+  againstDeclaration,
+  declaredByName,
+  localNames,
+  plainValue,
+  readsIn,
+  refusedAsUnknown,
+  unknownMessage,
+} from "./declaredSet";
 import { nearest } from "./nearest";
+import { urlsIn, withoutQuery } from "./urlsIn";
 import { GRAMMAR_SHAPES } from "./grammarShapes.generated";
 import { RESETS_DIFFER } from "./leaves.generated";
 import { SHAPES } from "./shapes.generated";
 import { holdsVar, misplacedWord } from "./split";
 import type { Config, PropertyRules, UnitsByFamily } from "../config";
-import type { Block as AnyBlock, BlockItem as AnyItem, Declaration, NestedRule as AnyRule, ValuePart } from "./ast";
+import type {
+  Block as AnyBlock,
+  BlockItem as AnyItem,
+  Declaration,
+  NestedRule as AnyRule,
+  TextPart,
+  ValuePart,
+} from "./ast";
 import { childrenOf, runtimeValuesIn } from "./ast";
 import { nameFor } from "./dollar";
 import { HOLE } from "./normalise";
@@ -161,6 +178,19 @@ export interface Finding {
  * hand-kept array next to it would be two lists that must agree: exactly the fault this repository
  * keeps finding. Here there is one list, and `RuleId` cannot name anything absent from it.
  */
+/**
+ * Rules that were renamed when tokens stopped being called "variables" — a config or a directive
+ * naming the old id is told the new one, rather than that it is not a rule at all.
+ */
+export const RENAMED_RULES: Readonly<Record<string, string>> = {
+  "literal-not-allowed": "hardcoded-not-allowed",
+  "unknown-variable": "unknown-token",
+  "variable-by-hand": "token-by-hand",
+  "variable-set-against-its-declaration": "token-set-against-its-declaration",
+  "variable-set-by-another-name": "custom-property-set-by-another-name",
+  "hole-as-a-variable-name": "hole-as-a-custom-property-name",
+};
+
 export const RULE_IDS = [
   "unknown-property",
   "unknown-value",
@@ -177,9 +207,14 @@ export const RULE_IDS = [
   "declaration-out-of-place",
   "rule-out-of-place",
   "override-out-of-order",
-  "variable-set-by-another-name",
-  "hole-as-a-variable-name",
+  "custom-property-set-by-another-name",
+  "hole-as-a-custom-property-name",
   "initial-value-and-syntax",
+  "property-descriptor-missing",
+  "token-set-against-its-declaration",
+  "unknown-custom-property",
+  "url-not-found",
+  "styles-another-element",
   "unknown-media-feature",
   "value-and-registered-syntax",
   "unit-not-allowed",
@@ -205,12 +240,12 @@ export const RULE_IDS = [
   "unknown-selector",
   "unknown-flag",
   "unclosed-call",
-  "unknown-variable",
-  "variable-by-hand",
+  "unknown-token",
+  "token-by-hand",
   "block-refused",
   "too-many-values",
   "missing-semicolon",
-  "literal-not-allowed",
+  "hardcoded-not-allowed",
   "declaration-does-nothing",
   // The three that need a `ts.Program`. They live in `typed.ts` — see its header for why they cannot
   // be in this file — but their ids belong here, because this is the list a config is checked
@@ -416,6 +451,21 @@ export function checkText(source: string, open: number, end: number): Finding[] 
 export interface CheckOptions {
   /** The at-rule this block IS, when it is a named site — `property`, `keyframes`, `font-face`. */
   readonly at?: string;
+  /**
+   * Where the site's `@@` is in the author's file — for a fault about something MISSING, which has
+   * no character of its own to stand on. See `propertyDescriptorMissing`.
+   *
+   * **Passed by the build only.** The editor and `ramonda-check` run the type check, whose
+   * `CssPropertyDescriptors` already says a descriptor is missing; giving them this too would report
+   * one fault twice. The build runs no type check, so there it is the only thing that says so.
+   */
+  readonly start?: number;
+  /**
+   * Whether a RELATIVE `url( … )` names a file that exists, beside the source file — and that file's
+   * name, for the message. Handed in by whoever has the disk (`urlCheckFor`); absent, the rule is off.
+   */
+  readonly urlExists?: (relative: string) => boolean;
+  readonly fileName?: string;
   /** Binding -> the generated name it resolves to. See {@link namedSites}. */
   readonly references?: ReadonlyMap<string, string>;
   /** Generated name -> the `syntax` its `@@property` declared. See {@link syntaxesIn}. */
@@ -425,7 +475,7 @@ export interface CheckOptions {
 }
 
 export function checkBlock(written: AnyBlock, options: CheckOptions = {}): Finding[] {
-  const { at, references, syntaxes, config } = options;
+  const { at, start, references, syntaxes, config } = options;
   const findings: Finding[] = [];
   blockMatchArms(written.items, findings);
   // Asked of the block as written: the arms below become groups, and their keys go with them.
@@ -461,12 +511,45 @@ export function checkBlock(written: AnyBlock, options: CheckOptions = {}): Findi
   // descriptors rather than an element's declarations, and `hole-in-a-named-block` already reports a
   // hole in one — in its own words, about its own shape. Two reports on one character is one too many.
   if (at === undefined) holeNotAllowed(block, findings);
+  if (at?.toLowerCase() === "property" && start !== undefined) propertyDescriptorMissing(block, at, start, findings);
   if (at?.toLowerCase() === "property") initialValueAndSyntax(block, findings);
   if (references !== undefined && references.size > 0) setByAnotherName(block, references, findings);
   if (config !== undefined) unknownVariable(block, config, findings);
   if (config !== undefined) variableByHand(block, config, findings);
+  if (config !== undefined) setAgainstItsDeclaration(block, config, findings);
+  // An ordinary block only: a `@@keyframes` frame (`from`, `50%`) is not a selector, and a named
+  // site styles no element of its own to keep to.
+  if (config?.styleOtherElements === false && at === undefined) stylesAnotherElement(block, findings);
+  if (options.urlExists !== undefined) urlNotFound(block, options.urlExists, options.fileName ?? "this file", findings);
+  if (config?.unknownCustomProperties === false || config?.unknownCustomProperties === "same-block") {
+    unknownCustomProperty(block, config, references, findings);
+  }
   tooManyValues(block, config?.properties, findings);
-  literalNotAllowed(block, config?.properties, findings);
+  {
+    // Review round 5: a declaration SETTING a token is where a colour is written — that is a theme —
+    // and its value is the range's to judge (`token-set-against-its-declaration`). Measured: a ranged
+    // token set to a value in its range was refused as a hardcoded colour, two rules saying opposite
+    // things about one line. So `hardcoded` stands aside on it, whichever of its paths reported.
+    const before = findings.length;
+    literalNotAllowed(block, config?.properties, findings);
+    const tokens = config === undefined ? undefined : declaredByName(config);
+    if (tokens !== undefined && tokens.size > 0 && findings.length > before) {
+      const spans: [number, number][] = [];
+      const collect = (items: readonly BlockItem[]): void => {
+        for (const item of items) {
+          if (item.kind === "rule") collect(item.items);
+          else if (tokens.has(item.property.trim()) && item.at !== undefined)
+            spans.push([item.at, item.end ?? item.at]);
+        }
+      };
+      collect(block.items);
+      const settingAToken = (at: number) => spans.some(([from, to]) => at >= from && at <= to);
+      const kept = findings
+        .splice(before)
+        .filter((one) => one.rule !== "hardcoded-not-allowed" || !settingAToken(one.at));
+      findings.push(...kept);
+    }
+  }
   doesNothing(block, findings);
   // After every rule that reads a VALUE, because it stays quiet where one has already named the
   // same word — see its own note.
@@ -510,10 +593,10 @@ export function checkBlock(written: AnyBlock, options: CheckOptions = {}): Findi
 const NESTED: readonly RuleId[] = [
   "shorthand-not-allowed",
   "too-many-values",
-  "literal-not-allowed",
+  "hardcoded-not-allowed",
   // The closed LIST before the unit: the unit is a detail of a value that is not on the list, and
   // reading it first sends the author to `2px` — which the list still refuses. The same round trip
-  // `literal-not-allowed` is placed above `unit-not-allowed` to avoid.
+  // `hardcoded-not-allowed` is placed above `unit-not-allowed` to avoid.
   "value-not-allowed",
   "unit-not-allowed",
 ];
@@ -524,7 +607,7 @@ const NESTED: readonly RuleId[] = [
  * **Per DECLARATION, which is the unit review pass 8 arrived at for the same question** on the other
  * side of the tool: a line holds as many declarations as an author cares to write, and two faults on
  * one line are two faults. The positions do not line up either — `shorthand-not-allowed` sits on the
- * property and `literal-not-allowed` on the value — so nothing narrower than the declaration could
+ * property and `hardcoded-not-allowed` on the value — so nothing narrower than the declaration could
  * group them.
  *
  * Anything outside this list is left alone on purpose. These five are the ones a project SWITCHED
@@ -832,7 +915,7 @@ const HEX = /#[0-9a-fA-F]{3,8}(?![\w-])/;
  * `var()` is the escape CSS itself provides. Neither is reported.
  */
 function literalNotAllowed(block: Block, rules: PropertyRules | undefined, findings: Finding[]): void {
-  const kinds = variablesOnlyKinds(rules);
+  const kinds = tokensOnlyKinds(rules);
   if (kinds.length === 0) return;
   dimensionNotAllowed(block, rules, findings);
   if (!kinds.includes("color")) return;
@@ -854,11 +937,9 @@ function literalNotAllowed(block: Block, rules: PropertyRules | undefined, findi
        *
        * Asked of the property rather than of the kind, because a composite property HAS no kind —
        * `border` is a width, a style and a colour at once, so `"<color>"` never reaches it and only
-       * `border: { variablesOnly: false }` can speak for it.
+       * `border: { hardcoded: true }` can speak for it.
        */
-      if (
-        (rules?.[property as keyof PropertyRules] as { variablesOnly?: boolean } | undefined)?.variablesOnly === false
-      ) {
+      if ((rules?.[property as keyof PropertyRules] as { hardcoded?: boolean } | undefined)?.hardcoded === true) {
         continue;
       }
 
@@ -869,13 +950,13 @@ function literalNotAllowed(block: Block, rules: PropertyRules | undefined, findi
         if (found === null) continue;
 
         findings.push({
-          rule: "literal-not-allowed",
+          rule: "hardcoded-not-allowed",
           at: part.at + found.index,
           length: found[0].length,
           message:
             `\`${found[0].trim()}\` is a colour written out, and this project takes colours only from its ` +
-            `own variables.\n\n        Declare it in \`ramonda.css.ts\` and write \`$group.name\`, or set ` +
-            `\`${JSON.stringify(property)}: { variablesOnly: false }\` beside \`"<color>"\`.`,
+            `own tokens.\n\n        Declare it in \`ramonda.css.ts\` and write \`$group.name\`, or set ` +
+            `\`${JSON.stringify(property)}: { hardcoded: true }\` beside \`"<color>"\`.`,
         });
         break;
       }
@@ -895,11 +976,11 @@ function literalNotAllowed(block: Block, rules: PropertyRules | undefined, findi
  *
  *     padding-left: 8px       []                     compiled
  *     width: 200px            []                     compiled
- *     border: 1px solid red   [literal-not-allowed]  only the composite was caught
+ *     border: 1px solid red   [hardcoded-not-allowed]  only the composite was caught
  *
  * It also answers the message. `Narrowed<never, Token<…>>` names neither the project nor the config
  * file; this names both, and `inOrder` drops the compiler's word where this one has spoken — the
- * same answer `unknown-variable` got.
+ * same answer `unknown-token` got.
  *
  * ## What is deliberately NOT a literal
  *
@@ -909,7 +990,7 @@ function literalNotAllowed(block: Block, rules: PropertyRules | undefined, findi
  * HOLE evaluates at render and is nobody's to read. A keyword is not a dimension at all.
  */
 function dimensionNotAllowed(block: Block, rules: PropertyRules | undefined, findings: Finding[]): void {
-  const kinds = variablesOnlyKinds(rules);
+  const kinds = tokensOnlyKinds(rules);
 
   const walkItems = (items: readonly BlockItem[]): void => {
     for (const item of items) {
@@ -946,12 +1027,12 @@ function dimensionNotAllowed(block: Block, rules: PropertyRules | undefined, fin
           if (found === undefined || Number(text) === 0) continue;
 
           findings.push({
-            rule: "literal-not-allowed",
+            rule: "hardcoded-not-allowed",
             at: value.at,
             length: text.length,
             message:
               `\`${text}\` is ${NARROW[found]?.said ?? "a value"} written out, and this project takes ` +
-              `them only from its own variables.` +
+              `them only from its own tokens.` +
               `\n\n        A custom property set here is still a value this project ships. Declare it in ` +
               `\n        \`ramonda.css.ts\` and write \`$group.name\`.`,
           });
@@ -965,7 +1046,7 @@ function dimensionNotAllowed(block: Block, rules: PropertyRules | undefined, fin
       // A colour inside one is the colour walk's, which reads the value rather than the type.
       if (primitive === undefined) continue;
       const rule = ruleFor(rules, property);
-      if (rule.variablesOnly !== true) continue;
+      if (rule.hardcoded !== false) continue;
 
       for (const value of topLevelValues(item.value)) {
         const text = value.text;
@@ -985,14 +1066,14 @@ function dimensionNotAllowed(block: Block, rules: PropertyRules | undefined, fin
         if (Number(text) === 0) continue;
 
         findings.push({
-          rule: "literal-not-allowed",
+          rule: "hardcoded-not-allowed",
           at: value.at,
           length: text.length,
           message:
             `\`${text}\` is ${NARROW[primitive]?.said ?? "a value"} written out, and this project takes ` +
-            `them only from its own variables.` +
+            `them only from its own tokens.` +
             `\n\n        Declare it in \`ramonda.css.ts\` and write \`$group.name\`, or set ` +
-            `\`${JSON.stringify(property)}: { variablesOnly: false }\`.`,
+            `\`${JSON.stringify(property)}: { hardcoded: true }\`.`,
         });
         break;
       }
@@ -1522,9 +1603,230 @@ function pathsDeclaredBy(config: Config): ReadonlySet<string> {
   const already = declaredPaths.get(config);
   if (already !== undefined) return already;
 
-  const paths = new Set(config.variables === undefined ? [] : namesIn(config.variables).map((one) => one.path));
+  const paths = new Set(config.tokens === undefined ? [] : namesIn(config.tokens).map((one) => one.path));
   declaredPaths.set(config, paths);
   return paths;
+}
+
+/**
+ * A selector whose subject is another element, in a project that keeps a block to its own element.
+ *
+ * Asked for by the user: a parent reaching into a child (`.title { … }`, `& > img`) or a sibling
+ * (`& + .card`) makes two independently composed elements depend on each other, and neither file
+ * says so. The SUBJECT is the last compound — what follows the last combinator — and a selector is
+ * the element's own when `&` is in it: `&:hover`, `&::before`, `&.active`, `&:has(> img)` and
+ * `[data-theme="dark"] &` all style this element. A nested selector with no `&` is relative, so it
+ * means a descendant, as CSS nesting reads it. A condition and a group (`@media`, `when`) are not
+ * selectors. Inside a rule already reported, nothing more is said — the one report is the fault.
+ */
+function stylesAnotherElement(block: Block, findings: Finding[]): void {
+  const subjectOf = (selector: string): string => {
+    let depth = 0;
+    let quote = "";
+    let last = 0;
+    for (let index = 0; index < selector.length; index++) {
+      const char = selector[index];
+      if (quote !== "") {
+        if (char === "\\") index++;
+        else if (char === quote) quote = "";
+        continue;
+      }
+      if (char === '"' || char === "'") quote = char;
+      else if (char === "(" || char === "[") depth++;
+      else if (char === ")" || char === "]") depth--;
+      else if (depth === 0 && /[\s>+~]/.test(char)) last = index + 1;
+    }
+    return selector.slice(last).trim();
+  };
+  const walkItems = (items: readonly BlockItem[]): void => {
+    for (const item of items) {
+      if (item.kind !== "rule") continue;
+      const prelude = item.prelude.trim();
+      const notASelector = prelude.startsWith("@") || /^(?:when|else|match)\b/.test(prelude);
+      const other = notASelector ? undefined : selectorsOf(prelude).find((one) => !subjectOf(one.trim()).includes("&"));
+      if (other === undefined || item.at === undefined) {
+        walkItems(item.items);
+        continue;
+      }
+      findings.push({
+        rule: "styles-another-element",
+        at: item.at,
+        length: item.prelude.length,
+        message:
+          `\`${other.trim()}\` styles another element, and \`styleOtherElements: false\` keeps a block to its own. ` +
+          "Give that element a block of its own, or pass one to it as a prop.",
+      });
+    }
+  };
+  walkItems(block.items);
+}
+
+/**
+ * A relative `url( … )` that points at no file.
+ *
+ * Measured through a real Vite build: `url("./img/missing.png")` built without a word and shipped as
+ * written — a 404 in the browser, so a moved image broke nothing anyone saw. TypeScript cannot help:
+ * the `*.png` declaration a Vite project has accepts any path, existing or not. So the disk is asked,
+ * beside the source file. Only `./` and `../` paths: one from the site's root (`/hero.png`) lives
+ * wherever the bundler's public folder is, which this does not guess; a query or a fragment is not
+ * part of the file. Reported on the path itself.
+ */
+function urlNotFound(block: Block, exists: (relative: string) => boolean, file: string, findings: Finding[]): void {
+  const texts = (value: readonly ValuePart[]): TextPart[] =>
+    value.flatMap((part) =>
+      part.kind === "text"
+        ? [part]
+        : part.kind === "choice"
+          ? [...part.branches.flatMap((branch) => texts(branch.value)), ...texts(part.otherwise)]
+          : part.kind === "match"
+            ? part.arms.flatMap((arm) => texts(arm.value))
+            : [],
+    );
+  const walkItems = (items: readonly BlockItem[]): void => {
+    for (const item of items) {
+      if (item.kind === "rule") {
+        walkItems(item.items);
+        continue;
+      }
+      for (const part of texts(item.value)) {
+        if (part.at === undefined) continue;
+        // Read by `urlsIn`, not a regex — see it for the two CodeQL found.
+        for (const { path, at } of urlsIn(part.text)) {
+          if (!path.startsWith("./") && !path.startsWith("../")) continue;
+          if (exists(withoutQuery(path))) continue;
+          findings.push({
+            rule: "url-not-found",
+            at: part.at + at,
+            length: path.length,
+            message:
+              `\`${path}\` does not exist next to \`${file}\`, so the browser gets a 404 for it. Fix the path, ` +
+              "or put the file back — a relative `url()` is read from the folder of the file that holds the block.",
+          });
+        }
+      }
+    }
+  };
+  walkItems(block.items);
+}
+
+/**
+ * A custom property made up in a block, in a project that switched that off — the block's half of
+ * `unknown-custom-property`; the `style` attribute's is in `typed.ts`. Set or read: `--brand: red`
+ * and `var(--brand)`, at any depth, in a choice's branches and a match's arms too.
+ */
+function unknownCustomProperty(
+  block: Block,
+  config: Config,
+  references: ReadonlyMap<string, string> | undefined,
+  findings: Finding[],
+): void {
+  /**
+   * A `@@property`'s generated name is DECLARED — written through its binding, `$(angle): 45deg` —
+   * so it is no made-up name. Measured in review round 2: both a block and a `@@keyframes` frame
+   * setting one were refused, which broke a correct build.
+   */
+  const registered = new Set([...(references?.values() ?? [])].filter((name) => name.startsWith("--")));
+  const texts = (value: readonly ValuePart[]): TextPart[] =>
+    value.flatMap((part) =>
+      part.kind === "text"
+        ? [part]
+        : part.kind === "choice"
+          ? [...part.branches.flatMap((branch) => texts(branch.value)), ...texts(part.otherwise)]
+          : part.kind === "match"
+            ? part.arms.flatMap((arm) => texts(arm.value))
+            : [],
+    );
+  const declarations: Declaration[] = [];
+  const collect = (items: readonly BlockItem[]): void => {
+    for (const item of items) {
+      if (item.kind === "rule") collect(item.items);
+      else declarations.push(item);
+    }
+  };
+  collect(block.items);
+
+  // What this block sets and reads, at any depth — the locals `"same-block"` allows.
+  const sets = declarations.map((item) => item.property.trim()).filter((name) => name.startsWith("--"));
+  const reads = declarations.flatMap((item) =>
+    texts(item.value).flatMap((part) => readsIn(part.text).map((one) => one.name)),
+  );
+  const local = localNames(sets, reads);
+
+  for (const item of declarations) {
+    const property = item.property.trim();
+    if (
+      property.startsWith("--") &&
+      item.at !== undefined &&
+      !registered.has(property) &&
+      refusedAsUnknown(config, property, local)
+    ) {
+      findings.push({
+        rule: "unknown-custom-property",
+        at: item.at,
+        length: property.length,
+        message: unknownMessage(property, config, "set"),
+      });
+    }
+    for (const part of texts(item.value)) {
+      if (part.at === undefined) continue;
+      for (const read of readsIn(part.text)) {
+        if (registered.has(read.name) || !refusedAsUnknown(config, read.name, local)) continue;
+        findings.push({
+          rule: "unknown-custom-property",
+          at: part.at + read.at,
+          length: read.length,
+          message: unknownMessage(read.name, config, "read"),
+        });
+      }
+    }
+  }
+}
+
+/**
+ * A declared variable SET in a block, against what its declaration allows — the block's half of
+ * `declaredSet.ts`, which holds the judgement a stylesheet and a `style` attribute share.
+ *
+ * Measured before it existed: a block set a fixed variable (`--color-surface-sunken: red`) at the
+ * top, in `&:hover`, in a `when` and in a match arm, and set a ranged one outside its range, in
+ * silence. A choice or a match is judged branch by branch.
+ */
+function setAgainstItsDeclaration(block: Block, config: Config, findings: Finding[]): void {
+  const named = declaredByName(config);
+  if (named.size === 0) return;
+
+  const textOf = (value: readonly ValuePart[]): string | undefined =>
+    value.every((part) => part.kind === "text")
+      ? plainValue(value.map((part) => (part.kind === "text" ? part.text : "")).join(""))
+      : undefined;
+  /** Every value the declaration may put there — one, or one per branch or arm. */
+  const outcomes = (value: readonly ValuePart[]): (string | undefined)[] => {
+    const [only] = value;
+    if (value.length === 1 && only.kind === "choice") {
+      return [...only.branches.map((branch) => textOf(branch.value)), textOf(only.otherwise)];
+    }
+    if (value.length === 1 && only.kind === "match") return only.arms.map((arm) => textOf(arm.value));
+    return [textOf(value)];
+  };
+
+  const walkItems = (items: readonly BlockItem[]): void => {
+    for (const item of items) {
+      if (item.kind === "rule") {
+        walkItems(item.items);
+        continue;
+      }
+      const one = named.get(item.property.trim());
+      if (one === undefined || item.at === undefined) continue;
+      const message = againstDeclaration(one, outcomes(item.value));
+      if (message === undefined) continue;
+      findings.push({
+        rule: "token-set-against-its-declaration",
+        at: item.at,
+        length: item.property.trim().length,
+        message,
+      });
+    }
+  };
+  walkItems(block.items);
 }
 
 /**
@@ -1557,7 +1859,7 @@ function pathsDeclaredBy(config: Config): ReadonlySet<string> {
  *
  * It renders the same as `$color.accent`, and it is the one spelling of a declared variable nothing
  * checks: rename the variable in `ramonda.css.ts` and this goes on reading the old name, which
- * nothing sets — measured for `unknown-variable`, an unset `var()` lays the element out as if the
+ * nothing sets — measured for `unknown-token`, an unset `var()` lays the element out as if the
  * property were never written. A `var()` with a fallback is left alone, because `$` cannot say one.
  */
 function variableByHand(block: Block, config: Config, findings: Finding[]): void {
@@ -1576,11 +1878,11 @@ function variableByHand(block: Block, config: Config, findings: Finding[]): void
           const path = byName.get(found[1]);
           if (path === undefined) continue;
           findings.push({
-            rule: "variable-by-hand",
+            rule: "token-by-hand",
             at: part.at + (found.index ?? 0),
             length: found[0].length,
             message:
-              `\`${found[0]}\` reads a variable this project declares, and nothing checks it written this way. ` +
+              `\`${found[0]}\` reads a token this project declares, and nothing checks it written this way. ` +
               `Write \`$${path}\`, which follows the config.`,
           });
         }
@@ -1617,26 +1919,26 @@ function unknownVariable(block: Block, config: Config, findings: Finding[]): voi
 
         const message =
           part.path === ""
-            ? "a `$` on its own names nothing — write `$group.name` for a theme variable, or `$( … )` for code."
+            ? "a `$` on its own names nothing — write `$group.name` for a token, or `$( … )` for code."
             : declared.size === 0
-              ? `\`${written}\` names a variable, and this project declares no variables.\n\n` +
+              ? `\`${written}\` names a token, and this project declares no tokens.\n\n` +
                 `        Declare them in \`ramonda.css.ts\`, with a kind and a fallback each:\n` +
-                `        variables: { $color: kind("color", { primary: { main: "#3b82f6" } }) }`
+                `        tokens: { $color: kind("color", { primary: { main: "#3b82f6" } }) }`
               : groups.has(part.path)
-                ? `\`${written}\` names a group of variables rather than one of them. Write a variable.`
+                ? `\`${written}\` names a group of tokens rather than one of them. Write a token.`
                 : !groups.has(part.path.split(".")[0])
                   ? /**
                      * A GROUP the project does not have: `$` and a name is only ever a theme
                      * variable, so `$props.tone` is most likely a reach for a value from code.
                      */
-                    `\`${written}\` names no group of variables this project has — its groups are ` +
+                    `\`${written}\` names no group of tokens this project has — its groups are ` +
                     `${[...tops].map((one) => `\`$${one}\``).join(", ")}.` +
                     (meant === undefined ? "" : ` Did you mean \`$${meant}\`?`) +
                     " A value from code is written `$( … )`."
-                  : `\`${written}\` is not a variable this project declares.` +
+                  : `\`${written}\` is not a token this project declares.` +
                     (meant === undefined ? "" : ` Did you mean \`$${meant}\`?`);
 
-        findings.push({ rule: "unknown-variable", at: part.at, length: part.length ?? written.length, message });
+        findings.push({ rule: "unknown-token", at: part.at, length: part.length ?? written.length, message });
       }
     }
   };
@@ -1695,7 +1997,7 @@ function setByAnotherName(block: Block, references: ReadonlyMap<string, string>,
     if (!read.has(binding)) continue;
 
     findings.push({
-      rule: "variable-set-by-another-name",
+      rule: "custom-property-set-by-another-name",
       at: one.at,
       length: one.name.length,
       message:
@@ -1799,6 +2101,43 @@ const ACCEPTS: Readonly<Record<string, (value: string) => boolean>> = {
  *
  * See {@link ACCEPTS} for why it is matchers, and for the reports deliberately given up.
  */
+/**
+ * A `@@property` without `syntax` or without `inherits`, which CSS requires.
+ *
+ * The browser drops such a registration whole and says nothing — the reason `initial-value-and-syntax`
+ * exists, one descriptor over. The TYPE requires both, so the editor already says so; the build does
+ * not run the type check, and measured, it compiled all three shapes. Reported on `@@property`, the
+ * only place a missing thing can be pointed at, and once for both. A descriptor written with a hole
+ * counts as written: `hole-in-a-named-block` reports that in its own words.
+ */
+/** What to write for each descriptor `propertyDescriptorMissing` asks for. */
+const WRITE_DESCRIPTOR: Readonly<Record<string, string>> = {
+  syntax: '`syntax: "<length>"` — the type it holds, or `"*"` for anything —',
+  inherits: "`inherits: false`",
+};
+
+function propertyDescriptorMissing(block: Block, at: string, start: number, findings: Finding[]): void {
+  const written = new Set(block.items.flatMap((item) => (item.kind === "declaration" ? [item.property] : [])));
+  const missing = ["syntax", "inherits"].filter((one) => !written.has(one));
+  if (missing.length === 0) return;
+
+  findings.push({
+    rule: "property-descriptor-missing",
+    at: start,
+    length: `@@${at}`.length,
+    message:
+      `This \`@@property\` has no ${missing.map((one) => `\`${one}\``).join(" and ")}, and without ` +
+      `${missing.length > 1 ? "them" : "it"} the browser drops the whole registration. Add ` +
+      missing.map((one) => WRITE_DESCRIPTOR[one]).join(" and ") +
+      // Review round 4: following the advice above, with no `initial-value` either, led straight to
+      // `initial-value-and-syntax` — so a syntax other than `"*"` is told it needs one here.
+      (missing.includes("syntax") && !written.has("initial-value")
+        ? ', and an `initial-value` — the value it starts at, which any syntax but `"*"` needs'
+        : "") +
+      ".",
+  });
+}
+
 function initialValueAndSyntax(block: Block, findings: Finding[]): void {
   let syntax: string | undefined;
   let syntaxAt = 0;
@@ -2149,7 +2488,7 @@ function rootInABlock(block: Block, findings: Finding[]): void {
         message:
           `\`${prelude}\` inside a block means the root under this element, and the root is nobody's ` +
           "descendant, so this rule applies nowhere. Set a theme's values in your own stylesheet, and " +
-          "this project's variables in `ramonda.css.ts`.",
+          "this project's tokens in `ramonda.css.ts`.",
       });
     }
   };
@@ -2264,7 +2603,7 @@ function holeInANamedBlock(block: Block, at: string, findings: Finding[]): void 
        *
        * `HolePart` carries `at` and `length` and its own note says why: *"for a squiggle over the
        * hole itself … what lets a rule about a hole's POSITION point at the hole rather than at the
-       * declaration holding it."* `hole-as-a-variable-name` reads it; this did not.
+       * declaration holding it."* `hole-as-a-custom-property-name` reads it; this did not.
        *
        * One finding per HOLE rather than per declaration, because each is a separate thing to
        * remove — `src: url({a}) format({b})` is two edits.
@@ -2308,7 +2647,7 @@ function holeInANamedBlock(block: Block, at: string, findings: Finding[]): void 
  * assignable*; `TS2561` is the compiler's own *did you mean* for a bare property name.
  */
 export const SPEAKS_OVER_TYPES: readonly RuleId[] = [
-  "literal-not-allowed",
+  "hardcoded-not-allowed",
   "unit-not-allowed",
   "value-not-allowed",
   "shorthand-not-allowed",
@@ -2502,7 +2841,7 @@ function holeAsAVariableName(block: Block, findings: Finding[]): void {
         if (before.kind !== "text" || !OPENS_A_VAR.test(before.text)) continue;
 
         findings.push({
-          rule: "hole-as-a-variable-name",
+          rule: "hole-as-a-custom-property-name",
           at: part.at ?? item.valueAt ?? item.at ?? 0,
           length: part.length ?? 2,
           /**
@@ -2971,7 +3310,7 @@ function unknownPrefix(item: Declaration, findings: Finding[]): void {
  * same question about the same file.
  *
  * So it speaks for both now, and `inOrder` drops the compiler's word on the line — the arrangement
- * `unknown-variable` and `variablesOnly` already have. A name with no near miss is reported too,
+ * `unknown-token` and `variablesOnly` already have. A name with no near miss is reported too,
  * without a suggestion: the types are not there to say it in the build.
  */
 function unknownProperty(item: Declaration, findings: Finding[], body?: string): void {

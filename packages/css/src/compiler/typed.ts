@@ -1,4 +1,15 @@
 import ts from "typescript";
+import type { Config } from "../config";
+import {
+  againstDeclaration,
+  declaredByName,
+  localNames,
+  plainValue,
+  readsIn,
+  refusedAsUnknown,
+  settingsIn,
+  unknownMessage,
+} from "./declaredSet";
 import { conflict, covers } from "./flatten";
 import { AT_RULE_LINKS, NOT_IN_A_RULE, PROPERTIES, SHORTHANDS } from "./keywords.generated";
 import { readBlock } from "./read";
@@ -51,6 +62,8 @@ export const TYPED_RULES = [
   "allow-list-is-an-interface",
   "narrower-after-a-whole-shorthand",
   "allow-list-not-css",
+  "token-set-against-its-declaration",
+  "unknown-custom-property",
 ] as const;
 
 /** A finding about a file, at an offset in the AUTHOR's own text. */
@@ -472,16 +485,18 @@ export function typedFindingsFor(
   checker: ts.TypeChecker,
   file: ts.SourceFile,
   overlay: { virtual: VirtualFile } | undefined,
+  config?: Config,
 ): TypedFinding[] {
   if (file.isDeclarationFile) return [];
   const findings: TypedFinding[] = [];
 
-  const report = (node: ts.Node, what: Omit<TypedFinding, "file" | "at" | "length">): void => {
-    const start = node.getStart(file);
+  const reportAt = (start: number, length: number, what: Omit<TypedFinding, "file" | "at" | "length">): void => {
     const at = overlay === undefined ? start : overlay.virtual.homeOf(start);
     if (at === undefined) return;
-    findings.push({ ...what, file: file.fileName, at, length: node.getWidth(file) });
+    findings.push({ ...what, file: file.fileName, at, length });
   };
+  const report = (node: ts.Node, what: Omit<TypedFinding, "file" | "at" | "length">): void =>
+    reportAt(node.getStart(file), node.getWidth(file), what);
 
   const helpers = overlay?.virtual.helpers;
   if (helpers !== undefined) overriddenBelow(checker, file, helpers, report);
@@ -501,17 +516,163 @@ export function typedFindingsFor(
   // program can follow it to the block it names.
   wholeAcrossBlocks(checker, file, helpers, report);
   allowListNotCss(checker, file, report);
+  // The `style` attribute's half of what a block and a stylesheet are asked — see `declaredSet.ts`.
+  if (config !== undefined) styleSetsADeclared(file, config, reportAt);
+  if (config?.unknownCustomProperties === false || config?.unknownCustomProperties === "same-block") {
+    styleMakesOneUp(file, config, reportAt);
+  }
 
   return findings;
+}
+
+/**
+ * A custom property made up in a `style` attribute, in a project that switched that off — the
+ * attribute's half of `unknown-custom-property`; the block's is in `rules.ts`. A key that sets one
+ * (`"--brand": …`), and a `var(--brand)` in a value — in an object, or in a `style` string. What it
+ * cannot see is the same as the other attribute check's: a computed key, an object built elsewhere.
+ */
+function styleMakesOneUp(
+  file: ts.SourceFile,
+  config: Config,
+  reportAt: (start: number, length: number, what: Omit<TypedFinding, "file" | "at" | "length">) => void,
+): void {
+  const literalText = (node: ts.Node): string | undefined =>
+    ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node) ? node.text : undefined;
+
+  /** One attribute is one "block" for `"same-block"`: what it sets, what it reads, and where. */
+  const judge = (sets: { name: string; at: number }[], reads: { name: string; at: number; length: number }[]): void => {
+    const local = localNames(
+      sets.map((one) => one.name),
+      reads.map((one) => one.name),
+    );
+    for (const one of sets) {
+      if (refusedAsUnknown(config, one.name, local)) {
+        reportAt(one.at, one.name.length, {
+          rule: "unknown-custom-property",
+          message: unknownMessage(one.name, config, "set"),
+        });
+      }
+    }
+    for (const one of reads) {
+      if (refusedAsUnknown(config, one.name, local)) {
+        reportAt(one.at, one.length, {
+          rule: "unknown-custom-property",
+          message: unknownMessage(one.name, config, "read"),
+        });
+      }
+    }
+  };
+
+  const visit = (node: ts.Node): void => {
+    if (ts.isJsxAttribute(node) && node.name.getText(file) === "style" && node.initializer !== undefined) {
+      const value = node.initializer;
+      const inner = ts.isJsxExpression(value) ? value.expression : value;
+      if (inner !== undefined && ts.isObjectLiteralExpression(inner)) {
+        const sets: { name: string; at: number }[] = [];
+        const reads: { name: string; at: number; length: number }[] = [];
+        for (const property of inner.properties) {
+          if (!ts.isPropertyAssignment(property)) continue;
+          const key = literalText(property.name);
+          if (key?.startsWith("--")) sets.push({ name: key, at: property.name.getStart(file) + 1 });
+          const text = literalText(property.initializer);
+          if (text === undefined) continue;
+          const start = property.initializer.getStart(file) + 1;
+          for (const read of readsIn(text)) reads.push({ ...read, at: start + read.at });
+        }
+        judge(sets, reads);
+      } else if (inner !== undefined) {
+        const text = literalText(inner);
+        if (text !== undefined) {
+          const start = inner.getStart(file) + 1;
+          judge(
+            settingsIn(text).map((one) => ({ name: one.name, at: start + one.at })),
+            readsIn(text).map((one) => ({ ...one, at: start + one.at })),
+          );
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+}
+
+/**
+ * A `style` attribute setting a declared variable its declaration does not allow.
+ *
+ * Measured before this: `style={{ "--color-surface-sunken": "red" }}` and the string spelling
+ * `style="--color-surface-sunken: red"` both passed, while `toStyle` refused the same setting — the
+ * one door meant for it was the only one closed. The judgement is `declaredSet.ts`'s, shared with a
+ * block and a stylesheet. A value this cannot read (a variable, a call) still refuses a FIXED
+ * variable, since nothing may set one; a ranged one is then left alone. What it cannot see at all: a
+ * computed key, an object built elsewhere, and `el.style.setProperty`.
+ */
+function styleSetsADeclared(
+  file: ts.SourceFile,
+  config: Config,
+  reportAt: (start: number, length: number, what: Omit<TypedFinding, "file" | "at" | "length">) => void,
+): void {
+  const declared = declaredByName(config);
+  if (declared.size === 0) return;
+
+  const literal = (node: ts.Expression): string | undefined =>
+    ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)
+      ? plainValue(node.text)
+      : ts.isNumericLiteral(node)
+        ? node.text
+        : undefined;
+  /** Every value an expression may put there — both arms of a ternary, or the one value. */
+  const outcomes = (node: ts.Expression): (string | undefined)[] => {
+    const inner = ts.isParenthesizedExpression(node) ? node.expression : node;
+    return ts.isConditionalExpression(inner)
+      ? [...outcomes(inner.whenTrue), ...outcomes(inner.whenFalse)]
+      : [literal(inner)];
+  };
+  const judge = (name: string, values: (string | undefined)[], start: number): void => {
+    const one = declared.get(name);
+    if (one === undefined) return;
+    const message = againstDeclaration(one, values);
+    if (message !== undefined) reportAt(start, name.length, { rule: "token-set-against-its-declaration", message });
+  };
+
+  const visit = (node: ts.Node): void => {
+    if (ts.isJsxAttribute(node) && node.name.getText(file) === "style" && node.initializer !== undefined) {
+      const value = node.initializer;
+      if (ts.isStringLiteral(value)) {
+        // The text starts one character in, after the quote.
+        for (const setting of settingsIn(value.text)) {
+          judge(setting.name, [plainValue(setting.value)], value.getStart(file) + 1 + setting.at);
+        }
+      } else if (ts.isJsxExpression(value) && value.expression !== undefined) {
+        const inner = value.expression;
+        if (ts.isObjectLiteralExpression(inner)) {
+          for (const property of inner.properties) {
+            if (!ts.isPropertyAssignment(property)) continue;
+            const key = property.name;
+            if (!ts.isStringLiteral(key) && !ts.isNoSubstitutionTemplateLiteral(key)) continue;
+            judge(key.text, outcomes(property.initializer), key.getStart(file) + 1);
+          }
+        } else if (ts.isStringLiteral(inner) || ts.isNoSubstitutionTemplateLiteral(inner)) {
+          for (const setting of settingsIn(inner.text)) {
+            judge(setting.name, [plainValue(setting.value)], inner.getStart(file) + 1 + setting.at);
+          }
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
 }
 
 /** Every file in a program — what the CLI check asks for, one file at a time. */
 export function typedFindings(
   program: ts.Program,
   overlays: ReadonlyMap<string, { virtual: VirtualFile; source: string }>,
+  configFor?: (fileName: string) => Config | undefined,
 ): TypedFinding[] {
   const checker = program.getTypeChecker();
-  return program.getSourceFiles().flatMap((file) => typedFindingsFor(checker, file, overlays.get(file.fileName)));
+  return program
+    .getSourceFiles()
+    .flatMap((file) => typedFindingsFor(checker, file, overlays.get(file.fileName), configFor?.(file.fileName)));
 }
 
 /**
@@ -1251,7 +1412,7 @@ function compiledFaults(property: string, value: string): string[] {
  * nothing itself: the TYPE is well-formed, and the value only fails when somebody tries to send it.
  * Only the component's author can fix it, so it is reported at the value, where they wrote it.
  *
- * Only LITERAL types are asked — a string or a number. `Var<"color">`, `Token<…>` and `string` have
+ * Only LITERAL types are asked — a string or a number. `AnyToken<"color">`, `Token<…>` and `string` have
  * nothing to judge; measured in this repository, 5 of 12 allow-list entries are literals. A nested
  * state (`"&:hover"?: { … }[]`) is read the same way. Each declaration is reported once, however
  * many slots name its type.

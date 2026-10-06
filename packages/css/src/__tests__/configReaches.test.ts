@@ -59,7 +59,7 @@ function editorWith(rules: string, marked: string, variables: Record<string, str
     rules.startsWith("RAW:")
       ? rules.slice(4)
       : `import { kind } from "@ramonda/css/config";\n` +
-          `export default { properties: ${rules}, variables: {\n${declared}\n} };\n`,
+          `export default { properties: ${rules}, tokens: {\n${declared}\n} };\n`,
   );
   try {
     writeGenerated(root, ts);
@@ -125,7 +125,7 @@ function editorWith(rules: string, marked: string, variables: Record<string, str
  * with it, and it does not. But it took every RULE with it and said nothing anywhere. Measured, a
  * block breaking two of the project's own settings, under nine broken configs:
  *
- *     GOOD             [unit-not-allowed] … | [literal-not-allowed] …
+ *     GOOD             [unit-not-allowed] … | [hardcoded-not-allowed] …
  *     a syntax error   (nothing)            828 completions, as if all were well
  *     units: "px"      (nothing)            828 completions
  *     … and six more, every one of them silent
@@ -313,14 +313,14 @@ describe("`$` without an import", () => {
  *
  * The trap `DESIGN.md` named before any of this was built: *"the offer has to match what the rule
  * accepts, or the editor suggests what the checker reports."* Measured, it had gone wrong here:
- * `"<color>": { variablesOnly: true }` and typing `color: ` still offered all 210 colour keywords —
- * every one of which `literal-not-allowed` then refuses.
+ * `"<color>": { hardcoded: false }` and typing `color: ` still offered all 210 colour keywords —
+ * every one of which `hardcoded-not-allowed` then refuses.
  *
  * What stays is what the setting itself leaves alone: `currentcolor`, which is a reference to the
  * inherited colour rather than a colour anybody wrote, and the CSS-wide keywords.
  */
 describe("a kind this project takes only from variables", () => {
-  const ONLY = `{ "<color>": { variablesOnly: true } }`;
+  const ONLY = `{ "<color>": { hardcoded: false } }`;
   const VARIABLES = { $brand: `kind("color", { main: "#10b981" })` };
 
   test("its keywords are not offered", () => {

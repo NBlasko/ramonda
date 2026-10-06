@@ -563,17 +563,64 @@ describe("codegen through the vite plugin", () => {
     );
     writeFileSync(
       join(root, "ramonda.css.ts"),
-      `import { kind } from "@ramonda/css/config";\nexport default { variables: { $color: kind("color", { primary: { main: "#3b82f6" } }) } };\n`,
+      `import { kind } from "@ramonda/css/config";\nexport default { tokens: { $color: kind("color", { primary: { main: "#3b82f6" } }) } };\n`,
     );
 
     const result = build(root);
 
     expect(result.ok).toBe(true);
-    expect(readFileSync(join(root, join("css-system", "variables.css")), "utf8")).toContain(
+    expect(readFileSync(join(root, join("css-system", "tokens.css")), "utf8")).toContain(
       "--color-primary-main: #3b82f6;",
     );
     // The emitted rule reads the variable and carries no fallback — the registration is the
     // guarantee, and it is in the file above.
     expect(Object.values(result.files).join("\n")).toContain("var(--color-primary-main)");
+  });
+});
+
+/**
+ * A project stylesheet setting a token its declaration does not allow — the theme half
+ * of `token-set-against-its-declaration`. A theme is plain CSS, and plain CSS is where a fixed
+ * variable gets changed; the plugin is handed every stylesheet the app loads.
+ */
+describe("a stylesheet setting a token", () => {
+  const themed = (theme: string, declared: string, rules = "") => {
+    const root = project(
+      `export const Card = () => <div className={@@( color: $color.sunken; )}>x</div>;\n`,
+      `import "./theme.css";\nimport { Card } from "./Card";\nconsole.log(Card);\n`,
+      { "theme.css": theme },
+    );
+    writeFileSync(
+      join(root, "ramonda.css.ts"),
+      `import { kind } from "@ramonda/css/config";\nexport default { tokens: { $color: kind("color", { sunken: ${declared} }) }${rules} };\n`,
+    );
+    return build(root);
+  };
+
+  test("a fixed one stops the build, at the file and line, naming the variable", () => {
+    const result = themed(`[data-theme="dark"] {\n  --color-sunken: #111827;\n}\n`, `"#f3f4f6"`);
+
+    expect(result.ok).toBe(false);
+    expect(result.output).toContain("theme.css:2:3");
+    expect(result.output).toContain("`$color.sunken` is declared without a `range`");
+  });
+
+  test("one given a range builds, with the theme's value in it", () => {
+    const result = themed(
+      `[data-theme="dark"] { --color-sunken: #111827; }\n`,
+      `{ value: "#f3f4f6", range: ["#f3f4f6", "#111827"] }`,
+    );
+
+    expect(result.ok).toBe(true);
+  });
+
+  test("and the rule switched off in the config is honoured here too", () => {
+    const result = themed(
+      `[data-theme="dark"] { --color-sunken: #111827; }\n`,
+      `"#f3f4f6"`,
+      `, rules: { "token-set-against-its-declaration": "off" }`,
+    );
+
+    expect(result.ok).toBe(true);
   });
 });

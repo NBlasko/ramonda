@@ -1,4 +1,5 @@
 import { CssBlockError } from "./errors";
+import { urlCheckFor } from "./urls";
 import type { Config } from "../config";
 import { type Imported, namedSites, syntaxesIn } from "./references";
 import { readBlock } from "./read";
@@ -71,6 +72,8 @@ export function checkedSource(
   ignored: readonly Ignored[];
 } {
   const { read, config, tolerant } = options;
+  // The disk, for `url-not-found` — see `urlCheckFor`.
+  const disk = urlCheckFor(fileName);
   const out: Finding[] = [];
   /** What a BLOCK declares, which is the half that answers whether anything ever sets a name. */
   const blockSets: string[] = [];
@@ -79,7 +82,7 @@ export function checkedSource(
   /** Every `@@property( … )` this file declares — see {@link RegisteredSite}. */
   const registered: RegisteredSite[] = [];
   // The same reader the build uses, or none — and none means a cross-module reference stays a hole,
-  // which `hole-as-a-variable-name` reports. A checker that resolved less than the build would call
+  // which `hole-as-a-custom-property-name` reports. A checker that resolved less than the build would call
   // a working theme a fault; one that resolved more would miss one. Both consumers pass the same.
   const references = namedSites(source, { filename: fileName, read });
   // What each registered property may HOLD, beside what it is called — see `syntaxesIn`.
@@ -153,13 +156,22 @@ export function checkedSource(
         ? []
         : [
             ...checkText(source, site.open, read.end),
-            ...checkBlock(read.block, { at: site.at, references, syntaxes, config }),
+            ...checkBlock(read.block, { at: site.at, references, syntaxes, config, ...disk }),
           ]),
     );
 
-    // A named site sets nothing on an element; a `@@property` registers a name, and the name it
-    // registers is what a reference to it resolves to — so both are counted where the build counts
-    // them. See `transform`.
+    // A `@@property` registers a name, and the name it registers is what a reference to it resolves
+    // to — so both are counted where the build counts them. See `transform`.
+    //
+    // A `@@keyframes` frame DOES set a custom property, on the element it animates: review round 2
+    // measured `registered-never-set` on a property only an animation sets — the pattern the docs
+    // show for animating one — because frames were counted as setting nothing.
+    if (site.at === "keyframes") {
+      const found = variablesIn(read.block);
+      blockSets.push(...found.set);
+      reads.push(...found.read);
+      readsRegistered.push(...(found.readsRegistered ?? []));
+    }
     if (site.at === undefined) {
       const found = variablesIn(read.block);
       blockSets.push(...found.set);

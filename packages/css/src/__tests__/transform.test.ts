@@ -1,7 +1,12 @@
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import { CssBlockError } from "../compiler/errors";
 import { checkSource } from "../compiler/source";
 import { transform } from "../compiler/transform";
+import { Sheet } from "../compiler/sheet";
+import { kind } from "../declared";
 import { namedSites } from "../compiler/references";
 
 /**
@@ -850,8 +855,11 @@ describe("the reference map and the emitted rule", () => {
     ["nested rules and odd spacing", `const x = @@keyframes(\n\n  from   {\n opacity:0;\n  }\n\n);\n`],
   ])("agree for %s", (_what, source) => {
     const out = emit(source);
+    // What `x` compiles to in code is what `$(x)` resolves to in a block — the BINDING, which for a
+    // face is its family and for the rest is the rule's name. See `bindingForSite`.
+    const bound = JSON.parse(/const x = ("(?:[^"\\]|\\.)*")/.exec(out?.code ?? "")?.[1] ?? "null");
 
-    expect(namedSites(source).get("x")).toBe(out?.blocks[0].className);
+    expect(namedSites(source).get("x")).toBe(bound);
   });
 });
 
@@ -1139,5 +1147,237 @@ describe("a refusal names the rule that made it", () => {
     ["a hole where a property belongs", "const w = 1;\nconst a = @@(\n  $(w): red;\n);\n"],
   ])("%s names no rule, because none made it", (_what, source) => {
     expect(refused(source)).not.toMatch(/^\/a\.tsx:\d+:\d+\s+[a-z-]+:/);
+  });
+});
+
+/**
+ * The build refuses a `@@property` the browser would drop, missing `syntax` or `inherits`, as it
+ * already refused one missing `initial-value`. It does not run the type check, which says so in the
+ * editor — measured, it compiled both before.
+ */
+describe("a @@property missing a descriptor CSS requires", () => {
+  test.each([
+    ["syntax", `inherits: false; initial-value: 0%;`],
+    ["inherits", `syntax: "<percentage>"; initial-value: 0%;`],
+  ])("without `%s` stops the build, naming it", (name, body) => {
+    expect(() => transform(`const w = @@property( ${body} );\nexport default w;\n`)).toThrow(
+      new RegExp(`property-descriptor-missing: .*has no \`${name}\``),
+    );
+  });
+});
+
+/**
+ * A condition written at the wrong level is refused with the spelling that level takes.
+ *
+ * `when` chooses a group and the choice chooses a value — the composing page's table. Written the
+ * other way round, the build refused all three, but with a sentence about something else: `color`
+ * not accepting the word `when`, braces versus `$( )`, a hole as a declaration. The editor and the
+ * build must say the same, so both are asked.
+ */
+describe("a condition at the wrong level", () => {
+  const block = (body: string) => `declare const a: boolean;\nconst x = @@( ${body} );\nexport default x;\n`;
+  const editor = (body: string) => checkSource(block(body), "/a.tsx", { tolerant: true }).map((one) => one.message);
+
+  test.each([
+    ["`when` in a value", `color: when $(a) red;`],
+    ["`when … else` in a value", `color: when $(a) { red } else { blue };`],
+  ])("%s names the choice", (_what, body) => {
+    expect(() => transform(block(body))).toThrow(/`when` chooses a group — for a value, write `\$\(c\) \? a : b`/);
+    expect(editor(body)).toEqual([
+      expect.stringContaining("`when` chooses a group — for a value, write `$(c) ? a : b`"),
+    ]);
+  });
+
+  test.each([
+    ["in parens", `$(a) ? ( color: red; ) : ( color: blue; );`],
+    ["in braces", `$(a) ? { color: red; } : { color: blue; }`],
+  ])("a choice over groups, %s, names `when`", (_what, body) => {
+    expect(() => transform(block(body))).toThrow(
+      /a choice picks a value — for a group, write `when \$\(c\) \{ … \} else \{ … \}`/,
+    );
+    expect(editor(body)).toEqual([
+      expect.stringContaining("a choice picks a value — for a group, write `when $(c) { … } else { … }`"),
+    ]);
+  });
+});
+
+/** The build refuses a fixed token set in a block — see `dollarRule.test.ts` for the rest. */
+test("a fixed token set in a block stops the build", () => {
+  const config = { tokens: { $color: kind("color", { sunken: "#f3f4f6" }) } };
+
+  expect(() => transform(`const x = @@( --color-sunken: red; );\nexport default x;\n`, { config })).toThrow(
+    /token-set-against-its-declaration: `\$color\.sunken` is declared without a `range`/,
+  );
+});
+
+/** A made-up custom property stops the build when the project switched them off — see `dollarRule.test.ts`. */
+test("a made-up custom property stops the build under `unknownCustomProperties: false`", () => {
+  const config = { tokens: { $color: kind("color", { a: "#000" }) }, unknownCustomProperties: false };
+
+  expect(() => transform(`const x = @@( color: var(--brand); );\nexport default x;\n`, { config })).toThrow(
+    /unknown-custom-property: `--brand` is a custom property this project does not declare/,
+  );
+  expect(
+    transform(`const x = @@( color: var(--brand); );\nexport default x;\n`, { config: { tokens: config.tokens } }),
+  ).toBeDefined();
+});
+
+/**
+ * A `@@font-face` binding stands for the family it declares.
+ *
+ * Measured before: `const brand = @@font-face( font-family: "Brand"; … )` bound `brand` to a hash,
+ * so `font-family: $(brand)` asked the browser for a family called `r-…` while the rule declared
+ * `"Brand"` — the font silently never loaded. The binding is what makes the family a reference: a
+ * typo is a TypeScript error, and renaming the font is one edit.
+ */
+describe("a @@font-face binding", () => {
+  const sheetOf = (source: string) => {
+    const result = transform(source, { filename: "C.tsx" });
+    if (result === undefined) throw new Error("not transformed");
+    const sheet = new Sheet();
+    sheet.add("C.tsx", result.blocks);
+    return { code: result.code, css: sheet.css() };
+  };
+
+  test("is the family as written, in a block and in code", () => {
+    const { code, css } = sheetOf(
+      `const brand = @@font-face( font-family: "Brand"; src: url("/b.woff2") format("woff2"); );\n` +
+        `export const title = @@( font-family: $(brand), sans-serif; );\nexport { brand };\n`,
+    );
+
+    expect(css).toContain(`font-family:"Brand", sans-serif;`);
+    expect(css).not.toMatch(/font-family:r-/);
+    expect(code).toContain(`const brand = "\\"Brand\\""`);
+  });
+
+  test("two faces of one family — two weights — stay two rules", () => {
+    const { css } = sheetOf(
+      `const regular = @@font-face( font-family: "Brand"; src: url("/r.woff2"); font-weight: 400; );\n` +
+        `const bold = @@font-face( font-family: "Brand"; src: url("/b.woff2"); font-weight: 700; );\n` +
+        `export { regular, bold };\n`,
+    );
+
+    expect(css.match(/@font-face/g)).toHaveLength(2);
+  });
+});
+
+/**
+ * A relative `url( … )` that points at no file.
+ *
+ * Measured through a real Vite build: `url("./img/missing.png")` built without a word and shipped as
+ * written, a 404 in the browser — so an image moved, or a component moved away from its image,
+ * broke nothing anyone saw. TypeScript does not help either: the `*.png` declaration a Vite project
+ * has accepts any path, existing or not. So the file is asked of the disk, beside the source file.
+ */
+describe("a url() that points at no file", () => {
+  const dir = mkdtempSync(join(tmpdir(), "ramonda-url-"));
+  mkdirSync(join(dir, "img"));
+  mkdirSync(join(dir, "fonts"));
+  writeFileSync(join(dir, "img", "a.png"), "PNG");
+  writeFileSync(join(dir, "img", "icons.svg"), "<svg/>");
+  const file = join(dir, "Card.tsx");
+  const block = (body: string) => `export const x = @@( ${body} );\n`;
+
+  test.each([
+    ["a missing image", `background: url("./img/missing.png");`, "./img/missing.png"],
+    ["unquoted", `background: url(./img/missing.png);`, "./img/missing.png"],
+    ["one folder up", `background: url('../nowhere.png');`, "../nowhere.png"],
+  ])("stops the build: %s", (_what, body, path) => {
+    expect(() => transform(block(body), { filename: file })).toThrow(
+      new RegExp(`url-not-found: \`${path.replace(/[.]/g, "\\.")}\` does not exist next to \`Card\\.tsx\``),
+    );
+  });
+
+  test("in a @@font-face too", () => {
+    const source = `const f = @@font-face( font-family: "X"; src: url("./fonts/x.woff2") format("woff2"); );\nexport { f };\n`;
+
+    expect(() => transform(source, { filename: file })).toThrow(/url-not-found: `\.\/fonts\/x\.woff2`/);
+  });
+
+  test.each([
+    ["an image that is there", `background: url("./img/a.png");`],
+    ["a fragment or a query on one that is there", `background: url("./img/icons.svg#home"), url("./img/a.png?v=2");`],
+    ["a path from the site's root, which this cannot place", `background: url("/hero.png");`],
+    ["another site", `background: url("https://example.com/a.png");`],
+    ["data", `background: url("data:image/png;base64,AAAA");`],
+  ])("leaves alone %s", (_what, body) => {
+    expect(() => transform(block(body), { filename: file })).not.toThrow();
+  });
+
+  test("and the editor reports it on the path", () => {
+    const source = block(`background: url("./img/missing.png");`);
+    const found = checkSource(source, file, { tolerant: true }).filter((one) => one.rule === "url-not-found");
+
+    expect(found.map((one) => [one.at, one.length])).toEqual([
+      [source.indexOf("./img/missing.png"), "./img/missing.png".length],
+    ]);
+  });
+});
+
+/**
+ * `styleOtherElements: false` in the build, and its one exception: content nobody made a component
+ * of — markup from a Markdown file or a CMS — is styled from its container, with the reason written.
+ */
+describe("a block reaching another element under `styleOtherElements: false`", () => {
+  const config = { styleOtherElements: false };
+
+  test("stops the build", () => {
+    expect(() => transform(`const x = @@( & > img { width: 100%; } );\nexport default x;\n`, { config })).toThrow(
+      /styles-another-element: `& > img` styles another element/,
+    );
+  });
+
+  test("and builds with a reason written above it", () => {
+    const source =
+      `const prose = @@(\n  /* ramonda-css-ignore the markup comes from Markdown, not from components */\n` +
+      `  & p { margin: 0 0 1em; }\n);\nexport default prose;\n`;
+
+    expect(() => transform(source, { config })).not.toThrow();
+  });
+});
+
+/**
+ * A misspelt binding in a block. Review round 3: the docs say a typo in `$(brand)` is an error, and
+ * the build's error said only that a block takes no runtime value — true, and pointing away from the
+ * typo. The editor has TypeScript's *did you mean*; the build now says it too.
+ */
+describe("a misspelt binding in a block", () => {
+  const source = (written: string) =>
+    `const brand = @@font-face( font-family: "B"; src: url("/b.woff2"); );\n` +
+    `export const t = @@( font-family: ${written}, serif; );\nexport { brand };\n`;
+
+  test("names the binding it was probably meant to be", () => {
+    expect(() => transform(source("$(brnd)"), { filename: "C.tsx" })).toThrow(
+      /Did you mean `\$\(brand\)`, declared in this file\?/,
+    );
+  });
+
+  test("and says nothing of the kind about a name close to none", () => {
+    expect(() => transform(source("$(somethingElse)"), { filename: "C.tsx" })).toThrow(/^(?![\s\S]*Did you mean)/);
+  });
+});
+
+/**
+ * Review round 4: a message's advice, followed, has to build — not lead to the next refusal.
+ */
+describe("advice that leads somewhere", () => {
+  test("a @@property missing its initial-value too is told about all three at once", () => {
+    expect(() => transform(`const w = @@property( );\nexport { w };\n`, { filename: "C.tsx" })).toThrow(
+      /and an `initial-value`/,
+    );
+  });
+
+  test("and one that has its initial-value is not told to add one", () => {
+    expect(() =>
+      transform(`const w = @@property( initial-value: 0px; );\nexport { w };\n`, { filename: "C.tsx" }),
+    ).toThrow(/^(?![\s\S]*an `initial-value`)/);
+  });
+
+  test("a fixed token's range is written with its own value in it, since a range must hold it", () => {
+    const config = { tokens: { $color: kind("color", { accent: "#10b981" }) } };
+
+    expect(() => transform(`export const a = @@( --color-accent: red; );\n`, { filename: "C.tsx", config })).toThrow(
+      /`\{ value: "#10b981", range: \["#10b981", …\] \}`/,
+    );
   });
 });

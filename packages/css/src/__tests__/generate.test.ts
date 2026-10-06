@@ -50,7 +50,7 @@ afterEach(() => {
 const CONFIG = `import { kind } from "@ramonda/css/config";
 
 export default {
-  variables: {
+  tokens: {
     $color: kind("color", { primary: { main: "#3b82f6" } }),
     $size: kind("length", { control: { md: "30px" } }),
   },
@@ -71,22 +71,20 @@ describe("running codegen", () => {
     const result = writeGenerated(project, ts);
 
     expect(result.files.map((one) => one.path)).toEqual([
-      join(project, join("css-system", "variables.css")),
+      join(project, join("css-system", "tokens.css")),
       join(project, join("css-system", "index.ts")),
     ]);
-    expect(readFileSync(join(project, join("css-system", "variables.css")), "utf8")).toContain(
+    expect(readFileSync(join(project, join("css-system", "tokens.css")), "utf8")).toContain(
       "--color-primary-main: #3b82f6;",
     );
     expect(readFileSync(join(project, join("css-system", "index.ts")), "utf8")).toContain("--color-primary-main");
   });
 
-  test("every declared variable is registered, which is what makes a bare `var()` safe", () => {
+  test("every token is registered, which is what makes a bare `var()` safe", () => {
     write("ramonda.css.ts", CONFIG);
     writeGenerated(project, ts);
 
-    expect(readFileSync(join(project, join("css-system", "variables.css")), "utf8").match(/@property/g)).toHaveLength(
-      2,
-    );
+    expect(readFileSync(join(project, join("css-system", "tokens.css")), "utf8").match(/@property/g)).toHaveLength(2);
   });
 
   /**
@@ -113,7 +111,7 @@ describe("running codegen", () => {
     const again = writeGenerated(project, ts);
 
     expect(again.files.some((one) => one.changed)).toBe(true);
-    expect(readFileSync(join(project, join("css-system", "variables.css")), "utf8")).toContain("#10b981");
+    expect(readFileSync(join(project, join("css-system", "tokens.css")), "utf8")).toContain("#10b981");
   });
 
   test("no config is no files, and it says which it was", () => {
@@ -136,7 +134,7 @@ describe("running codegen", () => {
     write(
       "ramonda.css.ts",
       `import { kind } from "@ramonda/css/config";
-export default { variables: { $a: kind("length", { b: { c: "1px" }, "b-c": "2px" }) } };
+export default { tokens: { $a: kind("length", { b: { c: "1px" }, "b-c": "2px" }) } };
 `,
     );
 
@@ -161,7 +159,7 @@ export default { variables: { $a: kind("length", { b: { c: "1px" }, "b-c": "2px"
  */
 describe("a file already at the generated name", () => {
   const declaring = `import { kind } from "@ramonda/css/config";
-export default { variables: { $space: kind("length", { sm: "8px" }) } };
+export default { tokens: { $space: kind("length", { sm: "8px" }) } };
 `;
 
   test("one that is not ours is refused, and kept", () => {
@@ -199,10 +197,10 @@ export default { variables: { $space: kind("length", { sm: "8px" }) } };
   /** The stylesheet is the other half, and it is written by the same call. */
   test("and the same is true of the stylesheet", () => {
     write("ramonda.css.ts", declaring);
-    writeInto("css-system", "variables.css", ".mine { color: red; }\n");
+    writeInto("css-system", "tokens.css", ".mine { color: red; }\n");
 
-    expect(() => writeGenerated(project, ts)).toThrow(/variables\.css/);
-    expect(readFileSync(join(project, join("css-system", "variables.css")), "utf8")).toContain(".mine");
+    expect(() => writeGenerated(project, ts)).toThrow(/tokens\.css/);
+    expect(readFileSync(join(project, join("css-system", "tokens.css")), "utf8")).toContain(".mine");
   });
 });
 
@@ -224,7 +222,7 @@ export default { variables: { $space: kind("length", { sm: "8px" }) } };
  */
 describe("where the generated files go", () => {
   const declaring = `import { kind } from "@ramonda/css/config";
-export default { variables: { $space: kind("length", { sm: "8px" }) } };
+export default { tokens: { $space: kind("length", { sm: "8px" }) } };
 `;
 
   test("into `css-system/` beside the config, by default", () => {
@@ -233,7 +231,7 @@ export default { variables: { $space: kind("length", { sm: "8px" }) } };
 
     expect(result.files.map((one) => relative(project, one.path)).sort()).toEqual([
       join("css-system", "index.ts"),
-      join("css-system", "variables.css"),
+      join("css-system", "tokens.css"),
     ]);
     expect(existsSync(join(project, "css-system", "index.ts"))).toBe(true);
   });
@@ -250,7 +248,7 @@ export default { variables: { $space: kind("length", { sm: "8px" }) } };
     write("ramonda.css.ts", declaring);
     writeGenerated(project, ts);
 
-    expect(readFileSync(join(project, "css-system", "variables.css"), "utf8")).toContain("--space-sm");
+    expect(readFileSync(join(project, "css-system", "tokens.css"), "utf8")).toContain("--space-sm");
   });
 
   test("`outDir` renames the folder", () => {
@@ -259,7 +257,7 @@ export default { variables: { $space: kind("length", { sm: "8px" }) } };
 
     expect(result.files.map((one) => relative(project, one.path)).sort()).toEqual([
       join("design-system", "index.ts"),
-      join("design-system", "variables.css"),
+      join("design-system", "tokens.css"),
     ]);
   });
 
@@ -298,5 +296,30 @@ export default { variables: { $space: kind("length", { sm: "8px" }) } };
 
     expect(() => writeGenerated(project, ts)).toThrow(/css-system/);
     expect(readFileSync(join(project, "css-system", "index.ts"), "utf8")).toContain("a year of work");
+  });
+});
+
+/**
+ * The sheet was `variables.css` before tokens were called tokens. Codegen removes the old one it
+ * wrote — its first line says so — and leaves a file somebody else wrote at that name alone.
+ */
+describe("the sheet's old name", () => {
+  test("a generated `variables.css` is removed when codegen runs", () => {
+    write("ramonda.css.ts", CONFIG);
+    writeInto("css-system", "variables.css", "/* Generated by @ramonda/css from ramonda.css.ts. Do not edit. */\n");
+
+    writeGenerated(project, ts);
+
+    expect(existsSync(join(project, "css-system", "variables.css"))).toBe(false);
+    expect(existsSync(join(project, "css-system", "tokens.css"))).toBe(true);
+  });
+
+  test("and a hand-written one is kept", () => {
+    write("ramonda.css.ts", CONFIG);
+    writeInto("css-system", "variables.css", ":root { --mine: 1px; }\n");
+
+    writeGenerated(project, ts);
+
+    expect(readFileSync(join(project, "css-system", "variables.css"), "utf8")).toBe(":root { --mine: 1px; }\n");
   });
 });

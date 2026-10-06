@@ -835,7 +835,7 @@ for (const group of groups.values()) {
    * **`checkSource` rather than the sequence written out here, and that was a real divergence.** This
    * used to call `readBlock` with no `resolve` and `checkBlock` with no `references`, while
    * `ramonda-check` passed both — so a reference to a named site read here as a HOLE rather than as
-   * the name it compiles to, and `variable-set-by-another-name` could never fire on a documented
+   * the name it compiles to, and `custom-property-set-by-another-name` could never fire on a documented
    * example. Three callers of one sequence, and this was the one that had drifted.
    *
    * A refused block loses the other blocks in its file rather than only itself, which the per-site

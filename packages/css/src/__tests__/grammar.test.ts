@@ -696,7 +696,7 @@ describe("the `@@` marker's colour", () => {
 });
 
 /**
- * `$color.primary.main` — a declared variable, coloured as one.
+ * `$color.primary.main` — a token, coloured as one.
  *
  * **This exists for a mis-colouring rather than for a missing colour**, which is the worse of the
  * two. Measured before the grammar was added, on `color: $color.primary.main`:
@@ -709,7 +709,7 @@ describe("the `@@` marker's colour", () => {
  * the middle of a variable path and has no way to know it means nothing — and `size`, `content`,
  * `border` and `grid` are all ordinary names for a group of variables.
  */
-describe("a declared variable in a value", () => {
+describe("a token in a value", () => {
   const CODE = `const a = <div css=@@( color: $color.primary.main; )>x</div>;\n`;
 
   test("the sigil is this language's marker, exactly as `@@` is", () => {

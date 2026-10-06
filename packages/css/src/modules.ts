@@ -15,7 +15,7 @@ import { dirname, resolve } from "node:path";
  * extension is tried in the order a TypeScript project uses.
  *
  * **A miss costs nothing — for the BUILD.** The reference stays a hole, and a hole where `var()`
- * takes a name is reported by `hole-as-a-variable-name`, so the author is told rather than shipped a
+ * takes a name is reported by `hole-as-a-custom-property-name`, so the author is told rather than shipped a
  * rule that silently does nothing.
  *
  * **It costs the PAIR, though, and that is the part this got wrong.** The editor resolves with

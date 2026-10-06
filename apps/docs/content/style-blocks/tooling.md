@@ -93,7 +93,7 @@ your source is the class in the served HTML — see [styling](/styling).
 **It is not a theme system.** A theme is custom properties, and switching one is an attribute on
 `<html>` — no render, no JavaScript per element, and nothing here to configure. The compiler can
 declare the tokens for you and check that you read them by the right name, which is a different job
-from owning them — see [names the stylesheet sees](/style-blocks/variables#theming).
+from owning them — see [names the stylesheet sees](/style-blocks/tokens#theming).
 
 **It does not decide anything from the order of your classes.** Nothing can — the order of names in a
 `class` attribute has no meaning in CSS, which is exactly why composition keeps ONE class per thing

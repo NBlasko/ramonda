@@ -19,8 +19,8 @@ import { PRIMITIVE } from "../compiler/keywords.generated";
 describe("explain", () => {
   const RULES: PropertyRules = {
     "*": { shorthand: false, arity: 1 },
-    "<length>": { variablesOnly: true, units: ["px", "rem"] },
-    "border-radius": { variablesOnly: false },
+    "<length>": { hardcoded: false, units: ["px", "rem"] },
+    "border-radius": { hardcoded: true },
     "z-index": { values: [0, 1, 10] },
   };
 
@@ -34,17 +34,17 @@ describe("explain", () => {
   });
 
   test("one from the kind says which kind", () => {
-    const [only] = explain(RULES, "padding-left").settings.filter((one) => one.name === "variablesOnly");
+    const [only] = explain(RULES, "padding-left").settings.filter((one) => one.name === "hardcoded");
 
     expect(only.from).toBe("<length>");
-    expect(only.value).toBe(true);
+    expect(only.value).toBe(false);
   });
 
   test("and a property overriding its kind says both", () => {
-    const [only] = explain(RULES, "border-radius").settings.filter((one) => one.name === "variablesOnly");
+    const [only] = explain(RULES, "border-radius").settings.filter((one) => one.name === "hardcoded");
 
     expect(only.from).toBe("border-radius");
-    expect(only.value).toBe(false);
+    expect(only.value).toBe(true);
     expect(only.overriding).toBe("<length>");
   });
 

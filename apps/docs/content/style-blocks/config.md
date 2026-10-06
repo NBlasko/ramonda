@@ -1,6 +1,6 @@
 ---
 title: The config file
-description: What ramonda.css.ts holds — the variables a project declares, and the CSS it decides not to allow.
+description: What ramonda.css.ts holds — the tokens a project declares, and the CSS it decides not to allow.
 section: Style blocks
 order: 116
 ---
@@ -8,7 +8,7 @@ order: 116
 # The config file
 
 `ramonda.css.ts` sits at the root of a project and does two jobs. It **declares** what the project
-owns — the variables [`$` reads](/style-blocks/variables) — and it **narrows** what a block may
+owns — the tokens [`$` reads](/style-blocks/tokens) — and it **narrows** what a block may
 say. Both reach every consumer: your editor, `ramonda-css`, and the build.
 
 It is TypeScript rather than JSON because a setting may depend on the environment, and because you
@@ -19,11 +19,11 @@ get completion for the property names.
 import { kind } from "@ramonda/css/config";
 
 export default {
-  variables: {
+  tokens: {
     $color: kind("color", { accent: "#10b981" }),
   },
   properties: {
-    "<color>": { variablesOnly: true },
+    "<color>": { hardcoded: false },
   },
 };
 ```
@@ -50,7 +50,7 @@ shipping without them.
 export default {
   properties: {
     "*": { shorthand: false }, // every property
-    "<length>": { variablesOnly: true }, // every property that takes a length
+    "<length>": { hardcoded: false }, // every property that takes a length
     "padding-left": { units: ["px"] }, // this one
   },
 };
@@ -63,8 +63,8 @@ written where the exception is:
 ```ts alternatives
 export default {
   properties: {
-    "<length>": { variablesOnly: true },
-    "border-radius": { variablesOnly: false }, // except here
+    "<length>": { hardcoded: false },
+    "border-radius": { hardcoded: true }, // except here
   },
 };
 ```
@@ -78,7 +78,7 @@ $ npx ramonda-css explain padding-left
   padding-left   a length or a percentage
 
     shorthand      false        "*"
-    variablesOnly  true         "<length>"
+    hardcoded      false        "<length>"
     units          px           "padding-left"
 
   from ramonda.css.ts
@@ -106,17 +106,20 @@ separate:
 properties: { "padding-left": { units: ["px"] } },
 ```
 
-### `variablesOnly` — no values written out
+### `hardcoded: false` — no values written out
 
 ```ts
-properties: { "<color>": { variablesOnly: true } },
+properties: { "<color>": { hardcoded: false } },
 ```
 
-`color: #ff0000` is then refused and `color: $color.accent` is not. It is the setting that turns a
-palette from a recommendation into something the build enforces.
+`color: #ff0000` is then refused and `color: $color.accent` is not — a colour has to come from a
+token. It is the setting that turns a palette from a recommendation into something the build
+enforces. `hardcoded: true` on one property exempts it again.
 
-Two things it deliberately lets through: a bare `0`, which needs no unit and is nobody's hardcoded
-brand colour, and `var()`, which is the escape CSS itself provides.
+Three things it deliberately lets through: a bare `0`, which needs no unit and is nobody's hardcoded
+brand colour (`0px` is refused); `var()`, which is the escape CSS itself provides; and a word that
+names another value rather than being one — `currentcolor`, and CSS's own `inherit`, `initial`,
+`unset` and `revert`. `transparent` is a colour, and is refused like any other.
 
 ### `values` — a closed list
 
@@ -151,13 +154,62 @@ properties: { "padding": { arity: 2 } },
 
 ## The other keys
 
-### `alsoSets` — names from a stylesheet this does not compile
+### `externalCustomProperties` — names from a stylesheet this does not compile
 
 A `var(--name)` is checked against every name the build sets. When the name comes from a stylesheet
 the compiler never sees — a design system you install, a theme file — list it:
 
 ```ts
-alsoSets: ["--brand-hue", "--brand-chroma"],
+externalCustomProperties: ["--brand-hue", "--brand-chroma"],
+```
+
+### `unknownCustomProperties` — no names made up on the spot
+
+```ts
+unknownCustomProperties: false,
+```
+
+`--brand: red;` and `var(--brand)` are then refused in a block and in a `style` attribute — any name
+that is not a token and not in `externalCustomProperties`. A name invented in one place and read in
+another works by agreement, and a typo breaks the agreement in silence. With this off, every custom
+property comes through a door that is checked:
+
+- a design value is a **token** — `$color.accent`;
+- a value from code is a **`@@property( … )`**, read as `var($(name))`;
+- a name an outside stylesheet sets goes in **`externalCustomProperties`**.
+
+**`"same-block"` allows one more: a local.** A name one block both sets and reads is fine there —
+`--gap: 4px; padding: var(--gap);` — and nowhere else: a read the block does not set is refused (the
+usual typo), and so is a setting the block does not read, since that could only be for another
+element. A `style` attribute counts as one block. A value shared between elements is a token or a
+`@@property`.
+
+```ts
+unknownCustomProperties: "same-block",
+```
+
+Left out, any name is allowed, as in CSS. Stylesheets of your own are not checked for it.
+
+### `styleOtherElements` — a block styles its own element
+
+```ts
+styleOtherElements: false,
+```
+
+A parent reaching into a child — `.title { … }`, `& > img` — or into a sibling — `& + .card` — makes
+two elements that are composed apart depend on each other, and neither file says so. With this off,
+a selector is refused when its subject, the part after the last space, `>`, `+` or `~`, is not `&`.
+So `&:hover`, `&::before`, `&.active`, `&:has(> img)` and `[data-theme="dark"] &` stay: each of them
+styles this element. Give the child a block of its own, or pass one to it as a prop.
+
+Markup nobody made a component of — from Markdown, from a CMS — has no element to give a block, so
+it is styled from its container, with the reason written above:
+
+```tsx
+const prose = @@(
+  /* ramonda-css-ignore the markup comes from Markdown, not from components */
+  & p { margin: 0 0 1em; }
+);
 ```
 
 ### `outDir` — where `css-system/` goes

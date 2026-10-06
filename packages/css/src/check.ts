@@ -13,6 +13,7 @@ import { readModule } from "./modules";
 import { checkTemplates } from "./compiler/rules";
 import { fileMayHoldABlock, mayHoldABlock } from "./compiler/scan";
 import { TYPED_RULES, registeredNeverSet, typedFindings } from "./compiler/typed";
+import { refusedAsUnknown } from "./compiler/declaredSet";
 import type { RegisteredSite } from "./compiler/variables";
 import { type VirtualFile, virtualFile } from "./compiler/virtual";
 
@@ -235,11 +236,14 @@ export function checkProject(tsconfig: string, options: CheckOptions = {}): Repo
    * at the wrong thing.
    */
   for (const one of sheet.unknownVariables()) {
+    // A name the strict option already refuses is one fault, and it has its report: a second, about
+    // the same `var()`, would read as two. Measured in review round 2 on `var(--nope)`.
+    if (refusedAsUnknown(configFor(one.file), one.read.name)) continue;
     const source = sources.get(one.file);
     css.push({
       file: one.file,
       ...(source === undefined ? { line: 1, column: 1 } : positionOf(source, one.read.at)),
-      code: "variable-not-set",
+      code: "custom-property-not-set",
       message: messageFor(one),
     });
   }
@@ -313,7 +317,12 @@ export function checkProject(tsconfig: string, options: CheckOptions = {}): Repo
    */
   const candidates = registered.filter(({ site }) => readsRegistered.has(site.name) && !blockSets.has(site.name));
 
-  for (const found of [...typedFindings(program, overlays), ...registeredNeverSet(program, overlays, candidates)]) {
+  for (const found of [
+    ...typedFindings(program, overlays, (fileName) =>
+      fileName.includes("node_modules") ? undefined : configFor(fileName),
+    ),
+    ...registeredNeverSet(program, overlays, candidates),
+  ]) {
     const text = overlays.get(found.file)?.source ?? program.getSourceFile(found.file)?.text;
     if (text === undefined) continue;
 
@@ -426,7 +435,7 @@ function inOrder(css: readonly Finding[], types: readonly Finding[], sources: Re
    *
    * Measured, one typo came back twice, at two columns, with the same suggestion in each:
    *
-   *     unknown-variable  `$space.gutter.norml` is not a variable this project declares.
+   *     unknown-token  `$space.gutter.norml` is not a variable this project declares.
    *                       Did you mean `$space.gutter.normal`?
    *     TS2551            Property 'norml' does not exist on type
    *                       'Readonly<{ normal: Token<"length", "16px">; }>'. Did you mean 'normal'?
@@ -445,7 +454,7 @@ function inOrder(css: readonly Finding[], types: readonly Finding[], sources: Re
    * only thing that speaks in the BUILD — vite and esbuild run these rules over a block and never
    * run TypeScript over it, so a `var()` into a name nothing sets would compile clean.
    */
-  const pathRefused = new Set(css.filter((finding) => finding.code === "unknown-variable").map(where));
+  const pathRefused = new Set(css.filter((finding) => finding.code === "unknown-token").map(where));
 
   /**
    * A LINE where a literal was refused by `variablesOnly`, so the compiler's word about it goes.

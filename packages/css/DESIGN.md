@@ -4155,7 +4155,20 @@ mistake that harness note records making once already: *the first repair was a l
 what one reaches for when the cause is a guess. It made the window smaller and left the race.* If it
 returns, the thing to measure first is whether shiki's registry is safe to share across tests at all.
 
-### 12. `match` takes a STRING subject, and says so as a `TS2322` — boolean DECIDED, number OPEN
+### 12. `match` takes a STRING subject — DECIDED, both halves
+
+**Status 2026-10-05: CLOSED, by the user.** A number subject was measured to be fully buildable —
+the run time already compares `String(subject)`, and keys checked against the subject's SPELLING
+(`` `${S}` ``) made `1 | 2`, `-1`, `0.5` and a boolean all work, with the "trap" below not arising.
+It was turned down anyway, for the reason that decides it: *kada napisemo true, da li je to boolean
+ili string "true"?* An arm's key is a written word, and a reader cannot tell whether `1 =>` is the
+number or its spelling. So `match` takes a string; anything else is refused ON THE SUBJECT, once,
+saying what to write — `$(on) ? a : b` for a boolean, a word made in code for a number. The keys
+are then taken as any string, so the refusal is not repeated per key. The build is unchanged: it
+does not run the type check, and the run time still compares spellings.
+
+The rest of this section is the history that led there.
+
 
 **Status 2026-10-02:** a boolean subject is an `if`, and `composing.md` says so (*A boolean subject is
 an `if`*). A NUMBER subject is still refused with a raw `TS2322` that names neither `match` nor the
@@ -4227,6 +4240,106 @@ one block it could, but two blocks merged on one element have no order between t
 
 So it wants a decision rather than a repair: pick one side to win, always, and say so. The
 measurement above is what a choice has to beat.
+
+### 20. A variable read in CODE pulls its whole group into the bundle — MEASURED, READY, not started
+
+**Status 2026-10-05: agreed with the user, parked behind higher priorities.** Start here when the
+queue is empty. Everything below was measured; nothing is built. Branch from `main`.
+
+#### The fault
+
+`import { $color } from "../css-system"` and one read, `$color.accent.quiet`, ships the whole `$color`
+object — every variable in the group — because a bundler cannot drop unused properties of an object.
+Blocks pay nothing: the compiler already writes a block's `$color.x` as the plain `var(--…)`. Only
+TypeScript code that imports a group pays, once per app, for each group it imports.
+
+Measured with esbuild `--minify`, one variable read, against the same value written inline (42 B):
+
+```
+variables in the group    import, raw / gzip
+20                        818 B / 204 B
+100                       3.7 KB / 409 B
+500                       18.7 KB / 1.5 KB
+```
+
+Linear: about **37 B raw, 3 B gzip per variable** in an imported group. 10 variables cost nothing
+worth naming; 1000 in one group cost ~37 KB raw / ~3 KB gzip.
+
+#### The fix that was agreed — no new syntax
+
+**At BUILD time, the bundler plugin replaces every read of a whole leaf path with its value**:
+`$color.accent.quiet` → `"var(--color-accent-quiet)"`. The import is then unused and the bundler
+drops the module. The spelling in code stays the spelling in a block, and the types do not change
+— TypeScript still sees the import.
+
+**Rejected: `@@getVar("$color.accent.quiet")`**, the user's first idea. Two spellings for one thing
+(the `$` was just made the config's spelling so there is ONE), a path in a string that needs its
+own type support to be checked and completed, and a new construct to learn — to save what the
+replacement saves without any of that.
+
+#### Measured, so it does not need measuring again
+
+- **The import really goes.** Every read replaced, the module unused: esbuild AND Vite (Rollup) both
+  drop it completely — 18.7 KB → 0 for 500 variables, 42 B output either way. **No `/* @__PURE__ */`
+  is needed** in the generated module; both treat `Object.freeze` as pure. (Probed both with and
+  without the annotation: identical.)
+- **Parsing is cheap.** `ts.createSourceFile` costs ~0.55 ms per file (225 files, 1.5 MB of this
+  repository's sources, 124 ms). A text pre-check — does the file mention a declared group's name,
+  `$color`, at all — costs 0.7 ms for all 225 together and let 4 through. Pre-check on the GROUP
+  NAMES, not on `css-system`: `outDir` is configurable and an import may go through a path alias.
+- **No app in this repository reads a group in code today** — only types are imported from
+  `css-system`. So nothing here exercises it; the tests have to.
+
+#### What to replace, and what to leave
+
+| Written in code | Do |
+|---|---|
+| `$color.accent.quiet` — a whole leaf path | replace |
+| `$color["accent"]["quiet"]` — literal brackets | replace |
+| `import { $color as c }` → `c.accent.quiet` | replace, through the import binding |
+| `import * as sys` → `sys.$color.accent.quiet` | replace |
+| `$color.accent` — a sub-group, or `Object.keys($color)`, or `$color` passed whole | leave; the import stays and works as today |
+| `$color` reached through a re-export in another file | leave; same |
+| a file that ALSO declares a local named like a group (`const $color`, a parameter) | skip the whole file — no scope analysis, be conservative |
+| a path the config does not declare | leave; the type check already reports it |
+
+Leaving is always safe: the code is exactly what it was, and pays exactly today's cost.
+
+#### How to build it
+
+1. **Where:** `vite.ts` (`transform`) and `esbuild.ts` (`onLoad`), BUILD only — `production`, not the
+   dev server; the value is identical in both, so dev gains nothing and keeps simpler maps. One
+   shared function in a new file, e.g. `compiler/inlineVariables.ts`:
+   `inlineVariables(code, file, config) → { code, map } | undefined`.
+2. **Which files:** every TS/TSX/JS file outside `node_modules` — NOT only `fileMayHoldABlock`
+   ones; a file that reads `$color` usually has no block. Pre-check the text for any declared group
+   name first (`declaredByName` / `namesIn` give the groups), and parse only if it passes.
+3. **Find the bindings:** import declarations whose specifier RESOLVES to the generated module
+   (`<config dir>/<outDir>/index.ts` — `variablesSheetFor` shows how the sheet's path is found; the
+   module is beside it). Named imports of `$group` (with aliases) and namespace imports.
+4. **Replace:** property-access / literal-element-access chains on those bindings that end exactly
+   on a declared leaf (`namesIn(...).path`), with `JSON.stringify(\`var(${name})\`)`.
+5. **Source map:** the text changes length, so return a real map (the block transform already
+   returns one — compose the same way). A file with no replacement returns `undefined`/`null`.
+6. **A file also holding blocks:** run after the block transform on its output, or fold into it —
+   decide by which keeps one map simpler.
+7. **Config edits:** a changed `ramonda.css.ts` must re-run it, as it already does for blocks.
+
+#### Tests it needs (each seen to fail once on purpose)
+
+- each "replace" row above, through a real `vite build` and a real esbuild build: the output holds
+  `var(--color-accent-quiet)` and NOT the other variables of the group (pick a distinctive one);
+- each "leave" row: the build still works and the value is right at run time;
+- shadowing: a file with `const $color = …` is untouched;
+- a source map still points a later line at the author's own line;
+- the dev server does not do it.
+
+#### Done when
+
+A production bundle that reads one variable in code ships that variable's string and none of its
+group's others, in both bundlers; every shape left alone behaves exactly as today; the gate is
+green; a changeset (`patch`) and one sentence on `variables.md` (reading a variable in code costs
+nothing after a build) say so.
 
 ## A published package meets an application — the cascade across a version boundary
 

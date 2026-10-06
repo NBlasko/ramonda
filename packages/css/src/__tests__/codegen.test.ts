@@ -8,7 +8,7 @@ import { kind } from "../declared";
 const PACKAGE = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 /**
- * What codegen writes from a project's declared variables, which is the whole reason the config
+ * What codegen writes from a project's tokens, which is the whole reason the config
  * holds a fallback and a kind at all.
  *
  * The asymmetry: a variable that is declared and NOT emitted fails silently — `$` has a name for it,
@@ -88,7 +88,7 @@ describe("the stylesheet", () => {
     );
   });
 
-  test("every declared variable is registered, because that is what makes a bare `var()` safe", () => {
+  test("every token is registered, because that is what makes a bare `var()` safe", () => {
     // `$` compiles to `var(--name)` with no fallback, so the registration is the only thing standing
     // between a variable nothing sets and a property that silently becomes something else. A kind
     // that skipped registration would be a hole in that, with nothing to report it.
@@ -330,4 +330,51 @@ describe("the generated header", () => {
       expect(one).toContain("run `ramonda-css codegen`");
     }
   });
+});
+
+/**
+ * A hover on `$color.accent.quiet` names what the type does not: the kind, the custom property it
+ * really is, what it starts as, and whether it may change. The type alone said
+ * `Token<"color", Fixed<"#00b37e">>`, which is not the name a style panel shows.
+ */
+describe("what a hover on a variable says", () => {
+  const declared = {
+    $color: kind("color", {
+      quiet: "#00b37e",
+      moving: { value: "#ffffff", range: ["#ffffff", "#111827"] },
+      free: { value: "#ffffff", range: "any" },
+    }),
+  };
+
+  test("each variable carries a doc comment with its kind, its name, its start and its range", () => {
+    const module = generate(declared).module;
+
+    expect(module).toContain(
+      "  /**\n   * `$color.quiet` — a `color`, written to CSS as `var(--color-quiet)`.\n   *\n" +
+        "   * Starts as `#00b37e`. Fixed: declared without a `range`, so nothing may set it.\n   */\n" +
+        '  "quiet": "var(--color-quiet)"',
+    );
+    expect(module).toContain("   * Starts as `#ffffff`. May be `#ffffff`, `#111827`.\n");
+    expect(module).toContain("   * Starts as `#ffffff`. May be any `color`.\n");
+  });
+
+  test("a value that would end the comment is written so it cannot", () => {
+    const module = generate({ $x: kind("any", { odd: "a */ b" }) }).module;
+
+    expect(module).toContain("`a *\\/ b`");
+  });
+});
+
+/**
+ * The module a project opens says "token", never "variable" — CSS calls a custom property a variable,
+ * and the two were renamed apart. The first rename missed the property docs this module carries,
+ * which every hover in the editor shows: "this project's variables of that kind", 200 times over.
+ */
+test("the generated module says token, not variable", () => {
+  const { module } = generate(
+    { $color: kind("color", { a: "#000" }), $size: kind("length", { b: "1px" }) },
+    { "<color>": { hardcoded: false } },
+  );
+
+  expect(module.match(/\bvariables?\b/gi) ?? []).toEqual([]);
 });

@@ -114,13 +114,13 @@ function nameOf(token: string): `--${string}` {
    * at every call site.
    */
   if (token.startsWith("--")) {
-    if (!OURS.test(token)) throw new Error(`[ramonda-css] \`${token}\` is not a variable this package wrote.`);
+    if (!OURS.test(token)) throw new Error(`[ramonda-css] \`${token}\` is not a token this package wrote.`);
     return token as `--${string}`;
   }
 
   const found = NAMED.exec(token);
   if (found === null) {
-    throw new Error(`[ramonda-css] \`${token}\` is not a variable this package wrote.`);
+    throw new Error(`[ramonda-css] \`${token}\` is not a token this package wrote.`);
   }
   return found[1] as `--${string}`;
 }

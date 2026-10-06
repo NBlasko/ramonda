@@ -5,7 +5,7 @@ import type { CssDimension } from "../units.generated";
 import { read, toStyle } from "../value";
 
 /**
- * The two things a project does with a declared variable OUTSIDE a block.
+ * The two things a project does with a token OUTSIDE a block.
  *
  * `$` in a block is compiled away and never reaches the browser. These are the other half: a theme
  * whose values arrive at run time, and the rare read back out. Both are the user's own logic — this
@@ -89,7 +89,7 @@ describe("read", () => {
   /**
    * Empty means the STYLESHEET is not loaded, and saying so is better than inventing a value.
    *
-   * A declared variable is registered with `@property { initial-value }`, and measured in Chrome
+   * A token is registered with `@property { initial-value }`, and measured in Chrome
    * that resolves even when nothing sets the name — so an empty read cannot mean "unset". It means
    * the generated stylesheet never arrived, which is a setup fault a person should meet.
    */

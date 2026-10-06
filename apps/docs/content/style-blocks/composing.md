@@ -59,6 +59,20 @@ For a choice between several blocks you already have, spread a *lookup* — the 
 the variant. TypeScript then checks the map covers the union, so adding a third variant and
 forgetting the map is reported.
 
+## Which one to write
+
+Three forms, and each works at one level or both — a **group** is one or more whole declarations, a
+**value** is what follows one property's `:`.
+
+| | a group | a value |
+|---|---|---|
+| a condition | [`when $(…) { … } else when $(…) { … } else { … }`](#when-else-when-else) | [`$(…) ? a : b`](#a-choice-between-two-values), chainable |
+| one value, several outcomes | [`match $(…) { k => ( … ); }`](#a-match-over-whole-groups) | [`match $(…) { k => v; }`](#match-one-value-several-outcomes) |
+
+So a condition has one spelling at each level: `when` never stands in a value, and a choice never
+picks a group. A value that applies only when something holds is a group of one declaration, in a
+`when`; two declarations under one choice are a `when … else`.
+
 ## `when`, `else when`, `else`
 
 A condition can go on, the way it does in JavaScript. **The first condition that holds brings its
@@ -132,16 +146,21 @@ you want those, compute the subject before the block and match on what comes out
 - **`_` answers for everything the arms above did not.** Without it, a subject that names no arm sets
   **nothing at all**, and whatever was written above it stands — the same answer `when` gives.
 - **An arm holds a literal.** `hot => $(this.x)` is refused (`hole-in-a-match-arm`): an arm carrying
-  the render's own value would cost exactly what a match exists to avoid. A `$` variable is fine, and
+  the render's own value would cost exactly what a match exists to avoid. A `$` token is fine, and
   needs no import, because an arm is CSS.
 - **An arm that can never run** (`match-arm-repeated`) and **a match with no arms**
   (`match-with-no-arms`) are reported.
 
-### A boolean subject is a choice
+### The subject is a string
 
-Arm keys are written as CSS words and checked as strings, so `true =>` does not match a `boolean`.
-That is not a gap to work around — a two-way choice has its own spelling, [`$(c) ? a : b`](#a-choice-between-two-values),
-and for whole groups there is `when`.
+An arm's key is a written word, so `match` takes a string. Against a number or a boolean, `1 =>` and
+`true =>` would leave you asking whether the key is the value or its spelling — so either one is
+reported on the subject, and the message says what to write instead. It is the type check that says
+so: the editor and `ramonda-check` report it, and the build, which does not type-check, does not.
+
+- **a boolean** is a two-way choice, which has its own spelling:
+  [`$(on) ? a : b`](#a-choice-between-two-values), and `when` for whole groups;
+- **a number** becomes a word in code first: `match $(n > 2 ? "large" : "small") { … }`.
 
 ### A match over whole groups
 
@@ -189,7 +208,7 @@ class Input extends Component<{ invalid: boolean }> {
 ```
 
 Both values become classes and the condition picks one, exactly as a `match` arm does — so a branch
-holds a value written out, or a `$` variable, and never a value from code (`hole-in-a-match-arm`).
+holds a value written out, or a `$` token, and never a value from code (`hole-in-a-match-arm`).
 The `:` is required; a value that applies only when the condition holds is a `when`.
 
 Choices chain, and the first condition that holds picks the value. The formatter lays a chain out as
@@ -212,9 +231,35 @@ formatter takes them off.
 ## Why the condition is inside `$( )`
 
 Because that is the one rule this syntax has: **TypeScript appears inside `$( )` and nowhere else.**
-`when this.disabled` would be shorter and would be a second way for code to get into a block — and
-the moment there are two, every reader has to learn which one a given line is. The word is `when`
-rather than `if` because CSS has an `if()` of its own.
+A component whose state decides a group:
+
+```tsx
+class Toggle extends Component {
+  @state disabled = false;
+
+  render() {
+    return (
+      <button className={@@(
+        cursor: pointer;
+        when $(this.disabled) { opacity: 0.5; }
+      )}>press</button>
+    );
+  }
+}
+```
+
+`this.disabled` is TypeScript — a field of the component — so it is written inside `$( )`. Leaving
+the `$( )` off is refused:
+
+```
+when $(this.disabled) { opacity: 0.5; }   ✓  the condition is code, so it is inside $( )
+when this.disabled { opacity: 0.5; }      ✗  refused — `when` takes one $( … ) and nothing else
+```
+
+The second would be shorter, and it would be a second way for code to get into a block — and the
+moment there are two, every reader has to learn which one a given line is. With one, anything inside
+`$( )` is TypeScript and everything outside it is CSS, whatever line you are reading. The word is
+`when` rather than `if` because CSS has an `if()` of its own.
 
 ## What is checked in a group
 

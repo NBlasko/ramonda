@@ -15,11 +15,11 @@ export default defineConfig({
   /**
    * The variables this project declares — a name, a kind and a fallback each.
    *
-   * Codegen writes `css-system/variables.css`, which sets them, and `css-system/index.ts`, which
+   * Codegen writes `css-system/tokens.css`, which sets them, and `css-system/index.ts`, which
    * is where `$` comes from. Both are COMMITTED — codegen output like any other — and rewritten on
    * every build and on `ramonda-css codegen`. `outDir` renames the folder.
    */
-  variables: {
+  tokens: {
     $color: kind("color", {
       accent: { main: "#10b981", quiet: "#00b37e" },
       surface: { base: "#ffffff", sunken: "#f3f4f6" },
@@ -69,9 +69,9 @@ export default defineConfig({
     // "*": { shorthand: false },             // `padding` stops existing; write `padding-left`
     // "*": { arity: 1 },                     // one value per property — and `margin: 0 auto` goes
     // "*": { units: ["px", "rem", "%"] },    // `em`, `vh` and the other 45 are refused
-    // "<color>": { variablesOnly: true },    // every colour comes from `$` — 40 properties, one line
-    // "<length>": { variablesOnly: true },   // and every length — 127 properties
-    // "border-radius": { variablesOnly: false },  // …except this one
+    // "<color>": { hardcoded: false },    // every colour comes from `$` — 40 properties, one line
+    // "<length>": { hardcoded: false },   // and every length — 127 properties
+    // "border-radius": { hardcoded: true },  // …except this one
     // "letter-spacing": { units: ["em"] },
   },
 });

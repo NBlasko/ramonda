@@ -49,7 +49,7 @@ tool you have to run separately. TypeScript 5.4 or later.
 
 The CSS a block compiles to is a module the bundler already knows about, and it follows the
 JavaScript chunk it belongs to — so there is nothing to import for it. (A project that declares
-[variables](/style-blocks/variables) imports one stylesheet, once, for those.)
+[tokens](/style-blocks/tokens) imports one stylesheet, once, for those.)
 
 ```ts
 import { ramondaCss } from "@ramonda/css/vite";
@@ -69,13 +69,13 @@ export const plugins = [ramondaCss({ filter: /src\/.*\.tsx$/ })];
 be read before it can be asked whether it holds a block. Pointing the plugin at the tree that holds
 them means nothing else is opened at all.
 
-### If you declare variables
+### If you declare tokens
 
 Nothing above changes, and one thing is added: the plugin writes a `css-system/` folder beside
-`ramonda.css.ts` holding the variable groups — `$color`, `$space` — and their values, and your app imports the stylesheet once.
+`ramonda.css.ts` holding the token groups — `$color`, `$space` — and their values, and your app imports the stylesheet once.
 
 ```ts
-import "./css-system/variables.css";
+import "./css-system/tokens.css";
 ```
 
 Commit that folder. It is generated, and it is also what your editor reads, so a fresh clone that
@@ -114,6 +114,10 @@ code --install-extension ramonda.css
 ```
 
 Or search **Ramonda CSS** in the Extensions panel.
+
+**Update it when you update `@ramonda/css`.** The colours follow the syntax of the version the
+extension was made for, so after a new spelling an older extension colours it wrong — the checks
+are still your project's own, and still right.
 
 Formatting then depends on what your project already uses, and the two answers are opposite.
 
@@ -182,7 +186,7 @@ being asked — that is the setting above.
   setting it on an element.
 - **[What is checked](/style-blocks/checking)** — every rule, what it catches, and how to silence one
   that is wrong.
-- **[Names the stylesheet sees](/style-blocks/variables)** — declaring variables and reading them
+- **[Names the stylesheet sees](/style-blocks/tokens)** — declaring tokens and reading them
   with `$`, keyframes and font faces, and what a theme is.
 - **[Which declaration wins](/style-blocks/order)** — two declarations of one property, and the rule
   that decides between them.

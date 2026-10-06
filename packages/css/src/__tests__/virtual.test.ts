@@ -152,9 +152,9 @@ describe("what a block becomes", () => {
     );
     expect(preamble).toContain(`import("./properties").CssGlobal`);
     expect(preamble).not.toMatch(/\btype __|interface __/);
-    // `match`'s own helper: the subject, the keys it may be, and the arms — see its declaration.
+    // `match`'s own helper: the subject, the keys it may be, that it is a string, and every arm.
     expect(preamble).toContain(
-      `declare function __match<const S, const K extends readonly S[]>(subject: S, keys: K, whole?: `,
+      "declare function __match<const S, const K extends readonly ([NonNullable<S>] extends [string] ? S : string)[]>(subject: S, keys: K, text: ",
     );
     expect(preamble).toContain(`__cond<T>(condition: import("./properties").CssCondition<T>): never;`);
     expect(preamble).toContain(`__from<T>(block: import("./properties").CssSpreadable<T>): never;`);
@@ -554,6 +554,62 @@ describe("through tsc, and back to the author's own file", () => {
    * and measured, neither level checked it: `match $(size) { small => … }` over `"small" | "large"`
    * was silent, and a `large` element got nothing.
    */
+  /**
+   * `match` takes a STRING, and anything else is refused on the subject, saying what to write.
+   *
+   * An arm's key is a written word, so `1 => …` and `true => …` could each be read as a number or a
+   * string — the user's decision, DESIGN.md §12. A boolean has its own spelling, the choice; a
+   * number becomes a word in code. The raw error used to be `Type 'string' is not assignable to
+   * type '2 | 1'`, once per key, naming neither `match` nor the fix.
+   */
+  describe("a subject that is not a string", () => {
+    const one = (type: string, arms: string) => {
+      const source = `declare const n: ${type};\nconst x = @@(\n  padding: match $(n) { ${arms} };\n);\nexport default x;\n`;
+      return check(source).map((found) => ({ line: found.line, column: found.column, says: found.message }));
+    };
+
+    test.each([
+      ["a number union", "1 | 2", "1 => 2px; 2 => 4px;"],
+      ["a number", "number", "1 => 2px; _ => 4px;"],
+      ["a number that may be missing", "1 | 2 | undefined", "1 => 2px; 2 => 4px;"],
+      ["strings and numbers together", '"a" | 1', "a => 2px; _ => 4px;"],
+    ])("%s is refused once, on the subject, naming a word in code", (_what, type, arms) => {
+      const found = one(type, arms);
+
+      expect(found).toHaveLength(1);
+      expect({ line: found[0].line, column: found[0].column }).toEqual({ line: 3, column: 20 });
+      expect(found[0].says).toContain("match takes a string");
+      expect(found[0].says).toContain("$(n > 2 ? 'large' : 'small')");
+    });
+
+    test("a boolean is refused, naming the choice", () => {
+      const found = one("boolean", "true => 2px; false => 4px;");
+
+      expect(found).toHaveLength(1);
+      expect({ line: found[0].line, column: found[0].column }).toEqual({ line: 3, column: 20 });
+      expect(found[0].says).toContain("match takes a string");
+      expect(found[0].says).toContain("$(on) ? a : b");
+    });
+
+    test("over whole groups too", () => {
+      const source = `declare const n: 1 | 2;\nconst x = @@(\n  match $(n) {\n    1 => ( padding: 2px; );\n    _ => ( padding: 4px; );\n  }\n);\nexport default x;\n`;
+      const found = check(source);
+
+      expect(found).toHaveLength(1);
+      expect({ line: found[0].line, column: found[0].column }).toEqual({ line: 3, column: 11 });
+      expect(found[0].message).toContain("match takes a string");
+    });
+
+    // The control: what was always right stays quiet.
+    test.each([
+      ["a string union", '"a" | "b"', "a => 2px; b => 4px;"],
+      ["a string", "string", "a => 2px; _ => 4px;"],
+      ["a string that may be missing", '"a" | "b" | undefined', "a => 2px; b => 4px;"],
+    ])("%s is not", (_what, type, arms) => {
+      expect(one(type, arms)).toEqual([]);
+    });
+  });
+
   describe("a match with no `_`", () => {
     const at = (source: string) => {
       const found = check(source);

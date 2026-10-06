@@ -650,8 +650,8 @@ describe("a shorthand is split into what it sets", () => {
     ]);
   });
 
-  /** A declared variable is a `var()` in the sheet, and what is inside it is unknown here. */
-  test("nor is one reading a declared variable", () => {
+  /** A token is a `var()` in the sheet, and what is inside it is unknown here. */
+  test("nor is one reading a token", () => {
     expect(splitKeys("padding: $space.md;")).toEqual(["padding"]);
   });
 

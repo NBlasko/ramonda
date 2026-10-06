@@ -205,7 +205,7 @@ each produce any dimension and nothing in a type can read inside one, so `calc(1
 
 `CssDimension` says *a length*. When your project has a
 [`ramonda.css.ts`](/style-blocks/config), it can say *whatever this property takes here* — units
-narrowed, closed lists, `variablesOnly` and all:
+narrowed, closed lists, `hardcoded: false` and all:
 
 ```tsx
 import type { Value } from "../css-system";
@@ -217,21 +217,21 @@ const gap: Value<"gap"> = `${n}px`;
 
 One property, one name, and the answer moves when the config does.
 
-And `Var<"color">` is *any variable this project declares of that kind* — which is what you want when
+And `AnyToken<"color">` is *any token this project declares of that kind* — which is what you want when
 a function chooses between them and hands the one it picked on:
 
 ```tsx
 import { read } from "@ramonda/css";
 import { $color } from "../css-system";
-import type { Var } from "../css-system";
+import type { AnyToken } from "../css-system";
 
 declare const loud: boolean;
 
-const pick = (): Var<"color"> => (loud ? $color.accent : $color.surface);
+const pick = (): AnyToken<"color"> => (loud ? $color.accent : $color.surface);
 const now = read(pick(), document.body);
 ```
 
-**Inside a block, a choice between two variables is a [choice](/style-blocks/composing#a-choice-between-two-values)
+**Inside a block, a choice between two tokens is a [choice](/style-blocks/composing#a-choice-between-two-values)
 instead** — `color: $(loud) ? $color.accent : $color.surface;` — and both become classes.
 
 ## Comments

@@ -1200,7 +1200,7 @@ describe("a variable nothing in the project sets", () => {
     });
 
     expect(report.findings).toHaveLength(1);
-    expect(report.findings[0].code).toBe("variable-not-set");
+    expect(report.findings[0].code).toBe("custom-property-not-set");
     expect(report.findings[0].line).toBe(2);
     expect(report.findings[0].column).toBe(14);
     expect(report.findings[0].message).toContain("nothing in this build sets `--brand`");
@@ -2617,20 +2617,20 @@ describe("a narrower whole shorthand after a wider one from another block", () =
 });
 
 /**
- * §17: a `$` variable is a `var()` to the sheet, so a shorthand holding one reaches it WHOLE — in a
+ * §17: a `$` token is a `var()` to the sheet, so a shorthand holding one reaches it WHOLE — in a
  * spread's block and in the block after it. The virtual file writes it as a property access,
  * `__vars.border.thin`, or inside a template when it is part of a value, and the walk read only
  * string literals, so these went unreported.
  *
  * The project declares its variables the way codegen does: its properties module exports one name per group.
  */
-describe("a `$` variable in a whole shorthand from another block", () => {
+describe("a `$` token in a whole shorthand from another block", () => {
   const PROPS =
     `export * from ${JSON.stringify(join(PACKAGE, "src", "properties"))};\n` +
     `export declare const $border: { thin: string; top: string };\nexport declare const $color: { a: string };\n`;
   const CONFIG =
     `import { kind } from ${JSON.stringify(join(PACKAGE, "dist", "config.js"))};\n` +
-    `export default { variables: {\n` +
+    `export default { tokens: {\n` +
     `  $border: kind("any", { thin: "1px solid red", top: "2px solid blue" }),\n` +
     `  $color: kind("color", { a: "#000" }),\n} };\n`;
   const findings = (base: string, card: string) =>
@@ -2740,4 +2740,134 @@ describe("the allow-list check, second review", () => {
     }).findings.map((one) => one.code);
     expect(report).not.toContain("allow-list-not-css");
   });
+});
+
+/**
+ * A `style` attribute setting a token its declaration does not allow — the attribute's
+ * half of `token-set-against-its-declaration`. Measured before: both spellings passed while
+ * `toStyle` refused the same setting.
+ */
+describe("a `style` attribute setting a token", () => {
+  const CONFIG =
+    `import { kind } from ${JSON.stringify(join(PACKAGE, "dist", "config.js"))};\n` +
+    `export default { tokens: { $color: kind("color", {\n` +
+    `  sunken: "#f3f4f6",\n` +
+    `  moving: { value: "#ffffff", range: ["#ffffff", "#111827"] },\n` +
+    `}) } };\n`;
+  const found = (jsx: string) => {
+    const card = `export const Card = (on: boolean, v: string) => ${jsx};\n`;
+    const out = checkProject(project({ "ramonda.css.ts": CONFIG, "Card.tsx": card })).findings;
+    return out
+      .filter((one) => one.code === "token-set-against-its-declaration")
+      .map((one) => ({ column: one.column, message: one.message }));
+  };
+
+  test.each([
+    ["an object key", `<p style={{ "--color-sunken": "red" }}>x</p>`, 62],
+    ["an object key with a value from code", `<p style={{ "--color-sunken": v }}>x</p>`, 62],
+    ["a string", `<p style="color: red; --color-sunken: red">x</p>`, 71],
+    ["a string in braces", `<p style={"--color-sunken: red"}>x</p>`, 60],
+  ])("a FIXED one is reported: %s, on the name", (_what, jsx, column) => {
+    const [only, ...rest] = found(jsx);
+
+    expect(rest).toEqual([]);
+    expect(only.column).toBe(column);
+    expect(only.message).toContain("`$color.sunken` is declared without a `range`");
+  });
+
+  test.each([
+    ["a value outside it", `<p style={{ "--color-moving": "red" }}>x</p>`],
+    ["one arm of a ternary outside it", `<p style={{ "--color-moving": on ? "#111827" : "red" }}>x</p>`],
+  ])("a ranged one is reported for %s", (_what, jsx) => {
+    expect(found(jsx).map((one) => one.message)).toEqual([expect.stringContaining("`red` is not in the `range`")]);
+  });
+
+  test.each([
+    ["a value in the range", `<p style={{ "--color-moving": on ? "#111827" : "#ffffff" }}>x</p>`],
+    ["a value from code for a ranged one", `<p style={{ "--color-moving": v }}>x</p>`],
+    ["a name nobody declared", `<p style={{ "--brand": "red" }}>x</p>`],
+    ["an ordinary property", `<p style={{ color: "red" }}>x</p>`],
+  ])("nothing for %s", (_what, jsx) => {
+    expect(found(jsx)).toEqual([]);
+  });
+});
+
+/** The `style` attribute's half of `unknown-custom-property` — see `dollarRule.test.ts` for the block's. */
+describe("a made-up custom property in a `style` attribute, with `unknownCustomProperties: false`", () => {
+  const CONFIG =
+    `import { kind } from ${JSON.stringify(join(PACKAGE, "dist", "config.js"))};\n` +
+    `export default { tokens: { $color: kind("color", { moving: { value: "#fff", range: "any" } }) },\n` +
+    `  externalCustomProperties: ["--mui-primary"], unknownCustomProperties: false };\n`;
+  const found = (jsx: string) =>
+    checkProject(project({ "ramonda.css.ts": CONFIG, "Card.tsx": `export const Card = () => ${jsx};\n` }))
+      .findings.filter((one) => one.code === "unknown-custom-property")
+      .map((one) => one.message.split(" is ")[0]);
+
+  test.each([
+    ["set as an object key", `<p style={{ "--brand": "red" }}>x</p>`, ["`--brand`"]],
+    ["read in an object value", `<p style={{ color: "var(--brand)" }}>x</p>`, ["`--brand`"]],
+    ["set and read in a string", `<p style="--a: red; color: var(--b)">x</p>`, ["`--a`", "`--b`"]],
+  ])("is reported: %s", (_what, jsx, names) => {
+    expect(found(jsx)).toEqual(names);
+  });
+
+  test.each([
+    ["a token set by name", `<p style={{ "--color-moving": "red" }}>x</p>`],
+    ["an outside name", `<p style={{ "--mui-primary": "red", color: "var(--mui-primary)" }}>x</p>`],
+  ])("is not: %s", (_what, jsx) => {
+    expect(found(jsx)).toEqual([]);
+  });
+});
+
+/** `"same-block"` in a `style` attribute: the attribute is its own block — set and read there, or neither. */
+describe('a made-up custom property in a `style` attribute, with `"same-block"`', () => {
+  const CONFIG =
+    `import { kind } from ${JSON.stringify(join(PACKAGE, "dist", "config.js"))};\n` +
+    `export default { tokens: { $color: kind("color", { a: "#000" }) }, unknownCustomProperties: "same-block" };\n`;
+  const found = (jsx: string) =>
+    checkProject(project({ "ramonda.css.ts": CONFIG, "Card.tsx": `export const Card = () => ${jsx};\n` }))
+      .findings.filter((one) => one.code === "unknown-custom-property")
+      .map((one) => one.message.split(" and ")[0]);
+
+  test("set and read in one attribute is allowed", () => {
+    expect(found(`<p style={{ "--gap": "4px", padding: "var(--gap)" }}>x</p>`)).toEqual([]);
+    expect(found(`<p style="--gap: 4px; padding: var(--gap)">x</p>`)).toEqual([]);
+  });
+
+  test("read without being set there is refused", () => {
+    expect(found(`<p style={{ padding: "var(--gap)" }}>x</p>`)).toEqual(["`--gap` is read here"]);
+  });
+});
+
+/** Review round 2, at the level of a project: what a `@@keyframes` sets, and one report per fault. */
+describe("a registered property an animation sets, and a made-up name nothing sets", () => {
+  test("a frame setting a registered property counts as setting it", () => {
+    const card =
+      `export const angle = @@property( syntax: "<angle>"; inherits: false; initial-value: 0deg; );\n` +
+      `const turn = @@keyframes( from { $(angle): 0deg; } to { $(angle): 90deg; } );\n` +
+      `export const dial = @@( transform: rotate(var($(angle))); animation: $(turn) 1s linear; );\n`;
+    const found = checkProject(project({ "Card.tsx": card })).findings.map((one) => one.code);
+
+    expect(found).not.toContain("registered-never-set");
+  });
+
+  test("a name the strict option refuses is not ALSO reported as set by nothing", () => {
+    const found = checkProject(
+      project({
+        "ramonda.css.ts": `export default { unknownCustomProperties: false };\n`,
+        "Card.tsx": `export const a = @@( padding: var(--nope); );\n`,
+      }),
+    ).findings.map((one) => one.code);
+
+    expect(found).toEqual(["unknown-custom-property"]);
+  });
+});
+
+/** Review round 4: the number-subject message's advice, followed, passes the type check. */
+test("`match` over a word made in code — the advice for a number — is clean", () => {
+  const card =
+    `declare const n: number;\n` +
+    `export const a = @@( padding: match $(n > 2 ? "large" : "small") { large => 8px; small => 2px; }; );\n`;
+
+  expect(checkProject(project({ "Card.tsx": card })).findings).toEqual([]);
 });

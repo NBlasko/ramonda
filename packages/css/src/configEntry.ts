@@ -11,7 +11,7 @@
  * Not a test's problem — that is every project's config, in every bundler. This entry is built in
  * both formats, holds nothing but the authoring helpers, and leaves the runtime entry as it was.
  */
-export { kind, type Declared, type Kind, type ValueByKind, type Variable } from "./declared";
+export { kind, type Declared, type Kind, type ValueByKind, type TokenDeclaration } from "./declared";
 export type { Config } from "./config";
 
 import type { Config } from "./config";

@@ -3160,3 +3160,53 @@ describe("logic being typed", () => {
     expect(() => service.getQuickInfoAtPosition(FILE, Math.max(0, caret - 1))).not.toThrow();
   });
 });
+
+/** The `style` attribute's half of `token-set-against-its-declaration`, in the editor — see `check.test.ts`. */
+describe("a `style` attribute setting a token, in the editor", () => {
+  test("a fixed one is reported on the name, and an undeclared one is not", () => {
+    const dir = mkdtempSync(join(tmpdir(), "ramonda-editor-style-"));
+    writeFileSync(
+      join(dir, "ramonda.css.ts"),
+      `import { kind } from ${JSON.stringify(join(PACKAGE, "dist", "config.js"))};\n` +
+        `export default { tokens: { $color: kind("color", { sunken: "#f3f4f6" }) } };\n`,
+    );
+    const file = join(dir, "Card.tsx");
+    const source = `export const a = <p style={{ "--color-sunken": "red", "--brand": "red" }}>x</p>;\n`;
+    writeFileSync(file, source);
+    writeFileSync(join(dir, "jsx.d.ts"), JSX_TYPES);
+    const host: ts.LanguageServiceHost = {
+      getScriptFileNames: () => [file, join(dir, "jsx.d.ts")],
+      getScriptVersion: () => "1",
+      getScriptSnapshot: (name) => {
+        const text = ts.sys.readFile(name);
+        return text === undefined ? undefined : ts.ScriptSnapshot.fromString(text);
+      },
+      getCurrentDirectory: () => dir,
+      getCompilationSettings: () => ({
+        jsx: ts.JsxEmit.Preserve,
+        strict: true,
+        target: ts.ScriptTarget.ES2022,
+        types: [],
+      }),
+      getDefaultLibFileName: (options) => ts.getDefaultLibFilePath(options),
+      fileExists: ts.sys.fileExists,
+      readFile: ts.sys.readFile,
+      readDirectory: ts.sys.readDirectory,
+      directoryExists: ts.sys.directoryExists,
+      getDirectories: ts.sys.getDirectories,
+    };
+    const service = init({ typescript: ts }).create({
+      languageService: ts.createLanguageService(host),
+      languageServiceHost: host,
+      config: { properties: join(PACKAGE, "src", "properties") },
+    });
+
+    const found = service
+      .getSemanticDiagnostics(file)
+      .filter((one) =>
+        ts.flattenDiagnosticMessageText(one.messageText, " ").includes("[token-set-against-its-declaration]"),
+      );
+
+    expect(found.map((one) => one.start)).toEqual([source.indexOf("--color-sunken")]);
+  });
+});

@@ -1,9 +1,20 @@
 import MagicString from "magic-string";
+import { urlCheckFor } from "./urls";
+import { nearest } from "./nearest";
 import { type Guard, sameGuard, segments } from "./flatten";
 import type { AtomicDeclaration } from "./flatten";
 import { SHORTHANDS } from "./keywords.generated";
 import { keyIn } from "../key";
-import { classNameFor, markerFor, nameForSite, nameFor, substitute, variableNameFor, writableProperty } from "./names";
+import {
+  bindingForSite,
+  classNameFor,
+  markerFor,
+  nameForSite,
+  nameFor,
+  substitute,
+  variableNameFor,
+  writableProperty,
+} from "./names";
 import type { Config } from "../config";
 import { type Imported, importedSites, namedSites, syntaxesIn } from "./references";
 import { normalise } from "./normalise";
@@ -57,7 +68,7 @@ export interface TransformOptions {
    * two different texts would generate two different names for one token, and the editor would then
    * report a fault the build does not have.
    *
-   * Omitted, a cross-module reference stays a hole and `hole-as-a-variable-name` reports it — which
+   * Omitted, a cross-module reference stays a hole and `hole-as-a-custom-property-name` reports it — which
    * is what every caller that has not opted in gets, and it is the safe direction.
    */
   readonly read?: Imported["read"];
@@ -178,6 +189,8 @@ export interface TransformResult {
 const SIMPLE_OPERAND = /^!*[A-Za-z_$][\w$]*(?:\??\.[A-Za-z_$][\w$]*)*$/;
 
 export function transform(source: string, options: TransformOptions = {}): TransformResult | undefined {
+  // The disk, for `url-not-found` — only when the file is really there to look beside.
+  const disk = urlCheckFor(options.filename);
   if (!mayHoldABlock(source)) return undefined;
 
   const filename = options.filename ?? "unknown.tsx";
@@ -217,6 +230,19 @@ export function transform(source: string, options: TransformOptions = {}): Trans
   // What each registered property may HOLD, beside what it is called — see `syntaxesIn`.
   const syntaxes = syntaxesIn(source, { filename, read: options.read });
   const resolve = (expression: string): string | undefined => references.get(expression);
+  /**
+   * A `$(name)` refused as a runtime value that is one letter off a binding this file can see — a
+   * `@@font-face`, `@@keyframes` or `@@property`. Review round 3: `$(brnd)` was told only that a block
+   * takes no runtime value, which points away from the typo. The editor has TypeScript's *did you
+   * mean*; the build says it too, ahead of its own sentence.
+   */
+  const meantBinding = (finding: { rule: string; at: number; length: number }): string => {
+    if (finding.rule !== "hole-not-allowed") return "";
+    const name = /^\$\(\s*([A-Za-z_$][\w$]*)\s*\)$/.exec(source.slice(finding.at, finding.at + finding.length))?.[1];
+    if (name === undefined || references.has(name)) return "";
+    const meant = nearest(name, [...references.keys()]);
+    return meant === undefined ? "" : `Did you mean \`$(${meant})\`, declared in this file? `;
+  };
 
   /** What every block in this file sets and reads, in one list each — see {@link TransformResult}. */
   const variablesSet: string[] = [];
@@ -382,7 +408,14 @@ export function transform(source: string, options: TransformOptions = {}): Trans
         ? siteFindings
         : [
             ...checkText(source, site.open, read.end),
-            ...checkBlock(read.block, { at: site.at, references, syntaxes, config: options.config }),
+            ...checkBlock(read.block, {
+              at: site.at,
+              start: site.start,
+              references,
+              syntaxes,
+              config: options.config,
+              ...disk,
+            }),
           ]
     )
       .filter((one) => !isIgnored(source, ignored, one))
@@ -397,7 +430,9 @@ export function transform(source: string, options: TransformOptions = {}): Trans
      * A refusal the PARSER makes carries no rule and is untouched: there is no key to switch off,
      * and naming one would send a reader after something that is not there.
      */
-    if (finding !== undefined) refuse(`${finding.rule}: ${finding.message}`, source, finding.at, filename);
+    if (finding !== undefined) {
+      refuse(`${finding.rule}: ${meantBinding(finding)}${finding.message}`, source, finding.at, filename);
+    }
 
     /**
      * Every custom property this block sets and reads, kept for the whole-build check.
@@ -439,7 +474,7 @@ export function transform(source: string, options: TransformOptions = {}): Trans
         named.set(className, emitted);
         emittedNamed.push(emitted);
       }
-      magic.overwrite(site.start, read.end + 1, JSON.stringify(className));
+      magic.overwrite(site.start, read.end + 1, JSON.stringify(bindingForSite(site.at, site.name, canonical)));
       continue;
     }
 

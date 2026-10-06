@@ -349,7 +349,7 @@ any rule sees it, so it is TEXT by the time the CSS is written. Unresolved, it i
 The same resolution is why `var($(accent))` works and `var($(anythingElse))` cannot: `var()` takes a
 literal name, so a brace that stays a brace compiles to `var(var(--…))`, which computes to nothing —
 measured in Chromium, dropping that declaration and leaving the one beside it applied. Reported as
-`hole-as-a-variable-name`.
+`hole-as-a-custom-property-name`.
 
 ## What this contract does not decide
 

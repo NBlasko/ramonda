@@ -111,7 +111,7 @@ Now `em` is the only unit it takes, and every other property is unchanged.
 ## 4. Take a whole kind from variables only
 
 ```ts
-"<color>": { variablesOnly: true },
+"<color>": { hardcoded: false },
 ```
 
 **What should happen.** `color: red` and `border: 1px solid red` are both reported. `$color.accent.main`
@@ -133,8 +133,8 @@ A colour reaches 40 properties and a length 127, which is why this is said by ki
 Now exempt one:
 
 ```ts
-"<length>": { variablesOnly: true },
-"border-radius": { variablesOnly: false },
+"<length>": { hardcoded: false },
+"border-radius": { hardcoded: true },
 ```
 
 Every length comes from `$`, except `border-radius`. A bare `0` always goes in — a zero length needs
