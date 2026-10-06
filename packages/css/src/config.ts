@@ -931,7 +931,8 @@ function validate(config: Record<string, unknown>, path: string): void {
       if (!madeByKind(value)) {
         refuse(
           `declares \`tokens.${group}\` without \`kind( … )\`, so it declares no tokens. Write ` +
-            `\`${group}: kind("color", { … })\` with the group's own kind — the kind is what checks every value in it.`,
+            `\`${group}: kind("…", { … })\`, naming the kind its values are — "color", "length", "time" and the rest. ` +
+            "The kind is what checks every value in it.",
         );
       }
       if (!group.startsWith("$")) {

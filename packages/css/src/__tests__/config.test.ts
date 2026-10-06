@@ -890,3 +890,12 @@ test("a mixed config names the group written without `kind`", () => {
 
   expect(() => readConfig(findConfig(dir), ts)).toThrow(/declares `tokens\.\$space` without `kind\( … \)`/);
 });
+
+/** Review round 4: a group without `kind` is not told to make it a colour group. */
+test("a group without `kind` is not told which kind to use", () => {
+  const dir = mkdtempSync(join(tmpdir(), "ramonda-kindless-space-"));
+  writeFileSync(join(dir, "ramonda.css.ts"), `export default { tokens: { $space: { gutter: "16px" } } };\n`);
+
+  expect(() => readConfig(findConfig(dir), ts)).toThrow(/`\$space: kind\("…", \{ … \}\)`/);
+  expect(() => readConfig(findConfig(dir), ts)).not.toThrow(/kind\("color"/);
+});

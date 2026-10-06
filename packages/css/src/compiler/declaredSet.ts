@@ -36,7 +36,8 @@ export function againstDeclaration(one: Named, outcomes: readonly (string | unde
   if (one.range === undefined) {
     return (
       `${variable} is declared without a \`range\`, so it never changes and nothing may set it. ` +
-      `To let it change, give it one in ramonda.css.ts: \`{ value: ${JSON.stringify(one.value)}, range: [ … ] }\`.`
+      `To let it change, give it one in ramonda.css.ts: \`{ value: ${JSON.stringify(one.value)}, range: [${JSON.stringify(one.value)}, …] }\` — ` +
+      "a range holds the value it starts at, and every value it may become."
     );
   }
   if (one.range === "any") return undefined;

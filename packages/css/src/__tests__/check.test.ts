@@ -2862,3 +2862,12 @@ describe("a registered property an animation sets, and a made-up name nothing se
     expect(found).toEqual(["unknown-custom-property"]);
   });
 });
+
+/** Review round 4: the number-subject message's advice, followed, passes the type check. */
+test("`match` over a word made in code — the advice for a number — is clean", () => {
+  const card =
+    `declare const n: number;\n` +
+    `export const a = @@( padding: match $(n > 2 ? "large" : "small") { large => 8px; small => 2px; }; );\n`;
+
+  expect(checkProject(project({ "Card.tsx": card })).findings).toEqual([]);
+});

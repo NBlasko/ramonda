@@ -1356,3 +1356,28 @@ describe("a misspelt binding in a block", () => {
     expect(() => transform(source("$(somethingElse)"), { filename: "C.tsx" })).toThrow(/^(?![\s\S]*Did you mean)/);
   });
 });
+
+/**
+ * Review round 4: a message's advice, followed, has to build — not lead to the next refusal.
+ */
+describe("advice that leads somewhere", () => {
+  test("a @@property missing its initial-value too is told about all three at once", () => {
+    expect(() => transform(`const w = @@property( );\nexport { w };\n`, { filename: "C.tsx" })).toThrow(
+      /and an `initial-value`/,
+    );
+  });
+
+  test("and one that has its initial-value is not told to add one", () => {
+    expect(() =>
+      transform(`const w = @@property( initial-value: 0px; );\nexport { w };\n`, { filename: "C.tsx" }),
+    ).toThrow(/^(?![\s\S]*an `initial-value`)/);
+  });
+
+  test("a fixed token's range is written with its own value in it, since a range must hold it", () => {
+    const config = { tokens: { $color: kind("color", { accent: "#10b981" }) } };
+
+    expect(() => transform(`export const a = @@( --color-accent: red; );\n`, { filename: "C.tsx", config })).toThrow(
+      /`\{ value: "#10b981", range: \["#10b981", …\] \}`/,
+    );
+  });
+});

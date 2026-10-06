@@ -2104,6 +2104,11 @@ function propertyDescriptorMissing(block: Block, at: string, start: number, find
       `This \`@@property\` has no ${missing.map((one) => `\`${one}\``).join(" and ")}, and without ` +
       `${missing.length > 1 ? "them" : "it"} the browser drops the whole registration. Add ` +
       missing.map((one) => WRITE_DESCRIPTOR[one]).join(" and ") +
+      // Review round 4: following the advice above, with no `initial-value` either, led straight to
+      // `initial-value-and-syntax` — so a syntax other than `"*"` is told it needs one here.
+      (missing.includes("syntax") && !written.has("initial-value")
+        ? ', and an `initial-value` — the value it starts at, which any syntax but `"*"` needs'
+        : "") +
       ".",
   });
 }
