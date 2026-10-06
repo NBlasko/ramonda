@@ -108,6 +108,11 @@ export interface Config {
    */
   readonly unknownCustomProperties?: boolean | "same-block";
   /**
+   * `false` keeps a block to its own element: a selector whose subject is another element — a child
+   * (`.title`, `& > img`) or a sibling (`& + .card`) — is refused. Left out, CSS's own reach stands.
+   */
+  readonly styleOtherElements?: boolean;
+  /**
    * How strict this project is about each property — what codegen turns into its own types.
    *
    * ```ts
@@ -345,6 +350,7 @@ const KNOWN = new Set([
   "tokens",
   "externalCustomProperties",
   "unknownCustomProperties",
+  "styleOtherElements",
   "properties",
   "outDir",
   "rules",
@@ -937,6 +943,9 @@ function validate(config: Record<string, unknown>, path: string): void {
     }
   }
 
+  if (config.styleOtherElements !== undefined && typeof config.styleOtherElements !== "boolean") {
+    refuse(`sets \`styleOtherElements\` to ${describe(config.styleOtherElements)}. It is true or false.`);
+  }
   const unknown = config.unknownCustomProperties;
   if (unknown !== undefined && typeof unknown !== "boolean" && unknown !== "same-block") {
     refuse(`sets \`unknownCustomProperties\` to ${describe(unknown)}. It is true, false or "same-block".`);

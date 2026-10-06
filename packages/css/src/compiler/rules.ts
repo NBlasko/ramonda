@@ -213,6 +213,7 @@ export const RULE_IDS = [
   "token-set-against-its-declaration",
   "unknown-custom-property",
   "url-not-found",
+  "styles-another-element",
   "unknown-media-feature",
   "value-and-registered-syntax",
   "unit-not-allowed",
@@ -515,6 +516,7 @@ export function checkBlock(written: AnyBlock, options: CheckOptions = {}): Findi
   if (config !== undefined) unknownVariable(block, config, findings);
   if (config !== undefined) variableByHand(block, config, findings);
   if (config !== undefined) setAgainstItsDeclaration(block, config, findings);
+  if (config?.styleOtherElements === false) stylesAnotherElement(block, findings);
   if (options.urlExists !== undefined) urlNotFound(block, options.urlExists, options.fileName ?? "this file", findings);
   if (config?.unknownCustomProperties === false || config?.unknownCustomProperties === "same-block") {
     unknownCustomProperty(block, config, findings);
@@ -1577,6 +1579,59 @@ function pathsDeclaredBy(config: Config): ReadonlySet<string> {
   const paths = new Set(config.tokens === undefined ? [] : namesIn(config.tokens).map((one) => one.path));
   declaredPaths.set(config, paths);
   return paths;
+}
+
+/**
+ * A selector whose subject is another element, in a project that keeps a block to its own element.
+ *
+ * Asked for by the user: a parent reaching into a child (`.title { … }`, `& > img`) or a sibling
+ * (`& + .card`) makes two independently composed elements depend on each other, and neither file
+ * says so. The SUBJECT is the last compound — what follows the last combinator — and a selector is
+ * the element's own when `&` is in it: `&:hover`, `&::before`, `&.active`, `&:has(> img)` and
+ * `[data-theme="dark"] &` all style this element. A nested selector with no `&` is relative, so it
+ * means a descendant, as CSS nesting reads it. A condition and a group (`@media`, `when`) are not
+ * selectors. Inside a rule already reported, nothing more is said — the one report is the fault.
+ */
+function stylesAnotherElement(block: Block, findings: Finding[]): void {
+  const subjectOf = (selector: string): string => {
+    let depth = 0;
+    let quote = "";
+    let last = 0;
+    for (let index = 0; index < selector.length; index++) {
+      const char = selector[index];
+      if (quote !== "") {
+        if (char === "\\") index++;
+        else if (char === quote) quote = "";
+        continue;
+      }
+      if (char === '"' || char === "'") quote = char;
+      else if (char === "(" || char === "[") depth++;
+      else if (char === ")" || char === "]") depth--;
+      else if (depth === 0 && /[\s>+~]/.test(char)) last = index + 1;
+    }
+    return selector.slice(last).trim();
+  };
+  const walkItems = (items: readonly BlockItem[]): void => {
+    for (const item of items) {
+      if (item.kind !== "rule") continue;
+      const prelude = item.prelude.trim();
+      const notASelector = prelude.startsWith("@") || /^(?:when|else|match)\b/.test(prelude);
+      const other = notASelector ? undefined : selectorsOf(prelude).find((one) => !subjectOf(one.trim()).includes("&"));
+      if (other === undefined || item.at === undefined) {
+        walkItems(item.items);
+        continue;
+      }
+      findings.push({
+        rule: "styles-another-element",
+        at: item.at,
+        length: item.prelude.length,
+        message:
+          `\`${other.trim()}\` styles another element, and \`styleOtherElements: false\` keeps a block to its own. ` +
+          "Give that element a block of its own, or pass one to it as a prop.",
+      });
+    }
+  };
+  walkItems(block.items);
 }
 
 /**

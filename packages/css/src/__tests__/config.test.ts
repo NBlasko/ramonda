@@ -345,6 +345,7 @@ describe("the project's config", () => {
         /declares `tokens\.\$color` without `kind/,
       ],
       ["unknownCustomProperties as a word", `{ unknownCustomProperties: "local" }`, /true, false or "same-block"/],
+      ["styleOtherElements as a word", `{ styleOtherElements: "no" }`, /styleOtherElements.*true or false/],
       ["the old `alsoSets`", `{ alsoSets: ["--brand"] }`, /`externalCustomProperties`/],
       ["a rule by its old name", `{ rules: { "literal-not-allowed": "off" } }`, /`hardcoded-not-allowed`/],
       ["another rule by its old name", `{ rules: { "unknown-variable": "off" } }`, /`unknown-token`/],
@@ -575,6 +576,10 @@ describe("the project's config", () => {
       ["a rule set to error, which is the default", `{ rules: { "unknown-unit": "error" } }`],
       ["an empty object", `{}`],
       ["a group declared with its `$`", `{ tokens: { $color: {} } }`],
+      // Loaded from a real file, which is the one way the rule tests never ask: they hand the config
+      // in. Measured, the key was missing from the list and a real config was refused.
+      ["a block kept to its own element", `{ styleOtherElements: false }`],
+      ["made-up custom properties kept local", `{ unknownCustomProperties: "same-block" }`],
     ])("%s is accepted", (_what, body) => {
       expect(refused(body)).not.toThrow();
     });

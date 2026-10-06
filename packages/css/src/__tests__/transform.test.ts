@@ -1313,3 +1313,25 @@ describe("a url() that points at no file", () => {
     ]);
   });
 });
+
+/**
+ * `styleOtherElements: false` in the build, and its one exception: content nobody made a component
+ * of — markup from a Markdown file or a CMS — is styled from its container, with the reason written.
+ */
+describe("a block reaching another element under `styleOtherElements: false`", () => {
+  const config = { styleOtherElements: false };
+
+  test("stops the build", () => {
+    expect(() => transform(`const x = @@( & > img { width: 100%; } );\nexport default x;\n`, { config })).toThrow(
+      /styles-another-element: `& > img` styles another element/,
+    );
+  });
+
+  test("and builds with a reason written above it", () => {
+    const source =
+      `const prose = @@(\n  /* ramonda-css-ignore the markup comes from Markdown, not from components */\n` +
+      `  & p { margin: 0 0 1em; }\n);\nexport default prose;\n`;
+
+    expect(() => transform(source, { config })).not.toThrow();
+  });
+});

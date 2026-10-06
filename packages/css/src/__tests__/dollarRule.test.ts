@@ -302,3 +302,51 @@ describe('a made-up custom property with `unknownCustomProperties: "same-block"`
     ]);
   });
 });
+
+/**
+ * `styleOtherElements: false` — a block styles its own element and nothing else.
+ *
+ * Asked for by the user: a parent reaching into a child (`.title { … }`, `& > img`) or a sibling
+ * (`& + .card`) makes two independently composed elements depend on each other, and neither file
+ * says so. With the switch off, a selector whose subject — its last compound — is not `&` is refused.
+ */
+describe("a selector on another element, with `styleOtherElements: false`", () => {
+  const own: Config = { styleOtherElements: false };
+  const found = (css: string, config: Config = own) =>
+    check(css, config)
+      .filter((one) => one.rule === "styles-another-element")
+      .map((one) => one.message);
+
+  test.each([
+    ["a child by class", ".title { font-weight: 700; }", ".title"],
+    ["a child with `&`", "& .title { font-weight: 700; }", "& .title"],
+    ["a direct child", "& > img { width: 100%; }", "& > img"],
+    ["a sibling", "& + .card { margin-top: 8px; }", "& + .card"],
+    ["a later sibling", "& ~ p { color: red; }", "& ~ p"],
+    ["a child on hover", "&:hover .icon { opacity: 1; }", "&:hover .icon"],
+    ["one of a list", "&:hover, & .icon { opacity: 1; }", "& .icon"],
+    ["a child inside a state", "&:hover { & .icon { opacity: 1; } }", "& .icon"],
+  ])("is refused: %s", (_what, css, selector) => {
+    const [only, ...rest] = found(css);
+
+    expect(rest).toEqual([]);
+    expect(only).toContain(`\`${selector}\` styles another element`);
+  });
+
+  test.each([
+    ["a state", "&:hover { color: red; }"],
+    ["a pseudo-element", '&::before { content: ""; }'],
+    ["a class on itself", "&.active { color: red; }"],
+    ["an attribute on itself", '&[aria-busy="true"] { opacity: 0.5; }'],
+    ["itself, by what it holds", "&:has(> img) { padding: 0; }"],
+    ["itself, under an ancestor", '[data-theme="dark"] & { color: white; }'],
+    ["a condition", "@media (min-width: 40rem) { padding: 8px; }"],
+    ["a group", "when $(on) { color: red; }"],
+  ])("is allowed: %s", (_what, css) => {
+    expect(found(css)).toEqual([]);
+  });
+
+  test("and nothing is refused when the switch is left alone", () => {
+    expect(found(".title { font-weight: 700; } & > img { width: 100%; }", {})).toEqual([]);
+  });
+});

@@ -188,6 +188,28 @@ unknownCustomProperties: "same-block",
 
 Left out, any name is allowed, as in CSS. Stylesheets of your own are not checked for it.
 
+### `styleOtherElements` — a block styles its own element
+
+```ts
+styleOtherElements: false,
+```
+
+A parent reaching into a child — `.title { … }`, `& > img` — or into a sibling — `& + .card` — makes
+two elements that are composed apart depend on each other, and neither file says so. With this off,
+a selector is refused when its subject, the part after the last space, `>`, `+` or `~`, is not `&`.
+So `&:hover`, `&::before`, `&.active`, `&:has(> img)` and `[data-theme="dark"] &` stay: each of them
+styles this element. Give the child a block of its own, or pass one to it as a prop.
+
+Markup nobody made a component of — from Markdown, from a CMS — has no element to give a block, so
+it is styled from its container, with the reason written above:
+
+```tsx
+const prose = @@(
+  /* ramonda-css-ignore the markup comes from Markdown, not from components */
+  & p { margin: 0 0 1em; }
+);
+```
+
 ### `outDir` — where `css-system/` goes
 
 ```ts
