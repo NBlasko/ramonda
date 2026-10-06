@@ -524,7 +524,31 @@ export function checkBlock(written: AnyBlock, options: CheckOptions = {}): Findi
     unknownCustomProperty(block, config, references, findings);
   }
   tooManyValues(block, config?.properties, findings);
-  literalNotAllowed(block, config?.properties, findings);
+  {
+    // Review round 5: a declaration SETTING a token is where a colour is written — that is a theme —
+    // and its value is the range's to judge (`token-set-against-its-declaration`). Measured: a ranged
+    // token set to a value in its range was refused as a hardcoded colour, two rules saying opposite
+    // things about one line. So `hardcoded` stands aside on it, whichever of its paths reported.
+    const before = findings.length;
+    literalNotAllowed(block, config?.properties, findings);
+    const tokens = config === undefined ? undefined : declaredByName(config);
+    if (tokens !== undefined && tokens.size > 0 && findings.length > before) {
+      const spans: [number, number][] = [];
+      const collect = (items: readonly BlockItem[]): void => {
+        for (const item of items) {
+          if (item.kind === "rule") collect(item.items);
+          else if (tokens.has(item.property.trim()) && item.at !== undefined)
+            spans.push([item.at, item.end ?? item.at]);
+        }
+      };
+      collect(block.items);
+      const settingAToken = (at: number) => spans.some(([from, to]) => at >= from && at <= to);
+      const kept = findings
+        .splice(before)
+        .filter((one) => one.rule !== "hardcoded-not-allowed" || !settingAToken(one.at));
+      findings.push(...kept);
+    }
+  }
   doesNothing(block, findings);
   // After every rule that reads a VALUE, because it stays quiet where one has already named the
   // same word — see its own note.

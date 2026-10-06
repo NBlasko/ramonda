@@ -379,3 +379,31 @@ describe("the strict options against `@@keyframes` and `@@property`", () => {
     expect(named(`const b = @@( $(angle): 45deg; transform: rotate(var($(angle))); );`)).toEqual([]);
   });
 });
+
+/**
+ * Review round 5: setting a ranged token to a value in its range, under `hardcoded: false`.
+ *
+ * Measured: `--color-moving: #000;` was refused as a colour written out, while its range permits
+ * `#000` — two rules saying opposite things about one line. Setting a token IS where a colour is
+ * written: that is what a theme is. Its value is the range's to judge
+ * (`token-set-against-its-declaration`), so `hardcoded` stands aside on it.
+ */
+describe("a token set under `hardcoded: false`", () => {
+  const config: Config = {
+    tokens: { $color: kind("color", { moving: { value: "#fff", range: ["#fff", "#000"] }, fixed: "#111" }) },
+    properties: { "<color>": { hardcoded: false }, "<length>": { hardcoded: false } },
+  };
+  const rules = (css: string) => check(css, config).map((one) => one.rule);
+
+  test("to a value in its range is not a hardcoded colour", () => {
+    expect(rules("--color-moving: #000;")).toEqual([]);
+  });
+
+  test("to one outside its range is the range's fault, said once", () => {
+    expect(rules("--color-moving: red;")).toEqual(["token-set-against-its-declaration"]);
+  });
+
+  test("and an ordinary property still may not hold a colour written out", () => {
+    expect(rules("color: #000;")).toEqual(["hardcoded-not-allowed"]);
+  });
+});
