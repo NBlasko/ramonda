@@ -2838,3 +2838,27 @@ describe('a made-up custom property in a `style` attribute, with `"same-block"`'
     expect(found(`<p style={{ padding: "var(--gap)" }}>x</p>`)).toEqual(["`--gap` is read here"]);
   });
 });
+
+/** Review round 2, at the level of a project: what a `@@keyframes` sets, and one report per fault. */
+describe("a registered property an animation sets, and a made-up name nothing sets", () => {
+  test("a frame setting a registered property counts as setting it", () => {
+    const card =
+      `export const angle = @@property( syntax: "<angle>"; inherits: false; initial-value: 0deg; );\n` +
+      `const turn = @@keyframes( from { $(angle): 0deg; } to { $(angle): 90deg; } );\n` +
+      `export const dial = @@( transform: rotate(var($(angle))); animation: $(turn) 1s linear; );\n`;
+    const found = checkProject(project({ "Card.tsx": card })).findings.map((one) => one.code);
+
+    expect(found).not.toContain("registered-never-set");
+  });
+
+  test("a name the strict option refuses is not ALSO reported as set by nothing", () => {
+    const found = checkProject(
+      project({
+        "ramonda.css.ts": `export default { unknownCustomProperties: false };\n`,
+        "Card.tsx": `export const a = @@( padding: var(--nope); );\n`,
+      }),
+    ).findings.map((one) => one.code);
+
+    expect(found).toEqual(["unknown-custom-property"]);
+  });
+});

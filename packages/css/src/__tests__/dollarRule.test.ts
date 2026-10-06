@@ -350,3 +350,32 @@ describe("a selector on another element, with `styleOtherElements: false`", () =
     expect(found(".title { font-weight: 700; } & > img { width: 100%; }", {})).toEqual([]);
   });
 });
+
+/**
+ * Review round 2: the strict options against the named sites, measured through one project with
+ * every option on. Both false reports broke a correct build.
+ */
+describe("the strict options against `@@keyframes` and `@@property`", () => {
+  const strict: Config = { styleOtherElements: false, unknownCustomProperties: "same-block" };
+  const named = (source: string) => {
+    const sites = findBlocks(source);
+    const site = sites[sites.length - 1];
+    const references = new Map([["angle", "--r-angle"]]);
+    const read = readBlock(source, site.open, "C.tsx", { tolerant: true, resolve: (name) => references.get(name) });
+    return checkBlock(read.block, { at: site.at, config: strict, references }).map((one) => one.rule);
+  };
+
+  test("a frame is not a selector on another element", () => {
+    expect(named(`const k = @@keyframes( from { opacity: 0; } 50% { opacity: 0.5; } to { opacity: 1; } );`)).toEqual(
+      [],
+    );
+  });
+
+  test("a frame setting a registered property through its binding is not a made-up name", () => {
+    expect(named(`const k = @@keyframes( from { $(angle): 0deg; } to { $(angle): 90deg; } );`)).toEqual([]);
+  });
+
+  test("nor is a block setting one through its binding", () => {
+    expect(named(`const b = @@( $(angle): 45deg; transform: rotate(var($(angle))); );`)).toEqual([]);
+  });
+});

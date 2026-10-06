@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import ts from "typescript";
 import { knownNames, configReader, environmentOf } from "./config";
 import { variablesSheetFor, writeGenerated } from "./generate";
@@ -124,6 +124,8 @@ interface Loaded {
    * resemble it.
    */
   loader?: "tsx" | "ts" | "jsx" | "js" | "css";
+  /** The folder a relative path in the contents is read from. */
+  resolveDir?: string;
   errors?: { text: string; location: { file: string; line: number; column: number } }[];
 }
 
@@ -239,10 +241,16 @@ export function ramondaCss(options: EsbuildCssPluginOptions = {}): EsbuildCssPlu
 
       build.onResolve({ filter: /\?ramonda-css\.css$/ }, (args) => ({ path: args.path, namespace: NAMESPACE }));
 
-      build.onLoad({ filter: /.*/, namespace: NAMESPACE }, (args) => ({
-        contents: sheet.cssFor(args.path.slice(0, -SUFFIX.length)),
-        loader: "css",
-      }));
+      /**
+       * `resolveDir` is the folder of the file that holds the block, so a relative `url( … )` in it
+       * is read from there — as Vite reads it, and as `url-not-found` checks it. Without it the
+       * stylesheet, in a namespace of its own, had no folder at all: measured in review round 2,
+       * `url("./a.png")` failed the build with the file right beside it.
+       */
+      build.onLoad({ filter: /.*/, namespace: NAMESPACE }, (args) => {
+        const file = args.path.slice(0, -SUFFIX.length);
+        return { contents: sheet.cssFor(file), loader: "css", resolveDir: dirname(file) };
+      });
 
       /**
        * A project stylesheet setting a declared variable its declaration does not allow — the same

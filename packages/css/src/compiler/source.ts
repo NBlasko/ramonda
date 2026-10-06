@@ -160,9 +160,18 @@ export function checkedSource(
           ]),
     );
 
-    // A named site sets nothing on an element; a `@@property` registers a name, and the name it
-    // registers is what a reference to it resolves to — so both are counted where the build counts
-    // them. See `transform`.
+    // A `@@property` registers a name, and the name it registers is what a reference to it resolves
+    // to — so both are counted where the build counts them. See `transform`.
+    //
+    // A `@@keyframes` frame DOES set a custom property, on the element it animates: review round 2
+    // measured `registered-never-set` on a property only an animation sets — the pattern the docs
+    // show for animating one — because frames were counted as setting nothing.
+    if (site.at === "keyframes") {
+      const found = variablesIn(read.block);
+      blockSets.push(...found.set);
+      reads.push(...found.read);
+      readsRegistered.push(...(found.readsRegistered ?? []));
+    }
     if (site.at === undefined) {
       const found = variablesIn(read.block);
       blockSets.push(...found.set);

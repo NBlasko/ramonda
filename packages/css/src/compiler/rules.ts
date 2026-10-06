@@ -516,10 +516,12 @@ export function checkBlock(written: AnyBlock, options: CheckOptions = {}): Findi
   if (config !== undefined) unknownVariable(block, config, findings);
   if (config !== undefined) variableByHand(block, config, findings);
   if (config !== undefined) setAgainstItsDeclaration(block, config, findings);
-  if (config?.styleOtherElements === false) stylesAnotherElement(block, findings);
+  // An ordinary block only: a `@@keyframes` frame (`from`, `50%`) is not a selector, and a named
+  // site styles no element of its own to keep to.
+  if (config?.styleOtherElements === false && at === undefined) stylesAnotherElement(block, findings);
   if (options.urlExists !== undefined) urlNotFound(block, options.urlExists, options.fileName ?? "this file", findings);
   if (config?.unknownCustomProperties === false || config?.unknownCustomProperties === "same-block") {
-    unknownCustomProperty(block, config, findings);
+    unknownCustomProperty(block, config, references, findings);
   }
   tooManyValues(block, config?.properties, findings);
   literalNotAllowed(block, config?.properties, findings);
@@ -1687,7 +1689,18 @@ function urlNotFound(block: Block, exists: (relative: string) => boolean, file: 
  * `unknown-custom-property`; the `style` attribute's is in `typed.ts`. Set or read: `--brand: red`
  * and `var(--brand)`, at any depth, in a choice's branches and a match's arms too.
  */
-function unknownCustomProperty(block: Block, config: Config, findings: Finding[]): void {
+function unknownCustomProperty(
+  block: Block,
+  config: Config,
+  references: ReadonlyMap<string, string> | undefined,
+  findings: Finding[],
+): void {
+  /**
+   * A `@@property`'s generated name is DECLARED — written through its binding, `$(angle): 45deg` —
+   * so it is no made-up name. Measured in review round 2: both a block and a `@@keyframes` frame
+   * setting one were refused, which broke a correct build.
+   */
+  const registered = new Set([...(references?.values() ?? [])].filter((name) => name.startsWith("--")));
   const texts = (value: readonly ValuePart[]): TextPart[] =>
     value.flatMap((part) =>
       part.kind === "text"
@@ -1716,7 +1729,12 @@ function unknownCustomProperty(block: Block, config: Config, findings: Finding[]
 
   for (const item of declarations) {
     const property = item.property.trim();
-    if (property.startsWith("--") && item.at !== undefined && refusedAsUnknown(config, property, local)) {
+    if (
+      property.startsWith("--") &&
+      item.at !== undefined &&
+      !registered.has(property) &&
+      refusedAsUnknown(config, property, local)
+    ) {
       findings.push({
         rule: "unknown-custom-property",
         at: item.at,
@@ -1727,7 +1745,7 @@ function unknownCustomProperty(block: Block, config: Config, findings: Finding[]
     for (const part of texts(item.value)) {
       if (part.at === undefined) continue;
       for (const read of readsIn(part.text)) {
-        if (!refusedAsUnknown(config, read.name, local)) continue;
+        if (registered.has(read.name) || !refusedAsUnknown(config, read.name, local)) continue;
         findings.push({
           rule: "unknown-custom-property",
           at: part.at + read.at,

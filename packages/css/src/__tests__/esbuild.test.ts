@@ -572,3 +572,20 @@ describe("a stylesheet setting a token", () => {
     expect(outputs(result).css).toContain("--brand: red");
   });
 });
+
+/**
+ * A relative `url( … )` in a block, through esbuild. Review round 2 measured it failing a build
+ * with the file right there — *Could not resolve "./img/a.png"* — because the block's stylesheet is
+ * loaded from a namespace of its own and esbuild had no folder to read the path from. It is read from
+ * the folder of the file that holds the block, as Vite reads it and as `url-not-found` checks it.
+ */
+test("a relative url() in a block resolves beside the file that holds it", async () => {
+  const root = project({
+    "index.tsx": `export const x = @@( background: url("./a.png"); );\n`,
+    "a.png": "PNG",
+  });
+
+  const result = await build(root, { loader: { ".png": "dataurl" } });
+
+  expect(outputs(result).css).toContain("url(data:image/png,PNG)");
+});

@@ -13,6 +13,7 @@ import { readModule } from "./modules";
 import { checkTemplates } from "./compiler/rules";
 import { fileMayHoldABlock, mayHoldABlock } from "./compiler/scan";
 import { TYPED_RULES, registeredNeverSet, typedFindings } from "./compiler/typed";
+import { refusedAsUnknown } from "./compiler/declaredSet";
 import type { RegisteredSite } from "./compiler/variables";
 import { type VirtualFile, virtualFile } from "./compiler/virtual";
 
@@ -235,6 +236,9 @@ export function checkProject(tsconfig: string, options: CheckOptions = {}): Repo
    * at the wrong thing.
    */
   for (const one of sheet.unknownVariables()) {
+    // A name the strict option already refuses is one fault, and it has its report: a second, about
+    // the same `var()`, would read as two. Measured in review round 2 on `var(--nope)`.
+    if (refusedAsUnknown(configFor(one.file), one.read.name)) continue;
     const source = sources.get(one.file);
     css.push({
       file: one.file,
