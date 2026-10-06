@@ -51,22 +51,42 @@ export function againstDeclaration(one: Named, outcomes: readonly (string | unde
 }
 
 /**
- * Whether a project that switched off made-up custom properties — `unknownCustomProperties: false`
- * — refuses this name: one that is neither a token nor a name an outside stylesheet sets. A
- * `@@property` never reaches here by name; it is read through its binding, `var($(name))`.
+ * Whether a project that limits made-up custom properties refuses this name.
+ *
+ * `unknownCustomProperties: false` refuses every name that is neither a token nor one an outside
+ * stylesheet sets. `"same-block"` allows one more: a LOCAL, which one block both sets and reads —
+ * `local` is that set, worked out by the caller for the block (or `style` attribute) it is reading.
+ * A `@@property` never reaches here by name; it is read through its binding, `var($(name))`.
  */
-export function refusedAsUnknown(config: Config | undefined, name: string): boolean {
-  if (config?.unknownCustomProperties !== false) return false;
+export function refusedAsUnknown(config: Config | undefined, name: string, local?: ReadonlySet<string>): boolean {
+  const mode = config?.unknownCustomProperties;
+  if (config === undefined || (mode !== false && mode !== "same-block")) return false;
   if (declaredByName(config).has(name)) return false;
-  return !(config.externalCustomProperties ?? []).includes(name);
+  if ((config.externalCustomProperties ?? []).includes(name)) return false;
+  return !(mode === "same-block" && local?.has(name) === true);
+}
+
+/** The names one block both sets and reads — what `"same-block"` allows. */
+export function localNames(sets: Iterable<string>, reads: Iterable<string>): ReadonlySet<string> {
+  const read = new Set(reads);
+  return new Set([...sets].filter((name) => read.has(name)));
 }
 
 /** What `unknown-custom-property` says, the same in a block and in a `style` attribute. */
-export function unknownMessage(name: string): string {
+export function unknownMessage(name: string, config?: Config, how: "set" | "read" = "read"): string {
+  const elsewhere =
+    "Put a design value in `tokens`, a value from code in `@@property( … )`, or a name an outside " +
+    "stylesheet sets in `externalCustomProperties`.";
+  if (config?.unknownCustomProperties === "same-block") {
+    return how === "read"
+      ? `\`${name}\` is read here and not set in this block, and \`unknownCustomProperties: "same-block"\` keeps a ` +
+          `made-up name to the block that sets it. ${elsewhere}`
+      : `\`${name}\` is set here and read nowhere in this block, so it could only be for another element — ` +
+          `and \`unknownCustomProperties: "same-block"\` keeps a made-up name to one block. ${elsewhere}`;
+  }
   return (
     `\`${name}\` is a custom property this project does not declare, and \`unknownCustomProperties: false\` ` +
-    "refuses one made up here. Put a design value in `tokens`, a value from code in `@@property( … )`, " +
-    "or a name an outside stylesheet sets in `externalCustomProperties`."
+    `refuses one made up here. ${elsewhere}`
   );
 }
 

@@ -344,7 +344,7 @@ describe("the project's config", () => {
         `{ tokens: { $color: { accent: { value: "#10b981", range: "any" } } } }`,
         /declares `tokens\.\$color` without `kind/,
       ],
-      ["unknownCustomProperties as a word", `{ unknownCustomProperties: "no" }`, /true or false/],
+      ["unknownCustomProperties as a word", `{ unknownCustomProperties: "local" }`, /true, false or "same-block"/],
       ["the old `alsoSets`", `{ alsoSets: ["--brand"] }`, /`externalCustomProperties`/],
       ["a rule by its old name", `{ rules: { "literal-not-allowed": "off" } }`, /`hardcoded-not-allowed`/],
       ["another rule by its old name", `{ rules: { "unknown-variable": "off" } }`, /`unknown-token`/],

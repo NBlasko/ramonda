@@ -2818,3 +2818,23 @@ describe("a made-up custom property in a `style` attribute, with `unknownCustomP
     expect(found(jsx)).toEqual([]);
   });
 });
+
+/** `"same-block"` in a `style` attribute: the attribute is its own block — set and read there, or neither. */
+describe('a made-up custom property in a `style` attribute, with `"same-block"`', () => {
+  const CONFIG =
+    `import { kind } from ${JSON.stringify(join(PACKAGE, "dist", "config.js"))};\n` +
+    `export default { tokens: { $color: kind("color", { a: "#000" }) }, unknownCustomProperties: "same-block" };\n`;
+  const found = (jsx: string) =>
+    checkProject(project({ "ramonda.css.ts": CONFIG, "Card.tsx": `export const Card = () => ${jsx};\n` }))
+      .findings.filter((one) => one.code === "unknown-custom-property")
+      .map((one) => one.message.split(" and ")[0]);
+
+  test("set and read in one attribute is allowed", () => {
+    expect(found(`<p style={{ "--gap": "4px", padding: "var(--gap)" }}>x</p>`)).toEqual([]);
+    expect(found(`<p style="--gap: 4px; padding: var(--gap)">x</p>`)).toEqual([]);
+  });
+
+  test("read without being set there is refused", () => {
+    expect(found(`<p style={{ padding: "var(--gap)" }}>x</p>`)).toEqual(["`--gap` is read here"]);
+  });
+});

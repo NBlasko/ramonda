@@ -2,6 +2,7 @@ import { NARROW, namesIn, ruleFor, tokensOnlyKinds } from "../codegen";
 import {
   againstDeclaration,
   declaredByName,
+  localNames,
   plainValue,
   readsIn,
   refusedAsUnknown,
@@ -507,7 +508,9 @@ export function checkBlock(written: AnyBlock, options: CheckOptions = {}): Findi
   if (config !== undefined) unknownVariable(block, config, findings);
   if (config !== undefined) variableByHand(block, config, findings);
   if (config !== undefined) setAgainstItsDeclaration(block, config, findings);
-  if (config?.unknownCustomProperties === false) unknownCustomProperty(block, config, findings);
+  if (config?.unknownCustomProperties === false || config?.unknownCustomProperties === "same-block") {
+    unknownCustomProperty(block, config, findings);
+  }
   tooManyValues(block, config?.properties, findings);
   literalNotAllowed(block, config?.properties, findings);
   doesNothing(block, findings);
@@ -1584,36 +1587,45 @@ function unknownCustomProperty(block: Block, config: Config, findings: Finding[]
             ? part.arms.flatMap((arm) => texts(arm.value))
             : [],
     );
-  const walkItems = (items: readonly BlockItem[]): void => {
+  const declarations: Declaration[] = [];
+  const collect = (items: readonly BlockItem[]): void => {
     for (const item of items) {
-      if (item.kind === "rule") {
-        walkItems(item.items);
-        continue;
-      }
-      const property = item.property.trim();
-      if (property.startsWith("--") && item.at !== undefined && refusedAsUnknown(config, property)) {
-        findings.push({
-          rule: "unknown-custom-property",
-          at: item.at,
-          length: property.length,
-          message: unknownMessage(property),
-        });
-      }
-      for (const part of texts(item.value)) {
-        if (part.at === undefined) continue;
-        for (const read of readsIn(part.text)) {
-          if (!refusedAsUnknown(config, read.name)) continue;
-          findings.push({
-            rule: "unknown-custom-property",
-            at: part.at + read.at,
-            length: read.length,
-            message: unknownMessage(read.name),
-          });
-        }
-      }
+      if (item.kind === "rule") collect(item.items);
+      else declarations.push(item);
     }
   };
-  walkItems(block.items);
+  collect(block.items);
+
+  // What this block sets and reads, at any depth — the locals `"same-block"` allows.
+  const sets = declarations.map((item) => item.property.trim()).filter((name) => name.startsWith("--"));
+  const reads = declarations.flatMap((item) =>
+    texts(item.value).flatMap((part) => readsIn(part.text).map((one) => one.name)),
+  );
+  const local = localNames(sets, reads);
+
+  for (const item of declarations) {
+    const property = item.property.trim();
+    if (property.startsWith("--") && item.at !== undefined && refusedAsUnknown(config, property, local)) {
+      findings.push({
+        rule: "unknown-custom-property",
+        at: item.at,
+        length: property.length,
+        message: unknownMessage(property, config, "set"),
+      });
+    }
+    for (const part of texts(item.value)) {
+      if (part.at === undefined) continue;
+      for (const read of readsIn(part.text)) {
+        if (!refusedAsUnknown(config, read.name, local)) continue;
+        findings.push({
+          rule: "unknown-custom-property",
+          at: part.at + read.at,
+          length: read.length,
+          message: unknownMessage(read.name, config, "read"),
+        });
+      }
+    }
+  }
 }
 
 /**

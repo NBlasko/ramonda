@@ -176,6 +176,16 @@ property comes through a door that is checked:
 - a value from code is a **`@@property( … )`**, read as `var($(name))`;
 - a name an outside stylesheet sets goes in **`externalCustomProperties`**.
 
+**`"same-block"` allows one more: a local.** A name one block both sets and reads is fine there —
+`--gap: 4px; padding: var(--gap);` — and nowhere else: a read the block does not set is refused (the
+usual typo), and so is a setting the block does not read, since that could only be for another
+element. A `style` attribute counts as one block. A value shared between elements is a token or a
+`@@property`.
+
+```ts
+unknownCustomProperties: "same-block",
+```
+
 Left out, any name is allowed, as in CSS. Stylesheets of your own are not checked for it.
 
 ### `outDir` — where `css-system/` goes

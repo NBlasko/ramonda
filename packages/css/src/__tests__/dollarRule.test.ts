@@ -251,3 +251,54 @@ describe("a custom property nobody declared, with `unknownCustomProperties: fals
     expect(found("--brand: red; color: var(--brand);", { tokens: strict.tokens })).toEqual([]);
   });
 });
+
+/**
+ * `unknownCustomProperties: "same-block"` — a made-up name is a LOCAL: one block both sets it and
+ * reads it, and nothing else may. The user's rule: global goes in the theme, local is written with
+ * `var`, and a value scoped beyond one block is a `@@property`. A typo cannot hide, because a local
+ * read and its local setting are in the same few lines.
+ */
+describe('a made-up custom property with `unknownCustomProperties: "same-block"`', () => {
+  const local: Config = {
+    tokens: { $color: kind("color", { accent: "#00f" }) },
+    externalCustomProperties: ["--mui-primary"],
+    unknownCustomProperties: "same-block",
+  };
+  const found = (css: string) =>
+    check(css, local)
+      .filter((one) => one.rule === "unknown-custom-property")
+      .map((one) => one.message);
+
+  test.each([
+    ["set and read in the block", "--gap: 4px; padding: var(--gap);"],
+    ["set at the top and read in a nested rule", "--gap: 4px; &:hover { padding: var(--gap); }"],
+    ["a token, set by name", "--color-accent: red;"],
+    ["an outside name, read alone", "color: var(--mui-primary);"],
+  ])("is allowed: %s", (_what, css) => {
+    expect(found(css)).toEqual([]);
+  });
+
+  test("a name read but not set in this block is refused, saying so", () => {
+    const [only, ...rest] = found("padding: var(--gap);");
+
+    expect(rest).toEqual([]);
+    expect(only).toContain("`--gap` is read here and not set in this block");
+    expect(only).toContain("`tokens`");
+    expect(only).toContain("`@@property");
+  });
+
+  test("a name set but read nowhere in this block is refused too — it could only be for another element", () => {
+    const [only, ...rest] = found("--gap: 4px; padding: 2px;");
+
+    expect(rest).toEqual([]);
+    expect(only).toContain("`--gap` is set here and read nowhere in this block");
+  });
+
+  test("a misspelt read beside its setting is caught", () => {
+    // In source order: the setting comes first.
+    expect(found("--gap: 4px; padding: var(--gpa);")).toEqual([
+      expect.stringContaining("`--gap` is set here and read nowhere in this block"),
+      expect.stringContaining("`--gpa` is read here and not set in this block"),
+    ]);
+  });
+});

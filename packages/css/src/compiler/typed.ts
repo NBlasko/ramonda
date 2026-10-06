@@ -3,6 +3,7 @@ import type { Config } from "../config";
 import {
   againstDeclaration,
   declaredByName,
+  localNames,
   plainValue,
   readsIn,
   refusedAsUnknown,
@@ -517,7 +518,9 @@ export function typedFindingsFor(
   allowListNotCss(checker, file, report);
   // The `style` attribute's half of what a block and a stylesheet are asked — see `declaredSet.ts`.
   if (config !== undefined) styleSetsADeclared(file, config, reportAt);
-  if (config?.unknownCustomProperties === false) styleMakesOneUp(file, config, reportAt);
+  if (config?.unknownCustomProperties === false || config?.unknownCustomProperties === "same-block") {
+    styleMakesOneUp(file, config, reportAt);
+  }
 
   return findings;
 }
@@ -533,36 +536,59 @@ function styleMakesOneUp(
   config: Config,
   reportAt: (start: number, length: number, what: Omit<TypedFinding, "file" | "at" | "length">) => void,
 ): void {
-  const say = (name: string, start: number, length: number): void => {
-    if (refusedAsUnknown(config, name))
-      reportAt(start, length, { rule: "unknown-custom-property", message: unknownMessage(name) });
-  };
-  /** Every name a piece of CSS text sets or reads, starting at `start` in the file. */
-  const css = (text: string, start: number): void => {
-    for (const setting of settingsIn(text)) say(setting.name, start + setting.at, setting.name.length);
-    for (const read of readsIn(text)) say(read.name, start + read.at, read.length);
-  };
   const literalText = (node: ts.Node): string | undefined =>
     ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node) ? node.text : undefined;
+
+  /** One attribute is one "block" for `"same-block"`: what it sets, what it reads, and where. */
+  const judge = (sets: { name: string; at: number }[], reads: { name: string; at: number; length: number }[]): void => {
+    const local = localNames(
+      sets.map((one) => one.name),
+      reads.map((one) => one.name),
+    );
+    for (const one of sets) {
+      if (refusedAsUnknown(config, one.name, local)) {
+        reportAt(one.at, one.name.length, {
+          rule: "unknown-custom-property",
+          message: unknownMessage(one.name, config, "set"),
+        });
+      }
+    }
+    for (const one of reads) {
+      if (refusedAsUnknown(config, one.name, local)) {
+        reportAt(one.at, one.length, {
+          rule: "unknown-custom-property",
+          message: unknownMessage(one.name, config, "read"),
+        });
+      }
+    }
+  };
 
   const visit = (node: ts.Node): void => {
     if (ts.isJsxAttribute(node) && node.name.getText(file) === "style" && node.initializer !== undefined) {
       const value = node.initializer;
       const inner = ts.isJsxExpression(value) ? value.expression : value;
       if (inner !== undefined && ts.isObjectLiteralExpression(inner)) {
+        const sets: { name: string; at: number }[] = [];
+        const reads: { name: string; at: number; length: number }[] = [];
         for (const property of inner.properties) {
           if (!ts.isPropertyAssignment(property)) continue;
           const key = literalText(property.name);
-          if (key?.startsWith("--")) say(key, property.name.getStart(file) + 1, key.length);
+          if (key?.startsWith("--")) sets.push({ name: key, at: property.name.getStart(file) + 1 });
           const text = literalText(property.initializer);
-          if (text !== undefined) {
-            for (const read of readsIn(text))
-              say(read.name, property.initializer.getStart(file) + 1 + read.at, read.length);
-          }
+          if (text === undefined) continue;
+          const start = property.initializer.getStart(file) + 1;
+          for (const read of readsIn(text)) reads.push({ ...read, at: start + read.at });
         }
+        judge(sets, reads);
       } else if (inner !== undefined) {
         const text = literalText(inner);
-        if (text !== undefined) css(text, inner.getStart(file) + 1);
+        if (text !== undefined) {
+          const start = inner.getStart(file) + 1;
+          judge(
+            settingsIn(text).map((one) => ({ name: one.name, at: start + one.at })),
+            readsIn(text).map((one) => ({ ...one, at: start + one.at })),
+          );
+        }
       }
     }
     ts.forEachChild(node, visit);

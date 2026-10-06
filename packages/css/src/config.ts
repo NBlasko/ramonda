@@ -106,7 +106,7 @@ export interface Config {
    * not a token and not in {@link externalCustomProperties}. A value from code goes through
    * `@@property( … )` instead, which is read by its binding. Left out, any name is allowed, as in CSS.
    */
-  readonly unknownCustomProperties?: boolean;
+  readonly unknownCustomProperties?: boolean | "same-block";
   /**
    * How strict this project is about each property — what codegen turns into its own types.
    *
@@ -938,8 +938,8 @@ function validate(config: Record<string, unknown>, path: string): void {
   }
 
   const unknown = config.unknownCustomProperties;
-  if (unknown !== undefined && typeof unknown !== "boolean") {
-    refuse(`sets \`unknownCustomProperties\` to ${describe(unknown)}. It is true or false.`);
+  if (unknown !== undefined && typeof unknown !== "boolean" && unknown !== "same-block") {
+    refuse(`sets \`unknownCustomProperties\` to ${describe(unknown)}. It is true, false or "same-block".`);
   }
 
   const external = config.externalCustomProperties;
