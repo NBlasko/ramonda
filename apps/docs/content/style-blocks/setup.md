@@ -87,6 +87,12 @@ A TypeScript language-service plugin, turned on in your own `tsconfig.json`:
 Your editor has to be running the **workspace's** TypeScript for any plugin to load. In VS Code:
 *TypeScript: Select TypeScript Version → Use Workspace Version*.
 
+What it gives you, drawn from the plugin's own answers over a real project:
+
+![Inside a block: "$color." offers the project's token groups accent, surface and text; hovering
+display shows its grammar, initial value and whether it inherits; and z-index: 5 is underlined
+because this project allows only 0, 1, 10, 100 and 1000.](/media/style-blocks-editor.gif)
+
 ### The extension, for colours, formatting, and the second TypeScript server
 
 The colours are a TextMate grammar, which is why they are an extension and not part of the plugin:

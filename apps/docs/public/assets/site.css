@@ -570,6 +570,19 @@ article img[src$=".gif"] {
   border-radius: 10px;
 }
 
+/**
+ * The editor GIFs are a whole editor window, drawn by `scripts/build-editor-gifs.mjs` with its own
+ * frame — so full width, no second border, and the space held before they arrive so the prose does
+ * not jump. 760 × 400 is the size the script draws at.
+ */
+article img[src^="/media/"] {
+  width: 760px;
+  max-width: 100%;
+  aspect-ratio: 760 / 400;
+  border: none;
+  box-shadow: none;
+}
+
 /* ── prose tables, lists, blockquotes ──────────────────────────────────── */
 /* A DataTable is a real table until the screen is too narrow for one, at which point each row
    becomes a card: a full-width name bar that stays put, and the remaining cells scrolling under it

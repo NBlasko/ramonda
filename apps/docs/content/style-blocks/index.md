@@ -26,6 +26,10 @@ of it — open the other two tabs:
 checked as CSS: a misspelled property, a value the property does not take, and a unit your project
 does not use are all reported where you wrote them, before the build runs.
 
+![An editor writing a style block: typing "disp" offers display; a misspelt "colr" is underlined
+and its hover says it is not a CSS property and suggests color; once fixed, the badge renders with
+the classes and CSS the build made of the block.](/media/style-blocks-write.gif)
+
 It compiles away. Each declaration becomes a class in a stylesheet — a shorthand like `gap` becomes
 one per longhand it sets — and the CSS is a file the browser caches. What reaches the element is a
 string of classes, which is why a block goes on `className`. No CSS is generated in the browser:
