@@ -113,7 +113,7 @@ export interface Imported {
  * The named sites one imported MODULE declares, worked out once per module text.
  *
  * Without it every file importing a module reads and parses it again — measured on 1000 files
- * importing one shared module (`scripts/bench-css.mjs`), 2000 reads. Keyed by the text, so an
+ * importing one shared module (`scripts/css/bench-css.mjs`), 2000 reads. Keyed by the text, so an
  * edited module is a new key and nothing stale is ever answered; bounded, so a dev server that sees
  * a thousand edits does not keep a thousand old texts.
  */

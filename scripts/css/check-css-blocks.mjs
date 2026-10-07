@@ -25,7 +25,7 @@ import { join, relative } from "node:path";
  * both configs plus both scripts are compared against it.
  */
 
-const root = join(import.meta.dirname, "..");
+const root = join(import.meta.dirname, "..", "..");
 const TAG = "[css-blocks]";
 
 /** Where a block may live at all. `dist`, `coverage` and the like are nobody's source. */

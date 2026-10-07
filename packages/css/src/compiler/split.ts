@@ -28,7 +28,7 @@ export { holdsVar };
  * — 84 of 404 placements. Those families keep their shorthand and the cascade keeps deciding.
  *
  * The shapes themselves are measured out of Chromium, Firefox and WebKit by
- * `scripts/build-shorthand-shapes.mjs`, and only written where every engine that has the family
+ * `scripts/css/build-shorthand-shapes.mjs`, and only written where every engine that has the family
  * agreed.
  */
 
@@ -160,7 +160,7 @@ export function splitPositional(shape: Shape, value: string): Record<string, str
  *
  * Exported because the SPLITTER and the CHECKER ask the same question: one refuses the value, the
  * other says why. Two copies of this would be the fault `one-rule-many-consumers` names — and
- * `scripts/build-shorthand-shapes.mjs` injects it into a page beside `tokensOf`, for the reason
+ * `scripts/css/build-shorthand-shapes.mjs` injects it into a page beside `tokensOf`, for the reason
  * written there.
  */
 export function misplacedWord(

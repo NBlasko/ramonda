@@ -1,9 +1,9 @@
 /**
  * The splitter, reading the generated table, against what the engines actually render.
  *
- *     node scripts/check-shorthand-split.mjs
- *     SELFTEST=slot node scripts/check-shorthand-split.mjs
- *     SELFTEST=half node scripts/check-shorthand-split.mjs   # splits a value no engine takes; must fail     # must FAIL
+ *     node scripts/css/check-shorthand-split.mjs
+ *     SELFTEST=slot node scripts/css/check-shorthand-split.mjs
+ *     SELFTEST=half node scripts/css/check-shorthand-split.mjs   # splits a value no engine takes; must fail     # must FAIL
  *
  * ## Why this is the gate and `--check` on the generator is not
  *
@@ -26,14 +26,15 @@
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { loadTs } from "./lib-load-ts.mjs";
-import { caughtIt } from "./lib-selftest.mjs";
+import { loadTs } from "../lib-load-ts.mjs";
+import { caughtIt } from "../lib-selftest.mjs";
 
-const HERE = dirname(fileURLToPath(import.meta.url));
+// `scripts/`, which every path below is written from.
+const HERE = dirname(dirname(fileURLToPath(import.meta.url)));
 const selftest = process.env.SELFTEST;
 
 const pw = createRequire(join(HERE, "..", "apps", "playground-core", "package.json"))("@playwright/test");
-const { DOMAINS, PATTERNS, splitPositional } = await import("../packages/css/shorthand-shapes.mjs");
+const { DOMAINS, PATTERNS, splitPositional } = await import("../../packages/css/shorthand-shapes.mjs");
 const { SHAPES } = await loadTs(join(HERE, "..", "packages", "css", "src", "compiler", "shapes.generated.ts"));
 /** Families split by hand FIRST are not split by this table at all — see `splitOf`. */
 const { BY_HAND } = await loadTs(join(HERE, "..", "packages", "css", "src", "compiler", "splitByHand.ts"));
@@ -209,7 +210,7 @@ if (wrong.length > 0) {
       console.error(`[split]     we split into          ${JSON.stringify(one.mine)}`);
     }
   }
-  console.error(`[split] regenerate with \`node scripts/build-shorthand-shapes.mjs\`, or fix the splitter.`);
+  console.error(`[split] regenerate with \`node scripts/css/build-shorthand-shapes.mjs\`, or fix the splitter.`);
   process.exit(1);
 }
 

@@ -1,7 +1,7 @@
 /**
  * How long `@ramonda/css` takes per file, on a project large enough to show it.
  *
- *     node scripts/bench-css.mjs [files] [--profile]
+ *     node scripts/css/bench-css.mjs [files] [--profile]
  *
  * Writes a synthetic project to a temporary folder — `files` components of ten blocks each, every one
  * importing a shared `@@keyframes` and spreading a shared block — and times the three paths a real
@@ -22,7 +22,8 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { Session } from "node:inspector/promises";
 
-const here = dirname(fileURLToPath(import.meta.url));
+// `scripts/`, which every path below is written from.
+const here = dirname(dirname(fileURLToPath(import.meta.url)));
 const COMPILER = join(here, "..", "packages", "css", "dist", "compiler", "index.js");
 const count = Number(process.argv.find((one) => /^\d+$/.test(one)) ?? 1000);
 const profile = process.argv.includes("--profile");

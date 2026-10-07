@@ -13,7 +13,7 @@
  *
  * ## What is different about this one, and it has to be said
  *
- * **SUPERSEDED — the scheme it modelled is built, and `scripts/check-layer-skew.mjs` checks the
+ * **SUPERSEDED — the scheme it modelled is built, and `scripts/css/check-layer-skew.mjs` checks the
  * real thing.** That gate drives the real compiler, the real `Sheet` and the real
  * `mergeClassNames`, in all three engines and both load orders, and it runs in `pnpm check`.
  * This is kept for the measurement it made while the design was still a proposal: seven

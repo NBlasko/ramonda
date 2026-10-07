@@ -161,7 +161,7 @@ export function holeIn(head: string, marker: string): number | undefined {
 
 /**
  * The pattern for one marker, compiled once: `holeIn` runs for every head of every block, and
- * compiling per call was 5.6% of a build in `scripts/bench-css.mjs`.
+ * compiling per call was 5.6% of a build in `scripts/css/bench-css.mjs`.
  */
 const headPatterns = new Map<string, RegExp>();
 function headPattern(marker: string): RegExp {

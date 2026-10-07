@@ -1,8 +1,8 @@
 /**
  * Two stylesheets from two releases on one page, and the right declaration still wins.
  *
- *     node scripts/check-layer-skew.mjs
- *     SELFTEST=order node scripts/check-layer-skew.mjs
+ *     node scripts/css/check-layer-skew.mjs
+ *     SELFTEST=order node scripts/css/check-layer-skew.mjs
  *
  * ## The fault this is for
  *
@@ -28,10 +28,11 @@
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { loadTs } from "./lib-load-ts.mjs";
-import { caughtIt } from "./lib-selftest.mjs";
+import { loadTs } from "../lib-load-ts.mjs";
+import { caughtIt } from "../lib-selftest.mjs";
 
-const HERE = dirname(fileURLToPath(import.meta.url));
+// `scripts/`, which every path below is written from.
+const HERE = dirname(dirname(fileURLToPath(import.meta.url)));
 const selftest = process.env.SELFTEST;
 
 const pw = createRequire(join(HERE, "..", "apps", "playground-core", "package.json"))("@playwright/test");

@@ -183,7 +183,7 @@ The original list, kept because it is what was built:
 
 ### Track C — the property types. **DONE.**
 
-`scripts/build-css-properties.mjs` writes `packages/css/src/properties.generated.ts` from MDN's own
+`scripts/css/build-css-properties.mjs` writes `packages/css/src/properties.generated.ts` from MDN's own
 CSS data — `mdn-data`, **CC0-1.0**, public domain with no condition attached. `pnpm check` runs it
 with `--check`, so the map cannot drift from the data it came from.
 
@@ -703,7 +703,7 @@ and the entry's rule is not in the lazy one. Nothing in this package splits anyt
 already decides which modules land in which chunk, and the per-file stylesheet is what lets that
 decision carry the CSS with it.
 
-**It is a gate rather than a note**, `scripts/check-css-splitting.mjs`, because the failure mode is
+**It is a gate rather than a note**, `scripts/css/check-css-splitting.mjs`, because the failure mode is
 silent in the wrong direction: going back to ONE sheet would look like a simplification, the app
 would still work, and every route would carry every rule. The gate asks the two things that can only
 be true if the split happened — no class in two sheets, and no class in a sheet that no chunk names.
@@ -2007,7 +2007,7 @@ question, asked mechanically, found reviews 20, 21 and 24 on its own.
   are not something `pnpm check` should download:
 
   ```
-  node scripts/build-prefixed-properties.mjs
-  node scripts/build-shorthand-leaves.mjs
-  node scripts/build-engine-keywords.mjs
+  node scripts/css/build-prefixed-properties.mjs
+  node scripts/css/build-shorthand-leaves.mjs
+  node scripts/css/build-engine-keywords.mjs
   ```

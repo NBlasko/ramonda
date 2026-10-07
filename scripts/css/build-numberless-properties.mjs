@@ -43,7 +43,8 @@ import { intersectionOf, previousFrom, writeOrCheck } from "./engine-facts.mjs";
  * engine agrees. One engine accepting `2` is enough to keep the property out of this list.
  */
 
-const HERE = dirname(fileURLToPath(import.meta.url));
+// `scripts/`, which every path below is written from.
+const HERE = dirname(dirname(fileURLToPath(import.meta.url)));
 const TAG = "build-numberless-properties";
 const check = process.argv.includes("--check");
 

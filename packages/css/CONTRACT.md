@@ -369,7 +369,7 @@ Settled since this was written:
 - **123 properties get a real union**, `UNION_TYPED` in the generated table, and the rest take
   `string | number` with the CSS rules judging the value instead.
 - **a nested rule's prelude composes in order and drops the `&`** — see §1b's key.
-- **splitting one sheet into several** is done, and `scripts/check-css-splitting.mjs` is what keeps
+- **splitting one sheet into several** is done, and `scripts/css/check-css-splitting.mjs` is what keeps
   the classes in the JavaScript and the classes in the CSS the same set.
 
 ## Why the package is private

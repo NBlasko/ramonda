@@ -15,7 +15,7 @@ import { type Term, SyntaxNotationError, parseValueSyntax } from "./valueSyntax"
  * ## Why it is here and not in the generator
  *
  * The slot generator and the parser both need this rule, so it lives here once and
- * `scripts/build-grammar-shapes.mjs` reads its LEAVES — two copies of one rule drift apart the first time one is corrected.
+ * `scripts/css/build-grammar-shapes.mjs` reads its LEAVES — two copies of one rule drift apart the first time one is corrected.
  *
  * ## The one thing it does that a flat reading cannot
  *

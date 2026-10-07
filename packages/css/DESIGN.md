@@ -2729,7 +2729,7 @@ CLI: `src/Card.tsx:2:12`, on `url(` itself, where it used to say line 4.
 had the design already: *the fix belongs in the GENERATOR — a positive fact, measured against the
 engines rather than guessed from a gap.*
 
-`scripts/build-numberless-properties.mjs` asks Chromium, Firefox and WebKit
+`scripts/css/build-numberless-properties.mjs` asks Chromium, Firefox and WebKit
 `CSS.supports(property, n)` for seven numbers, and records the 241 of 566 unprefixed properties that
 refuse all of them. Three decisions inside that, each measured:
 
@@ -4405,7 +4405,7 @@ classes and `background: red` is one. See the section below, which supersedes th
 shorthand covers, which is a fact about that property and not a position in a table, so two releases
 write the same name for it without being told. The marker existed to let an application rewrite a
 foreign stylesheet's numbering; with no numbering to disagree about, there is nothing to rewrite.
-Verified in three engines, both load orders, by `scripts/check-layer-skew.mjs`.
+Verified in three engines, both load orders, by `scripts/css/check-layer-skew.mjs`.
 
 Kept as the record of what the question looked like before splitting answered most of it.
 

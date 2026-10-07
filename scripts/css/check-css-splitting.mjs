@@ -43,7 +43,7 @@ import { join } from "node:path";
  * app's real splitting, which is a different question and still worth asking on every run.
  */
 
-const root = join(import.meta.dirname, "..");
+const root = join(import.meta.dirname, "..", "..");
 const app = join(root, "apps", "playground-core");
 const TAG = "[css-splitting]";
 

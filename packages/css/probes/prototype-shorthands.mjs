@@ -21,7 +21,7 @@
  * shorthand resets. The pattern is age: `animation-range-*`, `border-image-*`,
  * `text-decoration-thickness`, `background-position-x/y` — longhands added to a shorthand after its
  * `initial` was written. So the leaves come from the engines now
- * (`scripts/build-shorthand-leaves.mjs`), and this is what watches that they still do.
+ * (`scripts/css/build-shorthand-leaves.mjs`), and this is what watches that they still do.
  *
  * ## Both directions, and only one of them is survivable
  *

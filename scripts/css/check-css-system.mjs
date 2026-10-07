@@ -32,7 +32,7 @@ import { join, relative } from "node:path";
  *     stack trace and a `status: 1` object, and threw away the sentence explaining why.
  */
 
-const root = join(import.meta.dirname, "..");
+const root = join(import.meta.dirname, "..", "..");
 const TAG = "[css-system]";
 
 /** Every directory holding a `ramonda.css.ts`, which is what makes it a project here. */

@@ -1,9 +1,9 @@
 /**
  * The families split by hand, against the engines.
  *
- *     node scripts/check-hand-splits.mjs
- *     SELFTEST=flex node scripts/check-hand-splits.mjs    # swaps `flex`'s two factors; must fail
- *     SELFTEST=forget node scripts/check-hand-splits.mjs  # drops a longhand a split must reset
+ *     node scripts/css/check-hand-splits.mjs
+ *     SELFTEST=flex node scripts/css/check-hand-splits.mjs    # swaps `flex`'s two factors; must fail
+ *     SELFTEST=forget node scripts/css/check-hand-splits.mjs  # drops a longhand a split must reset
  *
  * `splitByHand.ts` writes CSS's own rules out — `white-space: pre` is `preserve` and `nowrap`,
  * `grid-area: a` names all four lines. The specification is not the oracle; the engines are. Every
@@ -23,10 +23,11 @@
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { loadTs } from "./lib-load-ts.mjs";
-import { caughtIt } from "./lib-selftest.mjs";
+import { loadTs } from "../lib-load-ts.mjs";
+import { caughtIt } from "../lib-selftest.mjs";
 
-const HERE = dirname(fileURLToPath(import.meta.url));
+// `scripts/`, which every path below is written from.
+const HERE = dirname(dirname(fileURLToPath(import.meta.url)));
 const selftest = process.env.SELFTEST;
 const pw = createRequire(join(HERE, "..", "apps", "playground-core", "package.json"))("@playwright/test");
 const COMPILER = join(HERE, "..", "packages", "css", "src", "compiler");

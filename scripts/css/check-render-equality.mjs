@@ -1,9 +1,9 @@
 /**
  * The same styles, written by hand and written as blocks, must give the SAME PIXELS.
  *
- *     node scripts/check-render-equality.mjs
- *     SELFTEST=change node scripts/check-render-equality.mjs   # one block off by a pixel; must fail
- *     SELFTEST=joined node scripts/check-render-equality.mjs   # classes joined, not merged; must fail
+ *     node scripts/css/check-render-equality.mjs
+ *     SELFTEST=change node scripts/css/check-render-equality.mjs   # one block off by a pixel; must fail
+ *     SELFTEST=joined node scripts/css/check-render-equality.mjs   # classes joined, not merged; must fail
  *
  * ## Why pixels
  *
@@ -32,11 +32,12 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { loadTs } from "./lib-load-ts.mjs";
-import { caughtIt } from "./lib-selftest.mjs";
+import { loadTs } from "../lib-load-ts.mjs";
+import { caughtIt } from "../lib-selftest.mjs";
 import { PAIRS } from "./render-pairs.mjs";
 
-const HERE = dirname(fileURLToPath(import.meta.url));
+// `scripts/`, which every path below is written from.
+const HERE = dirname(dirname(fileURLToPath(import.meta.url)));
 const selftest = process.env.SELFTEST;
 const pw = createRequire(join(HERE, "..", "apps", "playground-core", "package.json"))("@playwright/test");
 const CSS = join(HERE, "..", "packages", "css", "src");

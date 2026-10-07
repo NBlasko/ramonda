@@ -1,8 +1,8 @@
 /**
  * Values that MUST split — and split into the page their shorthand makes.
  *
- *     node scripts/check-must-split.mjs
- *     SELFTEST=refuse node scripts/check-must-split.mjs   # refuses `grid-column`; must fail
+ *     node scripts/css/check-must-split.mjs
+ *     SELFTEST=refuse node scripts/css/check-must-split.mjs   # refuses `grid-column`; must fail
  *
  * ## The fault this is for
  *
@@ -22,10 +22,11 @@
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { loadTs } from "./lib-load-ts.mjs";
-import { caughtIt } from "./lib-selftest.mjs";
+import { loadTs } from "../lib-load-ts.mjs";
+import { caughtIt } from "../lib-selftest.mjs";
 
-const HERE = dirname(fileURLToPath(import.meta.url));
+// `scripts/`, which every path below is written from.
+const HERE = dirname(dirname(fileURLToPath(import.meta.url)));
 const selftest = process.env.SELFTEST;
 const pw = createRequire(join(HERE, "..", "apps", "playground-core", "package.json"))("@playwright/test");
 const { splitOf } = await loadTs(join(HERE, "..", "packages", "css", "src", "compiler", "split.ts"));

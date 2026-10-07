@@ -62,16 +62,16 @@ by the next build and caught by `pnpm check`.
 | `initials.generated.ts` | `build-initial-values.mjs` | the three engines, measured |
 | `grammarShapes.generated.ts` | `build-grammar-shapes.mjs` | grammar from mdn-data, every placement measured |
 
-All of them live in `scripts/` at the repo root and all of them take `--check`, which fails
-instead of writing.
+All of them live in `scripts/css/` at the repo root, beside the gates below, and all of them take
+`--check`, which fails instead of writing.
 
 **Regenerating needs browsers.** Anything marked *measured* drives Chromium, Firefox and WebKit
 through Playwright, sets the declaration, and reads back what the engine did. `--check` drives
 them too, so `pnpm check` does not pass on a machine without them installed.
 
 ```
-node scripts/build-shorthand-shapes.mjs          # rewrite the table
-node scripts/build-shorthand-shapes.mjs --check  # fail if it is stale
+node scripts/css/build-shorthand-shapes.mjs          # rewrite the table
+node scripts/css/build-shorthand-shapes.mjs --check  # fail if it is stale
 ```
 
 ## The gates
@@ -87,7 +87,7 @@ node scripts/build-shorthand-shapes.mjs --check  # fail if it is stale
 | `check-shorthand-split.mjs` | the positional splitter disagreeing with what an engine renders |
 | `check-hand-splits.mjs` | a family split by hand disagreeing with any engine, or splitting a value one refuses |
 | `check-must-split.mjs` | a value people write that silently stopped splitting, or splits wrong |
-| `check-render-equality.mjs` | a block page whose PIXELS are not the hand-written page's — the pairs are in `scripts/render-pairs.mjs` |
+| `check-render-equality.mjs` | a block page whose PIXELS are not the hand-written page's — the pairs are in `scripts/css/render-pairs.mjs` |
 | `bench-css.mjs 5` | the benchmark no longer running — it times nothing here; `pnpm bench:css` is the 1000-file run, `--profile` says where the time goes |
 | `check-css-splitting.mjs` | the CSS not following its JavaScript chunk, on a real build |
 
@@ -100,8 +100,8 @@ gate: it re-measures and fails when the committed table is not what the engines 
 Two switches make a run readable, and the second is worth knowing before you go hunting:
 
 ```
-WHY=1 node scripts/build-grammar-shapes.mjs                    # what each engine turned down
-WHY_FAMILY=animation node scripts/build-grammar-shapes.mjs     # every value of one family
+WHY=1 node scripts/css/build-grammar-shapes.mjs                    # what each engine turned down
+WHY_FAMILY=animation node scripts/css/build-grammar-shapes.mjs     # every value of one family
 ```
 
 Every browser gate carries its own selftests, run through the `SELFTEST` environment variable —
@@ -123,7 +123,7 @@ which is why `grammarShapes.generated.ts` reads the grammar from mdn-data and me
 placement in it.
 
 **Which way engines are merged depends on what the list is READ FOR**, and there is no blanket
-rule — `scripts/engine-facts.mjs` says this at length, and the one time that note claimed a blanket
+rule — `scripts/css/engine-facts.mjs` says this at length, and the one time that note claimed a blanket
 rule is how a list stayed wrong.
 
 A list that WIDENS a check takes the union: `leaves.generated.ts` holds every longhand ANY engine
@@ -213,7 +213,7 @@ two ways before any split is asked. The leaves generator records it as `RESETS_D
 `mask`'s `content-box` reaches `mask-origin` only through `<coord-box>` → `<paint-box>` →
 `<visual-box>`, and `longhandsFor` matches a word against a longhand's grammar TEXT without
 following those types; that gap in the opener is still there. Others opened and the measurement
-turned them down. `ONLY=flex WHY_FAMILY=flex node scripts/build-grammar-shapes.mjs` says why for one
+turned them down. `ONLY=flex WHY_FAMILY=flex node scripts/css/build-grammar-shapes.mjs` says why for one
 family, and writes nothing.
 
 **A value is refused where CSS would drop it, and the family is kept.** CSS drops a whole

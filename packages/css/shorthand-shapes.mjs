@@ -3,7 +3,7 @@
  * runs inside a browser, and the splitter that runs anywhere.
  *
  * One copy, because there are two callers — `prototype-expand.mjs`, which measures, and
- * `scripts/build-shorthand-shapes.mjs`, which writes the table down. Two copies of a rule is the
+ * `scripts/css/build-shorthand-shapes.mjs`, which writes the table down. Two copies of a rule is the
  * fault this repository keeps finding; see `DESIGN.md`.
  *
  * ## Why positional first, and alone

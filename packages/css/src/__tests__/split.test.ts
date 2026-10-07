@@ -5,7 +5,7 @@ import { splitOf, splitPositional, tokensOf } from "../compiler/split";
 /**
  * Splitting a positional shorthand, from the table the engines wrote.
  *
- * The table itself is checked against the engines by `scripts/check-shorthand-split.mjs`, over
+ * The table itself is checked against the engines by `scripts/css/check-shorthand-split.mjs`, over
  * thousands of values in a real browser — that is where "does this produce the same page" is
  * answered. These are the questions a browser cannot answer: what the function does with a value
  * it must REFUSE, and that it reads the shape rather than guessing.

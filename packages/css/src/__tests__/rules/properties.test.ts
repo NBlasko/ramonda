@@ -393,7 +393,7 @@ describe("a vendor prefix", () => {
    * neither `-webkit-font-smoothing` nor `-moz-osx-font-smoothing`. That measurement was right and
    * the conclusion was not: the ENGINES have their own lists, and asked directly they give 262
    * names between them — `-webkit-font-smoothing` among them, from all three. See
-   * `scripts/build-prefixed-properties.mjs`.
+   * `scripts/css/build-prefixed-properties.mjs`.
    */
   test.each([
     ["the name after a real prefix", "-webkit-border-before-coloaasdsdr"],
