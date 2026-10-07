@@ -1,5 +1,5 @@
 ---
-title: Setup
+title: Testing
 description: Test a Ramonda app with the DOM Testing Library plus the few pieces only Ramonda can provide.
 section: Testing
 order: 100
@@ -7,9 +7,8 @@ order: 100
 
 # Testing
 
-```install
--D @ramonda/testing-library @testing-library/dom
-```
+A test renders a component, finds what a person would see, acts on it and checks the result — with
+the DOM Testing Library's queries, and the few pieces only Ramonda can provide:
 
 ```tsx
 import { render, screen, fireEvent } from "@ramonda/testing-library";
@@ -22,6 +21,14 @@ test("counts up", () => {
 ```
 
 No `await`, no `settle()`, no cleanup call. That is the point of the package.
+
+## Install
+
+Two packages, as development dependencies — this one, and the DOM Testing Library it builds on:
+
+```install
+-D @ramonda/testing-library @testing-library/dom
+```
 
 ## What it adds
 

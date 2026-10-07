@@ -100,3 +100,31 @@ describe("the closing section", () => {
     expect(otherwise).toEqual([]);
   });
 });
+
+/**
+ * A section's first page shows the thing before it asks the reader to install it: what it does,
+ * an example — code, a live demo, or a picture of it — then the install. Five of them opened on an install command,
+ * which asks for a decision before saying what it is for.
+ */
+describe("a section's first page", () => {
+  const first = new Map<string, (typeof pagesOnDisk)[number]>();
+  for (const page of pagesOnDisk.filter((one) => one.nav && one.section !== "")) {
+    const held = first.get(page.section);
+    if (held === undefined || Number(page.order) < Number(held.order)) first.set(page.section, page);
+  }
+
+  it("shows an example before its install", () => {
+    const installFirst = [...first.values()]
+      .filter((page) => {
+        const text = readFileSync(join(content, page.file), "utf8");
+        const install = text.search(/^```install$/m);
+        // An example is code, a live demo, or a picture of the thing — the devtools panel is one.
+        const shown = text.search(/^```(tsx|ts|demo:\S+)( |$)|^!\[/m);
+        return install !== -1 && (shown === -1 || shown > install);
+      })
+      .map((page) => page.file);
+
+    expect(first.size).toBeGreaterThan(10);
+    expect(installFirst).toEqual([]);
+  });
+});

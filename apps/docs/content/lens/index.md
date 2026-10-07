@@ -27,10 +27,6 @@ this.data = {
 
 `@ramonda/lens` does the same thing, readably:
 
-```install
-@ramonda/lens
-```
-
 ```tsx
 import { focusOn } from "@ramonda/lens";
 
@@ -45,6 +41,14 @@ const updated = focusOn(state)
 You describe the **path** to what you want to change, and the change. `focusOn` copies
 exactly the objects along that path and shares everything else untouched. Nothing is
 mutated.
+
+## Install
+
+A package of its own, with no dependencies — it does not need `@ramonda/core`:
+
+```install
+@ramonda/lens
+```
 
 ## Why the sharing matters
 

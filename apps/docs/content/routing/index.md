@@ -1,6 +1,6 @@
 ---
-title: Setup
-description: Add routing with two pieces — a Router that tracks the URL, and an outlet that shows the matching page.
+title: Routing
+description: Show the right page for the URL and switch between pages without a reload — a route table, a Router that tracks the URL, and an outlet that shows the match.
 section: Routing
 order: 70
 ---
@@ -9,11 +9,7 @@ order: 70
 
 Most apps are more than one page — a home screen, a profile, a settings panel.
 **Routing** is showing the right one for the current URL and switching between them
-without a full page reload. Ramonda's router is a separate package:
-
-```install
-@ramonda/router
-```
+without a full page reload.
 
 You write a **route table** with `createRoutes`, then `createRouter` hands you the pieces bound
 to it: **`Router`** (tracks the URL), **`RouteOutlet`** (shows the matching page), **`Link`** and
@@ -55,6 +51,25 @@ place `Link` and `Navigator` come from, and binding them to your table is what m
 
 (That demo reads the router of *this* site — these docs are a Ramonda app, so the
 values are real.)
+
+## What you get
+
+- **Links checked against your routes** — a `Link` to a path your table does not have is a type
+  error, and so is a `:param` left out. [Below](#links-are-type-checked-against-your-routes).
+- **Params, query and hash** — read inside any component through `Navigator`, a param by the
+  pattern it belongs to. See [params, query and hash](/routing/params).
+- **Outlets inside outlets**, for a layout that stays while its page changes — see
+  [nested outlets](/routing/nested).
+- **The same routes on the server**, so a page renders there before it reaches the browser — see
+  [the router on the server](/routing/server).
+
+## Install
+
+The router is a separate package, beside `@ramonda/core`:
+
+```install
+@ramonda/router
+```
 
 ## The routes table
 
