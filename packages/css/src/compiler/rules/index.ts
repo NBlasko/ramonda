@@ -159,7 +159,7 @@ export const RULE_IDS = [
   "missing-semicolon",
   "hardcoded-not-allowed",
   "declaration-does-nothing",
-  // The three that need a `ts.Program`. They live in `typed.ts` — see its header for why they cannot
+  // The ones that need a `ts.Program`. They live in `typed/` — see its index for why they cannot
   // be in this file — but their ids belong here, because this is the list a config is checked
   // against and a rule a project cannot turn off is a rule with no escape hatch.
   "style-prop-never-used",

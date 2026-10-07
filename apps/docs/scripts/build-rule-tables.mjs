@@ -385,7 +385,7 @@ if (undescribed.length > 0 || stale.length > 0) {
  * these come from the editor and `ramonda-check` only. Review round 3: the sentence above the table
  * said every rule fails the build, and these do not.
  */
-const TYPED = join(here, "..", "..", "..", "packages", "css", "src", "compiler", "typed.ts");
+const TYPED = join(here, "..", "..", "..", "packages", "css", "src", "compiler", "typed", "index.ts");
 const rulesText = readdirSync(CSS_RULES_DIR)
   .filter((name) => name.endsWith(".ts"))
   .map((name) => readFileSync(join(CSS_RULES_DIR, name), "utf8"))

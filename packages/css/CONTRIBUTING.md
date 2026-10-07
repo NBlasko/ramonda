@@ -38,7 +38,7 @@ The rest of this table is in `src/compiler/`.
 | how is a written value read against a grammar? | `matchValue.ts` |
 | how is a CSS grammar parsed at all? | `valueSyntax.ts` |
 | what does `{expr}` become? | `tooling.ts`, `dollar.ts`, `variables.ts`, `references.ts` |
-| why did the checker complain? | `rules/` — one family of rules to a file, `index.ts` runs them — or `typed.ts` when the rule needs a `ts.Program` |
+| why did the checker complain? | `rules/` — one family of rules to a file, `index.ts` runs them — or `typed/` when the rule needs a `ts.Program`, a file to each |
 | how does a diagnostic get back to the author's line? | `virtual.ts` |
 | what is the whole transform? | `transform.ts` |
 
