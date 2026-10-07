@@ -60,7 +60,8 @@ because the name is derived from the declaration and from nothing else. That is 
 [composing](/style-blocks/composing) possible: merging two blocks keeps, per thing set, the one
 written later — and it can only do that if each thing set has a class of its own to keep or drop.
 
-Each file carries the rules it names in its own stylesheet, so a code-split route stands on its own.
+Each file carries the rules it names in its own stylesheet, so under Vite a code-split route stands
+on its own; esbuild puts them all in the entry's sheet — see [a code-split app](/style-blocks#a-code-split-app).
 Where two files produce identical stylesheets the bundler dedupes them by content, and it costs
 nothing.
 
@@ -226,7 +227,12 @@ class Stack extends Component<{ gap: Value<"gap"> }> {
 }
 ```
 
-In a project that writes `gap` in `px`, `<Stack gap="3rem" />` is refused on the caller's line. The
+In a project that writes `gap` in `px`, `<Stack gap="3rem" />` is refused on the caller's line.
+
+**The stylesheet cannot hold that rule for you.** A registered property's `syntax` names a type —
+`<length>` — and never a list of lengths, so `@property` has no way to say *8px or 16px*. The
+narrowing reaches a value made at run time only through its type, which is why the value set on
+`space` above is a `Value<"gap">` rather than a `string`. The
 same type holds a value your code chooses before setting it — from data, a measurement, or more
 than one condition:
 
