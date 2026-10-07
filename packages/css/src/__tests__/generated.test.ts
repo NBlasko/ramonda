@@ -573,6 +573,24 @@ describe("what a project's property rules do", () => {
     expect(layer).not.toMatch(/Card\.tsx:2:/);
   });
 
+  /**
+   * Where a `Value` meets a REGISTERED property, the registration has to take everything the
+   * property does. `gap` also takes `normal`, a CSS-wide keyword and a `var()`, so no `syntax` but
+   * `*` holds them — and `toStyle`, which checks a value against the `syntax`, says exactly that.
+   */
+  test("a `Value` goes into a registered property only one that takes everything the property does", () => {
+    const into = (syntax: string) =>
+      withRules(
+        `{ "z-index": { values: [1, 2] } }`,
+        `import { toStyle } from "@ramonda/css";\nimport type { Value } from "../css-system";\n` +
+          `const space = @@property( syntax: "${syntax}"; initial-value: 8px; inherits: false; );\n` +
+          `export const set = (gap: Value<"gap">) => toStyle([[space, gap]]);\n`,
+      );
+
+    expect(into("*")).not.toContain("problem");
+    expect(into("<length-percentage>")).toContain("problem");
+  });
+
   test("a closed list of values refuses everything else", () => {
     const refused = withRules(
       `{ "z-index": { values: [1, 2, 5, 10] } }`,

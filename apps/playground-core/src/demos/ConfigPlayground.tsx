@@ -13,8 +13,11 @@ import { type Value } from "../../css-system";
  *
  * It is not a demo of anything and is not routed. It exists to be broken on purpose.
  */
-/** Where `inset` below lands: a registered property, read by a block and set on the element. */
-const indent = @@property( syntax: "<length>"; initial-value: 0px; inherits: false; );
+/**
+ * Where `inset` below lands: a registered property, read by a block and set on the element. `*`,
+ * because it must take all `padding-left` does — `inherit` and a `var()` as well as a length.
+ */
+const indent = @@property( syntax: "*"; initial-value: 0px; inherits: false; );
 const indented = @@( display: block; padding-left: var($(indent)); );
 
 export default class ConfigPlayground extends Component {

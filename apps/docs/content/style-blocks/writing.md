@@ -217,7 +217,7 @@ where it is made — most often a prop:
 ```tsx
 import type { Value } from "../css-system";
 
-const space = @@property( syntax: "<length>"; initial-value: 8px; inherits: false; );
+const space = @@property( syntax: "*"; initial-value: 8px; inherits: false; );
 const stack = @@( display: flex; gap: var($(space)); );
 
 class Stack extends Component<{ gap: Value<"gap"> }> {
@@ -232,7 +232,12 @@ In a project that writes `gap` in `px`, `<Stack gap="3rem" />` is refused on the
 **The stylesheet cannot hold that rule for you.** A registered property's `syntax` names a type —
 `<length>` — and never a list of lengths, so `@property` has no way to say *8px or 16px*. The
 narrowing reaches a value made at run time only through its type, which is why the value set on
-`space` above is a `Value<"gap">` rather than a `string`. The
+`space` above is a `Value<"gap">` rather than a `string`.
+
+**And `space` is registered as `*`**, because a `syntax` has to take everything the property does:
+`gap` also takes `normal`, a CSS-wide keyword and a `var()`. A narrower one refuses part of what the
+type allows — `toStyle`, which checks a value against the `syntax`, will not put a `Value<"gap">`
+into a `<length-percentage>`. The
 same type holds a value your code chooses before setting it — from data, a measurement, or more
 than one condition:
 
