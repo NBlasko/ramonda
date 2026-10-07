@@ -16,7 +16,7 @@
  * A prototype, and it knows it: the block is found by scanning for `css=@@(` rather than by a real
  * parser, and the mapping is per-expression rather than a source map. Both are the real work.
  *
- *     node packages/css/prototype-typecheck.mjs packages/css/example.tsx
+ *     node packages/css/probes/prototype-typecheck.mjs packages/css/probes/example.tsx.txt
  */
 import { readFileSync } from "node:fs";
 import ts from "typescript";

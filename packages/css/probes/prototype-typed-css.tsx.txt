@@ -1,7 +1,7 @@
 // What one `@( … )` block becomes inside the VIRTUAL file — an object literal, which is what makes
 // excess-property checking and TypeScript's own "did you mean" apply to CSS.
 //
-//     node_modules/.bin/tsc --noEmit --strict packages/css/prototype-typed-css.tsx.txt
+//     node_modules/.bin/tsc --noEmit --strict packages/css/probes/prototype-typed-css.tsx.txt
 //
 // `.txt`, like the other fixture, so no repo gate tries to compile it as part of the tree.
 

@@ -4,10 +4,10 @@
  * This is the number the whole "fast in dev" claim rests on: a file with no sigil is never parsed,
  * so the overwhelming majority of a codebase pays a substring scan and nothing else.
  *
- *     node packages/css/prototype-bailout.mjs
+ *     node packages/css/probes/prototype-bailout.mjs
  */
 import { globSync, readFileSync } from "node:fs";
-import { builtFromThisSource } from "./built.mjs";
+import { builtFromThisSource } from "../built.mjs";
 
 // This probe reads `dist`, and its numbers get written down as facts — see `built.mjs`.
 builtFromThisSource();

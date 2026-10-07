@@ -41,12 +41,12 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
-import { builtFromThisSource } from "./built.mjs";
+import { builtFromThisSource } from "../built.mjs";
 
 // This probe reads `dist`, and its numbers get written down as facts — see `built.mjs`.
 builtFromThisSource();
 
-const HERE = dirname(fileURLToPath(import.meta.url));
+const HERE = dirname(dirname(fileURLToPath(import.meta.url)));
 const fromPlayground = createRequire(join(HERE, "..", "..", "apps", "playground-core", "package.json"));
 const { chromium } = fromPlayground("@playwright/test");
 const esbuild = createRequire(join(HERE, "package.json"))("esbuild");

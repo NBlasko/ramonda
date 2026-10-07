@@ -1,7 +1,7 @@
 /**
  * What an editor actually OFFERS, for a flat string union against a nested object.
  *
- *     node packages/css/prototype-token-completion.mjs
+ *     node packages/css/probes/prototype-token-completion.mjs
  *
  * ## The question
  *

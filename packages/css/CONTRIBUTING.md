@@ -19,6 +19,9 @@ about itself, and an honest note on what is unfinished.
 | `config/` | the project's `ramonda.css.ts`: reading it (`config.ts`), its types (`declared.ts`), the files it generates (`codegen.ts`) |
 | `adapters/` | each tool the compiler is plugged into: `vite.ts`, `esbuild.ts`, `plugin.ts` (the editor), `cli.ts`, `check.ts`, `prettier.ts` |
 
+Beside `src/`, `probes/` holds the scripts that measured what the design rests on — kept as
+evidence, not run by anything; its README says which still run.
+
 The rest of this table is in `src/compiler/`.
 
 | If you are asking | Read |

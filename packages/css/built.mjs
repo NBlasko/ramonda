@@ -3,7 +3,7 @@
  *
  * **A test or a probe that reads `dist` is measuring the LAST BUILD, not the source.** `bin.mjs` is
  * `import "./dist/cli.js"`, `viteBuild.test.ts` loads `dist/vite.js` by path, and every
- * `prototype-*.mjs` here imports `dist/compiler/index.js`. When `dist` is older than `src` they all
+ * probe in `probes/` imports `dist/compiler/index.js`. When `dist` is older than `src` they all
  * measure a previous version of the package and say nothing about it.
  *
  * Measured: with `src/adapters/cli.ts` replaced by a line that throws, and no rebuild, **57 tests passed** —

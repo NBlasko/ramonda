@@ -18,7 +18,7 @@
  *     reporting positions in it. So the block is replaced by a PLACEHOLDER that parses, the file is
  *     formatted normally, and the block is put back at the placeholder's indentation.
  *
- *     node packages/css/prototype-tooling.mjs
+ *     node packages/css/probes/prototype-tooling.mjs
  */
 import { execFileSync } from "node:child_process";
 import { globSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";

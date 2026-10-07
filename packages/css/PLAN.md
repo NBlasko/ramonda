@@ -1990,17 +1990,17 @@ question, asked mechanically, found reviews 20, 21 and 24 on its own.
   `@ramonda/lens`: zero dependencies, not even a peer.
 - The prototypes are runnable and each proves one claim:
   ```
-  node packages/css/prototype-typecheck.mjs packages/css/example.tsx.txt
-  node packages/css/prototype-transform-cost.mjs [files] [blocksPerFile]
-  node packages/css/prototype-sourcemap.mjs
-  node packages/css/prototype-testrunner.mjs
-  node packages/css/prototype-tooling.mjs
-  node packages/css/prototype-scale.mjs [instances]
-  node packages/css/prototype-bailout.mjs
-  node packages/css/prototype-layers.mjs
-  node packages/css/prototype-dev-vs-build.mjs
-  node packages/css/prototype-shorthands.mjs
-  node packages/css/prototype-composition.mjs
+  node packages/css/probes/prototype-typecheck.mjs packages/css/probes/example.tsx.txt
+  node packages/css/probes/prototype-transform-cost.mjs [files] [blocksPerFile]
+  node packages/css/probes/prototype-sourcemap.mjs
+  node packages/css/probes/prototype-testrunner.mjs
+  node packages/css/probes/prototype-tooling.mjs
+  node packages/css/probes/prototype-scale.mjs [instances]
+  node packages/css/probes/prototype-bailout.mjs
+  node packages/css/probes/prototype-layers.mjs
+  node packages/css/probes/prototype-dev-vs-build.mjs
+  node packages/css/probes/prototype-shorthands.mjs
+  node packages/css/probes/prototype-composition.mjs
   ```
 
   And two generators that ask BROWSERS rather than `mdn-data`, run on demand because three engines

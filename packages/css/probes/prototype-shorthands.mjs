@@ -34,7 +34,7 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const HERE = dirname(fileURLToPath(import.meta.url));
+const HERE = dirname(dirname(fileURLToPath(import.meta.url)));
 const { chromium } = createRequire(join(HERE, "..", "..", "apps", "playground-core", "package.json"))(
   "@playwright/test",
 );

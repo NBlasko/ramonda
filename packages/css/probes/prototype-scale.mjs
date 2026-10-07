@@ -14,7 +14,7 @@
  * difference entirely. A longer hash costs nothing over the wire, which is why the recommendation
  * is 16 hex characters rather than the shortest name that seems to work.
  *
- *     node packages/css/prototype-scale.mjs [instances]
+ *     node packages/css/probes/prototype-scale.mjs [instances]
  */
 import { gzipSync } from "node:zlib";
 

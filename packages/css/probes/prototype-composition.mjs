@@ -32,14 +32,14 @@
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { Sheet, transform } from "./dist/compiler/index.js";
-import { merge } from "./dist/index.js";
-import { builtFromThisSource } from "./built.mjs";
+import { Sheet, transform } from "../dist/compiler/index.js";
+import { merge } from "../dist/index.js";
+import { builtFromThisSource } from "../built.mjs";
 
 // This probe reads `dist`, and its numbers get written down as facts — see `built.mjs`.
 builtFromThisSource();
 
-const HERE = dirname(fileURLToPath(import.meta.url));
+const HERE = dirname(dirname(fileURLToPath(import.meta.url)));
 const { chromium } = createRequire(join(HERE, "..", "..", "apps", "playground-core", "package.json"))(
   "@playwright/test",
 );

@@ -11,14 +11,14 @@
  * file containing `@@( … )` cannot be read by the formatter or the linter — measured in DESIGN.md,
  * and there is no reason to make that this repository's problem.
  *
- *     node packages/css/prototype-testrunner.mjs
+ *     node packages/css/probes/prototype-testrunner.mjs
  */
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, symlinkSync, writeFileSync, globSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { builtFromThisSource } from "./built.mjs";
+import { builtFromThisSource } from "../built.mjs";
 
 // This probe reads `dist`, and its numbers get written down as facts — see `built.mjs`.
 builtFromThisSource();

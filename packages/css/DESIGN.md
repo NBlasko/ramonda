@@ -2073,7 +2073,7 @@ The framework's position is unchanged and the exception is stated where a reader
 ## The prototypes
 
 ```
-node packages/css/prototype-typecheck.mjs packages/css/example.tsx.txt
+node packages/css/probes/prototype-typecheck.mjs packages/css/probes/example.tsx.txt
 ```
 
 Proves the claim everything else depends on: a `tsc` diagnostic from inside a `{ … }` hole,

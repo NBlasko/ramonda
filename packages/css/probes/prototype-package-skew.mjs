@@ -55,11 +55,11 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { builtFromThisSource } from "./built.mjs";
+import { builtFromThisSource } from "../built.mjs";
 
 builtFromThisSource();
 
-const HERE = dirname(fileURLToPath(import.meta.url));
+const HERE = dirname(dirname(fileURLToPath(import.meta.url)));
 const fromPlayground = createRequire(join(HERE, "..", "..", "apps", "playground-core", "package.json"));
 const { chromium } = fromPlayground("@playwright/test");
 

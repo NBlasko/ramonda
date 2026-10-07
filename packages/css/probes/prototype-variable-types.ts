@@ -1,7 +1,7 @@
 /**
  * The variable types, measured before any are written. Type-checked, never run.
  *
- *     npx tsc --noEmit --strict --target ES2022 packages/css/prototype-variable-types.ts
+ *     npx tsc --noEmit --strict --target ES2022 packages/css/probes/prototype-variable-types.ts
  *
  * `DESIGN.md` settles that a variable is declared as a NAME, a KIND and a FALLBACK. The fallback is
  * what makes the type true, since a `var()` without one can resolve to nothing and a type promising

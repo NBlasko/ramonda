@@ -19,7 +19,7 @@
  * file, so they land above the imports. A real transform puts them below. It changes nothing about
  * the cost being measured.
  *
- *     node packages/css/prototype-transform-cost.mjs [fileCount] [blocksPerFile]
+ *     node packages/css/probes/prototype-transform-cost.mjs [fileCount] [blocksPerFile]
  */
 import { createHash } from "node:crypto";
 import { createRequire } from "node:module";

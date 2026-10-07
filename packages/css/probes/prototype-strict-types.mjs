@@ -1,7 +1,7 @@
 /**
  * What stricter property types cost `tsc`, measured before any are written.
  *
- *     node packages/css/prototype-strict-types.mjs
+ *     node packages/css/probes/prototype-strict-types.mjs
  *
  * ## The question
  *

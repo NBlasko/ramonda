@@ -57,9 +57,9 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const HERE = dirname(fileURLToPath(import.meta.url));
+const HERE = dirname(dirname(fileURLToPath(import.meta.url)));
 const pw = createRequire(join(HERE, "..", "..", "apps", "playground-core", "package.json"))("@playwright/test");
-const { SHORTHANDS } = await import("./src/compiler/keywords.generated.ts");
+const { SHORTHANDS } = await import("../src/compiler/keywords.generated.ts");
 
 /** Sentinel sets for the POSITIONAL shape — a family takes whichever one its grammar accepts. */
 const DOMAINS = [

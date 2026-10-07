@@ -9,7 +9,7 @@
  * of text (the CSS) and inserts a little (the call), so every position downstream of a block moves.
  * A map that is right at the block and drifts below it would look correct in a first test.
  *
- *     node packages/css/prototype-sourcemap.mjs
+ *     node packages/css/probes/prototype-sourcemap.mjs
  */
 import { createRequire } from "node:module";
 import { globSync } from "node:fs";
