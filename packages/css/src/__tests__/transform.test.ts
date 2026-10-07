@@ -1388,6 +1388,9 @@ describe("advice that leads somewhere", () => {
  * `override-out-of-order` compared every declaration with every one before it, copying the list each
  * time. Measured: 4000 custom properties in one block took 3.2 s and 16 000 took 57 s, on every
  * build of the file — a generated theme is exactly this shape.
+ *
+ * The bound is wide on purpose. 8000 took 14.8 s squared and take 0.6 s now, but 5.2 s inside the
+ * whole gate, where every package's tests share the machine.
  */
 describe("a block with thousands of declarations", () => {
   test("is compiled in linear time", () => {
@@ -1396,6 +1399,6 @@ describe("a block with thousands of declarations", () => {
 
     transform(`const s = @@(\n${declarations}\n);\n`, { filename: "C.tsx" });
 
-    expect(performance.now() - started).toBeLessThan(2000);
-  });
+    expect(performance.now() - started).toBeLessThan(10_000);
+  }, 60_000);
 });

@@ -692,14 +692,10 @@ function propertyMap(rules: PropertyRules | undefined): Mapped {
     const said = onlyVariables
       ? `only the ${values.length} value(s) this project permits, and only as one of its tokens`
       : `only the ${values.length} value(s) this project permits`;
-    /**
-     * No sentence about quoted spellings: a numeric value reaches the type as a number (`quoted` in
-     * `virtual.ts`), so the union holds only what a person may write.
-     */
-    const spellings = "";
-
+    // No sentence about quoted spellings: a numeric value reaches the type as a number (`quoted` in
+    // `virtual.ts`), so the union holds only what a person may write.
     rows.push(
-      `  /**\n   * \`${property}\` — ${said}.${spellings}\n   */\n` +
+      `  /**\n   * \`${property}\` — ${said}.\n   */\n` +
         `  ${JSON.stringify(property)}: ${written}${written === "" ? token.slice(3) : token} | CssGlobal | \`var(\${string})\`;`,
     );
   }

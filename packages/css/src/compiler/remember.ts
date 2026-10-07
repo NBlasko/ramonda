@@ -9,15 +9,23 @@
  * would change it for the next file.
  */
 export function remember<T>(limit: number, answer: (property: string, value: string) => T) {
-  const known = new Map<string, T>();
+  // By property, then by value: a key joined from the two was a new string to hash on every call.
+  const known = new Map<string, Map<string, T>>();
+  let size = 0;
   return (property: string, value = ""): T => {
-    // A property name holds no NUL, so every pair has one key.
-    const key = value === "" ? property : `${property}\u0000${value}`;
-    const hit = known.get(key);
-    if (hit !== undefined || known.has(key)) return hit as T;
-    if (known.size >= limit) known.clear();
+    let values = known.get(property);
+    if (values === undefined) known.set(property, (values = new Map()));
+    const hit = values.get(value);
+    if (hit !== undefined || values.has(value)) return hit as T;
+    if (size >= limit) {
+      known.clear();
+      known.set(property, values);
+      values.clear();
+      size = 0;
+    }
     const found = answer(property, value);
-    known.set(key, typeof found === "object" && found !== null ? Object.freeze(found) : found);
+    values.set(value, typeof found === "object" && found !== null ? Object.freeze(found) : found);
+    size++;
     return found;
   };
 }
