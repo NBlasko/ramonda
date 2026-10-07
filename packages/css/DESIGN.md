@@ -3034,7 +3034,7 @@ different question, because the earlier value came from somebody who cannot see 
 
 | | has a `ts.Program` | can run a typed rule |
 |---|---|---|
-| `ramonda-css check` (CI) | yes, builds one at `check.ts:242` | yes |
+| `ramonda-css check` (CI) | yes, builds one in `checkProject` (`check.ts`) | yes |
 | the tsserver plugin (the editor) | yes, via `languageService.getProgram()` | yes — unused today |
 | the vite and esbuild plugins | **no** — `createProgram` appears 0 times in either | no |
 
@@ -4345,7 +4345,7 @@ nothing after a build) say so.
 
 **Measured 2026-09-23, in Chromium, against real stylesheets from the real `Sheet`. NOT built.**
 
-The vite plugin skips `node_modules` (`vite.ts:258`, `vite.ts:415`), so a library that uses
+The vite plugin skips `node_modules` (`recompile` and `transform` in `vite.ts`), so a library that uses
 `@ramonda/css` ships its own compiled CSS and two stylesheets meet in one document. That is the only
 place any of this bites: inside one project, every measurement agrees with hand-written CSS in both
 write orders.

@@ -6,7 +6,7 @@
  * `prototype-*.mjs` here imports `dist/compiler/index.js`. When `dist` is older than `src` they all
  * measure a previous version of the package and say nothing about it.
  *
- * Measured: with `src/cli.ts` replaced by a line that throws, and no rebuild, **57 tests passed** —
+ * Measured: with `src/adapters/cli.ts` replaced by a line that throws, and no rebuild, **57 tests passed** —
  * every test in `cli.test.ts`, `toolingCli.test.ts`, `extension.test.ts` and `viteBuild.test.ts`.
  *
  * A probe is worse than a test in one way: its numbers get written down as facts.

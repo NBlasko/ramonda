@@ -10,7 +10,16 @@ about itself, and an honest note on what is unfinished.
 
 ## Which file answers which question
 
-Everything below is in `src/compiler/`.
+`src/` holds four folders, split by where the code runs:
+
+| Folder | What is in it |
+| --- | --- |
+| `compiler/` | everything that reads a block and decides what it means — the table below |
+| `runtime/` | what ships to the browser: `merge.ts`, `value.ts`, `token.ts`, `conditions.ts`, `key.ts` |
+| `config/` | the project's `ramonda.css.ts`: reading it (`config.ts`), its types (`declared.ts`), the files it generates (`codegen.ts`) |
+| `adapters/` | each tool the compiler is plugged into: `vite.ts`, `esbuild.ts`, `plugin.ts` (the editor), `cli.ts`, `check.ts`, `prettier.ts` |
+
+The rest of this table is in `src/compiler/`.
 
 | If you are asking | Read |
 | --- | --- |
@@ -26,12 +35,13 @@ Everything below is in `src/compiler/`.
 | how is a written value read against a grammar? | `matchValue.ts` |
 | how is a CSS grammar parsed at all? | `valueSyntax.ts` |
 | what does `{expr}` become? | `tooling.ts`, `dollar.ts`, `variables.ts`, `references.ts` |
-| why did the checker complain? | `rules.ts`, or `typed.ts` when the rule needs a `ts.Program` |
+| why did the checker complain? | `rules/` — one family of rules to a file, `index.ts` runs them — or `typed.ts` when the rule needs a `ts.Program` |
 | how does a diagnostic get back to the author's line? | `virtual.ts` |
 | what is the whole transform? | `transform.ts` |
 
-Two files are worth knowing exist even if you never open them. `errors.ts` is every message this
-can produce. `nearest.ts` is the near-miss search behind *did you mean*.
+Three files are worth knowing exist even if you never open them. `errors.ts` is every message this
+can produce. `nearest.ts` is the near-miss search behind *did you mean*. `remember.ts` is how a pure
+answer about a property and a value is worked out once per build rather than once per declaration.
 
 ## What is generated, and by what
 
@@ -75,6 +85,7 @@ node scripts/build-shorthand-shapes.mjs --check  # fail if it is stale
 | `check-hand-splits.mjs` | a family split by hand disagreeing with any engine, or splitting a value one refuses |
 | `check-must-split.mjs` | a value people write that silently stopped splitting, or splits wrong |
 | `check-render-equality.mjs` | a block page whose PIXELS are not the hand-written page's — the pairs are in `scripts/render-pairs.mjs` |
+| `bench-css.mjs 5` | the benchmark no longer running — it times nothing here; `pnpm bench:css` is the 1000-file run, `--profile` says where the time goes |
 | `check-css-splitting.mjs` | the CSS not following its JavaScript chunk, on a real build |
 
 **The grammar table has no gate beside it, because the gate is inside the generator.** Every family
@@ -135,8 +146,8 @@ modes are the durable form of the same rule.
 
 ## Where to start
 
-Add the failing test first. Everything lives flat in `src/__tests__/`. Seventeen of the compiler's
-thirty-three files have a test of the same name — that is the convention when a change is confined to one file;
+Add the failing test first. Everything lives flat in `src/__tests__/`. Nineteen of the compiler's
+forty files have a test of the same name — that is the convention when a change is confined to one file;
 the rest are named for a subject that crosses several. A test here is expected to say what it is
 about in prose, not just assert, and each case names the measurement that found it missing. Read
 `classify.test.ts` for the register. Then:

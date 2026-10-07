@@ -12,7 +12,11 @@ export function remember<T>(limit: number, answer: (property: string, value: str
   // By property, then by value: a key joined from the two was a new string to hash on every call.
   const known = new Map<string, Map<string, T>>();
   let size = 0;
-  return (property: string, value = ""): T => {
+  // An answer of the property alone takes no value, and whatever else a caller passes — `map` passes
+  // the index — is not part of the input.
+  const takesValue = answer.length > 1;
+  return (property: string, given?: string): T => {
+    const value = takesValue ? (given ?? "") : "";
     let values = known.get(property);
     if (values === undefined) known.set(property, (values = new Map()));
     const hit = values.get(value);

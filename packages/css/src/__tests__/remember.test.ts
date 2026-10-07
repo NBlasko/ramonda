@@ -14,6 +14,22 @@ describe("remember", () => {
     expect(asked).toBe(2);
   });
 
+  /**
+   * A function of the property alone, handed to `map` — which passes the index as well. Read as the
+   * value, the index made every position a new input: `["a", "a"].map(…)` was asked twice.
+   */
+  test("ignores what a caller passes past the inputs the answer takes", () => {
+    let asked = 0;
+    // Declared the way `writableProperty` is, which is what lets `map` take it.
+    const same: (property: string) => string = remember(10, (property: string) => {
+      asked++;
+      return property;
+    });
+
+    expect(["margin", "margin"].map(same)).toEqual(["margin", "margin"]);
+    expect(asked).toBe(1);
+  });
+
   /** Every caller gets the same object, so one that changed it would change it for the next file. */
   test("hands back an answer nobody can change", () => {
     const first = splitOf("margin", "4px 8px");
