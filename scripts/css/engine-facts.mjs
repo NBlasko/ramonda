@@ -131,7 +131,7 @@ export function writeOrCheck(file, contents, command, check) {
     // It said "is missing something", which is true of the lists that only grow and a guess about
     // the one that only shrinks.
     console.error(`[${command}] ${file.split("/").slice(-1)[0]} is not what the engines here report.`);
-    console.error(`[${command}] run \`node scripts/${command}.mjs\` and commit the result.`);
+    console.error(`[${command}] run \`node scripts/css/${command}.mjs\` and commit the result.`);
     process.exit(1);
   }
   writeFileSync(file, contents);
