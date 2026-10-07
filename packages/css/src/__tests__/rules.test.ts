@@ -293,6 +293,19 @@ describe("a hole where the stylesheet needs text", () => {
   });
 
   /**
+   * A misplaced hole silences nothing else in the block. A filter here once dropped every
+   * `unknown-property` beside one, so `colr` went unreported in the editor until the hole was fixed —
+   * and the name with the hole in it never needed the filter: it is not one word, so
+   * `unknown-property` passes it by on its own.
+   */
+  test("a typo elsewhere in the block is still named", () => {
+    expect(check("  $(name): 24px;\n  colr: red;").map((one) => one.rule)).toEqual([
+      "hole-out-of-place",
+      "unknown-property",
+    ]);
+  });
+
+  /**
    * **The advice has to name a door that is OPEN**, and it did not.
    *
    * It read *a custom property holds a value, so write `property: $(…)` and put the choice inside

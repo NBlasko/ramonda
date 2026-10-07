@@ -777,8 +777,9 @@ function propertyMap(rules: PropertyRules | undefined): Mapped {
      * Token<…>>`. A zero length needs no unit in CSS, `CssDimension` holds `0 | "0"` for that
      * reason, and a project saying *lengths come from tokens* is not asking for `$space.none`.
      *
-     * Both spellings, because a block is CSS and `padding-left: 0` arrives as the string `"0"`,
-     * while a hole can hand over the number.
+     * The number is how a block's `padding-left: 0` reaches the type — `quoted` in `virtual.ts`
+     * writes a numeric value as a number — and `"0"` is `CssDimension`'s other spelling of the
+     * same zero.
      *
      * Not for `<number>` or `<integer>`: a zero there is a number written out, which is exactly
      * what the setting is refusing.

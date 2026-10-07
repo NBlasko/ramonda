@@ -121,10 +121,9 @@ function put(path: string, text: string, write: boolean): Written {
   /**
    * A file at this name that is NOT ours is kept, and the run stops.
    *
-   * Writing over a hand-written file would lose it with nothing said. The name carries `generated`
-   * and the convention is plain, which is the argument for writing anyway — but an inconvenience is
-   * survivable and somebody's work is not, and looking at the target before overwriting it costs
-   * one read that was already happening.
+   * Writing over a hand-written file would lose it with nothing said, and its work may not be
+   * committed yet. An inconvenience is survivable and somebody's work is not, and looking at the
+   * target before overwriting it costs one read that was already happening.
    *
    * LOOSELY, on the package's name rather than the whole sentence, so a file written by an older
    * version is still ours and is still replaced.

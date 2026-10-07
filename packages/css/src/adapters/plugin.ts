@@ -1218,10 +1218,10 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
        * renamed; measured on a 103-character file, it answered with an edit at offset 565, inside
        * the preamble this plugin wrote.
        *
-       * `toggleLineComment` is the everyday one: Cmd+/ on a block's second line commented line ONE,
-       * the preamble's first line, which is offset 0 in both texts. And
-       * `getDocCommentTemplateAtPosition` offered a JSDoc built from this plugin's own
-       * `__block(declarations: …)` declaration.
+       * `toggleLineComment` is the everyday one: Cmd+/ on a block's second line commented line ONE —
+       * the line holding that offset in the virtual text is the preamble's first, which starts at
+       * offset 0 in both texts. And `getDocCommentTemplateAtPosition` offered a JSDoc built from this
+       * plugin's own `__block(declarations: …)` declaration.
        *
        * All of them are refused rather than mapped, for the reason written above the formatting
        * edits: **an edit that cannot be offered is a feature missing; an edit that is offered and
@@ -1468,8 +1468,8 @@ function withoutRepeats(
    * Without it the editor shows TWO messages for one fault: hovering a narrowed `z-index` shows the
    * rule's sentence beside a raw `Narrowed<…>`, and together they read as a contradiction.
    *
-   * One list in `rules.ts`, both consumers, so the next rule added cannot reach one and not the
-   * other.
+   * One list, `SPEAKS_OVER_TYPES` in `rules/index.ts`, read by both consumers, so the next rule
+   * added cannot reach one and not the other.
    */
   /**
    * By DECLARATION, read off the TEXT — which is how `check.ts` does it, and the reason for both
@@ -1532,8 +1532,8 @@ function properties(info: PluginCreateInfo): string | undefined {
 /**
  * What the CSS rules say about a file, read from the author's own text.
  *
- * `checkedSource` is the sequence, shared with `ramonda-css check` and the build, so a rule added
- * there is reported here too.
+ * `checkedSource` is the sequence, shared with `ramonda-css check`, so a rule added there is
+ * reported here too. The build runs the same rules through its own sequence in `transform`.
  *
  * TOLERANT, which is the one thing an editor needs differently: the build refuses a half-written
  * block outright, so by the time a build has spoken there is nothing left to squiggle.

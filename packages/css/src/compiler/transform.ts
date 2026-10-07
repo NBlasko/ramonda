@@ -695,8 +695,8 @@ export function transform(source: string, options: TransformOptions = {}): Trans
        *
        * Keyed by the PROPERTY as a key writes it, because the context composes itself at run time —
        * see `shorthands` in `merge.ts`. Only the shorthands this file actually writes, which is what
-       * keeps a table of ninety-eight out of every page: 23 KB raw, 3.7 KB gzipped, against a whole
-       * runtime smaller than that.
+       * keeps the whole table out of every page — measured at 23 KB raw, 3.7 KB gzipped, against a
+       * whole runtime smaller than that.
        */
       const clears = (declaration: AtomicDeclaration): void => {
         const covered = SHORTHANDS[declaration.property];

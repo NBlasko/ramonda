@@ -132,7 +132,7 @@ function unknownPrefix(item: Declaration, findings: Finding[]): void {
  * object key, and a quoted key gets no *did you mean*.
  *
  * So it speaks for both, and `inOrder` drops the compiler's word on the line — the arrangement
- * `unknown-token` and `variablesOnly` have. A name with no near miss is reported too, without a
+ * `unknown-token` and `hardcoded-not-allowed` have. A name with no near miss is reported too, without a
  * suggestion: the types are not there to say it in the build.
  */
 export function unknownProperty(item: Declaration, findings: Finding[], body?: string): void {
@@ -212,8 +212,8 @@ export function unknownProperty(item: Declaration, findings: Finding[], body?: s
  * a name, so the stylesheet parses — but the rule it emits still says `--a b: red`, which no
  * browser accepts, so an element carrying the class gets nothing.
  *
- * `unknown-property` returns early for a name starting with `-` and for one with no `-` at all, so
- * both of the shapes an author actually writes would walk past it: two words where one belongs, and
+ * `unknown-property` returns early for a name starting with `-` and for one that is not a single
+ * word, so both of the shapes an author actually writes would walk past it: two words where one belongs, and
  * a name wrapped across lines — which is also what a missing `;` looks like from here.
  *
  * The dashed form is suggested only when it IS a property, because a suggestion that is not one

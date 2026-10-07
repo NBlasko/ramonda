@@ -445,20 +445,7 @@ export function checkBlock(written: AnyBlock, options: CheckOptions = {}): Findi
   // LAST, because it stays quiet wherever another rule has already spoken — see its own note.
   unclosedCall(block, findings);
   missingSemicolon(block, findings);
-  /**
-   * A block reported for a misplaced HOLE is not also asked about its property names.
-   *
-   * `&:{state} { … }` leaves `state` behind as a declaration's property once the braces are read
-   * off, so `unknown-property` would report *`state` is not a CSS property* beside
-   * `hole-out-of-place`. The second is the fault; the first is an artefact of a parse the author is
-   * about to fix.
-   *
-   * **After the walk rather than during it**, and that is measured: the hole is found on a LATER
-   * item than the property, so a guard at the moment of pushing sees nothing to guard against.
-   */
-  const misplaced = findings.some((one) => one.rule === "hole-out-of-place");
-  const named = misplaced ? findings.filter((one) => one.rule !== "unknown-property") : findings;
-  const once = outermost(block, named);
+  const once = outermost(block, findings);
 
   const silenced = config?.rules;
   const kept = silenced === undefined ? once : once.filter((one) => silenced[one.rule] !== "off");

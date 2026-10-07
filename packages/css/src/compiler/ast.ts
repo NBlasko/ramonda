@@ -276,18 +276,6 @@ export interface HolePart {
 }
 
 /**
- * Every RUNTIME value in a block — a hole standing in a declaration's value — with the declaration
- * holding it.
- *
- * One walk, because three things ask about these: the `hole-not-allowed` rule wants each one's
- * POSITION, the virtual file wants only whether there are any, and the type its helper returns
- * follows from that.
- *
- * **`ReadBlock.holes` is not the same list:** composition is written with the same escape, so
- * `...$(base)` and `when $(on)` are in the reader's holes while neither puts anything on an
- * element. Only a hole in a VALUE does.
- */
-/**
  * The items a group holds — a nested rule's, or every arm's of a block match, in the order written.
  *
  * For a walk that asks what a block SETS and not how it is chosen. One that compares declarations
@@ -297,6 +285,14 @@ export function childrenOf(item: NestedRule | BlockMatch): readonly BlockItem[] 
   return item.kind === "rule" ? item.items : item.arms.flatMap((arm) => arm.items);
 }
 
+/**
+ * Every RUNTIME value in a block — a hole standing in a declaration's value — with the declaration
+ * holding it, for `hole-not-allowed`, which points at each one's POSITION.
+ *
+ * **`ReadBlock.holes` is not the same list:** composition is written with the same escape, so
+ * `...$(base)` and `when $(on)` are in the reader's holes while neither puts anything on an
+ * element. Only a hole in a VALUE does.
+ */
 export function runtimeValuesIn(block: Block): readonly { declaration: Declaration; part: HolePart }[] {
   const found: { declaration: Declaration; part: HolePart }[] = [];
   const inItems = (items: readonly BlockItem[]): void => {

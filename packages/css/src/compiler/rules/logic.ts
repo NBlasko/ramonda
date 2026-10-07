@@ -8,20 +8,20 @@ import { type Block, type BlockItem } from "./shared";
 import { type Finding } from "./index";
 
 /**
- * A RUNTIME value in a declaration — `color: {this.brand}`. **Refused, everywhere.**
+ * A RUNTIME value in a declaration — `color: $(this.brand)`. **Refused, everywhere.**
  *
  * ## Why
  *
  * A hole is a per-element cost. Measured, the same colour written two ways: `color: red` emits
- * `r-c-red { color:red; }` and the element carries a class, while `color: {this.brand}` emits
+ * `r-c-red { color:red; }` and the element carries a class, while `color: $(this.brand)` emits
  * `color:var(--r-…-0)` and every instance carries an inline custom property. A list of ten thousand
  * rows is ten thousand style attributes.
  *
  * And it cannot be shared. A hole belongs to the declaration it stands in, so two declarations
  * wanting one value get two custom properties:
  *
- *     padding-left: {this.v}; padding-right: {this.v};       TWO variables
- *     padding-left: var({pad}); padding-right: var({pad});   ONE, however many read it
+ *     padding-left: $(this.v); padding-right: $(this.v);         TWO variables
+ *     padding-left: var($(pad)); padding-right: var($(pad));     ONE, however many read it
  *
  * ## What to write instead
  *
@@ -32,17 +32,17 @@ import { type Finding } from "./index";
  * - **`@@property`**, for a value that genuinely comes from data. One declared name, read by as
  *   many declarations as want it, set once on the element.
  *
- * ## What is NOT a hole, though it has braces
+ * ## What is NOT a hole, though it is written with `$( )`
  *
- * The braces are still how an expression gets in; what is refused is a value in a declaration.
+ * `$( )` is still how an expression gets in; what is refused is a value in a declaration.
  * `when $(this.on) { … }` and `...$(on ? hot : cold)` choose between whole rules and write nothing
- * on the element. `match $(this.variant)` chooses between classes. `var({angle})` and `{angle}:
+ * on the element. `match $(this.variant)` chooses between classes. `var($(angle))` and `$(angle):
  * 45deg` name a `@@property` site, which is text by the time the CSS is written.
  *
- * ## A declared variable is not a hole either — but the BRACES decide, not the name
+ * ## A declared variable is not a hole either — but the `$( )` decides, not the name
  *
  * Measured: `color: $color.brand` written bare parses as a `VariablePart` and becomes a `var()` in
- * the stylesheet, while `color: {$color.brand}` — the same variable, in braces — parses as a
+ * the stylesheet, while `color: $($color.brand)` — the same variable, inside `$( )` — parses as a
  * `HolePart` and would set a custom property per element. So the second is reported and the bare
  * spelling is the fix. `var(--brand)` written out is ordinary text and is never asked about.
  */

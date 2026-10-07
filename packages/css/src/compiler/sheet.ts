@@ -32,9 +32,9 @@ export function messageFor(one: UnknownVariable): string {
     `nothing in this build sets \`${one.read.name}\`.` +
     (one.meant === undefined ? "" : ` Did you mean \`${one.meant}\`?`) +
     /**
-     * `externalCustomProperties`, not `variables`: `variables` is the declarations `$` is built
-     * from, and it REFUSES a bare list — so advice pointing there would send the author to a key
-     * that turns them away.
+     * `externalCustomProperties`, not `tokens`: `tokens` is the declarations `$` is built from,
+     * and it REFUSES a bare list — so advice pointing there would send the author to a key that
+     * turns them away.
      */
     `\n    Set it in a block, register it with \`@@property\`, add it to \`externalCustomProperties\` in ` +
     `\`ramonda.css.ts\` if it comes from a stylesheet this does not compile, or give it a ` +
@@ -473,9 +473,9 @@ export class Sheet {
    * other chunk happens to have loaded, and a bundler makes no such promise.
    *
    * **The order is the file's, not the sheet's.** The sheet's order is global first-claim order —
-   * whichever file the bundler happened to transform first. Measured: two files writing the same
-   * two conditional declarations in opposite orders, and the second one's stylesheet came out in
-   * the FIRST one's order.
+   * whichever file the bundler happened to transform first. Measured in that order: two files
+   * writing the same two conditional declarations in opposite orders, and the second one's
+   * stylesheet came out in the FIRST one's order.
    *
    * `sheetRank` cannot rescue that. It separates conditional from unconditional and broad from
    * narrow; it says nothing about one condition against another, so the two ranks are equal, the

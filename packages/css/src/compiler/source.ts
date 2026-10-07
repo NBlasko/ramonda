@@ -18,8 +18,8 @@ import { type RegisteredSite, type VariableRead, type Variables, variablesIn } f
  * one name and read by another can be told apart. Written out a second time, any one of those is a
  * place for two answers to the same question.
  *
- * `ramonda-check`, `ramonda-css`, the editor and the documentation gate all go through here. A gate
- * with its own sequence would pass doc examples carrying a CSS fault — measured, `background:
+ * `ramonda-css check`, the editor and the documentation gate all go through here. A gate with its
+ * own sequence would pass doc examples carrying a CSS fault — measured, `background:
  * var(--ackcent)` beside `--accent: …` — and publish examples that break a reader's build.
  *
  * A block the PARSER refuses is a different thing and is not caught here — it throws, and the

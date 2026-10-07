@@ -34,9 +34,9 @@ export class CssBlockError extends Error {
  * that read differently depending on which tool found it would be two faults to a reader.
  *
  * **It names the door that is open.** A runtime value in a declaration is refused everywhere, so
- * advice to write `property: {…}` would only move the author from `hole-out-of-place` to
+ * advice to write `property: $(…)` would only move the author from `hole-out-of-place` to
  * `hole-not-allowed`. A hole stands in exactly one place — the NAME of a `@@property( … )` from
- * this file — and reading one is `var({A})`.
+ * this file — and reading one is `var($(name))`.
  */
 export function holeOutOfPlace(what: "a declaration" | "a property name" | "a selector" | "a frame"): string {
   const door =

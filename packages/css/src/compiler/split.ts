@@ -189,7 +189,10 @@ export function misplacedWord(
 /** A colour is tested directly rather than expanded: `<color>` is 192 words, and every border family takes one. */
 const COLOUR_WORDS = new Set((KEYWORDS.color ?? "").split(" ").filter((one) => one !== ""));
 const COLOUR_CALL = /^(rgba?|hsla?|hwb|lab|lch|oklab|oklch|color|color-mix|light-dark)\(/i;
-/** `!important`, however it is spelt — ONE pattern for the split, the flattener and the checker. */
+/**
+ * `!important`, however it is spelt — ONE pattern for the split and the flattener. The checker takes
+ * the same spelling off a value with `withoutImportant`.
+ */
 export const IMPORTANT = /!\s*important\s*$/i;
 const A_NUMBER = /^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i;
 const A_DIMENSION = /^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?([a-z%]+)$/i;
@@ -565,6 +568,9 @@ export function splitByGrammar(shape: GrammarShape, value: string): Record<strin
   return out;
 }
 
+/** A property's foldable words, made once per property rather than on every value. */
+const foldable = new Map<string, ReadonlySet<string>>();
+
 /**
  * A value with the property's KEYWORDS in lower case, and everything else as written.
  *
@@ -577,9 +583,6 @@ export function splitByGrammar(shape: GrammarShape, value: string): Record<strin
  * brackets: `[Dense]` and `[None]` are names spelled like keywords, and folding them would make the
  * split name a different line than the shorthand, in all three engines.
  */
-/** A property's foldable words, made once per property rather than on every value. */
-const foldable = new Map<string, ReadonlySet<string>>();
-
 function keywordsFolded(property: string, value: string): string {
   let words = foldable.get(property);
   if (words === undefined) {

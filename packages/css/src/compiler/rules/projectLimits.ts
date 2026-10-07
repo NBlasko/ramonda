@@ -188,7 +188,7 @@ function dimensionNotAllowed(block: Block, rules: PropertyRules | undefined, fin
  * `properties["*"].units` would be refused by the checker and served by the build.
  *
  * `inOrder` drops the compiler's word on a line one of these reports, so an author still meets one
- * report rather than two — the same arrangement `variablesOnly` has.
+ * report rather than two — the same arrangement `hardcoded-not-allowed` has.
  */
 export function unitNotAllowedPerProperty(block: Block, rules: PropertyRules | undefined, findings: Finding[]): void {
   if (rules === undefined) return;

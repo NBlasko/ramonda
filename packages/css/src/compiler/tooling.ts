@@ -137,11 +137,11 @@ export function placehold(source: string, options: PlaceholdOptions = {}): Place
   /**
    * A placeholder has to carry the block's SHAPE, not only its place.
    *
-   * The formatter never sees a block, it sees this; and a comment and a zero is fourteen
-   * characters, so an opening element that is multi-line in the author's file measures as fitting
-   * on one. biome joins the attributes, the block is expanded again afterwards, and
-   * `className="panel"` ends up inline beside a multi-line block. An element carrying a block and
-   * one other attribute is the ordinary case.
+   * The formatter never sees a block, it sees this. Held by a comment and a zero — fourteen
+   * characters — an opening element that is multi-line in the author's file would measure as
+   * fitting on one: biome would join the attributes, the block would be expanded again afterwards,
+   * and `className="panel"` would end up inline beside a multi-line block. An element carrying a
+   * block and one other attribute is the ordinary case.
    *
    * So a block that spans lines is placeheld by something that spans lines. A template literal,
    * because its contents are the one thing a formatter will not re-lay: measured against the two
@@ -244,9 +244,9 @@ function restore(
     /**
      * And a placeholder that came back TWICE, which would leave ours in the author's file.
      *
-     * The same fault from the other side: `exec` finds the first match, the block goes back there,
-     * and the second keeps the marker — this package's own internal text, written to somebody's
-     * component.
+     * The same fault from the other side: `exec` finds the first match, so the block would go back
+     * there and the second would keep the marker — this package's own internal text, written to
+     * somebody's component.
      *
      * No formatter measured here duplicates code. That is no argument, for the reason written
      * above: there is no correct output to fall back to, so there is no output.

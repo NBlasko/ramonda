@@ -18,9 +18,9 @@ import type { StyleValue } from "./types";
  * ## What the string cannot carry, and what does
  *
  * Two things, and both are REGISTERED by the module that needs them rather than shipped to every
- * page — see {@link shorthands} and {@link conditionsOf}. A table of all 98 shorthand families is
+ * page — see {@link shorthands} and {@link conditionsOf}. A table of every shorthand family is
  * 23 KB, 3.7 KB gzipped, which is larger than this whole runtime, and a page that writes three
- * shorthands would be paying for ninety-five it does not.
+ * shorthands would be paying for all the rest.
  */
 
 /**
@@ -295,7 +295,7 @@ function warnAboutOrder(chosen: ReadonlyMap<string, string>): void {
     register(group(property), one);
 
     /**
-     * **And every longhand a SHORTHAND sets** — all 98 families.
+     * **And every longhand a SHORTHAND sets**, for every shorthand family.
      *
      * Grouped by the exact property name alone, `padding` and `padding-left` are never compared, so
      * a shorthand under a condition silently beats a longhand composed after it. Measured against

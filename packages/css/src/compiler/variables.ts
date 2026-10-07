@@ -86,14 +86,14 @@ export function variablesIn(block: Block): Variables {
 }
 
 /**
- * Every `var()` whose name is a RESOLVED reference — `var({angle})`, once `{angle}` is the name.
+ * Every `var()` whose name is a RESOLVED reference — `var($(angle))`, once `$(angle)` is the name.
  *
  * A resolved reference arrives as its own part holding nothing but the generated name — see
  * `readBlock`, which builds it that way precisely so no rule has to find a name inside text. So the
  * question is only what stands immediately before it, and `var(` is the one answer that makes this
  * a read rather than a mention.
  *
- * **A bare `{angle}` in a value is NOT counted.** Writing the name where a value goes is not reading
+ * **A bare `$(angle)` in a value is NOT counted.** Writing the name where a value goes is not reading
  * the property, it is writing its name out as text, and CSS does nothing with that. Counting it
  * would turn one fault into evidence against another.
  */

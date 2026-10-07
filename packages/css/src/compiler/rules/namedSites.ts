@@ -263,7 +263,7 @@ export function againstRegisteredSyntax(
     if (value === undefined) continue;
     /**
      * `!important` is not part of the value, and on a custom property it is ordinary CSS — it is
-     * how a variable is made to win. Left in, `{angle}: 90deg !important` is reported as a value
+     * how a variable is made to win. Left in, `$(angle): 90deg !important` is reported as a value
      * `<angle>` does not accept.
      */
     const written = withoutImportant(value);
@@ -308,7 +308,7 @@ export function holeInANamedBlock(block: Block, at: string, findings: Finding[])
      * — a squiggle over the hole itself.
      *
      * One finding per HOLE rather than per declaration, because each is a separate thing to remove
-     * — `src: url({a}) format({b})` is two edits, and reporting only the first makes an author fix
+     * — `src: url($(a)) format($(b))` is two edits, and reporting only the first makes an author fix
      * one, re-run, and meet the next.
      */
     for (const hole of item.value) {

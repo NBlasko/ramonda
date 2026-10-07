@@ -208,9 +208,10 @@ export interface ReadOptions {
  *
  * Three readers want this — the two in `references.ts` that only need a site's NAME, and the loop
  * in `transform.ts` that carries an imported module's rule across. None of them has a filename it
- * could honour, so a refusal from them would name no file at all — measured, a NUL in a
- * `@@property` block came out of a build as `:1:36 a NUL character cannot be written…`, ahead of
- * the read that would have named the right one.
+ * could honour — the first two have none, and the third holds the IMPORTING file's — so a refusal
+ * from them names no file, or the wrong one: measured, a NUL in a `@@property` block came out of a
+ * build as `:1:36 a NUL character cannot be written…`, ahead of the read that would have named the
+ * right one.
  */
 export function tryReadBlock(source: string, open: number, options: ReadOptions = {}): ReadBlock | undefined {
   try {
@@ -478,13 +479,6 @@ const A_DECLARATION =
   /^\s*(?:--(?:[\w-]|[\u0080-\uFFFF])+|-?(?:[a-zA-Z_]|[\u0080-\uFFFF])(?:[\w-]|[\u0080-\uFFFF])*)\s*:(\s|$)/;
 
 /**
- * What a `//` inside a block is, in one sentence — said by the `line-comment` RULE and by the
- * parser's refusal, which are two paths to the same fault.
- *
- * Here rather than in the rules because they already import from this file and the reverse would be
- * a cycle. One sentence in one place, so the two cannot drift.
- */
-/**
  * The message for a call left open in a declaration already read, or nothing.
  *
  * Asked only when a refusal is about to happen: a block that reads has nothing to explain, and this
@@ -544,6 +538,13 @@ function endOfQuoted(text: string, start: number): number {
   return text.length;
 }
 
+/**
+ * What a `//` inside a block is, in one sentence — said by the `line-comment` RULE and by the
+ * parser's refusal, which are two paths to the same fault.
+ *
+ * Here rather than in the rules because they already import from this file and the reverse would be
+ * a cycle. One sentence in one place, so the two cannot drift.
+ */
 export const LINE_COMMENT =
   "CSS has no `//` comment — this and the rest of the line are written into the stylesheet, " +
   "and the build refuses the file. Write `/* … */`.";

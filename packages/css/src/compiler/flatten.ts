@@ -540,11 +540,6 @@ export type AtomicSegment =
     };
 
 /** Every declaration a block makes, ignoring how it is composed. */
-/**
- * `!important`, however it is spelt — the same pattern the rules match for a custom property's
- * value, because it is the same question asked of the same text.
- */
-
 export function flatten(block: Block): AtomicDeclaration[] {
   return segments(block).flatMap((one) =>
     one.kind === "declarations" ? one.items : one.kind === "match" ? one.arms.flatMap((arm) => arm.items) : [],

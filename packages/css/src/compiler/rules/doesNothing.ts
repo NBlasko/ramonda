@@ -236,7 +236,7 @@ interface Written {
 /**
  * Every property `declaration-does-nothing` can report, for the page that lists them.
  *
- * Nothing sees a page that is merely wrong, so this is what `docs.test.ts` compares it against —
+ * Nothing sees a page that is merely wrong, so this is what `doesNothingPage.test.ts` compares it against —
  * the page and the table otherwise drift the first time a row is narrowed.
  */
 export const INERT_SUBJECTS: readonly string[] = [...new Set(INERT.flatMap((one) => one.subjects))];

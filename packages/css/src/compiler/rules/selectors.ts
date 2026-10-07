@@ -251,7 +251,7 @@ function isPseudoNameCharacter(code: number): boolean {
 /**
  * **A PSEUDO-CLASS THAT DOES NOT EXIST, and it drops the whole rule.**
  *
- * `SELECTORS` holds 129 of them with their groups and their MDN links; `normalise.ts` reads it to
+ * `SELECTORS` holds 129 pseudo-classes and pseudo-elements with their groups and their MDN links; `normalise.ts` reads it to
  * canonicalise a prelude, `plugin.ts` to hover one, and this to report one. Measured in Chromium,
  * inserting a rule with two declarations and reading `cssRules` back: a pseudo-class the browser
  * does not know keeps **zero rules**. Not one dropped declaration — every declaration beside it,

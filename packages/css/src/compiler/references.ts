@@ -61,7 +61,7 @@ const AN_IMPORT = /^[ \t]*import\s+(?:[A-Za-z_$][\w$]*\s*,\s*)?\{([^}]*)\}\s+fro
  * The line anchor above already rejects `// import … `; a `/* … *\/` opened at column 0 it does
  * not. Unblanked, an import inside a block comment still resolves its token when the module exists
  * — and **commenting an import out to see whether it is needed is the ordinary way to find out**,
- * so it must change what it would change.
+ * so a commented-out import must take its tokens away with it.
  *
  * Blanked rather than removed, so every offset after it is unmoved and the line anchor still sees
  * the lines it saw.
