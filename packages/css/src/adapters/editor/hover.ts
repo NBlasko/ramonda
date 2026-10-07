@@ -27,7 +27,7 @@ export function quickInfoAt(service: ts.LanguageService, fileName: string, at: n
  * are written, and the generator refuses a sentence naming a selector CSS does not have. `when` and
  * `...` have no upstream — what they say is what this repository measured about them.
  */
-export const COMPOSITION: Readonly<Record<string, { signature: string; note: string }>> = {
+const COMPOSITION: Readonly<Record<string, { signature: string; note: string }>> = {
   [CONDITION]: {
     signature: "when $( … )",
     note:
@@ -71,7 +71,7 @@ export const COMPOSITION: Readonly<Record<string, { signature: string; note: str
 };
 
 /** `:has(…)` in a block is `:has()` upstream, and a bare `:hover` is itself. */
-export function selectorNamed(prelude: string): string | undefined {
+function selectorNamed(prelude: string): string | undefined {
   const trimmed = prelude.trim().replace(/^&/, "").trim();
   if (!trimmed.startsWith(":")) return undefined;
 
@@ -135,7 +135,7 @@ export function spoken(where: Regions, at: number): ts.QuickInfo | undefined {
 }
 
 /** The first line of a generated property's JSDoc: the name, an em dash, and the grammar. */
-export const GRAMMAR = /^`([a-z-]+)` — `([^`]*)`\n?/;
+const GRAMMAR = /^`([a-z-]+)` — `([^`]*)`\n?/;
 
 /**
  * A hover that reads as CSS rather than as the object literal the CSS is checked through.

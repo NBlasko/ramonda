@@ -30,7 +30,7 @@ export interface Helpers {
 export const BRAND = "__@COMPILED@";
 
 /** Where the allow-list is written down — see {@link allowedBy}. */
-export const ALLOWS = "__@ALLOWS@";
+const ALLOWS = "__@ALLOWS@";
 
 /** Is this the compiled-block type? */
 export function isBlock(checker: ts.TypeChecker, type: ts.Type): boolean {

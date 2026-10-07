@@ -17,7 +17,7 @@ about itself, and an honest note on what is unfinished.
 | `compiler/` | everything that reads a block and decides what it means — the table below |
 | `runtime/` | what ships to the browser: `merge.ts`, `value.ts`, `token.ts`, `conditions.ts`, `key.ts` |
 | `config/` | the project's `ramonda.css.ts`: reading it (`config.ts`), its types (`declared.ts`), the files it generates (`codegen.ts`) |
-| `adapters/` | each tool the compiler is plugged into: `vite.ts`, `esbuild.ts`, `plugin.ts` (the editor), `cli.ts`, `check.ts`, `prettier.ts` |
+| `adapters/` | each tool the compiler is plugged into: `vite.ts`, `esbuild.ts`, `plugin.ts` (the editor — its helpers by subject in `editor/`), `cli.ts`, `check.ts`, `prettier.ts` |
 
 Beside `src/`, `probes/` holds the scripts that measured what the design rests on — kept as
 evidence, not run by anything; its README says which still run.
@@ -37,7 +37,7 @@ The rest of this table is in `src/compiler/`.
 | how does a family's grammar become leaves that belong to longhands? | `openGrammar.ts` |
 | how is a written value read against a grammar? | `matchValue.ts` |
 | how is a CSS grammar parsed at all? | `valueSyntax.ts` |
-| what does `{expr}` become? | `tooling.ts`, `dollar.ts`, `variables.ts`, `references.ts` |
+| what does `$( … )` become? | `tooling.ts`, `dollar.ts`, `variables.ts`, `references.ts` |
 | why did the checker complain? | `rules/` — one family of rules to a file, `index.ts` runs them — or `typed/` when the rule needs a `ts.Program`, a file to each |
 | how does a diagnostic get back to the author's line? | `virtual.ts` |
 | what is the whole transform? | `transform.ts` |

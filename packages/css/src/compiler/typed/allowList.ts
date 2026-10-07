@@ -214,7 +214,7 @@ export function allowListIsAnInterface(
 }
 
 /** The rules that judge a VALUE — what an allow-list's literal is asked, and nothing structural. */
-export const VALUE_RULES = new Set([
+const VALUE_RULES = new Set([
   "unknown-value",
   "unknown-unit",
   "too-many-values",
@@ -226,7 +226,7 @@ export const VALUE_RULES = new Set([
  * The compiler's own verdict on one declaration, as the findings of the value rules — asked by
  * compiling it, so an allow-list's value is refused exactly when it would be refused in a block.
  */
-export function valueFaults(property: string, value: string): string[] {
+function valueFaults(property: string, value: string): string[] {
   const key = `${property}\u0000${value}`;
   const known = FAULTS.get(key);
   if (known !== undefined) return known;
@@ -240,9 +240,9 @@ export function valueFaults(property: string, value: string): string[] {
  * every reference asked again compiled the same declaration again. It is a pure function of the
  * pair, so there is nothing to invalidate.
  */
-export const FAULTS = new Map<string, string[]>();
+const FAULTS = new Map<string, string[]>();
 
-export function compiledFaults(property: string, value: string): string[] {
+function compiledFaults(property: string, value: string): string[] {
   /**
    * A literal the probe cannot hold as ONE value is not judged: a `;`, a brace or an unbalanced
    * parenthesis would end the declaration early or open a hole, and the verdict would be about some

@@ -19,7 +19,7 @@ import ts from "typescript";
  * every style prop on every real component in this repository while the fixtures, which declared
  * their props inline, all passed.
  */
-export function reaches(checker: ts.TypeChecker, node: ts.Node, out: Set<ts.Node>, seen = new Set<ts.Node>()): void {
+function reaches(checker: ts.TypeChecker, node: ts.Node, out: Set<ts.Node>, seen = new Set<ts.Node>()): void {
   if (seen.has(node)) return;
   seen.add(node);
 
@@ -71,7 +71,7 @@ export function reaches(checker: ts.TypeChecker, node: ts.Node, out: Set<ts.Node
 }
 
 /** The container a declaration belongs to — a class or a function. Pure TypeScript, no framework. */
-export function scopeOf(node: ts.Node): ts.Node {
+function scopeOf(node: ts.Node): ts.Node {
   let found: ts.Node = node;
   while (
     found.parent !== undefined &&

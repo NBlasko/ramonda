@@ -127,7 +127,7 @@ export function registeredNeverSet(
  * Measured: without this, a property declared in `theme.ts`, read by a block in `Card.tsx` and set
  * nowhere reported nothing at all.
  */
-export function isJustNaming(node: ts.Identifier): boolean {
+function isJustNaming(node: ts.Identifier): boolean {
   const parent = node.parent;
   if (parent === undefined) return false;
   if (ts.isVariableDeclaration(parent)) return parent.name === node;
@@ -136,7 +136,7 @@ export function isJustNaming(node: ts.Identifier): boolean {
 }
 
 /** The `const <name> =` this file declares at any depth, as the identifier a symbol can be had from. */
-export function declarationOf(file: ts.SourceFile, name: string): ts.Identifier | undefined {
+function declarationOf(file: ts.SourceFile, name: string): ts.Identifier | undefined {
   let found: ts.Identifier | undefined;
   const visit = (node: ts.Node): void => {
     if (found !== undefined) return;

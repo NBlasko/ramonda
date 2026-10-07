@@ -668,7 +668,7 @@ function walk(
          * `@media print { }` is legal CSS that does nothing, so `when $(x) { }` is legal here that
          * does nothing — and commenting a group's body out is how somebody reaches it. But the
          * emission counts on one segment per recorded hole: `readBlock` records the condition's
-         * `{expr}` whatever the group holds, and without this the guard has a hole and no segment,
+         * `$(expr)` whatever the group holds, and without this the guard has a hole and no segment,
          * so every following piece of text slides one place left. Measured without it: `when
          * $(variant) { }` alone compiled to `_merge(variant)`, which ships `class="l g"` for
          * `variant = "lg"` — two class names that never existed.

@@ -36,7 +36,7 @@ export function regions(text: string, fileName: string, readModule: Imported["re
 }
 
 /** Every declaration's VALUE, with the property it belongs to — see `valueWords`. */
-export function collect(items: readonly BlockItem[], out: ValueSpan[], preludes?: PreludeSpan[], paths?: Span[]): void {
+function collect(items: readonly BlockItem[], out: ValueSpan[], preludes?: PreludeSpan[], paths?: Span[]): void {
   for (const item of items) {
     if (item.kind === "match") {
       // The word itself, so a hover on it says what a match does — see `spoken`.
@@ -87,7 +87,7 @@ export function collect(items: readonly BlockItem[], out: ValueSpan[], preludes?
 export const EMPTY_REGIONS: Regions = { blocks: [], holes: [], values: [], paths: [], preludes: [] };
 
 /** A declaration's value, and the property it sets. */
-export interface ValueSpan {
+interface ValueSpan {
   readonly start: number;
   readonly end: number;
   readonly property: string;
@@ -95,7 +95,7 @@ export interface ValueSpan {
 
 /** What one file's text is made of, as far as this plugin has to care. */
 /** A nested rule's prelude, in the author's coordinates, with the text it holds. */
-export interface PreludeSpan {
+interface PreludeSpan {
   readonly start: number;
   readonly end: number;
   readonly prelude: string;

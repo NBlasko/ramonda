@@ -48,7 +48,7 @@ export function bar(file: VirtualFile, items: readonly ts.NavigationBarItem[]): 
 }
 
 /** Spans that survive the move; the ones that do not were never the author's. */
-export function spansHome(file: VirtualFile, spans: readonly ts.TextSpan[]): ts.TextSpan[] {
+function spansHome(file: VirtualFile, spans: readonly ts.TextSpan[]): ts.TextSpan[] {
   return spans.flatMap((span) => {
     const moved = back(file, span);
     return moved === undefined ? [] : [moved];
