@@ -100,7 +100,7 @@ from owning them — see [names the stylesheet sees](/style-blocks/tokens#themin
 set rather than concatenating class names. What decides is where you wrote something, and that is the
 whole point.
 
-## Read next
+## Next
 
 - [Styling](/styling) — `className`, `style`, and where stylesheets come from.
 - [Performance](/performance) — why a value built in the markup costs more than it looks.

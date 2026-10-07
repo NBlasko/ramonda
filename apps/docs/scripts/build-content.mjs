@@ -476,7 +476,11 @@ function pageFor(rule, at) {
  * things answering one question, drifting apart quietly. So the rule pages below are markdown
  * handed to this function, not markup built another way.
  */
-function pageOf(source, routePath, label) {
+/**
+ * One page's metadata and tree. `editable` is the file it is written in, from the repository root —
+ * what "Edit this page" opens — and nothing for a page generated from code rather than written.
+ */
+function pageOf(source, routePath, label, editable) {
   {
     const file = label;
     const { data, body } = splitFrontmatter(source);
@@ -513,6 +517,7 @@ function pageOf(source, routePath, label) {
       // Frontmatter is text, so the flag is compared as text — the same shape as `order` above,
       // which is `Number(...)` for the same reason.
       ...(String(data.nav) === "false" ? { nav: false } : {}),
+      ...(editable === undefined ? {} : { source: editable }),
       tree,
     };
   }
@@ -527,13 +532,17 @@ function pageOf(source, routePath, label) {
  */
 const diagnosticsFile = join(contentDir, "reference", "diagnostics.md");
 const split = diagnosticPages(readFileSync(diagnosticsFile, "utf8"));
+/** Where every one of those pages is edited: the one file they are split from. */
+const DIAGNOSTICS_SOURCE = `apps/docs/${relative(root, diagnosticsFile)}`;
 
 const pages = [
   ...walkFiles(contentDir)
     .filter((file) => file !== diagnosticsFile)
-    .map((file) => pageOf(readFileSync(file, "utf8"), toRoutePath(file), relative(root, file))),
-  pageOf(split.index.source, split.index.path, "reference/diagnostics (index)"),
-  ...split.pages.map((made) => pageOf(made.source, made.path, made.label)),
+    .map((file) =>
+      pageOf(readFileSync(file, "utf8"), toRoutePath(file), relative(root, file), `apps/docs/${relative(root, file)}`),
+    ),
+  pageOf(split.index.source, split.index.path, "reference/diagnostics (index)", DIAGNOSTICS_SOURCE),
+  ...split.pages.map((made) => pageOf(made.source, made.path, made.label, DIAGNOSTICS_SOURCE)),
   ...rulePages().map((made) => pageOf(made.source, made.path, made.label)),
 ].sort((a, b) => a.order - b.order || a.path.localeCompare(b.path));
 

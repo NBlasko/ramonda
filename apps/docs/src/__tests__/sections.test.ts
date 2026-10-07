@@ -1,6 +1,6 @@
 // @vitest-environment node
 // Walks `content/` off disk, like `links.test.ts` and `descriptions.test.ts` beside it.
-import { readdirSync, statSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -42,5 +42,61 @@ describe("a section is a page", () => {
     });
 
     expect(missing).toEqual([]);
+  });
+});
+
+/** Every page under `content/`, with its frontmatter's `section` and `order` and its last heading. */
+const walk = (dir: string): string[] =>
+  readdirSync(dir, { withFileTypes: true }).flatMap((entry) =>
+    entry.isDirectory() ? walk(join(dir, entry.name)) : entry.name.endsWith(".md") ? [join(dir, entry.name)] : [],
+  );
+const pagesOnDisk = walk(content).map((file) => {
+  const text = readFileSync(file, "utf8");
+  const front = /^---\n([\s\S]*?)\n---/.exec(text)?.[1] ?? "";
+  const field = (name: string) => new RegExp(`^${name}:\\s*(.+)$`, "m").exec(front)?.[1]?.trim() ?? "";
+  return {
+    file: file.slice(content.length + 1),
+    section: field("section").replace(/^["']|["']$/g, ""),
+    order: field("order"),
+    nav: field("nav") !== "false",
+    lastHeading: [...text.matchAll(/^## (.+)$/gm)].at(-1)?.[1] ?? "",
+  };
+});
+
+/**
+ * Two pages of one section at one `order` are put in place by their PATH, which nobody chose —
+ * and the page before or after one is read off that order. Found twice in Reference.
+ */
+describe("order", () => {
+  it("is not shared by two pages of one section", () => {
+    const seen = new Map<string, string>();
+    const shared: string[] = [];
+    for (const page of pagesOnDisk.filter((one) => one.nav)) {
+      const key = `${page.section}|${page.order}`;
+      const other = seen.get(key);
+      if (other !== undefined) shared.push(`${other} and ${page.file}: ${page.section || "(top)"} ${page.order}`);
+      seen.set(key, page.file);
+    }
+
+    expect(pagesOnDisk.length).toBeGreaterThan(100);
+    expect(shared).toEqual([]);
+  });
+});
+
+/**
+ * A page ends by saying where to go — `AUTHORING.md` §6 — and under ONE name, so a reader who has
+ * learned to look for it finds it. It was `Next` on 114 pages, and `Where to go next` and `Read
+ * next` on three others; one of them had both.
+ */
+describe("the closing section", () => {
+  /** The home page ends on its own "Start here", and the diagnostics file is split into pages. */
+  const EXEMPT = ["index.md", join("reference", "diagnostics.md")];
+
+  it("is called Next, and every page has one", () => {
+    const otherwise = pagesOnDisk
+      .filter((page) => !EXEMPT.includes(page.file) && page.lastHeading !== "Next")
+      .map((page) => `${page.file}: ${page.lastHeading || "(no heading)"}`);
+
+    expect(otherwise).toEqual([]);
   });
 });

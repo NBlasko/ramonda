@@ -186,7 +186,7 @@ Your editor should underline `dsiplay` and offer `display`. If it does, the plug
 workspace TypeScript is the one running. If the whole line is red instead, the syntax server is still
 being asked — that is the setting above.
 
-## Where to go next
+## Next
 
 - **[Writing a block](/style-blocks/writing)** — where a block goes, nesting, and where a value that
   changes goes instead.

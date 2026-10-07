@@ -2,7 +2,7 @@
 title: compute
 description: A value derived from state, cached until something it read changes.
 section: Reference
-order: 122
+order: 122.5
 ---
 
 # `@compute`
