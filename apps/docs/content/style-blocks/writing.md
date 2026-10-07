@@ -61,7 +61,7 @@ because the name is derived from the declaration and from nothing else. That is 
 written later — and it can only do that if each thing set has a class of its own to keep or drop.
 
 Each file carries the rules it names in its own stylesheet, so under Vite a code-split route stands
-on its own; esbuild puts them all in the entry's sheet — see [a code-split app](/style-blocks#a-code-split-app).
+on its own; esbuild puts them all in the entry's sheet — see [a code-split app](/style-blocks/setup#a-code-split-app).
 Where two files produce identical stylesheets the bundler dedupes them by content, and it costs
 nothing.
 

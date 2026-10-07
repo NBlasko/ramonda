@@ -836,7 +836,7 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
               "this file.\n        What you see here comes from the Ramonda CSS extension's own copy " +
               "of the compiler.\n\n" +
               "        Install `@ramonda/css` and add its plugin to your build — see " +
-              "https://ramonda.dev/style-blocks",
+              "https://ramonda.dev/style-blocks/setup",
           },
         ];
       };
