@@ -169,6 +169,8 @@ export const RULE_IDS = [
   // Two blocks joined into one string, where a merge was meant. See `joinedNotMerged`.
   "blocks-joined-not-merged",
   "allow-list-not-css",
+  // A value cast to a block, which the type a block prop is cannot refuse. See `castToABlock`.
+  "cast-to-a-block",
   // A state in an allow-list typed `[{ … }]`, which constrains its first declaration only. See
   // `stateIsATuple`.
   "state-is-a-tuple",

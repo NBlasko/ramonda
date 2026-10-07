@@ -160,7 +160,25 @@ are right: move the spread below, or take the property out of the type.
 send that value — so it is reported where you wrote it, judged by the same rules as a declaration
 in a block.
 
-All five can be switched off by id in [`ramonda.css.ts`](/style-blocks/settings), and covered for
+**And a value cast to a block.** The type refuses a plain object, a string of classes and a block
+the allow-list does not take, so a cast is the one way past it — and then nothing checked what the
+prop holds:
+
+```tsx
+import type { CssBlock } from "@ramonda/css/properties";
+
+type CardStyle = { gap?: "8px" | "16px" };
+declare const wide: CssBlock;
+
+const css = wide as CssBlock<CardStyle>;
+```
+
+`cast-to-a-block` reports it. An object cast to a block throws from inside the render, a style
+string turns into classes named `color:` and `red;`, and a `gap` the allow-list refuses lands
+without a word. Write the value as a block, or widen the allow-list if that block is meant to be
+allowed.
+
+All six can be switched off by id in [`ramonda.css.ts`](/style-blocks/settings), and covered for
 one line by [the ignore directive](/style-blocks/checking#when-a-rule-is-wrong).
 
 ## Next

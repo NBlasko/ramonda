@@ -298,6 +298,7 @@ const CSS_LINES = {
   "value-differs-across-engines":
     "a value browsers read differently, like `animation: auto` — the line renders two ways",
   "allow-list-not-css": "a value in an allow-list that is not CSS — every caller sending it is refused",
+  "cast-to-a-block": "a value cast to a style block, which skips every check a block prop makes",
   "narrower-after-a-whole-shorthand":
     "a narrower shorthand after a wider one, both reaching the stylesheet whole — no order keeps it winning",
   "hardcoded-not-allowed": "a value written out where your `ramonda.css.ts` takes that kind from tokens",

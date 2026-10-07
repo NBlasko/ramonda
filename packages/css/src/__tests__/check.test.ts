@@ -2871,3 +2871,67 @@ test("`match` over a word made in code — the advice for a number — is clean"
 
   expect(checkProject(project({ "Card.tsx": card })).findings).toEqual([]);
 });
+
+/**
+ * A value CAST to a block, which the type cannot refuse and the runtime does not survive.
+ *
+ * A block prop takes only what `@@( … )` compiles to, and `tsc` refuses a plain object, a plain
+ * string and an unconstrained block. A cast is the one way past it, and measured through
+ * `mergeClassNames`: an object cast to a block throws `part.split is not a function` from inside the
+ * render; a style string becomes the classes `color:` and `red;`; and a block or a class the prop's
+ * allow-list refuses lands silently.
+ */
+describe("a value cast to a block", () => {
+  const card = (body: string, file = "Card.tsx") =>
+    check({
+      [file]:
+        `import type { CssBlock, StyleValue } from "@ramonda/css/properties";\n` +
+        `import type { CssBlock as Css } from "@ramonda/css/properties";\n` +
+        `type CardStyle = { gap?: "8px" | "16px" };\n` +
+        `type CardCss = CssBlock<CardStyle>;\n` +
+        `declare const anything: unknown;\n` +
+        `declare const wide: CssBlock;\n` +
+        `export const a = ${body};\n`,
+    });
+
+  /**
+   * A block written in place and cast at once is the compiler's: the cast is the block's context, so
+   * `gap: 4px` is checked against the allow-list and refused there (`TS2322`). The cast that gets
+   * past is one of a block that was made somewhere else.
+   */
+  test("a block cast where it is written is refused by the type, not by this", () => {
+    expect(card(`@@( gap: 4px; ) as CssBlock<CardStyle>`).findings.map((one) => one.code)).toEqual([2322]);
+  });
+
+  test.each([
+    ["a plain object, through `unknown`", `({ gap: "2px" }) as unknown as CssBlock<CardStyle>`],
+    ["a string of classes", `"r-g-16px" as CssBlock<CardStyle>`],
+    ["a block held somewhere, narrowed by a cast", `wide as CssBlock<CardStyle>`],
+    ["through an alias of the import", `anything as Css<CardStyle>`],
+    ["through a type alias", `anything as CardCss`],
+    ["to the brand the block is built on", `"color: red" as StyleValue`],
+  ])("%s is reported", (_what, body) => {
+    expect(card(body).findings.map((one) => one.code)).toEqual(["cast-to-a-block"]);
+  });
+
+  test("the old angle-bracket cast too, in a `.ts` file", () => {
+    expect(card(`<CssBlock>anything`, "card.ts").findings.map((one) => one.code)).toEqual(["cast-to-a-block"]);
+  });
+
+  test.each([
+    ["a block, written as one", `@@( gap: 8px; )`],
+    ["a cast to something that is not a block", `anything as string`],
+    ["`as const`", `["a", "b"] as const`],
+  ])("%s is not reported", (_what, body) => {
+    expect(card(body).findings.map((one) => one.code)).toEqual([]);
+  });
+
+  /** A project's own type of that NAME is not ours — the brand says which is which. */
+  test("a look-alike named `CssBlock` is not reported", () => {
+    const report = check({
+      "Card.tsx": `type CssBlock = { className: string };\ndeclare const anything: unknown;\nexport const a = anything as CssBlock;\n`,
+    });
+
+    expect(report.findings).toEqual([]);
+  });
+});
