@@ -1,6 +1,6 @@
 # The contract
 
-`DESIGN.md` says why this feature exists and `PLAN.md` says in what order it gets built. **This file
+`DESIGN.md` says why this feature exists. **This file
 is the part both halves have to agree on before either can be written**, and it is deliberately
 short: five decisions, each one implemented and tested in `src/`.
 

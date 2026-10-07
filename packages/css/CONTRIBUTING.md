@@ -1,7 +1,7 @@
 # Working on `@ramonda/css`
 
-The other three documents in this folder answer *why* (`DESIGN.md`), *in what order*
-(`PLAN.md`) and *what both halves agreed on* (`CONTRACT.md`). **This one answers *where*.** It
+The other two documents in this folder answer *why* (`DESIGN.md`) and *what both halves agreed
+on* (`CONTRACT.md`). **This one answers *where*.** It
 exists because `DESIGN.md` is over five thousand lines, and a person arriving to fix one thing
 should not have to read it to find the file.
 

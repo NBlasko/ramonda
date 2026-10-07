@@ -12,8 +12,8 @@ adapters and a formatter wrapper.
 > `$.group.path`). Prose here has been moved to the new spelling where it names the construct; where
 > it records what an OLD spelling did, the old spelling is the point and stays.
 
-This file is the *why*, and it is the oldest of the three. `PLAN.md` is the *when*; `CONTRACT.md` is
-what both halves must agree on.
+This file is the *why*, and the oldest of the documents here; `CONTRACT.md` is what both halves
+must agree on.
 
 > **Everything above §15 is a RECORD of what was decided when, and its examples are written in the
 > spelling of the day.** Six steps landed on 2026-09-22 and §15 is their live account: `match`,
@@ -1517,7 +1517,7 @@ What moved is that a rule's place in the cascade is a function of the RULE — n
 in the build, and not of when a chunk arrives. With the layers off, loading a lazy chunk changed the
 colour of an element already on the page. `prototype-dev-vs-build.mjs` runs both sides. What is still not settled is two
 conditions carrying no width, `@media print` against `prefers-color-scheme`: nothing tells them
-apart, and there the file's own order is still the answer. See `PLAN.md`.
+apart, and there the file's own order is still the answer. See *Still open*, below.
 
 The sheet does sit in a named `@layer ramonda`, and the honest statement of what that buys is on the
 docs page rather than here: **unlayered CSS beats layered CSS**, checked before specificity, so an
@@ -5583,6 +5583,37 @@ it. Whatever separates the two, it is not that.
 them, and this one hands back nothing: there is no decomposition to find, and reporting them beside
 `font` and `grid` read as thirteen families needing a grammar when it is nine.
 
+## Still open
+
+Measured 2026-10-07 — each of these still compiles, or is still undecided:
+
+- **Five declarations a browser drops, or a group it never switches, that this compiles.** No rule and
+  no type reports them; each is a new refusal, and what a build rejects is the user's call.
+
+  | | what a browser does |
+  |---|---|
+  | `gap: 12`, `letter-spacing: 12` | drops it — a bare number where a length goes |
+  | `z-index: 1.5` | drops it — `<integer>` cannot be a type (neither `number` nor `` `${number}` `` refuses `1.5`), so it has to be a rule |
+  | `@supports (min-width: 40rem)` | always TRUE — a group that can never be off, reading like a breakpoint |
+  | `@media (prefers-color-scheme: drak)` | never matches; the feature NAME is checked and its value is not |
+
+  The oracle for all of them is `(f)` against `not (f)` in a real browser, which already verifies
+  the media features. As a TYPE, any of these costs a flat four instantiations — measured with 100
+  properties declared, at 1, 12, 40 and 80 set.
+
+- **Two conditions the mode table does not name.** `@media (min-height: …)` against `@media (hover:
+  hover)` share its last slot, so the file's own order decides and another file can reverse it;
+  `override-out-of-order` sees equal rank and says nothing, and so does the dev warning across a
+  spread. Either the table grows to name them, or a slot is derived from the condition's own text
+  with a report when the author's order disagrees.
+
+- **`windows-latest` in CI.** Every job is `ubuntu-latest`. `toolIn` and `vscode/locate.js` look for
+  the `.cmd` spelling, but whether `execFileSync` then runs one cleanly has never been measured.
+
+- **`virtual.test.ts` timed out once in CI, at 60 s, unexplained.** Not the change it failed on
+  (9.2 s with, 9.6 s without); the slowest case is ~750 ms locally, so a per-test timeout needs
+  about 80x contention. Read the next failure's own log — which case it named — rather than reason.
+
 ## Measurements behind the code
 
 The source keeps a decision's reason and at most one number. The measurements a decision rests on,
@@ -5672,3 +5703,171 @@ order:
 | properties | drop | right 14223, wrong 63, silent 0 | the same |
 | at-rules | swap | 157 right, 25 silent | 182 right, 0 silent |
 | selectors | swap | 1210 right, 141 silent | 1353 right, 0 silent |
+
+### The build's ledger — do not re-measure these
+
+Kept from the build plan, which is gone; git has the rest of it. Every row was run, not reasoned,
+and re-deriving them is the main way to waste a week. A row a later change superseded says so where
+the code it concerns is.
+
+| | result |
+|---|---|
+| the syntax vs `tsc` / esbuild | both refuse it at the PARSE step |
+| a hole type-checked in its real scope | a real `TS2339` at the author's line and column |
+| a property-name typo, key written bare | `TS2561 … Did you mean to write 'display'?` |
+| the same typo, key in quotes | `TS2353`, and **no suggestion at all** — so a dashed property gets no *did you mean* |
+| a value typo | `TS2820 … Did you mean '"flex"'?`, reported on the property |
+| where a diagnostic lands | on the property, except a name error, which lands on the expression |
+| how many properties have a closed grammar | **123 of 551**; `display`, `align-items`, `overflow` and `cursor` do NOT |
+| a union without `inherit`, `var()` and `!important` | reports valid CSS — all three are required |
+| a named alias in a union | TypeScript prints the NAME, so the message stays one line |
+| checking 200 files that each carry a block | **+37%** over the same program without them |
+| one object literal per block | TypeScript reports ONE failure and stops — so a block reports one fault per run |
+| one literal per declaration, in an array | every fault at once; +15 points of check time |
+| a block shape that does not resolve | everything becomes `any` and the diagnostic is scaffolding — reported now, or it passes silently |
+| a hole typed by its property | `TS2322` on `padding: {nekaFunc()}` |
+| a template-literal length type | catches `10pxx`, prints an unreadable expanded union |
+| transform cost, the PROTOTYPE | +2.6% over esbuild — superseded, it built no AST and no map |
+| transform cost, the REAL one | **+9.7%** over esbuild; 58.8 µs/file, every component carrying four blocks |
+| an esbuild plugin that is merely ASKED about a file | +12%, 3.4 µs/file |
+| the same plugin READING the file | **+60%**, 17.3 µs/file — the read is the whole cost |
+| reading bytes instead of text | not faster (+62%): the syscall, not the UTF-8 |
+| esbuild contents returned with NO loader | parsed as plain JavaScript, JSX refused on every file |
+| bail-out on an unused codebase | 1,290 files, 10.73 MB, **0.84 ms**, scan included |
+| the generated `style={…}` object | `RMD020` on every render |
+| the same as a string / prop | silent |
+| a block in a lazily-loaded module | its OWN stylesheet asset, disjoint from the entry's — splitting is free |
+| a `;` deleted after a CLOSED-grammar property | reported: the next name is a value it does not accept |
+| a `;` deleted after an OPEN one (`padding`) | **silent** — one value, and nothing to check it against |
+| a block in a `tsx` fence, no grammar | the theme's INVALID colour, to the end of the fence |
+| shiki's `codeToTokensBase` | MERGES adjacent same-colour tokens — `explanation[0]` lies about a run |
+| SSR values | travel in the markup; no channel, no registry |
+| hydration, four directions | two fail, and both are the `undefined` rows |
+| N instances | **one rule at any N**; 30–73 B per instance |
+| hash length | 8/12/16 hex all gzip to **46.7 KB** — length is free |
+| `@(expr)` in decorator position | **already valid TypeScript**, on a member AND on a parameter |
+| `@@(` in all five positions | a syntax error everywhere — nothing to disambiguate against |
+| the substring `@(` on this repository | **2 of 1,093** files, both regexes — a named decorator is `@name(` |
+| `@keyframes`, `@font-face`, `@property` inside `@layer` | all three take effect — animation runs, face parses, `--angle` registers |
+| `@property` with no `inherits` | **dropped entirely** — not in `cssRules`, and the name takes any junk |
+| `@property` with `syntax: "*"` and no `initial-value` | registers fine, so required-ness there would report valid CSS |
+| a generated `@property` animated by a generated `@keyframes` | **interpolates** — exactly 90° at half time, which only a registered property does |
+| the order of classes in the `class` attribute | decides **nothing** — the sheet's order does, and with layers the layer does |
+| `@media` against a base rule for one property | the media rule wins **only if emitted after** it |
+| a shorthand and its longhand on one element | different properties, both land, the SHEET breaks the tie |
+| shorthands that split by a mechanical rule | **10 of 78**, and on this repo's own blocks 7 uses of 50 |
+| the runtime merge, 4 maps and 24 declarations | 0.64 µs per element — 0.5 ms for 800 of them |
+| 13 atomic classes per element vs one whole class | **2.5–2.8x** the style recalculation; 7.3 ms for 2000 elements |
+| atomic vs whole blocks, 800 elements | CSS 1.5 KB vs 26.8 KB, markup 157.7 KB vs 21.1 KB — **3.1 vs 3.5 KB gzipped together** |
+| `if` inside a block body | the scanner does not read it as a second site; the parser gives a nested rule |
+| `if` nested in `if`, and either way round with `&:hover` | all four already parse, as ordinary nested rules |
+| the sheet's emission order, end to end | gives CSS's own answer on both sides of a `@media`, from rules added in the wrong order |
+| one block as 1 whole rule vs its 14 atomic ones | **identical computed style**, hovered, narrow and wide |
+| `merge(base, modifier)` end to end | the CALL SITE decides — `cursor` and a shorthand override both land right |
+| the shorthand-aware merge, 50,309 random groupings | **associative** — nesting and flattening never disagree |
+| an always-truthy `if` condition, as a TYPE | reportable — and `any`/`unknown`/`T \| undefined` stay silent |
+
+#### Against a BROWSER rather than against ourselves
+
+Nineteen reviews ran before the release. The findings are in the code and its comments; what is here
+is what was measured and came back CLEAN, because a refutation leaves no trace anywhere else — and
+re-deriving one is the same wasted week the heading above is about.
+
+**The method that found the last four faults**: compare against the CSS a person would have TYPED, in
+a real browser, rather than comparing two halves of this package with each other. Every review before
+that compared halves — checker against build, Vite against esbuild, types against rules — and those
+cannot find a fault both halves share. `!important` was exactly that: the compiler, the sheet and the
+runtime all agreed, and all three were wrong together.
+
+| | result |
+|---|---|
+| one block's atoms vs the same block as ONE plain rule | 22 blocks, 21 properties: **0 different**, after `!important` |
+| a hole, against the value written in by hand | 18 shapes: **0 different** |
+| composition with conditions, against the same CSS by hand | 21: 16 agree, 5 differ and **all 5 warn**, 0 silent |
+| the warning's own advice, followed | both halves stop the warning AND compute what the author meant |
+| the layer scheme, three minifiers | **1,800 load orders, 0 wrong** |
+| class names, 21x24x8 corpus | 2,904 blocks, 2,772 names, **0 collisions** |
+| `canonicalSelector`, against what a selector MATCHES | 64 selectors in Chromium: **0 meanings changed** |
+| every shorthand's clear-list, against the engines | 98 families, **321 pairs, 0 wrong both directions** |
+| `verifyVariables`, both directions | 17 shapes: **0 false reports** — the direction that matters |
+| the two bundler adapters, same source | 12 fault cases, 6 whole-build checks, 6 config keys: **0 disagreements** |
+| the checker against the BUILD | 23 sources, 21 rules: **0 disagreements** about whether to refuse |
+| `mdn-data` vs the ENGINES, vendor prefixes | 99 against **262**; it lacks `-webkit-font-smoothing`, which all three have |
+| `mdn-data` vs the engines, shorthand leaves | **37 longhands missing** after two hand-patches for the same fault |
+| the closed unions, against Chromium | 24 it refuses — harmless — and **14 it ACCEPTS that the map refused**: `writing-mode: tb`, `overflow-x: overlay`, `word-wrap: anywhere` and their kind. Closed by asking the engines; now 0 |
+| a keyword's CASE | Chromium accepts every one in both cases; **897 of 897** were reported as a value that does not exist, which was false. Still refused, as `non-canonical-spelling`, and the formatter rewrites them |
+| a swapped pair of letters, Levenshtein vs OSA | 396 silent typos -> 0, 100 wrong -> 2, and **faster** |
+| the dev warning in a production build | folds to nothing — measured with `NODE_ENV=production`, not with vitest's `test` |
+| four spellings of the `NODE_ENV` guard | **all four behave identically** — the optional chain was not the cause |
+| the warning's cost per compose | 0.0011 ms plain, 0.0056 `padding`, 0.0132 `border`, 0.1152 `all` |
+| `tsc` instantiations, a plain block | **FLAT at 597** — 1 block or 200 |
+| a generated token scale, arity, or a unit rule, as TYPES | instantiations **flat at 30**; only a MESSAGE in a type grows (59 -> 2,447) |
+| deriving a generated map with `Omit<Base, …>` | 2,531 instantiations against 30 for a written-out interface |
+| `configFor` called twice per file | 11 µs/file on a real 300-file build — small, and named as small |
+| a `filter` one directory too narrow, esbuild | `Expected identifier but found "@"`, naming nothing this package owns |
+
+#### Three traps this cost a day each
+
+| | |
+|---|---|
+| **quirks mode** | caught three times in one session: `padding: 123` accepted, `color: 0` read as a hex colour, `@container` answering on one axis. **Every probe page needs `<!doctype html>`** |
+| **a stale `dist`** | 57 tests passed against a `src/cli.ts` replaced by a line that throws. `built.mjs` guards it now; `turbo` always built first, so CI never saw it |
+| **a command that works only because of a PREVIOUS run** | the same trap from the other side. `pnpm lint` gained `ramonda-css lint`, which needs `dist`; the CI job that runs it builds nothing, so that half never once executed there — and the step is called "Lint (oxlint)", so the error named node's resolver. A working tree always has `dist`, so no developer can see it. **Ask of any command: would this work on a checkout?** |
+| **the control itself** | wrong five times across reviews 25–29 while the code was wrong three. A green control is a claim too, and the one claim nothing else checks |
+
+#### The shape that found most of them
+
+**One question, two consumers, and only one of them right.** Nine of the nineteen reviews found it:
+
+- data that exists and nothing reads — `SELECTORS`, `AT_RULE_LINKS`, the clear-list in a composed map,
+  `HolePart.at`, the `TS2353` suppression reading one rule of thirty-two
+- a pair where one half was fixed and the other was not — the `maxBuffer` raised and the error path
+  left, the formatter's prelude and its declaration, `unknown-property` and every other rule
+- one answer written out twice — the prelude canonicaliser in `rules.ts` and `tooling.ts`, the
+  `line-comment` sentence, `verifyVariables` in two adapters
+
+When looking for the next one, ask **what does this depend on, and who else reads it** — that
+question, asked mechanically, found reviews 20, 21 and 24 on its own.
+
+| a spread of a non-block, as a TYPE | reportable; a lookup with a union key passes |
+| a typo inside `if`, and in every nesting of it | same code, same *did you mean*, as outside — nothing lost |
+| the condition as an ARGUMENT wrapping the group | **hides every fault in the body** — so it is its own array element |
+| `var(var(--x))` | resolves to nothing — a `var()` name must be literal, so a reference cannot be a hole |
+| one rule per OWNER, through a real build | a sibling lazy route named a class **no stylesheet contained** |
+| every file serving what it names | 3.5x the CSS bytes, **1.1x gzipped**, on a corpus that duplicates every rule 3x |
+| two identical per-file sheets | Vite dedupes the ASSET by content — both routes point at one file, for nothing |
+| `ramonda-check` on the raw source | error-recovers; 3 rules become 1, silently |
+| source maps through both transforms | **5 of 5** positions land on the author's line |
+| the map's `hires` setting | all three get every line right; only `false` loses columns, everywhere |
+| the test runner | reached, and `enforce: "pre"` is required |
+| `biome-ignore` / `oxlint-disable` | useless — read BY the parser, which already failed |
+| lint through the virtual file | real diagnostics, author's lines |
+| format through a placeholder | whole file formatted, block restored |
+| the docs example gate | **skips silently** — "not standalone code", exit 0 |
+| a `tsx` fence containing the syntax | mis-highlighted everywhere; unknown languages fall back to plain |
+| ONE stylesheet for the whole app | ships **no CSS**: the bundler loads it before the transform has run |
+| one stylesheet per file | correct, and the CSS follows the chunk — splitting comes free |
+| Vite's `loc.column` | **0-based**; the type does not say, and Vite echoes what it is given |
+| an ESM language service plugin | **silently skipped** — `tsserver` checks `typeof factory === "function"` and `require(esm)` gives an object |
+| a caret right after a complete key | one useless entry; **inside** the key gives every property name |
+| a caret where nothing is typed yet | belongs to no run of text — needs an empty object literal to be inside |
+| the strict parser on a half-typed property | refuses, so an editor gets nothing exactly when it matters |
+| a multi-line block in the virtual file | collapses to ONE line — everything below it moves up, and a line-reporting consumer is wrong |
+| the block's newlines put back AFTER it | every declaration lands on the block's opening line; they go between the items |
+| "is the grammar closed" as the value test | leaves `border-left: sollid` alone — a length can never BE a bare word |
+| a duplicate declaration with a different value | a deliberate fallback idiom; only the SAME value is reportable |
+| `biome` and `oxlint` on a file outside the project | the project's own config, read from the CWD — 93 rules either way |
+| a broken `biome.json` | ignored; it formats with its defaults and exits 0 |
+| a `node_modules/.bin` shim, symlinked alone | `Cannot find module` — each resolves its package relative to itself |
+| a hostile hole value through `cssText` | injects — `position: fixed`, `width: 100vw`, real and applied |
+| the same through `setProperty` | no second declaration, on the client |
+| the same through a SERVER render and back | **injects** — the parse re-reads the style attribute. Refused at the value now |
+| a hole differing across hydration | **silent**, and the client's value wins — supersedes the object-style reading |
+| the manifest-escape gate's own walk | ONE level deep — and the manifest it missed, `vscode/package.json`, is the sentence the marketplace prints under the title |
+| `ACCEPTS`, the value-type matchers | 4 of 12 — `<length-percentage>`, `<number>`, `<url>`, `<image>` — had **never been run**, in the rule that decides accept-or-refuse. All four measured RIGHT; none was held |
+| the two `.generated.ts` tables nothing imports | build INPUTS read as text by `build-css-properties.mjs`; they never reach `dist`, and they sit in the coverage denominator |
+| `lib.d.ts` shared across the 11 `ts.Program`s | 8.15 s -> **5.90 s** in tests, 75 still passing — and not nearly the 80x a 60 s per-test timeout would need |
+| an unknown pseudo-class, in Chromium | `{"kept":0,"decls":0}` — the **whole rule** goes, every declaration in it. `unknown-selector` reports it now |
+| Chromium against `SELECTORS` | it refuses **33 of 129** — `:left`, `::-ms-*`, `:playing` and their kind. So here the TABLE is the oracle and the engine is not, the opposite of the other three |
+| `unknown-selector` against all 129 | **0 falsely reported**, which is the direction that matters |
+| `pnpm lint` on a tree with no `dist` | **fails** — it runs `ramonda-css lint`, and `ramonda-css` is `bin.mjs` importing a build output. Invisible on every machine that has ever built; only a fresh checkout sees it |

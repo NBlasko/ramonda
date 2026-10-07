@@ -13,7 +13,7 @@
  * performantno, dakle da nemaju neke infere i slicno, jer i typescript nekada moze biti bottle
  * neck"*. So the cost is measured first, on the shape that would ship, rather than after.
  *
- * `PLAN.md` already records two numbers that bound the design, and this checks the third:
+ * The build plan recorded two numbers that bound the design, and this checks the third:
  *
  *     a generated token scale, arity or unit rule, as TYPES   flat at 30
  *     deriving a map with `Omit<Base, …>`                     2,531 against 30

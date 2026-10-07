@@ -159,7 +159,7 @@ const AFTER_WIDTHS = WIDEST_MIN + WIDEST + 1;
  * The order of the modes around the breakpoints is {@link MODES}. A width in a unit this cannot
  * resolve — `50ch`, a `calc()` — and a condition the table does not know both land in the last
  * slot, where they tie with each other. Two of THOSE against each other is what is still open; see
- * `PLAN.md`.
+ * *Still open* in `DESIGN.md`.
  */
 /**
  * Whether two sets of conditions can BOTH hold for one element.

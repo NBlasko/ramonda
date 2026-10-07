@@ -366,7 +366,7 @@ report("two breakpoints, which the rank alone could not separate");
  * Two conditions with no width in them — `min-height` against `@supports` — land in the same slot,
  * because there is no number to compare. The sheet falls back to the order the file wrote, so a
  * second file writing one of the two can still reverse it. That is the half no layer settles, and
- * `PLAN.md` holds the two routes out.
+ * `DESIGN.md`, *Still open*, holds what is left of it.
  */
 const TALL = under("hA", "padding-left", "1px", "@media (min-height: 1px)");
 const SUPPORTED = under("hB", "padding-left", "2px", "@supports (display: grid)");
