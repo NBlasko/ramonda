@@ -467,8 +467,14 @@ export type {
   StyleValue,
 };
 
-/** What one property accepts in this project — `const gap: Value<"padding-left"> = "8px"`. */
-export type Value<P extends keyof CssProperties> = CssProperties[P];
+/**
+ * What one property accepts in this project, as an ELEMENT takes it — `const gap: Value<"gap"> = "8px"`.
+ *
+ * A value made outside a block goes onto an element, a `style` or a registered property, and
+ * every value there is a string — so a number the block's shape holds is written as text.
+ */
+export type Value<P extends keyof CssProperties> = Spelled<CssProperties[P]>;
+type Spelled<V> = V extends number ? `${V}` : V;
 
 /** Every `color` token this project declares. */
 export type ColorToken = typeof $color.accent | typeof $color.surface;

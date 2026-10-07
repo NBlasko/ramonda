@@ -1,7 +1,7 @@
 # Working on `@ramonda/css`
 
-The other three documents in this folder answer *why* (`DESIGN.md`), *in what order*
-(`PLAN.md`) and *what both halves agreed on* (`CONTRACT.md`). **This one answers *where*.** It
+The other two documents in this folder answer *why* (`DESIGN.md`) and *what both halves agreed
+on* (`CONTRACT.md`). **This one answers *where*.** It
 exists because `DESIGN.md` is over five thousand lines, and a person arriving to fix one thing
 should not have to read it to find the file.
 
@@ -17,7 +17,10 @@ about itself, and an honest note on what is unfinished.
 | `compiler/` | everything that reads a block and decides what it means — the table below |
 | `runtime/` | what ships to the browser: `merge.ts`, `value.ts`, `token.ts`, `conditions.ts`, `key.ts` |
 | `config/` | the project's `ramonda.css.ts`: reading it (`config.ts`), its types (`declared.ts`), the files it generates (`codegen.ts`) |
-| `adapters/` | each tool the compiler is plugged into: `vite.ts`, `esbuild.ts`, `plugin.ts` (the editor), `cli.ts`, `check.ts`, `prettier.ts` |
+| `adapters/` | each tool the compiler is plugged into: `vite.ts`, `esbuild.ts`, `plugin.ts` (the editor — its helpers by subject in `editor/`), `cli.ts`, `check.ts`, `prettier.ts` |
+
+Beside `src/`, `probes/` holds the scripts that measured what the design rests on — kept as
+evidence, not run by anything; its README says which still run.
 
 The rest of this table is in `src/compiler/`.
 
@@ -34,8 +37,8 @@ The rest of this table is in `src/compiler/`.
 | how does a family's grammar become leaves that belong to longhands? | `openGrammar.ts` |
 | how is a written value read against a grammar? | `matchValue.ts` |
 | how is a CSS grammar parsed at all? | `valueSyntax.ts` |
-| what does `{expr}` become? | `tooling.ts`, `dollar.ts`, `variables.ts`, `references.ts` |
-| why did the checker complain? | `rules/` — one family of rules to a file, `index.ts` runs them — or `typed.ts` when the rule needs a `ts.Program` |
+| what does `$( … )` become? | `tooling.ts`, `dollar.ts`, `variables.ts`, `references.ts` |
+| why did the checker complain? | `rules/` — one family of rules to a file, `index.ts` runs them — or `typed/` when the rule needs a `ts.Program`, a file to each |
 | how does a diagnostic get back to the author's line? | `virtual.ts` |
 | what is the whole transform? | `transform.ts` |
 
@@ -59,16 +62,16 @@ by the next build and caught by `pnpm check`.
 | `initials.generated.ts` | `build-initial-values.mjs` | the three engines, measured |
 | `grammarShapes.generated.ts` | `build-grammar-shapes.mjs` | grammar from mdn-data, every placement measured |
 
-All of them live in `scripts/` at the repo root and all of them take `--check`, which fails
-instead of writing.
+All of them live in `scripts/css/` at the repo root, beside the gates below, and all of them take
+`--check`, which fails instead of writing.
 
 **Regenerating needs browsers.** Anything marked *measured* drives Chromium, Firefox and WebKit
 through Playwright, sets the declaration, and reads back what the engine did. `--check` drives
 them too, so `pnpm check` does not pass on a machine without them installed.
 
 ```
-node scripts/build-shorthand-shapes.mjs          # rewrite the table
-node scripts/build-shorthand-shapes.mjs --check  # fail if it is stale
+node scripts/css/build-shorthand-shapes.mjs          # rewrite the table
+node scripts/css/build-shorthand-shapes.mjs --check  # fail if it is stale
 ```
 
 ## The gates
@@ -84,7 +87,7 @@ node scripts/build-shorthand-shapes.mjs --check  # fail if it is stale
 | `check-shorthand-split.mjs` | the positional splitter disagreeing with what an engine renders |
 | `check-hand-splits.mjs` | a family split by hand disagreeing with any engine, or splitting a value one refuses |
 | `check-must-split.mjs` | a value people write that silently stopped splitting, or splits wrong |
-| `check-render-equality.mjs` | a block page whose PIXELS are not the hand-written page's — the pairs are in `scripts/render-pairs.mjs` |
+| `check-render-equality.mjs` | a block page whose PIXELS are not the hand-written page's — the pairs are in `scripts/css/render-pairs.mjs` |
 | `bench-css.mjs 5` | the benchmark no longer running — it times nothing here; `pnpm bench:css` is the 1000-file run, `--profile` says where the time goes |
 | `check-css-splitting.mjs` | the CSS not following its JavaScript chunk, on a real build |
 
@@ -97,8 +100,8 @@ gate: it re-measures and fails when the committed table is not what the engines 
 Two switches make a run readable, and the second is worth knowing before you go hunting:
 
 ```
-WHY=1 node scripts/build-grammar-shapes.mjs                    # what each engine turned down
-WHY_FAMILY=animation node scripts/build-grammar-shapes.mjs     # every value of one family
+WHY=1 node scripts/css/build-grammar-shapes.mjs                    # what each engine turned down
+WHY_FAMILY=animation node scripts/css/build-grammar-shapes.mjs     # every value of one family
 ```
 
 Every browser gate carries its own selftests, run through the `SELFTEST` environment variable —
@@ -120,7 +123,7 @@ which is why `grammarShapes.generated.ts` reads the grammar from mdn-data and me
 placement in it.
 
 **Which way engines are merged depends on what the list is READ FOR**, and there is no blanket
-rule — `scripts/engine-facts.mjs` says this at length, and the one time that note claimed a blanket
+rule — `scripts/css/engine-facts.mjs` says this at length, and the one time that note claimed a blanket
 rule is how a list stayed wrong.
 
 A list that WIDENS a check takes the union: `leaves.generated.ts` holds every longhand ANY engine
@@ -146,8 +149,10 @@ modes are the durable form of the same rule.
 
 ## Where to start
 
-Add the failing test first. Everything lives flat in `src/__tests__/`. Nineteen of the compiler's
-forty files have a test of the same name — that is the convention when a change is confined to one file;
+Add the failing test first. Tests live in `src/__tests__/`, flat — except the rules', which are in
+`src/__tests__/rules/`, one file to each family in `compiler/rules/`, with the helpers they share in
+`helpers.ts`. Nineteen of the compiler's forty files have a test of the same name — that is the
+convention when a change is confined to one file;
 the rest are named for a subject that crosses several. A test here is expected to say what it is
 about in prose, not just assert, and each case names the measurement that found it missing. Read
 `classify.test.ts` for the register. Then:
@@ -208,7 +213,7 @@ two ways before any split is asked. The leaves generator records it as `RESETS_D
 `mask`'s `content-box` reaches `mask-origin` only through `<coord-box>` → `<paint-box>` →
 `<visual-box>`, and `longhandsFor` matches a word against a longhand's grammar TEXT without
 following those types; that gap in the opener is still there. Others opened and the measurement
-turned them down. `ONLY=flex WHY_FAMILY=flex node scripts/build-grammar-shapes.mjs` says why for one
+turned them down. `ONLY=flex WHY_FAMILY=flex node scripts/css/build-grammar-shapes.mjs` says why for one
 family, and writes nothing.
 
 **A value is refused where CSS would drop it, and the family is kept.** CSS drops a whole

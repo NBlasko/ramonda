@@ -3,7 +3,7 @@
  * made once per list.
  *
  * Built per value instead, `canonicalValue` alone was 21.6% of a build on 1000 files of ten blocks
- * (`scripts/bench-css.mjs`) — `color` has over two hundred keywords. The lists are the tables' own
+ * (`scripts/css/bench-css.mjs`) — `color` has over two hundred keywords. The lists are the tables' own
  * strings, so the same list is always the same key, and there are a few hundred of them at most.
  */
 const sets = new Map<string, ReadonlySet<string>>();

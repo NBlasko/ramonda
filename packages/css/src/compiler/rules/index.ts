@@ -159,7 +159,7 @@ export const RULE_IDS = [
   "missing-semicolon",
   "hardcoded-not-allowed",
   "declaration-does-nothing",
-  // The three that need a `ts.Program`. They live in `typed.ts` — see its header for why they cannot
+  // The ones that need a `ts.Program`. They live in `typed/` — see its index for why they cannot
   // be in this file — but their ids belong here, because this is the list a config is checked
   // against and a rule a project cannot turn off is a rule with no escape hatch.
   "style-prop-never-used",
@@ -169,6 +169,8 @@ export const RULE_IDS = [
   // Two blocks joined into one string, where a merge was meant. See `joinedNotMerged`.
   "blocks-joined-not-merged",
   "allow-list-not-css",
+  // A value cast to a block, which the type a block prop is cannot refuse. See `castToABlock`.
+  "cast-to-a-block",
   // A state in an allow-list typed `[{ … }]`, which constrains its first declaration only. See
   // `stateIsATuple`.
   "state-is-a-tuple",

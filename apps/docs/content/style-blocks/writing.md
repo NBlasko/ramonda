@@ -60,7 +60,8 @@ because the name is derived from the declaration and from nothing else. That is 
 [composing](/style-blocks/composing) possible: merging two blocks keeps, per thing set, the one
 written later — and it can only do that if each thing set has a class of its own to keep or drop.
 
-Each file carries the rules it names in its own stylesheet, so a code-split route stands on its own.
+Each file carries the rules it names in its own stylesheet, so under Vite a code-split route stands
+on its own; esbuild puts them all in the entry's sheet — see [a code-split app](/style-blocks#a-code-split-app).
 Where two files produce identical stylesheets the bundler dedupes them by content, and it costs
 nothing.
 
@@ -204,18 +205,51 @@ each produce any dimension and nothing in a type can read inside one, so `calc(1
 ### In a project with a config, name the property instead
 
 `CssDimension` says *a length*. When your project has a
-[`ramonda.css.ts`](/style-blocks/config), it can say *whatever this property takes here* — units
-narrowed, closed lists, `hardcoded: false` and all:
+[`ramonda.css.ts`](/style-blocks/config), `Value<"gap">` says *whatever `gap` takes here* — units
+narrowed, closed lists, `hardcoded: false` and all. One property, one name, and the answer moves
+when the config does.
+
+**For a value made at run time, this type is the only place that rule holds.** A block reads such a
+value through `var()`, and `gap: var($(space))` is accepted however your config narrows `gap` — the
+value does not exist yet. The `style` attribute takes any string. So the type goes on the value,
+where it is made — most often a prop:
 
 ```tsx
 import type { Value } from "../css-system";
 
-declare const n: number;
+const space = @@property( syntax: "*"; initial-value: 8px; inherits: false; );
+const stack = @@( display: flex; gap: var($(space)); );
 
-const gap: Value<"gap"> = `${n}px`;
+class Stack extends Component<{ gap: Value<"gap"> }> {
+  render() {
+    return <div className={stack} style={{ [space]: this.props.gap }}>…</div>;
+  }
+}
 ```
 
-One property, one name, and the answer moves when the config does.
+In a project that writes `gap` in `px`, `<Stack gap="3rem" />` is refused on the caller's line.
+
+**The stylesheet cannot hold that rule for you.** A registered property's `syntax` names a type —
+`<length>` — and never a list of lengths, so `@property` has no way to say *8px or 16px*. The
+narrowing reaches a value made at run time only through its type, which is why the value set on
+`space` above is a `Value<"gap">` rather than a `string`.
+
+**And `space` is registered as `*`**, because a `syntax` has to take everything the property does:
+`gap` also takes `normal`, a CSS-wide keyword and a `var()`. A narrower one refuses part of what the
+type allows — `toStyle`, which checks a value against the `syntax`, will not put a `Value<"gap">`
+into a `<length-percentage>`. The
+same type holds a value your code chooses before setting it — from data, a measurement, or more
+than one condition:
+
+```tsx
+import type { Value } from "../css-system";
+
+const gapFor = (rows: number): Value<"gap"> => (rows > 50 ? "4px" : "8px");
+```
+
+**Inside a block you never need it.** A value written there is checked as it is, and a choice
+between fixed values is a [choice](/style-blocks/composing#a-choice-between-two-values) —
+`gap: $(dense) ? 4px : 8px;` — which compiles to two classes and sets nothing on the element.
 
 And `AnyToken<"color">` is *any token this project declares of that kind* — which is what you want when
 a function chooses between them and hands the one it picked on:

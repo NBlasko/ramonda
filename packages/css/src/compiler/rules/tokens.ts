@@ -36,7 +36,7 @@ function pathsDeclaredBy(config: Config): ReadonlySet<string> {
 
 /**
  * A custom property made up in a block, in a project that switched that off — the block's half of
- * `unknown-custom-property`; the `style` attribute's is in `typed.ts`. Set or read: `--brand: red`
+ * `unknown-custom-property`; the `style` attribute's is in `typed/styleAttribute.ts`. Set or read: `--brand: red`
  * and `var(--brand)`, at any depth, in a choice's branches and a match's arms too.
  */
 export function unknownCustomProperty(

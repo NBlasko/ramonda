@@ -399,7 +399,7 @@ describe("a condition head with something extra in it", () => {
  *
  * The cause is the rule that makes the source map exact: an expression is left where the author
  * wrote it and the map's text is cut around it, so a guard can be emitted exactly once — and a
- * nested segment needs its outer guard a second time. `PLAN.md` promised `a && b && { … }`, which
+ * nested segment needs its outer guard a second time. The plan promised `a && b && { … }`, which
  * that rule cannot produce.
  */
 /**

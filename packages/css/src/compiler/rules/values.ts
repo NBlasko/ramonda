@@ -529,7 +529,7 @@ export function unitNotAllowed(block: Block, allowed: UnitsByFamily, findings: F
  * SUGGESTION.
  *
  * The one risk worth naming: a unit invented after this list was generated is reported until the
- * list is regenerated, which is `scripts/build-css-properties.mjs` and one command.
+ * list is regenerated, which is `scripts/css/build-css-properties.mjs` and one command.
  */
 export function unknownUnit(item: Declaration, findings: Finding[]): void {
   for (const part of item.value) {

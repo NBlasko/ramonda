@@ -9,7 +9,7 @@ import { Component, state } from "@ramonda/core";
  * **The style block is here on purpose.** A block belongs to the module it was
  * written in, and each module imports its own stylesheet — so a route that is
  * already code-split gets its own CSS from a decision the bundler makes anyway.
- * `scripts/check-css-splitting.mjs` builds this app and asserts it: two
+ * `scripts/css/check-css-splitting.mjs` builds this app and asserts it: two
  * stylesheets, and no rule in both.
  */
 export default class HeavyPanel extends Component<{ title?: string }> {

@@ -69,6 +69,19 @@ export const plugins = [ramondaCss({ filter: /src\/.*\.tsx$/ })];
 be read before it can be asked whether it holds a block. Pointing the plugin at the tree that holds
 them means nothing else is opened at all.
 
+### A code-split app
+
+**Under Vite**, a route that is already code-split gets its own stylesheet, without being asked. A
+block belongs to the module it was written in and each module imports its own CSS, so splitting is a
+decision the bundler was making anyway: a lazily-loaded module gets its own `.css` asset, carrying
+that module's rules and not the entry's, and Vite loads it when the module loads.
+
+**esbuild does not split CSS that way.** It writes a lazily-loaded module's rules into the entry's
+stylesheet as well, so a build there links one sheet holding every rule. Nothing goes missing — every
+class a page names is in it — but nothing is held back for later either. One sheet grows with the
+number of *different* declarations, not with the number of components: every `display: flex` in the
+app is one rule.
+
 ### If you declare tokens
 
 Nothing above changes, and one thing is added: the plugin writes a `css-system/` folder beside
@@ -81,11 +94,6 @@ import "./css-system/tokens.css";
 Commit that folder. It is generated, and it is also what your editor reads, so a fresh clone that
 has not built anything yet is still checked. `npx ramonda-css codegen` writes it without a build,
 and `--check` fails in CI when what is committed no longer matches the config beside it.
-
-A route that is already code-split gets its own stylesheet, without being asked. A block belongs to
-the module it was written in and each module imports its own CSS, so splitting is a decision the
-bundler was making anyway: a lazily-loaded module gets its own `.css` asset, carrying that module's
-rules and not the entry's.
 
 ## Two things in your editor
 

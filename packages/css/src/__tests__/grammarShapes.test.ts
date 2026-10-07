@@ -9,7 +9,7 @@ import { GRAMMAR_SHAPES } from "../compiler/grammarShapes.generated";
  * Splitting through the GENERATED table — the grammar the engines agreed on, read by the splitter.
  *
  * Whether a split produces the same page is answered where it can be: inside
- * `scripts/build-grammar-shapes.mjs`, which reproduces every family's own corpus in Chromium,
+ * `scripts/css/build-grammar-shapes.mjs`, which reproduces every family's own corpus in Chromium,
  * Firefox and WebKit before writing a row. These are the questions no browser answers — what the
  * function does with a value it must REFUSE, and that it reads the table rather than guessing.
  *

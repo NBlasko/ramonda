@@ -103,7 +103,7 @@ function unknownPrefix(item: Declaration, findings: Finding[]): void {
    * `mdn-data` holds 99 prefixed names and has neither `-webkit-font-smoothing` nor
    * `-moz-osx-font-smoothing`, so a list built from it would refuse lines people write every day.
    * Asked directly, the engines give 262 names between them — with `-webkit-font-smoothing` in all
-   * three. See `scripts/build-prefixed-properties.mjs`.
+   * three. See `scripts/css/build-prefixed-properties.mjs`.
    *
    * A name an engine adds after that script was last run is refused until it is run again. That is
    * the cost, it is real, and `ramonda-css-ignore <reason>` is the escape for exactly this shape.

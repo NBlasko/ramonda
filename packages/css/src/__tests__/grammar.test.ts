@@ -639,8 +639,8 @@ describe("the composition markers", () => {
  * **Reported by a user**: `@@(` came out as punctuation and `@@if` as a keyword, so the same two
  * characters were two colours in one block. That was answered by making the marker one scope — and
  * answered again, better, by taking `@@` off the guard entirely. It opens a BLOCK and nothing else
- * does; inside one, the language is the block's own and spells itself without a sigil, as `{expr}`
- * and `...$(expr)` already did.
+ * does; inside one, the language is the block's own and spells itself without a sigil, as `$(expr)`
+ * and `...$(expr)` already do.
  *
  * `@@` is what says "the next thing is not TypeScript", and CSS can never produce it, since an
  * at-keyword is `@` and then an ident and an ident cannot begin with `@`.

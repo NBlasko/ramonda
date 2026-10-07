@@ -145,7 +145,7 @@ describe("a hole", () => {
  * style, hovered, on a narrow viewport and a wide one — display, alignment, gap, padding, both
  * colours, radius, the descendant's weight and its decoration. Nesting, descendants, a combined
  * `&:hover .title`, a `@media` override and a `@media` around a `&:hover` all survive being taken
- * apart. That measurement is recorded in PLAN.md; this asserts the shape it rests on.
+ * apart. That measurement is in `DESIGN.md`'s ledger; this asserts the shape it rests on.
  */
 describe("a realistic block", () => {
   const REAL = [

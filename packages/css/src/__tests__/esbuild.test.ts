@@ -589,3 +589,29 @@ test("a relative url() in a block resolves beside the file that holds it", async
 
   expect(outputs(result).css).toContain("url(data:image/png,PNG)");
 });
+
+/**
+ * What esbuild does with a LAZILY-loaded module's rules, which the docs say in so many words.
+ *
+ * Vite gives a code-split module its own stylesheet and loads it with the module. esbuild writes
+ * the lazy module's rules into the ENTRY's stylesheet as well, and no JavaScript chunk loads a
+ * stylesheet at all — so a build there links one sheet holding everything. Nothing goes missing,
+ * and nothing is held back. Pinned, because a page saying so is wrong the day esbuild changes.
+ */
+describe("a code-split build", () => {
+  test("puts a lazy module's rules in the entry's stylesheet", async () => {
+    const root = project({
+      "index.tsx": `const a = @@( color: red; );\nexport const go = () => import("./Heavy").then((m) => m.b + a);\n`,
+      "Heavy.tsx": `export const b = @@( outline-color: blue; );\n`,
+    });
+    const result = await build(root, { splitting: true, format: "esm" });
+    const files = (result.outputFiles ?? []).map((file) => ({
+      name: file.path.split("/").pop() ?? "",
+      text: file.text,
+    }));
+    const entry = files.find((one) => one.name === "index.css");
+
+    expect(entry?.text).toContain("outline-color: blue");
+    for (const one of files.filter((each) => each.name.endsWith(".js"))) expect(one.text).not.toMatch(/\.css\b/);
+  });
+});

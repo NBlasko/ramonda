@@ -28,7 +28,6 @@ export default defineConfig({
     },
     testTimeout,
     hookTimeout,
-    globals: true,
     // Nothing here touches a DOM: the runtime half builds a plain object and the compiler half is
     // text. A jsdom environment would only hide an accidental reach for `document`.
     environment: "node",

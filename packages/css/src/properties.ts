@@ -30,7 +30,7 @@ import type { CssVar, KindOfSyntax } from "./runtime/token";
  * CSS is the one failure a type map may not have. The line this holds is: a union only where the
  * grammar is genuinely closed.
  *
- * Regenerate with `node scripts/build-css-properties.mjs`; `pnpm check` runs it with `--check`.
+ * Regenerate with `node scripts/css/build-css-properties.mjs`; `pnpm check` runs it with `--check`.
  */
 export type { CssGlobal, CssProperties, CssValue, Keyword, Narrowed } from "./properties.generated";
 export type { StyleValue } from "./runtime/types";
