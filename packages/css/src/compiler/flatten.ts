@@ -385,6 +385,61 @@ export function conflict(a: string, b: string): boolean {
   return a === b || alias(a, b) || covers(a, b) || covers(b, a) || mayCover(a, b) || mayCover(b, a);
 }
 
+/**
+ * Every name a property can fight with, so a reader asks {@link conflict} of those and not of every
+ * declaration in the block.
+ *
+ * `conflict` is symmetric, and each of its tests has a name on the other side that a table holds:
+ * the same property, the standard form, the shorthands either way, and the writing-mode pairs either
+ * way. The one it cannot list is a PREFIXED form, which any vendor may spell — so a declaration is
+ * also filed under {@link aliasKey} of its standard form, and asking that key finds it.
+ */
+export function rivalsOf(property: string): readonly string[] {
+  let found = rivals.get(property);
+  if (found === undefined) {
+    const standard = standardFormOf(property);
+    found = [
+      ...new Set([
+        property,
+        aliasKey(property),
+        ...(standard === undefined ? [] : [standard]),
+        ...(SHORTHANDS[property] ?? []),
+        ...(inverse(SHORTHANDS).get(property) ?? []),
+        ...(MAY_CLEAR[property] ?? []),
+        ...(inverse(MAY_CLEAR).get(property) ?? []),
+      ]),
+    ];
+    rivals.set(property, found);
+  }
+  return found;
+}
+
+/** Where a prefixed property is filed beside its own name: under its standard form, as an alias. */
+export function aliasKey(standard: string): string {
+  return `alias:${standard}`;
+}
+
+const rivals = new Map<string, readonly string[]>();
+const inverses = new Map<object, ReadonlyMap<string, readonly string[]>>();
+
+/** A table of `name → names it reaches`, turned round, once per table. */
+function inverse(table: Readonly<Record<string, readonly string[]>>): ReadonlyMap<string, readonly string[]> {
+  let found = inverses.get(table);
+  if (found === undefined) {
+    const built = new Map<string, string[]>();
+    for (const [from, reaches] of Object.entries(table)) {
+      for (const one of reaches) {
+        const list = built.get(one);
+        if (list === undefined) built.set(one, [from]);
+        else list.push(from);
+      }
+    }
+    found = built;
+    inverses.set(table, found);
+  }
+  return found;
+}
+
 /** Whether the pair is the one no writing mode settles, which the report has to say out loud. */
 export function onlyTheModeDecides(a: string, b: string): boolean {
   return !covers(a, b) && !covers(b, a) && (mayCover(a, b) || mayCover(b, a));

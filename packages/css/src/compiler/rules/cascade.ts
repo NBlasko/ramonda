@@ -1,12 +1,14 @@
 /** Rules about which of two declarations wins: one written to override what wins anyway, a narrower after a wider. */
 
 import {
+  aliasKey,
   conflict,
   covers,
   exclusive,
   flatten,
   layerPathFor,
   onlyTheModeDecides,
+  rivalsOf,
   segments,
   sheetRank,
   standardFormOf,
@@ -92,10 +94,43 @@ export function narrowerAfterAWholeShorthand(block: Block, findings: Finding[]):
 
 export function overrideOutOfOrder(block: Block, findings: Finding[]): void {
   const flat = flatten(block);
+  // Each asked once per declaration rather than once per pair — a rank parses the conditions — and
+  // only of the few that get that far.
+  type Declaration = (typeof flat)[number];
+  const ranks = new Map<Declaration, number>();
+  const contexts = new Map<Declaration, string>();
+  const rank = (one: Declaration): number => {
+    let found = ranks.get(one);
+    if (found === undefined) ranks.set(one, (found = sheetRank(one)));
+    return found;
+  };
+  const context = (one: Declaration): string => {
+    let found = contexts.get(one);
+    if (found === undefined) contexts.set(one, (found = one.conditions.join("|")));
+    return found;
+  };
+  /**
+   * The declarations met so far, filed by selector and property, so a later one is compared only
+   * with the earlier ones it can fight — see {@link rivalsOf}. Against every one before it, 4000
+   * custom properties took 3.2 s and 16 000 took 57 s.
+   */
+  const met = new Map<string, Map<string, number[]>>();
+  const file = (under: Map<string, number[]>, name: string, index: number) => {
+    const list = under.get(name);
+    if (list === undefined) under.set(name, [index]);
+    else list.push(index);
+  };
 
   for (const [index, later] of flat.entries()) {
-    for (const earlier of flat.slice(0, index)) {
-      if (earlier.selector !== later.selector) continue;
+    let under = met.get(later.selector);
+    if (under === undefined) met.set(later.selector, (under = new Map()));
+    const candidates: number[] = [];
+    for (const name of rivalsOf(later.property)) for (const one of under.get(name) ?? []) candidates.push(one);
+    file(under, later.property, index);
+    const standard = standardFormOf(later.property);
+    if (standard !== undefined) file(under, aliasKey(standard), index);
+
+    for (const earlier of [...new Set(candidates)].sort((a, b) => a - b).map((one) => flat[one] as Declaration)) {
       // The same key is the same thing set twice, and the merge already keeps the later one.
       if (earlier.key === later.key) continue;
       if (!conflict(earlier.property, later.property)) continue;
@@ -106,7 +141,7 @@ export function overrideOutOfOrder(block: Block, findings: Finding[]): void {
        * the same conditions and no other. Measured: `padding-left: 40px; padding: 8px` is the same
        * as plain CSS, and reporting it would be reporting correct CSS.
        */
-      const sameContext = earlier.conditions.join("|") === later.conditions.join("|");
+      const sameContext = context(earlier) === context(later);
       if (sameContext && covers(later.property, earlier.property)) continue;
 
       /**
@@ -131,8 +166,8 @@ export function overrideOutOfOrder(block: Block, findings: Finding[]): void {
        * which is a colour scheme, an orientation and a medium, and most of what anybody writes.
        */
       if (
-        sheetRank(later) === sheetRank(earlier) &&
-        later.conditions.join("|") !== earlier.conditions.join("|") &&
+        rank(later) === rank(earlier) &&
+        context(later) !== context(earlier) &&
         !exclusive(earlier.conditions, later.conditions)
       ) {
         findings.push({
@@ -148,7 +183,7 @@ export function overrideOutOfOrder(block: Block, findings: Finding[]): void {
         return;
       }
 
-      if (sheetRank(later) >= sheetRank(earlier)) continue;
+      if (rank(later) >= rank(earlier)) continue;
 
       /**
        * A LOGICAL property meeting a PHYSICAL one, which no order can settle.

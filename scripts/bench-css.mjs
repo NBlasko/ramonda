@@ -10,7 +10,7 @@
  * It also counts how often an imported module is read, which is work a build can share.
  *
  * Built `dist` is what is measured, so build the package first. `--profile` prints the functions that
- * took the most time in `transform`, from a CPU profile of a second run.
+ * took the most time in `transform` and in `checkSource`, from a CPU profile of a second run.
  *
  * Not a gate on timings — those differ between machines, and a gate that fails on a busy laptop is a
  * gate people learn to ignore. The gate runs it on a few files so the script cannot rot.
@@ -102,25 +102,34 @@ time("virtualFile (editor types)", () =>
   files.forEach((_file, i) => compiler.virtualFile(texts[i], { properties: "./properties", tolerant: true })),
 );
 
-if (profile) {
+/** The functions that took the most time in one path, from a CPU profile of a second run. */
+const profiled = async (label, run) => {
   const session = new Session();
   session.connect();
   await session.post("Profiler.enable");
   await session.post("Profiler.start");
-  files.forEach((file, i) => compiler.transform(texts[i], { filename: file, read }));
+  run();
   const { profile: taken } = await session.post("Profiler.stop");
+  session.disconnect();
   const byId = new Map(taken.nodes.map((node) => [node.id, node]));
   const self = new Map();
   const total = taken.timeDeltas.reduce((sum, one) => sum + one, 0);
   taken.samples.forEach((id, index) => {
     const frame = byId.get(id).callFrame;
-    const key = `${frame.functionName || "(anonymous)"} ${frame.url.split("/").pop()}:${frame.lineNumber}`;
+    const key = `${frame.functionName || "(anonymous)"} ${frame.url.split("/").pop()}:${frame.lineNumber + 1}`;
     self.set(key, (self.get(key) ?? 0) + taken.timeDeltas[index]);
   });
-  console.log("[bench] transform, by time spent in the function itself:");
+  console.log(`[bench] ${label}, by time spent in the function itself:`);
   for (const [key, spent] of [...self].sort((a, b) => b[1] - a[1]).slice(0, 15)) {
     console.log(`[bench]   ${((spent / total) * 100).toFixed(1).padStart(5)}%  ${key}`);
   }
+};
+
+if (profile) {
+  await profiled("transform", () => files.forEach((file, i) => compiler.transform(texts[i], { filename: file, read })));
+  await profiled("checkSource", () =>
+    files.forEach((file, i) => compiler.checkSource(texts[i], file, { tolerant: true, read })),
+  );
 }
 
 rmSync(root, { recursive: true, force: true });

@@ -1381,3 +1381,21 @@ describe("advice that leads somewhere", () => {
     );
   });
 });
+
+/**
+ * A long block, in time that grows with it rather than with its square.
+ *
+ * `override-out-of-order` compared every declaration with every one before it, copying the list each
+ * time. Measured: 4000 custom properties in one block took 3.2 s and 16 000 took 57 s, on every
+ * build of the file — a generated theme is exactly this shape.
+ */
+describe("a block with thousands of declarations", () => {
+  test("is compiled in linear time", () => {
+    const declarations = Array.from({ length: 8000 }, (_, index) => `  --v${index}: ${index}px;`).join("\n");
+    const started = performance.now();
+
+    transform(`const s = @@(\n${declarations}\n);\n`, { filename: "C.tsx" });
+
+    expect(performance.now() - started).toBeLessThan(2000);
+  });
+});

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { ABBREVIATIONS } from "./keywords.generated";
 import { HOLE } from "./normalise";
+import { remember } from "./remember";
 
 /**
  * The names, which are the only thing two independent builds have to agree on.
@@ -460,7 +461,9 @@ export function keyTextOf(declaration: { property: string; selector: string; con
  * read as themselves. The ABBREVIATION is preferred wherever there is one, so the common properties
  * are a character or two.
  */
-export function writableProperty(property: string): string | undefined {
+export const writableProperty: (property: string) => string | undefined = remember(10_000, writable);
+
+function writable(property: string): string | undefined {
   const written = ABBREVIATIONS[property] ?? property;
   if (!SAFE_PROPERTY.test(written) || written.includes("_")) return undefined;
   return written.replace(/-/g, "_");

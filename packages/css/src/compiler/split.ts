@@ -4,6 +4,7 @@ import { GRAMMAR_SHAPES, type GrammarLeaf, type GrammarShape } from "./grammarSh
 import { INITIAL_VALUES } from "./initials.generated";
 import { KEYWORDS, UNIT_TYPE, VALUE_WORDS } from "./keywords.generated";
 import { matchValue } from "./matchValue";
+import { remember } from "./remember";
 import { type Shape, SHAPES } from "./shapes.generated";
 import type { Term } from "./valueSyntax";
 
@@ -256,7 +257,12 @@ function accepts(slot: GrammarLeaf, token: string): boolean {
  * prefixed shorthand is in neither table, stays whole, and the layer — where the question is only
  * *do these two fight*, and they do — keeps its fallback.
  */
-export function splitOf(property: string, value: string): Record<string, string> | undefined {
+export const splitOf: (property: string, value: string) => Readonly<Record<string, string>> | undefined = remember(
+  10_000,
+  splitOnce,
+);
+
+function splitOnce(property: string, value: string): Record<string, string> | undefined {
   const bang = IMPORTANT.exec(value);
   const bare = bang === null ? value : value.slice(0, bang.index);
 

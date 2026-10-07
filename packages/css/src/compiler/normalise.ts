@@ -1,6 +1,7 @@
 import type { Block, BlockItem, ValuePart } from "./ast";
 import { nameFor } from "./dollar";
 import { AT_RULE_LINKS, KEYWORDS, MEDIA_FEATURES, PROPERTIES, SELECTORS } from "./keywords.generated";
+import { remember } from "./remember";
 import { wordSet } from "./wordSet";
 
 /**
@@ -363,7 +364,9 @@ export function canonicalPrelude(written: string): string {
  * property with no closed keyword row, because `animation-name: SlideIn` is a name the author
  * invented. So this folds a bare word at the top level of the value and nothing else.
  */
-export function canonicalValue(property: string, value: string): string {
+export const canonicalValue: (property: string, value: string) => string = remember(10_000, foldKeywords);
+
+function foldKeywords(property: string, value: string): string {
   if (property.startsWith("--")) return value;
   const accepted = KEYWORDS[propertyName(property)];
   if (accepted === undefined || accepted === "") return value;
