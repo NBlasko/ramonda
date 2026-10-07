@@ -26,16 +26,13 @@ import { wordSet } from "./wordSet";
  * The delimiter around a hole's index in the canonical text.
  *
  * U+0000 has no meaning in CSS, and `readBlock` REFUSES a block that holds one — so a placeholder
- * made of it cannot be forged by the source it is protecting.
- *
- * **The refusal is what guarantees that, and it was not always there.** This note used to argue
- * from CSS preprocessing turning a NUL into U+FFFD, which does not apply: a block is read out of a
- * TypeScript file and nothing preprocesses it as CSS. A review measured a block carrying two of them
- * sharing an identity, and a class, with a block carrying a real hole.
+ * made of it cannot be forged by the source it is protecting. The refusal is what guarantees that:
+ * a block is read out of a TypeScript file and nothing preprocesses it as CSS, so without it a
+ * block carrying two NULs would share an identity, and a class, with a block carrying a real hole.
  *
  * A placeholder is needed at all because the names are circular: the variable name is derived from
- * the class, the class from the hash, and the hash from this text. Something has to stand in for the
- * name while the name is being decided, and `substitute` puts the real one back afterwards.
+ * the class, the class from the hash, and the hash from this text. Something has to stand in for
+ * the name while the name is being decided, and `substitute` puts the real one back afterwards.
  */
 export const HOLE = "\u0000";
 
@@ -68,11 +65,10 @@ function rule(item: Extract<BlockItem, { kind: "rule" }>): string {
  * differently under a Turkish locale, and a class name that differs by locale would break the one
  * thing the name has to do.
  *
- * **Exported because THREE files had this, byte for byte, reasoning included.** The key a block is
- * looked up by, the key the virtual file writes, and the key the merge composes on all have to be
- * the same string — three copies that agreed today and had nothing making them agree tomorrow. A
- * custom property keeps its case, because CSS keeps it: without the fold, valid CSS would be
- * reported as a property that does not exist, a *did you mean* about the author's own capitals.
+ * **Exported because three keys must be the same string:** the key a block is looked up by, the key
+ * the virtual file writes, and the key the merge composes on. A custom property keeps its case,
+ * because CSS keeps it: without that, valid CSS would be reported as a property that does not
+ * exist, a *did you mean* about the author's own capitals.
  */
 export function propertyName(property: string): string {
   return property.startsWith("--") ? property : property.replace(/[A-Z]/g, (c) => c.toLowerCase());
@@ -184,24 +180,22 @@ function string(text: string, start: number, write: (chunk: string) => void): nu
  * ## The fault these exist for
  *
  * A declaration's `key` — what decides whether one declaration OVERRIDES another — is derived from
- * its own text. A review measured what that costs when two files spell one condition differently: a
- * base written `@media (min-width:40rem)` and a modifier written `@media (min-width: 40rem)` are the
- * same CSS and became two keys, so the merge kept BOTH classes and which one won was decided by
- * whichever file the bundler transformed first.
+ * its own text. A base written `@media (min-width:40rem)` and a modifier written `@media
+ * (min-width: 40rem)` are the same CSS and would be two keys, so the merge would keep BOTH classes
+ * and which one won would be decided by whichever file the bundler transformed first.
  *
  * ## Why the source is canonicalised rather than the key
  *
  * CSS is case-insensitive about the words of the LANGUAGE — an at-rule's name, a media feature's
  * name, a pseudo-class's name — and case-sensitive about an author's own identifiers. Measured with
- * lightningcss: `:hover` and `:HOVER` are one rule, `.a` and `.A` are two. So a key cannot simply be
- * lower-cased; folding a class name would introduce, deliberately, the exact collision the review
- * was looking for.
+ * lightningcss: `:hover` and `:HOVER` are one rule, `.a` and `.A` are two. So a key cannot simply
+ * be lower-cased; folding a class name would introduce exactly the collision this prevents.
  *
  * Making the SOURCE canonical moves the invariant from "the compiler normalises every spelling" to
  * "there is only one spelling", which is far cheaper to be right about and leaves an author's own
  * identifiers alone. The checker reports a text these would change and the formatter writes what
- * they return, so **the rule reports exactly what the canonicaliser can fix** — an error with no fix
- * is worse than a spelling, and one function asked two ways cannot drift from itself.
+ * they return, so **the rule reports exactly what the canonicaliser can fix** — an error with no
+ * fix is worse than a spelling, and one function asked two ways cannot drift from itself.
  *
  * ## What they deliberately leave alone
  *
@@ -215,9 +209,8 @@ export function canonicalSelector(selector: string): string {
 }
 
 /**
- * `>`, `+` and `~` with one space either side — `& > span` — as Prettier's CSS formatter writes them.
- * The descendant combinator already was one space; these three were left as typed, so a file held
- * both `&>span` and `& > span`.
+ * `>`, `+` and `~` with one space either side — `& > span` — as Prettier's CSS formatter writes
+ * them, so a file does not hold both `&>span` and `& > span`.
  *
  * Only at the top level: inside parentheses and brackets the same characters are not combinators —
  * `:nth-child(2n+1)`, `[class~="x"]`.
@@ -245,11 +238,10 @@ function spacedCombinators(code: string): string {
 /**
  * Applies `write` to the CODE of a prelude and leaves the author's own bytes alone.
  *
- * A string's contents and a comment's contents are the author's. A review measured what happens
- * when they are not treated that way: `&[title="A:Hover"]` came back `&[title="A:hover"]`, and
- * attribute matching is case-SENSITIVE — so the selector stopped matching what it had matched. The
- * `non-canonical-spelling` rule agreed with the canonicaliser, so the build refused the correct
- * spelling and named the broken one as the fix.
+ * A string's contents and a comment's contents are the author's. Folded, `&[title="A:Hover"]` comes
+ * back `&[title="A:hover"]`, and attribute matching is case-SENSITIVE — so the selector stops
+ * matching what it matched, and `non-canonical-spelling` would refuse the correct spelling and name
+ * the broken one as the fix.
  *
  * The comment case only reaches here through the FORMATTER: the parser collapses a comment to one
  * space before a rule ever sees a prelude, and the formatter hands over the line as written.
@@ -351,11 +343,9 @@ function lowered(selector: string): string {
 /**
  * A rule's prelude, written the one way it may be written — a condition or a selector.
  *
- * **One copy, because there were two.** `rules.ts` asked this question to report
- * `non-canonical-spelling` and `tooling.ts` asked it to WRITE the answer, each with its own
- * `written.startsWith("@") ? canonicalCondition(…) : canonicalSelector(…)`. Two copies of one
- * pairing is this repository's recurring fault, and here it decides both what is reported and what
- * is written — so a drift would be a rule naming a fix the formatter declines to make.
+ * One function, because `non-canonical-spelling` asks it to REPORT and `tooling.ts` asks it to
+ * WRITE the answer; two copies of the pairing could drift into a rule naming a fix the formatter
+ * declines to make.
  */
 export function canonicalPrelude(written: string): string {
   return written.startsWith("@") ? canonicalCondition(written) : canonicalSelector(written);

@@ -4,27 +4,24 @@
  * ## Two passes, and the first one has to be free
  *
  * A codebase that uses none of this must pay nothing, so the first question is a substring search
- * for `@@` and the answer is usually no. Measured on this repository before any of it existed:
- * 1,268 files and 10.61 MB in **1.33 ms**. Only a file that survives that gets read properly.
+ * for `@@` and the answer is usually no. Measured on this repository: 1,268 files and 10.61 MB in
+ * **1.33 ms**. Only a file that survives that gets read properly.
  *
  * ## Why the opening is `@@(` and not `@(`
  *
  * `@(expr)` is *already* valid TypeScript in two places, and both were measured: on a class member,
- * `class C { @(dec) m() {} }`, and on a parameter, `constructor(@(inject()) private x: number)`. In a
- * decorator-heavy framework that is not a footnote — it forced the opening to be recognised only
- * after `name =`, which in turn kept a block out of every ordinary expression position: an argument,
- * an object value, an array item, a ternary.
+ * `class C { @(dec) m() {} }`, and on a parameter, `constructor(@(inject()) private x: number)`. In
+ * a decorator-heavy framework that is not a footnote — it would force the opening to be recognised
+ * only after `name =`, keeping a block out of every ordinary expression position: an argument, an
+ * object value, an array item, a ternary.
  *
  * **`@@(` is a syntax error everywhere in TypeScript**, measured in all five positions — after `=`,
  * on a class member, on a parameter, as a call argument, as an object value. So the rule disappears
  * and a block goes where any other value goes.
  *
- * It also sharpens the cheap pass, the half that runs on every file of every build — but that is
- * the smaller half, and an earlier note here overstated it. Measured on this repository at the
- * commit before this parser landed, the substring `@(` matched **2 of 1,093** tracked source files,
- * and both were regular expressions rather than decorators: an ordinary decorator reads `@name(`,
- * which does not contain `@(` at all. Only the parenthesised form does — `@(dec)` — and there were
- * none. So the second `@` buys a grammar that cannot collide, not a build that skips more files.
+ * The second `@` buys a grammar that cannot collide, not a build that skips more files: an ordinary
+ * decorator reads `@name(`, which does not contain `@(` either — measured, `@(` matched 2 of 1,093
+ * source files here, both regular expressions.
  *
  * The substring is `@@` rather than `@@(` because a named site — `@@keyframes( … )` — does not
  * contain the second. Nothing else in TypeScript contains either.
@@ -48,9 +45,8 @@ export interface BlockSite {
    * Offset of the first `@` — where the OPENING starts, name and all.
    *
    * Recorded rather than derived, because its width is not fixed: `@@(` is three characters and
-   * `@@keyframes(` is twelve. A caller that measured back from `open` by a constant landed in the
-   * middle of the at-rule's name, and the formatter handed a truncated block to be re-laid-out —
-   * measured, and it is why this exists.
+   * `@@keyframes(` is twelve. Measured back from `open` by a constant, it lands in the middle of
+   * the at-rule's name, and the formatter is handed a truncated block.
    *
    * The same as {@link start} for an expression site, and different for a JSX attribute, where the
    * site starts at the attribute's name.
@@ -88,15 +84,13 @@ const DECLARATIONS = /\.d\.[cm]?ts$/;
 /**
  * The cheaper question, asked before the file is OPENED — can this name hold a block at all?
  *
- * **One place, because four consumers were each deciding it their own way.** The editor plugin, the
- * CLI check, the Vite plugin and the esbuild plugin all filter the files they look at, and a
- * `.d.ts` exclusion added to one of them made the build and the editor disagree: a block written in
- * a declaration file was reported by `ramonda-css` and invisible in the editor. A green editor over
- * a red build is the worst shape this repository has, and it is the shape it keeps finding.
+ * **One place, because four consumers ask it.** The editor plugin, the CLI check, the Vite plugin
+ * and the esbuild plugin all filter the files they look at, and an answer that differs between them
+ * makes the build and the editor disagree — a green editor over a red build.
  *
  * A declaration file is excluded because it cannot hold one: it declares types, and TypeScript
  * allows no initialiser in an ambient context, so there is nowhere for `@@( … )` to go. Excluding
- * it is also worth real time — measured through a real `tsserver`, the editor was opening every
+ * it is also worth real time — measured through a real `tsserver`, the editor otherwise opens every
  * `lib.*.d.ts` and every `.d.ts` in `node_modules` looking for a block: 172 files and 4.9 MB per
  * project.
  */
@@ -124,28 +118,23 @@ export function findBlocks(source: string): BlockSite[] {
   /**
    * Every span this walk STEPPED OVER — a comment, a string, a template, a regex.
    *
-   * Recorded because `isAttribute` walks BACKWARDS and cannot answer the same question: it sees raw
-   * text, so a `<` inside a line comment above an assignment made it read the assignment as a JSX
-   * attribute. Measured, and it is the direction that function says must never happen —
-   * `const panel = @@( … )` under `// the <div wrapper` compiled to `const panel = {_s0};`, an
-   * object literal rather than the merged style, with nothing reported.
-   *
-   * The forward walk already knows, and by the time a site is reached everything behind it has been
-   * scanned. So the backwards walk asks rather than guessing.
+   * Recorded because `isAttribute` walks BACKWARDS over raw text and cannot tell those apart itself
+   * — see the note there. The forward walk already knows, and by the time a site is reached
+   * everything behind it has been scanned, so the backwards walk asks rather than guessing.
    */
   const quiet: { from: number; to: number }[] = [];
 
   /**
    * How many block parentheses are open — zero outside a block, and CSS inside one.
    *
-   * **The walk goes THROUGH a block's own text, and used to read it as JavaScript.** That is what a
-   * CSS value costs when the lexers disagree, and both were measured:
+   * **The walk goes THROUGH a block's own text, and must not read it as JavaScript.** Where the
+   * lexers disagree, a CSS value swallows the rest of its line — measured:
    *
    *     background: url(http://x/a.png)     `//` read as a line comment
    *     border-radius: 50% / 20%            `%` ends no expression, so `/` opened a "regex"
    *
-   * In each, everything after it on that line was swallowed — a second block on the same tag
-   * vanished, and the raw `@@( … )` was left in the output for the bundler to choke on.
+   * In each, a second block on the same tag vanished, and the raw `@@( … )` was left in the output
+   * for the bundler to choke on.
    *
    * It goes through rather than SKIPPING the body on purpose: a `@@(` written inside a block is
    * found here, and that is what `transform` refuses as *a block cannot contain another block*.
@@ -256,12 +245,10 @@ export function findBlocks(source: string): BlockSite[] {
       /**
        * A regular expression, whose body can contain anything — including this syntax.
        *
-       * It used to be settled for free: the opening had to be preceded by `name =`, and a `=` inside
-       * `/=@@(x)/` is preceded by `/`. A block is an ordinary value now, so nothing about its
-       * surroundings rules it out and the walk has to know a regex when it sees one.
-       *
-       * Which is the same question every JavaScript lexer answers the same way: a `/` is a division
-       * when something that can END an expression is behind it, and a regex otherwise.
+       * A block is an ordinary value, so nothing about its surroundings rules a `/=@@(x)/` out, and
+       * the walk has to know a regex when it sees one. Which is the same question every JavaScript
+       * lexer answers the same way: a `/` is a division when something that can END an expression
+       * is behind it, and a regex otherwise.
        */
       if (startsARegex(previous)) {
         const end = endOfRegex(source, index);
@@ -333,15 +320,13 @@ export function findBlocks(source: string): BlockSite[] {
  * Whether a `/` here opens a regular expression rather than dividing.
  *
  * The classic lexer question, answered the classic way: a `/` divides only when something that can
- * END an expression is behind it — a name, a number, a closing bracket, a string. Everything else is
- * a regex. Erring towards "regex" is the safe direction here: the cost is skipping text that was a
- * division, and a division cannot contain a block anyway.
+ * END an expression is behind it — a name, a number, a closing bracket, a string, a template
+ * literal. Everything else is a regex. Erring towards "regex" is the safe direction here: the cost
+ * is skipping text that was a division, and a division cannot contain a block anyway.
  *
- * **A TEMPLATE LITERAL ends an expression too, and was missing from the list.** Measured,
- * `` const a = `x` / 2, p = @@( … ); `` found no block at all: the `/` opened a "regex" that ran to
- * the next one and took the block with it. The quote arms below it were unreachable for a while for
- * a related reason — the walk stepped over a string without recording what it had stepped over — and
- * both are the same fault, which is why they are one note.
+ * The list has to be complete: without the backtick, `` const a = `x` / 2, p = @@( … ); `` finds no
+ * block at all, because the `/` opens a "regex" that runs to the next one and takes the block with
+ * it.
  */
 function startsARegex(previous: number): boolean {
   if (previous === 0) return true;
@@ -373,10 +358,9 @@ function endOfRegex(source: string, start: number): number {
  * Past a SHEBANG, which is where every reader of this file has to start.
  *
  * `#!` is not JavaScript and is not a comment — nothing in the language skips it — and it is legal
- * only at offset 0. Three places needed the same answer and two of them had it: `findBlocks`, so a
- * `@@(` written in one is not read as a block, and `transform`'s `afterDirectives`. The virtual file
- * did not, so a `declare` of ours went in FRONT of it and the whole file stopped parsing — with
- * nothing in it checked, because a file that does not parse has no semantics to ask about.
+ * only at offset 0. One answer for `findBlocks`, so a `@@(` written in one is not read as a block;
+ * for `transform`'s `afterDirectives`; and for the virtual file, where a `declare` in FRONT of it
+ * stops the whole file parsing.
  */
 export function afterShebang(source: string): number {
   return source.startsWith("#!") ? nextLine(source, 0) : 0;
@@ -509,19 +493,18 @@ function siteBefore(
   }
 
   /**
-   * **PROSE, which is where `@@(` means nothing and was compiled anyway.**
+   * **PROSE, which is where `@@(` means nothing and must not be compiled.**
    *
-   * This used to say there was nothing to require in front of a block, "because `@@( )` means
-   * nothing else in TypeScript". It means nothing else in TypeScript — and JSX TEXT is not
-   * TypeScript. Measured: `<p>Write @@( color: red; ) to style it.</p>` came out as
-   * `<p>Write _s0 to style it.</p>`, the author's sentence replaced by a value.
+   * `@@( )` means nothing else in TypeScript — but JSX TEXT is not TypeScript. Without this,
+   * `<p>Write @@( color: red; ) to style it.</p>` comes out as `<p>Write _s0 to style it.</p>`, the
+   * author's sentence replaced by a value.
    *
    * The rule is the one this walk already uses for a `/`: two expressions cannot be adjacent, so a
    * `@@(` behind something that ENDS an expression is not a block. See {@link endsAnExpression}.
    *
    * Refusing a real block is the SAFE direction, which is what lets this be a rule about characters
-   * rather than a JSX parser: an unrecognised block leaves `@@(` in an expression position, and that
-   * is a syntax error the build reports at the author's own line. Prose left alone is prose.
+   * rather than a JSX parser: an unrecognised block leaves `@@(` in an expression position, and
+   * that is a syntax error the build reports at the author's own line. Prose left alone is prose.
    */
   // Not when braced: the `{` is itself a position a value goes in, and what precedes it is the tag.
   if (!braced && endsAnExpression(source, index)) return undefined;
@@ -611,15 +594,14 @@ function isAttribute(source: string, start: number, quiet: readonly Quiet[]): bo
     /**
      * Anything the FORWARD walk stepped over is stepped over here too.
      *
-     * This walk sees raw text, so it read the characters inside a comment as code: a `<` in a line
-     * comment above an assignment made it reach a tag opening that is not there, and answer YES —
-     * measured, `const panel = @@( … )` under `// the <div wrapper` compiled to
-     * `const panel = {_s0};`, an object literal rather than the merged style, with nothing reported.
-     * That is the direction this function's own note says must never happen.
+     * This walk sees raw text, so it would read the characters inside a comment as code: a `<` in a
+     * line comment above an assignment reaches a tag opening that is not there and answers YES —
+     * measured, `const panel = @@( … )` under `// the <div wrapper` compiled to `const panel =
+     * {_s0};`, an object literal rather than the merged style, with nothing reported. That is the
+     * direction this function's own note says must never happen.
      *
-     * A block comment and a string never leaked, for reasons that were accidents rather than rules:
-     * `*\/` ends the backwards scan on a character it does not know, and a quote is stepped over by
-     * the branch below. Now all four are one answer, from the walk that computed it going forward.
+     * Comments, strings, templates and regexes are one answer, from the walk that computed it going
+     * forward.
      */
     const stepped = quiet.find((one) => index >= one.from && index < one.to);
     if (stepped !== undefined) {
@@ -641,9 +623,8 @@ function isAttribute(source: string, start: number, quiet: readonly Quiet[]): bo
      * Stepping over it needs no `return`: an opener that is not there leaves the walk before the
      * start of the file, which the top of the loop already answers.
      *
-     * A QUOTED one is not handled here any more — it is a span the forward walk stepped over, so the
-     * check above has already jumped past it. Two answers for one question was how a brace inside a
-     * string came to be counted as structure.
+     * A QUOTED value is a span the forward walk stepped over, so the check above has already jumped
+     * past it.
      */
     if (code === 125 /* } */) {
       index = beforeOpening(source, index, quiet);
@@ -722,9 +703,8 @@ function beforeBlockOpening(source: string, at: number): number | undefined {
 /**
  * The offset just before the `{` that opened the value ending at `at`, or -1 when nothing did.
  *
- * Braces are COUNTED, because an attribute's expression holds its own. It used to answer for quotes
- * too; a quoted value is a span the forward walk steps over, so the caller never reaches this with
- * one and that half was dead.
+ * Braces are COUNTED, because an attribute's expression holds its own. A quoted value is a span the
+ * forward walk steps over, so the caller never reaches this with one.
  */
 function beforeOpening(source: string, at: number, quiet: readonly Quiet[]): number {
   {
@@ -762,10 +742,10 @@ function isSpace(code: number): boolean {
 /**
  * A JAVASCRIPT identifier character, which is not the same set as {@link isNameCharacter}.
  *
- * The two look like one rule and are two. A JSX attribute name carries `-` and `:` —
- * `data-open`, `xlink:href` — and neither is an identifier character: `k: @@( … )` is an object
- * value, a position a block goes in, and reading the `:` as part of a name made `k:` a word and
- * refused the block. Found by the test that lists every position a block legitimately sits in.
+ * The two look like one rule and are two. A JSX attribute name carries `-` and `:` — `data-open`,
+ * `xlink:href` — and neither is an identifier character: `k: @@( … )` is an object value, a
+ * position a block goes in, and reading the `:` as part of a name would make `k:` a word and refuse
+ * the block.
  *
  * Not `-` either, for the same reason in the other direction: `a - @@( … )` means nothing, but
  * nothing is gained by refusing it and the set is the language's.
@@ -798,17 +778,16 @@ function isNameCharacter(code: number): boolean {
  *
  * ## Why it has to be reported rather than compiled
  *
- * A template literal is a quiet region to the scan above — a `(` or a `)` in one closes nothing, and
- * a `@@` in one is text. So `` `lead ${@@( color: red; )}` `` finds no block at all: the file is
- * handed on untouched, `@@(` survives into the bundler, and what an author gets is a syntax error
- * somewhere else entirely, naming neither the block nor the line.
+ * A template literal is a quiet region to the scan above — a `(` or a `)` in one closes nothing,
+ * and a `@@` in one is text. So `` `lead ${@@( color: red; )}` `` finds no block at all: the file
+ * is handed on untouched, `@@(` survives into the bundler, and what an author gets is a syntax
+ * error somewhere else entirely, naming neither the block nor the line.
  *
- * **It became reachable when the `css` prop went.** A block is a string now and goes on `className`,
- * so joining one with a class of the author's own is an ordinary thing to want, and a template is
- * the first thing anybody would reach for. The answer is `mergeClassNames`, which takes both and is
- * call argument like every other position — measured: attribute, assignment, call argument, object
- * value, array element, `return`, arrow body and ternary all find a block, and a template
- * substitution is the only one that does not.
+ * A block is a string and goes on `className`, so joining one with a class of the author's own is
+ * an ordinary thing to want, and a template is the first thing anybody would reach for. The answer
+ * is `mergeClassNames`, which takes both and is a call argument like every other position —
+ * measured: attribute, assignment, call argument, object value, array element, `return`, arrow body
+ * and ternary all find a block, and a template substitution is the only one that does not.
  *
  * ## Why it is exact
  *

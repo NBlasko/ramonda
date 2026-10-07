@@ -37,10 +37,10 @@ export interface Named {
   /**
    * Every value it may take, or `"any"`, or nothing when it never changes.
    *
-   * This is what the TYPE carries, and `value` is what the stylesheet carries. They were one field
-   * until a user asked how a theme is supposed to work: a variable a theme moves between two colours
-   * has one initial and two possible values, and a type claiming only the first is claiming
-   * something the browser will not use.
+   * This is what the TYPE carries, and `value` is what the stylesheet carries. They are two fields
+   * because of themes: a variable a theme moves between two colours has one initial and two
+   * possible values, and a type claiming only the first is claiming something the browser will not
+   * use.
    */
   readonly range?: readonly (string | number)[] | "any";
 }
@@ -49,7 +49,7 @@ export interface Named {
 export type Declarations = { readonly [name: string]: unknown };
 
 /**
- * The groups at the top of `variables`, each named the way a block reads it — `$color`.
+ * The groups at the top of `tokens`, each named the way a block reads it — `$color`.
  *
  * The `$` is part of the config key so that one spelling holds in all three places: the config, a
  * block's `$color.primary.main`, and the `$color` code imports. It is not part of the custom
@@ -60,27 +60,18 @@ export type Groups = { readonly [group: `$${string}`]: TokenGroup };
 /**
  * What a group's value must be: what `kind( … )` makes — a token, or a group of them.
  *
- * A plain object was accepted and declared NOTHING: measured, `$color: { accent: "#10b981" }` loaded,
- * wrote an empty sheet, and the first `$color.accent` was told the project declares no tokens. The
- * kind is what makes a value a token, so without it there is no token to have.
+ * A plain object declares NOTHING: measured, `$color: { accent: "#10b981" }` loaded, wrote an empty
+ * sheet, and the first `$color.accent` was told the project declares no tokens. The kind is what
+ * makes a value a token, so without it there is no token to have.
  */
 export type TokenGroup = TokenDeclaration | { readonly [name: string]: TokenGroup };
 
 /**
  * A `ConfigError`, because the fault is in the author's `ramonda.css.ts` and not in this package.
  *
- * It threw a raw `Error` until review pass 9 measured what that looked like:
- *
- *     file:///…/dist/chunk-U7N5QK5K.js:1620
- *       throw new Error(`[ramonda-css] ${message}`);
- *             ^
- *     Error: [ramonda-css] `a}b` cannot be part of a token's name.
- *         at refuse (…)  at verifyNames (…)  at writeGenerated (…)
- *
- * The note above `said` in `cli.ts` says that shape was fixed — *all six ways `ramonda.css.ts` can
- * be wrong reached a person as a Node crash … the sentence inside each was careful and right*. It
- * was made true for `ConfigError` and left false here, and no test saw it: a crash exits 1 and
- * prints its message too, so every assertion on status and wording passed straight over it.
+ * A raw `Error` reaches a person as a Node crash — a `file:///…/dist/chunk-….js` line, a caret and
+ * a stack — around a sentence that was right. No assertion on exit status or wording can tell the
+ * two apart: a crash exits 1 and prints its message too.
  */
 function refuse(message: string, path?: string): never {
   throw new ConfigError(path === undefined ? message : `${path} ${message}`);
@@ -140,13 +131,11 @@ export function verifyNames(named: readonly Named[], path?: string): void {
     /**
      * A segment outside what a `$` path can reach — refused, because the stylesheet takes anything.
      *
-     * Measured in review pass 2: a name of `b*c` became `--a-b*c: 8px;`, which is not a custom
-     * property name, and a name with a quote the same. The module still parsed, so nothing anywhere
-     * said a word.
+     * Measured: a name of `b*c` became `--a-b*c: 8px;`, which is not a custom property name, and a
+     * name with a quote the same. The module still parsed, so nothing anywhere said a word.
      *
      * The permitted set is not invented here. The editor's grammar matches a `$` path as
-     * `(?:\.[A-Za-z0-9_-]*)+`, so a segment outside it is a variable `$` can never reach — codegen
-     * was writing one anyway. One rule, two consumers, and only one of them knew it.
+     * `(?:\.[A-Za-z0-9_-]*)+`, so a segment outside it is a token `$` can never reach.
      */
     /**
      * A GROUP is a TypeScript name as well as a CSS one — `$color` is what the module exports and
@@ -216,18 +205,14 @@ export function verifyNames(named: readonly Named[], path?: string): void {
  * The `@property` rule for one variable, or nothing when registering would say nothing.
  *
  * **`inherits: true`, and that is not a preference.** An unregistered custom property inherits, so
- * a registration saying `false` would quietly change how every existing use behaves — a variable set
- * on `:root` would stop reaching the elements reading it. The registration exists to add a guarantee,
- * not to alter the cascade.
+ * a registration saying `false` would quietly change how every existing use behaves — a variable
+ * set on `:root` would stop reaching the elements reading it. The registration exists to add a
+ * guarantee, not to alter the cascade.
  *
- * **`any` is registered too, and my first reason for skipping it was wrong.** `*` accepts every token
- * sequence, so the rule refuses nothing — that much was right. But refusing is not the only thing a
- * registration does: `initial-value` is what makes the name resolve when NOTHING sets it, and
- * measured, `syntax: "*"` with an initial value does exactly that. Two different guarantees, and I
- * had collapsed them into one.
- *
- *     `*` WITH initial-value, never set      reads "anything at all"
- *     `*` without initial-value, never set   reads ""
+ * **`any` is registered too.** `*` accepts every token sequence, so the rule refuses nothing — but
+ * refusing is not the only thing a registration does: `initial-value` is what makes the name
+ * resolve when NOTHING sets it. Measured, `syntax: "*"` with an initial value, never set, reads
+ * that value; without one it reads `""`.
  *
  * ## What registering changes besides refusing, measured in Chrome
  *
@@ -240,7 +225,7 @@ export function verifyNames(named: readonly Named[], path?: string): void {
  *
  * That is usually what a reader wants — a resolved value rather than a token — but it means `read`
  * cannot promise to hand back the literal that was written, and a length comes back absolutised
- * against the element it was read on. Worth knowing before it surprises somebody.
+ * against the element it was read on.
  *
  * And the refusal is real, including the case a type cannot express: `<integer>` given `1.5` falls
  * to its initial value, measured.
@@ -283,8 +268,8 @@ function rangeOf(one: Named): string {
  *
  * The type is `Token<"color", Fixed<"#00b37e">>`, which names the kind and the start but not the
  * custom property the browser sees, and says "fixed" only to someone who knows what `Fixed` means.
- * Asked for by the user while debugging: the name in the style panel is `--color-accent-quiet`, and
- * nothing in the editor connected it to `$color.accent.quiet`.
+ * The style panel shows `--color-accent-quiet`, and this is what connects it to
+ * `$color.accent.quiet`.
  *
  * A value is the author's own text, so a `*\/` in it would end the comment and turn the rest of the
  * module into code; it is written so it cannot.
@@ -480,7 +465,7 @@ function kindsOf(property: string): readonly string[] {
  *
  * **Each binds more tightly than the one before**, which is the shape CSS itself has and the reason
  * the selectors are spelled this way. Merged key by key rather than replaced, so a kind can say
- * `variablesOnly` while the property beneath it says `values` and both apply — and so two shared
+ * `hardcoded` while the property beneath it says `values` and both apply — and so two shared
  * configs still combine, which is what design C was chosen for.
  *
  * A property matching SEVERAL kind selectors takes them in the order CSS's own names sort, which is
@@ -526,14 +511,13 @@ export interface Explained {
  *
  * The config is keyed by three things and each binds more tightly than the one before, so knowing
  * what applies to `border-radius` means reading three entries and holding CSS's own classification
- * in your head. The user's words: *"sada imam samo jos jedno pitanje jer smo toliko ukomplikovali da
- * mi je tesko da pratim."*
+ * in your head. This is what `ramonda-css explain` prints instead.
  *
  * **It walks the same selectors as {@link ruleFor}, in the same order, and must not become a second
  * opinion.** An explanation that agreed with what is enforced by accident would be worse than none,
  * because it would be believed. `explain.test.ts` asserts that what this reports, flattened, IS
- * `ruleFor`'s answer — over every property CSS classifies, since drift would appear in whichever one
- * nobody thought to check.
+ * `ruleFor`'s answer — over every property CSS classifies, since drift would appear in whichever
+ * one nobody thought to check.
  */
 export function explain(rules: PropertyRules | undefined, property: string): Explained {
   const kind = PRIMITIVE[property];
@@ -562,7 +546,7 @@ export function explain(rules: PropertyRules | undefined, property: string): Exp
 }
 
 /**
- * The kinds this project takes only from its variables, for the RULE — which reads composite
+ * The kinds this project takes only from its tokens, for the RULE — which reads composite
  * properties no type describes.
  *
  * A kind selector is the only place this can come from: `border-left: 4px solid red` has no kind of
@@ -605,11 +589,9 @@ function kindsFor(property: string): string | undefined {
 interface Mapped {
   readonly rows: string;
   /**
-   * How many properties `rows` describes — counted, not derived from its shape.
-   *
-   * It was `rows.split("\n").length / 2`, which assumed every row is a one-line doc comment and a
-   * declaration. Giving the closed-list rows a longer comment made that `207.5`, in a sentence a
-   * reader sees. A count a formatting change can break is not a count.
+   * How many properties `rows` describes — counted, not derived from its shape. Dividing the row
+   * count by two assumes every row is a one-line doc comment and a declaration; a longer comment
+   * would put `207.5` in a sentence a reader sees.
    */
   readonly narrowed: number;
   /** Shorthands this project switched off, dropped from the map rather than narrowed to nothing. */
@@ -641,14 +623,12 @@ function propertyMap(rules: PropertyRules | undefined): Mapped {
   /**
    * The properties a closed list could reach — asked per PROPERTY, like every other setting.
    *
-   * This walked the config's own KEYS, which was invisible while the only keys were property names
-   * and `"*"`. A kind selector broke it three ways at once: `"<time>": { values: [...] }` emitted a
-   * row literally named `"<time>"` and constrained nothing, `"*"` was skipped and so did nothing
-   * silently, and a property with `values` beside `variablesOnly` never consulted the second.
+   * Walking the config's own KEYS would break on a kind selector: `"<time>": { values: [...] }`
+   * would emit a row literally named `"<time>"` and constrain nothing.
    *
    * A name is itself; a kind selector is every property of that kind. `"*"` carrying a closed list
    * is refused in the config, because a list of permitted values for all 935 properties is not a
-   * thing anybody means — and doing nothing about it quietly was the worse of the two answers.
+   * thing anybody means.
    */
   const candidates = new Set<string>();
   for (const key of Object.keys(rules ?? {})) {
@@ -673,45 +653,38 @@ function propertyMap(rules: PropertyRules | undefined): Mapped {
 
     closed.push(property);
     /**
-     * A number is written as a number AND as the text it becomes, and the second is not a nicety.
+     * A number is written as a number, so the type carries only what a person may write.
      *
-     * A block is CSS, so `z-index: 5` used to reach the type as the STRING `"5"` — the virtual file
-     * emitted every declaration's value quoted. A list of `[1, 2, 5, 10]` therefore refused every
-     * one of its own permitted values, and the fix was to admit both spellings.
+     * A quoted `"1"` beside the number would be a value nobody can write: `string-not-allowed`
+     * refuses quotes in CSS, and is right to, since the quotes are part of a CSS string and a
+     * browser drops the declaration. A type saying `"1"` is permitted while the checker refuses it
+     * is a contradiction no amount of explaining fixes.
      *
-     * **That fix was the wrong half, and a user found it by hovering.** The type then listed
-     * `"0" | "1" | "10"` beside the numbers — values a person cannot write, because
-     * `string-not-allowed` refuses quotes in CSS and is right to: the quotes are part of a CSS
-     * string and a browser drops the declaration. So the type said `"1"` was permitted and the
-     * checker refused it, which is a contradiction no amount of explaining fixes.
-     *
-     * `quoted` in `virtual.ts` emits a numeric value as a NUMBER now, so the type carries only what
-     * a person may write. A hole handing over either is unaffected — TypeScript widens `"1"` to
-     * `string`, which no narrowed property accepts, and a numeric hole is a number.
+     * `quoted` in `virtual.ts` emits a numeric value as a NUMBER, which is what makes this enough.
+     * A hole handing over a string is unaffected — TypeScript widens `"1"` to `string`, which no
+     * narrowed property accepts, and a numeric hole is a number.
      */
     const permitted = values.map((one) => JSON.stringify(one));
 
     /**
-     * **A variable of the right kind goes in too, and none did.**
+     * **A token of the right kind goes in too.**
      *
-     * A closed list had no `Token` in it at all, so `z-index: $layer.modal` was refused — with the
-     * project's own list in the message — however right the variable was. Measured; the user met it.
-     * A declared variable IS one of these values when its own range fits inside the list, which is
-     * what `Token<kind, permitted>` says.
+     * Without a `Token` in the list, `z-index: $layer.modal` would be refused — with the project's
+     * own list in the message — however right the token was. A declared token IS one of these
+     * values when its own range fits inside the list, which is what `Token<kind, permitted>` says.
      */
     const kinds = kindsFor(property);
     const token = kinds === undefined ? "" : ` | Token<${kinds}, ${permitted.join(" | ")}>`;
     if (kinds !== undefined) uses.add("Token");
 
     /**
-     * `variablesOnly` removes the LITERAL spelling and nothing else — the list still binds.
+     * `hardcoded: false` removes the LITERAL spelling and nothing else — the list still binds.
      *
-     * The user's own words, and they settle what the setting means: *"variabla takodje mora da
-     * postuje range. Ako im se ne svidja, pa onda prosiri range."* A variable is checked against
-     * the list by its declared value, through `Token<kind, permitted>`, so this is not a way around
-     * a range. It is the same list with one spelling of it taken away.
+     * A token must respect the range too; a project that dislikes that widens the range. A token is
+     * checked against the list by its declared value, through `Token<kind, permitted>`, so this is
+     * not a way around a range. It is the same list with one spelling of it taken away.
      *
-     * A property with no kind cannot express that — nothing can check a variable into it — so the
+     * A property with no kind cannot express that — nothing can check a token into it — so the
      * literals stay rather than the property being narrowed to nothing a person could write.
      */
     const onlyVariables = rule.hardcoded === false && kinds !== undefined;
@@ -720,16 +693,8 @@ function propertyMap(rules: PropertyRules | undefined): Mapped {
       ? `only the ${values.length} value(s) this project permits, and only as one of its tokens`
       : `only the ${values.length} value(s) this project permits`;
     /**
-     * The quoted spellings, explained where a reader meets them — which is on HOVER.
-     *
-     * Reported by the user, who configured `values: [0, 1, 10]` and hovered to find `"0" | "1" |
-     * "10"` beside the numbers: *"za z-index smo dozvolili samo number, a onaj narrow vidim da
-     * kreira i stringove."* They are not a widening. A block is CSS, so `z-index: 1` reaches the
-     * type as the string `"1"` — a list of numbers used to refuse its own permitted values, which is
-     * why both are there — and a hole may hand over either.
-     *
-     * Said in the doc comment rather than left to be worked out from the union, because the union is
-     * what an editor shows and the union is what looked like a contradiction.
+     * No sentence about quoted spellings: a numeric value reaches the type as a number (`quoted` in
+     * `virtual.ts`), so the union holds only what a person may write.
      */
     const spellings = "";
 
@@ -745,7 +710,7 @@ function propertyMap(rules: PropertyRules | undefined): Mapped {
     if (narrow === undefined || gone.has(property) || said.has(property)) continue;
 
     /**
-     * A kind this project writes only as a variable: the literal value type goes, the token stays.
+     * A kind this project writes only as a token: the literal value type goes, the token stays.
      *
      * `currentcolor` comes back explicitly. It is in the `<color>` grammar's own word list and is
      * therefore filtered out of the keywords below as "a value the value type already covers" — but
@@ -756,20 +721,19 @@ function propertyMap(rules: PropertyRules | undefined): Mapped {
     const value = withUnits(narrow.value, ruleFor(rules, property).units);
 
     /**
-     * A property that takes SEVERAL values admits a multi-value string, and the shape is deliberate.
+     * A property that takes SEVERAL values admits a multi-value string, and the shape is
+     * deliberate.
      *
-     * Classifying `gap` and `padding` narrowed them to ONE value, so `padding: 8px 12px` — correct
-     * CSS — was refused. Writing the repeat out as `` `${V} ${V}` `` was measured instead and cannot
-     * ship: at 49 units by four positions TypeScript silently stops checking, accepting anything.
+     * Narrowed to ONE value, `padding: 8px 12px` — correct CSS — would be refused. Writing the
+     * repeat out as `` `${V} ${V}` `` cannot ship: measured, at 49 units by four positions
+     * TypeScript silently stops checking, accepting anything.
      *
      * `` `${string} ${string}` `` is what is left. It admits every multi-value value, and it still
-     * refuses a TOKEN of the wrong kind — a branded string is not a two-word template — which is the
-     * fault this was reported for: `gap: $color.accent.main` compiled.
+     * refuses a TOKEN of the wrong kind — a branded string is not a two-word template — so `gap:
+     * $color.accent.main` does not compile.
      *
-     * **The honest loss:** `gap: 8px red` passes. Before any of this it was `string | number` and so
-     * did everything else; the count is the `too-many-values` rule's and the words are
-     * `unknown-value`'s. What the type buys here is the kind of a variable, which is what it was
-     * asked for.
+     * **The honest loss:** `gap: 8px red` passes. The count is the `too-many-values` rule's and the
+     * words are `unknown-value`'s. What the type buys here is the kind of a token.
      */
     const several = (ARITY[property] ?? 1) > 1 ? " | `${string} ${string}`" : "";
     const words = (KEYWORDS[property] ?? "").split(" ").filter(Boolean);
@@ -791,43 +755,41 @@ function propertyMap(rules: PropertyRules | undefined): Mapped {
     /**
      * **The permitted values reach the TOKEN too, wherever the project set a range.**
      *
-     * `Token<"length">` leaves the value unconstrained, so a variable declared `30px` went into a
-     * property narrowed to `px` and to four values alike — measured, and it is a capability this
-     * already had and was not using. With the range in the slot, a variable whose own value falls
-     * outside what the property permits is refused by the value, not by the kind.
+     * `Token<"length">` leaves the value unconstrained, so a token declared `30px` would go into a
+     * property narrowed to `px` and to four values alike. With the range in the slot, a token whose
+     * own value falls outside what the property permits is refused by the value, not by the kind.
      *
-     * Only where a range EXISTS: `units` or `values` on the property. Nowhere else is there anything
-     * to check against, so nowhere else can this get in the way.
+     * Only where a range EXISTS: `units` or `values` on the property. Nowhere else is there
+     * anything to check against, so nowhere else can this get in the way.
      *
-     * What it checks is the variable's DECLARED value, which under a theme is the fallback rather
-     * than what the browser will use. That is the honest limit, and it is narrow: a variable themed
-     * into a different range is a different variable.
+     * What it checks is the token's DECLARED value, which under a theme is the fallback rather than
+     * what the browser will use. That is the honest limit, and it is narrow: a token themed into a
+     * different range is a different token.
      */
     const ranged = ruleFor(rules, property).units === undefined ? "" : `, ${value}`;
 
     /**
-     * What a variables-only property still takes BESIDE its variables, per primitive.
+     * What a tokens-only property still takes BESIDE its tokens, per primitive.
      *
      * `currentcolor` for a colour: it is in the `<color>` grammar's own word list and is filtered
      * out of the keywords as "a value the value type already covers", but it is not a colour
      * anybody hardcoded — it is a reference to the inherited one, and refusing it would be refusing
      * an escape hatch CSS itself provides.
      *
-     * **A bare `0` wherever the value is a dimension**, and that is a fault this review found.
-     * Measured, `variablesOnly: ["length"]` refused `padding-left: 0` — the most common declaration
-     * in CSS — with `Narrowed<never, Token<…>>`. A zero length needs no unit in CSS, `CssDimension`
-     * holds `0 | "0"` for that reason, and a project saying *lengths come from variables* is not
-     * asking for `$space.none`. The dimensionless zero went out with the literals because the two
-     * lived in one type.
+     * **A bare `0` wherever the value is a dimension.** Without it, `"<length>": { hardcoded: false
+     * }` refuses `padding-left: 0` — the most common declaration in CSS — with `Narrowed<never,
+     * Token<…>>`. A zero length needs no unit in CSS, `CssDimension` holds `0 | "0"` for that
+     * reason, and a project saying *lengths come from tokens* is not asking for `$space.none`.
      *
      * Both spellings, because a block is CSS and `padding-left: 0` arrives as the string `"0"`,
      * while a hole can hand over the number.
      *
-     * Not for `<number>` or `<integer>`: a zero there is a number written out, which is exactly what
-     * the setting is refusing.
+     * Not for `<number>` or `<integer>`: a zero there is a number written out, which is exactly
+     * what the setting is refusing.
      *
-     * It goes in the VALUE slot, not beside the keywords: `Narrowed<K extends string, V>` constrains
-     * its first parameter to `string`, and `0` is a number — measured, `TS2344` on every row.
+     * It goes in the VALUE slot, not beside the keywords: `Narrowed<K extends string, V>`
+     * constrains its first parameter to `string`, and `0` is a number — measured, `TS2344` on every
+     * row.
      */
     const zero = onlyVariables && value.includes("CssDimension") ? ` | 0 | "0"` : "";
     const kept = onlyVariables
@@ -847,25 +809,25 @@ function propertyMap(rules: PropertyRules | undefined): Mapped {
 }
 
 /**
- * `AnyToken<K>` — the variables this project declares of one kind, as a type.
+ * `AnyToken<K>` — the tokens this project declares of one kind, as a type.
  *
  * ```ts
  * const tone: AnyToken<"color"> = toggle ? $color.accent.quiet : $color.accent.main;
  * ```
  *
- * **Asked for by a user**, whose annotation could not be written: `Token<"color", …>` wants the
- * variable's RANGE as its second parameter, and a value toggled between two variables has two
- * ranges — neither of which the author should have to name, and one of which is a marker they
- * cannot guess.
+ * `Token<"color", …>` wants the token's RANGE as its second parameter, and a value toggled between
+ * two tokens has two ranges — neither of which the author should have to name, and one of which is
+ * a marker they cannot guess.
  *
- * Inference already carries the local case: `const tone = toggle ? $a : $b` needs no annotation
- * and drops into a hole. This is for where inference cannot reach — a class field, a parameter, a
+ * Inference already carries the local case: `const tone = toggle ? $a : $b` needs no annotation and
+ * drops into a hole. This is for where inference cannot reach — a class field, a parameter, a
  * return type.
  *
  * An INTERFACE keyed by kind rather than a conditional over a union, for two reasons. Hovering it
- * shows the variables themselves rather than a computation. And a kind this project declares nothing
- * of is simply not a key, so `AnyToken<"time">` in a project with no times is refused by the constraint
- * with the kinds it does have — rather than resolving to `never` and failing later against a value.
+ * shows the tokens themselves rather than a computation. And a kind this project declares nothing
+ * of is simply not a key, so `AnyToken<"time">` in a project with no times is refused by the
+ * constraint with the kinds it does have — rather than resolving to `never` and failing later
+ * against a value.
  */
 function byKind(named: readonly Named[]): string {
   const kinds = new Map<string, string[]>();
@@ -880,10 +842,10 @@ function byKind(named: readonly Named[]): string {
   /**
    * One NAMED alias per kind, and the name is what keeps a diagnostic readable.
    *
-   * A kind's variables are a union of branded tokens, and a union EXPANDS wherever TypeScript
-   * prints it: refusing one colour used to read `Token<"color", Fixed<"#10b981">> | Token<…> | …
-   * 5 more …`, in which a reader cannot find the property they got wrong. Measured, the same
-   * refusal under a named alias prints `ColorToken`.
+   * A kind's tokens are a union of branded tokens, and a union EXPANDS wherever TypeScript prints
+   * it: unnamed, refusing one colour reads `Token<"color", Fixed<"#10b981">> | Token<…> | … 5 more
+   * …`, in which a reader cannot find the property they got wrong. Measured, the same refusal under
+   * a named alias prints `ColorToken`.
    *
    * It is the shape `Keyword<…>` already uses in the property map, arrived at from the other side:
    * `Keyword<K>` survives printing because `K` stands naked in its union, while `TokenByKind[K]` is
@@ -930,19 +892,9 @@ const HEADER =
  *
  * **A generated `css-system/index.ts` REPLACES the shipped map for every file under it**, because
  * that is how a project's own settings reach a block — the virtual file imports the shapes from
- * here instead. So whatever this does not pass on simply stops existing.
- *
- * It listed four, and seven were missing. Measured, three of them are shapes a NAMED block is
- * checked against, so all three stopped type-checking the moment a project declared its first
- * variable:
- *
- *     TS2694: Namespace '…/css-system/index' has no exported member 'CssPropertyDescriptors'
- *     TS2694: … 'CssKeyframesShape'
- *     TS2694: … 'CssFontFaceDescriptors'
- *
- * The same file with no config had no problems at all — so what broke them was declaring a
- * variable, which is the one thing this whole feature asks people to do. Found while writing the
- * documentation, and `variables.md` is 218 lines about exactly those three shapes.
+ * here instead. So whatever this does not pass on simply stops existing: measured, a missing
+ * `CssPropertyDescriptors`, `CssKeyframesShape` or `CssFontFaceDescriptors` is `TS2694` on every
+ * named block, the moment a project declares its first token.
  *
  * `CssProperties` and `CssBlockShape` are absent on purpose: this module defines its own, narrowed
  * by the config, and that is what it is for.

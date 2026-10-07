@@ -98,11 +98,11 @@ declare const FIXED: unique symbol;
  * space: kind("length", { gutter: { value: "16px", range: "any" } })   // set at run time
  * ```
  *
- * It exists for the MESSAGE and nothing else. A bare declaration already meant *this never changes*
- * — the second parameter of a `Token` is the range, and a variable that named one value has a range
- * of one value — but `toStyle` then refused to set it with `not assignable to type 'never'`, twice,
- * naming neither the variable nor what to do. A person who wrote `16px` meaning *the default* has
- * no way to read that.
+ * It exists for the MESSAGE and nothing else. A bare declaration means *this never changes* — the
+ * second parameter of a `Token` is the range, and a variable that named one value has a range of
+ * one value — but without the mark `toStyle` refuses to set it with `not assignable to type
+ * 'never'`, twice, naming neither the variable nor what to do. A person who wrote `16px` meaning
+ * *the default* has no way to read that.
  *
  * Marked here rather than inferred in the type, because only CODEGEN knows the declaration was
  * bare: `range: ["16px"]` is a range that happens to hold one value, and it means something else.

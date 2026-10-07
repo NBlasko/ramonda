@@ -1,10 +1,10 @@
 /**
  * *Did you mean …* — the nearest name in a list, or nothing when nothing is near enough.
  *
- * **Its own module so it can be shared without a cycle.** It lived in `rules.ts`, which is where
- * most of its callers are; but `declared.ts` needs it for a wrong `kind( … )`, `codegen.ts` needs
- * `declared.ts`, and a rule needs `codegen.ts` — so `rules.ts` would have imported, through three
- * files, back into itself. One small module that imports nothing breaks that and costs nothing.
+ * **Its own module so it can be shared without a cycle.** Most callers are rules, but `declared.ts`
+ * needs it for a wrong `kind( … )`, `codegen.ts` needs `declared.ts`, and a rule needs `codegen.ts`
+ * — so living beside the rules would import, through three files, back into itself. One small
+ * module that imports nothing breaks that and costs nothing.
  */
 
 /**
@@ -54,20 +54,12 @@ function editDistance(a: string, b: string, bound: number): number {
        * **A SWAPPED PAIR IS ONE EDIT, and plain Levenshtein counts it as two.**
        *
        * A swap is the commonest way to mistype a word, and the bound is scaled by length — so for a
-       * six-character name it is 1, and every transposition was out of reach. Found by `@medai`,
-       * which is `@media` with two letters swapped and got no suggestion at all.
-       *
-       * Measured over every single-swap typo of every name in the four vocabularies, and every
-       * single DELETION as well, so the change was measured for what it might break:
-       *
-       *     properties  swap   Levenshtein  right 12978  wrong 88  silent 199
-       *                        this         right 13263  wrong  2  silent   0
-       *     properties  drop   both the same: right 14223, wrong 63, silent 0
-       *     at-rules    swap   157 -> 182 right, 25 silent -> 0
-       *     selectors   swap  1210 -> 1353 right, 141 silent -> 0
-       *
-       * Better in every direction, and FASTER — 0.024 ms against 0.037 ms per word over 828 names,
-       * because a swap costing 1 reaches the abandon bound sooner.
+       * six-character name it is 1, and every transposition would be out of reach: `@medai` would
+       * get no suggestion at all. Measured over every single-swap and single-deletion typo of every
+       * name in the four vocabularies, it is better in every direction — property swaps go from 88
+       * wrong and 199 silent to 2 wrong and 0 silent, deletions are unchanged — and faster, 0.024
+       * ms against 0.037 ms per word over 828 names, because a swap costing 1 reaches the abandon
+       * bound sooner.
        */
       if (
         i > 1 &&

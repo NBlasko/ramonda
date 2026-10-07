@@ -32,12 +32,9 @@ export function messageFor(one: UnknownVariable): string {
     `nothing in this build sets \`${one.read.name}\`.` +
     (one.meant === undefined ? "" : ` Did you mean \`${one.meant}\`?`) +
     /**
-     * `externalCustomProperties`, and it said `variables` until that key became something else.
-     *
-     * `variables` is the declarations `$` is built from now, and it REFUSES a bare list — so an
-     * author following this wrote `variables: ["--brand"]` and was told *that was its old meaning …
-     * those go in `externalCustomProperties` now*. The tool sent them somewhere that turned them away, and the
-     * refusal did the teaching a message was already trying to do.
+     * `externalCustomProperties`, not `variables`: `variables` is the declarations `$` is built
+     * from, and it REFUSES a bare list — so advice pointing there would send the author to a key
+     * that turns them away.
      */
     `\n    Set it in a block, register it with \`@@property\`, add it to \`externalCustomProperties\` in ` +
     `\`ramonda.css.ts\` if it comes from a stylesheet this does not compile, or give it a ` +
@@ -98,17 +95,16 @@ function write(className: string, block: EmittedBlock): string {
 /**
  * How many DIFFERENT rules of one nameless at-rule came back, by their bodies.
  *
- * **Counting occurrences was the first answer and it does not survive sharing.** Every file that
- * names a rule serves it, so the shipped text holds one copy per SERVING — and neither esbuild nor
- * lightningcss merges identical `@font-face` blocks (measured, all three copies of two rules
- * survived both). So two rules across three servings shipped three occurrences against an expected
- * two, and dropping one of the two rules still left `2 >= 2`. The hole the count was written to
- * close came straight back the moment a nameless rule was shared by two files.
+ * **Not a count of occurrences, which does not survive sharing.** Every file that names a rule
+ * serves it, so the shipped text holds one copy per SERVING — and neither esbuild nor lightningcss
+ * merges identical `@font-face` blocks (measured, all three copies of two rules survived both). So
+ * two rules across three servings ship three occurrences, and dropping one of the two rules would
+ * still pass a count.
  *
- * Bodies rather than a count, and DISTINCT bodies rather than all of them, because both of the ways
- * the shipped number is not the rule count point the same way: servings collapse into one, so
- * duplication cannot inflate it, and a bundler emitting one asset for two chunks with identical CSS
- * — measured on a real build — cannot deflate it either.
+ * DISTINCT bodies, because both ways the shipped number can differ from the rule count point the
+ * same way: servings collapse into one, so duplication cannot inflate it, and a bundler emitting
+ * one asset for two chunks with identical CSS — measured on a real build — cannot deflate it
+ * either.
  *
  * The bodies are not compared with what the sheet wrote, only counted. A minifier rewrites them:
  * measured, lightningcss turned `unicode-range: U+0000-00FF` into `U+??`. What it does not do is
@@ -129,11 +125,10 @@ function distinctBodies(processed: string, at: string): Set<string> {
      * Read to the first `}`, which is the whole body — a nameless at-rule's body holds DESCRIPTORS
      * and nothing else, and `DESCRIPTORS` in `keywords.generated.ts` is what says so.
      *
-     * Brace matching was written first and removed: `NAMELESS` holds `font-face` alone, no font-face
-     * descriptor takes a block, and the branch could not be reached. **If `NAMELESS` ever grows to
-     * an at-rule whose body can hold one — `@page` holds `@top-center { … }` — this has to grow
-     * with it**, which is why the assumption is written down here rather than left in the shape of
-     * the code.
+     * `NAMELESS` holds `font-face` alone, and no font-face descriptor takes a block. **If
+     * `NAMELESS` ever grows to an at-rule whose body can hold one — `@page` holds `@top-center { …
+     * }` — this needs brace matching**, which is why the assumption is written down here rather
+     * than left in the shape of the code.
      */
     const close = processed.indexOf("}", open);
     // Whitespace is the one difference between two servings of one rule that is certain to happen.
@@ -145,9 +140,8 @@ function distinctBodies(processed: string, at: string): Set<string> {
 /**
  * The rules of one sheet, in the order they are written out.
  *
- * Generic over what a rule carries beside its block, so nothing about the caller's shape is dropped
- * on the way through — the first version declared the parameter it read and silently narrowed the
- * rest away.
+ * Generic over what a rule carries beside its block, so nothing about the caller's shape is
+ * narrowed away on the way through.
  *
  * The order itself is {@link sheetRank}, which lives beside the declarations because the checker
  * needs the same answer: `override-out-of-order` reports where this order contradicts the author's.
@@ -168,14 +162,14 @@ const level = (): Level => ({ own: [], under: new Map() });
 /**
  * The names a level's children MAY hold, in order — which is what two files have to agree on.
  *
- * Counted from the DEPTH, never read off the children's names. The pieces' step was once `d1`, which
- * shares an initial with the digit levels under `c` (`d0`…`d9`), and telling them apart by the first
- * child's initial declared the level holding `d1` and `u` with the DIGITS — so `u` was a name its own
- * statement had never seen. That is the fault {@link LAYER_ORDER} exists to prevent, one level down.
+ * Counted from the DEPTH, never read off the children's names: a step name can share an initial
+ * with the digit levels under `c` (`d0`…`d9`), and telling them apart by the first child's initial
+ * would declare a level with the wrong list — so a name its own statement never saw. That is the
+ * fault {@link LAYER_ORDER} exists to prevent, one level down.
  *
  * `digits` is how many digit levels are still to come: 5 on entering `c`, counted down, and `0` at
- * the level that holds the breadth step. The top level needs no statement at all, because
- * {@link LAYER_ORDER} declares those fully qualified at the very start of the stylesheet.
+ * the level that holds the breadth step. The top level needs no statement at all, because {@link
+ * LAYER_ORDER} declares those fully qualified at the very start of the stylesheet.
  */
 function namesUnder(under: Map<string, Level>, digits: number, mirrored: boolean): readonly string[] {
   if (digits < 0 || under.size === 0) return [];
@@ -185,12 +179,12 @@ function namesUnder(under: Map<string, Level>, digits: number, mirrored: boolean
    * declarations: among them the layer declared FIRST wins. Reversing the list is what makes the
    * same declaration win in both, so an author sees one answer rather than two.
    *
-   * **`c` is in the mirrored list and not in the ordinary one**, and leaving it out was half the
-   * fix: at the top {@link LAYER_ORDER} names `ramonda.c` itself, so nothing below has to. Inside
-   * `i` there is no such statement, so a conditional rule sat in a name its level never declared,
-   * was appended, and under the reversal an appended name is the WEAKEST — which made a `@media`
-   * lose to the unconditional rule it was written to override. Deeper levels hold no `c` and
-   * declaring one there costs a name nobody uses.
+   * **`c` is in the mirrored list and not in the ordinary one.** At the top {@link LAYER_ORDER}
+   * names `ramonda.c` itself, so nothing below has to. Inside `i` there is no such statement, so
+   * without `c` here a conditional rule would sit in a name its level never declared, be appended,
+   * and under the reversal an appended name is the WEAKEST — a `@media` would lose to the
+   * unconditional rule it was written to override. Deeper levels hold no `c` and declaring one
+   * there costs a name nobody uses.
    */
   return mirrored ? [...BREADTH_LAYERS, "c"].reverse() : BREADTH_LAYERS;
 }
@@ -239,8 +233,8 @@ function wrap<T extends { block: EmittedBlock }>(rules: readonly [string, T][]):
       /**
        * `i` holds a whole tree of its own, and it starts at a BREADTH level rather than at the top.
        * {@link LAYER_ORDER} names `ramonda.i` and nothing inside it, so the level below it has to
-       * declare its own names — written `-1` first, which is the value that means "the top level,
-       * already declared", and left everything under `i` undeclared.
+       * declare its own names — `-1` would mean "the top level, already declared" and leave
+       * everything under `i` undeclared.
        */
       const below =
         step === IMPORTANT_LAYER
@@ -281,9 +275,9 @@ function nameIn(className: string, block: EmittedBlock): string {
 /**
  * The stylesheet, assembled from every block the transform found.
  *
- * The transform is deliberately local: it reads one file and knows nothing about any other, which is
- * what makes it cacheable, incremental and parallel. **Every question that needs the whole picture
- * therefore lives here**, and there are four of them:
+ * The transform is deliberately local: it reads one file and knows nothing about any other, which
+ * is what makes it cacheable, incremental and parallel. **Every question that needs the whole
+ * picture therefore lives here**, and there are four of them:
  *
  * 1. **Dedupe.** Identical blocks are one rule. Global and coordination-free, because agreeing on
  *    the same answer is what a hash is for — two people who never spoke write the same declarations
@@ -293,44 +287,34 @@ function nameIn(className: string, block: EmittedBlock): string {
  * 3. **The round trip.** After post-processing, every class the transform emitted must still be
  *    present and every `var(--…)` still referenced.
  * 4. **A `var()` reading a name nothing sets.** A name may be set by a block three components away,
- *    so no single file knows — see {@link Sheet.verifyVariables}, which says the same thing from its
- *    own side. It was the third for a while and this list said "exactly three"; a review found the
- *    two halves disagreeing about how many there were.
+ *    so no single file knows — see {@link Sheet.verifyVariables}.
  *
  * ## Why it is keyed by file, and why each file gets its own CSS
  *
- * Two reasons, and the second was measured rather than reasoned.
- *
- * **A dev server re-transforms one file on every save**, and a block the author deleted has to leave
- * the sheet with it. Accumulating rules would mean a sheet that only ever grows during a session, and
- * a class name that stays claimed after nothing uses it — which would make editing a block collide
- * with the name it used to have.
+ * **A dev server re-transforms one file on every save**, and a block the author deleted has to
+ * leave the sheet with it. Accumulating rules would mean a sheet that only ever grows during a
+ * session, and a class name that stays claimed after nothing uses it — which would make editing a
+ * block collide with the name it used to have.
  *
  * **And a bundler does not wait for the transform to finish.** Measured on a real Vite build: an
  * entry importing one shared stylesheet loaded that module BEFORE the styled file was transformed,
- * so the sheet was empty, so no CSS reached the output at all — a green build with an unstyled page.
- * So the sheet is asked per file, and the plugin appends the import to the file that produced the
- * rules. The ordering problem disappears, an app imports nothing, and the CSS follows the JavaScript
- * chunk — which is what per-route splitting needs and is now free.
+ * so the sheet was empty and no CSS reached the output — a green build with an unstyled page. So
+ * the sheet is asked per file, and the plugin appends the import to the file that produced the
+ * rules. The ordering problem disappears, an app imports nothing, and the CSS follows the
+ * JavaScript chunk — which is what per-route splitting needs.
  *
- * ## Dedupe is a shared CLASS, not a single copy of the rule — and that was a correction
+ * ## Dedupe is a shared CLASS, not a single copy of the rule
  *
- * The first design gave each rule an OWNER: the first file to claim a class emitted it, and every
- * later file merely named it. One rule in the whole build, which is correct exactly as long as every
- * stylesheet loads together.
- *
- * **Measured, and it does not.** Two lazily-loaded routes writing the same block came out of a real
- * build as one chunk carrying the rule and another carrying a `.js` that names a class **no
- * stylesheet in the build contains**. A visitor landing on the second route saw the element render
- * unstyled, with no error anywhere — the failure this whole file exists to prevent, arriving by the
- * one door nobody was watching. In a dev server it had a second shape: a file that dropped a shared
- * block took the rule away from a file that never changed, because ownership had passed to a module
- * with no import to reload.
+ * One copy of each rule, owned by the first file to claim it, is correct only as long as every
+ * stylesheet loads together — and it does not. Measured: two lazily-loaded routes writing the same
+ * block came out of a real build as one chunk carrying the rule and another carrying a `.js` that
+ * names a class **no stylesheet in the build contains**. A visitor landing on the second route saw
+ * the element unstyled, with no error anywhere.
  *
  * So **a file serves every rule it NAMES**. What is deduped is the class: identical blocks agree on
  * one name, the markup is identical, and the browser applies one rule. What is duplicated is the
- * rule TEXT, once per file that writes the block — which the bundler then places in whichever chunks
- * need it, because that is a decision it already makes for every other module.
+ * rule TEXT, once per file that writes the block — which the bundler then places in whichever
+ * chunks need it, because that is a decision it already makes for every other module.
  */
 export class Sheet {
   /** File → the classes it currently contributes, in source order. */
@@ -363,24 +347,19 @@ export class Sheet {
   /**
    * What one file contributes, replacing whatever it contributed before.
    *
-   * Replacing rather than adding is the whole reason this is keyed by file: on a save, the blocks the
-   * author deleted have to go, and only this knows which those were.
+   * Replacing rather than adding is the whole reason this is keyed by file: on a save, the blocks
+   * the author deleted have to go, and only this knows which those were.
    *
-   * **Nothing else's CSS moves.** A file serves what it names, so one file's edit cannot change what
-   * another file serves — which is why this returns nothing, and why the dev server needs no
-   * cross-file invalidation. It used to: ownership meant a file that dropped a shared block took the
-   * rule away from a file nobody had touched, and telling that file was a whole mechanism. Measured
-   * to be broken anyway, since a file owning nothing at the moment it was transformed had no
-   * stylesheet import to reload.
+   * **Nothing else's CSS moves.** A file serves what it names, so one file's edit cannot change
+   * what another file serves — which is why this returns nothing, and why the dev server needs no
+   * cross-file invalidation.
    */
   add(file: string, blocks: readonly EmittedBlock[], variables: FileVariables = Sheet.NONE): void {
     /**
-     * Replaced whether or not any were handed over, and the guard that used to stand here made this
-     * half true. A file's rules were replaced on every call and its variables only when the caller
-     * had some — so an adapter saying "this file has nothing left", which is exactly what it says
-     * when the author deletes the last block, left the file's last known names in place for the life
-     * of the process. Measured both ways: a name nothing sets any more stayed known, and a typo the
-     * author had already deleted kept failing the build.
+     * Replaced whether or not any were handed over. An adapter saying "this file has nothing left"
+     * — which is what it says when the author deletes the last block — must clear the file's names
+     * too, or a name nothing sets any more stays known and a typo already deleted keeps failing the
+     * build.
      */
     this.variables.set(file, variables);
 
@@ -418,9 +397,8 @@ export class Sheet {
        * The whole rule, not its body alone.
        *
        * Two rules with identical CSS and different CONTEXTS are two rules — `.r-x{color:red}` and
-       * `.r-x:hover{color:red}` — and comparing bodies could not tell them apart. That is not
-       * hypothetical: it is the fault this assertion missed until the class name started hashing the
-       * context too, and an assertion that cannot see the fault it exists for is worth nothing.
+       * `.r-x:hover{color:red}` — and comparing bodies could not tell them apart. An assertion that
+       * cannot see the fault it exists for is worth nothing.
        */
       if (write(block.className, existing.block) !== write(block.className, block)) {
         const other = [...existing.files].join(", ") || "another file";
@@ -494,21 +472,16 @@ export class Sheet {
    * that leaves out a class its own JavaScript names is a stylesheet that is only correct when some
    * other chunk happens to have loaded, and a bundler makes no such promise.
    *
-   * **The order is the file's, and it used to be the sheet's.** This walked the whole rule map and
-   * filtered it, so what came out was global first-claim order — whichever file the bundler happened
-   * to transform first. A review measured it: two files writing the same two conditional
-   * declarations in opposite orders, and the second one's stylesheet came out in the FIRST one's
-   * order, while compiled alone it came out in its own.
+   * **The order is the file's, not the sheet's.** The sheet's order is global first-claim order —
+   * whichever file the bundler happened to transform first. Measured: two files writing the same
+   * two conditional declarations in opposite orders, and the second one's stylesheet came out in
+   * the FIRST one's order.
    *
    * `sheetRank` cannot rescue that. It separates conditional from unconditional and broad from
    * narrow; it says nothing about one condition against another, so the two ranks are equal, the
-   * stable sort kept an order belonging to another file, and `override-out-of-order` had nothing to
-   * report because nothing about the RANKS was wrong. The declaration that lost was silently the
-   * wrong one, and which one it was depended on build order.
-   *
-   * `byFile` has kept each file's claims in source order since it was written, for a different
-   * reason — knowing what to withdraw on a save. That is the order the author wrote, so it is the
-   * order to emit, with the rank sorting within it as it always did.
+   * stable sort keeps whatever order it was given, and `override-out-of-order` has nothing to
+   * report. `byFile` keeps each file's claims in source order — the order the author wrote — so
+   * that is the order to emit, with the rank sorting within it.
    */
   cssFor(file: string): string {
     return wrap(this.ownOrder(file));
@@ -568,10 +541,8 @@ export class Sheet {
    * A `var()` READING a name nothing in this build sets.
    *
    * **The only place this question can be answered.** A name may be set by a block three components
-   * away, so no single file knows; the sheet is what has every file at once. `variable-read-by-
-   * another-name` used to guess at it from inside one block — it reported a name a few edits from
-   * one the SAME block set, which made it a typo detector that could not see a real global and
-   * reported correct CSS whenever a project's global name resembled a local one.
+   * away, so no single file knows; the sheet is what has every file at once. Guessed from inside
+   * one block, it would report correct CSS whenever a project's global name resembled a local one.
    *
    * Four things make a name known, and each is a different thing the author did:
    *
@@ -583,8 +554,7 @@ export class Sheet {
    *   value may be absent. It costs nothing and is the CSS an author writes anyway.
    *
    * The message names all four, because which one applies is the author's to know and not ours to
-   * guess. A near miss among the names the build DOES set is offered beside them — from every name
-   * in the build now, rather than from one block's.
+   * guess. A near miss among every name the build DOES set is offered beside them.
    */
   verifyVariables(): void {
     const unknown = this.unknownVariables();
@@ -640,9 +610,9 @@ export class Sheet {
      * How many rules of each NAMELESS at-rule the sheet holds.
      *
      * A class is asked for by its selector and a `@keyframes` by its name; a `@font-face` has
-     * neither, so two of them look exactly like one to a substring test. Measured before this was
-     * written: with two in the sheet and one dropped, `verify` passed and said nothing. The promise
-     * is that every rule survived, so for these the question is how many.
+     * neither, so two of them look exactly like one to a substring test — with two in the sheet and
+     * one dropped, `verify` alone would pass. The promise is that every rule survived, so for these
+     * the question is how many.
      */
     const nameless = new Map<string, number>();
     for (const rule of this.rules.values()) {

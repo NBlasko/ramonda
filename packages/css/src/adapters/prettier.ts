@@ -119,22 +119,15 @@ function blockAt(path: AstPath, options: Carried): string | undefined {
  *
  * The block's own relative shape is kept and its absolute indentation is not — the printer has just
  * decided where this sits, and re-using the author's columns would drift a step further in every
- * time somebody formatted the file. The CSS inside has already been laid out by `relaidInside`,
- * the layout `ramonda-css format` uses, so the two formatters give one answer about one block.
+ * time somebody formatted the file. The CSS inside has already been laid out by `relaidInside`, the
+ * layout `ramonda-css format` uses, so the two formatters give one answer about one block.
  *
- * **Every line used to be trimmed, which is precisely what destroys the relative shape.** Measured:
+ * **Trimming every line would destroy the relative shape**: a nested rule's body would land at the
+ * level of its own brace, two levels deep everything on one, and the damage STICKS — format again
+ * and the flattened text is what the author has.
  *
- *     &:hover {          ->     &:hover {
- *       color: blue;            color: blue;
- *     }                         }
- *
- * — a nested rule's body at the level of its own brace, and two levels deep everything landed on
- * one. `ramonda-css format` keeps the nesting on the same file, so the two formatters this package
- * ships answered differently about one file, with a source rewrite on the end of it. And the damage
- * STICKS: format again and the flattened text is what the author has.
- *
- * So what is stripped is the block's OWN base — the narrowest indentation any of its lines carries —
- * and everything past that is the author's shape, kept.
+ * So what is stripped is the block's OWN base — the narrowest indentation any of its lines carries
+ * — and everything past that is the author's shape, kept.
  */
 function laid(block: string): Doc {
   const [first, ...rest] = block.split("\n");
@@ -147,14 +140,14 @@ function laid(block: string): Doc {
   /**
    * The block's base level, measured over its CONTENTS — and the closing line is not one of them.
    *
-   * That line holds the `)` and sits at the OUTER level, which the printer has just chosen; counting
-   * it made the base zero on the first pass and the printer's own indentation on the second, so
-   * every format pushed the contents one step further in. Measured — the drift the note above warns
-   * about, arrived at by fixing something else.
+   * That line holds the `)` and sits at the OUTER level, which the printer has just chosen;
+   * counting it makes the base zero on the first pass and the printer's own indentation on the
+   * second, so every format would push the contents one step further in — the drift the note above
+   * warns about.
    *
-   * Over the contents alone it is stable: the shallowest of them lands exactly one step in, whatever
-   * it started at, so a second pass measures the same base and shifts by the same amount. A blank
-   * line has no indentation to speak of and would say the base is zero, so it is not asked.
+   * Over the contents alone it is stable: the shallowest of them lands exactly one step in,
+   * whatever it started at, so a second pass measures the same base and shifts by the same amount.
+   * A blank line has no indentation to speak of and would say the base is zero, so it is not asked.
    *
    * Tabs and spaces are counted the same, one character each. Mixing them inside one block is a
    * question this cannot answer and nobody asks: whatever a file uses, it uses throughout.

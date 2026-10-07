@@ -4,17 +4,13 @@ import { basename, dirname, join } from "node:path";
 /**
  * Whether the built package is older than the sources it was built from.
  *
- * ## The fault it exists for, which cost a day
+ * ## The fault it exists for
  *
  * Everything a person actually runs reads `dist`: this plugin, the editor's language plugin, the
  * documentation gate, and the build test that compiles a real project. The TESTS read `src`. So a
  * fix can be green in every test and absent from everything the person touches — and there is
- * nothing to see, because the artefact is perfectly valid, just old.
- *
- * On 2026-09-07 that happened three times in one session, and the third one was the expensive one: a
- * fix to nested conditions was committed, the tests were green, and the person testing it was handed
- * a `dist` twenty minutes old. They reported the bug as still present. **They were right, and the
- * source was right, and neither fact helped.**
+ * nothing to see, because the artefact is perfectly valid, just old. A person testing a committed
+ * fix against a `dist` twenty minutes old reports the bug as still present, and is right.
  *
  * ## Why it warns rather than refusing
  *
@@ -23,14 +19,14 @@ import { basename, dirname, join } from "node:path";
  * command is the build. And a stale `dist` still WORKS — it is a previous version of a working
  * package, not a broken one.
  *
- * What it must not do is be silent, because silence is exactly what cost the day.
+ * What it must not do is be silent.
  *
  * ## Why mtimes rather than a hash
  *
  * A hash would be exact and would have to read every source file on every plugin construction. This
  * runs once per dev server and answers a question whose only consequence is a sentence on a
- * terminal, so the cheap comparison is the right one — and mtime is what a build tool already trusts
- * for the same decision.
+ * terminal, so the cheap comparison is the right one — and mtime is what a build tool already
+ * trusts for the same decision.
  */
 function newest(directory: string): number {
   let entries: import("node:fs").Dirent[];
@@ -38,7 +34,7 @@ function newest(directory: string): number {
     entries = readdirSync(directory, { withFileTypes: true });
   } catch {
     // Absent, or not ours to read. `0` is "nothing to compare", which the caller is already silent
-    // about — and it is a per-DIRECTORY answer now, so it cannot take the other walk down with it.
+    // about — and it is a per-DIRECTORY answer, so it cannot take the other walk down with it.
     return 0;
   }
 
@@ -67,17 +63,15 @@ function newest(directory: string): number {
  * never have.
  */
 export function warnIfStale(from: string, say: (message: string) => void): void {
-  // The package root holds `dist` and `src`, so it is the parent of the nearest of them above `from` —
-  // `dist/vite.js` once built, `src/adapters/vite.ts` in a test. Counting two folders up gave two
-  // different answers once the adapters moved into a folder of their own.
+  // The package root holds `dist` and `src`, so it is the parent of the nearest of them above
+  // `from` — `dist/vite.js` once built, `src/adapters/vite.ts` in a test.
   let below = dirname(from);
   while (!["dist", "src"].includes(basename(below)) && dirname(below) !== below) below = dirname(below);
   const root = dirname(below);
   /**
-   * Each walk answers for itself, and a review is the reason. Both used to sit inside ONE `try`, so
-   * anything thrown anywhere in either — a directory nobody may read, a file a running build deletes
-   * between the listing and the stat — abandoned the comparison and said nothing. Silence is what
-   * this warning exists to stop, so it is the one outcome a fault here must not produce.
+   * Each walk answers for itself. In one shared `try`, anything thrown in either — a directory
+   * nobody may read, a file a running build deletes between the listing and the stat — would
+   * abandon the comparison and say nothing, and silence is what this warning exists to stop.
    *
    * `0` is "nothing to compare with", which is also what an absent directory gives: no `src` is a
    * published package, no `dist` is a checkout about to be built, and neither is a fault.

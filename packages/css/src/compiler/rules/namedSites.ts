@@ -28,8 +28,8 @@ import { textOnly } from "../ast";
  */
 /**
  * A number, and it may carry an EXPONENT — css-syntax-3 §4.3.12, so `1e3` is a `<number>` and
- * `1e2px` is `100px`. A review found both reported: the matchers could not express the form at all,
- * and `unknown-unit` said `e` was not a unit on top of it.
+ * `1e2px` is `100px`. Without it, both are reported, and `unknown-unit` says `e` is not a unit on
+ * top of it.
  */
 const DIGITS = "[+-]?(?:\\d+\\.?\\d*|\\.\\d+)(?:[eE][+-]?\\d+)?";
 export const A_NUMBER = new RegExp(`^${DIGITS}$`);
@@ -38,9 +38,8 @@ const A_HEX = /^#[0-9a-f]{3,8}$/i;
 /**
  * An identifier, and a `<dashed-ident>` is one.
  *
- * Per css-values-4 a `<dashed-ident>` IS a `<custom-ident>` with the extra restriction that it starts
- * with two dashes — so `--x` is a valid `<custom-ident>` and was reported as not being one. The
- * generator reasons correctly about exactly this production; this matcher did not.
+ * Per css-values-4 a `<dashed-ident>` IS a `<custom-ident>` with the extra restriction that it
+ * starts with two dashes — so `--x` is a valid `<custom-ident>`, as the generator also reasons.
  */
 const AN_IDENT = /^--?[a-z_][\w-]*$|^-?[a-z_][\w-]*$/i;
 const A_CALL = /^[a-z-]+\(/i;
@@ -48,11 +47,11 @@ const A_CALL = /^[a-z-]+\(/i;
 /**
  * A number with a unit of the RIGHT family, or a bare `0`, or a call.
  *
- * The first version accepted a number with any unit at all, because `units.json` groups units by the
- * spec that defines them rather than by what they are — so `<angle>` accepted `12px`, and the rule
- * that matters most here could not fire. `UNIT_TYPE` is the partition, written down in the generator
- * with an assertion that every unit lands in exactly one family, so a unit CSS adds fails the build
- * until somebody says what it is.
+ * `units.json` groups units by the spec that defines them rather than by what they are, so
+ * accepting any unit lets `<angle>` accept `12px`, and the rule that matters most here could not
+ * fire. `UNIT_TYPE` is the partition, written down in the generator with an assertion that every
+ * unit lands in exactly one family, so a unit CSS adds fails the build until somebody says what it
+ * is.
  *
  * A bare `0` is a length and an angle and a time — CSS lets it be dimensionless — and a call is any
  * type at all, because `calc()`, `min()` and `var()` are.
@@ -128,7 +127,7 @@ export function propertyDescriptorMissing(block: Block, at: string, start: numbe
       `This \`@@property\` has no ${missing.map((one) => `\`${one}\``).join(" and ")}, and without ` +
       `${missing.length > 1 ? "them" : "it"} the browser drops the whole registration. Add ` +
       missing.map((one) => WRITE_DESCRIPTOR[one]).join(" and ") +
-      // Review round 4: following the advice above, with no `initial-value` either, led straight to
+      // Following the advice above, with no `initial-value` either, would lead straight to
       // `initial-value-and-syntax` — so a syntax other than `"*"` is told it needs one here.
       (missing.includes("syntax") && !written.has("initial-value")
         ? ', and an `initial-value` — the value it starts at, which any syntax but `"*"` needs'
@@ -209,28 +208,27 @@ function segmentsOf(known: string, parts: readonly string[]): boolean {
  * `prefers-reduced-mErrorotion` is six characters from `prefers-reduced-motion`, and `nearest`'s
  * bound is three — raising it is not the fix. Measured on this table: `prefers-reduced-data` is a
  * REAL feature about as far from `prefers-reduced-motion` as that typo is, so any bound wide enough
- * to catch the one reports the other, and the other was new once. Distance cannot tell them apart.
+ * to catch the one reports the other. Distance cannot tell them apart.
  *
  * Subsequence can. A known name being a subsequence of what was written means somebody typed extra
  * characters into a real name; a genuinely new feature does not contain an old one's letters in
  * order. The length bound keeps a longer relative out — a future `prefers-reduced-motion-strength`
  * is nine longer and stays silent, and this typo is six.
  *
- * **And the length bound was not enough, which a review measured.** `video-` is exactly six, and
- * every `video-`-prefixed feature Media Queries 5 defines is its unprefixed relative with a whole
- * segment in front — so the entire family came back as typos, `min-video-width` as a typo of
- * `min-width` among them. No bound can separate those: the extra text really is six characters.
+ * **The length bound alone is not enough.** `video-` is exactly six, and every `video-`-prefixed
+ * feature Media Queries 5 defines is its unprefixed relative with a whole segment in front —
+ * `min-video-width` would be a typo of `min-width`. No bound can separate those.
  *
  * What separates them is WHERE the extra characters are. CSS names a family by adding whole
  * dash-delimited segments — `device-width`, `min-width`, `video-width`, `prefers-reduced-motion` —
  * and a typo does not land on segment boundaries. So the subsequence is asked of the SEGMENTS as
- * well: if the known name's segments are a subsequence of the written name's, this is a relative and
- * nothing is said. `prefers-reduced-mErrorotion` still reports, because its last segment is a typo
- * of a segment rather than an extra one.
+ * well: if the known name's segments are a subsequence of the written name's, this is a relative
+ * and nothing is said. `prefers-reduced-mErrorotion` still reports, because its last segment is a
+ * typo of a segment rather than an extra one.
  *
  * That is also the safer direction for a feature CSS invents after this list was generated: an
- * unknown feature is `<general-enclosed>`, legal CSS that never matches, and reporting one as a typo
- * is the false report this rule is shaped to avoid.
+ * unknown feature is `<general-enclosed>`, legal CSS that never matches, and reporting one as a
+ * typo is the false report this rule is shaped to avoid.
  */
 const INSERTED = 6;
 
@@ -265,15 +263,14 @@ export function againstRegisteredSyntax(
     if (value === undefined) continue;
     /**
      * `!important` is not part of the value, and on a custom property it is ordinary CSS — it is
-     * how a variable is made to win. A review measured `{angle}: 90deg !important` reported as a
-     * value `<angle>` does not accept, because the flag went into the matcher with the value.
+     * how a variable is made to win. Left in, `{angle}: 90deg !important` is reported as a value
+     * `<angle>` does not accept.
      */
     const written = withoutImportant(value);
     /**
      * A CSS-wide keyword and `var()`, both asked CASE-INSENSITIVELY, because CSS keywords and
-     * function names are — css-values-4 §Textual Data Types. `INHERIT` was reported, and the
-     * `var(` escape was matched with no `i` while `variableReads` beside it explains at length why
-     * it matches `var` case-insensitively. One question, two answers, in one file.
+     * function names are — css-values-4 §Textual Data Types. `INHERIT` is a CSS-wide keyword, and
+     * `variableReads` matches `var` the same way.
      */
     if (written === "" || GLOBAL.has(written.toLowerCase()) || holdsVar(written)) continue;
 
@@ -306,17 +303,13 @@ export function holeInANamedBlock(block: Block, at: string, findings: Finding[])
     /**
      * **Over the HOLE, and every one of them.**
      *
-     * This pointed at the start of the VALUE with a length of 1 — measured on
-     * `@@font-face( src: url($(n)); )`, a one-character squiggle over the `u` of `url(`, which is
-     * mid-word and is not the fault. And it stopped after the first hole, so an author fixed one,
-     * re-ran, and met the next.
+     * The start of the VALUE is the wrong place: on `@@font-face( src: url($(n)); )` it is the `u`
+     * of `url(`, mid-word and not the fault. `HolePart` carries `at` and `length` for exactly this
+     * — a squiggle over the hole itself.
      *
-     * `HolePart` carries `at` and `length` and its own note says why: *"for a squiggle over the
-     * hole itself … what lets a rule about a hole's POSITION point at the hole rather than at the
-     * declaration holding it."* `hole-as-a-custom-property-name` reads it; this did not.
-     *
-     * One finding per HOLE rather than per declaration, because each is a separate thing to
-     * remove — `src: url({a}) format({b})` is two edits.
+     * One finding per HOLE rather than per declaration, because each is a separate thing to remove
+     * — `src: url({a}) format({b})` is two edits, and reporting only the first makes an author fix
+     * one, re-run, and meet the next.
      */
     for (const hole of item.value) {
       if (hole.kind !== "hole") continue;
@@ -341,10 +334,10 @@ export function holeInANamedBlock(block: Block, at: string, findings: Finding[])
  * one into another. A named block is not an element — it is a rule the whole stylesheet uses — so
  * neither has anything to act on.
  *
- * **Both were reported as something else.** `when $(on) { from { … } }` came back as *`if ( 0 )`
- * is not a keyframe*, which names the guard as a frame; and the virtual file wrote the helper call
- * among the object literal's members, where a call is not a member, so the file did not parse and
- * nothing else in it was checked either.
+ * Without this, both are reported as something else: `when $(on) { from { … } }` comes back as *`if
+ * ( 0 )` is not a keyframe*, and the virtual file writes the helper call among the object literal's
+ * members, where a call is not a member, so the file does not parse and nothing else in it is
+ * checked either.
  */
 export function compositionInANamedBlock(block: Block, at: string, findings: Finding[]): void {
   const walkItems = (items: readonly BlockItem[]): void => {

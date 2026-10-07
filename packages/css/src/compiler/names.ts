@@ -12,44 +12,35 @@ import { HOLE } from "./normalise";
  */
 
 /**
- * How many hex characters of the hash the class carries.
+ * How many base62 characters of the hash the class carries.
  *
- * **The length guarantees nothing, and it is worth saying plainly.** Two different blocks landing on
- * the same name is a birthday problem, and probability is not a promise. The guarantee is the
+ * **The length guarantees nothing, and it is worth saying plainly.** Two different blocks landing
+ * on the same name is a birthday problem, and probability is not a promise. The guarantee is the
  * assertion made where the sheet is assembled, which sees every block at once and can check that no
- * two distinct ones share a name.
+ * two distinct ones share a name. The length only decides whether that assertion ever fires — and
+ * **firing is a failed build with both files named, not a wrong page**, which is what lets this be
+ * short.
  *
- * The length only decides whether that assertion ever fires — and **firing is a failed build, not a
- * wrong page**, which is what lets this be short. The sheet sees every rule in a build at once, so a
- * collision is a loud stop with both files named; nothing silently ships.
+ * So the WIDTH is chosen and the bits follow from it: **nine base62 characters**, which is 53.6
+ * bits. At 10,000 atomic rules the chance of a collision is 3.7e-9; eight characters would be
+ * 4.2e-7, still fine; seven would be 2.7e-5, which is where it stops being safe. The number is
+ * reduced INTO the width rather than truncated to some bit count, so all nine characters are used —
+ * 48 bits written in nine characters would almost always begin with a `0`, which carries nothing
+ * and reads as noise.
  *
- * So the WIDTH is chosen and the bits follow from it: **nine base62 characters**, which is 53.6 bits.
- * Measured on the real playground the whole app has 56 atomic rules; at 10,000 the chance is 3.7e-9,
- * one build in two hundred and seventy million. Eight characters would be 47.6 bits and 4.2e-7,
- * still fine; seven would be 41.6 bits and 2.7e-5, which is where it stops being safe.
+ * ## Why base62
  *
- * **Choosing the width rather than the bits is not a detail.** Taking 48 bits and writing them in
- * nine characters wastes the first one — 2^48 is 2% of 62^9, so almost every name began with a `0`,
- * which is a character that carries nothing and reads as noise. The number is reduced into the width
- * instead, so all nine characters are used and all of them mean something.
- *
- * ## Why base62 rather than hex, and why the width rather than the bits
- *
- * Bytes were never the reason to be short — measured, 8, 12 and 16 hex all gzip to the same 46.7 KB,
+ * Bytes are not the reason to be short — measured, 8, 12 and 16 hex all gzip to the same 46.7 KB,
  * because the name is the part that repeats. **Reading is the reason.** A block is one class per
- * DECLARATION now, so an element carries three or four of these and a complicated one carries
- * twenty-eight, and eighteen characters each is a wall of noise in the markup.
+ * DECLARATION, so an element carries several of these, and a wider alphabet is free: 53.6 bits are
+ * nine base62 characters, eleven in base36, fourteen in hex.
  *
- * A wider alphabet is free: 53.6 bits are nine base62 characters, eleven in base36, fourteen in hex.
- * So the class is `r-` plus nine — eleven characters against the eighteen this started at, and the
- * tripwire is still one nobody will ever see.
- *
- * The `r-` is two of those eleven and is kept: it is what says a class was generated, and it is what
- * keeps a generated name from ever being an author's own.
+ * The `r-` is kept: it is what says a class was generated, and it is what keeps a generated name
+ * from ever being an author's own.
  *
  * Case matters and is safe: a class attribute is matched case-sensitively in standards mode, and a
- * custom property name is case-sensitive in CSS itself — which is also why `normalise` keeps the case
- * of one the author writes.
+ * custom property name is case-sensitive in CSS itself — which is also why `normalise` keeps the
+ * case of one the author writes.
  */
 export const HASH_LENGTH = 9;
 
@@ -66,24 +57,17 @@ const ALPHABET = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ
  * What a NAMED site compiles to — the name the stylesheet uses for it.
  *
  * Two of the three are named by their BODY and nothing else, and that is right: two `@@keyframes`
- * with the same steps are the same animation, and two `@@font-face` with the same `src` are the same
- * face. Identical ones anywhere in a build collapse to one rule, which is the property the whole
- * design rests on.
+ * with the same steps are the same animation, and two `@@font-face` with the same `src` are the
+ * same face. Identical ones anywhere in a build collapse to one rule, which is the property the
+ * whole design rests on.
  *
- * **A `@@property` is not like them, and naming it the same way was a silent fault.** A keyframes is
- * a VALUE; a registered custom property is a place to keep one. Two registrations that read the same
- * are still two variables, the way `let x = 0; let y = 0;` is two variables — so the author's own
- * BINDING is part of what names it.
- *
- * Measured before this: two tokens declared side by side with the same `syntax`, `inherits` and
- * `initial-value` — the ordinary shape of a palette — got one name, and the emitted literal came out
- * with a DUPLICATE KEY:
- *
- *     {"--r-6lbmZbNkr":"…-red","--r-6lbmZbNkr":"…-blue", …}
- *
- * so `{accent}: red` was discarded by the later key and `color: var({accent})` read blue. Nothing
- * warned: the sheet's collision assertion cannot fire, because the two `@property` rules genuinely
- * are identical.
+ * **A `@@property` is not like them.** A keyframes is a VALUE; a registered custom property is a
+ * place to keep one. Two registrations that read the same are still two variables, the way `let x =
+ * 0; let y = 0;` is two variables — so the author's own BINDING is part of what names it. Named by
+ * body alone, two tokens declared side by side with the same `syntax`, `inherits` and
+ * `initial-value` — the ordinary shape of a palette — got one name, the emitted literal held a
+ * DUPLICATE KEY, and `color: var({accent})` read the other token's value. Nothing warned: the two
+ * `@property` rules genuinely are identical, so the sheet's collision assertion cannot fire.
  *
  * The binding is stable across files, which is what keeps the dedupe promise: an import resolves to
  * the site in the module that DECLARES it, so `import { accent as brand }` still names `accent`'s
@@ -106,8 +90,8 @@ export function nameForSite(at: string, name: string, normalised: string): strin
  * The name of a `@@keyframes` or a `@@property` IS what other rules refer to, so it is the binding.
  * A `@@font-face` is different: what a block refers to is the `font-family` declared inside it, and
  * the hash is only the rule's identity (two faces of one family — two weights — are two rules).
- * Measured before this: the binding was the hash, so `font-family: $(brand)` asked for a family
- * called `r-…` and the font silently never loaded. So the binding is the family, exactly as written.
+ * With the hash as the binding, `font-family: $(brand)` asks for a family called `r-…` and the font
+ * silently never loads. So the binding is the family, exactly as written.
  */
 export function bindingForSite(at: string, name: string, normalised: string): string {
   if (at === "font-face") {
@@ -196,10 +180,9 @@ const SAFE_VALUE = /^[a-zA-Z0-9#.,%()/_+*=<>:;!&|~^$?@[\]{}-]+$/;
 /**
  * The characters a PROPERTY NAME may hold and still be written into a class name.
  *
- * The value has been gated since this was written and the property was interpolated unchecked, which
- * a review found. What it costs is not cosmetic. `readHead` keeps a name's interior whitespace, and
- * nothing above here refuses it, so `--brand` wrapped across two lines — which is what a missing `;`
- * looks like — produced a class name holding a newline. Emitted as a selector that is a `\` followed
+ * What it costs to skip is not cosmetic. `readHead` keeps a name's interior whitespace, and nothing
+ * above here refuses it, so `--brand` wrapped across two lines — which is what a missing `;` looks
+ * like — would produce a class name holding a newline. Emitted as a selector that is a `\` followed
  * by a newline, which is **not a valid escape**: measured, css-tree, lightningcss and jsdom all
  * refuse it, so a browser drops the rule and a lightningcss step throws on the whole stylesheet.
  *
@@ -257,12 +240,10 @@ export function nameFor(declaration: {
 }): string {
   const key = keyToken(declaration);
   /**
-   * The VALUE falls to a hash on its own now, and the key stays whatever it was.
+   * The VALUE falls to a hash on its own, and the key stays whatever it was.
    *
-   * It used to be the whole name — a value with a quote in it, or a name over the budget, and the
-   * class became `r-QbofRLj5j` with nothing readable and no key in it. The key is what a merge
-   * reads, so it can never be given up; and once it is kept anyway, keeping the property readable
-   * beside an unreadable value costs nothing.
+   * The key is what a merge reads, so it can never be given up; and once it is kept anyway, keeping
+   * the property readable beside an unreadable value costs nothing.
    */
   const hash = () => `r-${key}-${shortHash(declaration.identity, HASH_LENGTH)}`;
 
@@ -277,10 +258,9 @@ export function nameFor(declaration: {
    * `_` on the line above, and `_` is a character a value may already hold — so the encoding is not
    * injective and two different values can claim one class.
    *
-   * Found by fuzzing the name against the identity rather than by reading. `font-family: My_Font`
-   * and `font-family: My Font` are two different families and came out one class; so did
-   * `grid-area: a_b` against `grid-area: a b`. The context has the same fault in its own text, and a
-   * review that counted three root causes while naming two was counting this one.
+   * Found by fuzzing the name against the identity: `font-family: My_Font` and `font-family: My
+   * Font` are two different families and would be one class; so would `grid-area: a_b` against
+   * `grid-area: a b`.
    *
    * Tested BEFORE the spaces are folded, so it is the author's underscore being asked about.
    */
@@ -355,10 +335,10 @@ function contextOf(selector: string, conditions: readonly string[]): string | un
    * A `_` the AUTHOR wrote, which is what the space becomes below — so a text already holding one
    * cannot be written and hashes instead.
    *
-   * A review measured the collision: `& .a b` and `& .a_b` are different selectors and both came out
-   * `r-_.a_b-c-red`, so two different rules claimed one class. The encoding is not injective and no
-   * escaping makes it so while `_` stands for a space and is also a character a selector may hold.
-   * Refusing costs one readable name; the alternative costs a rule.
+   * `& .a b` and `& .a_b` are different selectors and would both come out `r-_.a_b-c-red`, two
+   * different rules claiming one class. No escaping makes the encoding injective while `_` stands
+   * for a space and is also a character a selector may hold. Refusing costs one readable name; the
+   * alternative costs a rule.
    */
   if (written.includes("_")) return undefined;
 

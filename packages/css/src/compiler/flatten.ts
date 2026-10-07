@@ -36,12 +36,11 @@ export interface AtomicDeclaration {
   /**
    * Everything that makes this rule THAT rule: its context and its text.
    *
-   * The class name is the hash of this and not of {@link canonical} alone, and the difference was a
-   * silent fault. `color: red` and `&:hover { color: red }` have the same text and are two different
-   * rules — measured, they hashed the same, the sheet kept whichever arrived first, and the hover
-   * one was emitted with no selector, so it applied always. Across files neither block need know
-   * about the other, and the sheet's collision assertion could not see it either, because the css
-   * text really was identical.
+   * The class name is the hash of this and not of {@link canonical} alone. `color: red` and
+   * `&:hover { color: red }` have the same text and are two different rules — hashed on the text,
+   * the sheet kept whichever arrived first and the hover one was emitted with no selector, so it
+   * applied always. Across files neither block need know about the other, and the sheet's collision
+   * assertion cannot see it either, because the css text really is identical.
    */
   readonly identity: string;
   /** Appended to the class in the selector — `:hover`, ` .title`, `""` for the class alone. */
@@ -156,19 +155,11 @@ export function sheetRank(declaration: { property?: string; conditions?: readonl
    * The PREFIXED half of an alias pair goes first, so the standard property wins wherever both are
    * written — and, more to the point, wins DETERMINISTICALLY.
    *
-   * Both clear the same properties, so both had the same breadth and the same layer; inside a layer
-   * the sort is stable, so the winner was whichever the build emitted first. Measured in Chromium
-   * through a real Vite build, the same block each time:
-   *
-   *     -webkit-box-shadow: 0 0 1px red; box-shadow: 0 0 9px blue;
-   *
-   *     alone in the file                           blue   — CSS's answer
-   *     after a block naming `box-shadow` first      RED
-   *     after a block with the same two, reversed    RED
-   *
-   * So the page depended on what another component wrote: invisible from the block, and it moves
-   * when somebody edits a file that has nothing to do with it. That is worse than a divergence,
-   * because there is no answer to learn.
+   * Both clear the same properties, so both have the same breadth and the same layer; inside a
+   * layer the sort is stable, so without this the winner is whichever the build emitted first.
+   * Measured in Chromium through a real Vite build, `-webkit-box-shadow: 0 0 1px red; box-shadow: 0
+   * 0 9px blue;` rendered blue alone in its file and RED after another block naming `box-shadow`
+   * first — the page depended on what another component wrote.
    *
    * A prefix losing to the standard property is also the way round every author means it — the
    * prefixed form is the fallback. And nothing that can read this stylesheet needs one: it is built
@@ -234,14 +225,14 @@ const EVERYTHING = "a";
  * that reaches the sheet whole.
  *
  * ONE name, and no room beside it. A layer name cannot be added later — a stylesheet built before
- * it does not list it, and CSS appends an unseen name to the END, the strongest position — and that
- * once bought seven empty levels, `d2`…`d8`, for a split that might one day produce pieces of
- * pieces. It cannot: a split always reaches LEAVES, and `grammarShapes.test.ts` asserts it for every
- * family, the hand-split ones included. That test failing is the answer to such a CSS, not a
- * reserve: the fix is to split further, down to the leaves.
+ * it does not list it, and CSS appends an unseen name to the END, the strongest position — so
+ * reserving names for pieces of pieces would be tempting. It is not needed: a split always reaches
+ * LEAVES, and `grammarShapes.test.ts` asserts it for every family, the hand-split ones included.
+ * That test failing is the answer to such a CSS, not a reserve: the fix is to split further, down
+ * to the leaves.
  *
- * Not `d`: the digit levels under `c` are `d0`…`d9`, and one letter for two things made a reader of
- * the output unable to tell them apart.
+ * Not `d`: the digit levels under `c` are `d0`…`d9`, and one letter for two things would leave a
+ * reader of the output unable to tell them apart.
  */
 const PIECES = "p";
 
@@ -249,16 +240,16 @@ const PIECES = "p";
  * A shorthand that reaches the sheet WHOLE — one that does not split: a `var()`, whose parts are
  * unknown until the page computes them, or a value a split refuses, like `font: caption`.
  *
- * One WORD, where these were once named by the COUNT of longhands they cover. A count moves when CSS
- * adds a longhand to the family, a package built before that names the old count, and two releases
- * then disagree about which rule is stronger. A word means the same in every release. It sits below
- * the split pieces and the written longhands, which beat it — as a longhand written after its
- * shorthand does in CSS — and above `all`. Measured in all three engines, through the merge,
- * against the same lines written by hand.
+ * One WORD, not the COUNT of longhands it covers. A count moves when CSS adds a longhand to the
+ * family, a package built before that names the old count, and two releases then disagree about
+ * which rule is stronger. A word means the same in every release. It sits below the split pieces
+ * and the written longhands, which beat it — as a longhand written after its shorthand does in CSS
+ * — and above `all`. Measured in all three engines, through the merge, against the same lines
+ * written by hand.
  *
  * What a word cannot do is order two of these against each other — `border: var(--x)` and then
- * `border-top: var(--y)`. That is what a count did, and it is refused instead: see
- * `narrower-after-a-whole-shorthand` in `rules.ts`.
+ * `border-top: var(--y)`. That is refused instead: see `narrower-after-a-whole-shorthand` in the
+ * rules.
  */
 const WHOLE = "v";
 
@@ -273,15 +264,14 @@ const WHOLE = "v";
  * anything conditional           c.d0.d5.…  + the same last step
  * ```
  *
- * **Every longhand shares one layer, and that is the whole of what splitting bought.** The names
- * used to be an INDEX into the table of distinct breadths, so a property CSS added anywhere moved
- * `padding` from `u09` to `u10` and two stylesheets built a year apart disagreed about which layer
- * `padding` was in. After splitting there is no wide unconditional declaration left to separate:
- * every one is a longhand, every longhand is equally narrow, and a name that is the same for
- * everybody separates nobody. Seventeen shelves stood empty and are gone.
+ * **Every longhand shares one layer, and that is what splitting buys.** Names that index the table
+ * of distinct breadths would move whenever CSS adds a property — `padding` from `u09` to `u10` —
+ * and two stylesheets built a year apart would disagree about which layer `padding` is in. After
+ * splitting there is no wide unconditional declaration left to separate: every one is a longhand,
+ * every longhand is equally narrow, and a name that is the same for everybody separates nobody.
  *
- * And every shorthand splits now, so a shorthand reaches the sheet whole only for a value that
- * cannot split. Every name is a word; none is a count.
+ * And every shorthand splits, so a shorthand reaches the sheet whole only for a value that cannot
+ * split. Every name is a word; none is a count.
  */
 export function layerPathFor(declaration: {
   property?: string;
@@ -496,7 +486,7 @@ export type AtomicSegment =
 
 /** Every declaration a block makes, ignoring how it is composed. */
 /**
- * `!important`, however it is spelt — the same pattern `rules.ts` matches for a custom property's
+ * `!important`, however it is spelt — the same pattern the rules match for a custom property's
  * value, because it is the same question asked of the same text.
  */
 
@@ -625,12 +615,10 @@ function walk(
          * `@media print { }` is legal CSS that does nothing, so `when $(x) { }` is legal here that
          * does nothing — and commenting a group's body out is how somebody reaches it. But the
          * emission counts on one segment per recorded hole: `readBlock` records the condition's
-         * `{expr}` whatever the group holds, and without this the guard had a hole and no segment,
-         * so every following piece of text slid one place left.
-         *
-         * Measured before this line existed: `when $(variant) { }` alone compiled to
-         * `_merge(variant)`, which parses, runs, and ships `class="l g"` for `variant = "lg"` —
-         * two class names that never existed, with nothing downstream able to notice.
+         * `{expr}` whatever the group holds, and without this the guard has a hole and no segment,
+         * so every following piece of text slides one place left. Measured without it: `when
+         * $(variant) { }` alone compiled to `_merge(variant)`, which ships `class="l g"` for
+         * `variant = "lg"` — two class names that never existed.
          *
          * An empty run contributes no declaration, so the guard is evaluated and applies nothing,
          * which is what the browser does with the empty at-rule this mirrors.
@@ -729,8 +717,7 @@ function maybeSplit(
   /**
    * A `match` ARM splits like anything else, and every piece carries the arm it came from — the
    * emit groups them back into ONE string of classes per arm, which `pick` returns and the merge
-   * splits on its spaces. It used to keep its shorthand, which put `padding: match(…)` in a layer
-   * named by `padding`'s count.
+   * splits on its spaces.
    */
   const longhands = splitOf(whole.property, valueOf(whole.canonical));
   if (longhands === undefined) return [whole];
@@ -785,18 +772,10 @@ function built(
   /**
    * The value's KEYWORD CASE is folded here too, because the class name is built from this.
    *
-   * `normalise.ts` has folded it since it was written, and this built its own text and never called
-   * the same function. Measured through the real transform:
-   *
-   *     color: currentColor;   ->  r-c-currentColor
-   *     color: currentcolor;   ->  r-c-currentcolor
-   *
-   * Two atomic classes with identical CSS, and two hashes with them, because `identity` below is
-   * built from this string. One question — what is this value, canonically — answered in two places,
-   * and only the one nobody looked at reached the class.
-   *
-   * Reported by the user while the case REPORT was being dropped: *"da nemamo razlicit hash i
-   * atomske klase."* The report never protected this; it was a live fault beside it.
+   * The same fold `normalise.ts` applies, or one value gets two classes: unfolded, `color:
+   * currentColor` and `color: currentcolor` came out of the real transform as `r-c-currentColor`
+   * and `r-c-currentcolor` — identical CSS, two hashes, because `identity` below is built from this
+   * string.
    *
    * `canonicalValue` folds a word only where the fold names a keyword the property HAS, so a font
    * family, a custom property's value and a grid-area name keep the case the author gave them —
@@ -806,35 +785,22 @@ function built(
   const sorted = mayBeSorted(conditions) ? [...conditions].sort() : [...conditions];
 
   /**
-   * **`!important` IS A DIFFERENT DECLARATION**, and it was the same key as the plain one beside it.
+   * **`!important` IS A DIFFERENT DECLARATION**, with a key of its own.
    *
    * A key answers *what does this set*, and two declarations sharing one are the same thing set
    * twice, where the later wins. `!important` breaks that rule: it wins whatever the order.
-   * Measured in Chromium against the same CSS by hand —
-   * `color: rgb(1,0,0) !important; color: rgb(2,0,0)` gives `rgb(1,0,0)` there and gave `rgb(2,0,0)`
-   * here, because the important declaration was dropped from the map and only its unreachable rule
-   * reached the stylesheet.
+   * Measured in Chromium against the same CSS by hand, `color: rgb(1,0,0) !important; color:
+   * rgb(2,0,0)` gives `rgb(1,0,0)`; sharing a key, the important declaration was dropped from the
+   * map and this gave `rgb(2,0,0)`. With its own key both classes land and **CSS decides**, which
+   * is this package's whole premise.
    *
-   * With its own key both classes land and **CSS decides**, which is this package's whole premise.
+   * The layer REVERSAL CSS applies to important declarations is answered separately: an important
+   * declaration goes under a MIRROR whose levels are declared backwards — see {@link layerPathFor}.
+   * A split against a written longhand would agree even without it, because splitting gives them
+   * one key and the merge settles them before a layer is asked; every pair across a layer boundary
+   * would not.
    *
-   * **This used to claim the layer REVERSAL was measured and agreed with plain CSS in four cases,
-   * and it did not.** Those four cannot have included two important declarations that sit on
-   * opposite sides of a layer boundary, because every such pair disagreed. Measured again in all
-   * three engines, on the ordinary path, against the same two lines written by hand:
-   *
-   *     @@( background: red !important; background-color: blue !important; )
-   *     ours red, hand-written CSS blue
-   *
-   * A shorthand against its longhand, `all` against a shorthand, a `@media` against the
-   * unconditional rule it was written to override, two breakpoints against each other — all
-   * reversed. What made it invisible is that a split against a written longhand AGREES, because
-   * splitting gives them one key and the merge settles them before a layer is asked.
-   *
-   * The reversal is real and now answered: an important declaration goes under a MIRROR whose
-   * levels are declared backwards, so the reversal lands on the order that was meant. See
-   * {@link layerPathFor}.
-   *
-   * The spelling is the one `rules.ts` already uses for the same question on a custom property —
+   * The spelling is the one the rules already use for the same question on a custom property —
    * optional whitespace after the bang, and case-insensitive, because both are valid CSS and a
    * browser reads all of them as importance.
    */
@@ -886,18 +852,16 @@ function nested(outer: string, inner: string): string {
  * commutes — so sorting lets two authors who wrote the same two conditions in either order share
  * one class, which is the whole win of atomic CSS.
  *
- * **A STRUCTURAL at-rule does not ask, it places, and nesting COMPOSES it.** A review measured two:
- * `@layer a { @layer b { … } }` is layer `a.b` while the reverse is `b.a` — two different cascade
- * layers at different priorities, which is exactly what layers are for — and
- * `@scope (.p) { @scope (.q) { … } }` matches an element inside a `.q` inside a `.p` while the
- * reverse matches inside a `.p` inside a `.q`, so on one document one of them matches and the other
- * does not. Sorted, both authors got one rule and one of them silently lost their own.
+ * **A STRUCTURAL at-rule does not ask, it places, and nesting COMPOSES it.** `@layer a { @layer b {
+ * … } }` is layer `a.b` while the reverse is `b.a` — two different cascade layers at different
+ * priorities — and `@scope (.p) { @scope (.q) { … } }` matches an element inside a `.q` inside a
+ * `.p` while the reverse matches inside a `.p` inside a `.q`. Sorted, both authors would get one
+ * rule and one of them would silently lose their own.
  *
- * **An ALLOW-LIST, and that is the point.** The justification for sorting measured exactly one pair
- * — `@media` against `@supports` — and every prelude starting with `@` inherited the conclusion. So
- * the unknown case has to fail SAFE: an at-rule CSS invents after this is written keeps the order it
- * was written in, which is never wrong and at worst spends a second class where one would do. A
- * deny-list would silently mis-sort the next structural at-rule instead.
+ * **An ALLOW-LIST, and that is the point.** Only `@media` against `@supports` was measured to
+ * commute, so the unknown case has to fail SAFE: an at-rule CSS invents after this is written keeps
+ * the order it was written in, which is never wrong and at worst spends a second class where one
+ * would do. A deny-list would silently mis-sort the next structural at-rule instead.
  *
  * `@starting-style` is deliberately absent: it is not a condition either, and nothing here has
  * measured whether its nesting commutes. Absent costs a class; present and wrong costs a rule.
@@ -928,11 +892,9 @@ function atRuleName(condition: string): string {
  * naming no parent means. Written that way rather than left as the author typed it, so a selector
  * is one string wherever it is read.
  *
- * **Exported because the VIRTUAL FILE has to ask the same question.** It wrote the raw prelude as
- * the object key, and `CssBlockShape` admits a nested rule only under a key beginning with `&` or
- * `@` — so `div { color: red; }` was a `TS2353` in the editor while the build compiled and shipped
- * it. The type is right that a bare word is not a property; it was reading a selector the compiler
- * had already decided about.
+ * **Exported because the VIRTUAL FILE has to ask the same question.** `CssBlockShape` admits a
+ * nested rule only under a key beginning with `&` or `@`, so a raw prelude as the object key makes
+ * `div { color: red; }` a `TS2353` in the editor while the build compiles and ships it.
  */
 export function selectorOf(prelude: string): string {
   const written = collapse(prelude);
@@ -958,16 +920,15 @@ function holdsParent(prelude: string): boolean {
 }
 
 /**
- * The selector with every `&` replaced by `self`, which is what makes the emitted rule mean what the
- * author wrote — and what the suffix model could not express.
+ * The selector with every `&` replaced by `self`, which is what makes the emitted rule mean what
+ * the author wrote.
  *
- * The two share this function because they are one question: `selectorOf` decides where the parent
- * is written and this decides what is written there. It used to be a SUFFIX appended after the class,
- * which is only correct while a prelude names the parent once and at the start. A review measured
- * what else happens: `&:hover, &:focus` emitted `.r-x:hover, &:focus`, and `.parent &` emitted
- * `.r-x .parent &`. In an emitted rule there is no nesting parent, so a surviving `&` behaves as
- * `:scope` — it resolves against the ROOT element, not the styled one — and both were accepted by
- * the checker, so the fault was a wrong stylesheet rather than a refusal.
+ * `selectorOf` decides where the parent is written and this decides what is written there, so they
+ * are one question. A SUFFIX appended after the class is only correct while a prelude names the
+ * parent once and at the start: as a suffix, `&:hover, &:focus` emits `.r-x:hover, &:focus`, and
+ * `.parent &` emits `.r-x .parent &`. In an emitted rule there is no nesting parent, so a surviving
+ * `&` behaves as `:scope` — it resolves against the ROOT element, not the styled one — and the
+ * result is a wrong stylesheet rather than a refusal.
  */
 export function withParent(selector: string, self: string): string {
   // A selector naming no parent is a DESCENDANT of it, which is CSS nesting's own rule for a

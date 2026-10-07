@@ -3,10 +3,9 @@ import type { CssVar, Fixed, Kind, Token, ValueByKind } from "./token";
 /**
  * SETTING a declared variable or a registered property on an element.
  *
- * What used to be here went with the hole. `block()` built a descriptor a call filled with a hole's
- * values; `toStyleObject` turned one into `{ className, style }` for a renderer with no `css` prop
- * of its own. A block sets nothing on an element any more and IS its class string, so a renderer
- * writes `className={panel}` and there is nothing to adapt.
+ * A block sets nothing on an element: it IS its class string, so a renderer writes
+ * `className={panel}` and there is nothing to adapt. What an element does carry is the custom
+ * properties set here.
  */
 
 /**
@@ -61,14 +60,12 @@ type Permitted<P> = {
  *     Type '"24px"' is not assignable to type
  *       '"24px" & this_variable_may_only_be<"8px" | "16px">'
  *
- * **Measured, this was `not assignable to type 'never'` — twice, on one line.** `Permitted` used to
- * intersect the author's pair with the permitted pair, and an intersection of two different literals
- * is `never`, so the range check worked and could not be read. It named neither the variable, nor
- * the values it may take, nor what to do.
+ * Intersecting the author's pair with the permitted pair instead gives `never` — an intersection of
+ * two different literals — so the check works and reads as `not assignable to type 'never'`, twice,
+ * naming neither the variable, nor the values it may take, nor what to do.
  *
- * Reported by the user asking what `Token<"length", "16px">` shows, since an initial value is not a
- * range. It IS the range — a bare declaration means the variable never changes — and the design was
- * right while the message was unreadable. See {@link Fixed}.
+ * A bare declaration like `Token<"length", "16px">` IS a range of one value — the variable never
+ * changes. See {@link Fixed}.
  */
 interface this_variable_may_only_be<R> {
   readonly permitted: R;
@@ -161,22 +158,20 @@ export function toStyle<const P extends readonly Setting[]>(settings: P & Permit
  *
  * ## The semicolon
  *
- * A value is whatever the caller's expression evaluated to, and an expression can read a record — so
- * "the author wrote it" is not a defence. This object ends up in a `style` attribute, and **a server
- * render does not end at the DOM**: the element is serialized to HTML and the browser PARSES the
- * attribute back, applying the CSS grammar to whatever text the serializer produced. Measured
- * through `renderToString` and back through `innerHTML`, a value of
- * `red; position: fixed; width: 100vw` came out as real, applied declarations — a full-viewport
- * overlay out of a colour that came from a database.
+ * A value is whatever the caller's expression evaluated to, and an expression can read a record —
+ * so "the author wrote it" is not a defence. This object ends up in a `style` attribute, and **a
+ * server render does not end at the DOM**: the element is serialized to HTML and the browser PARSES
+ * the attribute back, applying the CSS grammar to whatever text the serializer produced. Measured
+ * through `renderToString` and back through `innerHTML`, a value of `red; position: fixed; width:
+ * 100vw` came out as real, applied declarations — a full-viewport overlay out of a colour that came
+ * from a database.
  *
  * So a value carrying a `;` is not written, and the property is left UNSET rather than written as
  * something else: an unset custom property makes the declaration reading it invalid at
  * computed-value time, which drops that declaration and leaves whatever the stylesheet said. A
  * missing border beats an overlay.
  *
- * **This is where the rule lives now.** It used to be `toStyleObject`'s and the framework's, for the
- * values a `{expr}` hole carried; the hole is refused and `toStyleObject` is gone, and `toStyle` is
- * how a value reaches an element. The hazard moved with it.
+ * `toStyle` is how a value reaches an element, so this is the one place the rule lives.
  *
  * ## The kinds
  *

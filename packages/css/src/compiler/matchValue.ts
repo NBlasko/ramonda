@@ -5,8 +5,7 @@ import type { Term } from "./valueSyntax";
  *
  * ## Why a parse and not a set of slots
  *
- * A list of SLOTS hands each token to the first one that takes it — which is how this package
- * split a shorthand before there was a parse. CSS hands it to whichever
+ * A list of SLOTS hands each token to the first one that takes it. CSS hands it to whichever
  * component the GRAMMAR reaches first, and the two differ wherever two components accept the same
  * token. Measured in all three engines, and they agree with each other and not with the slots:
  *
@@ -53,7 +52,7 @@ function* readings(term: Term, tokens: readonly string[], at: number, accepts: A
   /**
    * `#`, `*` and `+` have NO upper bound, and the tokens are what bound them: a repetition cannot
    * take more items than there are tokens left to take. Counting down from `Infinity` never reaches
-   * the minimum, because `Infinity - 1` is `Infinity` — so every comma family hung here.
+   * the minimum, because `Infinity - 1` is `Infinity` — so every comma family would hang here.
    */
   const wanted = term.repeat?.max ?? 1;
   const max = Math.min(wanted, Math.max(tokens.length - at, min));

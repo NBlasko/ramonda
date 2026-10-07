@@ -13,11 +13,10 @@
 /**
  * A length in a media query, in px — `rem` and `em` at the root's 16px, and nothing else.
  *
- * **Case-insensitive, and it was not.** A CSS unit is a keyword, and keywords are case-insensitive:
- * `40REM` is `40rem`, and a browser reads them as one breakpoint. This read `40REM` as no width at
- * all, which put the rule in the unknown band at the END of the order — so measured in Chromium
- * against plain CSS, `@media (min-width: 40REM)` in one file beat `@media (min-width: 80rem)` in
- * another at a 1600px viewport, in both file orders. The narrower breakpoint won.
+ * **Case-insensitive**, because a CSS unit is a keyword: `40REM` is `40rem`, and a browser reads
+ * them as one breakpoint. Read as no width, `40REM` lands in the unknown band at the END of the
+ * order — measured in Chromium against plain CSS, `@media (min-width: 40REM)` in one file then beat
+ * `@media (min-width: 80rem)` in another at a 1600px viewport, in both file orders.
  */
 function pixelsOf(text: string): number | undefined {
   const found = /^\s*(-?\d*\.?\d+)(px|rem|em)\s*$/i.exec(text);
@@ -29,11 +28,11 @@ function pixelsOf(text: string): number | undefined {
 /**
  * Every width a condition states, as a `min` or a `max`, in both spellings CSS has for one.
  *
- * **The range syntax was read as no width at all**, and it is the spelling MDN now recommends:
- * `(width >= 40rem)` rather than `(min-width: 40rem)`. So every range breakpoint landed in the
- * unknown band together, where they TIE — and a tie is decided by the sheet's position, which is
- * exactly what the layers exist to stop. Measured: `(width >= 40rem)` against `(width >= 80rem)` in
- * two files came out right when the narrow file loaded first and WRONG when the wide one did.
+ * **The range syntax too**, and it is the spelling MDN now recommends: `(width >= 40rem)` rather
+ * than `(min-width: 40rem)`. Read as no width, every range breakpoint lands in the unknown band
+ * together, where they TIE — and a tie is decided by the sheet's position, which is exactly what
+ * the layers exist to stop. Measured: `(width >= 40rem)` against `(width >= 80rem)` in two files
+ * came out right when the narrow file loaded first and WRONG when the wide one did.
  *
  * The feature name may sit on either side of the comparison, or between two of them, and which side
  * it is on flips the meaning: `(40rem <= width)` is a MIN, `(width <= 40rem)` is a max. Written as
@@ -98,19 +97,18 @@ const WIDEST = 4999;
 /**
  * The conditions that carry no width, in the order they OVERRIDE one another.
  *
- * This is Tailwind's own variant order, read out of its `corePlugins.js` rather than invented here —
- * a decision a great many projects have already lived with. Later wins: reduced motion is the
+ * This is Tailwind's own variant order, read out of its `corePlugins.js` rather than invented here
+ * — a decision a great many projects have already lived with. Later wins: reduced motion is the
  * weakest, then the colour scheme, then the medium, then the breakpoints (which sit between these
  * two halves), then capability and device facts, and `forced-colors` last of all because it is the
  * user forcing the page's hand.
  *
- * **The breakpoints sit in the MIDDLE of this list, and that was the decision.** I had put every
- * mode after every breakpoint, which makes a dark-mode rule beat a wide-screen rule for the same
- * property. Tailwind's order is the other way, and the reason to prefer it is which mistake stays
- * silent: theming lives in a BASE block and a modifier adjusts at a breakpoint, so
- * `...$(base); @media (min-width: …) { … }` is the shape people write — and under the mode-wins order
- * that shape loses, with nothing able to report it (a spread's operand is a runtime value). The user
- * made the call.
+ * **The breakpoints sit in the MIDDLE of this list, and that is a decision.** Every mode after
+ * every breakpoint would make a dark-mode rule beat a wide-screen rule for the same property. The
+ * reason to prefer this order is which mistake stays silent: theming lives in a BASE block and a
+ * modifier adjusts at a breakpoint, so `...$(base); @media (min-width: …) { … }` is the shape
+ * people write — and under the mode-wins order that shape loses, with nothing able to report it (a
+ * spread's operand is a runtime value).
  */
 const MODES: readonly RegExp[] = [
   /\(\s*prefers-reduced-motion/,
@@ -136,11 +134,11 @@ const AFTER_WIDTHS = WIDEST_MIN + WIDEST + 1;
 /**
  * How strongly a rule's conditions override, as a number that sorts — the sheet's major order.
  *
- * **A narrower rule has to be emitted later**, and until this existed the sheet could not tell two
- * breakpoints apart. `padding` under `@media (min-width: 40rem)` and again under
- * `@media (min-width: 64rem)` are both conditional and neither is a shorthand, so they ranked the
- * same, and the sheet fell back to the order the file happened to write them in — which another file
- * re-emitting one of the two then reversed. Measured in Chromium: 280 of 750 load orders wrong.
+ * **A narrower rule has to be emitted later.** `padding` under `@media (min-width: 40rem)` and
+ * again under `@media (min-width: 64rem)` are both conditional and neither is a shorthand, so
+ * without a width they rank the same, and the sheet falls back to the order the file happened to
+ * write them in — which another file re-emitting one of the two then reverses. Measured in
+ * Chromium: 280 of 750 load orders wrong.
  *
  * A breakpoint is a NUMBER, so this is what every atomic CSS framework does: order by the query
  * rather than by where it was written. The bands, ascending:
@@ -158,10 +156,10 @@ const AFTER_WIDTHS = WIDEST_MIN + WIDEST + 1;
  * A rule with BOTH is placed by its `min-width`: a band is narrower than the open range it starts
  * from, and no single number orders two bands that overlap only partly.
  *
- * The order of the modes around the breakpoints is {@link MODES}, and it is Tailwind's rather than
- * mine. A width in a unit this cannot resolve — `50ch`, a `calc()` — and a condition the table does
- * not know both land in the last slot, where they tie with each other the way everything conditional
- * used to. Two of THOSE against each other is what is still open; see `PLAN.md`.
+ * The order of the modes around the breakpoints is {@link MODES}. A width in a unit this cannot
+ * resolve — `50ch`, a `calc()` — and a condition the table does not know both land in the last
+ * slot, where they tie with each other. Two of THOSE against each other is what is still open; see
+ * `PLAN.md`.
  */
 /**
  * Whether two sets of conditions can BOTH hold for one element.

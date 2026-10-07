@@ -51,15 +51,16 @@ import { runOn } from "./text";
  * var(--v)`.
  *
  * Both are in the word layer `v`, and nothing puts the narrower one above: through the merge both
- * classes stay, since a narrower shorthand does not clear a wider one, and the stylesheet decides by
- * which file the build read first. Measured in all three engines: right in one load order and wrong
- * in the other. A count once ordered them, and a count is exactly what cannot be used — it moves when
- * CSS adds a longhand, and two releases then disagree. So the shape is refused, the way
- * `override-out-of-order` refuses two conditions no single position can serve.
+ * classes stay, since a narrower shorthand does not clear a wider one, and the stylesheet decides
+ * by which file the build read first. Measured in all three engines: right in one load order and
+ * wrong in the other. A longhand count cannot order them — it moves when CSS adds a longhand, and
+ * two releases then disagree. So the shape is refused, the way `override-out-of-order` refuses two
+ * conditions no single position can serve.
  *
  * Asked through `layerPathFor` itself, of the declarations as the sheet receives them — SPLIT — so
- * the rule and the sheet cannot disagree: a narrower shorthand that splits is pieces in `p`, stronger
- * than `v`, and is not the fault. Nor is the other order, which the merge settles by clearing.
+ * the rule and the sheet cannot disagree: a narrower shorthand that splits is pieces in `p`,
+ * stronger than `v`, and is not the fault. Nor is the other order, which the merge settles by
+ * clearing.
  */
 export function narrowerAfterAWholeShorthand(block: Block, findings: Finding[]): void {
   const flat = segments(block, { split: true }).flatMap((one) => (one.kind === "declarations" ? one.items : []));
@@ -125,10 +126,9 @@ export function overrideOutOfOrder(block: Block, findings: Finding[]): void {
        * another component wrote. There is no order to give them that is CSS's — one sheet, one
        * position, and the author's two blocks each want a different one — so the shape is refused.
        *
-       * `widthSlot`'s own note records this fault for breakpoints and the bands are what fixed it;
-       * inside a band it was never fixed. Conditions that EXCLUDE each other still tie and still
-       * say nothing, because no element is ever matched by both — which is a colour scheme, an
-       * orientation and a medium, and most of what anybody writes.
+       * The bands settle this for breakpoints; inside a band nothing can. Conditions that EXCLUDE
+       * each other still tie and still say nothing, because no element is ever matched by both —
+       * which is a colour scheme, an orientation and a medium, and most of what anybody writes.
        */
       if (
         sheetRank(later) === sheetRank(earlier) &&
@@ -194,8 +194,8 @@ export function overrideOutOfOrder(block: Block, findings: Finding[]): void {
  * Why the sheet puts the earlier one last, in the reader's own terms.
  *
  * Three orders can be the reason, and naming the wrong one sends a reader looking at the wrong
- * thing. The width one is the newest: the sheet reads a breakpoint off its query now, so a narrower
- * rule is emitted after a wider one whatever order they were written in — see `widthSlot`.
+ * thing. One is width: the sheet reads a breakpoint off its query, so a narrower rule is emitted
+ * after a wider one whatever order they were written in — see `widthSlot`.
  */
 function becauseOf(
   earlier: { property: string; conditions: readonly string[] },

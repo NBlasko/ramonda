@@ -62,9 +62,9 @@ interface Inert {
 /**
  * A `display` whose element arranges its own children, so the box properties mean something on it.
  *
- * Three words rather than two, and the third was a false report: `-webkit-box` and
- * `-webkit-inline-box` lay out children and use `gap`, measured in Chromium, and a test for `flex`
- * or `grid` alone reported both as faults on correct CSS.
+ * Three words rather than two: `-webkit-box` and `-webkit-inline-box` lay out children and use
+ * `gap`, measured in Chromium, so a test for `flex` or `grid` alone would report both on correct
+ * CSS.
  *
  * Covered by this: `flex`, `inline-flex`, `grid`, `inline-grid`, the two-value `block flex` and
  * `inline grid`, every `-webkit-` spelling of those, and `-ms-flexbox` / `-ms-grid` — which measure
@@ -85,9 +85,9 @@ const LAYS_OUT_CHILDREN = (display: string): boolean => /\b(flex|grid|box)\b/.te
  * Only this row needs it, and the asymmetry is why: `position: static` and `overflow: visible` fire
  * when the value IS something, so a misspelling is not that value and they go quiet on their own.
  *
- * A vendor spelling needs no exception, and one written here was cut for changing no outcome: no
- * generated row holds `-webkit-box`, so it fails this — and every vendor display CSS has carries
- * `box`, `flex` or `grid` anyway, so the row was already quiet about it either way.
+ * A vendor spelling needs no exception: no generated row holds `-webkit-box`, so it fails this —
+ * and every vendor display CSS has carries `box`, `flex` or `grid` anyway, so the row is quiet
+ * about it either way.
  */
 const A_REAL_DISPLAY = (display: string): boolean => {
   const known = KEYWORDS.display;
@@ -103,10 +103,9 @@ const A_REAL_DISPLAY = (display: string): boolean => {
 /**
  * A size a browser can use without laying anything out, which is what makes `aspect-ratio` inert.
  *
- * Measured, and the first version of the row was wrong about every other shape: beside
- * `width: 140px`, a `height` of `50%`, `calc(50% - 2px)`, `min-content`, `max-content`,
- * `fit-content`, `stretch` or `inherit` all leave `aspect-ratio` doing its job, because none of
- * them is a size until something else has been laid out.
+ * Measured: beside `width: 140px`, a `height` of `50%`, `calc(50% - 2px)`, `min-content`,
+ * `max-content`, `fit-content`, `stretch` or `inherit` all leave `aspect-ratio` doing its job,
+ * because none of them is a size until something else has been laid out.
  *
  * So a plain dimension or a zero, and nothing else. `calc(60px - 2px)` is definite too and is left
  * out: it costs a report nobody was going to write, and the alternative is arithmetic in a rule.
@@ -237,10 +236,8 @@ interface Written {
 /**
  * Every property `declaration-does-nothing` can report, for the page that lists them.
  *
- * The page and the table drifted apart within an hour of both being written: the rule was narrowed
- * in a review — `-webkit-box` added, `aspect-ratio` restricted to plain lengths, the `overflow`
- * longhands made a rescue — and the page went on describing the version before it. Nothing sees a
- * page that is merely wrong, so this is what `docs.test.ts` compares it against.
+ * Nothing sees a page that is merely wrong, so this is what `docs.test.ts` compares it against —
+ * the page and the table otherwise drift the first time a row is narrowed.
  */
 export const INERT_SUBJECTS: readonly string[] = [...new Set(INERT.flatMap((one) => one.subjects))];
 
@@ -261,11 +258,9 @@ export function doesNothing(block: Block, findings: Finding[]): void {
 
   for (const group of groups.values()) {
     /**
-     * One declaration, one finding — `text-overflow` has two rows and a block can fail both.
-     *
-     * Written with `white-space: normal` AND `overflow: visible` it was reported twice on the same
-     * line, which is the repository's own rule about one mistake being one report, broken inside a
-     * single rule. The first row to fire is the one that speaks.
+     * One declaration, one finding — `text-overflow` has two rows and a block can fail both:
+     * written with `white-space: normal` AND `overflow: visible` it would be reported twice on the
+     * same line. The first row to fire is the one that speaks.
      */
     const reported = new Set<string>();
     for (const row of INERT) {

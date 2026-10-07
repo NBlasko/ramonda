@@ -160,8 +160,8 @@ export function holeIn(head: string, marker: string): number | undefined {
 }
 
 /**
- * The pattern for one marker, compiled once — it was compiled on every call, and `holeIn` runs for
- * every head of every block: 5.6% of a build, measured by `scripts/bench-css.mjs`.
+ * The pattern for one marker, compiled once: `holeIn` runs for every head of every block, and
+ * compiling per call was 5.6% of a build in `scripts/bench-css.mjs`.
  */
 const headPatterns = new Map<string, RegExp>();
 function headPattern(marker: string): RegExp {
@@ -206,16 +206,11 @@ export interface ReadOptions {
 /**
  * A read whose job is not to REPORT anything: `undefined` where {@link readBlock} would refuse.
  *
- * Three readers want this — the two in `references.ts` that only need a site's NAME, and the loop in
- * `transform.ts` that carries an imported module's rule across. All three pass `tolerant`, whose
- * comment already says "what is wrong with the block is reported by whoever reads it properly", and
- * all three passed a filename they could not honour: the reference readers passed `""` and the
- * imported-rule loop passed the IMPORTING file's name with an offset into the imported text.
- *
- * Measured: a NUL in a `@@property` block — refused in both modes on purpose, since it is what marks
- * a hole in the compiler's own text — came out of a build as `:1:36  a NUL character cannot be
- * written…`. A refusal naming no file at all, ahead of the read that would have named the right one.
- * The same shape as the review that found a rename writing at positions in a file nobody wrote.
+ * Three readers want this — the two in `references.ts` that only need a site's NAME, and the loop
+ * in `transform.ts` that carries an imported module's rule across. None of them has a filename it
+ * could honour, so a refusal from them would name no file at all — measured, a NUL in a
+ * `@@property` block came out of a build as `:1:36 a NUL character cannot be written…`, ahead of
+ * the read that would have named the right one.
  */
 export function tryReadBlock(source: string, open: number, options: ReadOptions = {}): ReadBlock | undefined {
   try {
@@ -264,17 +259,15 @@ const BRACE_OPEN = 123; /* { */
 /**
  * Where the hole opening at `at` closes — the offset of its `}}` — or -1 when it never does.
  *
- * **It cannot be `indexOf("}}")`**, and that is the whole reason this is a function. The inside of a
- * hole is JavaScript, so `{{ pick({ on: "}}" }) }}` ends at the LAST `}}` and not the first, and
+ * **It cannot be `indexOf("}}")`**, and that is the whole reason this is a function. The inside of
+ * a hole is JavaScript, so `{{ pick({ on: "}}" }) }}` ends at the LAST `}}` and not the first, and
  * `{{ {a: {b: 1}}.a.b }}` has one in the middle of an object literal. Braces, parens, brackets,
- * strings, templates and comments are all counted.
+ * strings, templates, comments and REGEX LITERALS are all counted — `{s.replace(/}/g, "")}` holds a
+ * `}` that closes nothing.
  *
- * **A REGEX LITERAL is counted too**, which it was not until a review measured
- * `{s.replace(/}/g, "")}` coming back as a hole that never closes.
- *
- * Telling a regex from a division looked like it needed a JavaScript lexer, and it does not: it needs
- * the PREVIOUS SIGNIFICANT TOKEN, which is a closed question. After a name, a number, `)`, `]`, `}`
- * or a `++`/`--`, a `/` divides. After anything else — an operator, `(`, `[`, `,`, `:`, the start, or
+ * Telling a regex from a division does not need a JavaScript lexer: it needs the PREVIOUS
+ * SIGNIFICANT TOKEN, which is a closed question. After a name, a number, `)`, `]`, `}` or a
+ * `++`/`--`, a `/` divides. After anything else — an operator, `(`, `[`, `,`, `:`, the start, or
  * one of the keywords in {@link A_REGEX_FOLLOWS} — it opens a regex. Whitespace and comments change
  * nothing, so they are stepped over without touching the answer.
  *
@@ -288,8 +281,8 @@ const BRACE_OPEN = 123; /* { */
  * misjudged slash from swallowing the rest of the block.
  *
  * Exported because three scanners ask the same question — the parser, the formatter's layout, and
- * the rule that looks for a `//` — and two of them used to ask it with `indexOf`, which is how a
- * hole holding an object literal came back cut in half.
+ * the rule that looks for a `//` — and an `indexOf` in any of them cuts a hole holding an object
+ * literal in half.
  */
 export function closingHole(source: string, at: number): number {
   let index = at + 1;
@@ -356,8 +349,7 @@ export function closingHole(source: string, at: number): number {
       depth--;
       divides = true;
     } else if (code === BRACE && closer === BRACE) {
-      // Just PAST the closer, so no caller has to know how long the closer is. It used to return the
-      // first of `}}` and every one of the four call sites added 2.
+      // Just PAST the closer, so no caller has to know how long the closer is.
       if (depth === 0) return index + 1;
       depth--;
       divides = true;
@@ -443,13 +435,14 @@ function isFlagLetter(code: number): boolean {
 /**
  * A character a JAVASCRIPT name or number is made of, which is not what CSS means by one.
  *
- * `rules.ts` has a helper of this name that includes `-`, because a CSS property holds one. Here a
- * `-` is subtraction, and reading it as part of a name would make `a-b` end in a value and turn the
- * `/` after it into a division when it is one — right by accident — while `x /re/` after a minus
- * would go the other way. Its own function rather than the shared one, and this is the note that
- * says the difference was chosen.
+ * The CSS rules have a helper of this name that includes `-`, because a CSS property holds one.
+ * Here a `-` is subtraction, and reading it as part of a name would make `a-b` end in a value and
+ * turn the `/` after it into a division when it is one — right by accident — while `x /re/` after a
+ * minus would go the other way. Its own function rather than the shared one, and this is the note
+ * that says the difference was chosen.
  *
- * `$` and `_` are name characters; a digit is not a name START but this is only ever asked of a run.
+ * `$` and `_` are name characters; a digit is not a name START but this is only ever asked of a
+ * run.
  */
 function isWordCharacter(code: number): boolean {
   return (
@@ -464,27 +457,22 @@ function isWordCharacter(code: number): boolean {
 /**
  * A property name, a colon, and then either a space or the end of the text.
  *
- * **The space is load-bearing and a probe found it.** A bare type selector is a legal prelude —
- * `a:hover { … }` parses today — and it begins with a property-shaped name and a colon exactly like
- * `border: 4px solid` does. What separates them is that a declaration's colon is followed by
- * whitespace or by the value itself, and a pseudo-class's is followed immediately by its own name.
+ * **The space is load-bearing.** A bare type selector is a legal prelude — `a:hover { … }` parses —
+ * and it begins with a property-shaped name and a colon exactly like `border: 4px solid` does. What
+ * separates them is that a declaration's colon is followed by whitespace or by the value itself,
+ * and a pseudo-class's is followed immediately by its own name. So `a:hover` is a selector,
+ * `color:{accent}` is a value, and `border: 4px solid {accent}` is a value — measured against every
+ * prelude in this repository and the four bare-type-selector shapes the parser accepts.
  *
- * So `a:hover` is a selector, `color:{accent}` is a value, and `border: 4px solid {accent}` is a
- * value. Measured against every prelude in this repository and against the four bare-type-selector
- * shapes the parser accepts.
+ * **The NAME is every name CSS allows.** A vendor prefix is ordinary CSS, so requiring an ASCII
+ * letter first would read `-webkit-mask: {m}` as a nested rule. A custom property is `--` and then
+ * anything a name may hold (`--2x`, `--_x`, `--héllo`), and any other property is an optional
+ * single dash, then a letter, an underscore or a non-ASCII character, then name characters. This
+ * regex is only consulted where a `{` follows, so a name it gets wrong still parses with an
+ * ordinary value — which is how such a fault hides.
  *
- * **The NAME is every name CSS allows, which it was not.** A review found that requiring an ASCII
- * letter first read `-webkit-mask: {m}` as a nested rule whose prelude was the declaration — and a
- * vendor prefix on a property is ordinary CSS. So: a custom property is `--` and then anything a
- * name may hold, and any other property is an optional single dash, then a letter, an underscore or
- * a non-ASCII character, then name characters. `--2x`, `--_x` and `--héllo` are all legal custom
- * properties and all three were refused.
- *
- * Nothing noticed because the same names parse correctly with an ordinary value: this regex is only
- * consulted where a `{` follows, so a property that never carried a hole never met it.
- *
- * What it decides now: a `{` after a head of this shape belongs to the VALUE — a `match` body — and
- * not to a rule. See `looksLikeARule`.
+ * What it decides: a `{` after a head of this shape belongs to the VALUE — a `match` body — and not
+ * to a rule. See `looksLikeARule`.
  */
 const A_DECLARATION =
   /^\s*(?:--(?:[\w-]|[\u0080-\uFFFF])+|-?(?:[a-zA-Z_]|[\u0080-\uFFFF])(?:[\w-]|[\u0080-\uFFFF])*)\s*:(\s|$)/;
@@ -493,17 +481,16 @@ const A_DECLARATION =
  * What a `//` inside a block is, in one sentence — said by the `line-comment` RULE and by the
  * parser's refusal, which are two paths to the same fault.
  *
- * Here rather than in `rules.ts` because `rules.ts` already imports from this file and the reverse
- * would be a cycle. One sentence in one place: a second wording is the shape this repository keeps
- * finding, where two halves of one answer drift the first time either is corrected.
+ * Here rather than in the rules because they already import from this file and the reverse would be
+ * a cycle. One sentence in one place, so the two cannot drift.
  */
 /**
  * The message for a call left open in a declaration already read, or nothing.
  *
  * Asked only when a refusal is about to happen: a block that reads has nothing to explain, and this
- * walks what was read rather than the source. `unclosedCall` in `rules.ts` is the tolerant half and
+ * walks what was read rather than the source. `unclosedCall` in the rules is the tolerant half and
  * says the same thing to an editor — the wording lives there, and is repeated here rather than
- * imported because `rules.ts` imports this module and the cycle would be the worse trade.
+ * imported because the rules import this module and the cycle would be the worse trade.
  */
 function unclosedAbove(items: readonly BlockItem[]): { at: number; message: string } | undefined {
   for (let index = items.length - 1; index >= 0; index--) {
@@ -568,13 +555,12 @@ export function readBlock(source: string, open: number, filename: string, option
   /**
    * A literal `U+0000`, refused before anything is read.
    *
-   * `normalise` builds the hole placeholder out of this character, and its note used to say an
-   * author could not write one — because CSS preprocessing turns a NUL into U+FFFD. A block is read
-   * out of a TYPESCRIPT file, where nothing preprocesses it as CSS, so the premise never held: a
-   * review measured a block carrying two of them sharing an identity, and a class, with a block
+   * `normalise` builds the hole placeholder out of this character. CSS preprocessing would turn a
+   * NUL into U+FFFD, but a block is read out of a TYPESCRIPT file, where nothing preprocesses it as
+   * CSS — measured, a block carrying two of them shared an identity, and a class, with a block
    * carrying a real hole. Refused rather than escaped, because it is a control character with no
-   * meaning in CSS — there is nothing to preserve, and refusing keeps the placeholder unforgeable
-   * by construction rather than by an argument that turned out to be wrong.
+   * meaning in CSS: there is nothing to preserve, and refusing keeps the placeholder unforgeable by
+   * construction.
    *
    * In both modes. An editor cannot want this either, and a keystroke does not produce it.
    */
@@ -634,7 +620,7 @@ export function readBlock(source: string, open: number, filename: string, option
     if (written !== undefined) {
       at = close;
       // `resolved`, because this text is the compiler's and holds nothing anybody can act on — see
-      // the field's own note for the false report that found it.
+      // the field's own note.
       return { kind: "text", text: written, at: opens, resolved: true };
     }
 
@@ -824,11 +810,10 @@ export function readBlock(source: string, open: number, filename: string, option
     /**
      * The head as the READ will see it, built as the scan goes.
      *
-     * Not `source.slice(at, index)`, which is what this passed to `opensAHole` until a review looked
-     * at it. `readHead` collapses every comment to one space before asking the same question, so the
-     * two disagreed wherever a comment sat near a colon: one between a property and its colon was a rule to the
-     * lookahead and a hole to the reader, and a legal declaration was refused as a hole in a
-     * selector. The comment that used to be here claimed they could not disagree.
+     * Not `source.slice(at, index)`: `readHead` collapses every comment to one space before asking
+     * the same question, so the raw slice disagreed wherever a comment sat near a colon — one
+     * between a property and its colon was a rule to the lookahead and a hole to the reader, and a
+     * legal declaration was refused as a hole in a selector.
      */
     let head = "";
 
@@ -845,15 +830,13 @@ export function readBlock(source: string, open: number, filename: string, option
         continue;
       }
       /**
-       * A comment, which this did not read at all — while `skipTrivia`, `readHead` and `readValue`
-       * all do. Three faults came out of that one gap, and the loud one EMITTED: a `;`, a `(` or a
-       * `)` inside a prelude's comment ended this scan, so a prelude carrying a commented-out
-       * `focus;` was read
-       * as a declaration whose value was the rule's body, and the module that came out was a syntax
-       * error at no line the author had written.
+       * A comment, read here as `skipTrivia`, `readHead` and `readValue` read it. Unread, a `;`, a
+       * `(` or a `)` inside a prelude's comment ends this scan: a prelude carrying a commented-out
+       * `focus;` was read as a declaration whose value was the rule's body, and the module that
+       * came out was a syntax error at no line the author had written.
        *
-       * One space, for the reason `readHead` gives: a comment separates tokens, and joining `1px` to
-       * `2px` would make one value out of two.
+       * One space, for the reason `readHead` gives: a comment separates tokens, and joining `1px`
+       * to `2px` would make one value out of two.
        */
       if (code === 47 /* / */ && source.charCodeAt(index + 1) === 42) {
         const close = source.indexOf("*/", index + 2);
@@ -1256,13 +1239,13 @@ export function readBlock(source: string, open: number, filename: string, option
         flush();
         parts.push(pastHole());
         /**
-         * The run AFTER a hole starts after the hole, and it used to start where the hole did.
+         * The run AFTER a hole starts after the hole, not where the hole did.
          *
-         * `flush` moves the mark to `at`, and at that moment `at` is the `$` — so the trailing run
-         * of `4px solid {w} inset` recorded the hole's own offset. Two runs claiming one position is
-         * what broke the reverse lookup: it sorts by author offset, the trailing run sorted before
-         * the hole between them, and **every author offset past the first hole in a value mapped
-         * nowhere**. Measured by sweeping every offset in a block through it and back.
+         * `flush` moves the mark to `at`, and at that moment `at` is the `$` — so without this the
+         * trailing run of `4px solid {w} inset` would record the hole's own offset. Two runs
+         * claiming one position breaks the reverse lookup: it sorts by author offset, the trailing
+         * run sorts before the hole between them, and every author offset past the first hole in a
+         * value maps nowhere. Measured by sweeping every offset in a block through it and back.
          */
         textAt = at;
         continue;
@@ -1364,10 +1347,9 @@ export function readBlock(source: string, open: number, filename: string, option
         /**
          * A condition is `when` and ONE escape, and nothing else.
          *
-         * **Measured before this refusal existed: a condition with text after its hole compiled.** A
-         * hole is let into a prelude only when the text so far is exactly the marker, and after
-         * recording it the read carries on — so anything written after it joined the prelude as
-         * ordinary text, and nothing asked about it.
+         * A hole is let into a prelude only when the text so far is exactly the marker, and after
+         * recording it the read carries on — so without this, anything written after it joined the
+         * prelude as ordinary text and compiled.
          */
         const branch = branchOf(prelude);
         if (OPENS_A_CONDITION.test(prelude) && (branch === undefined || branch.kind === "else") && !tolerant) {
@@ -1394,13 +1376,13 @@ export function readBlock(source: string, open: number, filename: string, option
 
         if (!tolerant) {
           /**
-           * **A `//` comment, named as one**, because otherwise the same file got two answers.
+           * **A `//` comment, named as one**, so the build and the editor say the same thing.
            *
            * A line comment is normally absorbed into the NEXT declaration's key, so the block still
            * parses and `line-comment` reports it with the sentence that says what to do. When it is
-           * the last thing in a block there is no next declaration, so this refusal ran first —
-           * and a person saw `CSS has no \`//\` comment` in the editor, which reads tolerantly, and
-           * *"`// last` is not a declaration"* from the build. Both true, one useless.
+           * the last thing in a block there is no next declaration, so this refusal runs first —
+           * and without this the editor would say `CSS has no \`//\` comment` and the build *"`//
+           * last` is not a declaration"*. Both true, one useless.
            *
            * The rule's own words rather than a second wording of them: one sentence, one place.
            */
@@ -1472,12 +1454,12 @@ export function readBlock(source: string, open: number, filename: string, option
       /**
        * A colon with nothing after it, which a BUILD may not accept and an editor must.
        *
-       * `.r-x { color:; }` is what it emitted — a declaration no browser accepts, on a class still
-       * written into the markup, so the element carried a rule that did nothing. A review found it.
+       * Accepted, it emits `.r-x { color:; }` — a declaration no browser accepts, on a class still
+       * written into the markup, so the element carries a rule that does nothing.
        *
        * Refused only in the strict read, because a value with nothing typed yet is the state an
-       * editor is in most: the tolerant read keeps the declaration so the caret has a value position
-       * to complete in.
+       * editor is in most: the tolerant read keeps the declaration so the caret has a value
+       * position to complete in.
        */
       if (!tolerant && value.length === 0) {
         refuse(`\`${property.trim()}\` has no value — a declaration is \`property: value;\`.`, source, from, filename);

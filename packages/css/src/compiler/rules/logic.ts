@@ -10,22 +10,22 @@ import { type Finding } from "./index";
 /**
  * A RUNTIME value in a declaration — `color: {this.brand}`. **Refused, everywhere.**
  *
- * ## What it cost
+ * ## Why
  *
- * A hole was the one thing in a block with a per-element cost. Measured, the same colour written
- * two ways: `color: red` emits `r-c-red { color:red; }` and the element carries a class, while
- * `color: {this.brand}` emits `color:var(--r-…-0)` and every instance carries an inline custom
- * property. A list of ten thousand rows is ten thousand style attributes.
+ * A hole is a per-element cost. Measured, the same colour written two ways: `color: red` emits
+ * `r-c-red { color:red; }` and the element carries a class, while `color: {this.brand}` emits
+ * `color:var(--r-…-0)` and every instance carries an inline custom property. A list of ten thousand
+ * rows is ten thousand style attributes.
  *
- * And it could not be shared. A hole belongs to the declaration it stands in, so two declarations
- * wanting one value got two custom properties:
+ * And it cannot be shared. A hole belongs to the declaration it stands in, so two declarations
+ * wanting one value get two custom properties:
  *
  *     padding-left: {this.v}; padding-right: {this.v};       TWO variables
  *     padding-left: var({pad}); padding-right: var({pad});   ONE, however many read it
  *
- * ## What replaced it
+ * ## What to write instead
  *
- * Two doors, and between them they cover what a hole was reached for:
+ * Two doors, and between them they cover what a hole is reached for:
  *
  * - **`match`**, for variation that can be ENUMERATED — which is most of it. Every arm is its own
  *   rule and its own class, so nothing is built while the page renders.
@@ -35,17 +35,16 @@ import { type Finding } from "./index";
  * ## What is NOT a hole, though it has braces
  *
  * The braces are still how an expression gets in; what is refused is a value in a declaration.
- * `when $(this.on) { … }` and `...$(on ? hot : cold)` choose between whole rules and write nothing on
- * the element. `match $(this.variant)` chooses between classes. `var({angle})` and `{angle}: 45deg`
- * name a `@@property` site, which is text by the time the CSS is written.
+ * `when $(this.on) { … }` and `...$(on ? hot : cold)` choose between whole rules and write nothing
+ * on the element. `match $(this.variant)` chooses between classes. `var({angle})` and `{angle}:
+ * 45deg` name a `@@property` site, which is text by the time the CSS is written.
  *
  * ## A declared variable is not a hole either — but the BRACES decide, not the name
  *
- * Measured, and it was assumed wrongly first: `color: $color.brand` written bare parses as a
- * `VariablePart` and becomes a `var()` in the stylesheet, while `color: {$color.brand}` — the same
- * variable, in braces — parses as a `HolePart` and set a custom property per element. So the second
- * is reported and the bare spelling is the fix. `var(--brand)` written out is ordinary text and is
- * never asked about.
+ * Measured: `color: $color.brand` written bare parses as a `VariablePart` and becomes a `var()` in
+ * the stylesheet, while `color: {$color.brand}` — the same variable, in braces — parses as a
+ * `HolePart` and would set a custom property per element. So the second is reported and the bare
+ * spelling is the fix. `var(--brand)` written out is ordinary text and is never asked about.
  */
 export function holeNotAllowed(block: Block, findings: Finding[]): void {
   for (const { declaration, part } of runtimeValuesIn(block)) {
@@ -211,10 +210,8 @@ export function matchArms(block: AnyBlock, findings: Finding[]): void {
  * `:hover|background` — which a merge cannot do at runtime. A GUARD is fine: `when` changes no key,
  * it only decides whether the whole map lands.
  *
- * **Refused by the build already, and by nothing else.** The refusal lived in `transform`, so the
- * editor and `ramonda-check` were both green on a file the build stops on — see `checkBlock`'s own
- * note about `@property`, which was this fault one rule earlier. The transform still refuses; it
- * refuses because this reports, which is what makes the two answers one answer.
+ * A rule rather than a refusal inside `transform` alone, so the editor and `ramonda-check` say it
+ * too. The transform refuses because this reports, which is what makes the two answers one answer.
  */
 export function spreadOutOfPlace(block: Block, findings: Finding[]): void {
   const walkItems = (items: readonly BlockItem[], scoped: boolean): void => {

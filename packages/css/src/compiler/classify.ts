@@ -20,14 +20,13 @@ import { type Term, alternativesOf, componentsOf, parseValueSyntax } from "./val
  * The fourth is the odd one and the reason this is not a lookup. `font-synthesis: weight` does not
  * give `font-synthesis-weight` the value `weight`; it turns it ON. The word names the slot. No
  * grammar of a longhand mentions it, so the first three rules all draw a blank and the family reads
- * as unclassifiable — which is exactly what it did until this was added.
+ * as unclassifiable.
  *
  * ## Why the grammar has to be FOLLOWED, not read
  *
  * `border-bottom-color` is written `<'border-top-color'>` — a reference to another property rather
- * than a type. Matching `<color>` against that text fails, and it failed silently: the component
- * was then resolved into its own alternatives and `border-bottom` came out with 222 of them
- * instead of 3. So a property's grammar is read through its references before anything is matched
+ * than a type. Matching `<color>` against that text fails silently: the component is then
+ * resolved into its own alternatives and `border-bottom` comes out with 222 of them instead of 3. So a property's grammar is read through its references before anything is matched
  * against it.
  */
 
@@ -165,14 +164,12 @@ export function acceptedBy(term: Term, grammar: GrammarOf, depth = 0, seen = new
     }
     if (one.name === undefined) {
       /**
-       * A GROUP standing where a component stands, and dropping it dropped what was inside.
+       * A GROUP standing where a component stands is one component, and what is inside it counts.
        *
        * `<baseline-position>` is `[ first | last ]? && baseline`: the group is one component of the
-       * `&&` and has no name, so it fell past every branch above and only `baseline` came back.
-       * Found by building a second table with this function and diffing it against the one the
-       * checker already had — `align-content` knew `first` and `last` and this did not. Measured,
-       * it cost two slots in the token table their own vocabulary, `text-emphasis-style` and
-       * `position-try-fallbacks`, which then refused values they could have split.
+       * `&&` and has no name, so without this it falls past every branch above and only `baseline`
+       * comes back — measured, `text-emphasis-style` and `position-try-fallbacks` then lost their
+       * own vocabulary in the token table and refused values they could have split.
        */
       if (one.kind === "alt" || one.kind === "seq" || one.kind === "or" || one.kind === "and")
         absorb(acceptedBy(one, grammar, depth, seen));

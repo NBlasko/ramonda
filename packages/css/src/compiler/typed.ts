@@ -20,14 +20,14 @@ import type { RegisteredSite } from "./variables";
 import type { VirtualFile } from "./virtual";
 
 /**
- * The rules that need a `ts.Program`, which is what separates them from every rule in `rules.ts`.
+ * The rules that need a `ts.Program`, which is what separates them from every rule in `rules/`.
  *
  * ## Why they cannot live beside the others
  *
- * A rule in `rules.ts` reads a parsed `Block` and nothing else — no value to follow, no declaration
+ * A rule in `rules/` reads a parsed `Block` and nothing else — no value to follow, no declaration
  * to resolve. Every rule here asks what a CALLER was promised, and the promise is written in a
- * type. So they need the checker, and putting them in `rules.ts` would make every rule pay for a
- * program that almost none of them have any use for.
+ * type. So they need the checker, and putting them beside the others would make every rule pay for
+ * a program that almost none of them have any use for.
  *
  * ## Where they run, and where they cannot
  *
@@ -45,7 +45,7 @@ import type { VirtualFile } from "./virtual";
  */
 
 /**
- * The ids these rules use, for a consumer that has to tell them from a rule in `rules.ts`.
+ * The ids these rules use, for a consumer that has to tell them from a rule in `rules/`.
  *
  * `inOrder` drops a `TS2353` at the same character as any rule of ours, because a rule and the
  * compiler saying the same thing twice is the fault that filter exists for. Neither rule here ever
@@ -90,9 +90,9 @@ interface Helpers {
  *
  * `properties.ts` declares `[COMPILED]: true` on `CssBlock`, and a member keyed by a unique symbol
  * is escaped to `__@<name>@<id>`. That is the block's IDENTITY, and asking for it is the only way
- * to tell one from a look-alike: measured, a project declaring its own
- * `type CssBlock = { className: string }` was reported by these rules, because they asked for the
- * NAME — and the extension opens this plugin on every project an editor has.
+ * to tell one from a look-alike: asked by NAME, a project declaring its own `type CssBlock = {
+ * className: string }` is reported by these rules — and the extension opens this plugin on every
+ * project an editor has.
  *
  * Keying on the brand is also what makes an import alias and a generated module work: neither
  * changes the members, and `css-system/index.ts` re-exports the very same interface.
@@ -122,7 +122,7 @@ function branded(type: ts.Type): ts.Type | undefined {
  * **Told apart by INDEX SIGNATURES rather than by a name or a count.** `CssBlockShape` has three —
  * one each for a nested rule, an at-rule and a dashed name — and a narrowed list is a plain object
  * type with none. Measured: 828 properties and 3 index infos against 1 and 0. A project's own
- * generated shape reads as the default too, which a name comparison would have got wrong the day
+ * generated shape reads as the default too, which a name comparison would get wrong the day
  * somebody renamed theirs.
  */
 function allowedBy(checker: ts.TypeChecker, type: ts.Type): readonly string[] | undefined {
@@ -132,9 +132,9 @@ function allowedBy(checker: ts.TypeChecker, type: ts.Type): readonly string[] | 
   /**
    * Read off the `[ALLOWS]` MEMBER rather than off a type argument.
    *
-   * `CssBlock` is `string & { [ALLOWS]: A }` now, which is a type alias of an intersection and not a
+   * `CssBlock` is `string & { [ALLOWS]: A }`, which is a type alias of an intersection and not a
    * type REFERENCE — so `getTypeArguments` answers with nothing, and a slot that narrowed anything
-   * silently stopped being read. The member is where the list is written down and is what the
+   * would silently stop being read. The member is where the list is written down and is what the
    * phantom is for; asking it directly works whichever shape the type is declared in.
    */
   const carries = block.getProperties().find((each) => (each.escapedName as string).startsWith(ALLOWS));
@@ -176,10 +176,10 @@ function reaches(checker: ts.TypeChecker, node: ts.Node, out: Set<ts.Node>, seen
             reaches(checker, declaration.body, out, seen);
           }
           /**
-           * A destructured binding and the property it came FROM are two declarations of one
-           * thing, and a RENAME is what makes that visible: `const { css: mine } = props` puts the
-           * prop under a name the grouping by name can never match. Measured — it was one of three
-           * shapes reported while being used perfectly well.
+           * A destructured binding and the property it came FROM are two declarations of one thing,
+           * and a RENAME is what makes that visible: `const { css: mine } = props` puts the prop
+           * under a name the grouping by name can never match, so without this it is reported while
+           * being used perfectly well.
            */
           if (ts.isBindingElement(declaration)) {
             /**
@@ -237,11 +237,11 @@ function calls(node: ts.Node, name: string): node is ts.CallExpression {
  *
  * ## It walks BACKWARD, from the consumers
  *
- * The obvious pass — from the declaration out to its references — was written first and reported a
- * prop that IS used: `const mine = props.sx; ...$(mine)` reaches a block through one local, and a
- * reference walk sees an assignment rather than a spread. So the pass runs the other way, from
- * every helper call back through what each name was declared as, and the set it builds is *what was
- * consumed* rather than *where this went*.
+ * A walk from the declaration out to its references reports a prop that IS used: `const mine =
+ * props.sx; ...$(mine)` reaches a block through one local, and a reference walk sees an assignment
+ * rather than a spread. So the pass runs the other way, from every helper call back through what
+ * each name was declared as, and the set it builds is *what was consumed* rather than *where this
+ * went*.
  *
  * ## Its one honest limit
  *
@@ -309,13 +309,9 @@ function neverUsed(
        *
        * **`className` is matched by NAME, and it has to be.** A block is a string, so the attribute
        * it lands on is declared `string` — there is no block type in that position for a contextual
-       * match to find. It used to be `css`, whose own type was a structural shape this compiler may
-       * not import, so the answer was the same and the name was the other one.
-       *
-       * **Measured when `css` went: every component that forwards styles was reported as never
-       * using its prop** — `<div className={props.css}>` is the ordinary shape, and it is the one
-       * this rule exists to leave alone. A false report on the ordinary case is the one failure a
-       * checker does not survive.
+       * match to find. Without it, every component that forwards styles is reported as never using
+       * its prop: `<div className={props.css}>` is the ordinary shape, and a false report on the
+       * ordinary case is the one failure a checker does not survive.
        *
        * `css` is kept beside it because a COMPONENT may still call its own prop that, and handing a
        * block to one is a use like any other — that half is a contextual match below, but a wrapper
@@ -332,8 +328,8 @@ function neverUsed(
       /**
        * Anything whose CONTEXTUAL type is a block has been handed somewhere that takes one, which
        * is a use however it was written — a JSX attribute, a property in an object, an argument to
-       * an ordinary function. Asking the position's KIND instead missed the third, measured: a
-       * component that hands its prop to a helper was reported while using it perfectly well.
+       * an ordinary function. Asking the position's KIND instead misses the third: a component that
+       * hands its prop to a helper would be reported while using it perfectly well.
        */
       if (ts.isExpression(node)) {
         const wanted = checker.getContextualType(node);
@@ -416,9 +412,9 @@ function overriddenBelow(
       /**
        * One pass in source order, carrying what the spreads SO FAR have promised.
        *
-       * Written the other way round first — every spread, then everything after it — and a block
-       * with two spreads reported one declaration twice, at the same character. A declaration is
-       * one fault whatever it clears, which is the same answer the rest of this package gives.
+       * Every spread and then everything after it would report one declaration twice, at the same
+       * character, in a block with two spreads. A declaration is one fault whatever it clears,
+       * which is the same answer the rest of this package gives.
        */
       const promised = new Set<string>();
 
@@ -459,14 +455,6 @@ function overriddenBelow(
   visit(file);
 }
 
-/**
- * Both rules over a whole program, with every position already mapped to the author's own file.
- *
- * A file with no overlay is the author's text as it stands, so an offset is where it already is.
- * A file WITH one holds a block, and everything after that block has moved — so the offset is asked
- * of {@link VirtualFile.homeOf}, and a position that maps nowhere is scaffolding this compiler
- * wrote and is dropped rather than shown.
- */
 /**
  * Both rules over ONE file, with every position already mapped to the author's own text.
  *
@@ -527,7 +515,7 @@ export function typedFindingsFor(
 
 /**
  * A custom property made up in a `style` attribute, in a project that switched that off — the
- * attribute's half of `unknown-custom-property`; the block's is in `rules.ts`. A key that sets one
+ * attribute's half of `unknown-custom-property`; the block's is in `rules/`. A key that sets one
  * (`"--brand": …`), and a `var(--brand)` in a value — in an object, or in a `style` string. What it
  * cannot see is the same as the other attribute check's: a computed key, an object built elsewhere.
  */
@@ -599,12 +587,12 @@ function styleMakesOneUp(
 /**
  * A `style` attribute setting a declared variable its declaration does not allow.
  *
- * Measured before this: `style={{ "--color-surface-sunken": "red" }}` and the string spelling
- * `style="--color-surface-sunken: red"` both passed, while `toStyle` refused the same setting — the
- * one door meant for it was the only one closed. The judgement is `declaredSet.ts`'s, shared with a
- * block and a stylesheet. A value this cannot read (a variable, a call) still refuses a FIXED
- * variable, since nothing may set one; a ranged one is then left alone. What it cannot see at all: a
- * computed key, an object built elsewhere, and `el.style.setProperty`.
+ * Without it, `style={{ "--color-surface-sunken": "red" }}` and the string spelling
+ * `style="--color-surface-sunken: red"` both pass, while `toStyle` refuses the same setting — the
+ * one door meant for it would be the only one closed. The judgement is `declaredSet.ts`'s, shared
+ * with a block and a stylesheet. A value this cannot read (a variable, a call) still refuses a
+ * FIXED variable, since nothing may set one; a ranged one is then left alone. What it cannot see at
+ * all: a computed key, an object built elsewhere, and `el.style.setProperty`.
  */
 function styleSetsADeclared(
   file: ts.SourceFile,
@@ -686,17 +674,16 @@ export function typedFindings(
  * for, from the other end: there the value was handed over and never consumed, here it is consumed
  * and never handed over.
  *
- * It matters more now than it did. With the hole gone, `@@property` is how a value that changes at
- * run time reaches CSS at all — so a forgotten setter is not an unusual mistake, it is THE mistake
- * this door makes possible.
+ * With no hole, `@@property` is how a value that changes at run time reaches CSS at all — so a
+ * forgotten setter is not an unusual mistake, it is THE mistake this door makes possible.
  *
  * ## What counts as setting it, and why the bar is so low
  *
  * Two things: a block that declares the name, which the CSS half already knows, and **any reference
- * to the binding in TypeScript at all**. The second is deliberately not narrowed to
- * `style={{ [angle]: v }}` or to `toStyle`: the binding is a string, so it reaches a setter through
- * any expression a person can write — an array, a helper, a prop, a re-export. Narrowing would have
- * to follow all of them, and the one it missed would be a false report on working code.
+ * to the binding in TypeScript at all**. The second is deliberately not narrowed to `style={{
+ * [angle]: v }}` or to `toStyle`: the binding is a string, so it reaches a setter through any
+ * expression a person can write — an array, a helper, a prop, a re-export. Narrowing would have to
+ * follow all of them, and the one it missed would be a false report on working code.
  *
  * So what is reported is the case where the name is written in exactly one place — its own
  * declaration — and read from blocks. Nothing else in the program mentions it. There is no
@@ -833,19 +820,18 @@ function declarationOf(file: ts.SourceFile, name: string): ts.Identifier | undef
  * cascade does and what a merge is for. The page renders, with one declaration too many, and
  * nothing says so.
  *
- * ## Why it only became reachable now
+ * ## Why the type cannot catch it
  *
  * The brand refuses a joined string where a BLOCK is wanted — `` `${a} ${b}` `` cannot be spread
  * into another block, asserted six ways. But `className` takes a plain `string`, and a block is a
- * string, so the one place it matters is the one place the type cannot speak. That gap opened when
- * the `css` prop went.
+ * string, so the one place it matters is the one place the type cannot speak.
  *
  * ## What it does NOT report
  *
  * One block and anything else. `` `lead ${card}` `` is the ordinary way to put a class of your own
- * beside a block, and it is CORRECT: a foreign class keys on itself, so merging it changes nothing —
- * measured, the two give the same string byte for byte. Reporting it would be a false report on the
- * shape the documentation teaches.
+ * beside a block, and it is CORRECT: a foreign class keys on itself, so merging it changes nothing
+ * — measured, the two give the same string byte for byte. Reporting it would be a false report on
+ * the shape the documentation teaches.
  */
 function joinedNotMerged(
   checker: ts.TypeChecker,
@@ -1008,12 +994,11 @@ function stateIsATuple(
   /**
    * A key that opens a nested rule in a block shape — a selector, or an at-rule that may nest.
    *
-   * **The key is where the tightening has to happen, and that was measured the hard way.** The first
-   * version asked only whether the name began with `&` or `@` and leaned on the ELEMENT to tell a
-   * block shape from anything else. The element cannot carry that weight: of 34 ordinary field names
-   * checked — `x`, `y`, `content`, `order`, `filter`, `all`, `width`, `color` — **all 34 are CSS
-   * properties**, so `{ x?: number; y?: number }` passes any test made of the property list. A
-   * JSON-LD `"@type"` and a `"&ref"` of somebody's own were both reported.
+   * **The key is where the tightening has to happen.** Asking only whether the name begins with `&`
+   * or `@` leaves the ELEMENT to tell a block shape from anything else, and it cannot: of 34
+   * ordinary field names checked — `x`, `y`, `content`, `order`, `filter`, `all`, `width`, `color`
+   * — **all 34 are CSS properties**, so `{ x?: number; y?: number }` passes any test made of the
+   * property list, and a JSON-LD `"@type"` and a `"&ref"` of somebody's own would both be reported.
    *
    * So the key is asked whether it is CSS. `&` has to continue as a selector does — CSS cannot
    * concatenate an identifier onto the parent, so `&ref` is not a selector at all — and `@` has to
@@ -1073,15 +1058,16 @@ function stateIsATuple(
 }
 
 /**
- * An `interface` handed to `CssBlock` — a refusal whose message sends the author to the wrong place.
+ * An `interface` handed to `CssBlock` — a refusal whose message sends the author to the wrong
+ * place.
  *
  * ## What the fault is
  *
  * `CssBlock<A>` constrains `A` to `CssBlockShape`, which is built out of index signatures — one for
- * `&`-keys, one for `@`-keys, one for custom properties. **TypeScript gives an interface no implicit
- * index signature**, so an interface satisfies none of them however it is written. Measured, with
- * the correct array spelling and with no state at all, both refused; the identical `type` beside
- * them is clean.
+ * `&`-keys, one for `@`-keys, one for custom properties. **TypeScript gives an interface no
+ * implicit index signature**, so an interface satisfies none of them however it is written.
+ * Measured, with the correct array spelling and with no state at all, both refused; the identical
+ * `type` beside them is clean.
  *
  * ## Why a rule, when the compiler already reports it
  *
@@ -1094,11 +1080,11 @@ function stateIsATuple(
  * word that would fix it is the one word missing. An author reads that and goes looking INSIDE the
  * interface, where there is nothing to find.
  *
- * **So this replaces the compiler's word rather than joining it**, which no typed rule has had to do
- * before: every other one answers a question TypeScript cannot ask, and `inOrder` lets both speak at
- * one character for exactly that reason. This one says the same thing better, so `check.ts` drops
- * the `TS2344` where this fires. The rule is reported on the same node the compiler used, which is
- * what makes that drop a position match rather than a guess.
+ * **So this replaces the compiler's word rather than joining it.** Every other typed rule answers a
+ * question TypeScript cannot ask, and `inOrder` lets both speak at one character for exactly that
+ * reason. This one says the same thing better, so `check.ts` drops the `TS2344` where this fires.
+ * The rule is reported on the same node the compiler used, which is what makes that drop a position
+ * match rather than a guess.
  *
  * ## What it does not report
  *
@@ -1209,8 +1195,8 @@ function wholeAcrossBlocks(
 
   /**
    * A value as the SHEET gets it, as far as this rule asks: a `$` path is a `var()` there, alone or
-   * as part of a value — `1px solid $color.a` is written as a template. §17: reading only string
-   * literals missed every shorthand a variable keeps whole. Anything else is not read.
+   * as part of a value — `1px solid $color.a` is written as a template, and reading only string
+   * literals would miss every shorthand a token keeps whole (§17). Anything else is not read.
    */
   const valueOf = (value: ts.Expression): string | undefined => {
     if (ts.isStringLiteral(value) || ts.isNoSubstitutionTemplateLiteral(value)) return value.text;

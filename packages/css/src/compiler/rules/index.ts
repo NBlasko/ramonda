@@ -185,32 +185,25 @@ export const RULE_IDS = [
 export type RuleId = (typeof RULE_IDS)[number];
 
 /**
- * A block written as a bare JSX attribute, which this no longer compiles.
+ * A block written as a bare JSX attribute, which this does not compile.
  *
- * ## Why the spelling went away
+ * ## Why the spelling is not supported
  *
  * **A block is a TypeScript value, and a bare attribute is the one spelling that is not one.**
- * `css={@@( … )}` and `const panel = @@( … )` are expressions; `css=@@( … )` is a shape only JSX has,
- * and supporting it meant this package extended JSX rather than TypeScript. That was the decision,
- * and everything below is what it cost while it was allowed:
+ * `css={@@( … )}` and `const panel = @@( … )` are expressions; `css=@@( … )` is a shape only JSX
+ * has, and supporting it would mean this package extends JSX rather than TypeScript. Two tools
+ * settle it:
  *
  * - **An editor stops consulting syntax injections the moment it enters a tag's attribute list.**
  *   Measured with a grammar that does nothing but match one word: it colours a FIRST attribute and
- *   is never asked about a second. So a bare block was coloured in one position and read as an
- *   error in every other — with nothing on screen to say why, because what failed is a grammar
- *   nobody can see.
- * - **Prettier never offers a plugin the chance to print an attribute value**, so the formatter had
- *   to hand back the braced spelling anyway. The file a person saved was not the file they wrote.
+ *   is never asked about a second. So a bare block is coloured in one position and read as an
+ *   error in every other, with nothing on screen to say why.
+ * - **Prettier never offers a plugin the chance to print an attribute value**, so the formatter
+ *   would have to hand back the braced spelling anyway.
  *
  * This rule is what a reader meets instead, and the fix it names is the whole change: put the block
- * in the braces JSX already has.
- *
- * ## Why it stops a build
- *
- * Its predecessor, `uncolourable-block`, was a SUGGESTION the editor drew and the build ignored —
- * correct while the spelling was supported, because nothing was wrong. It is not a suggestion now:
- * a spelling this does not compile has to be refused where it is written, not left to produce a
- * class nobody can read in an editor that will not colour it.
+ * in the braces JSX already has. It stops the build because a spelling this does not compile has to
+ * be refused where it is written.
  */
 export function checkSite(_source: string, site: BlockSite): Finding[] {
   if (!site.wrap) return [];
@@ -237,12 +230,11 @@ export function checkSite(_source: string, site: BlockSite): Finding[] {
  * survives into the bundler, and what an author gets is a syntax error somewhere else entirely,
  * naming neither the block nor the line.
  *
- * **It became reachable when the `css` prop went.** A block is a string and goes on `className`, so
- * joining one with a class of the author's own is an ordinary thing to want and a template is the
- * first thing anybody reaches for. `mergeClassNames` is the answer and is found in a call argument
- * other position — measured: attribute, assignment, call argument, object value, array element,
- * `return`, arrow body and ternary all find a block; a template substitution is the only one that
- * does not.
+ * A block is a string and goes on `className`, so joining one with a class of the author's own is
+ * an ordinary thing to want, and a template is the first thing anybody reaches for.
+ * `mergeClassNames` is the answer. Measured: attribute, assignment, call argument, object value,
+ * array element, `return`, arrow body and ternary all find a block; a template substitution is the
+ * only position that does not.
  */
 export function checkTemplates(source: string): Finding[] {
   return blocksInATemplate(source).map((at: number) => ({
@@ -308,19 +300,13 @@ export function checkText(source: string, open: number, end: number): Finding[] 
         message: LINE_COMMENT,
       });
       /**
-       * **Every one of them, and this used to stop at the first.**
-       *
-       * The note here read *"One per block: the rest of the line is already claimed, and a file full
-       * of them is one habit"* — sound when it was written, and undercut by a later measurement.
+       * **Every one of them**, not only the first.
        *
        * TypeScript refuses EVERY line comment, because the virtual file writes the comment and the
        * next property as one key, and `check.ts` drops that duplicate only where a rule of ours
-       * already spoke. So a file with three comments showed one good message and two reading
-       * *"'\"// two\\n  color\"' does not exist in type"* — a comment and the next property mashed
-       * together. Reporting each one leaves the compiler nothing to say badly.
-       *
-       * The habit argument holds the other way too: somebody who wrote three wants to know there are
-       * three, because it is one edit repeated rather than three decisions.
+       * already spoke. Reporting one per block left a file with three comments showing one good
+       * message and two reading *"'\"// two\\n color\"' does not exist in type"*. Reporting each
+       * one leaves the compiler nothing to say badly.
        *
        * The rest of the LINE is still skipped — a second `//` on the same line is inside the first
        * one's text and is not a second fault.
@@ -403,9 +389,8 @@ export function checkBlock(written: AnyBlock, options: CheckOptions = {}): Findi
    * The per-property half, with anything the sweep above already named left out.
    *
    * `units` at the top of the config and `units` inside `properties` are different mechanisms with
-   * one name — the design review said so, and pass 4 gave the second one a rule. Setting both then
-   * reported the same value twice. One value, one fault, one report; two different units in one
-   * value are still two.
+   * one name, and setting both would report the same value twice. One value, one fault, one report;
+   * two different units in one value are still two.
    */
   unitNotAllowedPerProperty(block, config?.properties, findings);
   valueNotAllowed(block, config?.properties, findings);
@@ -429,9 +414,9 @@ export function checkBlock(written: AnyBlock, options: CheckOptions = {}): Findi
   }
   tooManyValues(block, config?.properties, findings);
   {
-    // Review round 5: a declaration SETTING a token is where a colour is written — that is a theme —
-    // and its value is the range's to judge (`token-set-against-its-declaration`). Measured: a ranged
-    // token set to a value in its range was refused as a hardcoded colour, two rules saying opposite
+    // A declaration SETTING a token is where a colour is written — that is a theme — and its value
+    // is the range's to judge (`token-set-against-its-declaration`). Without this, a ranged token
+    // set to a value in its range was refused as a hardcoded colour: two rules saying opposite
     // things about one line. So `hardcoded` stands aside on it, whichever of its paths reported.
     const before = findings.length;
     literalNotAllowed(block, config?.properties, findings);
@@ -464,7 +449,7 @@ export function checkBlock(written: AnyBlock, options: CheckOptions = {}): Findi
    * A block reported for a misplaced HOLE is not also asked about its property names.
    *
    * `&:{state} { … }` leaves `state` behind as a declaration's property once the braces are read
-   * off, so widening `unknown-property` in pass 6 reported *`state` is not a CSS property* beside
+   * off, so `unknown-property` would report *`state` is not a CSS property* beside
    * `hole-out-of-place`. The second is the fault; the first is an artefact of a parse the author is
    * about to fix.
    *
@@ -507,18 +492,15 @@ const NESTED: readonly RuleId[] = [
 /**
  * One finding per declaration among {@link NESTED}, and every other finding untouched.
  *
- * **Per DECLARATION, which is the unit review pass 8 arrived at for the same question** on the other
- * side of the tool: a line holds as many declarations as an author cares to write, and two faults on
- * one line are two faults. The positions do not line up either — `shorthand-not-allowed` sits on the
- * property and `hardcoded-not-allowed` on the value — so nothing narrower than the declaration could
- * group them.
+ * **Per DECLARATION**, the same unit the editor and `check.ts` use to drop the compiler's repeats:
+ * a line holds as many declarations as an author cares to write, and two faults on one line are two
+ * faults. The positions do not line up either — `shorthand-not-allowed` sits on the property and
+ * `hardcoded-not-allowed` on the value — so nothing narrower than the declaration could group them.
  *
- * Anything outside this list is left alone on purpose. These five are the ones a project SWITCHED
- * ON, so they overlap by construction; CSS's own rules do not.
- *
- * **`value-not-allowed` was missing from it**, against that same criterion, and the pair it left
- * uncollapsed is an ordinary one: `width: 2rem` under a closed list and a units list gave both
- * *`2rem` is not one of the values* and *`rem` is a unit this project does not use*, for one word.
+ * Anything outside this list is left alone on purpose. These are the ones a project SWITCHED ON, so
+ * they overlap by construction; CSS's own rules do not. Measured, `width: 2rem` under a closed list
+ * and a units list gives both *`2rem` is not one of the values* and *`rem` is a unit this project
+ * does not use*, for one word — which is why `value-not-allowed` is among them.
  */
 function outermost(block: Block, findings: readonly Finding[]): Finding[] {
   if (findings.length < 2) return [...findings];
@@ -544,17 +526,15 @@ function outermost(block: Block, findings: readonly Finding[]): Finding[] {
 /**
  * The three forms a `@@name( … )` may take, and the one place they are written down.
  *
- * `transform` kept its own set and `virtual.ts` kept its own table, which is how a misspelt name
- * came to be type-checked as an ORDINARY block: no surface meant no named check, and the ordinary
- * one took over. `SURFACES` reads this, and so does the rule below.
+ * A second copy is how a misspelt name gets type-checked as an ORDINARY block: no surface means no
+ * named check, and the ordinary one takes over. `SURFACES` reads this, and so does the rule below.
  */
 /**
  * The rules that say what the TYPES also refuse, and the compiler codes they speak over.
  *
- * Both the checker and the editor have to drop the compiler's word where one of these has spoken,
- * and they had drifted: `check.ts` had the list and `plugin.ts` had only `unknown-property`, so the
- * editor showed two messages for one fault on every setting pass 4 gave a rule. Reported by the
- * user, who read a rule's sentence beside a raw `Narrowed<…>` and saw a contradiction.
+ * Both the checker and the editor drop the compiler's word where one of these has spoken; with only
+ * part of the list, the editor shows two messages for one fault — a rule's sentence beside a raw
+ * `Narrowed<…>`, which reads as a contradiction.
  *
  * One list, both consumers, so the next rule added here cannot reach one and not the other.
  *
@@ -583,10 +563,10 @@ export const NAMED_BLOCKS = ["keyframes", "font-face", "property"] as const;
 /**
  * A `@@name( … )` whose name is not one this compiles.
  *
- * **Refused by the build and by nothing else**, so the editor and `ramonda-check` were both green —
- * and worse than green: with no surface for it, `@@keyfrmes( … )` was checked as an ordinary block,
- * so `from { … }` was read as the selector `& from` and the report talked about a nested rule. A
- * wrong message is worse than none, because it sends a person to the wrong line.
+ * The type check alone does not catch it, and gets it worse than wrong: with no surface for it,
+ * `@@keyfrmes( … )` is checked as an ordinary block, so `from { … }` is read as the selector `&
+ * from` and the report talks about a nested rule. A wrong message is worse than none, because it
+ * sends a person to the wrong line.
  */
 export function checkNamedSite(site: BlockSite): Finding[] {
   if (site.at === undefined || (NAMED_BLOCKS as readonly string[]).includes(site.at)) return [];

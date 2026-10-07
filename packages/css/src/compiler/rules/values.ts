@@ -37,18 +37,16 @@ export function tooManyValues(block: Block, rules: PropertyRules | undefined, fi
    * said — and never widened by it.
    *
    * **CSS's maximum applies with no config at all**, because exceeding it is not a project's
-   * opinion, it is invalid CSS. Reported by a user, who wrote `padding: 4px 0 0 0 0` — five values
-   * where CSS gives four — and was told nothing, because this rule only ran when a config set an
-   * arity.
+   * opinion, it is invalid CSS: `padding: 4px 0 0 0 0` is five values where CSS gives four.
    *
-   * **And a config may only narrow.** `"*": { arity: 4 }` left `padding-block: 1px 2px 3px` silent,
-   * because the sweep's four is higher than the two CSS gives that property and nothing clamped it.
-   * Found in the same breath as the first, and the same `Math.min` answers both.
+   * **And a config may only narrow.** Unclamped, `"*": { arity: 4 }` would leave `padding-block:
+   * 1px 2px 3px` silent, because the sweep's four is higher than the two CSS gives that property.
+   * The same `Math.min` answers both.
    *
    * `ARITY` holds the sixteen properties that repeat one longhand, which is the whole set where
    * "how many" has an answer. `border-left` is `<line-width> || <line-style> || <color>` — three
-   * different things, so `4px solid red` is one value in three parts. Under `"*": { arity: 1 }` it
-   * was reported once, which is refusing correct CSS.
+   * different things, so `4px solid red` is one value in three parts, and counting it under `"*": {
+   * arity: 1 }` would refuse correct CSS.
    */
   const allowed = (property: string): { most: number; whose: "css" | "project" } | undefined => {
     const css = ARITY[property];
@@ -71,10 +69,9 @@ export function tooManyValues(block: Block, rules: PropertyRules | undefined, fi
     /**
      * A declaration that swallowed the next one is `run-on-declaration`'s to report, not this.
      *
-     * `padding: 8px border-left: 4px solid red` parses as one declaration with a great many
-     * values, so this counted them and spoke — two reports for one mistake, and the other one
-     * names the actual fault and the missing `;`. Measured as a regression the moment CSS's own
-     * maximum started applying without a config.
+     * `padding: 8px border-left: 4px solid red` parses as one declaration with a great many values,
+     * so counting them would make two reports for one mistake — and the other one names the actual
+     * fault and the missing `;`.
      *
      * The tell is the same one that rule uses: a bare colon in a value, which CSS values do not
      * contain.
@@ -82,13 +79,11 @@ export function tooManyValues(block: Block, rules: PropertyRules | undefined, fi
     if (item.value.some((part) => part.kind === "text" && bareColon(part.text) !== -1)) continue;
 
     /**
-     * `!important` is a FLAG, not a value, and counting it as one refused correct CSS.
+     * `!important` is a FLAG, not a value.
      *
-     * `padding: 4px 0 0 0 !important` is four values; this counted five and said CSS gives four,
-     * and every finding these rules produce refuses the build — so a page every browser renders
-     * did not compile. It stayed hidden because the families whose maximum is four had room for
-     * the flag underneath it; `place-items`, which takes two, showed it the day it entered the
-     * positional table.
+     * Counted as one, `padding: 4px 0 0 0 !important` is five values and refused — and every
+     * finding these rules produce refuses the build, so a page every browser renders would not
+     * compile. A family whose maximum is four hides it; `place-items`, which takes two, does not.
      *
      * The spelling is the one `split.ts` already uses, where `!important` is taken off before a
      * value is read at all: optional space after the bang, any case.
@@ -130,10 +125,9 @@ interface TopLevel {
  * `calc(1rem + 2px)` and `rgb(0 0 0)` are ONE value each — the spaces inside a call belong to the
  * call. A hole is one value too, and an opaque one: what it evaluates to is decided at render.
  *
- * **Shared on purpose.** `too-many-values` counted these inline and this rule needed the same
- * answer, and a second scanner that agrees by accident is this repository's recurring fault — the
- * one that made `variablesOnly` mean something different in the build than in the checker. One walk,
- * one answer, both callers.
+ * **Shared on purpose**: `too-many-values` and the rules beside it need the same answer, and a
+ * second scanner that agrees by accident is this repository's recurring fault. One walk, one
+ * answer, every caller.
  */
 export function topLevelValues(parts: readonly ValuePart[]): TopLevel[] {
   const out: TopLevel[] = [];
@@ -232,15 +226,15 @@ export function unknownValue(item: Declaration, findings: Finding[]): void {
 
   for (const word of words(item.value)) {
     /**
-     * A word that starts with a dash is never a keyword, and reporting one was a live fault.
+     * A word that starts with a dash is never a keyword.
      *
-     * `display: -webkit-box` and `cursor: -webkit-grab` are CSS that works, and both were reported
-     * as typos: the vendor's own vocabulary is not in any generated row, and it never will be —
-     * `mdn-data` holds the unprefixed names. A `--`-prefixed word is the other half, and it is
-     * valid for eighteen properties: `anchor-name: --card`, `view-timeline-name: --t`.
+     * `display: -webkit-box` and `cursor: -webkit-grab` are CSS that works: the vendor's own
+     * vocabulary is not in any generated row, and it never will be — `mdn-data` holds the
+     * unprefixed names. A `--`-prefixed word is the other half, and it is valid for eighteen
+     * properties: `anchor-name: --card`, `view-timeline-name: --t`.
      *
-     * `propertyNames` below has had this skip since it was written. This rule did not, which is the
-     * drift: one question — is a dashed word a keyword — answered in two places, one of them wrong.
+     * `propertyNames` below skips them for the same reason; one question — is a dashed word a
+     * keyword — must have one answer.
      */
     if (word.text.startsWith("-")) continue;
     if (keywords.has(word.text) || GLOBAL.has(word.text)) continue;
@@ -274,9 +268,7 @@ export function unknownValue(item: Declaration, findings: Finding[]): void {
   if (!miscased || findings.length > 0) return;
   /**
    * A value carrying a HOLE is left alone, and silence is the safe direction here: the hole is a
-   * runtime value, so the text this would name is not the text the author wrote. Before this rule
-   * existed such a declaration got `unknown-value` and a message that was false, so silence is
-   * already the better of the two.
+   * runtime value, so the text this would name is not the text the author wrote.
    */
   const written = textOnly(item.value);
   if (written === undefined) return;
@@ -344,10 +336,8 @@ function propertyNames(item: Declaration, accepted: string, findings: Finding[])
  *     color: red !urgent; …               2
  *     color: red !; …                     2
  *
- * Nothing reported any of it, because the value scanner stepped over everything after a bang — a
- * typo was as invisible as the real thing. `unknown-value` is the wrong id, since the word is not a
- * value and the property does not decide what is allowed there: there is one flag, whatever the
- * property.
+ * `unknown-value` is the wrong id, since the word is not a value and the property does not decide
+ * what is allowed there: there is one flag, whatever the property.
  *
  * Only a TRAILING bang is a flag. One inside a string or a `url()` is ordinary text, which is why
  * this asks the value's own parts rather than searching the text.
@@ -418,7 +408,7 @@ export const KNOWN_UNITS = new Set(UNITS);
  * A number and the letters against it, which is the shape both unit rules look for.
  *
  * The EXPONENT is part of the number — `1e2px` is `100px`, css-syntax-3 §4.3.12 — and without it
- * the letters matched were `e`, so a review measured *`e` is not a CSS unit* on valid CSS.
+ * the letters matched would be `e`, reporting *`e` is not a CSS unit* on valid CSS.
  *
  * And the unit may not be followed by a word character, which is what keeps a bare `2e3` out: with
  * the exponent optional, the engine would otherwise back off to a unit of `e` and leave the `3`.
@@ -428,16 +418,10 @@ const A_UNIT = /(?<![\w.#-])\d*\.?\d+(?:[eE][+-]?\d+)?([a-zA-Z%]+)(?![\w.])/g;
 /**
  * Every unit written in a value, with the two places one is not a unit stepped over.
  *
- * **One walk, because there were two and a review found the same fault in both.** `unit-not-allowed`
- * and `unknown-unit` each read a text part raw, so:
- *
- *     content: "100%"                  ->  `%` is a CSS unit this project does not use
- *     content: "3rd"                   ->  `rd` is not a CSS unit. Did you mean `rad`?
- *     background-image: url(16em.svg)  ->  `em` is a CSS unit this project does not use
- *
- * None of those holds a unit, and there is no config an author could write to make them correct —
- * the text is a CSS string or a filename. `words()` has stepped over both since it was written; this
- * is the same knowledge, in the one place both rules now ask.
+ * **One walk for both unit rules**, so neither reads a text part raw. Read raw, `content: "3rd"`
+ * gives *`rd` is not a CSS unit. Did you mean `rad`?* and `url(16em.svg)` gives *`em` is a CSS unit
+ * this project does not use* — and there is no config an author could write to make them correct.
+ * `words()` steps over the same two.
  *
  * A STRING is its own grammar: a `<string-token>`'s contents are text, not values. A `<url-token>`
  * is too — `url(a-16em.svg)` is a path, and CSS does not parse values inside one. An ordinary call
@@ -485,24 +469,23 @@ export function* unitsIn(text: string, at: number): Generator<{ unit: string; at
 /**
  * A unit CSS has and this project does not.
  *
- * The one rule here that is not about CSS at all. `em` is valid everywhere and a team may still have
- * decided against it — the fault is local to a project, so the list comes from `ramonda.css.ts` and
- * there is no default: a project that says nothing gets every unit CSS has.
+ * The one rule here that is not about CSS at all. `em` is valid everywhere and a team may still
+ * have decided against it — the fault is local to a project, so the list comes from
+ * `ramonda.css.ts` and there is no default: a project that says nothing gets every unit CSS has.
  *
- * **Asked per FAMILY, and a family the config does not name is not constrained.** The setting was a
- * flat list and meant *every unit in CSS and nothing else*, which measured reported four things
- * nobody writing `units: ["px", "rem"]` intends — `200ms`, `50%`, `45deg`, `1fr`. A project could
- * not state the rule it wanted without enumerating five families it had no opinion about. Keyed by
- * family, the rule it wanted is the rule it writes.
+ * **Asked per FAMILY, and a family the config does not name is not constrained.** A flat list would
+ * mean *every unit in CSS and nothing else*, and measured, `units: ["px", "rem"]` then reports
+ * `200ms`, `50%`, `45deg` and `1fr` — four things nobody writing it intends. Keyed by family, the
+ * rule a project wants is the rule it writes.
  *
  * An EMPTY list is a family banned outright, which is a thing somebody may well mean: `flex: []`
  * says this project does not use `fr`. So the test is whether the family was NAMED, never whether
  * its list has anything in it.
  *
  * It runs BESIDE `unknown-unit` rather than instead of it. A unit that is not a unit is a typo
- * wherever it is written; a unit the project has banned is a different sentence, and reading both on
- * one declaration would be two faults where there is one — so a unit CSS does not have is skipped
- * here and left to the rule that names it.
+ * wherever it is written; a unit the project has banned is a different sentence, and reading both
+ * on one declaration would be two faults where there is one — so a unit CSS does not have is
+ * skipped here and left to the rule that names it.
  */
 export function unitNotAllowed(block: Block, allowed: UnitsByFamily, findings: Finding[]): void {
   /** By family, lower-cased once, so the walk below asks a set rather than a list. */
@@ -539,16 +522,14 @@ export function unitNotAllowed(block: Block, allowed: UnitsByFamily, findings: F
 /**
  * A number whose unit is NEARLY one — `150oms`, `10pxx`.
  *
- * **It began as a near miss and that was too weak**, measured on the shape a person actually types:
- * `150xxms` and `150asdasdms` both passed, because neither is within an edit or two of `ms`. The
- * caution behind it was `mdn-data`'s unit list being incomplete — thirty units, missing `%`, the
- * line-height units, every container-query unit and every viewport variant — and that is answered by
- * the supplement rather than by refusing to speak: measured after it, every exotic real unit is in
- * the set, `q` and `x` and `ic` and `rcap` and `dppx` and `svmin` and `cqmax` among them.
+ * **A membership test, not a near miss**: `150xxms` and `150asdasdms` are not within an edit or two
+ * of `ms`, and a near-miss test passes both. The membership test is safe because the supplement
+ * completes `mdn-data`'s unit list — measured, every exotic real unit is in the set, `q` and `x`
+ * and `ic` and `rcap` and `dppx` and `svmin` and `cqmax` among them. The near miss only chooses the
+ * SUGGESTION.
  *
- * So it is a membership test now, and the near miss only chooses the SUGGESTION. What is left is the
- * one risk worth naming: a unit invented after this list was generated is reported until the list is
- * regenerated, which is `scripts/build-css-properties.mjs` and one command.
+ * The one risk worth naming: a unit invented after this list was generated is reported until the
+ * list is regenerated, which is `scripts/build-css-properties.mjs` and one command.
  */
 export function unknownUnit(item: Declaration, findings: Finding[]): void {
   for (const part of item.value) {
@@ -572,11 +553,10 @@ export function unknownUnit(item: Declaration, findings: Finding[]): void {
 /**
  * A quoted string where the property's grammar has no place for one.
  *
- * **Reported by a user**, and how they arrived at it is the reason this rule exists rather than a
- * note in the documentation. A block's value is a TypeScript string literal in the file the editor
- * type-checks — `display: flex` is `{display:"flex"}` there — so the editor has every reason to
- * offer the word with quotes round it. Accepting that offer compiles, ships `color:"yellow"`, and
- * every browser drops the declaration. Nothing anywhere said so.
+ * A block's value is a TypeScript string literal in the file the editor type-checks — `display:
+ * flex` is `{display:"flex"}` there — so the editor has every reason to offer the word with quotes
+ * round it. Accepting that offer compiles, ships `color:"yellow"`, and every browser drops the
+ * declaration.
  *
  * **"No strings" is not the rule, because two of these four are correct CSS:**
  *
@@ -589,13 +569,11 @@ export function unknownUnit(item: Declaration, findings: Finding[]): void {
  * `STRING_ALLOWED` holds the properties reaching `<string>` anywhere, and the ones whose grammar
  * nothing here can decide. A property this cannot judge is one it says nothing about.
  *
- * **Only at the top level, and that guard is the ONLY thing holding `url()` up.** A review measured
- * what the comment here used to imply: `STRING_ALLOWED` does NOT contain the `<url>` properties.
- * `mdn-data` gives `<url>` no grammar and the generator's walk cannot follow a functional reference
- * like `<image-set()>`, so `background-image` and about twenty relatives are absent from the set.
- * Measured with the depth ignored, `background-image: url("a.png")` — as ordinary as CSS gets — is
- * reported, which is how a checker earns being switched off. So this is not the second of two
- * defences; it is the one.
+ * **Only at the top level, and that guard is the ONLY thing holding `url()` up.** `STRING_ALLOWED`
+ * does NOT contain the `<url>` properties: `mdn-data` gives `<url>` no grammar and the generator's
+ * walk cannot follow a functional reference like `<image-set()>`, so `background-image` and about
+ * twenty relatives are absent from the set. Measured with the depth ignored, `background-image:
+ * url("a.png")` is reported. So this is not the second of two defences; it is the one.
  *
  * One report per declaration. Two quoted words are one mistake.
  */
@@ -639,10 +617,9 @@ export function stringNotAllowed(item: Declaration, findings: Finding[]): void {
 /**
  * A bare NUMBER written where the property takes only keywords.
  *
- * Every misspelled keyword was already caught and a number was not, inconsistently: `position: 1`
- * was reported — its grammar reduced to a primitive, so the TYPE refused it — and `display: 1` was
- * not, because `display` is `[ <display-outside> || <display-inside> ] | …`, which the generator
- * could not reduce. Two properties that take no number, one reported.
+ * The type catches some and not others: `position: 1` is refused because its grammar reduced to a
+ * primitive, and `display: 1` is not, because `display` is `[ <display-outside> || <display-inside>
+ * ] | …`, which the generator cannot reduce.
  *
  * **The gap could not be the key.** Absence from `PRIMITIVE` means the grammar was not reduced, and
  * `aspect-ratio`, `line-height` and `background-position` are absent too with a bare number being

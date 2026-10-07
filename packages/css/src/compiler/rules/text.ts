@@ -8,15 +8,13 @@ import { type Finding } from "./index";
  * A declaration with no `;` after it, which CSS allows for the last one in a block.
  *
  * **This package does not, and the reason is what happens NEXT.** A declaration without its
- * semicolon swallows whatever is written under it — that is `run-on-declaration`, and it reports the
- * line somebody adds rather than the line that was already wrong. So a block that is legal today
- * makes a stranger's next edit report a fault they did not write:
+ * semicolon swallows whatever is written under it — that is `run-on-declaration`, and it reports
+ * the line somebody adds rather than the line that was already wrong. So a block that is legal
+ * today makes a stranger's next edit report a fault they did not write:
  *
  *     padding: 8px          legal, and silent
  *     padding: 8px          somebody adds a line
  *     color: red            run-on-declaration, on THEIR line
- *
- * Reported by a user, who wrote the first shape and asked for it to be refused.
  *
  * Every other declaration needs one and the formatter writes one, so requiring it costs nobody a
  * keystroke they were not already making. A nested rule's last declaration is included: it is the
@@ -28,13 +26,12 @@ export function missingSemicolon(block: Block, findings: Finding[]): void {
    *
    * A declaration with no `;` is usually a declaration, and sometimes it is wreckage: a run-on that
    * swallowed the next line, a hole standing where a property name goes, a string that was never
-   * closed and ate the rest of the block. Each of those has a rule that explains it, and each leaves
-   * a declaration with no terminator behind — so this spoke second, about a shape somebody is
-   * already being told is wrong.
+   * closed and ate the rest of the block. Each of those has a rule that explains it, and each
+   * leaves a declaration with no terminator behind.
    *
-   * Listing the shapes was the first attempt and it kept finding another one. Asking whether
-   * anything has been said about the same span is the question that was actually being asked, and it
-   * is the same one `inOrder` asks of TypeScript's diagnostics for exactly this reason.
+   * A list of those shapes never ends; asking whether anything has been said about the same span is
+   * the real question, and it is the same one `inOrder` asks of TypeScript's diagnostics for
+   * exactly this reason.
    */
   const spoken = (item: Declaration): boolean =>
     item.at !== undefined &&
@@ -157,21 +154,19 @@ function isNameCharacter(code: number): boolean {
 /**
  * A `(` in a value that no `)` closes, named where it opens.
  *
- * ## The fault this answers, and why it was parked
- *
- * `content: url(;` is a missing `)`, and what the author was told had nothing to do with it. The
- * value scanner counts parens and a block's own closer is a `)` like any other, so the value ran
+ * `content: url(;` is a missing `)`, and without this the author is told something unrelated. The
+ * value scanner counts parens and a block's own closer is a `)` like any other, so the value runs
  * past `)}` into the author's own code:
  *
  *     content: url(;      →  `const d = (1 + 2)` is not a declaration
  *                            reported on line 4, for a mistake on line 2
  *
- * The note that parked this said the parens are BALANCED so no cheap check exists. True of the
- * block, false of the DECLARATION: inside one, `url(` is short a `)` and counting says so.
+ * The parens of the BLOCK are balanced, so no check of the block finds it. The DECLARATION is not:
+ * inside one, `url(` is short a `)` and counting says so.
  *
  * ## What the count has to skip
  *
- * A string, and that is not a detail — measured, a naive count called `url("a)b.png"` balanced and
+ * A string, and that is not a detail — measured, a naive count called `url("a)b.png")` balanced and
  * `url("a(b.png")` unclosed, both backwards. `endOfString` is what the other value rules already
  * use, so there is one answer to *where does this string end* rather than two.
  *
@@ -231,8 +226,8 @@ export function unclosedCall(block: Block, findings: Finding[]): void {
  * Where a declaration's own `;` is, skipping one inside a string — or the end of the text.
  *
  * Its own walk rather than `indexOf(";")`, and that is measured: `content: url("a)b.png";` has a
- * `;` only after the quote, and `content: "a;b";` has one inside it. Cutting at the first `;` read
- * the second as a two-character value and called its parens balanced by accident.
+ * `;` only after the quote, and `content: "a;b";` has one inside it. Cutting at the first `;` reads
+ * the second as a two-character value and calls its parens balanced by accident.
  */
 export function terminator(text: string): number {
   for (let index = 0; index < text.length; index++) {

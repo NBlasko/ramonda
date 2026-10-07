@@ -47,8 +47,8 @@ export function unknownCustomProperty(
 ): void {
   /**
    * A `@@property`'s generated name is DECLARED — written through its binding, `$(angle): 45deg` —
-   * so it is no made-up name. Measured in review round 2: both a block and a `@@keyframes` frame
-   * setting one were refused, which broke a correct build.
+   * so it is no made-up name. Refusing it would break a correct build, in a block and in a
+   * `@@keyframes` frame alike.
    */
   const registered = new Set([...(references?.values() ?? [])].filter((name) => name.startsWith("--")));
   const declarations = declarationsIn(block);
@@ -94,9 +94,9 @@ export function unknownCustomProperty(
  * A declared variable SET in a block, against what its declaration allows — the block's half of
  * `declaredSet.ts`, which holds the judgement a stylesheet and a `style` attribute share.
  *
- * Measured before it existed: a block set a fixed variable (`--color-surface-sunken: red`) at the
- * top, in `&:hover`, in a `when` and in a match arm, and set a ranged one outside its range, in
- * silence. A choice or a match is judged branch by branch.
+ * It covers every place a block can set one: a fixed variable (`--color-surface-sunken: red`) at
+ * the top, in `&:hover`, in a `when` and in a match arm, and a ranged one outside its range. A
+ * choice or a match is judged branch by branch.
  */
 export function setAgainstItsDeclaration(block: Block, config: Config, findings: Finding[]): void {
   const named = declaredByName(config);
@@ -136,8 +136,8 @@ export function setAgainstItsDeclaration(block: Block, config: Config, findings:
  * **This is the only thing standing between a typo and a `var()` into nothing.** The compiler emits
  * `var(--a-b-c)` from the path alone and reads no config to do it — deliberately, so that the CLI,
  * the bundler and the editor cannot disagree about what a `$` compiles to. The cost of that choice
- * is that a misspelled path compiles perfectly well, into a name nothing sets. Measured, that is not
- * a missing value but a wrong one: `height: var(--never-set)` laid an element out at 0px, with
+ * is that a misspelled path compiles perfectly well, into a name nothing sets. Measured, that is
+ * not a missing value but a wrong one: `height: var(--never-set)` laid an element out at 0px, with
  * nothing reported anywhere.
  *
  * The types say the same thing in an editor, through the generated `$`. This says it in CI, in a
@@ -149,7 +149,7 @@ export function setAgainstItsDeclaration(block: Block, config: Config, findings:
  * `var(--color-primary)`, which nothing sets, so it is the same fault with a better message
  * available: the path exists, it is just not a leaf.
  *
- * ## Declaring nothing is reported, and that is the user's own instruction
+ * ## Declaring nothing is reported
  *
  * A config that permits everything when it was never written means people can do as they like
  * without ever learning the config exists. A config OBJECT that declares no variables is therefore
@@ -235,11 +235,11 @@ export function unknownVariable(block: Block, config: Config, findings: Finding[
 /**
  * A variable set by one name and read by another, when the author meant one.
  *
- * A named `@@property` block is a TypeScript binding, and `var($(accent))` resolves at build time to
- * the name that block generated. Setting it with the same binding works end to end — `$(accent):
+ * A named `@@property` block is a TypeScript binding, and `var($(accent))` resolves at build time
+ * to the name that block generated. Setting it with the same binding works end to end — `$(accent):
  * blue` writes `--r-…: blue` and the `var()` reads it back.
  *
- * **Writing the literal name instead is two variables, and nothing said so.** Measured:
+ * **Writing the literal name instead is two variables.** Measured:
  *
  * ```
  * --accent: blue;               ->  .r-… { --accent: blue }       ONE variable
@@ -247,12 +247,11 @@ export function unknownVariable(block: Block, config: Config, findings: Finding[
  * ```
  *
  * The author believes they set what they read; the `var()` falls back to the `@property`
- * `initial-value` and the declaration they wrote does nothing for it. Reported before the binding
- * form is recommended anywhere, or the recommendation creates the fault it exists to remove.
+ * `initial-value` and the declaration they wrote does nothing for it.
  *
  * **It matches by NAME and nothing else**, which is what keeps it precise: `--accent` set while the
- * binding `accent` is read. A literal nobody has a binding for is ordinary CSS and is left alone; so
- * is a block that reads the literal it set.
+ * binding `accent` is read. A literal nobody has a binding for is ordinary CSS and is left alone;
+ * so is a block that reads the literal it set.
  */
 export function setByAnotherName(block: Block, references: ReadonlyMap<string, string>, findings: Finding[]): void {
   // What a resolved reference looks like once it is text: the generated name, by binding.
@@ -305,13 +304,10 @@ const OPENS_A_VAR = /var\(\s*$/i;
  * to `var(var(--r-…-0))` and the declaration does nothing. ONE declaration, not the rule, which is
  * what makes it hard to see.
  *
- * **This package said so in `references.ts` and emitted it anyway**, because that is the shape an
- * IMPORTED binding produces: `namedSites` reads one file, so `import { accent } from "./theme"` is
- * not a name it can resolve and the reference stays a hole. Measured, `background: var($(accent))`
- * on an imported binding compiled to `background:var(var(--r-…-0))` with nothing reported at all.
- *
- * A reference to a site in the SAME file never reaches here: it is resolved to text before any rule
- * runs, so there is no hole to find. That is what the named-site design is for, and it is asserted.
+ * It is the shape a reference that did NOT resolve produces: `background: var($(accent))` with an
+ * `accent` nothing could resolve stays a hole. A reference that resolves never reaches here: it is
+ * written into the text before any rule runs, so there is no hole to find. That is what the
+ * named-site design is for, and it is asserted.
  *
  * The FALLBACK is a different position and is left alone — `var(--x, $(colour))` is a value where a
  * value belongs, and `var(--unset, var(--hole))` was measured resolving correctly. Only the first
@@ -329,15 +325,11 @@ export function holeAsAVariableName(block: Block, findings: Finding[]): void {
         at: part.at ?? item.valueAt ?? item.at ?? 0,
         length: part.length ?? 2,
         /**
-         * **What the last sentence used to say had stopped being true.** It read "one imported
-         * from another module is not", which was the state of things before cross-module
-         * references resolved — and both the build and `ramonda-css` supply a reader now, so an
-         * imported `@@property` is written straight into the text like a local one.
-         *
          * What is left when this fires is a reference that did not resolve, and the reasons are
          * specific: a bare package specifier, which `namedSites` refuses because resolving one
          * needs a bundler's resolver; a file that is not there; or a name the module does not
-         * export. Naming the CATEGORY instead sent an author to rewrite architecture that works.
+         * export. Naming the CATEGORY instead would send an author to rewrite architecture that
+         * works.
          */
         message:
           "`var()` takes a literal name, and a hole is a value — this compiles to " +

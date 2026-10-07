@@ -5583,3 +5583,92 @@ it. Whatever separates the two, it is not that.
 them, and this one hands back nothing: there is no decomposition to find, and reporting them beside
 `font` and `grid` read as thirteen families needing a grammar when it is nine.
 
+## Measurements behind the code
+
+The source keeps a decision's reason and at most one number. The measurements a decision rests on,
+where there is more than one, are here; how each was found is in the commit that made it.
+
+### Why the esbuild plugin declines a file it has read, and offers `filter`
+
+esbuild hands a plugin a path, so a file is read to be asked whether it holds a block. Measured on
+400 small modules, none holding a block:
+
+| | |
+|---|---|
+| esbuild alone | 11.4 ms |
+| a plugin that is only asked | +12%, 3.4 µs/file |
+| …and reads the file | +60%, 17.3 µs/file |
+| …and does everything this plugin does | +60%, 17.1 µs/file |
+
+The read is the cost; reading bytes undecoded is no faster (+62%), and a minified build with source
+maps pays the same (+61%). Handing the contents back to spare esbuild its read would claim the file
+from every other plugin and require naming a loader — returned without one, contents are parsed as
+plain JavaScript. So the plugin declines, and `filter` keeps the read to the tree that holds blocks.
+
+
+### Why `units` is set per family of unit
+
+`units: ["px", "rem"]` once meant *every unit in CSS and nothing else*, so a project stating the one
+rule it wanted got four reports on ordinary CSS it had no opinion about:
+
+| declaration | why it was reported |
+|---|---|
+| `transition: all 200ms ease` | `ms` is a time |
+| `width: 50%` | `%` is a percentage |
+| `rotate: 45deg` | `deg` is an angle |
+| `grid-template-columns: 1fr` | `fr` is a flex |
+
+### Why the editor says when the config did not load
+
+Measured across nine broken configs, with a block breaking two of the project's own settings:
+
+| config | what the editor reported |
+|---|---|
+| good | `[unit-not-allowed] …` and `[hardcoded-not-allowed] …` |
+| a syntax error | nothing |
+| `units: "px"` | nothing |
+| six more | nothing |
+
+### Why a token of kind `any` is still registered, as `*`
+
+`*` refuses nothing, but `initial-value` is what makes the name resolve when nothing sets it:
+
+| registration, never set | reads |
+|---|---|
+| `syntax: "*"` with `initial-value: anything at all` | `anything at all` |
+| `syntax: "*"` without `initial-value` | `""` |
+
+### Why `ramonda-css check` drops the compiler's repeat of every rule, not only `unknown-property`
+
+Swept across twelve faults, the `//` comment was the one that came out twice:
+
+    line-comment: CSS has no `//` comment — … Write a block comment instead.
+    TS2353: … and '"// the palette is in flux\n  gap"' does not exist in type 'CssBlockShape'.
+
+### Why source maps use `hires: "boundary"`
+
+| `hires` | columns | mappings | time |
+|---|---|---|---|
+| `true` | every column exact | 1393 chars | 22.0 µs/file |
+| `"boundary"` | every column exact | 723 chars | 22.2 µs/file |
+| `false` | every column → 0 | 97 chars | 16.4 µs/file |
+
+### Why the prefixed half of an alias pair is emitted first
+
+`-webkit-box-shadow: 0 0 1px red; box-shadow: 0 0 9px blue;`, with the alias pair in its written
+order:
+
+| where it sits | the shadow |
+|---|---|
+| alone in the file | blue — CSS's answer |
+| after a block naming `box-shadow` first | RED |
+| after a block with the same two, reversed | RED |
+
+### Why a near-miss counts a swap of two letters as one edit
+
+| list | typo | Levenshtein | this |
+|---|---|---|---|
+| properties | swap | right 12978, wrong 88, silent 199 | right 13263, wrong 2, silent 0 |
+| properties | drop | right 14223, wrong 63, silent 0 | the same |
+| at-rules | swap | 157 right, 25 silent | 182 right, 0 silent |
+| selectors | swap | 1210 right, 141 silent | 1353 right, 0 silent |

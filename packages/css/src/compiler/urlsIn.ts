@@ -1,11 +1,11 @@
 /**
  * Every `url( … )` in a piece of CSS text: the path as written, and where it starts in the text.
  *
- * Read character by character rather than by a regex. The regex this replaced —
- * `url\(\s*(["']?)([^"')]*)\1\s*\)` — let the spaces before the path and the path itself both take
- * a space, so an unclosed `url(` and a run of spaces was tried every way: CodeQL flagged it on the
- * PR, and measured it did not finish in two minutes at 10 000 spaces. The parser collapses runs of
- * whitespace before a rule sees a value, but a reader is not the only caller this may ever have.
+ * Read character by character rather than by a regex: `url\(\s*(["']?)([^"')]*)\1\s*\)` lets the
+ * spaces before the path and the path itself both take a space, so an unclosed `url(` and a run of
+ * spaces is tried every way — measured, it did not finish in two minutes at 10 000 spaces. The
+ * parser collapses runs of whitespace before a rule sees a value, but a reader is not the only
+ * caller this may ever have.
  */
 export function urlsIn(text: string): { readonly path: string; readonly at: number }[] {
   const found: { path: string; at: number }[] = [];

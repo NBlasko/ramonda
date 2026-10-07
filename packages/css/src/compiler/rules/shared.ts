@@ -28,10 +28,10 @@ export interface Block {
  * A declaration whose value CHOOSES — a value `match`, a choice — as one group per answer, each
  * holding the declaration with that answer as its whole value.
  *
- * Every rule that reads a value then reads every arm, where it read none before: measured,
- * `color: match $(t) { a => redd; }` was silent while `color: redd` was reported. Each answer is its
- * own group, so two of them are never compared as a repeat or an override. An answer holding a hole
- * is left out: `hole-in-a-match-arm` reports it, and the value rules would only say it again.
+ * So every rule that reads a value reads every arm: `color: match $(t) { a => redd; }` is reported
+ * as `color: redd` is. Each answer is its own group, so two of them are never compared as a repeat
+ * or an override. An answer holding a hole is left out: `hole-in-a-match-arm` reports it, and the
+ * value rules would only say it again.
  */
 function answersOf(item: Declaration): BlockItem[] | undefined {
   const chooses = item.value.find((part) => part.kind === "match" || part.kind === "choice");
@@ -109,8 +109,8 @@ export function namedColour(text: string): RegExpExecArray | null {
 /**
  * A value with a trailing `!important` taken off — `!`, any space, and the word in any case.
  *
- * Read from the end rather than by regex. The regex was `\s*!\s*important\s*$`, which starts again
- * at every space: CodeQL found it on the PR, and measured, 40 000 spaces inside a value took 2.5 s.
+ * Read from the end rather than by regex: `\s*!\s*important\s*$` starts again at every space, and
+ * measured, 40 000 spaces inside a value took 2.5 s.
  */
 export function withoutImportant(value: string): string {
   const end = value.trimEnd();
@@ -155,11 +155,12 @@ interface Word {
 /**
  * The bare identifiers in a value, and nothing else.
  *
- * Everything skipped here is something no keyword table could judge, and each was a false report
- * before it was skipped: a string's contents (`content: "flexx"`), a function's name and arguments
- * (`rgb(0 0 0)`, `var(--x, flex)`), a number or a length, a hex colour, and `!important`.
+ * Everything skipped here is something no keyword table could judge, and each would be a false
+ * report: a string's contents (`content: "flexx"`), a function's name and arguments (`rgb(0 0 0)`,
+ * `var(--x, flex)`), a number or a length, a hex colour, and `!important`.
  *
- * A hole contributes nothing at all — its value is decided at render, and this is a build-time read.
+ * A hole contributes nothing at all — its value is decided at render, and this is a build-time
+ * read.
  */
 export function words(parts: readonly ValuePart[]): Word[] {
   const out: Word[] = [];
@@ -174,10 +175,9 @@ export function words(parts: readonly ValuePart[]): Word[] {
      * A word TOUCHING a hole is part of the hole's value, not a value of its own.
      *
      * `padding: $(n)px` is one length written in two pieces, and `px` on its own is nothing a
-     * property accepts. Measured before this existed, on every property with a keyword row:
-     * `gap: $(n)px` reported *`gap` does not accept `px`* — a false report on correct CSS, which is
-     * how a checker earns being switched off. Whitespace is what separates values, so a piece with
-     * none between it and the hole is the same value.
+     * property accepts — read alone, `gap: $(n)px` gives *`gap` does not accept `px`*, a false
+     * report on correct CSS. Whitespace is what separates values, so a piece with none between it
+     * and the hole is the same value.
      */
     const glued = {
       before: position > 0 && parts[position - 1].kind === "hole" && !isSpace(text.charCodeAt(0)),
@@ -199,11 +199,10 @@ export function words(parts: readonly ValuePart[]): Word[] {
         /**
          * `!important`, **and the space CSS allows after the bang.**
          *
-         * This skipped from the bang to the next SPACE, so `! important` stopped the skip at the
-         * bang and `important` was then read as a bare word — *"`color` does not accept
-         * `important`"*, about valid CSS. Measured in Chromium: `! important`, `!  important`,
-         * `!IMPORTANT` and `!` + a comment + `important` all make the declaration win, and
-         * `!importantt` does not.
+         * Skipping only to the next SPACE would leave `important` in `! important` to be read as a
+         * bare word — *"`color` does not accept `important`"*, about valid CSS. Measured in
+         * Chromium: `! important`, `! important`, `!IMPORTANT` and `!` + a comment + `important`
+         * all make the declaration win, and `!importantt` does not.
          *
          * Whitespace is stepped over first, then the word, so a word that merely begins with a bang
          * is still a word and is still reported — which is what this rule is for.
@@ -255,10 +254,8 @@ const isWordCharacter = (code: number) => isWordStart(code) || (code >= 48 && co
  * Every declaration in a block, at any depth inside its nested rules, in source order — the walk
  * most rules make, done once per block.
  *
- * Twenty-one rules each carried their own copy of this walk, the same eight lines around the line
- * that mattered. A rule now reads `for (const item of declarationsIn(block))`, and the list is made
- * by whichever of them asks first. The rules that look at a nested rule's SELECTOR still walk the
- * rules themselves.
+ * A rule reads `for (const item of declarationsIn(block))`, and the list is made by whichever of
+ * them asks first. The rules that look at a nested rule's SELECTOR walk the rules themselves.
  */
 const declarationsByBlock = new WeakMap<Block, readonly Declaration[]>();
 
@@ -280,8 +277,8 @@ export function declarationsIn(block: Block): readonly Declaration[] {
 }
 
 /**
- * Every nested rule in a block, at any depth — the rules inside one before the rule itself, which is
- * the order the four rules reading a rule's prelude walked them in, so they report in the same order.
+ * Every nested rule in a block, at any depth — the rules inside one before the rule itself, so the
+ * rules reading a prelude report in a stable order.
  */
 const rulesByBlock = new WeakMap<Block, readonly NestedRule[]>();
 

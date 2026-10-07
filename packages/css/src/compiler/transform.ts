@@ -39,20 +39,13 @@ import { type BlockSite, afterShebang, findBlocks, mayHoldABlock } from "./scan"
  * the block's opening line instead of its own — line 8 for something written on line 13. Writing
  * the gaps out one at a time costs nothing and is what makes the source map exact.
  *
- * ## The map's resolution, which is not the obvious setting
+ * ## The map's resolution
  *
- * Generating the map is about half the transform's whole cost, so the three settings were measured
- * rather than picked. All three get every LINE right, including inside an expression spanning four
- * of them — magic-string emits a mapping at each line start whatever it is told. The difference is
- * columns, on lines this never touched:
- *
- *     hires: true        every column exact      1393 chars of mappings   22.0 µs/file
- *     hires: "boundary"  every column exact       723 chars              22.2 µs/file
- *     hires: false       every column -> 0         97 chars              16.4 µs/file
- *
- * `false` is the cheap one and it collapses `one(two(), three())` to the start of its line — for the
- * whole file, not only near a block, because this map sits above the bundler's. `boundary` costs the
- * same as `true` and carries half the mappings, so it is what is used.
+ * Generating the map is about half the transform's whole cost. Every setting gets every LINE right;
+ * the difference is columns, on lines this never touched. `hires: false` collapses `one(two(),
+ * three())` to the start of its line — for the whole file, because this map sits above the
+ * bundler's. `hires: "boundary"` keeps every column exact at the same cost as `true` (22 µs/file)
+ * with half the mappings, so it is what is used.
  */
 
 export interface TransformOptions {
@@ -89,13 +82,12 @@ export interface TransformOptions {
 /** What starts a source mark — see {@link TransformOptions.marks}. */
 export const SOURCE_MARK = "r:src:";
 
-/** One rule the stylesheet now owes. Assembly (dedupe, `@layer`, the collision assertion) is track E. */
-
 /** The otherwise arm's place among the arms — a key no arm can be written as, since an arm is text. */
 const OTHERWISE = "\u0000otherwise";
 
+/** One rule the stylesheet now owes. Assembly — dedupe, `@layer`, the collision assertion — is the `Sheet`'s. */
 export interface EmittedBlock {
-  /** `r-` plus 16 hex — see CONTRACT.md. */
+  /** `r-` and the rest of the name — see `nameFor` in `names.ts`. */
   readonly className: string;
   /**
    * The at-rule this is, when it is one — `keyframes`, `font-face`, `property`.
@@ -178,6 +170,9 @@ export interface TransformResult {
   readonly variables: Variables;
 }
 
+/** An expression that is one operand however it is placed: a name, a member path, `!` before one. */
+const SIMPLE_OPERAND = /^!*[A-Za-z_$][\w$]*(?:\??\.[A-Za-z_$][\w$]*)*$/;
+
 /**
  * `undefined` when there is nothing to do, which is the answer almost every time.
  *
@@ -185,9 +180,6 @@ export interface TransformResult {
  * before any of it existed, 1,268 files and 10.61 MB in **1.33 ms**. A plugin returning `undefined`
  * here hands the file on untouched, with no map to compose and no string to rebuild.
  */
-/** An expression that is one operand however it is placed: a name, a member path, `!` before one. */
-const SIMPLE_OPERAND = /^!*[A-Za-z_$][\w$]*(?:\??\.[A-Za-z_$][\w$]*)*$/;
-
 export function transform(source: string, options: TransformOptions = {}): TransformResult | undefined {
   // The disk, for `url-not-found` — only when the file is really there to look beside.
   const disk = urlCheckFor(options.filename);
@@ -233,7 +225,7 @@ export function transform(source: string, options: TransformOptions = {}): Trans
   const resolve = (expression: string): string | undefined => references.get(expression);
   /**
    * A `$(name)` refused as a runtime value that is one letter off a binding this file can see — a
-   * `@@font-face`, `@@keyframes` or `@@property`. Review round 3: `$(brnd)` was told only that a block
+   * `@@font-face`, `@@keyframes` or `@@property`. Without it `$(brnd)` is told only that a block
    * takes no runtime value, which points away from the typo. The editor has TypeScript's *did you
    * mean*; the build says it too, ahead of its own sentence.
    */
@@ -365,12 +357,11 @@ export function transform(source: string, options: TransformOptions = {}): Trans
     /**
      * Everything the checker knows, applied to the artefact.
      *
-     * **This seam was missing and it is the fault behind the `@property` report.** `checkBlock` was
-     * called by `ramonda-check` and by the editor; `transform` — the only path a BUILD takes —
-     * called neither, so a fault was reported to the two people most likely to notice it and
-     * compiled into the output anyway. Measured, a `@property` written inside a block shipped out of
-     * a real Vite build as `@property --x { .r-hash { syntax: "<color>" } }`, a registration
-     * Chromium 151 drops entirely while leaving the name accepting any junk.
+     * `transform` is the only path a BUILD takes, so a fault the checker knows must stop it here —
+     * or it is reported to the editor and `ramonda-check` and compiled into the output anyway.
+     * Measured without it: a `@property` written inside a block shipped out of a real Vite build as
+     * `@property --x { .r-hash { syntax: "<color>" } }`, a registration Chromium 151 drops entirely
+     * while leaving the name accepting any junk.
      *
      * It is here rather than in each bundler's plugin because there are two of those and the next
      * one would forget. The FIRST finding is what the refusal names: findings arrive sorted by
@@ -378,27 +369,24 @@ export function transform(source: string, options: TransformOptions = {}): Trans
      */
     // A site whose NAME is not one this compiles gets that one finding and no more — there is no
     /**
-     * **The SITE first, then the block.** A bare JSX attribute is no longer a spelling this compiles,
-     * and a block written that way must be refused before anything reads its CSS — reporting a
-     * property inside a block whose spelling is wrong sends a reader after the wrong thing.
-     *
-     * This seam is also where the rule moved from. It was `checkSite` in `plugin.ts` alone, drawn as
-     * a suggestion the build never saw, which was right while the spelling was supported.
+     * **The SITE first, then the block.** A bare JSX attribute is not a spelling this compiles, and
+     * a block written that way must be refused before anything reads its CSS — reporting a property
+     * inside a block whose spelling is wrong sends a reader after the wrong thing.
      */
     // shape to check its body against, so anything else said about it is a guess. See `checkedSource`.
     /**
-     * **A site finding goes through `rules` too**, and it did not.
+     * **A site finding goes through `rules` too.**
      *
      * The refusal below prints the id in front of the sentence so a reader knows which key to write
-     * in `ramonda.css.ts` — and for these two the key did nothing. Measured: a project that switched
+     * in `ramonda.css.ts` — so that key has to work. Measured without this: a project that switched
      * `block-as-a-jsx-attribute` off still failed its build, while a `ramonda-css-ignore` above the
-     * line let the same file through and compiled it correctly. Two escape hatches the documentation
-     * offers as equals, one of them shut.
+     * line let the same file through. Two escape hatches the documentation offers as equals must
+     * both open.
      *
-     * `checkBlock` has done this since it took a config; these come from `checkSite` and
-     * `checkNamedSite`, which never saw one. The rule that must NOT be silenced — a block inside a
-     * `${ … }`, which would reach the bundler as `@@(` — is refused above this and names no key, so
-     * it is untouched by the filter and stays that way.
+     * `checkBlock` filters by its config; these come from `checkSite` and `checkNamedSite`, which
+     * take none. The rule that must NOT be silenced — a block inside a `${ … }`, which would reach
+     * the bundler as `@@(` — is refused above this and names no key, so it is untouched by the
+     * filter and stays that way.
      */
     const silenced = options.config?.rules;
     const siteFindings = [...checkSite(source, site), ...checkNamedSite(site)].filter(
@@ -424,9 +412,8 @@ export function transform(source: string, options: TransformOptions = {}): Trans
     /**
      * **The rule's id, then its sentence** — the way `ramonda-css` already prints one.
      *
-     * The build printed the sentence alone, so a person stopped by it had no way to learn which key
-     * to write in `ramonda.css.ts`, while the same fault through the checker named it. The id is
-     * what somebody wants at exactly that moment, and `rules` takes it verbatim.
+     * A person stopped by the build needs to know which key to write in `ramonda.css.ts`, and the
+     * id is what `rules` takes verbatim.
      *
      * A refusal the PARSER makes carries no rule and is untouched: there is no key to switch off,
      * and naming one would send a reader after something that is not there.
@@ -448,8 +435,7 @@ export function transform(source: string, options: TransformOptions = {}): Trans
       variablesRead.push(...found.read);
     }
 
-    // Normalised ONCE. It was called twice — for the name and again for the rule — and normalisation
-    // walks the whole block, so that was a second full pass per block for a string already in hand.
+    // Normalised ONCE, for the name and the rule: normalisation walks the whole block.
     const canonical = normalise(read.block);
     // What a named site is called is `nameForSite`'s to decide, and it is the only thing that decides
     // it — the references map and the syntax map ask the same function. See its own note.
@@ -501,17 +487,16 @@ export function transform(source: string, options: TransformOptions = {}): Trans
     /**
      * A group inside a group opens a NESTED merge rather than repeating the outer guard.
      *
-     * **The obvious shape is `a && b && { … }` and this transform cannot produce it.** An expression
-     * is left exactly where the author wrote it — that is what makes the source map exact — so a
-     * guard can be emitted once, and a nested segment would need its outer guard a second time.
-     * Measured before this existed, the outer guard was simply dropped:
+     * **The obvious shape is `a && b && { … }` and this transform cannot produce it.** An
+     * expression is left exactly where the author wrote it — that is what makes the source map
+     * exact — so a guard can be emitted once, and a nested segment would need its outer guard a
+     * second time. Flat, the outer guard is simply lost:
      *
      *     when $(off) { cursor: none; when $(roomy) { color: yellow } }
      *     -> _merge({…}, off && {cursor}, roomy && {color})
      *
-     * and `color` landed whenever `roomy` was on, whatever `off` was.
-     *
-     * Nesting the merge says the same thing with each guard written once:
+     * and `color` lands whenever `roomy` is on, whatever `off` is. Nesting the merge says the same
+     * thing with each guard written once:
      *
      *     _merge({…}, off && _merge({cursor}, roomy && {color}))
      *
@@ -524,10 +509,9 @@ export function transform(source: string, options: TransformOptions = {}): Trans
     /**
      * Whether a guard needs a merge of its own, or may simply join the conjunction.
      *
-     * A guard that holds ONE thing is a conjunction — `a && b && { … }` — and that is both shorter
-     * and the shape this transform emitted before nesting was fixed. A guard that holds more than
-     * one needs a merge, because its own guard can be written only once and the second thing under
-     * it would otherwise lose it.
+     * A guard that holds ONE thing is a conjunction — `a && b && { … }` — which is shorter. A guard
+     * that holds more than one needs a merge, because its own guard can be written only once and
+     * the second thing under it would otherwise lose it.
      */
     const holdsMoreThanOne = (guards: readonly Guard[], upto: number): boolean =>
       all.filter(
@@ -537,10 +521,9 @@ export function transform(source: string, options: TransformOptions = {}): Trans
       ).length > 1;
 
     /**
-     * A condition, as ONE operand of the operator written after it. Measured before the parens:
-     * `$(p ? q : r)` compiled to `p ? q : r && "r-c-red"`, which JavaScript reads as
-     * `p ? q : (r && "r-c-red")`. A plain name or member path needs none, and keeps reading as the
-     * source does.
+     * A condition, as ONE operand of the operator written after it. Without the parens, `$(p ? q :
+     * r)` compiles to `p ? q : r && "r-c-red"`, which JavaScript reads as `p ? q : (r &&
+     * "r-c-red")`. A plain name or member path needs none, and keeps reading as the source does.
      */
     const condition = (hole: number): void => {
       const span = read.holes[hole];
@@ -625,12 +608,11 @@ export function transform(source: string, options: TransformOptions = {}): Trans
          * A spread merges a whole block, and a block's map carries the context each of its
          * declarations was written in. Inside a selector or a conditional at-rule it would have to
          * re-scope every key it holds — `background` becoming `:hover|background` — which a merge
-         * cannot do at runtime.
+         * cannot do at runtime: `&:hover { ...$(base); }` would come out as `_merge(base)`, so a
+         * block meant for hover applies always.
          *
-         * **Measured before this refusal existed: it compiled and the selector silently vanished.**
-         * `&:hover { ...$(base); }` came out as `_merge(base)`, so a block meant for hover applied
-         * always. A GUARD is fine and is allowed: `when` changes no key, it only decides whether the
-         * whole map lands.
+         * A GUARD is fine and is allowed: `when` changes no key, it only decides whether the whole
+         * map lands.
          */
         // Reported by `spread-out-of-place`, which the refusal above already stopped the build on.
         // Asserted rather than repeated, so the two answers cannot drift into being two answers.
@@ -975,14 +957,13 @@ export function transform(source: string, options: TransformOptions = {}): Trans
 
     /**
      * The invariant the whole rewrite below rests on: one piece of surrounding text per hole, plus
-     * a tail. It was never stated, and breaking it was silent.
+     * a tail.
      *
-     * A `when` group with nothing in it recorded a hole and produced no segment, so every piece slid
-     * one place left: one block emitted its map twice, another put a guard where a value belonged,
-     * and `when $(variant) { }` alone compiled to `_merge(variant)` — which parses, runs, and ships
-     * two class names made out of the letters of a string. `flatten.ts` no longer produces that
-     * shape; this is the belt, because a mismatch here means an author's expression is about to be
-     * written somewhere it was not written, and that must never be something to discover at runtime.
+     * Broken, it is silent: every piece slides one place left, a block emits its map twice or puts
+     * a guard where a value belongs, and `when $(variant) { }` alone compiles to `_merge(variant)`
+     * — which parses, runs, and ships two class names made out of the letters of a string.
+     * `flatten.ts` does not produce that shape; this is the belt, because a mismatch here means an
+     * author's expression is about to be written somewhere it was not written.
      */
     if (one.pieces.length !== one.holes.length + 1) {
       throw new Error(

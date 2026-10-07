@@ -12,42 +12,23 @@ import { type Finding } from "./index";
  * Whether two spellings differ only in CASE — in which case nothing is reported, and the FORMATTER
  * is what settles it.
  *
- * Found in review pass 3, by asking what the checker says about correct CSS: it reported
- * `color: currentColor`, the spelling MDN documents and very nearly everybody writes. Every rule is
- * an error, so that is a failed build. The forty `<system-color>` names went with it — `Canvas`,
- * `ButtonFace`, `AccentColor` — each spelled here exactly as the specification prints them.
+ * Every rule is an error, so reporting case would fail the build on `color: currentColor` — the
+ * spelling MDN documents and very nearly everybody writes — and on the forty `<system-color>`
+ * names, `Canvas`, `ButtonFace`, `AccentColor`, each spelled exactly as the specification prints
+ * them.
  *
- * ## What the rest of the ecosystem does, measured
+ * The report has no reason to exist: the rule's justification is *one spelling is what lets two
+ * blocks agree on one class*, and measured, `canonicalValue` gives the same string for either case
+ * already. Identity never depended on the author being told. Nor does the ecosystem report it:
+ * `csstype`'s `Color` lists `"currentColor"` in capitals outright and ends with `(string & {})`.
  *
- * `csstype` is the shared type behind emotion, styled-components, vanilla-extract and StyleX, and
- * its colour is:
+ * **The canonical form does NOT change.** Measured in Chrome, `ButtonText` in gives `"buttontext"`
+ * out, and the same for `currentColor`. Lower case is what the browser does to the value anyway, so
+ * it stays what the normaliser writes and what the class is built from.
  *
- *     type Color = ColorBase | SystemColor | DeprecatedSystemColor | "currentColor" | (string & {});
- *
- * It lists `currentColor` in capitals outright, keeps the spec's case for the system colours, and
- * ends with an escape hatch that admits any string — 529 of those in the file. So none of them can
- * report a case at all. We were the only tool failing a build on it.
- *
- * ## The canonical form does NOT change
- *
- * `keywords CSS spells with capitals` measured Chrome: `ButtonText` in, `"buttontext"` out, and the
- * same for `currentColor`. Lower case is what the browser does to the value anyway, so it stays
- * what the normaliser writes and what the class is built from.
- *
- * ## Why the REPORT goes, and it is not that the ecosystem is laxer
- *
- * The rule's own justification is *one spelling is what lets two blocks agree on one class* — and
- * measured, `canonicalValue` gives the same string for either case already. Identity never depended
- * on the author being told.
- *
- * And the refusal was never argued for. The note above `a keyword written in capitals` says *the
- * verdict does not change — it is still refused — but the REASON becomes true*: the verdict was
- * carried over from when this was `unknown-value`, which was a false report. Nobody decided that
- * correct CSS should fail a build; it was inherited from a bug.
- *
- * **`ramonda-css format` still rewrites every one of them**, which is the user's own condition for
- * this — *"neka formater obavezno to resava"* — and `toolingCli.test.ts` holds it to that through
- * the real biome, on a value, a pseudo-class, an at-rule name and a media feature at once.
+ * **`ramonda-css format` still rewrites every one of them**, and `toolingCli.test.ts` holds it to
+ * that through the real biome, on a value, a pseudo-class, an at-rule name and a media feature at
+ * once.
  *
  * A difference that is MORE than case is still reported, because it is a real one: `&:before` is a
  * pseudo-element written with a pseudo-class's colon, and `2n + 1` is not spelled `2n+1`.
@@ -78,32 +59,19 @@ export function spelling(block: Block, findings: Finding[]): void {
 /**
  * The prefixes that have names, read off {@link PREFIXED} rather than written out.
  *
- * Hard-coding them was wrong in both directions and both were measured. `-o-` was in the list and no
- * engine has a single `-o-` name left — Presto has been gone since 2013 — and `-apple-` was NOT in
- * it, while WebKit has two (`-apple-pay-button-style`, `-apple-pay-button-type`), so a real property
- * was reported as an unknown prefix.
- *
- * Derived, there is one source for both halves of the question and they cannot drift apart. Measured
- * today: `-webkit-` 182, `-ms-` 48, `-moz-` 30, `-apple-` 2.
+ * A hand-kept list goes wrong in both directions: no engine has a single `-o-` name left — Presto
+ * has been gone since 2013 — while WebKit has two `-apple-` ones (`-apple-pay-button-style`,
+ * `-apple-pay-button-type`). Derived, there is one source for both halves of the question.
+ * Measured: `-webkit-` 182, `-ms-` 48, `-moz-` 30, `-apple-` 2.
  */
 export const PREFIXES = [...new Set(PREFIXED.map((one) => /^(-[a-z]+-)/.exec(one)?.[1] ?? one))].sort();
 
 /**
- * A NAME THAT LOOKS PREFIXED AND IS NOT, which passed in silence.
+ * A NAME THAT LOOKS PREFIXED AND IS NOT — `-wdasdsdebkit-line-clamp: 3` compiles, ships, and does
+ * nothing.
  *
- * `unknown-property` returned early for every name starting with `-`, and the generator says why:
- * "each one a name nobody misspells into a different property". Found by somebody typing
- * `-wdasdsdebkit-line-clamp: 3` — it compiled, it shipped, and it did nothing.
- *
- * **A list of valid prefixed NAMES would be the wrong repair, and that was measured.** MDN's data
- * holds a hundred of them and does not hold `-webkit-font-smoothing` or `-moz-osx-font-smoothing`,
- * which are two of the most-written lines in real CSS. Reporting those would be refusing valid CSS,
- * which is the one failure this package may not have — so the name after the prefix is not checked,
- * and cannot be.
- *
- * The prefix itself is a different question and is answerable. What is left unreported is a real
- * prefix on a name no browser has, which is the same trade CSS itself makes: a declaration a browser
- * does not understand is dropped, and that is what a prefix is for.
+ * `unknown-property` steps over every name starting with `-`, so the prefix is asked here, and the
+ * name after it is asked against the engines' own list below.
  */
 function unknownPrefix(item: Declaration, findings: Finding[]): void {
   const name = item.property;
@@ -130,14 +98,12 @@ function unknownPrefix(item: Declaration, findings: Finding[]): void {
   }
 
   /**
-   * **The NAME after the prefix, which passed while only the prefix was checked.** Found by somebody
-   * typing `-webkit-border-before-coloaasdsdr: "asdasdsadsd"` and watching it compile.
+   * **The NAME after the prefix**, against the ENGINES' lists rather than `mdn-data`'s.
    *
-   * A list of valid names was refused once, on the grounds that `mdn-data` holds 99 and has neither
-   * `-webkit-font-smoothing` nor `-moz-osx-font-smoothing`, so a list built from it would refuse
-   * lines people write every day. That measurement was right and the conclusion was not: the ENGINES
-   * keep their own lists, and asked directly they give 262 names between them — with
-   * `-webkit-font-smoothing` in all three of them. See `scripts/build-prefixed-properties.mjs`.
+   * `mdn-data` holds 99 prefixed names and has neither `-webkit-font-smoothing` nor
+   * `-moz-osx-font-smoothing`, so a list built from it would refuse lines people write every day.
+   * Asked directly, the engines give 262 names between them — with `-webkit-font-smoothing` in all
+   * three. See `scripts/build-prefixed-properties.mjs`.
    *
    * A name an engine adds after that script was last run is refused until it is run again. That is
    * the cost, it is real, and `ramonda-css-ignore <reason>` is the escape for exactly this shape.
@@ -158,18 +124,16 @@ function unknownPrefix(item: Declaration, findings: Finding[]): void {
 }
 
 /**
- * A property name CSS does not have.
+ * A property name CSS does not have — dashed or bare.
  *
- * **It was DASHED names only, and the build compiled the rest.** The split was half right: a dashed
- * name cannot be an unquoted object key and a quoted key gets no *did you mean* — measured — while
- * a bare name gets `TS2561`, which says it better. But it says it better in the CHECKER. Vite and
- * esbuild run these rules and no TypeScript at all, so `dsiplay: flex` and even `zzz: flex` reached
- * the stylesheet with nothing said anywhere. Found in review pass 6, by asking both consumers the
- * same question about the same file.
+ * A bare name gets `TS2561` from the types, which says it well, but only in the CHECKER: Vite and
+ * esbuild run these rules and no TypeScript at all, so without this `dsiplay: flex` and even `zzz:
+ * flex` would reach the stylesheet with nothing said anywhere. A dashed name cannot be an unquoted
+ * object key, and a quoted key gets no *did you mean*.
  *
- * So it speaks for both now, and `inOrder` drops the compiler's word on the line — the arrangement
- * `unknown-token` and `variablesOnly` already have. A name with no near miss is reported too,
- * without a suggestion: the types are not there to say it in the build.
+ * So it speaks for both, and `inOrder` drops the compiler's word on the line — the arrangement
+ * `unknown-token` and `variablesOnly` have. A name with no near miss is reported too, without a
+ * suggestion: the types are not there to say it in the build.
  */
 export function unknownProperty(item: Declaration, findings: Finding[], body?: string): void {
   const name = item.property;
@@ -181,11 +145,10 @@ export function unknownProperty(item: Declaration, findings: Finding[], body?: s
     return;
   }
   /**
-   * It has to LOOK like a property name, and the dash test was doing this by accident.
+   * It has to LOOK like a property name.
    *
-   * Dropping that guard so the build sees a plain typo exposed every shape the parser records as a
-   * declaration without one being there — a spread comes through as `... 0 `, and forty-one tests
-   * went red at once saying it is not a CSS property. True, and not a thing to report.
+   * The parser records shapes as a declaration without one being there — a spread comes through as
+   * `... 0 ` — and reporting those as *not a CSS property* is true and not a thing to report.
    */
   if (!/^[a-zA-Z][a-zA-Z0-9-]*$/.test(name)) return;
 
@@ -199,18 +162,16 @@ export function unknownProperty(item: Declaration, findings: Finding[], body?: s
   if (body === undefined && KNOWN.has(name)) return;
 
   /**
-   * A name whose only fault is its CASE is the same CSS, and `unknownValue`'s note already settled
-   * what to do about that: *saying it does not exist is a lie the author cannot act on.* That was
-   * applied to a value's keywords and not to the name beside them.
+   * A name whose only fault is its CASE is the same CSS, and saying it does not exist is a lie the
+   * author cannot act on — the same judgement `unknownValue` makes for a value's keywords.
    *
    * Measured in Chromium, Firefox and WebKit: `COLOR: red` sets `color` to red in all three, and
-   * `CSS.supports("COLOR", "red")` is true in all three. So the verdict is the one that half
-   * reached — still refused, because a repository wants one spelling, and `non-canonical-spelling`
-   * is the id whose formatter rewrites it.
+   * `CSS.supports("COLOR", "red")` is true in all three. Still refused, because a repository wants
+   * one spelling, and `non-canonical-spelling` is the id whose formatter rewrites it.
    *
    * **Before `nearest`, and that is not an ordering detail.** A distance measured in substitutions
-   * puts `COLOR` five away from `color`, so a mis-cased name got `is not a CSS property` with no
-   * suggestion at all — the least useful message of the two.
+   * puts `COLOR` five away from `color`, so a mis-cased name would get `is not a CSS property` with
+   * no suggestion at all — the least useful message of the two.
    */
   const lowered = name.toLowerCase();
   if (lowered !== name && (body === undefined ? KNOWN.has(lowered) : among.includes(lowered))) {
@@ -226,11 +187,9 @@ export function unknownProperty(item: Declaration, findings: Finding[], body?: s
   }
 
   /**
-   * The near miss is measured against the LOWER-CASED name, so a typo shouted still gets one.
-   *
-   * `DSIPLAY` is six substitutions from `display` and none from `dsiplay`, so it came back with no
-   * suggestion while the same typo in lower case got one. The name in the message stays as the
-   * author wrote it.
+   * The near miss is measured against the LOWER-CASED name, so a typo shouted still gets one:
+   * `DSIPLAY` is six substitutions from `display` and none from `dsiplay`. The name in the message
+   * stays as the author wrote it.
    */
   const meant = nearest(lowered, among);
   const said = meant === undefined ? "" : ` Did you mean \`${meant}\`?`;
@@ -250,14 +209,12 @@ export function unknownProperty(item: Declaration, findings: Finding[], body?: s
  * A property name holding whitespace, which no CSS identifier may.
  *
  * **The class name survives it and the DECLARATION does not.** `nameFor` falls to the hash for such
- * a name, so the stylesheet parses — but the rule it emits still says `--a b: red`, which no browser
- * accepts, so an element carrying the class gets nothing. A review found the naming half; this is the
- * half that tells the author.
+ * a name, so the stylesheet parses — but the rule it emits still says `--a b: red`, which no
+ * browser accepts, so an element carrying the class gets nothing.
  *
- * Nothing reported it before. `unknown-property` returns early for a name starting with `-` and for
- * one with no `-` at all, so both of the shapes an author actually writes walked past it: two words
- * where one belongs, and a name wrapped across lines — which is also what a missing `;` looks like
- * from here.
+ * `unknown-property` returns early for a name starting with `-` and for one with no `-` at all, so
+ * both of the shapes an author actually writes would walk past it: two words where one belongs, and
+ * a name wrapped across lines — which is also what a missing `;` looks like from here.
  *
  * The dashed form is suggested only when it IS a property, because a suggestion that is not one
  * would be a guess dressed as an answer.

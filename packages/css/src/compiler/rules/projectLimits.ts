@@ -82,14 +82,9 @@ export function literalNotAllowed(block: Block, rules: PropertyRules | undefined
 /**
  * A dimension or a number written out where the project said that kind comes from its variables.
  *
- * **The half the BUILD sees, and it saw nothing.** The types refused `padding-left: 8px` and the
- * rule said nothing, which read as a division of labour and was a hole: vite and esbuild run these
- * rules over a block and never type-check it, so a project could watch `ramonda-css check` refuse a
- * file and watch the dev server serve it. Measured, asking the rules alone:
- *
- *     padding-left: 8px       []                     compiled
- *     width: 200px            []                     compiled
- *     border: 1px solid red   [hardcoded-not-allowed]  only the composite was caught
+ * **The half the BUILD sees.** Vite and esbuild run these rules over a block and never type-check
+ * it, so a setting only the types enforce is one the dev server ignores — `padding-left: 8px`
+ * refused by `ramonda-css check` and served by the dev server.
  *
  * It also answers the message. `Narrowed<never, Token<…>>` names neither the project nor the config
  * file; this names both, and `inOrder` drops the compiler's word where this one has spoken — the
@@ -111,10 +106,10 @@ function dimensionNotAllowed(block: Block, rules: PropertyRules | undefined, fin
     /**
      * A CUSTOM PROPERTY has no kind, so only a value that can be nothing else is read.
      *
-     * `--own: red; color: var(--own)` walked around the whole setting in one line — two
-     * declarations this compiler reads and neither was looked at. But a custom property holds
-     * anything: `--n: 3` is not a length and `--label: "red"` is text. So a bare number is left
-     * alone and a quoted string never matches, because `topLevelValues` keeps the quotes.
+     * Otherwise `--own: red; color: var(--own)` walks around the whole setting in one line. But a
+     * custom property holds anything: `--n: 3` is not a length and `--label: "red"` is text. So a
+     * bare number is left alone and a quoted string never matches, because `topLevelValues` keeps
+     * the quotes.
      *
      * Reported against EVERY forbidden kind at once, since nothing here says which was meant.
      */
@@ -160,11 +155,9 @@ function dimensionNotAllowed(block: Block, rules: PropertyRules | undefined, fin
       if (text === undefined || value.at === undefined) continue;
 
       /**
-       * A colour LONGHAND is read here too, and was not.
-       *
-       * `literalNotAllowed` skipped a property whose grammar says `<color>` as *the types' to
-       * refuse* — true of the checker and false of the BUILD, which runs no TypeScript. Forty
-       * properties, `color: red` the first of them, compiled by vite and esbuild.
+       * A colour LONGHAND is read here too: `literalNotAllowed` leaves a property whose grammar
+       * says `<color>` to the types, which is true of the checker and false of the BUILD, which
+       * runs no TypeScript. Forty properties, `color: red` the first of them.
        */
       const isColour = primitive === "color" && (HEX.test(text) || COLOUR_CALL.test(text) || COLOUR_WORDS.has(text));
       if (!isColour && !A_DIMENSION.test(text) && !A_NUMBER.test(text)) continue;
@@ -188,21 +181,14 @@ function dimensionNotAllowed(block: Block, rules: PropertyRules | undefined, fin
 }
 
 /**
- * The three settings the TYPES enforced and the BUILD did not — units, values, shorthand.
+ * The three settings the TYPES enforce — units, values, shorthand — enforced for the BUILD too.
  *
- * Found by review pass 4, which swept every setting against every consumer. Vite and esbuild run
- * these rules over a block and never type-check it, so a setting that only reaches the types is a
- * setting the dev server ignores:
- *
- *     properties["*"].units         padding-left: 2rem    checker refuses, build serves
- *     properties["z-index"].values  z-index: 5            checker refuses, build serves
- *     properties["*"].shorthand     padding: 8px          checker refuses, build serves
- *
- * The project-wide `units`, `arity` and `variablesOnly` already spoke in both. So half the config
- * was enforced everywhere and half in one place, with nothing saying which half.
+ * Vite and esbuild run these rules over a block and never type-check it, so a setting that only
+ * reaches the types is a setting the dev server ignores: `padding-left: 2rem` under
+ * `properties["*"].units` would be refused by the checker and served by the build.
  *
  * `inOrder` drops the compiler's word on a line one of these reports, so an author still meets one
- * report rather than two — the same arrangement `variablesOnly` already has.
+ * report rather than two — the same arrangement `variablesOnly` has.
  */
 export function unitNotAllowedPerProperty(block: Block, rules: PropertyRules | undefined, findings: Finding[]): void {
   if (rules === undefined) return;
@@ -312,16 +298,15 @@ export function valueNotAllowed(block: Block, rules: PropertyRules | undefined, 
     if (values === undefined || written === undefined) continue;
     if (written === "" || GLOBAL.has(written.toLowerCase()) || written.startsWith("var(")) continue;
     /**
-     * A QUOTED value is `string-not-allowed`'s, and this one used to speak beside it.
+     * A QUOTED value is `string-not-allowed`'s.
      *
-     * Reported by the user, who read the type and the rule together and saw a contradiction:
-     * `z-index: "1"` gave two findings, and the second said *takes only 0, 1, 10 … and this is
-     * `"1"`* — naming a value that IS in the list. The fault is the quoting, not the number, and
-     * the other rule says exactly that.
+     * The fault is the quoting, not the number: `z-index: "1"` reported here too would say *takes
+     * only 0, 1, 10 … and this is `"1"`* — naming a value that IS in the list, beside the rule that
+     * names the real fault.
      *
      * The string spellings in the TYPE are a different thing and are not a widening of what the
-     * project permitted: a block is CSS, so `z-index: 1` reaches the type as `"1"`. Both
-     * spellings mean one declaration, and a hole may hand over either.
+     * project permitted: a block is CSS, so `z-index: 1` reaches the type as `"1"`. Both spellings
+     * mean one declaration, and a hole may hand over either.
      */
     if (written.startsWith('"') || written.startsWith("'")) continue;
     // Both spellings, because a block is CSS: `z-index: 5` arrives as the string `"5"`.

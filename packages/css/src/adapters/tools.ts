@@ -72,11 +72,9 @@ export function biomeFormatter(binary: string, cwd: string): (text: string, path
       });
     } catch (error) {
       /**
-       * The formatter's own words, not a stack trace of ours.
-       *
-       * Found by a broken fixture, and it is a real gap either way: a formatter can fail for reasons
-       * that have nothing to do with this — a config it cannot read, a version that is not installed
-       * — and a wrapper answering with its own call stack has hidden the only useful sentence.
+       * The formatter's own words, not a stack trace of ours: a formatter can fail for reasons that
+       * have nothing to do with this — a config it cannot read, a version that is not installed —
+       * and a wrapper answering with its own call stack would hide the only useful sentence.
        */
       const failed = error as { stderr?: string; stdout?: string };
       throw new ToolFailed(`${failed.stderr ?? ""}${failed.stdout ?? ""}`.trim() || String(error));
@@ -87,21 +85,17 @@ export function biomeFormatter(binary: string, cwd: string): (text: string, path
 /**
  * Oxlint, as JSON.
  *
- * It exits non-zero when it finds something, so the report is read off the failure as well — an exit
- * code is the answer here, not an error.
+ * It exits non-zero when it finds something, so the report is read off the failure as well — an
+ * exit code is the answer here, not an error.
  *
- * **But the ABSENCE of a report is not evidence of a clean file**, and this used to treat it as one.
- * The catch handed whatever `stdout` held to `readReport`, which answers `[]` for anything it cannot
- * parse — so a linter that crashed, that printed why it could not run, or that was not installed at
- * all came back as no findings, and `ramonda-css lint` printed *N file(s) lint clean* and exited 0.
+ * **But the ABSENCE of a report is not evidence of a clean file.** `readReport` answers `[]` for
+ * anything it cannot parse, so a linter that crashed, that printed why it could not run, or that
+ * was not installed at all would come back as no findings, and `ramonda-css lint` would print *N
+ * file(s) lint clean* and exit 0. It is the same shape the `maxBuffer` note names: unparsable
+ * output is no findings, which is a file that lints CLEAN.
  *
- * This file's own note names the shape already; it is the reason `maxBuffer` was raised — "a
- * truncated report is unparsable JSON, which is no findings, which is a file that lints CLEAN". The
- * buffer was fixed and the error path was not, and the two halves of one command disagreed about it:
- * `biomeFormatter` throws on the same binary.
- *
- * So a failure with nothing parsable in it is a `ToolFailed`, carrying the tool's own words, the same
- * as the formatter's.
+ * So a failure with nothing parsable in it is a `ToolFailed`, carrying the tool's own words, the
+ * same as `biomeFormatter` on the same binary.
  */
 /**
  * The same file, under a name no exclusion for it can match.

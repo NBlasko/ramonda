@@ -33,8 +33,8 @@ export function partsOf(key: string): { important: boolean; context: string; pro
   /**
    * IMPORTANCE is taken off first and returned on its own — see `keyToken`, which writes it as `!.`
    * in front. It is not a condition and not a selector, and a reader of `context` that had to know
-   * that got it wrong twice: the order warning dropped every important key with no condition, and
-   * compared an important declaration's condition with an ordinary one's.
+   * that would drop every important key with no condition, and compare an important declaration's
+   * condition with an ordinary one's.
    */
   const important = key.startsWith("!.");
   const rest = important ? key.slice(2) : key;

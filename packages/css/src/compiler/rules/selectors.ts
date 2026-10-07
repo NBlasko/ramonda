@@ -12,13 +12,13 @@ import { NUMBER, PERCENTAGE } from "./values";
 /**
  * A selector whose subject is another element, in a project that keeps a block to its own element.
  *
- * Asked for by the user: a parent reaching into a child (`.title { … }`, `& > img`) or a sibling
- * (`& + .card`) makes two independently composed elements depend on each other, and neither file
- * says so. The SUBJECT is the last compound — what follows the last combinator — and a selector is
- * the element's own when `&` is in it: `&:hover`, `&::before`, `&.active`, `&:has(> img)` and
- * `[data-theme="dark"] &` all style this element. A nested selector with no `&` is relative, so it
- * means a descendant, as CSS nesting reads it. A condition and a group (`@media`, `when`) are not
- * selectors. Inside a rule already reported, nothing more is said — the one report is the fault.
+ * A parent reaching into a child (`.title { … }`, `& > img`) or a sibling (`& + .card`) makes two
+ * independently composed elements depend on each other, and neither file says so. The SUBJECT is
+ * the last compound — what follows the last combinator — and a selector is the element's own when
+ * `&` is in it: `&:hover`, `&::before`, `&.active`, `&:has(> img)` and `[data-theme="dark"] &` all
+ * style this element. A nested selector with no `&` is relative, so it means a descendant, as CSS
+ * nesting reads it. A condition and a group (`@media`, `when`) are not selectors. Inside a rule
+ * already reported, nothing more is said — the one report is the fault.
  */
 export function stylesAnotherElement(block: Block, findings: Finding[]): void {
   const subjectOf = (selector: string): string => {
@@ -69,8 +69,8 @@ const KNOWN_FEATURES = new Set(MEDIA_FEATURES);
 /**
  * A `@media` feature that is nearly one CSS has.
  *
- * **Nothing checked a media condition at all**, and the fault it leaves is the quiet kind: measured
- * in Chromium 151, every one of these survives a parse with its text intact, `cssRules` and all —
+ * The fault it leaves is the quiet kind: measured in Chromium 151, every one of these survives a
+ * parse with its text intact, `cssRules` and all —
  *
  *     @media (min-widht: 40rem)                    kept
  *     @media (prefers-reduced-mErrorotion: reduce) kept
@@ -78,17 +78,17 @@ const KNOWN_FEATURES = new Set(MEDIA_FEATURES);
  *     @media (min-width 40rem)                     kept, and it has no colon
  *
  * — because an unknown feature is `<general-enclosed>` in the grammar, which is **legal CSS that
- * never matches**. So a typo is not invalid; it is a block that silently never applies, and nothing
- * anywhere would say so.
+ * never matches**. So a typo is not invalid; it is a block that silently never applies.
  *
  * A NEAR MISS only, for the reason every table-backed rule here says the same thing: the list is a
  * snapshot, a feature invented after it is valid, and reporting valid CSS is how a checker earns
- * being switched off. `@supports` and `@container` are left alone — their conditions are a different
- * grammar with different names.
+ * being switched off. `@supports` and `@container` are left alone — their conditions are a
+ * different grammar with different names.
  *
- * The table is written down because nothing can supply it, and it is verified against a real browser
- * in `apps/playground-core/browser`: for a name Chromium knows, exactly one of `(f)` and `not (f)`
- * holds; for one it does not, both are false. That is the oracle a stylesheet parse is not.
+ * The table is written down because nothing can supply it, and it is verified against a real
+ * browser in `apps/playground-core/browser`: for a name Chromium knows, exactly one of `(f)` and
+ * `not (f)` holds; for one it does not, both are false. That is the oracle a stylesheet parse is
+ * not.
  */
 export function mediaFeatures(block: Block, findings: Finding[]): void {
   for (const item of rulesIn(block)) {
@@ -119,12 +119,13 @@ export function mediaFeatures(block: Block, findings: Finding[]): void {
  *
  * `:hover` and `:HOVER` are one rule to a browser, and two keys here — because a declaration's key
  * is its own text, and folding it in the compiler is not available: CSS is case-insensitive about
- * the words of the LANGUAGE and case-sensitive about an author's identifiers, so lowering a selector
- * would merge `.a` with `.A`. A review measured the cost of not folding at all: a base and a
- * modifier one space apart kept both classes, so the modifier did not override and the winner was
- * decided by whichever file the bundler reached first.
+ * the words of the LANGUAGE and case-sensitive about an author's identifiers, so lowering a
+ * selector would merge `.a` with `.A`. Not folding at all has a measured cost: a base and a
+ * modifier one space apart keep both classes, so the modifier does not override and the winner is
+ * decided by whichever file the bundler reaches first.
  *
- * So the SOURCE is canonical, and this is what says so. `ramonda-css format` writes the same answer.
+ * So the SOURCE is canonical, and this is what says so. `ramonda-css format` writes the same
+ * answer.
  *
  * **It reports exactly what the canonicaliser changes.** A shape `canonicalCondition` and
  * `canonicalSelector` leave alone — `:nth-child(2n + 1)`, `@supports ((display: grid))`, both of
@@ -223,13 +224,13 @@ function rootUnderTheElement(selector: string): boolean {
 }
 
 /**
- * Every pseudo-class and pseudo-element CSS has, lowered, without the `()` a functional one carries.
+ * Every pseudo-class and pseudo-element CSS has, lowered, without the `()` a functional one
+ * carries.
  *
  * **Plus the four CSS2 pseudo-elements written with ONE colon**, which `SELECTORS` holds only in
  * their modern spelling. `:before`, `:after`, `:first-line` and `:first-letter` are valid CSS —
- * every browser still accepts them — and reporting one as a name CSS does not have would be refusing
- * real CSS, the one failure this package may not have. Measured: the gate caught exactly this, on
- * `non-canonical-spelling`'s own test for `&:before`.
+ * every browser still accepts them — and reporting one as a name CSS does not have would be
+ * refusing real CSS, the one failure this package may not have.
  *
  * They are not silent, they belong to a different rule: `non-canonical-spelling` says to write
  * `&::before`, which is the more useful sentence. One fault, one report.
@@ -250,24 +251,20 @@ function isPseudoNameCharacter(code: number): boolean {
 /**
  * **A PSEUDO-CLASS THAT DOES NOT EXIST, and it drops the whole rule.**
  *
- * `SELECTORS` holds 129 of them with their groups and their MDN links. `normalise.ts` reads it to
- * canonicalise a prelude and `plugin.ts` reads it to hover one — and **no rule read it at all**,
- * which is this repository's most common shape of fault: data that exists and nothing asks it.
- *
- * So `&:displaydd { … }` was silent. Measured in Chromium, inserting a rule with two declarations
- * and reading `cssRules` back: a pseudo-class the browser does not know keeps **zero rules**. Not
- * one dropped declaration — every declaration beside it, gone, with the element left on whatever it
- * inherited. That is the same cost as `unknown-at-rule` and it is why this one was worth having
- * first of the six on the list.
+ * `SELECTORS` holds 129 of them with their groups and their MDN links; `normalise.ts` reads it to
+ * canonicalise a prelude, `plugin.ts` to hover one, and this to report one. Measured in Chromium,
+ * inserting a rule with two declarations and reading `cssRules` back: a pseudo-class the browser
+ * does not know keeps **zero rules**. Not one dropped declaration — every declaration beside it,
+ * gone, with the element left on whatever it inherited. The same cost as `unknown-at-rule`.
  *
  * ## Why the TABLE is the oracle here, and not the browser
  *
- * The other three generated tables in this package ask the engines, because `mdn-data` was measured
- * short three times. This one must not. Measured, again in Chromium: **33 of the 129 names it
- * refuses** — `:left`, `:right` and `:first` are paged-media, `::-ms-*` and `::-moz-*` belong to
- * other engines, `:buffering`, `:playing` and `:seeking` are media ones it has not shipped. Every
- * one is a real selector somewhere, and a rule that asked this browser would refuse valid CSS,
- * which is the one failure this package may not have.
+ * The other generated tables in this package ask the engines, because `mdn-data` was measured short
+ * three times. This one must not. Measured, again in Chromium: **33 of the 129 names it refuses** —
+ * `:left`, `:right` and `:first` are paged-media, `::-ms-*` and `::-moz-*` belong to other engines,
+ * `:buffering`, `:playing` and `:seeking` are media ones it has not shipped. Every one is a real
+ * selector somewhere, and a rule that asked this browser would refuse valid CSS, which is the one
+ * failure this package may not have.
  *
  * ## What it deliberately does not read
  *
@@ -378,11 +375,9 @@ const AT_RULE_NAMES = new Set(Object.keys(AT_RULE_LINKS).map((one) => one.toLowe
 /**
  * **AN AT-RULE NAME THAT DOES NOT EXIST, and it drops the whole rule.**
  *
- * `AT_RULE_LINKS` holds every at-rule name CSS has, and `normalise.ts` and `plugin.ts` both read it —
- * while no rule did. So the FEATURE inside a `@media` was checked and the word `@media` was not:
- *
- *     @media (min-widht: 40rem) { … }   reported by `unknown-media-feature`
- *     @medai (min-width: 40rem) { … }   silent
+ * `AT_RULE_LINKS` holds every at-rule name CSS has, and `normalise.ts` and `plugin.ts` both read
+ * it. `unknown-media-feature` checks the FEATURE inside a `@media`; this checks the word: `@medai
+ * (min-width: 40rem) { … }`.
  *
  * Measured in Chromium, inserting the rule and reading `cssRules` back: a name the browser does not
  * know keeps ZERO rules. Every declaration inside it is dropped and the element keeps its inherited
@@ -392,8 +387,8 @@ const AT_RULE_NAMES = new Set(Object.keys(AT_RULE_LINKS).map((one) => one.toLowe
  * A name with no near miss is still reported, unlike `unknown-property`: there the types have
  * already said the name does not exist, and here nothing else in this package says a word.
  *
- * A VENDOR at-rule is a browser's own — `@-moz-document` was real — so the prefix is checked and the
- * name after it is not, exactly as for a property.
+ * A VENDOR at-rule is a browser's own — `@-moz-document` was real — so the prefix is checked and
+ * the name after it is not, exactly as for a property.
  */
 function unknownAtRule(rule: NestedRule, name: string, findings: Finding[]): void {
   if (AT_RULE_NAMES.has(name)) return;

@@ -2,9 +2,8 @@
  * A space-separated list of words — a property's keywords from the generated tables — as a set,
  * made once per list.
  *
- * Every caller used to split and build its own on every value: `canonicalValue` did it for each
- * declaration, and `color` alone has over two hundred keywords. Measured on 1000 files of ten blocks
- * (`scripts/bench-css.mjs`), that one function was 21.6% of a build. The lists are the tables' own
+ * Built per value instead, `canonicalValue` alone was 21.6% of a build on 1000 files of ten blocks
+ * (`scripts/bench-css.mjs`) — `color` has over two hundred keywords. The lists are the tables' own
  * strings, so the same list is always the same key, and there are a few hundred of them at most.
  */
 const sets = new Map<string, ReadonlySet<string>>();
