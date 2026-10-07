@@ -11,8 +11,8 @@ order: 86.5
 Node needs a DOM to render into, and the markup needs a document to go into. `@ramonda/server` is
 those two, and nothing else.
 
-```sh
-npm install @ramonda/server
+```install
+@ramonda/server
 ```
 
 It brings its own DOM — you do not install one alongside it.

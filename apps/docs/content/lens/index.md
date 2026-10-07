@@ -27,8 +27,8 @@ this.data = {
 
 `@ramonda/lens` does the same thing, readably:
 
-```sh
-pnpm add @ramonda/lens
+```install
+@ramonda/lens
 ```
 
 ```tsx

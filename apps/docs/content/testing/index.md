@@ -7,8 +7,8 @@ order: 100
 
 # Testing
 
-```
-pnpm add -D @ramonda/testing-library @testing-library/dom
+```install
+-D @ramonda/testing-library @testing-library/dom
 ```
 
 ```tsx

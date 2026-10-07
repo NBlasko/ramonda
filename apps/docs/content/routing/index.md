@@ -11,8 +11,8 @@ Most apps are more than one page — a home screen, a profile, a settings panel.
 **Routing** is showing the right one for the current URL and switching between them
 without a full page reload. Ramonda's router is a separate package:
 
-```
-pnpm add @ramonda/router
+```install
+@ramonda/router
 ```
 
 You write a **route table** with `createRoutes`, then `createRouter` hands you the pieces bound

@@ -12,8 +12,8 @@ state part Ramonda already does. `@ramonda/form` is the rest of it: one hook tha
 values, runs the schema, decides when a message is ready to be seen, and hands each field
 everything an `<input>` needs.
 
-```sh
-pnpm add @ramonda/form
+```install
+@ramonda/form
 ```
 
 A new project can take it at scaffold time — `npm create ramonda@latest` offers it as an add-on.

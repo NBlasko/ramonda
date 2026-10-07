@@ -4,6 +4,7 @@ import type { ContentNode } from "./content-types";
 import { demos } from "./demos";
 import { Demo } from "./Demo";
 import { CodeBlock } from "./CodeBlock";
+import { CodeTabs } from "./CodeTabs";
 import { DataTable } from "./DataTable";
 import type { Cell } from "./DataTable";
 import { ExamplesIndex } from "./ExamplesIndex";
@@ -106,6 +107,9 @@ export function toVNode(node: ContentNode): ComponentChild {
   if (node.t === "pre" && node.a?.className?.includes("shiki")) {
     return __h(CodeBlock, { node }) as ComponentChild;
   }
+
+  // An `install` or a `compiled` fence: one piece of code seen several ways — see the build.
+  if (node.t === "tabs") return __h(CodeTabs, { node }) as ComponentChild;
 
   if (node.t === "demo") {
     const name = node.a?.name ?? "";

@@ -1,3 +1,5 @@
+import { compiledExample } from "./compiled-example.mjs";
+import { installCommands } from "./install-commands.mjs";
 import { readdirSync, readFileSync, writeFileSync, statSync, mkdirSync, rmSync, existsSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -65,6 +67,8 @@ const md = new MarkdownIt({
     // it has to reach `toTree` with its language intact. Returning "" lets
     // markdown-it emit its own <pre><code class="language-demo:Name">.
     if (lang.startsWith("demo:")) return "";
+    // An `install` fence is written once and shown per package manager — see `installCommands`.
+    if (lang === INSTALL || lang === COMPILED) return "";
 
     return highlighter.codeToHtml(code, {
       lang: KNOWN_LANGS.has(lang) ? lang : "text",
@@ -83,6 +87,34 @@ const ATTRIBUTE_ALIASES = { class: "className", for: "htmlFor" };
  * a string that can drift from the code it claims to show.
  */
 const DEMO_PREFIX = "language-demo:";
+
+/** An `install` fence's name, and the page being rendered so a fault in one can name it. */
+const INSTALL = "install";
+
+/**
+ * A block shown as written, as the classes an element gets, and as the CSS the build emits — a
+ * fence written ```tsx compiled. It is compiled HERE, by the real compiler, so what the page says
+ * the build does is what the build does; and on disk it stays a `tsx` fence, so `check-examples`
+ * checks it like any other. Rendering reads it as its own language — see `withCompiledFences`.
+ */
+const COMPILED = "compiled";
+
+/** `tsx compiled` → `compiled` for the renderer, which loses everything after a fence's language. */
+function withCompiledFences(body) {
+  return body.replace(/^```tsx compiled$/gm, "```" + COMPILED);
+}
+
+let currentFile = "";
+
+/** Code highlighted as the given language, as the tree a page carries. */
+function highlighted(code, lang) {
+  const html = highlighter.codeToHtml(code, {
+    lang: KNOWN_LANGS.has(lang) ? lang : "text",
+    themes: { light: "github-light", dark: "github-dark" },
+    defaultColor: false,
+  });
+  return toTree(new JSDOM(`<body>${html}</body>`).window.document.body.firstElementChild);
+}
 
 /** "RMD004 — Props mutated" → "rmd004-props-mutated". */
 function slugify(text) {
@@ -157,6 +189,30 @@ function toTree(node) {
     const cls = code?.getAttribute("class") ?? "";
     if (cls.startsWith(DEMO_PREFIX)) {
       return { t: "demo", a: { name: cls.slice(DEMO_PREFIX.length) } };
+    }
+    if (cls === `language-${INSTALL}`) {
+      return {
+        t: "tabs",
+        a: { remember: "package-manager", label: "Package manager" },
+        c: installCommands(code.textContent ?? "", currentFile).map(([manager, command]) => ({
+          t: "tab",
+          a: { name: manager },
+          c: [highlighted(command, "sh")],
+        })),
+      };
+    }
+    if (cls === `language-${COMPILED}`) {
+      const written = code.textContent ?? "";
+      const { classes, css } = compiledExample(written, currentFile);
+      return {
+        t: "tabs",
+        a: { label: "Written and built" },
+        c: [
+          { t: "tab", a: { name: "Written" }, c: [highlighted(written.trimEnd(), "tsx")] },
+          { t: "tab", a: { name: "Classes" }, c: [highlighted(classes, "text")] },
+          { t: "tab", a: { name: "CSS" }, c: [highlighted(css, "css")] },
+        ],
+      };
     }
   }
 
@@ -483,8 +539,9 @@ function pageFor(rule, at) {
 function pageOf(source, routePath, label, editable) {
   {
     const file = label;
+    currentFile = label;
     const { data, body } = splitFrontmatter(source);
-    const dom = new JSDOM(`<body>${md.render(body)}</body>`);
+    const dom = new JSDOM(`<body>${md.render(withCompiledFences(body))}</body>`);
     addHeadingIds(dom.window.document);
     const tree = Array.from(dom.window.document.body.childNodes)
       .map(toTree)

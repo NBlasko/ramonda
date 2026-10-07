@@ -19,8 +19,8 @@ fine.
 `@ramonda/check` closes it from the other side: it reads your source and **proves** the provider is
 above the consumer, before anything runs.
 
-```bash
-npm add -D @ramonda/check
+```install
+-D @ramonda/check
 ```
 
 ```jsonc

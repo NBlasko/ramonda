@@ -7,9 +7,9 @@ order: 106
 
 # Style blocks
 
-Write CSS where the element is, in CSS:
+Write CSS where the element is, in CSS — and see what the build makes of it:
 
-```tsx
+```tsx compiled
 <div className={@@(
   display: flex;
   gap: 8px;
@@ -37,8 +37,8 @@ change if you never install this.
 
 ## Install
 
-```sh
-npm install @ramonda/css
+```install
+@ramonda/css
 ```
 
 The checking is TypeScript's own, so the package needs yours — it writes a virtual file your compiler

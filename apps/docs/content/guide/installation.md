@@ -11,8 +11,8 @@ order: 10
 
 The scaffolder sets up a runnable project for you, with the build already configured:
 
-```
-npm create ramonda@latest my-app
+```install
+create ramonda@latest my-app
 ```
 
 It asks a couple of questions — a client-side app or a server-rendered one, and which
@@ -33,9 +33,9 @@ project you already have.
 
 ## Adding Ramonda to an existing project
 
-```
-npm install @ramonda/core
-npm install -D @ramonda/build
+```install
+@ramonda/core
+-D @ramonda/build
 ```
 
 Ramonda has no runtime dependencies. It needs three settings from your bundler, and

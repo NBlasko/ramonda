@@ -15,8 +15,8 @@ hand.
 
 `@ramonda/query` is that, once, for the whole tree.
 
-```sh
-pnpm add @ramonda/query
+```install
+@ramonda/query
 ```
 
 ```tsx

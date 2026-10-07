@@ -1137,3 +1137,33 @@ article pre.shiki {
     margin-left: 0;
   }
 }
+
+/* One piece of code seen several ways — an install per manager, a block as written and as built. */
+.code-tabs {
+  margin: 1.4em 0;
+}
+.code-tabs .code-block {
+  margin-top: 0;
+}
+.code-tabs-bar {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+.code-tab {
+  padding: 4px 10px;
+  border: 1px solid var(--rmd-line);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--rmd-muted);
+  font: inherit;
+  font-size: 0.85em;
+  cursor: pointer;
+}
+.code-tab:hover {
+  color: var(--rmd-fg);
+}
+.code-tab.active {
+  border-color: var(--rmd-accent);
+  color: var(--rmd-fg);
+}

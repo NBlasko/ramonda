@@ -44,11 +44,9 @@ runtime either.
 
 Upgrade them in one step, then — whichever of these your `package.json` actually has:
 
-```sh
-npm install @ramonda/core@latest @ramonda/router@latest @ramonda/query@latest \
-            @ramonda/form@latest @ramonda/lens@latest @ramonda/server@latest
-npm install -D @ramonda/build@latest @ramonda/check@latest \
-               @ramonda/devtools@latest @ramonda/testing-library@latest
+```install
+@ramonda/core@latest @ramonda/router@latest @ramonda/query@latest @ramonda/form@latest @ramonda/lens@latest @ramonda/server@latest
+-D @ramonda/build@latest @ramonda/check@latest @ramonda/devtools@latest @ramonda/testing-library@latest
 ```
 
 ## Read the changelog for the minor you are moving to

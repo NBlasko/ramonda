@@ -7,8 +7,8 @@ order: 105
 
 # Devtools
 
-```
-pnpm add -D @ramonda/devtools
+```install
+-D @ramonda/devtools
 ```
 
 ```ts
