@@ -149,8 +149,10 @@ modes are the durable form of the same rule.
 
 ## Where to start
 
-Add the failing test first. Everything lives flat in `src/__tests__/`. Nineteen of the compiler's
-forty files have a test of the same name — that is the convention when a change is confined to one file;
+Add the failing test first. Tests live in `src/__tests__/`, flat — except the rules', which are in
+`src/__tests__/rules/`, one file to each family in `compiler/rules/`, with the helpers they share in
+`helpers.ts`. Nineteen of the compiler's forty files have a test of the same name — that is the
+convention when a change is confined to one file;
 the rest are named for a subject that crosses several. A test here is expected to say what it is
 about in prose, not just assert, and each case names the measurement that found it missing. Read
 `classify.test.ts` for the register. Then:
