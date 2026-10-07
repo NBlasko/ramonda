@@ -395,6 +395,9 @@ export function conflict(a: string, b: string): boolean {
  * also filed under {@link aliasKey} of its standard form, and asking that key finds it.
  */
 export function rivalsOf(property: string): readonly string[] {
+  // A custom property is in no table and has no prefix, so it fights only itself — and it is the
+  // author's own name, so remembering each one would grow with the project.
+  if (property.startsWith("--")) return [property];
   let found = rivals.get(property);
   if (found === undefined) {
     const standard = standardFormOf(property);
