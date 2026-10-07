@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -2910,6 +2910,7 @@ describe("a value cast to a block", () => {
     ["through an alias of the import", `anything as Css<CardStyle>`],
     ["through a type alias", `anything as CardCss`],
     ["to the brand the block is built on", `"color: red" as StyleValue`],
+    ["to a list of blocks, which hands out each of them", `[anything] as CssBlock<CardStyle>[]`],
   ])("%s is reported", (_what, body) => {
     expect(card(body).findings.map((one) => one.code)).toEqual(["cast-to-a-block"]);
   });
@@ -2924,6 +2925,22 @@ describe("a value cast to a block", () => {
     ["`as const`", `["a", "b"] as const`],
   ])("%s is not reported", (_what, body) => {
     expect(card(body).findings.map((one) => one.code)).toEqual([]);
+  });
+
+  /**
+   * The one place a block is MADE is `mergeClassNames`, and it is a cast — so a program that holds
+   * this package's source rather than its declaration files, as a monorepo pointing `paths` at it
+   * does, must not hear about it. Told by where the brand is declared: a cast inside that package.
+   */
+  test("the package's own `mergeClassNames`, in a program holding its source, is not reported", () => {
+    const tsconfig = project({
+      "Card.tsx": `import { mergeClassNames } from "@ramonda/css";\nexport const a = mergeClassNames("x");\n`,
+    });
+    const options = JSON.parse(readFileSync(tsconfig, "utf8"));
+    options.compilerOptions.paths["@ramonda/css"] = [join(PACKAGE, "src", "index.ts")];
+    writeFileSync(tsconfig, JSON.stringify(options));
+
+    expect(checkProject(tsconfig).findings.filter((one) => one.code === "cast-to-a-block")).toEqual([]);
   });
 
   /** A project's own type of that NAME is not ours — the brand says which is which. */

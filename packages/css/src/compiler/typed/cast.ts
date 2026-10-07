@@ -4,7 +4,7 @@
  * A typed rule — see `index.ts` for what separates these from the rules in `rules/`.
  */
 import { type TypedFinding } from "./index";
-import { isBlock } from "./shared";
+import { BRAND, branded } from "./shared";
 import ts from "typescript";
 
 /**
@@ -42,13 +42,37 @@ export function castToABlock(
     );
   };
 
+  /**
+   * The block a cast makes: the type itself, or what a list of them holds — `[x] as CssBlock[]`
+   * hands out each element as a block just the same.
+   */
+  const madeBlock = (type: ts.Type): ts.Type | undefined =>
+    branded(type) ?? branded(checker.getIndexTypeOfType(type, ts.IndexKind.Number) ?? type);
+
+  /**
+   * The package that DEFINES a block may make one, and does, once: `mergeClassNames` casts the
+   * classes it joined. A program holding that package's source — a monorepo whose `paths` point
+   * at it — would otherwise hear about it. Told by where the brand is declared rather than by a
+   * name: a cast inside the folder that holds the brand's own package.
+   */
+  const ownPackage = (block: ts.Type): boolean => {
+    const declared = block
+      .getProperties()
+      .find((one) => (one.escapedName as string).startsWith(BRAND))
+      ?.declarations?.[0]?.getSourceFile().fileName;
+    if (declared === undefined) return false;
+    let root = declared.slice(0, declared.lastIndexOf("/"));
+    while (root.includes("/") && !ts.sys.fileExists(`${root}/package.json`))
+      root = root.slice(0, root.lastIndexOf("/"));
+    return file.fileName.startsWith(`${root}/`);
+  };
+
   const visit = (node: ts.Node): void => {
-    if (
-      (ts.isAsExpression(node) || ts.isTypeAssertionExpression(node)) &&
-      !ts.isConstTypeReference(node.type) &&
-      isBlock(checker, checker.getTypeFromTypeNode(node.type)) &&
-      !writtenHere(node.expression)
-    ) {
+    const made =
+      (ts.isAsExpression(node) || ts.isTypeAssertionExpression(node)) && !ts.isConstTypeReference(node.type)
+        ? madeBlock(checker.getTypeFromTypeNode(node.type))
+        : undefined;
+    if (made !== undefined && !writtenHere((node as ts.AsExpression).expression) && !ownPackage(made)) {
       report(node, {
         rule: "cast-to-a-block",
         message:
