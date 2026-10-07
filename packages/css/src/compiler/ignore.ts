@@ -17,12 +17,12 @@ export interface Ignored {
 /**
  * The findings an author has taken responsibility for, and the record of having done so.
  *
- * **Every rule in this package fails a build, and until now nothing could stop one.** That is only
- * bearable while no rule is ever wrong, and the first one that is wrong once means a person switches
- * the whole tool off — which is worse than any finding it could have made. The framework's own
- * checker has had `// ramonda-check-ignore <reason>` since severities were removed; this is the same
- * thing for the same reason, and it lives HERE rather than there because `@ramonda/css` is meant to
- * be usable from another JSX library, where nothing of the framework is installed.
+ * **Every rule in this package fails a build.** That is only bearable while no rule is ever wrong,
+ * and the first one that is wrong once means a person switches the whole tool off — which is worse
+ * than any finding it could have made. The framework's own checker has `// ramonda-check-ignore
+ * <reason>`; this is the same thing for the same reason, and it lives HERE rather than there
+ * because `@ramonda/css` is meant to be usable from another JSX library, where nothing of the
+ * framework is installed.
  *
  * Three things make it a record rather than a silence, and all three are the framework's:
  *
@@ -33,10 +33,9 @@ export interface Ignored {
  *
  * ## The two places a person writes one, and which line each is about
  *
- * Every linter has both spellings and this had only one. Measured on the other — the directive at
- * the END of the line that is wrong — it covered the line BELOW: the fault it was written for was
- * still reported, and a line the author never looked at was silenced instead. "It cannot creep past
- * what the author looked at" was true of the wrong line.
+ * Every linter has both spellings. Read as "always the line below", a directive at the END of the
+ * line that is wrong would cover the line BELOW: the fault it was written for still reported, and a
+ * line the author never looked at silenced instead.
  *
  * One marker still, told apart by what is IN FRONT of it:
  *

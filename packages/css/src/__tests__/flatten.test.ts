@@ -1,5 +1,16 @@
 import { describe, expect, test } from "vitest";
-import { flatten, segments, sheetRank, widthSlot } from "../compiler/flatten";
+import {
+  aliasKey,
+  conflict,
+  flatten,
+  rivalsOf,
+  segments,
+  sheetRank,
+  standardFormOf,
+  widthSlot,
+} from "../compiler/flatten";
+import { MAY_CLEAR, PROPERTIES, SHORTHANDS } from "../compiler/keywords.generated";
+import { PREFIXED } from "../compiler/prefixed.generated";
 import { readBlock } from "../compiler/read";
 import { findBlocks } from "../compiler/scan";
 
@@ -671,4 +682,38 @@ describe("a shorthand is split into what it sets", () => {
       "padding-left:10px !important;",
     ]);
   });
+});
+
+/**
+ * `override-out-of-order` compares a declaration only with the earlier ones filed under a name
+ * `rivalsOf` gives — so a pair `conflict` admits and `rivalsOf` misses is a report that silently
+ * stops. Asked of EVERY pair of names the tables hold, every real prefixed name, a made-up prefix
+ * on each standard one (an author may write any), and a custom property.
+ */
+describe("rivalsOf", () => {
+  test("names every property a declaration can conflict with", () => {
+    const names = [
+      ...new Set([
+        ...PROPERTIES,
+        ...PREFIXED,
+        ...PROPERTIES.map((one) => `-webkit-${one}`),
+        ...Object.entries({ ...SHORTHANDS, ...MAY_CLEAR }).flat(2),
+        "--brand",
+      ]),
+    ];
+    const missed: string[] = [];
+
+    for (const later of names) {
+      const rivals = new Set(rivalsOf(later));
+      for (const earlier of names) {
+        if (!conflict(earlier, later)) continue;
+        const standard = standardFormOf(earlier);
+        const filed = rivals.has(earlier) || (standard !== undefined && rivals.has(aliasKey(standard)));
+        if (!filed) missed.push(`${earlier} before ${later}`);
+      }
+    }
+
+    expect(names.length).toBeGreaterThan(1000);
+    expect(missed).toEqual([]);
+  }, 60_000);
 });

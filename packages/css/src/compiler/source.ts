@@ -1,6 +1,6 @@
 import { CssBlockError } from "./errors";
 import { urlCheckFor } from "./urls";
-import type { Config } from "../config";
+import type { Config } from "../config/config";
 import { type Imported, namedSites, syntaxesIn } from "./references";
 import { readBlock } from "./read";
 import { type Finding, checkBlock, checkNamedSite, checkSite, checkTemplates, checkText } from "./rules";
@@ -11,22 +11,19 @@ import { type RegisteredSite, type VariableRead, type Variables, variablesIn } f
 /**
  * Everything the CSS rules say about one FILE's blocks.
  *
- * There is one of this for the same reason there is one `transform`: the sequence is not obvious and
- * every part of it is load-bearing. Finding the sites, resolving a reference to a named site so it
- * reads as the name it compiles to rather than as a hole, asking the TEXT as well as the parse
- * because one of them has no name for a `//`, and passing the references on so a variable set by one
- * name and read by another can be told apart. Written out a second time, any one of those is a place
- * for two answers to the same question.
+ * There is one of this for the same reason there is one `transform`: the sequence is not obvious
+ * and every part of it is load-bearing. Finding the sites, resolving a reference to a named site so
+ * it reads as the name it compiles to rather than as a hole, asking the TEXT as well as the parse
+ * because one of them has no name for a `//`, and passing the references on so a variable set by
+ * one name and read by another can be told apart. Written out a second time, any one of those is a
+ * place for two answers to the same question.
  *
- * **It was written out twice before this existed** — in `ramonda-check` and, differently, in the
- * documentation gate, which called the framework's checker and no CSS rule at all. So a doc example
- * could carry a CSS fault and pass: measured, `background: var(--ackcent)` beside `--accent: …` was
- * clean to the gate. That was survivable while a build compiled such a block anyway; it stopped being
- * survivable the moment the build began refusing them, because the gate would then be publishing
- * examples that break a reader's build.
+ * `ramonda-css check`, the editor and the documentation gate all go through here. A gate with its
+ * own sequence would pass doc examples carrying a CSS fault — measured, `background:
+ * var(--ackcent)` beside `--accent: …` — and publish examples that break a reader's build.
  *
- * A block the PARSER refuses is a different thing and is not caught here — it throws, and the caller
- * decides whether that is a refusal to report or a file to skip.
+ * A block the PARSER refuses is a different thing and is not caught here — it throws, and the
+ * caller decides whether that is a refusal to report or a file to skip.
  */
 export interface SourceOptions {
   /** How to read a module a block imports a named site from — see {@link Imported}. */
@@ -37,12 +34,11 @@ export interface SourceOptions {
    * Read a half-written block instead of refusing it — for an EDITOR, which sees nothing else.
    *
    * The build path is strict: a block the parser refuses has already been reported as a refusal and
-   * the run has stopped. An editor is the only place `hole-out-of-place` and its neighbours can fire
-   * at all, because by the time a build has spoken there is nothing left to squiggle.
+   * the run has stopped. An editor is the only place `hole-out-of-place` and its neighbours can
+   * fire at all, because by the time a build has spoken there is nothing left to squiggle.
    *
-   * **A parameter, because the plugin used to keep its own copy of this whole sequence** — and that
-   * copy did not gain the site rules added to this one, so a misspelt `@@name( … )` was reported by
-   * `ramonda-css check` and by the build, and not by the editor. Third copy of one question.
+   * A parameter rather than a copy of this sequence in the plugin, so a rule added here reaches the
+   * editor too.
    */
   readonly tolerant?: boolean;
 }
@@ -86,7 +82,7 @@ export function checkedSource(
   // a working theme a fault; one that resolved more would miss one. Both consumers pass the same.
   const references = namedSites(source, { filename: fileName, read });
   // What each registered property may HOLD, beside what it is called — see `syntaxesIn`.
-  const syntaxes = syntaxesIn(source, { filename: fileName, read });
+  const syntaxes = syntaxesIn(source, { filename: fileName, read }, references);
 
   /**
    * A block inside a `${ … }` is found by nothing below, because a template literal is text — see
@@ -109,10 +105,11 @@ export function checkedSource(
     /**
      * A forgiving read still asks the STRICT one, so the editor says what the build will.
      *
-     * An editor reads a half-typed block without refusing it, which is what keeps completion alive —
-     * and which also let a block the build refuses outright come back clean: `else` first in a
-     * block, `when $(a) $(b)`, a condition inside a match arm. The sentence is the reader's own, so
-     * the two cannot drift; where a rule already names the fault at that spot, the rule says it.
+     * An editor reads a half-typed block without refusing it, which is what keeps completion alive
+     * — and which alone would let a block the build refuses outright come back clean: `else` first
+     * in a block, `when $(a) $(b)`, a condition inside a match arm. The sentence is the reader's
+     * own, so the two cannot drift; where a rule already names the fault at that spot, the rule
+     * says it.
      */
     if (tolerant) {
       try {
@@ -125,27 +122,18 @@ export function checkedSource(
     /**
      * A site whose NAME is not one this compiles gets that one finding and no more.
      *
-     * There is no shape to check the body against, so anything said about it is a guess — and the
-     * guess was `rule-out-of-place`, which read `from { … }` as the selector `& from` and reported
-     * a nested rule. A wrong message is worse than none: it sends a person to the wrong line.
+     * There is no shape to check the body against, so anything said about it is a guess —
+     * `rule-out-of-place` would read `from { … }` as the selector `& from` and report a nested
+     * rule. A wrong message is worse than none: it sends a person to the wrong line.
      */
     /**
-     * **Through `rules` too, the way the build reads them.**
-     *
-     * `checkBlock` below is handed the config and drops what a project switched off; the site check
-     * never was, in either door. The build learned to filter these and this one did not, which left
-     * `ramonda-css` and an editor reporting a rule the build had been told to let through — two
-     * tools disagreeing about one fault, which is the thing the refusal's own note says cannot
-     * happen.
+     * **Through `rules` too, the way the build reads them**, so `ramonda-css` and an editor do not
+     * report a rule the build has been told to let through.
      */
     /**
-     * **The SITE as well as the named site**, which this door did not ask about.
-     *
-     * `transform` runs `checkSite` beside `checkNamedSite` — a bare JSX attribute is no longer a
-     * spelling it compiles, and it refuses one. This flow called every other checker the build does
-     * and not that one, so a bare attribute was a build failure and a clean run of `ramonda-css`,
-     * which is the tool a project's CI asks. The editor reports it through a path of its own, so the
-     * only quiet tool was the one that gates a pipeline.
+     * **The SITE as well as the named site**, as `transform` asks: a bare JSX attribute is a build
+     * failure, so it must not be a clean run of `ramonda-css`, which is the tool a project's CI
+     * asks.
      */
     const named = [...checkSite(source, site), ...checkNamedSite(site)].filter(
       (one) => config?.rules?.[one.rule] !== "off",
@@ -163,9 +151,9 @@ export function checkedSource(
     // A `@@property` registers a name, and the name it registers is what a reference to it resolves
     // to — so both are counted where the build counts them. See `transform`.
     //
-    // A `@@keyframes` frame DOES set a custom property, on the element it animates: review round 2
-    // measured `registered-never-set` on a property only an animation sets — the pattern the docs
-    // show for animating one — because frames were counted as setting nothing.
+    // A `@@keyframes` frame DOES set a custom property, on the element it animates: counting frames
+    // as setting nothing reports `registered-never-set` on a property only an animation sets — the
+    // pattern the docs show for animating one.
     if (site.at === "keyframes") {
       const found = variablesIn(read.block);
       blockSets.push(...found.set);

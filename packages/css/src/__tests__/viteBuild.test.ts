@@ -217,7 +217,7 @@ describe("a block, all the way through a production build", () => {
 
     expect(result.ok).toBe(false);
     // `3:5` and not `3:4`: Vite's `loc.column` is 0-based and this is where it is converted, so the
-    // printed position is the author's own. Measured — see the note in `src/vite.ts`.
+    // printed position is the author's own. Measured — see the note in `src/adapters/vite.ts`.
     expect(result.output).toContain("Card.tsx:3:5");
     expect(result.output).toContain("a hole cannot be a whole declaration");
   });

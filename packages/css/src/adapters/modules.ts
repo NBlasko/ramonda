@@ -15,18 +15,17 @@ import { dirname, resolve } from "node:path";
  * extension is tried in the order a TypeScript project uses.
  *
  * **A miss costs nothing — for the BUILD.** The reference stays a hole, and a hole where `var()`
- * takes a name is reported by `hole-as-a-custom-property-name`, so the author is told rather than shipped a
- * rule that silently does nothing.
+ * takes a name is reported by `hole-as-a-custom-property-name`, so the author is told rather than
+ * shipped a rule that silently does nothing.
  *
- * **It costs the PAIR, though, and that is the part this got wrong.** The editor resolves with
- * TypeScript's own resolver, so a specifier it resolves and this one misses shows a token resolved
- * in the editor and refuses the same character in the build. A review found exactly that:
- * `import { accent } from "./theme.js"` — the spelling `moduleResolution: node16` and `nodenext`
- * make MANDATORY — resolved to `theme.ts` in the editor and to nothing here.
+ * **It costs the PAIR, though.** The editor resolves with TypeScript's own resolver, so a specifier
+ * it resolves and this one misses shows a token resolved in the editor and refuses the same
+ * character in the build — `import { accent } from "./theme.js"`, the spelling `moduleResolution:
+ * node16` and `nodenext` make MANDATORY, is exactly that shape.
  *
- * So a `.js`, `.mjs` or `.cjs` extension is rewritten to its TypeScript sibling first, which is what
- * TypeScript itself does, before the plain candidates are tried. `readModule.test.ts` asserts the two
- * halves agree rather than asserting a list, because a list is the thing that drifts.
+ * So a `.js`, `.mjs` or `.cjs` extension is rewritten to its TypeScript sibling first, which is
+ * what TypeScript itself does, before the plain candidates are tried. `readModule.test.ts` asserts
+ * the two halves agree rather than asserting a list, because a list is the thing that drifts.
  */
 const EXTENSIONS = ["", ".ts", ".tsx", "/index.ts", "/index.tsx", ".js", ".jsx"];
 

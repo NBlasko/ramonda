@@ -243,7 +243,7 @@ export const BY_HAND: Readonly<Record<string, (value: string) => Record<string, 
   /**
    * A list of ranges, each a start and an optional end. An end left out is the start's RANGE NAME,
    * and a length after a name is that name's offset — `cover 10%` runs from `cover 10%` to `cover`.
-   * The positional table had it the other way, and Chromium and WebKit do not: measured.
+   * Measured in Chromium and WebKit; a positional reading gets it the other way round.
    */
   "animation-range": (value) => ranges(value, "animation-range-start", "animation-range-end"),
 
@@ -389,7 +389,7 @@ export const BY_HAND: Readonly<Record<string, (value: string) => Record<string, 
   /**
    * One line or two across a `/`. A line left out is the first one's NAME when it is a name, and
    * `auto` otherwise — `grid-column: a` spans the area `a`, `grid-column: 2` starts at 2 and ends
-   * where it may. The positional table had copied the number too: measured, every engine says `auto`.
+   * where it may. Measured: every engine says `auto`, so the number is not copied.
    */
   "grid-row": (value) => gridLines(value, "grid-row-start", "grid-row-end"),
   "grid-column": (value) => gridLines(value, "grid-column-start", "grid-column-end"),

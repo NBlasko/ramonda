@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ts from "typescript";
 import { describe, expect, test } from "vitest";
-import { readModule } from "../modules";
+import { readModule } from "../adapters/modules";
 
 /**
  * The BUILD's module reader, measured against the resolver the EDITOR uses.

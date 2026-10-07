@@ -1,17 +1,17 @@
-import { CssBlockError, positionOf } from "./compiler/errors";
+import { CssBlockError, positionOf } from "../compiler/errors";
 import { readFileSync } from "node:fs";
 import { basename, dirname, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
-import { knownNames, type Config, configReader, environmentOf } from "./config";
-import { forgetGenerated, variablesSheetFor, writeGenerated } from "./generate";
-import { settingsAgainst } from "./compiler/declaredSet";
+import { knownNames, type Config, configReader, environmentOf } from "../config/config";
+import { forgetGenerated, variablesSheetFor, writeGenerated } from "../config/generate";
+import { settingsAgainst } from "../compiler/declaredSet";
 import { warnIfStale } from "./stale";
 import { readModule } from "./modules";
 import { loaderFor } from "./esbuild";
-import { fileMayHoldABlock, mayHoldABlock } from "./compiler/scan";
-import { Sheet } from "./compiler/sheet";
-import { type SourceMap, transform } from "./compiler/transform";
+import { fileMayHoldABlock, mayHoldABlock } from "../compiler/scan";
+import { Sheet } from "../compiler/sheet";
+import { type SourceMap, transform } from "../compiler/transform";
 
 /**
  * `@ramonda/css/vite` — the plugin that makes a block render.
@@ -28,10 +28,10 @@ import { type SourceMap, transform } from "./compiler/transform";
  *
  * ## `enforce: "pre"` is a requirement, not a preference
  *
- * Measured both ways before any of this was written: without it the plugin runs AFTER Vite's own
- * esbuild step, which has already refused the file — the syntax is not TypeScript, and esbuild is
- * what says so. The same ordering covers the dev server, the production build and the test runner,
- * because all three transform through Vite.
+ * Measured both ways: without it the plugin runs AFTER Vite's own esbuild step, which has already
+ * refused the file — the syntax is not TypeScript, and esbuild is what says so. The same ordering
+ * covers the dev server, the production build and the test runner, because all three transform
+ * through Vite.
  *
  * ## The stylesheet is a module, and there is one PER FILE
  *
@@ -39,20 +39,20 @@ import { type SourceMap, transform } from "./compiler/transform";
  * any JavaScript, and the production build hashes and links it like any other stylesheet. A file
  * written to disk would need its own watcher and its own link tag.
  *
- * **One per file, and the first design had one for the whole app.** Measured on a real build, that
- * shipped no CSS at all: the entry imported the shared stylesheet, Rollup loaded that module before
- * the styled file had been transformed, the sheet was empty, and the build was green with an
- * unstyled page. A bundler does not wait for the transform to finish.
+ * **One per file, not one for the whole app.** Measured on a real build, a shared stylesheet
+ * shipped no CSS at all: the entry imported it, Rollup loaded that module before the styled file
+ * had been transformed, the sheet was empty, and the build was green with an unstyled page. A
+ * bundler does not wait for the transform to finish.
  *
  * So the plugin appends `import "<file>?ramonda-css"` to the file whose blocks produced the rules.
  * The ordering problem cannot arise — the rules exist because that file was just read — an app
  * imports nothing, and **the CSS follows the JavaScript chunk**, which is what per-route splitting
- * needs and is now a decision the bundler has already made.
+ * needs and is a decision the bundler has already made.
  *
- * What is deduped is the CLASS: identical blocks agree on one name and the browser applies one rule.
- * Each file serves that rule itself, because a chunk has to stand on its own — an owner-per-rule was
- * tried, and measured through a real build it left one lazily-loaded route naming a class no
- * stylesheet contained. See `Sheet`.
+ * What is deduped is the CLASS: identical blocks agree on one name and the browser applies one
+ * rule. Each file serves that rule itself, because a chunk has to stand on its own — with one owner
+ * per rule, measured through a real build, a lazily-loaded route named a class no stylesheet
+ * contained. See `Sheet`.
  *
  * ## Structural types, on purpose
  *
@@ -136,11 +136,10 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
    * config: the editor cannot use it, and two readers of one file is this repository's recurring
    * fault.
    *
-   * Which config, and when, are both a review's findings. The config that governs a file is the one
-   * above THAT FILE, not the one above `process.cwd()` — a monorepo's packages have their own, and
-   * an answer that depends on where a command was typed is an answer the editor need not share. And
-   * it is re-read when its text changes rather than once here, because a dev server outlives the
-   * settings it booted with. See {@link configReader} for both.
+   * The config that governs a file is the one above THAT FILE, not the one above `process.cwd()` —
+   * a monorepo's packages have their own. And it is re-read when its text changes rather than once
+   * here, because a dev server outlives the settings it booted with. See {@link configReader} for
+   * both.
    *
    * `production` is a function of it for a third reason: Vite says which build this is in the
    * `config` hook, and a plugin is constructed before any hook runs — so the answer does not exist
@@ -161,11 +160,9 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
   /** `vite build`, in whatever mode — a build writes one sheet and wants no map beside each file's. */
   let building = false;
 
-  // Said once, when the built package is behind its sources — see `warnIfStale` for the day it cost.
-  // `fileURLToPath`, not a string replace: a `file://` url PERCENT-ENCODES, so a checkout at
-  // `~/My Projects/…` came back with `%20` still in it, `readdirSync` threw ENOENT, and the warning
-  // written because staleness cost a day went silently dead — indistinguishable from a published
-  // package with no `src`. The editor, which uses `__filename`, warned; the build did not.
+  // Said once, when the built package is behind its sources — see `warnIfStale`. `fileURLToPath`,
+  // not a string replace: a `file://` url PERCENT-ENCODES, so a checkout at `~/My Projects/…` would
+  // keep its `%20`, `readdirSync` would throw ENOENT, and the warning would go silently dead.
   warnIfStale(fileURLToPath(import.meta.url), (message) => console.warn(message));
 
   /**
@@ -196,10 +193,10 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
   /**
    * What a file compiles to, and the only place the sheet is told.
    *
-   * `undefined` for a file with no blocks — which is still told to the sheet, and only if it had some
-   * before. Found by a failing test: returning early meant an author who deleted the last block from
-   * a file left its rules in the sheet for the life of the dev server — and, worse, left the class
-   * NAME claimed, so re-adding an edited block collided with the one it used to be.
+   * `undefined` for a file with no blocks — which is still told to the sheet, and only if it had
+   * some before. Returning early would leave the rules of a file whose last block was deleted in
+   * the sheet for the life of the dev server — and leave the class NAME claimed, so re-adding an
+   * edited block would collide with the one it used to be.
    *
    * `styled` is what makes that free: a file that never had a block is not looked up at all.
    */
@@ -229,10 +226,9 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
     /**
      * Asked first, and it is half the key.
      *
-     * A dev server outlives the settings it booted with, and {@link configReader} answers with a new
-     * object when the file's text changes — so remembering the source text alone made a config edit
-     * invisible for as long as the file itself was not touched. Found by the test standing over that
-     * finding, which went red the moment the source text alone was the key.
+     * A dev server outlives the settings it booted with, and {@link configReader} answers with a
+     * new object when the file's text changes — so keyed on the source text alone, a config edit
+     * would be invisible for as long as the file itself was not touched.
      */
     const config = configFor(file);
 
@@ -281,10 +277,8 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
     /**
      * Only this file's CSS can have moved.
      *
-     * A file serves every rule it names, so one file's edit cannot change what another file
-     * serves — and its own stylesheet is reloaded along with the JavaScript Vite has just read.
-     * This used to tell other files too, because ownership moved rules between them; that
-     * mechanism could not work and is gone with the ownership that needed it.
+     * A file serves every rule it names, so one file's edit cannot change what another file serves
+     * — and its own stylesheet is reloaded along with the JavaScript Vite has just read.
      */
     sheet.add(file, result.blocks, { ...result.variables, known: knownNames(config) });
     compiled.set(file, { source: code, config, result });
@@ -312,8 +306,8 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
   /**
    * The project's config was SAVED, so everything it decided has to be decided again.
    *
-   * It reached here and returned at the first line: `recompile` takes files that hold a block, and a
-   * config holds none. Measured on a running server, both halves were stale and both were silent:
+   * `recompile` takes files that hold a block, and a config holds none. Without this, measured on a
+   * running server, both halves are stale and both are silent:
    *
    * - `css-system/tokens.css` is written by `buildStart` and never again, so a token changed from
    *   `16px` to `40px` still served `16px`. It is a plain stylesheet the project imports once —
@@ -321,8 +315,8 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
    * - every already-compiled file kept the rules the OLD config gave it, so a narrowed `units` or a
    *   property switched off was not enforced until each file happened to be touched.
    *
-   * The page is simply wrong, with no word anywhere, and a restart is the only cure. The config is
-   * the file this package tells people to edit, so that is the one save that must not be dropped.
+   * The config is the file this package tells people to edit, so that is the one save that must not
+   * be dropped.
    *
    * A config that does not READ is swallowed, exactly as a block that does not compile is on the
    * line below: a half-typed config is what one looks like for most of the time it is being edited,
@@ -376,16 +370,15 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
     /**
      * The dependency SCAN is a second pass, and it never sees this plugin.
      *
-     * Reported from a real `pnpm dev`: the server starts, the first request arrives, and the scan
-     * fails with *Expected identifier but found "@"* on every file holding a block — then
-     * *Skipping dependency pre-bundling*, which means every bare import is served unbundled and the
-     * page loads hundreds of modules or breaks outright.
-     *
      * Vite pre-bundles a project's dependencies by walking its entries with **esbuild**, and that
-     * walk has its own plugin list — `transform` above is Rollup's and is not consulted. So the same
-     * transform is handed to it here. It only has to make the file PARSE, because all the scan wants
-     * is the imports; a block that the real transform would refuse is left alone rather than thrown
-     * from, since a scan is not where an author should meet a diagnostic.
+     * walk has its own plugin list — `transform` above is Rollup's and is not consulted. Without
+     * this, `pnpm dev` fails the scan with *Expected identifier but found "@"* on every file
+     * holding a block — then *Skipping dependency pre-bundling*, so every bare import is served
+     * unbundled and the page loads hundreds of modules or breaks outright.
+     *
+     * So the same transform is handed to it here. It only has to make the file PARSE, because all
+     * the scan wants is the imports; a block that the real transform would refuse is left alone
+     * rather than thrown from, since a scan is not where an author should meet a diagnostic.
      */
     config(userConfig, environment) {
       // Vite's own `isProduction` is exactly this, and it is the answer a config asks for.
@@ -492,15 +485,16 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
        */
       const own = sheet.cssFor(file);
       /**
-       * The import that carries the project's declared VARIABLES, beside the one carrying its rules.
+       * The import that carries the project's declared TOKENS, beside the one carrying its rules.
        *
-       * Reported by the user, who declared variables, wrote `$`, and got a page with no colours: the
-       * generated `:root` was written to disk and nothing imported it, so `var(--color-accent-main)`
-       * resolved to its registered initial value and nothing else. Correct classes, unstyled page.
+       * The generated `:root` is written to disk, and with nothing importing it
+       * `var(--color-accent-main)` resolves to its registered initial value and nothing else:
+       * correct classes, unstyled page.
        *
-       * Emitted beside the block import rather than asked of the project, for the same reason codegen runs
-       * itself: a line a project has to remember is a line most projects will not have. Both bundlers
-       * dedupe an import by path, so the declarations arrive once however many modules ask for them.
+       * Emitted beside the block import rather than asked of the project, for the same reason
+       * codegen runs itself: a line a project has to remember is a line most projects will not
+       * have. Both bundlers dedupe an import by path, so the declarations arrive once however many
+       * modules ask for them.
        */
       const declared = variablesSheetFor(file);
       const code2 =
@@ -545,21 +539,20 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
      * What came back from post-processing, checked against what the sheet promised.
      *
      * The failure this catches is invisible by construction: the class name is written into the
-     * emitted JavaScript, so a minifier that renames or drops a rule ships a page pointing at a class
-     * that is not in the stylesheet. Nothing throws, the page renders unstyled, and there is nothing
-     * to blame it on. Merging is allowed and keeps the name — `.a,.r-… { … }` — so the question is
-     * only whether the name survived, which is what a rename or a drop destroys and nothing else does.
+     * emitted JavaScript, so a minifier that renames or drops a rule ships a page pointing at a
+     * class that is not in the stylesheet. Nothing throws, the page renders unstyled, and there is
+     * nothing to blame it on. Merging is allowed and keeps the name — `.a,.r-… { … }` — so the
+     * question is only whether the name survived, which is what a rename or a drop destroys and
+     * nothing else does.
      *
      * **Every CSS asset at once, and none is not a failure.** A rule may land in any chunk, so the
      * check is against the concatenation. And a build that emitted no stylesheet at all is not
-     * evidence of anything — an SSR build is the ordinary case, where the client build is what writes
-     * the CSS — so there is nothing to check rather than everything to report.
+     * evidence of anything — an SSR build is the ordinary case, where the client build is what
+     * writes the CSS — so there is nothing to check rather than everything to report.
      *
      * **The variables are asked about first, and that is not the same question.** It is about what
-     * the source READS, so it holds whether or not an asset was emitted; this hook used to ask it
-     * after the return above, so a build with no stylesheet skipped it and the two adapters answered
-     * one question differently. The esbuild adapter had it the right way round, with the reason
-     * written beside it.
+     * the source READS, so it holds whether or not an asset was emitted — and asked after the
+     * return above, a build with no stylesheet would skip it while the esbuild adapter did not.
      */
     generateBundle(_options, bundle) {
       // Every file is in, so the question no single file can answer is answerable now.

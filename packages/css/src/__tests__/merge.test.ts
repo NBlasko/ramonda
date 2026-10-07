@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { SHORTHANDS } from "../compiler/keywords.generated";
 import { keyToken, writableProperty } from "../compiler/names";
-import { conditionsOf, forget, mergeClassNames, namesOf, shorthands } from "../merge";
+import { conditionsOf, forget, mergeClassNames, namesOf, shorthands } from "../runtime/merge";
 
 /**
  * Composition, which happens at the CALL SITE and nowhere else.

@@ -1,21 +1,21 @@
 import { dirname, resolve } from "node:path";
 import ts from "typescript";
-import { CssBlockError } from "./compiler/errors";
-import { REPLACED_CODES, SPEAKS_OVER_TYPES } from "./compiler/rules";
-import { Sheet, messageFor } from "./compiler/sheet";
-import { type Ignored, ignoredIn, isIgnored } from "./compiler/ignore";
-import { checkedSource } from "./compiler/source";
-import { positionOf } from "./compiler/errors";
-import { knownNames, configReader, environmentOf } from "./config";
-import { findConfig } from "./config";
-import { propertiesFor } from "./generate";
+import { CssBlockError } from "../compiler/errors";
+import { REPLACED_CODES, SPEAKS_OVER_TYPES } from "../compiler/rules";
+import { Sheet, messageFor } from "../compiler/sheet";
+import { type Ignored, ignoredIn, isIgnored } from "../compiler/ignore";
+import { checkedSource } from "../compiler/source";
+import { positionOf } from "../compiler/errors";
+import { knownNames, configReader, environmentOf } from "../config/config";
+import { findConfig } from "../config/config";
+import { propertiesFor } from "../config/generate";
 import { readModule } from "./modules";
-import { checkTemplates } from "./compiler/rules";
-import { fileMayHoldABlock, mayHoldABlock } from "./compiler/scan";
-import { TYPED_RULES, registeredNeverSet, typedFindings } from "./compiler/typed";
-import { refusedAsUnknown } from "./compiler/declaredSet";
-import type { RegisteredSite } from "./compiler/variables";
-import { type VirtualFile, virtualFile } from "./compiler/virtual";
+import { checkTemplates } from "../compiler/rules";
+import { fileMayHoldABlock, mayHoldABlock } from "../compiler/scan";
+import { TYPED_RULES, registeredNeverSet, typedFindings } from "../compiler/typed";
+import { refusedAsUnknown } from "../compiler/declaredSet";
+import type { RegisteredSite } from "../compiler/variables";
+import { type VirtualFile, virtualFile } from "../compiler/virtual";
 
 /**
  * Type-checking a whole project whose source TypeScript cannot parse.
@@ -148,21 +148,13 @@ export function checkProject(tsconfig: string, options: CheckOptions = {}): Repo
 
     try {
       /**
-       * **The same reader BOTH halves of this command use**, and it used to be given to one of them.
+       * **The same reader BOTH halves of this command use.**
        *
-       * `Imported.read` says why it is injected: "a virtual file that resolved less than the build
+       * `Imported.read` says why it is injected: a virtual file that resolved less than the build
        * would type-check an expression the build never emits — and report a name the author was
-       * right to write." `checkedSource` below was given it; this was not, so the type half resolved
-       * less than the build. Measured through the real command, on a file that compiles:
-       *
-       *     1 block(s) could not be read, so nothing was checked
-       *     src/Card.tsx:2:25  a hole cannot be a whole declaration … The one name a hole may stand
-       *                        in is a `@@property( … )` declared in this file.
-       *
-       * It IS declared, in the module beside it, and the build resolves it — a reference to a named
-       * site is written into the text at compile time rather than carried as a hole, which is the
-       * only thing that makes a `var()` of one resolve at all. So the CI gate refused a shared
-       * theme, with a message saying the author should have done what they had done.
+       * right to write. Measured with the type half reading less, a file that compiles was refused
+       * with *a hole cannot be a whole declaration … declared in this file* about a `@@property( …
+       * )` declared in the module beside it — the CI gate refusing a shared theme.
        *
        * The `filename` goes with it: a relative specifier is resolved against the file holding the
        * import, so a reader with nothing to resolve against reads nothing.
@@ -175,14 +167,10 @@ export function checkProject(tsconfig: string, options: CheckOptions = {}): Repo
        */
       const properties = options.properties ?? propertiesFor(fileName);
       /**
-       * **A block inside a `${ … }` is asked about BEFORE the overlay**, because it produces no site
-       * and so nothing downstream of one can see it.
-       *
-       * `transform` says the same thing where it refuses — *a file whose only block is in a template
-       * finds no site at all, so asking after that return is asking where nothing is left to ask* —
-       * and this pass asked after. The rule never ran and the file went to `tsc` as written, so what
-       * a person got was six syntax errors naming neither the block nor the line, which is the
-       * sentence `block-in-a-template` exists to replace.
+       * **A block inside a `${ … }` is asked about BEFORE the overlay**, because it produces no
+       * site and so nothing downstream of one can see it. Asked after, the rule never runs and the
+       * file goes to `tsc` as written: six syntax errors naming neither the block nor the line,
+       * which is the sentence `block-in-a-template` exists to replace.
        */
       const inATemplate = checkTemplates(text).map((finding) => ({
         file: fileName,
@@ -237,7 +225,7 @@ export function checkProject(tsconfig: string, options: CheckOptions = {}): Repo
    */
   for (const one of sheet.unknownVariables()) {
     // A name the strict option already refuses is one fault, and it has its report: a second, about
-    // the same `var()`, would read as two. Measured in review round 2 on `var(--nope)`.
+    // the same `var()`, would read as two.
     if (refusedAsUnknown(configFor(one.file), one.read.name)) continue;
     const source = sources.get(one.file);
     css.push({
@@ -249,16 +237,16 @@ export function checkProject(tsconfig: string, options: CheckOptions = {}): Repo
   }
 
   /**
-   * A refusal stops the TYPE check, and it used to stop everything.
+   * A refusal stops the TYPE check, and only the type check.
    *
-   * The reason beside the printing is right — reporting the compiler's confusion about a file it
-   * could not read would be wrong answers — but it was applied to the whole project. Measured: one
-   * unreadable block in `Card.tsx` hid `colour: red` in `Other.tsx`, a file that read perfectly, so
-   * a typo anywhere meant fixing the repository one error per run.
+   * Reporting the compiler's confusion about a file it could not read would be wrong answers — but
+   * applied to the whole project, one unreadable block in `Card.tsx` would hide `colour: red` in
+   * `Other.tsx`, a file that read perfectly, so a typo anywhere would mean fixing the repository
+   * one error per run.
    *
    * `css` holds only what files that READ produced — a file whose walk threw never reaches the push
-   * — so those findings are exactly the ones the reason does not cover. They are kept, and
-   * {@link Report.refusals} is what lets the caller print the two apart.
+   * — so those findings are exactly the ones the reason does not cover. They are kept, and {@link
+   * Report.refusals} is what lets the caller print the two apart.
    */
   if (refusals.length > 0) {
     return {
@@ -276,13 +264,10 @@ export function checkProject(tsconfig: string, options: CheckOptions = {}): Repo
    * it.**
    *
    * `defineConfig` exists so that a config is checked as it is written — a property CSS does not
-   * have, an arity CSS does not give, a unit that is not one, each refused on the line. None of that
-   * runs if the file is not in the PROGRAM, and it usually is not: a config sits at the project root
-   * and an ordinary `include` is `["src"]`. Measured on this repository's own playground, where four
-   * deliberately wrong configs were written and every one compiled.
-   *
-   * Reported by the user, in their words: *"ramonda.css.ts fajl nema onaj tipo sto sam zeleo da ne
-   * moram magicno da mislim i pisem konfig."*
+   * have, an arity CSS does not give, a unit that is not one, each refused on the line. None of
+   * that runs if the file is not in the PROGRAM, and it usually is not: a config sits at the
+   * project root and an ordinary `include` is `["src"]`. Measured on this repository's own
+   * playground, where four deliberately wrong configs were written and every one compiled.
    *
    * Added here rather than asked of every project's `tsconfig.json`, because a manual step that
    * every project needs is a step most projects will not have.
@@ -328,10 +313,10 @@ export function checkProject(tsconfig: string, options: CheckOptions = {}): Repo
 
     /**
      * **Both ways of saying a rule is wrong, because a rule with neither has no escape hatch.**
-     * Every rule in `rules.ts` gets these for free — `checkBlock` drops the silenced ones and
-     * `checkedSource` drops the ignored ones — and these two take neither path, so they were
-     * unsilenceable until it was asserted. The directive is read from the file it was written in,
-     * which is why the walk above keeps them.
+     * Every rule in `rules/` gets these for free — `checkBlock` drops the silenced ones and
+     * `checkedSource` drops the ignored ones — and these two take neither path, so they are applied
+     * here. The directive is read from the file it was written in, which is why the walk above
+     * keeps them.
      */
     if (configFor(found.file).rules?.[found.rule] === "off") continue;
 
@@ -370,27 +355,20 @@ export function checkProject(tsconfig: string, options: CheckOptions = {}): Repo
 }
 
 /**
- * The two kinds of finding as one list, in the order a person reads a file — and with the compiler's
- * word dropped where a rule of ours said the same thing better.
+ * The two kinds of finding as one list, in the order a person reads a file — and with the
+ * compiler's word dropped where a rule of ours said the same thing better.
  *
  * `TS2353` is *"does not exist in type"*, which is exactly what `unknown-property` says — and the
  * rule says it with the near miss the compiler cannot offer, because a QUOTED object key gets no
- * suggestion. Measured before this existed: `flex-dirction` was reported twice, once usefully.
+ * suggestion. Without this, `flex-dirction` was reported twice, once usefully.
  *
  * Matched on POSITION rather than on text: the same fault at the same character is the same fault,
  * and a `TS2353` about a nested rule's key is at a position no rule of ours names, so it survives.
  *
- * **ANY rule of ours, and it used to be `unknown-property` alone.** Every other rule that speaks
- * where TypeScript also refuses the key left two errors for one mistake, and the compiler's was the
- * worse one. Measured on a `//` comment:
- *
- *     line-comment: CSS has no `//` comment — … Write a block comment instead.
- *     TS2353: … and '"// the palette is in flux\n  gap"' does not exist in type 'CssBlockShape'.
- *
- * The second quotes the comment and the NEXT property mashed into one key, newline spelt out. The
- * principle above was already right; only the filter was narrow. Swept across twelve faults, the
- * comment is the one that doubled — so this is a widening of the same rule rather than a case for
- * `//`, because the next rule to land on a key would have doubled too.
+ * **ANY rule of ours**, not `unknown-property` alone: every rule that speaks where TypeScript also
+ * refuses the key would otherwise leave two errors for one mistake, and the compiler's is the worse
+ * one. Measured on a `//` comment, it quoted the comment and the NEXT property mashed into one key,
+ * newline spelt out.
  */
 function inOrder(css: readonly Finding[], types: readonly Finding[], sources: ReadonlyMap<string, string>): Finding[] {
   /**
@@ -450,18 +428,18 @@ function inOrder(css: readonly Finding[], types: readonly Finding[], sources: Re
    * compiler's sits on the segment that failed. A `$` path does not span lines, so the line is the
    * fault's own extent here.
    *
-   * **And the rule is not deleted**, which was the first idea and would have been wrong. It is the
-   * only thing that speaks in the BUILD — vite and esbuild run these rules over a block and never
-   * run TypeScript over it, so a `var()` into a name nothing sets would compile clean.
+   * **And the rule is not deleted**: it is the only thing that speaks in the BUILD — vite and
+   * esbuild run these rules over a block and never run TypeScript over it, so a `var()` into a name
+   * nothing sets would compile clean.
    */
   const pathRefused = new Set(css.filter((finding) => finding.code === "unknown-token").map(where));
 
   /**
-   * A LINE where a literal was refused by `variablesOnly`, so the compiler's word about it goes.
+   * A LINE where a literal was refused by `hardcoded: false`, so the compiler's word about it goes.
    *
    * Both machineries speak here, and both must: the TYPE is what an editor squiggles as you type,
    * and the RULE is the only one the BUILD runs — vite and esbuild never type-check a block. What
-   * an author must not get is the pair, and measured they did: twelve reports for six faults.
+   * an author must not get is the pair: measured, twelve reports for six faults.
    *
    * Ours is kept. `Narrowed<never, 0 | "0" | Token<"length" | "percentage" | …>>` names neither the
    * project, nor `ramonda.css.ts`, nor the way out; the rule names all three. By line for the same
@@ -519,9 +497,9 @@ function inOrder(css: readonly Finding[], types: readonly Finding[], sources: Re
      * so the compiler's word about it is *does not exist in type*, not *is not assignable*.
      */
     /**
-     * `TS2561` too, which is the compiler's *did you mean* for a bare property name. `unknown-property`
-     * speaks for those since pass 6, so that the BUILD sees them — and two reports for one typo is
-     * the fault this whole filter exists for.
+     * `TS2561` too, which is the compiler's *did you mean* for a bare property name.
+     * `unknown-property` speaks for those so that the BUILD sees them — and two reports for one
+     * typo is the fault this whole filter exists for.
      */
     if (
       typeof finding.code === "number" &&
@@ -544,18 +522,16 @@ const at = (finding: Finding) => `${finding.file}:${finding.line}:${finding.colu
  * The three sets above drop the compiler's word where a rule of ours already spoke for the same
  * fault, and they cannot use the position: the two land at different columns by construction — ours
  * on the value or on the whole `$` path, the compiler's on the property or on the segment that
- * failed. The line was the next thing up, and it was too much. A line holds as many declarations as
- * an author cares to write, and measured, `padding-left: $size.control.mdd; color: $size.control.md;`
- * reported ONE problem: the typo suppressed the KIND mismatch beside it, which nothing else catches
- * — a kind is a type, not a rule the build runs, so that fault left the tool altogether.
+ * failed. The line is too much: it holds as many declarations as an author cares to write, and
+ * measured, `padding-left: $size.control.mdd; color: $size.control.md;` reported ONE problem — the
+ * typo suppressed the KIND mismatch beside it, which nothing else catches.
  *
  * A declaration is the extent a fault really has. Both messages about one fault fall inside one;
  * the next declaration on the same line is a different fault and keeps its own.
  *
  * **A declaration that SPANS lines is not joined up here**, so a property on one line and its value
- * on the next get both messages. That is what the line key did too — it is left as it was rather
- * than widened blind, because the shapes this exists for (`$` paths, quoted values, property names)
- * cannot span lines.
+ * on the next get both messages. The shapes this exists for (`$` paths, quoted values, property
+ * names) cannot span lines.
  */
 function declarations(sources: ReadonlyMap<string, string>): (finding: Finding) => string {
   const lines = new Map<string, readonly string[]>();

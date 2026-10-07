@@ -4,8 +4,8 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { Config } from "../config";
-import { configReader, environmentOf, findConfig, readConfig } from "../config";
+import type { Config } from "../config/config";
+import { configReader, environmentOf, findConfig, readConfig } from "../config/config";
 import { readBlock } from "../compiler/read";
 import { checkBlock } from "../compiler/rules";
 

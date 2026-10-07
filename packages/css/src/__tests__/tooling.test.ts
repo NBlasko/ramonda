@@ -1,10 +1,10 @@
 import { describe, expect, test } from "vitest";
 import { checkSource } from "../compiler/source";
 import { placehold } from "../compiler/tooling";
-import { formatText } from "../tooling";
+import { formatText } from "../adapters/tooling";
 import prettier from "prettier";
 import { transform } from "../compiler/transform";
-import prettierPlugin from "../prettier";
+import prettierPlugin from "../adapters/prettier";
 
 /**
  * What a formatter can be given, and what comes back.

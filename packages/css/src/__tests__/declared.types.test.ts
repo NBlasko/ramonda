@@ -1,6 +1,6 @@
 import { expectTypeOf } from "vitest";
 import { describe, test } from "vitest";
-import { type TokenDeclaration, kind } from "../declared";
+import { type TokenDeclaration, kind } from "../config/declared";
 
 /**
  * The TYPE half of `kind( … )`, which is the half a runtime test cannot reach.

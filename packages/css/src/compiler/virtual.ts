@@ -13,10 +13,10 @@ import { type Imported, namedSites } from "./references";
  * The virtual file: the author's file as valid TSX, and the way back from a diagnostic to the
  * character they typed.
  *
- * This is the whole of the claim the package rests on — **a syntax TypeScript cannot parse can still
- * be fully type-checked**, as long as we own the step that turns it into TypeScript. It is the same
- * three moves `vue-tsc` and `svelte-check` make: write a virtual file, hand it to `tsc`, map each
- * diagnostic home.
+ * This is the whole of the claim the package rests on — **a syntax TypeScript cannot parse can
+ * still be fully type-checked**, as long as we own the step that turns it into TypeScript. It is
+ * the same three moves `vue-tsc` and `svelte-check` make: write a virtual file, hand it to `tsc`,
+ * map each diagnostic home.
  *
  * ## Two things go in, and the second is what makes CSS type-safe at all
  *
@@ -40,22 +40,18 @@ import { type Imported, namedSites } from "./references";
  * quoted, escaped, whitespace folded — so anything landing in one maps to where it STARTS. That is
  * the position the reader needs anyway: a *did you mean* about `dsiplay` belongs on `dsiplay`.
  *
- * Anything that maps nowhere is scaffolding, and a caller drops it: `__block` itself, the punctuation
- * between declarations, the preamble. Those diagnostics are about the file we wrote, not the one they
- * did.
+ * Anything that maps nowhere is scaffolding, and a caller drops it: `__block` itself, the
+ * punctuation between declarations, the preamble. Those diagnostics are about the file we wrote,
+ * not the one they did.
  *
  * ## Line for line, which is not free and is worth it
  *
- * A multi-line block becomes ONE line — the whitespace between declarations is text this file never
- * emits — so every line after it moved up. Measured: a nine-line file became seven, and the preamble
- * added one at the top, so a consumer counting lines was three out.
- *
- * That consumer exists: `scripts/check-examples.mjs` reports a documented example's fault by LINE and
- * has no source map to consult. So the preamble ends without a newline, and each item is preceded by
- * the newlines the author wrote before it — **every line is the same line, inside a block as well as
- * outside**. Putting them all after the block instead was the first attempt and it was measured
- * wrong: every declaration collapsed onto the block's opening line, so a typo on line 186 was
- * reported on 185.
+ * A multi-line block written as ONE line would move every line after it up, and
+ * `scripts/check-examples.mjs` reports a documented example's fault by LINE with no source map to
+ * consult. So the preamble ends without a newline, and each item is preceded by the newlines the
+ * author wrote before it — **every line is the same line, inside a block as well as outside**.
+ * Newlines put after the block instead collapse every declaration onto its opening line, so a typo
+ * on line 186 is reported on 185.
  *
  * ## Where a diagnostic lands, which depends on its kind
  *
@@ -68,10 +64,10 @@ import { type Imported, namedSites } from "./references";
  * | `padding: $(this.size)` | `TS2322`, `boolean` not assignable | the property |
  * | `color: $(missing)` | `TS2304`, cannot find name | the **expression** |
  *
- * TypeScript reports an object literal's assignability errors at the property assignment, whose start
- * is the key; an error about a name inside an expression is reported on the name. Both map home
- * correctly and neither is a fault to fix — but a caller printing a caret has to know that a value
- * error points at its declaration.
+ * TypeScript reports an object literal's assignability errors at the property assignment, whose
+ * start is the key; an error about a name inside an expression is reported on the name. Both map
+ * home correctly and neither is a fault to fix — but a caller printing a caret has to know that a
+ * value error points at its declaration.
  */
 
 export interface VirtualFileOptions {
@@ -204,15 +200,13 @@ interface Segment {
   /**
    * Whether this run is the author's own bytes, so an offset inside it maps offset for offset.
    *
-   * **Recorded, because it was being INFERRED** — from `to - from === sourceLength`, in two places.
-   * That is a guess, and a review measured it wrong: a value is emitted quoted and its whitespace
-   * folded, so the two lengths coincide exactly when folding drops two characters, which is
-   * ordinary aligned CSS. `border-left-style: sol   id` then had every span in it shifted by one —
-   * the opening quote's worth — and accepting `solid` produced `ssolidd`, the author's own `s` and
-   * `d` left behind.
+   * Recorded rather than INFERRED from `to - from === sourceLength`: a value is emitted quoted and
+   * its whitespace folded, so the two lengths coincide exactly when folding drops two characters,
+   * which is ordinary aligned CSS. Inferred, `border-left-style: sol id` had every span in it
+   * shifted by one, and accepting `solid` produced `ssolidd`.
    *
    * One question, answered once by the code that knows: `copy` writes true and `derived` writes
-   * false, and neither has to measure anything.
+   * false.
    */
   readonly copied: boolean;
 }
@@ -279,14 +273,12 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
   /**
    * The author's leading comments, copied BEFORE anything of ours is written.
    *
-   * Two directives only work in a file's leading trivia, and putting a `declare` in front of them
-   * took both away — measured: `// @ts-nocheck` was ignored, so every error in a file the author had
+   * Two directives only work in a file's leading trivia, and a `declare` in front of them takes
+   * both away — measured: `// @ts-nocheck` was ignored, so every error in a file the author had
    * switched off came back, and `/// <reference … />` was dropped, so the types it pulls in were
-   * missing and the check reported code that is fine. Both are FALSE reports, which is the one
-   * failure a checker does not survive.
+   * missing. Both are FALSE reports, which is the one failure a checker does not survive.
    *
-   * Nothing moves: the `declare` goes at the start of the line the first statement was already on,
-   * which is what it did at line 1 before.
+   * Nothing moves: the `declare` goes at the start of the line the first statement was already on.
    */
   const top = afterLeadingTrivia(source);
   if (top > 0) copy(0, top);
@@ -319,12 +311,9 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
    * slot that narrowed ordinary blocks would be a regression in every file of every project.
    */
   /**
-   * **ONE helper, because every block is static now.**
-   *
-   * There were two, and the second existed to flag a block carrying a runtime value so that a prop
-   * could refuse one. A runtime value in a declaration is refused everywhere — see
-   * `hole-not-allowed` — so there is nothing left for a prop to refuse and nothing for a flag to
-   * say. `CssBlock` lost its second parameter with it.
+   * **ONE helper, because every block is static.** A runtime value in a declaration is refused
+   * everywhere — see `hole-not-allowed` — so there is nothing left for a prop to refuse and no flag
+   * to carry.
    */
   /**
    * **A narrowed value takes the CSS-wide keywords too** — `inherit`, `initial`, `unset`, `revert`,
@@ -338,19 +327,19 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
    *
    * **A value that already takes `inherit` is handed back as it was**, and that is what keeps an
    * ordinary block untouched. Widening it unconditionally was measured to cost every block its
-   * messages: `V | CssGlobal` is a new union, TypeScript prints it member by member, and
-   * `position: statik` stopped naming `Keyword<…>` and listed twenty-one values instead.
+   * messages: `V | CssGlobal` is a new union, TypeScript prints it member by member, and `position:
+   * statik` stopped naming `Keyword<…>` and listed twenty-one values instead.
    *
    * **`CssGlobal` is taken from the properties module, and guarded.** Named, a message reads
-   * `'"8px" | "16px" | CssGlobal'`, the author's own list first; written out, five keywords stood in
-   * front of it. But a name the module does not export is `any` here, not an error, and `any`
-   * silenced every check in the file — measured — so a module without it gets the words instead.
+   * `'"8px" | "16px" | CssGlobal'`, the author's own list first. But a name the module does not
+   * export is `any` here, not an error, and `any` silences every check in the file — so a module
+   * without it gets the words instead.
    *
-   * **`any` in the list is handed back as it is.** It answers yes to "is this an array", so it was
-   * opened like a state and `width?: any` refused `width: 10px`. A review found it.
+   * **`any` in the list is handed back as it is.** It answers yes to "is this an array", so opened
+   * like a state, `width?: any` would refuse `width: 10px`.
    *
    * **No type is NAMED here.** In a file that is a script, a name the virtual file declares is
-   * global, and a second script declaring it again was `TS2300` — measured, for a type alias and for
+   * global, and a second script declaring it again is `TS2300` — measured, for a type alias and for
    * an interface alike. So the widening is written out level by level, `WIDENED_DEPTH` deep.
    */
   const global = `import(${from}).CssGlobal`;
@@ -369,28 +358,19 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
   );
 
   /**
-   * Composition's two helpers, and each is its own ARRAY ELEMENT rather than something wrapping a
-   * group — which is the one thing measured about this encoding.
-   *
-   * Writing a group as `__when(condition, [ … ])` means a wrong condition **hides every fault in the
-   * body**: the failed inference degrades the whole call, so the condition was reported and the two
-   * typos under it were not. Beside the declarations rather than around them, everything comes back
-   * together, each at its own position — and the group's nesting is not needed here at all, because
-   * a declaration inside a group is checked exactly like one outside it.
+   * Composition's two helpers, each its own ARRAY ELEMENT rather than something wrapping a group —
+   * see the note in `items` for why.
    */
   /**
-   * `$` — the project's variables, bound under a name of ours so a block needs no import.
+   * `$` — the project's tokens, bound under a name of ours so a block needs no import.
    *
-   * **This replaces requiring the author to import it, and the reason is what TypeScript says when
-   * they have not.** The first design left `$` to ordinary scope, on the argument that
-   * `Cannot find name '$'` is a sentence anybody can act on. Measured, it is not the sentence
-   * TypeScript writes:
+   * Left to ordinary scope, a missing import is not met with a sentence anybody can act on.
+   * Measured, TypeScript writes:
    *
    *     Cannot find name '$'. Do you need to install type definitions for jQuery?
    *
-   * A user met that. It names a library nothing here has anything to do with, and completion is dead
-   * beside it because the name resolves to nothing — so the one thing `$` exists for does not work
-   * until an import nobody was told about is written.
+   * It names a library nothing here has anything to do with, and completion is dead beside it
+   * because the name resolves to nothing.
    *
    * A block is this package's language, and `$` belongs to it the way `@@` does. So it is bound
    * here, from whichever property map applies, and an author who uses `$` for something else of
@@ -403,16 +383,15 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
   /**
    * The fallback is written INLINE rather than imported, so nothing has to export a `$`.
    *
-   * It used to read `typeof import(from).$`, which meant `@ramonda/css/properties` had to export one
-   * — and an export is an AUTO-IMPORT suggestion. Reported by a user: typing `$` in ordinary
-   * TypeScript offered `import { $ } from "@ramonda/css/properties"`, a type that exists only to
-   * carry a sentence, beside the real `$` from their own generated module.
+   * An export is an AUTO-IMPORT suggestion: typing `$` in ordinary TypeScript would offer `import {
+   * $ } from "@ramonda/css/properties"`, a type that exists only to carry a sentence, beside the
+   * real `$` from the project's own generated module.
    *
-   * The conditional keeps both cases in one line: a generated module exports one `$group` per group,
-   * and the groups are gathered back into one object here — `$color` as `__vars.color` — so a block
-   * still needs no import; the shipped map exports none and the sentence stands in. The sentence is a
-   * type rather than `never` for the reason measured in `properties.ts` — `never` says *Property
-   * 'color' does not exist on type 'never'*, and this says what to do.
+   * The conditional keeps both cases in one line: a generated module exports one `$group` per
+   * group, and the groups are gathered back into one object here — `$color` as `__vars.color` — so
+   * a block still needs no import; the shipped map exports none and the sentence stands in. The
+   * sentence is a type rather than `never` for the reason measured in `properties.ts` — `never`
+   * says *Property 'color' does not exist on type 'never'*, and this says what to do.
    */
   write(
     `declare var ${variables}: typeof import(${from}) extends infer M ? ({ [K in keyof M as K extends \`$\${infer G}\` ? G : never]: M[K] } extends infer V ? (keyof V extends never ? ` +
@@ -469,10 +448,10 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
    * And, with no `_`, **every value the subject can be has an arm** — the third argument, written
    * only then, at the word `match`. Its type is `true` when the keys cover the subject and a
    * sentence naming what is missing when they do not, so the error lands on the word and says it.
-   * `const S`, so a subject written as a literal stays that literal instead of widening to
-   * `string` — reported by the user: `$("nepostojecaVrednost")` took keys it can never be.
-   * Only a finite union of strings is asked: a plain `string` has no list to cover, and a subject
-   * that may be `undefined` needs no arm for it — nothing is picked then.
+   * `const S`, so a subject written as a literal stays that literal instead of widening to `string`
+   * — otherwise `$("nepostojecaVrednost")` takes keys it can never be. Only a finite union of
+   * strings is asked: a plain `string` has no list to cover, and a subject that may be `undefined`
+   * needs no arm for it — nothing is picked then.
    */
   /**
    * And **the subject is a string** — the third argument, `true`, written over the subject itself.
@@ -588,16 +567,14 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
     if (surface !== undefined) {
       copy(cursor, site.start);
       /**
-       * A named site written as a BARE ATTRIBUTE keeps the attribute, and it used to be eaten.
+       * A named site written as a BARE ATTRIBUTE keeps the attribute.
        *
        * The rewrite starts at the site's own start, which for a bare attribute is the attribute's
-       * NAME — so `css=@@keyframes( … )` came out `<div __keyframes({ … })`, with `css=` gone and the
-       * whole file failing to parse. Nothing in it was then checked at all, which is the cost that
-       * makes this worth handling rather than left to the refusal: the build refuses it, and the
-       * author is owed a working editor until they run one.
+       * NAME — so without this, `css=@@keyframes( … )` comes out `<div __keyframes({ … })`, with
+       * `css=` gone and the whole file failing to parse. Nothing in it is then checked at all: the
+       * build refuses it, and the author is owed a working editor until they run one.
        *
-       * The `wrap` question is the same one the ordinary branch below asks, and this branch simply
-       * did not ask it. See `BlockSite.wrap`.
+       * The `wrap` question is the same one the ordinary branch below asks. See `BlockSite.wrap`.
        */
       if (site.wrap) {
         copy(site.start, site.start + site.name.length);
@@ -608,9 +585,9 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
        * The literal's own brace stands for the block's OPENING, and it has to stand for something.
        *
        * A required descriptor that is missing is reported on the whole literal, not on any line
-       * inside it — so if the brace maps nowhere the diagnostic has no home and is dropped, which is
-       * what happened: a `@font-face` with no `src` passed in silence. It maps to `@@font-face(`,
-       * which is where an author would look for a fault about the block as a whole.
+       * inside it — so if the brace maps nowhere the diagnostic has no home and is dropped, and a
+       * `@font-face` with no `src` passes in silence. It maps to `@@font-face(`, which is where an
+       * author would look for a fault about the block as a whole.
        */
       derived("{", site.start, site.open + 1 - site.start);
       inside = code.length;
@@ -653,9 +630,8 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
        *
        * A named site gets no literal of its own to sit in: it IS one already, and a second `{}`
        * inside an object is a syntax error rather than a place. So its slot points just inside its
-       * own brace. Measured before that was written: the slot pointed past the last declaration,
-       * which lands in the `})` that closes the call, and **every caret in a named block got zero
-       * completions** — thirteen descriptors offered as nothing at all.
+       * own brace. Pointed past the last declaration instead, it lands in the `})` that closes the
+       * call, and measured, every caret in a named block got zero completions.
        */
       slots.push({ from: site.open, to: read.end, at: surface === undefined ? code.length + 1 : inside });
       if (surface === undefined) write("{},");
@@ -725,11 +701,10 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
         /**
          * A named block's body is a SINGLE object literal, and a call is not one of its members.
          *
-         * Composition belongs to an element and a named block is not one, so `when` cannot go in one
-         * — `composition-in-a-named-block` reports it. Written here anyway, it produced
+         * Composition belongs to an element and a named block is not one, so `when` cannot go in
+         * one — `composition-in-a-named-block` reports it. Written here anyway, it produces
          * `{__cond((on)),"& from":[…]}`, which does not parse, and a file that does not parse has
-         * nothing checked in it at all. The `single ? ")," : "),"` ternary that used to stand here
-         * had identical branches: the difference was seen and never made.
+         * nothing checked in it at all.
          */
         if (!single && guard !== undefined) {
           write(`${condition}(`);
@@ -849,11 +824,11 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
         /**
          * The SAME question `flatten` asks, asked by the same function.
          *
-         * A prelude naming no parent is a descendant of it — `div { … }` is `& div` — and this file
-         * used to write the author's bytes as the key instead. `CssBlockShape` admits a nested rule
-         * only under a key beginning with `&` or `@`, so `div { color: red; }` was a `TS2353` in the
-         * editor on code the build compiles and ships. An at-rule's prelude is not a selector and is
-         * left alone, which is the split `flatten` makes one line further down.
+         * A prelude naming no parent is a descendant of it — `div { … }` is `& div`.
+         * `CssBlockShape` admits a nested rule only under a key beginning with `&` or `@`, so
+         * writing the author's bytes as the key makes `div { color: red; }` a `TS2353` in the
+         * editor on code the build compiles and ships. An at-rule's prelude is not a selector and
+         * is left alone, which is the split `flatten` makes one line further down.
          */
         const key =
           item.prelude.trimStart().startsWith("@") || branchOf(item.prelude) !== undefined
@@ -900,13 +875,6 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
     }
 
     /**
-     * A value that is ONE variable is written bare, for the same reason one hole is.
-     *
-     * Wrapped in a template literal it would be a `string`, and the property's own type would have
-     * nothing left to judge. Written bare, `color: $size.control.md` is checked against what `color`
-     * accepts — which is the kind check, and it costs nothing to get because the expression is real.
-     */
-    /**
      * The value is ONE variable, with nothing beside it but whitespace.
      *
      * Bare rather than wrapped, for two reasons and the second is not cosmetic. Wrapped in a
@@ -935,11 +903,11 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
         /**
          * The PART's own position, not the whole value's.
          *
-         * Every text run in a value used to record `at = valueAt`, so a value with a hole in it had
-         * two or three runs all claiming the value's first character. The reverse lookup sorts by
-         * author offset, and a run that starts where an earlier one does sorts before the hole
-         * between them — so **every author offset past the first hole mapped nowhere**, and a caret
-         * in the first run answered from the last. Measured by sweeping every offset in a block.
+         * If every text run in a value recorded `at = valueAt`, a value with a hole in it would
+         * have two or three runs all claiming the value's first character. The reverse lookup sorts
+         * by author offset, and a run that starts where an earlier one does sorts before the hole
+         * between them — so every author offset past the first hole would map nowhere. Measured by
+         * sweeping every offset in a block.
          *
          * A run this compiler DECIDED — a resolved reference — has an `at` where the `{{` was and a
          * different length, so it keeps the whole-value fallback: there is no position in the
@@ -951,14 +919,11 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
          * **A space at a part's BOUNDARY is meaning, and `collapse` trims both ends of what it is
          * given.**
          *
-         * Each text run was collapsed on its own, so the space between the text and the expression
-         * beside it disappeared: `border: 1px solid {accent}` became `` `1px solid${x}` ``, which
-         * says the value is `1px solidred`. The emitted CSS was always right — `flatten` collapses
-         * the whole value at once, so that space is interior there — and nothing depended on the
-         * virtual file's version until a property's own type started reading the SHAPE of it.
-         *
-         * Found answering `gap: 4px $space.gutter.tight`, which a multi-value type refused because
-         * the two values had been run together into one.
+         * Collapsed run by run, the space between the text and the expression beside it disappears:
+         * `border: 1px solid {accent}` becomes `` `1px solid${x}` ``, which says the value is `1px
+         * solidred`, and `gap: 4px $space.gutter.tight` is refused by a multi-value type because
+         * the two values run together. The emitted CSS is unaffected — `flatten` collapses the
+         * whole value at once — but a property's type reads the SHAPE of this one.
          */
         const collapsed = collapse(part.text);
         const before = index > 0 && /^\s/.test(part.text) ? " " : "";
@@ -1000,11 +965,10 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
   /**
    * A `$` path, emitted SEGMENT BY SEGMENT rather than as one run.
    *
-   * `DESIGN.md` said this and the first implementation did not do it, so every caret inside a path
-   * mapped by raw offset into a virtual string of a different length: `$color.accent.` is 15
-   * characters and `__vars.color.accent.` is 20, so a caret at the end of the author's text landed
-   * in the middle of `accent` and the editor offered the members of `$color`. One level too
-   * shallow, silently.
+   * As one run, every caret inside a path maps by raw offset into a virtual string of a different
+   * length: `$color.accent.` is 15 characters and `__vars.color.accent.` is 20, so a caret at the
+   * end of the author's text lands in the middle of `accent` and the editor offers the members of
+   * `$color` — one level too shallow, silently.
    *
    * Each segment is its own run against its own author span, so a caret anywhere in the path maps
    * where it belongs. The `$` itself is derived — it becomes a name of ours — and so is a segment
@@ -1048,8 +1012,8 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
      * Walked rather than split, because a split loses which dot is which.
      *
      * `$color.accent.` splits to `["", "color", "accent", ""]` and the empty ends are the leading
-     * and trailing dots — indistinguishable from each other once they are array elements, and the
-     * first version emitted two dots for one. Walking keeps every character where it was written.
+     * and trailing dots — indistinguishable once they are array elements, so one dot can come out
+     * as two. Walking keeps every character where it was written.
      */
     let index = 1;
     while (index < written.length && written[index] !== ".") index += 1;
@@ -1155,21 +1119,15 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
 /**
  * Where the author's leading comments end, which is where a `declare` of ours may first go.
  *
- * Whitespace, comments, and a SHEBANG — the first thing that is neither is where the file's own code
- * begins, and a directive that has to be above it stays above it. A file that is nothing but
+ * Whitespace, comments, and a SHEBANG — the first thing that is neither is where the file's own
+ * code begins, and a directive that has to be above it stays above it. A file that is nothing but
  * comments has no code to put anything in front of, so the whole file is trivia and the answer is
  * its length.
  *
- * **The shebang was missing, and the doc said so as if it were the rule**: *"only whitespace and
- * comments are skipped"*. `#!` is not JavaScript and is not a comment, and it is legal ONLY at
- * offset 0 — so a `declare` written in front of it moved it, and TypeScript answered `'#!' can only
- * be used at the start of a file`. Measured: a `bin.ts` with one block came back with two parse
- * errors and **nothing in the file was checked at all**, because a file that does not parse has no
- * semantics to ask about.
- *
- * `transform` has always skipped it, in `afterDirectives`, and so has `findBlocks`. One question,
- * three askers, two answers — and the one that was wrong is the one an author reads in an editor.
- * `afterShebang` is the one answer now.
+ * `#!` is not JavaScript and is not a comment, and it is legal ONLY at offset 0 — so a `declare`
+ * written in front of it gives `'#!' can only be used at the start of a file`, and a file that does
+ * not parse has nothing checked in it at all. `afterShebang` is the one answer `transform` and
+ * `findBlocks` use too.
  */
 function afterLeadingTrivia(source: string): number {
   let at = afterShebang(source);
@@ -1200,12 +1158,10 @@ function afterLeadingTrivia(source: string): number {
  * Written here rather than derived, because there is nothing to derive it from: `@keyframes` holds
  * frames, and the other two hold descriptors that only their own at-rule accepts.
  *
- * **Keyed on `NAMED_BLOCKS`**, which is the one list of what a `@@name( … )` may be. It used to be
- * its own set of three, beside the transform's own set of three — so a name in neither got no
- * surface and no NAMED check, and the ORDINARY check took over: `@@keyfrmes( … )` was read as a
- * block, `from { … }` as the selector `& from`, and the report talked about a nested rule. A wrong
- * message is worse than none. `unknown-named-block` reports the name now, and the type makes the
- * table impossible to drift from the list.
+ * Keyed on `NAMED_BLOCKS`, the one list of what a `@@name( … )` may be, so the type makes this
+ * table impossible to drift from the list. A name in neither would get no NAMED check and the
+ * ORDINARY one would take over: `@@keyfrmes( … )` read as a block, `from { … }` as the selector `&
+ * from`, and a report about a nested rule. `unknown-named-block` reports the name instead.
  */
 const RETURNS: Readonly<Partial<Record<(typeof NAMED_BLOCKS)[number], string>>> = {
   property: "CssRegistered<D>",
@@ -1260,13 +1216,12 @@ function virtualOf(bySource: readonly Segment[], offset: number): number | undef
   if (length === found.sourceLength) return found.from + delta;
 
   /**
-   * A rewritten one: inside the emitted token, never at its far edge. Measured — `{display|:` offers
-   * nothing and `{displa|y` offers every property name, so being inside is what matters.
+   * A rewritten one: inside the emitted token, never at its far edge. Measured — `{display|:`
+   * offers nothing and `{displa|y` offers every property name, so being inside is what matters.
    *
-   * **A ONE-CHARACTER run has no interior, and the clamp used to leave it.** `Math.max(length - 1,
-   * 1)` is 1 for such a run, so every offset in it landed one past its only character — and the
-   * whole header of a named block is one: `derived("{", … )` stands for all twelve characters of
-   * `@@keyframes(`. A caret anywhere in that header answered from whatever came next.
+   * **A ONE-CHARACTER run has no interior.** `Math.max(length - 1, 1)` is 1 for such a run, which
+   * is one past its only character — and the whole header of a named block is one: `derived("{", …
+   * )` stands for all twelve characters of `@@keyframes(`.
    */
   if (length <= 1) return found.from;
   return found.from + Math.min(Math.max(delta, 1), length - 1);

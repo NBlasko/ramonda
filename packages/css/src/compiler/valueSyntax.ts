@@ -11,9 +11,8 @@
  *     animation   <single-animation>#
  *     flex        none | [ <'flex-grow'> <'flex-shrink'>? || <'flex-basis'> ]
  *
- * `||` is "in any order", which is the type dispatch the prototype spent a day learning from the
- * engines. So the classification is a reading problem rather than a measuring one — and this is the
- * reader.
+ * `||` is "in any order", which is the type dispatch a token needs. So the classification is a
+ * reading problem rather than a measuring one — and this is the reader.
  *
  * Measured against every grammar `mdn-data` publishes: **1020 of 1029 read**. The nine it refuses
  * are not value grammars at all — `<keyframe-block>` is a block, `<feature-type>` is a list of
@@ -225,9 +224,9 @@ export function parseValueSyntax(source: string): Term {
     /**
      * A FUNCTION, whose arguments are a grammar of their own — `rgb( <number>#{3} )`.
      *
-     * Read as two keywords before this existed: `rgb(` and `)`, with the arguments loose between
-     * them. `<color>` then resolved into a word list holding `rgb(` and `)`, which is not a colour
-     * anybody writes and would have matched no token at all.
+     * Read as two keywords, `rgb(` and `)` with the arguments loose between them, `<color>` would
+     * resolve into a word list holding `rgb(` and `)` — not a colour anybody writes, and matching
+     * no token at all.
      */
     if (source[at] === "(") {
       at++;
@@ -260,14 +259,11 @@ export function parseValueSyntax(source: string): Term {
  * appear". `|` is different and is kept apart: those are ALTERNATIVES, and a family that reads one
  * way or a wholly different way has two shapes rather than one.
  *
- * **That rule is about the TOP level, and applying it further down lost real components.** A group
- * of alternatives standing inside a sequence is not a second shape of the family — it is ONE
- * component that takes either word. `<baseline-position>` is `[ first | last ]? && baseline`, and
- * flattening it the same way as the top level returned `baseline` alone. Found by building a
- * keyword table with `acceptedBy` and diffing it against the one the checker already had:
- * `align-content` knew `first` and `last` and this did not. Measured, the loss reached the token
- * table — `text-emphasis-style` and `position-try-fallbacks` lost their own vocabulary and refused
- * values they could have split.
+ * **That rule is about the TOP level only.** A group of alternatives standing inside a sequence is
+ * not a second shape of the family — it is ONE component that takes either word.
+ * `<baseline-position>` is `[ first | last ]? && baseline`, and flattening it like the top level
+ * returns `baseline` alone — measured, `text-emphasis-style` and `position-try-fallbacks` then lost
+ * their own vocabulary and refused values they could have split.
  */
 export function componentsOf(term: Term): readonly Term[] {
   if (term.kind === "alt") return [];

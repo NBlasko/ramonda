@@ -86,14 +86,14 @@ export function variablesIn(block: Block): Variables {
 }
 
 /**
- * Every `var()` whose name is a RESOLVED reference — `var({angle})`, once `{angle}` is the name.
+ * Every `var()` whose name is a RESOLVED reference — `var($(angle))`, once `$(angle)` is the name.
  *
  * A resolved reference arrives as its own part holding nothing but the generated name — see
  * `readBlock`, which builds it that way precisely so no rule has to find a name inside text. So the
  * question is only what stands immediately before it, and `var(` is the one answer that makes this
  * a read rather than a mention.
  *
- * **A bare `{angle}` in a value is NOT counted.** Writing the name where a value goes is not reading
+ * **A bare `$(angle)` in a value is NOT counted.** Writing the name where a value goes is not reading
  * the property, it is writing its name out as text, and CSS does nothing with that. Counting it
  * would turn one fault into evidence against another.
  */
@@ -140,12 +140,12 @@ export function readsIn(parts: readonly ValuePart[], into: VariableRead[]): void
       }
       if (code !== 118 && code !== 86 /* v V */) continue;
       /**
-       * **The END of an ident that happens to be `var`**, which was read as a call and reported.
+       * **The END of an ident that happens to be `var`** is not a call.
        *
-       * This looked for `v`, `a`, `r`, `(` and never at what came before, so `mysvar(--x)` was a read
-       * of `--x` — a name nothing sets, reported on valid CSS with nothing else to explain it. A
-       * false report is the one failure a checker does not survive. `-` counts, because a CSS ident
-       * may hold one: `my-var(` is one ident, not `my-` and a call.
+       * Looking only for `v`, `a`, `r`, `(` would read `mysvar(--x)` as a read of `--x` — a name
+       * nothing sets, reported on valid CSS with nothing else to explain it. A false report is the
+       * one failure a checker does not survive. `-` counts, because a CSS ident may hold one:
+       * `my-var(` is one ident, not `my-` and a call.
        */
       if (index > 0 && isWordCharacter(text.charCodeAt(index - 1))) continue;
 
@@ -171,10 +171,10 @@ export function readsIn(parts: readonly ValuePart[], into: VariableRead[]): void
        * The name ran to the end of this part, so it is NOT FINISHED — the next part is a hole, or
        * the text simply stops.
        *
-       * `var(--brand-$(n))` is refused by `hole-not-allowed`, and this reported `--brand-` as well: one
-       * fault came back as two, and the second named a variable nobody wrote. An unreadable call is
-       * not evidence of a missing name either way, which is what the note below already says about
-       * the character after it.
+       * `var(--brand-$(n))` is refused by `hole-not-allowed`; reporting `--brand-` as well would
+       * make one fault two, the second naming a variable nobody wrote. An unreadable call is not
+       * evidence of a missing name either way, which is what the note below already says about the
+       * character after it.
        */
       if (end === text.length) {
         index = end - 1;

@@ -1,4 +1,4 @@
-import { CLEARS_TABLE } from "./clears.generated";
+import { CLEARS_TABLE } from "../clears.generated";
 import { widthSlot } from "./conditions";
 import { keyIn, partsOf } from "./key";
 import type { StyleValue } from "./types";
@@ -8,26 +8,24 @@ import type { StyleValue } from "./types";
  *
  * ## Why a string
  *
- * A block used to be a MAP — what it sets, to the class that sets it — because a merge keeps, per
- * thing set, the one written later, and the map's keys were where *the thing set* was written down.
- * A map is an object, so a block written in the markup was a new object on every render and a child
- * receiving it re-rendered for nothing. That is `RMD020`, and it is what started all of this.
- *
- * The key is in the CLASS NAME now — see `keyToken` — so the map has nothing left to say, and a
- * block is the class string it always ended up as. Two merges with the same contents are the same
- * string, compared the way every other prop is compared, so the identity question disappears rather
- * than being answered.
+ * A merge keeps, per thing set, the one written later, so it needs to know what each class sets.
+ * That KEY is in the class name — see `keyToken` — so a block needs no map beside it and is just
+ * its class string. A map would be an object, a new one on every render, and a child receiving it
+ * would re-render for nothing (`RMD020`). Two merges with the same contents are the same string,
+ * compared the way every other prop is compared, so the identity question disappears rather than
+ * being answered.
  *
  * ## What the string cannot carry, and what does
  *
  * Two things, and both are REGISTERED by the module that needs them rather than shipped to every
- * page — see {@link shorthands} and {@link conditionsOf}. A table of all 98 shorthand families is
+ * page — see {@link shorthands} and {@link conditionsOf}. A table of every shorthand family is
  * 23 KB, 3.7 KB gzipped, which is larger than this whole runtime, and a page that writes three
- * shorthands would be paying for ninety-five it does not.
+ * shorthands would be paying for all the rest.
  */
 
 /**
- * What one shorthand clears, by the PROPERTY as a key writes it — `p` clears `pl`, `pr`, `pt`, `pb`.
+ * What one shorthand clears, by the PROPERTY as a key writes it — `p` clears `pl`, `pr`, `pt`,
+ * `pb`.
  *
  * Registered by the emitted module, for the shorthands that module actually writes. Keyed by the
  * property alone and never by the whole key, because the CONTEXT composes itself: a key is
@@ -35,8 +33,8 @@ import type { StyleValue } from "./types";
  * back in front. That works for a hashed context too — the hash is a function of the context and is
  * shared by every property sitting in it.
  *
- * Module-level state, and not the kind that was ruled out before: it is bounded by the source, it
- * never grows while a page runs, and there is nothing in it to evict.
+ * Module-level state, and harmless: it is bounded by the source, it never grows while a page runs,
+ * and there is nothing in it to evict.
  */
 const CLEARS = new Map<string, readonly string[]>();
 
@@ -209,8 +207,7 @@ const inDevelopment = (): boolean => typeof process !== "undefined" && process.e
  * Only a key whose module registered its conditions is answerable, and a module registers only
  * where there is a condition and NO selector. A selector adds specificity, which beats source order
  * on its own — so `&:hover { color: red }` against `@media { color: blue }` is settled by the
- * selector and not by the sheet, and comparing them would report correct CSS, which is the failure
- * mode this package has paid for before.
+ * selector and not by the sheet, and comparing them would report correct CSS.
  *
  * A key with no context at all is slot 0, which is what an unconditional declaration is.
  */
@@ -298,10 +295,10 @@ function warnAboutOrder(chosen: ReadonlyMap<string, string>): void {
     register(group(property), one);
 
     /**
-     * **And every longhand a SHORTHAND sets**, which this missed entirely — all 98 families.
+     * **And every longhand a SHORTHAND sets**, for every shorthand family.
      *
-     * Grouping by the exact property name meant `padding` and `padding-left` were never compared,
-     * so a shorthand under a condition silently beat a longhand composed after it. Measured against
+     * Grouped by the exact property name alone, `padding` and `padding-left` are never compared, so
+     * a shorthand under a condition silently beats a longhand composed after it. Measured against
      * plain CSS in Chromium: `...{@media (min-width: 1px) { padding: 11px }}; padding-left: 4px`
      * computed 11px where hand-written CSS gives 4px.
      *

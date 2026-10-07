@@ -3,16 +3,13 @@ import { MATCH, closingHole, opensCode, readBlock } from "./read";
 import { findBlocks, mayHoldABlock } from "./scan";
 
 /**
- * An escape with its parens against the expression, whatever was typed.
- *
- * **Reported by a user, who had the same condition four ways in one file** — loose and tight on each
- * side — because the formatter left every one of them alone. Measured before this: all four survived
- * unchanged.
+ * An escape with its parens against the expression, whatever was typed — otherwise the formatter
+ * leaves one condition written four ways, loose and tight on each side, in one file.
  *
  * Tight, because `$( … )` is a delimiter, as a call's parens are, and a call is written tight. The
  * whitespace just inside the parens is not part of the expression, so trimming it changes nothing
- * that runs. An expression that begins or ends with a brace is closed up like any other: with `{ }`
- * as the escape it kept its space, because closing it up wrote `{{`, and `$({` cannot be misread.
+ * that runs. An expression that begins or ends with a brace is closed up like any other: `$({`
+ * cannot be misread.
  */
 function tightened(hole: string, expression: PlaceholdOptions["expression"]): string {
   // `$(` and `)` around it.
@@ -26,11 +23,9 @@ function tightened(hole: string, expression: PlaceholdOptions["expression"]): st
 /**
  * One hole's expression, laid out by the PROJECT's formatter — or exactly as the author wrote it.
  *
- * **Reported by a user**: *"formating unutar rupe ne radi"*, on
- * `color: {this.toggle ? $color.accent.quiet    : $color.accent.main}`. The braces were closed up
- * and the interior was untouched, so the one part of a block that IS ordinary TypeScript was the
- * one part escaping the formatter — while `ramonda-css format` exists precisely so a file carrying
- * blocks is laid out by the project's own tools.
+ * A hole is the one part of a block that IS ordinary TypeScript, so it must not be the one part
+ * escaping the formatter: `$color.accent.quiet : …` inside a ternary is laid out like any other
+ * code.
  *
  * Handed over ALONE rather than formatting the file twice, because the expression is not a file: it
  * is wrapped as a statement, formatted, and unwrapped. The parens are what make an expression a
@@ -43,8 +38,9 @@ function tightened(hole: string, expression: PlaceholdOptions["expression"]): st
  * author's code, rearranged into something they did not write. A formatter breaking a long ternary
  * across lines is doing its job; this simply cannot place the answer.
  *
- * **A formatter that throws.** A broken `biome.json` is a setup fault the CLI already says out loud.
- * Losing the author's expression over it would be this tool doing damage while reporting nothing.
+ * **A formatter that throws.** A broken `biome.json` is a setup fault the CLI already says out
+ * loud. Losing the author's expression over it would be this tool doing damage while reporting
+ * nothing.
  */
 function formattedExpression(text: string, format: (text: string) => string): string {
   let out: string;
@@ -141,12 +137,11 @@ export function placehold(source: string, options: PlaceholdOptions = {}): Place
   /**
    * A placeholder has to carry the block's SHAPE, not only its place.
    *
-   * **Reported by a user**: `className="panel"` and `css={@@( … )}` could not be kept one per line —
-   * "kao da nas eteti tera ostale da idu inline". They were right, and it was ours. The formatter
-   * never sees a block, it sees this; and a comment and a zero is fourteen characters, so an opening
-   * element that is multi-line in the author's file measured as fitting on one. biome joined the
-   * attributes exactly as it should have, and the block was expanded again afterwards, past a width
-   * nobody re-measured. An element carrying a block and one other attribute is the ordinary case.
+   * The formatter never sees a block, it sees this. Held by a comment and a zero — fourteen
+   * characters — an opening element that is multi-line in the author's file would measure as
+   * fitting on one: biome would join the attributes, the block would be expanded again afterwards,
+   * and `className="panel"` would end up inline beside a multi-line block. An element carrying a
+   * block and one other attribute is the ordinary case.
    *
    * So a block that spans lines is placeheld by something that spans lines. A template literal,
    * because its contents are the one thing a formatter will not re-lay: measured against the two
@@ -206,12 +201,10 @@ function restore(
   /**
    * The ending the FORMATTER chose, which is the one the whole file now uses.
    *
-   * `relaid` used to take it from the block's own text, and a review measured what that costs: a
-   * CRLF file formatted by a tool that writes LF came back LF outside every block and CRLF inside
-   * one. Stable, which is worse than random — it recurs on every save rather than healing.
-   *
-   * The existing tests could not see it, because they all use an identity formatter, and an identity
-   * formatter never disagrees with the block. A tool with an opinion is the only way to reach it.
+   * Taken from the block's own text instead, a CRLF file formatted by a tool that writes LF comes
+   * back LF outside every block and CRLF inside one — stable, which is worse than random: it recurs
+   * on every save rather than healing. An identity formatter never disagrees with the block, so
+   * only a test with a tool that has an opinion reaches this.
    *
    * A file with one line and no newline at all keeps whatever the block had, which is the only case
    * where the formatter has said nothing.
@@ -232,18 +225,13 @@ function restore(
     const placeholder = new RegExp(block.wrap ? `[\\w:$-]+=\\{${stands}\\}` : stands);
     const found = placeholder.exec(out);
     /**
-     * A placeholder the formatter moved, rewrote or deleted. There is no correct output to fall back
-     * to, so there is no output.
+     * A placeholder the formatter moved, rewrote or deleted. There is no correct output to fall
+     * back to, so there is no output.
      *
-     * This used to `continue`: the block was dropped, the placeholder was left where it had been,
-     * and `formatFile` with `write: true` put that on disk. A review measured it with the real
-     * Prettier, which reads the template placeholder as embedded CSS and reflows it — two of six
-     * cases lost their block.
-     *
-     * A formatter that fails is an inconvenience. A formatter that eats a block is unrecoverable
-     * work, and it was doing it silently, which is the half that makes it unrecoverable. The test
-     * that covered the old behaviour asserted the block was gone while its own comment said losing
-     * an author's source is the one outcome this may not have; the comment was right.
+     * Dropping the block and leaving the placeholder would put that on disk with `write: true`.
+     * Measured with the real Prettier, which reads the template placeholder as embedded CSS and
+     * reflows it: two of six cases would lose their block. A formatter that fails is an
+     * inconvenience; a formatter that silently eats a block is unrecoverable work.
      */
     if (found === null) {
       throw new Error(
@@ -254,16 +242,14 @@ function restore(
     }
 
     /**
-     * And a placeholder that came back TWICE, which left ours in the author's file.
+     * And a placeholder that came back TWICE, which would leave ours in the author's file.
      *
-     * The same fault from the other side, and it was not refused: `exec` finds the first match, the
-     * block went back there, and the second kept the marker — this package's own internal text,
-     * written to somebody's component. Found by probing what `restore` does when the text it gets
-     * back is not the text it handed over.
+     * The same fault from the other side: `exec` finds the first match, so the block would go back
+     * there and the second would keep the marker — this package's own internal text, written to
+     * somebody's component.
      *
-     * No formatter measured here duplicates code. That is exactly the argument the missing case
-     * refused to accept, for the reason written above it: there is no correct output to fall back
-     * to, so there is no output.
+     * No formatter measured here duplicates code. That is no argument, for the reason written
+     * above: there is no correct output to fall back to, so there is no output.
      */
     if (placeholder.test(out.slice(found.index + found[0].length))) {
       throw new Error(
@@ -296,18 +282,15 @@ function restore(
 /**
  * How wide one level is, read off the file the formatter has just laid out.
  *
- * **The config used to have a `format: { indent }` for this, and nothing read it.** Wiring it up
- * would have been the wrong repair: the project has already told biome or prettier how wide a level
- * is, and a second place to say it can only disagree with the first. This asks the answer that is
- * already in the file.
+ * Not a config key: the project has already told biome or prettier how wide a level is, and a
+ * second place to say it can only disagree with the first. This asks the answer that is already in
+ * the file.
  *
  * ## What it counts, and why it is not the narrowest line
  *
- * It used to take the NARROWEST indentation anywhere in the file, on the reasoning that the
- * shallowest indented line is one level in. That is true of code and false of everything else a file
- * holds: **one two-space line inside a template literal or a wrapped comment dropped every block in
- * a four-space file to a two-space step**, permanently and idempotently, and the doc above it named
- * that hazard while guarding only a single space. Mine, and a review found it.
+ * The narrowest indentation anywhere is one level in for code and wrong for everything else a file
+ * holds: one two-space line inside a template literal or a wrapped comment would drop every block
+ * in a four-space file to a two-space step, permanently.
  *
  * What one level IS is a DIFFERENCE — the amount a line indents past the one above it — so that is
  * what is counted, and the commonest difference wins. A stray line is then one vote against many
@@ -357,16 +340,15 @@ function stepOf(text: string): string {
  * One block at the indentation the formatter settled on, and its CSS laid out inside that.
  *
  * The first line stays as it is — it begins where the placeholder was, which the formatter has
- * already positioned. Everything after it is re-laid, and the last line closes what the first opened.
+ * already positioned. Everything after it is re-laid, and the last line closes what the first
+ * opened.
  *
  * **A one-line block is returned untouched.** `css=@@( display: flex; )` is a deliberate shape and
  * breaking it would be the formatter having an opinion about the markup rather than about the CSS.
  *
  * **The block's own line ending is what it is put back together with.** Splitting on `\n` and
- * joining on `\n` cost every body line its `\r` in a CRLF checkout — measured with an identity
- * formatter, which is the only way to see it: the file came back with mixed endings inside each
- * block, a diff on every line and a lint failure in most setups. Nothing here is a decision about
- * which ending a file should use.
+ * joining on `\n` costs every body line its `\r` in a CRLF checkout: mixed endings inside each
+ * block, a diff on every line. Nothing here is a decision about which ending a file should use.
  */
 function relaid(
   block: string,
@@ -388,10 +370,9 @@ function relaid(
 }
 
 /**
- * A whole block — `@@(` to `)` — with its inside laid out one `step` in, the way `relaid` lays
- * it out in a file. For a printer that places the block itself and wants the CSS done the same way:
- * the Prettier plugin, which handed the inside back as written until a review found a Prettier
- * project had no road to this layout at all. A one-line block is returned untouched, as there.
+ * A whole block — `@@(` to `)` — with its inside laid out one `step` in, the way `relaid` lays it
+ * out in a file. For a printer that places the block itself and wants the CSS done the same way:
+ * the Prettier plugin. A one-line block is returned untouched, as there.
  */
 export function relaidInside(block: string, step: string): string {
   const lines = block.split(/\r?\n/);
@@ -452,9 +433,8 @@ function layout(body: string, indent: string, step: string, expression: Placehol
       /**
        * A comment on a line of its own stays on one, and one at the end of a declaration stays
        * there. The difference is whether anything came BEFORE it on this line — which is what
-       * `fresh` already knows, and what the first version of this got wrong: every standalone
-       * comment came back glued to the declaration below it, which is the one thing a note above a
-       * declaration must not become.
+       * `fresh` already knows. Without it every standalone comment comes back glued to the
+       * declaration below it, which is the one thing a note above a declaration must not become.
        */
       const alone = fresh;
       const end = body.indexOf("*/", index + 2);
@@ -490,13 +470,9 @@ function layout(body: string, indent: string, step: string, expression: Placehol
     /**
      * A `match`, which is a THIRD shape beside a declaration and a nested rule.
      *
-     * It has to be caught before the hole branch, and that is the whole bug it fixes. `opensAHole`
-     * asks whether the text in front of a `{` is a declaration's head — `color:` is, so the `{`
-     * that opens a match body was read as a hole, and `closingHole` swallowed every arm as one run
-     * of text. Reported by the user, and what came back was:
-     *
-     *     color: match $(this.tone) {quiet => $color.accent.quiet;
-     *       loud  => $color.text.primary;};
+     * It has to be caught before the hole branch: `opensAHole` asks whether the text in front of a
+     * `{` is a declaration's head — `color:` is — so the `{` that opens a match body would be read
+     * as a hole, and `closingHole` would swallow every arm as one run of text.
      *
      * The arms line up on their `=>`, because a match IS a lookup table and a table reads aligned.
      * The cost is real and is the ordinary cost of alignment: an arm with a longer key than any
@@ -610,12 +586,10 @@ function layout(body: string, indent: string, step: string, expression: Placehol
 
     if (parens === 0 && code === 59 /* ; */) {
       /**
-       * And the DECLARATION, written the one way it may be written — the other half of the same
-       * promise. `non-canonical-spelling` reports a keyword in the wrong case and its message says
-       * this fixes it; before this line it did not, which is the shape a review already found in
-       * `tools.ts`: two halves of one command disagreeing about one file.
+       * A CHOICE is laid out as a table rather than as one line — see `choiceLines`. Any other
+       * DECLARATION is written the one way it may be written, so what `non-canonical-spelling`
+       * reports is exactly what this fixes.
        */
-      /** A CHOICE is laid out as a table rather than as one line — see `choiceLines`. */
       const choice = choiceLines(line.trim());
       if (choice !== undefined) {
         for (const one of choice) out.push(indent + step.repeat(depth) + one);
@@ -730,10 +704,10 @@ function armsIn(body: string): string[] {
 /**
  * Past the `}` that closes the CSS `{` at `open`, or -1 — read as CSS, not as TypeScript.
  *
- * The match bodies used `closingHole`, which is a TypeScript reader: `//` opens a comment there,
- * so `url(http://x/y.png)` ended the line, the brace was found in the wrong place, and the arms
- * came back rearranged into text that no longer compiled. Found in round 8. Here a string, a
- * block comment and an escape are stepped over whole, and `//` is two characters.
+ * `closingHole` is a TypeScript reader: `//` opens a comment there, so `url(http://x/y.png)` would
+ * end the line, the brace would be found in the wrong place, and the arms would come back as text
+ * that no longer compiles. Here a string, a block comment and an escape are stepped over whole, and
+ * `//` is two characters.
  */
 function closingBrace(text: string, open: number): number {
   let depth = 0;
@@ -781,12 +755,12 @@ function reindented(escape: string, at: string): string {
 }
 
 /**
- * Whether a piece of an arm list is nothing but comments — a note that belongs to the arm before it.
+ * Whether a piece of an arm list is nothing but comments — a note that belongs to the arm before
+ * it.
  *
- * A scan rather than a regex. The regex was `^(\s*\/\*[\s\S]*?\*\/)+\s*$`, which can split a run of
- * comments many ways and tries every one when the piece does not end where it should — CodeQL found
- * it on the PR, and measured it was four times slower for every two more comments: a run of forty
- * did not finish. This walks each character once.
+ * A scan rather than a regex: `^(\s*\/\*[\s\S]*?\*\/)+\s*$` can split a run of comments many ways
+ * and tries every one when the piece does not end where it should — measured, four times slower for
+ * every two more comments, and a run of forty did not finish. This walks each character once.
  */
 function onlyComments(piece: string): boolean {
   let index = 0;
@@ -973,10 +947,9 @@ function endOfString(text: string, at: number): number {
  * would get somebody else's block back where theirs was. Growing it until the file does not hold it
  * costs one search and removes the question.
  *
- * **Exported because the Prettier plugin supplies its own `stands` and used a CONSTANT.** Measured:
- * a file with a block in it and `` const note = `@ramonda-css-block:0` `` anywhere else came back
- * with that string replaced by a copy of the block — the author's own text, gone. The guarantee was
- * written for the default and covered only the default.
+ * Exported because the Prettier plugin supplies its own `stands`, and a constant there has the same
+ * hole: measured, a file with a block and `` const note = `@ramonda-css-block:0` `` elsewhere came
+ * back with that string replaced by a copy of the block.
  */
 export function markerFor(source: string, base = "@ramonda-css:"): string {
   let marker = base;

@@ -1,5 +1,15 @@
 # Ramonda CSS
 
+## 0.4.0
+
+- **Goes with `@ramonda/css` 0.7.0**, whose project tokens are called tokens — `tokens` in
+  `ramonda.css.ts`, where it was `variables`. The colours are unchanged; the copy of the compiler this
+  extension carries, for a project that has none of its own, is the new one.
+- That copy brings 0.7.0's checks to such a project too: a `url( … )` pointing at no file, a token set
+  against its declaration, a token group written without `kind( … )`, a `@@font-face` binding that
+  is its family, and the rest listed in the package's changelog.
+- The marketplace page calls `$color.accent` a token.
+
 ## 0.3.0
 
 - **The colours follow the new spelling of a block's logic.** This release goes with the `@ramonda/css`

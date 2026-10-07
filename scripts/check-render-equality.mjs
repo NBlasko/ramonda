@@ -42,7 +42,7 @@ const pw = createRequire(join(HERE, "..", "apps", "playground-core", "package.js
 const CSS = join(HERE, "..", "packages", "css", "src");
 const { transform } = await loadTs(join(CSS, "compiler", "transform.ts"));
 const { Sheet } = await loadTs(join(CSS, "compiler", "sheet.ts"));
-const runtime = await loadTs(join(CSS, "merge.ts"));
+const runtime = await loadTs(join(CSS, "runtime", "merge.ts"));
 // A selftest's pictures go elsewhere, so a real failure after it in CI is not mixed up with them.
 const OUT = join(
   HERE,

@@ -1,5 +1,5 @@
-import { nearest } from "./compiler/rules";
-import type { Kind, ValueByKind } from "./token";
+import { nearest } from "../compiler/rules";
+import type { Kind, ValueByKind } from "../runtime/token";
 
 /**
  * The variables a project DECLARES — their names, their kinds, and the fallback each one carries.
@@ -60,7 +60,7 @@ export const SYNTAX: Record<Kind, string> = {
 
 /** The kinds, as a list, for the message a wrong one gets. */
 export const KINDS = Object.keys(SYNTAX) as readonly Kind[];
-export type { Kind, Token, ValueByKind } from "./token";
+export type { Kind, Token, ValueByKind } from "../runtime/token";
 
 /**
  * The marker on a boxed leaf.
@@ -76,16 +76,15 @@ export type { Kind, Token, ValueByKind } from "./token";
 export const IS_TOKEN: unique symbol = Symbol.for("ramonda.css.token");
 
 /**
- * One declared variable: what it is, what it starts as, and what it may become.
+ * One declared token: what it is, what it starts as, and what it may become.
  *
- * `V` is everything the variable MAY BE, which is the range when one is declared and the single
+ * `V` is everything the token MAY BE, which is the range when one is declared and the single
  * declared value otherwise. That is the type a property's narrowing is checked against and the one
- * `toStyle` accepts — so a variable a theme moves between two colours is honest about both, and one
+ * `toStyle` accepts — so a token a theme moves between two colours is honest about both, and one
  * that never moves is exact.
  *
- * `value` is separate and is always the single initial: `:root` sets it and `@property` registers it
- * as the `initial-value`. The two were one field until a user asked how a theme is supposed to work,
- * and the answer was that they are two questions.
+ * `value` is separate and is always the single initial: `:root` sets it and `@property` registers
+ * it as the `initial-value`.
  */
 export interface TokenDeclaration<K extends Kind = Kind, V = unknown> {
   readonly [IS_TOKEN]: true;
@@ -126,15 +125,15 @@ type Group = { readonly [name: string]: unknown };
 /**
  * The same group with every bare leaf REPLACED by what the kind accepts, which is the constraint.
  *
- * **A mapped type rather than a recursive union, and that is not a preference.** The first version
- * constrained the argument to `V | TokenDeclaration | { [name: string]: Written<V> }`, and `tsc` refused it
- * outright — `TS2590: Expression produces a union type that is too complex to represent` — as soon
- * as a group held a nested `kind( … )`. Of course it did: `V` for a length is 49 units times
- * `${number}`, and a recursive union multiplies that by every level.
+ * **A mapped type rather than a recursive union, and that is not a preference.** Constrained to `V
+ * | TokenDeclaration | { [name: string]: Written<V> }`, `tsc` refuses the argument outright —
+ * `TS2590: Expression produces a union type that is too complex to represent` — as soon as a group
+ * holds a nested `kind( … )`: `V` for a length is 49 units times `${number}`, and a recursive union
+ * multiplies that by every level.
  *
  * Mapped, the work is one check per leaf and the error lands ON the leaf, which is also the better
- * message: `Type '"30px"' is not assignable to type … ` beside `main`, rather than a paragraph about
- * the shape of the whole group.
+ * message: `Type '"30px"' is not assignable to type … ` beside `main`, rather than a paragraph
+ * about the shape of the whole group.
  */
 /** The long form: an initial value and what the variable may become. */
 interface Ranged<V> {

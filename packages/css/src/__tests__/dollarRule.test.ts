@@ -1,9 +1,9 @@
 import { describe, expect, test } from "vitest";
-import type { Config } from "../config";
+import type { Config } from "../config/config";
 import { readBlock } from "../compiler/read";
 import { type Finding, checkBlock } from "../compiler/rules";
 import { findBlocks } from "../compiler/scan";
-import { kind } from "../declared";
+import { kind } from "../config/declared";
 
 /**
  * `$a.b.c` naming a variable the project never declared.

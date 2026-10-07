@@ -3,13 +3,11 @@
  *
  * The distinction is the reason `color : red` and `color:red` share a class. Normalising TEXT can
  * only collapse whitespace it cannot interpret — the space before a `:` in a declaration is
- * meaningless and the space before a `:` in `& :first-child` is a combinator, and nothing that reads
- * characters can tell them apart. Once the block is parsed, the whitespace the author wrote around
- * the colon is not in the structure to begin with.
+ * meaningless and the space before a `:` in `& :first-child` is a combinator, and nothing that
+ * reads characters can tell them apart. Once the block is parsed, the whitespace the author wrote
+ * around the colon is not in the structure to begin with.
  *
- * The parser (see PLAN.md, A1) produces this. It is written down here first because everything from
- * the class name to the stylesheet is defined in terms of it, and because it can be implemented and
- * tested — as it is — before any parser exists.
+ * Everything from the class name to the stylesheet is defined in terms of this.
  */
 
 /** One block: an ordered list of items. Order is meaning and is never sorted. */
@@ -239,19 +237,17 @@ export interface TextPart {
   readonly at?: number;
   readonly text: string;
   /**
-   * Text this COMPILER decided, not text the author wrote — a `$(…)` that named a `@@keyframes`
-   * or `@@property` site and was resolved to that site's generated name.
+   * Text this COMPILER decided, not text the author wrote — a `$(…)` that named a `@@keyframes` or
+   * `@@property` site and was resolved to that site's generated name.
    *
    * It is text for every purpose that matters: part of the hash, no custom property, and it stands
-   * where a hole may not. But **nothing in it can be a fault.** A generated name cannot be a typo of
-   * anything, and there is no position in the author's file to point a squiggle at — `at` is where
-   * the `{{` was, and the text is a different length.
+   * where a hole may not. But **nothing in it can be a fault.** A generated name cannot be a typo
+   * of anything, and there is no position in the author's file to point a squiggle at — `at` is
+   * where the `{{` was, and the text is a different length.
    *
-   * The checker skips it for exactly that reason. Measured before this existed: the name stood alone
-   * as a bare word in a value, because a resolved reference arrived as its own part and the function
-   * step-over in `words()` works within one part — so `rotate(var(`, the name and `))` were three
-   * parts, and `transform: rotate(var($(angle)))` was reported while the same text written by hand
-   * was silent. The same CSS, two answers.
+   * The checker skips it for exactly that reason: the function step-over in `words()` works within
+   * one part, so `rotate(var(`, the name and `))` are three parts, and without this `transform:
+   * rotate(var($(angle)))` would be reported while the same text written by hand is silent.
    */
   readonly resolved?: true;
 }
@@ -280,18 +276,6 @@ export interface HolePart {
 }
 
 /**
- * Every RUNTIME value in a block — a hole standing in a declaration's value — with the declaration
- * holding it.
- *
- * One walk, because three things ask about these and a second copy of the criterion is where this
- * package keeps finding faults: the `hole-not-allowed` rule wants each one's POSITION, the virtual
- * file wants only whether there are any, and the type its helper returns follows from that.
- *
- * **`ReadBlock.holes` is not the same list**, and reaching for it was the first mistake:
- * composition is written with the same braces, so `...$(base)` and `when $(on)` are in the reader's
- * holes while neither puts anything on an element. Only a hole in a VALUE does.
- */
-/**
  * The items a group holds — a nested rule's, or every arm's of a block match, in the order written.
  *
  * For a walk that asks what a block SETS and not how it is chosen. One that compares declarations
@@ -301,6 +285,14 @@ export function childrenOf(item: NestedRule | BlockMatch): readonly BlockItem[] 
   return item.kind === "rule" ? item.items : item.arms.flatMap((arm) => arm.items);
 }
 
+/**
+ * Every RUNTIME value in a block — a hole standing in a declaration's value — with the declaration
+ * holding it, for `hole-not-allowed`, which points at each one's POSITION.
+ *
+ * **`ReadBlock.holes` is not the same list:** composition is written with the same escape, so
+ * `...$(base)` and `when $(on)` are in the reader's holes while neither puts anything on an
+ * element. Only a hole in a VALUE does.
+ */
 export function runtimeValuesIn(block: Block): readonly { declaration: Declaration; part: HolePart }[] {
   const found: { declaration: Declaration; part: HolePart }[] = [];
   const inItems = (items: readonly BlockItem[]): void => {
@@ -314,4 +306,36 @@ export function runtimeValuesIn(block: Block): readonly { declaration: Declarati
   };
   inItems(block.items);
   return found;
+}
+
+/**
+ * A value's text when it is text and nothing else — no hole, no `$` token, no choice, no match — or
+ * `undefined` when it holds any of those.
+ *
+ * Seven readers ask this; a value that holds anything but text is decided somewhere else, and each
+ * of them stops there.
+ */
+export function textOnly(value: readonly ValuePart[]): string | undefined {
+  let text = "";
+  for (const part of value) {
+    if (part.kind !== "text") return undefined;
+    text += part.text;
+  }
+  return text;
+}
+
+/**
+ * Every run of plain text a value holds, including inside each branch of a choice and each arm of a
+ * match — the text a value may put on an element, wherever it sits.
+ */
+export function textPartsOf(value: readonly ValuePart[]): TextPart[] {
+  return value.flatMap((part) =>
+    part.kind === "text"
+      ? [part]
+      : part.kind === "choice"
+        ? [...part.branches.flatMap((branch) => textPartsOf(branch.value)), ...textPartsOf(part.otherwise)]
+        : part.kind === "match"
+          ? part.arms.flatMap((arm) => textPartsOf(arm.value))
+          : [],
+  );
 }

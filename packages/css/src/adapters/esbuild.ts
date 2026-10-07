@@ -1,14 +1,14 @@
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import ts from "typescript";
-import { knownNames, configReader, environmentOf } from "./config";
-import { variablesSheetFor, writeGenerated } from "./generate";
+import { knownNames, configReader, environmentOf } from "../config/config";
+import { variablesSheetFor, writeGenerated } from "../config/generate";
 import { readModule } from "./modules";
-import { CssBlockError, positionOf } from "./compiler/errors";
-import { settingsAgainst } from "./compiler/declaredSet";
-import { fileMayHoldABlock, mayHoldABlock } from "./compiler/scan";
-import { Sheet } from "./compiler/sheet";
-import { transform } from "./compiler/transform";
+import { CssBlockError, positionOf } from "../compiler/errors";
+import { settingsAgainst } from "../compiler/declaredSet";
+import { fileMayHoldABlock, mayHoldABlock } from "../compiler/scan";
+import { Sheet } from "../compiler/sheet";
+import { transform } from "../compiler/transform";
 
 /**
  * `@ramonda/css/esbuild` — the same feature for a build that has no Vite in it.
@@ -20,52 +20,24 @@ import { transform } from "./compiler/transform";
  * await build({ entryPoints: ["src/index.tsx"], bundle: true, plugins: [ramondaCss()] });
  * ```
  *
- * ## What is the same, and it is nearly everything
+ * Everything but the plumbing is the Vite plugin's: one `Sheet`, one stylesheet module per source
+ * file, a class named after the hash of what it sets. What differs is how a file is handed over.
  *
- * One `Sheet`, one stylesheet module per source file, the class named after the hash of the block —
- * none of that is a bundler's business. What changes is only how a plugin is told about a file and
- * how a virtual module is spelled.
+ * **esbuild hands a plugin a path, not the code**, so a file is read to be asked whether it holds a
+ * block, and a file that does not is read again by esbuild. That read is the whole cost — +60% on a
+ * build of 400 small modules with no block in them; this package's own work adds 0.3 µs a file.
+ * Handing the contents back to spare esbuild the read would claim the file from every other plugin,
+ * so this declines it instead, and `filter` is how a project keeps the read to the files that matter.
  *
- * ## What is different, and what it costs
+ * **A transformed file is given its loader**, since esbuild only picks one for a file a plugin
+ * declines. A `.js` holding a block is loaded as `jsx`: a block in a JSX attribute leaves JSX behind.
  *
- * **esbuild hands a plugin a PATH, not the code.** Vite passes the source in; here the file has to be
- * read to be asked the cheap question, and a file with no block is then read a second time by
- * esbuild. Measured on 400 tiny modules, none holding a block:
+ * **`onEnd` checks what post-processing did to the stylesheet**, when the build lets a plugin see it:
+ * `write: false` hands back the text and `metafile: true` names the files. With neither, there is
+ * nothing to check.
  *
- * | | |
- * |---|---|
- * | esbuild alone | 11.4 ms |
- * | a plugin that does nothing but be asked | +12%, 3.4 µs/file |
- * | …and reads the file | **+60%, 17.3 µs/file** |
- * | …and does everything this one does | +60%, 17.1 µs/file |
- *
- * **The read is the whole cost**, and this package's own work on top of it is 0.3 µs/file — the cheap
- * substring is as free here as everywhere else. Reading the bytes without decoding them is not
- * faster (+62%), so it is the syscall rather than the UTF-8. And minifying with source maps does not
- * dilute it: +61% on that build too, because esbuild's minifier is that fast.
- *
- * **The obvious fix is worse than the cost.** Handing the contents back so esbuild does not read
- * again means claiming the file, and claiming it does two things: no other `onLoad` plugin is
- * offered it, and the loader has to be named. Measured, contents returned with no loader are parsed
- * as plain JavaScript — *"The JSX syntax extension is not currently enabled"*, on every file.
- *
- * So it declines, and `filter` is the lever a project has: point it at the tree that holds blocks and
- * nothing else is read at all.
- *
- * **A transformed file needs its loader named.** esbuild picks one from the extension only when a
- * plugin declines the file, so the mapping is here — and a `.js` holding a block is loaded as `jsx`,
- * because a block written as a JSX attribute leaves JSX behind in a file esbuild would otherwise
- * parse as plain JavaScript. That only applies to a file that holds one, which is already not plain.
- *
- * **`onEnd` is where post-processing is checked**, and what it can see depends on how the build was
- * asked to run: `write: false` hands back the output text, and `metafile: true` names the files on
- * disk. With neither there is nothing to check — the same answer the Vite plugin gives a build that
- * emitted no stylesheet, and for the same reason.
- *
- * ## Structural types, on purpose
- *
- * esbuild is not imported and is not a dependency, the way `./vite` does not import Vite: a package
- * whose types drag in a bundler is a package that cannot be used without it.
+ * esbuild is not imported and not a dependency — its types are declared below — so this package can
+ * be used without it.
  */
 
 export interface EsbuildCssPluginOptions {
@@ -167,27 +139,14 @@ export function loaderFor(path: string): "tsx" | "ts" | "jsx" {
 }
 
 /**
- * Whether this is a production build, read off what esbuild was actually asked to do.
+ * Whether this is a production build, read off what esbuild was asked to do — a config may depend on
+ * it (`env.production ? … : …`), and reading `NODE_ENV` alone let a minified build take the
+ * development half of such a config.
  *
- * The note here used to say *esbuild is not told which build this is*. It is told, twice, and the
- * cost of believing otherwise was measured: the same config and the same block,
- *
- *     vite,    --mode production, NODE_ENV unset    refused
- *     esbuild, minify: true,      NODE_ENV unset    BUILT — `2rem` went in
- *
- * which is exactly the failure `environmentOf` in `config.ts` records and says is fixed — *it
- * silently took the development branch of every such config, in production builds included*. Fixed
- * for Vite, which is handed its mode, and left here.
- *
- * `define` FIRST, because it is a statement: `process.env.NODE_ENV` is what esbuild rewrites into
- * the bundle, so a project setting it has said which build this is out loud, and somebody minifying
- * a development build must be able to say so. `minify` second, because it is an inference — a
- * strong one, since nobody minifies for their own reading, but still an inference. `NODE_ENV` last,
- * which is what a consumer that cannot know falls back to.
- *
- * **The asymmetry decides the order of the last two.** Reading a build as production when it is not
- * gives stricter rules than the author wanted, which arrives as a refusal they can see and argue
- * with. Reading it as development when it is not ships the loose half, silently, to real users.
+ * `define` first, because setting `process.env.NODE_ENV` says which build this is. `minify` second,
+ * an inference nobody minifies against. `NODE_ENV` last. When in doubt, production: a build read as
+ * production by mistake is refused where the author can see it, while one read as development by
+ * mistake ships the looser rules without a word.
  */
 function productionFrom(options: { minify?: boolean; define?: Record<string, string> } | undefined): boolean {
   const said = options?.define?.["process.env.NODE_ENV"];
@@ -207,8 +166,7 @@ export function ramondaCss(options: EsbuildCssPluginOptions = {}): EsbuildCssPlu
    * fault.
    *
    * Anchored on the file being loaded rather than on `process.cwd()`, and re-read when its text
-   * changes rather than once here — both a review's findings, and both explained on
-   * {@link configReader}.
+   * changes — see {@link configReader}.
    *
    * **Which build this is comes from the build**, and a lambda rather than a value because the
    * options are not known until `setup` runs — see {@link productionFrom}.
@@ -224,17 +182,9 @@ export function ramondaCss(options: EsbuildCssPluginOptions = {}): EsbuildCssPlu
 
     setup(build) {
       /**
-       * Codegen, run once before anything is resolved.
-       *
-       * **Before**, because user code IMPORTS the generated module: run it lazily on the first file and
-       * that import has already failed. So it happens at the start of the build, from the directory the
-       * bundler was invoked in.
-       *
-       * The BUILD's own working directory, not the process's — esbuild already reports every location
-       * relative to it, and asking the process instead would generate into whichever directory the
-       * command happened to start in. Everything else here finds a config by walking up from the
-       * FILE, which is what makes a monorepo work; this is the one question with no file to ask
-       * about, so it asks the build.
+       * Codegen, once, before anything is resolved: user code imports the generated module, so a
+       * lazy run on the first file would come after that import had already failed. From the build's
+       * working directory — the one question here with no file to walk up from.
        */
       production = productionFrom(build.initialOptions);
       writeGenerated(build.initialOptions?.absWorkingDir ?? process.cwd(), ts);
@@ -242,10 +192,9 @@ export function ramondaCss(options: EsbuildCssPluginOptions = {}): EsbuildCssPlu
       build.onResolve({ filter: /\?ramonda-css\.css$/ }, (args) => ({ path: args.path, namespace: NAMESPACE }));
 
       /**
-       * `resolveDir` is the folder of the file that holds the block, so a relative `url( … )` in it
-       * is read from there — as Vite reads it, and as `url-not-found` checks it. Without it the
-       * stylesheet, in a namespace of its own, had no folder at all: measured in review round 2,
-       * `url("./a.png")` failed the build with the file right beside it.
+       * `resolveDir` is the folder of the file that holds the block, so a relative `url( … )` is read
+       * from there, as Vite reads it. A stylesheet in a namespace of its own has no folder otherwise,
+       * and `url("./a.png")` failed with the file right beside it.
        */
       build.onLoad({ filter: /.*/, namespace: NAMESPACE }, (args) => {
         const file = args.path.slice(0, -SUFFIX.length);
@@ -281,15 +230,7 @@ export function ramondaCss(options: EsbuildCssPluginOptions = {}): EsbuildCssPlu
         if (!fileMayHoldABlock(args.path) || args.path.includes("node_modules")) return undefined;
 
         const code = readFileSync(args.path, "utf8");
-        /**
-         * Asked ONCE, and it used to be asked twice — here and again for `known` below.
-         *
-         * `configReader` caches the answer, but every call still walks up the tree with `findConfig`
-         * and reads the file to decide whether anything changed. Measured on a real 300-file build:
-         * 179.5 µs/file with no config against 190.8 with one, so the pair costs about 11 µs/file.
-         * Small, and named rather than dressed up — the reason to hoist it is that one question asked
-         * twice in one function is the shape this repository keeps finding, not the microseconds.
-         */
+        // Asked once per file: every call walks up the tree and reads the config to see if it changed.
         const config = configFor(args.path);
 
         let result: ReturnType<typeof transform>;
@@ -318,17 +259,10 @@ export function ramondaCss(options: EsbuildCssPluginOptions = {}): EsbuildCssPlu
         }
 
         /**
-         * Nothing here to compile. Declined, so esbuild reads it with the loader it would have used —
-         * and the sheet is told, but only if this file had blocks before.
-         *
-         * A rebuild is what makes that necessary, and it is a build FAILURE rather than a stale rule.
-         * Measured through `esbuild.context()`: an author deletes the last block from a file that is
-         * still imported, the file's stylesheet is no longer imported with it, and the rule is gone
-         * from the output — so `verify` finds a class the sheet promised missing and accuses
-         * post-processing of dropping it. *post-processing dropped 1 thing(s) the markup already
-         * names: the class `r-c-red`*, about a class nothing names any more, with nothing an author
-         * could act on. It also leaves the NAME claimed, so re-adding an edited block collides with
-         * the one it used to be.
+         * Nothing here to compile, so esbuild reads the file with its own loader — and if the file had
+         * blocks before, the sheet is told. On a rebuild after the last block is deleted, the sheet
+         * would otherwise still promise its rule, and `verify` would blame post-processing for a class
+         * nothing names any more.
          */
         if (result === undefined) {
           if (styled.delete(args.path)) sheet.add(args.path, []);
@@ -339,15 +273,9 @@ export function ramondaCss(options: EsbuildCssPluginOptions = {}): EsbuildCssPlu
         sheet.add(args.path, result.blocks, { ...result.variables, known: knownNames(config) });
         const own = sheet.cssFor(args.path);
         /**
-         * The import that carries the project's declared VARIABLES, beside the one carrying its rules.
-         *
-         * Reported by the user, who declared variables, wrote `$`, and got a page with no colours: the
-         * generated `:root` was written to disk and nothing imported it, so `var(--color-accent-main)`
-         * resolved to its registered initial value and nothing else. Correct classes, unstyled page.
-         *
-         * Emitted beside the block import rather than asked of the project, for the same reason codegen runs
-         * itself: a line a project has to remember is a line most projects will not have. Both bundlers
-         * dedupe an import by path, so the declarations arrive once however many modules ask for them.
+         * The project's `tokens.css` is imported here, beside the file's own rules: without it a token
+         * resolves to its registered initial value only, and the page has the right classes and none
+         * of the theme. Imported for the project rather than left to it, and deduplicated by path.
          */
         const declared = variablesSheetFor(args.path);
         const contents =
@@ -368,21 +296,9 @@ export function ramondaCss(options: EsbuildCssPluginOptions = {}): EsbuildCssPlu
        */
       build.onEnd((result) => {
         /**
-         * **A parse error on a file this plugin was never offered**, which is what a `filter` one
-         * directory too narrow produces.
-         *
-         * `filter` is the lever the cost note above offers, and its own words are accurate: a file it
-         * misses is "compiled by esbuild exactly as it would be with no plugin at all". With no
-         * plugin, `@@(` is not JavaScript — so the author gets *Expected identifier but found "@"*,
-         * which names nothing they can act on.
-         *
-         * That sentence is the one the Vite adapter's `config` hook exists to prevent; its note calls
-         * it out by name. So the message is already known to be unactionable, and here a person
-         * reaches it by setting one option slightly wrong.
-         *
-         * Whether the file holds a block is the cheap substring `mayHoldABlock` already answers, and
-         * it is asked only of files a build ALREADY failed on — so a build that succeeds pays
-         * nothing, and a build that failed for an ordinary reason gets no hint it cannot use.
+         * A parse error in a file holding a block that `filter` kept from this plugin — esbuild then
+         * says *Expected identifier but found "@"*, which names nothing to fix. A note under the error
+         * says the filter is too narrow. Asked only of files the build already failed on.
          */
         for (const error of result.errors ?? []) {
           const file = error.location?.file;

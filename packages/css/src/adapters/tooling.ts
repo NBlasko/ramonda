@@ -1,10 +1,10 @@
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
-import { placehold } from "./compiler/tooling";
-import { positionOf } from "./compiler/errors";
-import { mayHoldABlock } from "./compiler/scan";
-import { virtualFile } from "./compiler/virtual";
+import { placehold } from "../compiler/tooling";
+import { positionOf } from "../compiler/errors";
+import { mayHoldABlock } from "../compiler/scan";
+import { virtualFile } from "../compiler/virtual";
 
 /**
  * Running the formatter and the linter over a file whose syntax neither can parse.
@@ -37,10 +37,9 @@ export interface ToolFinding {
 /**
  * Where a tool lives, or `undefined` when it is not installed.
  *
- * **Walked upwards, the way Node resolves a module.** Found by running this in the repository it was
- * written in: a workspace hoists its tools to the ROOT's `node_modules/.bin`, so looking only beside
- * the package being worked on found nothing at all — and a monorepo is the ordinary case, not the
- * exotic one.
+ * **Walked upwards, the way Node resolves a module.** A workspace hoists its tools to the ROOT's
+ * `node_modules/.bin`, so looking only beside the package being worked on finds nothing at all —
+ * and a monorepo is the ordinary case, not the exotic one.
  */
 /**
  * The spellings an install writes, plain one first.
@@ -75,8 +74,8 @@ export function toolIn(directory: string, name: string): string | undefined {
  * Every source file under the paths given.
  *
  * A directory is walked rather than handed on, because the two halves need different things from a
- * file and only this knows which is which. Found by running it: `ramonda-css lint src` read `src`
- * itself and threw, because a directory is not a file.
+ * file and only this knows which is which — and `ramonda-css lint src` handed `src` itself would
+ * throw, because a directory is not a file.
  */
 export function filesUnder(paths: readonly string[], cwd: string): string[] {
   const out: string[] = [];
@@ -142,10 +141,10 @@ export function formatText(source: string, file: string, format: (text: string, 
   /**
    * The formatter runs OUTSIDE the guard, and that is the whole point of the two statements.
    *
-   * A `ToolFailed` is the tool's own sentence, and the caller knows it by its type — the CLI catches
-   * that class and prints the message on its own. Wrapping the call rewrapped it as a plain `Error`,
-   * so the CLI stopped recognising it and answered a broken `biome.json` with our call stack, which
-   * is the one thing `toolingCli.test.ts` says it may not do.
+   * A `ToolFailed` is the tool's own sentence, and the caller knows it by its type — the CLI
+   * catches that class and prints the message on its own. Wrapped as a plain `Error`, the CLI would
+   * not recognise it and would answer a broken `biome.json` with our call stack, which is the one
+   * thing `toolingCli.test.ts` says it may not do.
    */
   const formatted = format(held.text, file);
 
@@ -189,9 +188,8 @@ export function lintFile(file: string, lint: (path: string) => Reported[]): Tool
    *
    * **Linted rather than skipped**, and that is what the two conditions are for. `mayHoldABlock` is
    * allowed to say maybe — a string or a comment can hold the syntax — so a file can reach here
-   * having answered yes to the cheap question and no to the real one. Found by a test: returning
-   * nothing for such a file made it lint CLEAN, silently, which is the failure this package keeps
-   * finding.
+   * having answered yes to the cheap question and no to the real one. Returning nothing for such a
+   * file would make it lint CLEAN, silently.
    */
   if (virtual === undefined) {
     return lint(file).map((diagnostic) => ({
@@ -226,12 +224,8 @@ export function lintFile(file: string, lint: (path: string) => Reported[]): Tool
        * With no position at all — a linter's own setup — and with a position of ZERO, which is what
        * a rule about the file's own NAME carries: `unicorn/filename-case` labels its diagnostic at
        * the first character. Offset zero is inside the preamble in a styled file, so `homeOf`
-       * answered nothing and it was dropped, while a plain file reported it.
-       *
-       * Both spellings were already written down here — one was honoured and one fell into the
-       * branch below it. The comment on the first says exactly what the second cost: a styled file
-       * going quiet. And `check.ts` keeps a preamble diagnostic and reports it at 1:1, so the two
-       * halves of this package disagreed as well.
+       * answers nothing for it, and a styled file would go quiet where a plain one reports.
+       * `check.ts` keeps a preamble diagnostic and reports it at 1:1 the same way.
        */
       const aboutTheFile = offset === undefined || offset < virtual.preamble;
       const home = aboutTheFile ? 0 : virtual.homeOf(offset);

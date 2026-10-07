@@ -3,11 +3,11 @@ import { existsSync, readFileSync, statSync, writeSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import ts from "typescript";
 import { checkProject } from "./check";
-import { NARROW, explain } from "./codegen";
-import { PRIMITIVE } from "./compiler/keywords.generated";
-import { nearest } from "./compiler/nearest";
-import { writeGenerated } from "./generate";
-import { ConfigError, environmentOf, findConfig, readConfig } from "./config";
+import { NARROW, explain } from "../config/codegen";
+import { PRIMITIVE } from "../compiler/keywords.generated";
+import { nearest } from "../compiler/nearest";
+import { writeGenerated } from "../config/generate";
+import { ConfigError, environmentOf, findConfig, readConfig } from "../config/config";
 import { filesUnder, formatFile, formatText, lintFile, toolIn } from "./tooling";
 import { ToolFailed, biomeFormatter, oxlintLinter } from "./tools";
 
@@ -55,14 +55,11 @@ const argv = process.argv.slice(2);
 const where = (file: string) => relative(process.cwd(), file) || file;
 
 /**
- * Help first, before anything is dispatched — because ASKING FOR HELP REWROTE THE TREE.
+ * Help first, before anything is dispatched — because asking for help must never do work.
  *
- * `format` and `lint` used to be dispatched above this, and `runTool` filters every `-` argument out
- * of its paths, so `--help` left none and "no paths" means the whole directory. Measured:
- * `ramonda-css format --help` rewrote a file and exited 0, having been asked what the command does.
- *
- * A person meeting a new command types `--help` first, so it is the one argument that must never do
- * work.
+ * `runTool` filters every `-` argument out of its paths, so `--help` leaves none, and "no paths"
+ * means the whole directory. Dispatched before this, `ramonda-css format --help` rewrote a file and
+ * exited 0, having been asked what the command does.
  */
 if (argv.includes("--help") || argv.includes("-h")) {
   console.log(USAGE);
@@ -72,14 +69,13 @@ if (argv.includes("--help") || argv.includes("-h")) {
 /**
  * A config this cannot use is the AUTHOR's file, so it is said the way every other fault is.
  *
- * Measured before this existed: all six ways `ramonda.css.ts` can be wrong reached a person as a Node
- * crash — `throw new Error(…)`, a caret, and a stack — while the sentence inside each was careful and
- * right. A mistake in a block printed the tag, the file, the line and the sentence; a mistake in the
- * config printed a stack trace. Same tool, same person, two shapes.
+ * Thrown, every way `ramonda.css.ts` can be wrong reached a person as a Node crash — a caret and a
+ * stack — around a careful sentence, while a mistake in a block printed the tag, the file, the line
+ * and the sentence. Same tool, same person, two shapes.
  *
  * Wrapped around the WHOLE dispatch rather than around each caller, because the config is read from
- * three of them — `checkProject`, the formatter and the linter — and the next one would forget. That
- * is the reason `transform.ts` gives for holding the CSS check itself, one layer down.
+ * three of them — `checkProject`, the formatter and the linter — and the next one would forget.
+ * That is the reason `transform.ts` gives for holding the CSS check itself, one layer down.
  */
 function said<T>(run: () => T): T {
   try {
@@ -104,21 +100,21 @@ if (argv[0] === "explain") {
 }
 
 /**
- * The project to check — a tsconfig, or the directory holding one, which is what `tsc -p` takes too.
+ * The project to check — a tsconfig, or the directory holding one, which is what `tsc -p` takes
+ * too.
  *
  * **`format` and `lint` take PATHS and this takes a project**, so `ramonda-css src/App.tsx` is the
- * mistake the command itself invites. Measured before this existed: the path went to TypeScript's
- * JSON reader, which answered `'{' expected.` at line 1 column 1 of the author's own component — a
- * message that says the source is broken when the source is fine.
+ * mistake the command itself invites. Unchecked, the path goes to TypeScript's JSON reader, which
+ * answers `'{' expected.` at line 1 column 1 of the author's own component — a message that says
+ * the source is broken when the source is fine.
  */
 /**
  * Codegen runs BEFORE the check, always, and that is not a convenience.
  *
  * The check reads the project's own property map when one is on disk and the shipped map when it is
  * not — so a generated module that is missing or stale means a weaker check with nothing said. A
- * fresh clone has none (they are not committed: a config and its output drifting apart in review is
- * the one thing generated output must never do), and a config edited since the last build has an
- * old one. Both would have passed while checking against something the project no longer says.
+ * config edited since the last codegen has an old one, and would pass while checking against
+ * something the project no longer says.
  *
  * It is cheap — it writes only when the content differs — and it means `ramonda-css tsconfig.json`
  * is one command rather than two that must be run in the right order.
@@ -164,10 +160,10 @@ if (report.findings.length === 0) {
  * saying "3 errors" when two of them are the compiler's confusion about a file it could not read
  * would be three wrong answers instead of one right one.
  *
- * **What that reason does not cover is printed after it**, and it used to be thrown away. The CSS
- * rules that ran over files which READ perfectly are as true as ever — measured, one unreadable
- * block in one file hid every other file's findings, so a typo anywhere meant fixing a repository
- * one error per run. The compiler's own diagnostics stay out, which is what the reason is about.
+ * **What that reason does not cover is printed after it.** The CSS rules that ran over files which
+ * READ perfectly are as true as ever — dropping them, one unreadable block in one file would hide
+ * every other file's findings, and a typo anywhere would mean fixing a repository one error per
+ * run. The compiler's own diagnostics stay out, which is what the reason is about.
  */
 if (report.refused) {
   console.error(`\n${TAG} ${report.refusals.length} block(s) could not be read, so nothing was type-checked:\n`);
@@ -273,17 +269,16 @@ function runTool(which: "format" | "lint", args: readonly string[]): never {
     }
 
     /**
-     * **Written SYNCHRONOUSLY, and it used to go through `process.stdout.write` and then exit.**
+     * **Written SYNCHRONOUSLY**, because a write to a pipe is asynchronous and `process.exit` does
+     * not drain one.
      *
-     * A write to a pipe is asynchronous and `process.exit` does not drain one. A pipe holds 64KB, so
-     * everything past that was lost. Measured on a 132,780-byte file: biome answered with all of it
-     * and this handed back 65,536 bytes, cut mid-line, with no error anywhere.
-     *
-     * The editor extension in `vscode/` replaces the WHOLE DOCUMENT with what comes back, so saving
-     * any file over 64KB deleted the rest of it — silently, on every save, in a published extension.
+     * A pipe holds 64KB, so everything past that is lost: measured on a 132,780-byte file,
+     * `process.stdout.write` then exit handed back 65,536 bytes, cut mid-line, with no error
+     * anywhere. The editor extension replaces the WHOLE DOCUMENT with what comes back, so that
+     * would delete the rest of any file over 64KB on every save.
      *
      * `writeSync` in a loop, because a pipe accepts what it has room for and answers with how much
-     * it took. The loop is the whole fix: it is what makes the write finish before the exit.
+     * it took. The loop is what makes the write finish before the exit.
      */
     const bytes = Buffer.from(formatted, "utf8");
     for (let written = 0; written < bytes.length; ) {
@@ -333,11 +328,9 @@ function runTool(which: "format" | "lint", args: readonly string[]): never {
     found = files.flatMap((file) => lintFile(file, lint));
   } catch (error) {
     /**
-     * The tool's own words, the same as the formatter's above — and this half had no catch at all.
-     *
-     * It could not be reached while a failing linter came back as no findings, which is what made
-     * that the more serious half of one fault: `ramonda-css lint` printed *N file(s) lint clean* and
-     * exited 0 for a linter that had crashed. See `oxlintLinter`.
+     * The tool's own words, the same as the formatter's above. A failing linter must not come back
+     * as no findings: `ramonda-css lint` would print *N file(s) lint clean* and exit 0 for a linter
+     * that had crashed. See `oxlintLinter`.
      */
     if (!(error instanceof ToolFailed)) throw error;
     console.error(`\n${TAG} \`${name}\` refused:\n\n${error.message}\n`);
@@ -361,12 +354,11 @@ function runTool(which: "format" | "lint", args: readonly string[]): never {
 /**
  * `ramonda-css codegen`
  *
- * Writes the stylesheet that sets this project's declared variables, and the module that reaches
- * them. Both bundler plugins run it on their own, so this is for the builds that use neither, for
- * CI, and for a fresh clone where the generated pair is not committed.
+ * Writes the stylesheet that sets this project's declared tokens, and the module that reaches them.
+ * Both bundler plugins run it on their own, so this is for the builds that use neither, and for CI.
  *
  * **A project with no config is not a failure.** Blocks work perfectly well without declaring a
- * variable, and exiting non-zero would break a build for a step it never asked for. It says so and
+ * token, and exiting non-zero would break a build for a step it never asked for. It says so and
  * stops.
  */
 function runCodegen(only: boolean): never {
@@ -389,9 +381,9 @@ function runCodegen(only: boolean): never {
    *
    * The generated files are committed, so something has to say when they stop matching the config
    * beside them — and the repository already answers that question this way for
-   * `keywords.generated.ts`. The gate that asked for this had been re-deriving it instead: it read
-   * both files, RAN codegen over the author's tree, and compared — so a red run left the working
-   * copy modified, and it carried its own copy of the `outDir` regex to find the folder at all.
+   * `keywords.generated.ts`. A gate that re-derived it — reading both files and running codegen
+   * over the author's tree — would leave the working copy modified on a red run, and need its own
+   * copy of the `outDir` regex.
    *
    * Asking codegen is the same answer with none of that. It knows what it would write and whether
    * that differs, because `put` compares before writing for an unrelated reason.
@@ -428,14 +420,12 @@ function runCodegen(only: boolean): never {
  *
  *     shorthand      false        "*"
  *     units          px, rem      "<length>"
- *     variablesOnly  false        "border-radius"   overriding "<length>"
+ *     hardcoded      true         "border-radius"   overriding "<length>"
  * ```
  *
- * **Asked for because the config grew a third selector.** `properties` is keyed by the sweep, by a
- * kind, and by a name, and each binds more tightly than the one before — so knowing what applies to
- * one property means reading three entries and holding CSS's own classification in your head. The
- * user's words: *"sada imam samo jos jedno pitanje jer smo toliko ukomplikovali da mi je tesko da
- * pratim."*
+ * `properties` is keyed by the sweep, by a kind, and by a name, and each binds more tightly than
+ * the one before — so knowing what applies to one property means reading three entries and holding
+ * CSS's own classification in your head. This prints the answer.
  *
  * It reads {@link explain}, which walks the same selectors as `ruleFor` in the same order — see its
  * note for why an explanation that agreed by accident would be worse than none.

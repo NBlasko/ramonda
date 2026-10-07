@@ -1,13 +1,13 @@
 import { describe, expect, test } from "vitest";
 import { flatten } from "../compiler/flatten";
 import { PROPERTIES } from "../compiler/keywords.generated";
-import { keyIn } from "../key";
+import { keyIn } from "../runtime/key";
 import { NAME_BUDGET, keyTextOf, nameFor } from "../compiler/names";
 import { readBlock } from "../compiler/read";
 import { findBlocks } from "../compiler/scan";
 import { transform } from "../compiler/transform";
-import type { Config } from "../config";
-import { kind } from "../declared";
+import type { Config } from "../config/config";
+import { kind } from "../config/declared";
 
 /**
  * A class name a person can read, and the hash underneath it.

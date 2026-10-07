@@ -2,6 +2,7 @@ import { bindingForSite, nameForSite } from "./names";
 import { normalise } from "./normalise";
 import { tryReadBlock } from "./read";
 import { findBlocks } from "./scan";
+import { textOnly } from "./ast";
 
 /**
  * Every named site in a file, as the binding it is assigned to and the CSS name it becomes.
@@ -43,35 +44,31 @@ const NAMED_OPENING = /@@[A-Za-z0-9_-]/;
  *
  * Line-anchored rather than parsed, because this runs beside every read of every file and a TS
  * program per file is not a cost it can carry. An `import` declaration is a statement, so it starts
- * a line in every formatter anybody uses — and the failure mode of a false positive is a module that
- * does not exist, which resolves to nothing. Reading is the only thing at stake and it fails closed.
+ * a line in every formatter anybody uses — and the failure mode of a false positive is a module
+ * that does not exist, which resolves to nothing.
  *
  * `from "./x"` only: a package specifier needs a resolver, and the four consumers of this function
  * would each have to bring the same one — see the note on {@link Imported}.
  *
- * A DEFAULT import before the clause is allowed, and used not to be: `import d, { accent } from
- * "./theme"` resolved nothing at all, so the token silently degraded to a hole. Loud, through
- * `hole-as-a-custom-property-name` — but it is a shape none of the three documented limits mentions, and
- * nothing about a default import makes the named ones unreadable.
+ * A DEFAULT import before the clause is allowed: nothing about `import d, { accent } from
+ * "./theme"` makes the named ones unreadable.
  */
 const AN_IMPORT = /^[ \t]*import\s+(?:[A-Za-z_$][\w$]*\s*,\s*)?\{([^}]*)\}\s+from\s+["'](\.[^"']*)["']/gm;
 
 /**
  * The source with every block comment blanked out, so a commented-out import is not read as one.
  *
- * The line anchor above already rejects `// import … `; a `/* … *\/` opened at column 0 it did not,
- * and the note above claims the failure mode "fails closed". Measured, it fails OPEN when the module
- * exists: an import inside a block comment still resolved its token, and the build that should have
- * refused compiled — **commenting an import out to see whether it is needed is the ordinary way to
- * find out**, and here it changed nothing except that an error disappeared.
+ * The line anchor above already rejects `// import … `; a `/* … *\/` opened at column 0 it does
+ * not. Unblanked, an import inside a block comment still resolves its token when the module exists
+ * — and **commenting an import out to see whether it is needed is the ordinary way to find out**,
+ * so a commented-out import must take its tokens away with it.
  *
  * Blanked rather than removed, so every offset after it is unmoved and the line anchor still sees
  * the lines it saw.
  *
  * A scan, not a parse: a `/*` written inside a string swallows the rest of the file, so an import
  * below it goes unread. That is the direction this is allowed to be wrong in — an unresolved
- * reference stays a hole and `hole-as-a-custom-property-name` reports it, which is the closed failure the
- * note claimed and did not have.
+ * reference stays a hole and `hole-as-a-custom-property-name` reports it.
  */
 function outsideComments(source: string): string {
   if (!source.includes("/*")) return source;
@@ -92,6 +89,11 @@ export interface Imported {
   /** For resolving a relative specifier. The importing file's own path. */
   readonly filename?: string;
   /**
+   * What this file's imports already resolved to, when the caller has it — so the imported modules
+   * are not read and parsed again. See {@link importedSites}.
+   */
+  readonly importedNames?: ReadonlyMap<string, string>;
+  /**
    * The text of a module a specifier resolves to, or `undefined` for one that cannot be read.
    *
    * **Injected rather than `fs`, and that is the whole reason this is a parameter.** A build reads
@@ -100,12 +102,32 @@ export interface Imported {
    * DECLARATIONS in it — and the editor would then report a fault the build does not have, or miss
    * one it does.
    *
-   * The name itself is a hash of the parsed BLOCK, not of the text, which is more robust than this
-   * note used to claim: measured, LF against CRLF, a leading BOM and any amount of code around the
-   * declaration all give the same name. What a differing text changes is what the declaration SAYS,
-   * which is enough.
+   * The name itself is a hash of the parsed BLOCK, not of the text: measured, LF against CRLF, a
+   * leading BOM and any amount of code around the declaration all give the same name. What a
+   * differing text changes is what the declaration SAYS, which is enough.
    */
   readonly read?: (specifier: string, from: string) => string | undefined;
+}
+
+/**
+ * The named sites one imported MODULE declares, worked out once per module text.
+ *
+ * Without it every file importing a module reads and parses it again — measured on 1000 files
+ * importing one shared module (`scripts/bench-css.mjs`), 2000 reads. Keyed by the text, so an
+ * edited module is a new key and nothing stale is ever answered; bounded, so a dev server that sees
+ * a thousand edits does not keep a thousand old texts.
+ */
+const moduleSites = new Map<string, Map<string, string>>();
+const MODULES_KEPT = 256;
+
+function sitesOfAModule(text: string): Map<string, string> {
+  let found = moduleSites.get(text);
+  if (found === undefined) {
+    found = namedSites(text);
+    if (moduleSites.size >= MODULES_KEPT) moduleSites.delete(moduleSites.keys().next().value as string);
+    moduleSites.set(text, found);
+  }
+  return found;
 }
 
 /**
@@ -134,7 +156,7 @@ function imported(source: string, options: Imported, texts?: string[]): Map<stri
     if (text === undefined || !NAMED_OPENING.test(text)) continue;
 
     // No `read` passed on: the hop stops here, so the imported file's own imports stay unresolved.
-    const theirs = namedSites(text);
+    const theirs = sitesOfAModule(text);
     let used = false;
     for (const one of names) {
       const [exported, local] = one.split(/\s+as\s+/);
@@ -182,25 +204,25 @@ export function importedSites(source: string, options: Imported): { names: Map<s
  * that file is where a value it refuses would be written — so following the import buys nothing
  * here and would make this a second place that resolves modules.
  */
-export function syntaxesIn(source: string, options: Imported = {}): Map<string, string> {
+export function syntaxesIn(
+  source: string,
+  options: Imported = {},
+  known?: ReadonlyMap<string, string>,
+): Map<string, string> {
   const out = new Map<string, string>();
   if (!NAMED_OPENING.test(source)) return out;
 
   /**
    * The SAME resolution `namedSites` uses, because the name is the same name.
    *
-   * It read with no `resolve` at all, so a `@@property` whose own body names another token — the
-   * ordinary shape of a theme — normalised to different text here and hashed to a different name.
-   * Measured, the two maps disagreed:
-   *
-   *     namedSites   [["base","--r-k8u6ISIlk"],["other","--r-Uo2yQGE1g"]]
-   *     syntaxesIn   [["--r-k8u6ISIlk","<color>"],["--r-7DeqAp7g7","<color>"]]
-   *
-   * `--r-Uo2yQGE1g` appears in no syntax map, so the transform never checked what `other` may hold —
-   * and `{other}: 12px` on a `<color>` property COMPILED, which is the exact failure
-   * `value-and-registered-syntax` exists to prevent. `{base}: 12px` was refused on the same run.
+   * Read with no `resolve`, a `@@property` whose own body names another token — the ordinary shape
+   * of a theme — normalises to different text here and hashes to a different name. The syntax map
+   * then names a property no reference resolves to, so the transform never checks what that token
+   * may hold, and `{other}: 12px` on a `<color>` property compiles — the exact failure
+   * `value-and-registered-syntax` exists to prevent.
    */
-  const references = namedSites(source, options);
+  // The caller's, when it has already worked them out.
+  const references = known ?? namedSites(source, options);
 
   for (const site of findBlocks(source)) {
     if (site.at !== "property") continue;
@@ -210,12 +232,9 @@ export function syntaxesIn(source: string, options: Imported = {}): Map<string, 
     for (const item of read.block.items) {
       if (item.kind !== "declaration" || item.property !== "syntax") continue;
       // A syntax written with a hole cannot be read, and neither can one this loop did not reach.
-      if (!item.value.every((part) => part.kind === "text")) continue;
-      const text = item.value
-        .map((part) => (part.kind === "text" ? part.text : ""))
-        .join("")
-        .trim()
-        .replace(/^["']|["']$/g, "");
+      const written = textOnly(item.value);
+      if (written === undefined) continue;
+      const text = written.trim().replace(/^["']|["']$/g, "");
       out.set(nameForSite("property", site.name, normalise(read.block)), text);
     }
   }
@@ -225,8 +244,13 @@ export function syntaxesIn(source: string, options: Imported = {}): Map<string, 
 
 export function namedSites(source: string, options: Imported = {}): Map<string, string> {
   // What another module declares, first — so a site declared HERE overwrites it, which is what a
-  // local binding does to an imported one in TypeScript.
-  const found = source.includes("import") ? imported(source, options) : new Map<string, string>();
+  // local binding does to an imported one in TypeScript. Taken from the caller when it has it.
+  const found =
+    options.importedNames !== undefined
+      ? new Map(options.importedNames)
+      : source.includes("import")
+        ? imported(source, options)
+        : new Map<string, string>();
   // The same bargain as `mayHoldABlock`, and for the same reason: this runs beside every read of
   // every file, and a NAMED site needs a name character after the two `@`. Measured on a 40-block
   // file with none, the full walk was 0.029 ms against the virtual file's 0.35 — real, and avoidable

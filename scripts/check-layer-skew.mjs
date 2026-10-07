@@ -38,7 +38,7 @@ const pw = createRequire(join(HERE, "..", "apps", "playground-core", "package.js
 const COMPILER = join(HERE, "..", "packages", "css", "src", "compiler");
 const { Sheet } = await loadTs(join(COMPILER, "sheet.ts"));
 const { transform } = await loadTs(join(COMPILER, "transform.ts"));
-const { mergeClassNames, shorthands } = await loadTs(join(HERE, "..", "packages", "css", "src", "merge.ts"));
+const { mergeClassNames, shorthands } = await loadTs(join(HERE, "..", "packages", "css", "src", "runtime", "merge.ts"));
 
 /** One release's stylesheet, through the real compiler and the real sheet. */
 function sheetFor(name, css) {

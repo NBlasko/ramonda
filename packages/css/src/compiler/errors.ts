@@ -3,8 +3,8 @@
  *
  * There is no recovery and there should not be one. A hole in a position a custom property cannot
  * occupy has no correct compilation — emitting *something* would mean guessing, and the guess would
- * be a style that silently does not apply. The checker (track D) reports the same faults earlier and
- * without stopping a build; this is the last line, and it stops.
+ * be a style that silently does not apply. The checker reports the same faults earlier and without
+ * stopping a build; this is the last line, and it stops.
  */
 export class CssBlockError extends Error {
   readonly filename: string;
@@ -30,21 +30,13 @@ export class CssBlockError extends Error {
 /**
  * What a hole in the wrong place says, wherever it is found.
  *
- * One sentence, one place: the build refuses these and the CSS checker reports them, and a fault that
- * read differently depending on which tool found it would be two faults to a reader.
+ * One sentence, one place: the build refuses these and the CSS checker reports them, and a fault
+ * that read differently depending on which tool found it would be two faults to a reader.
  *
- * **The advice used to send an author into the next refusal.** It read *a custom property holds a
- * value, so write `property: {…}` and put the choice inside it* — written when a hole in a
- * declaration compiled to a custom property on the element. It does not any more: a runtime value in
- * a declaration is refused everywhere, so following that sentence moved somebody from
- * `hole-out-of-place` to `hole-not-allowed`. Measured, all three spellings in one run:
- *
- *     @@( {pick}; )              a hole cannot be a whole declaration   <- what they wrote
- *     @@( color: {pick}; )       hole-not-allowed                       <- what it told them
- *     @@( color: var({A}); )     clean                                  <- what works
- *
- * So it names the door that is open. A hole still stands in exactly one place — the NAME of a
- * `@@property( … )` from this file — which is the half of the old sentence that was true.
+ * **It names the door that is open.** A runtime value in a declaration is refused everywhere, so
+ * advice to write `property: $(…)` would only move the author from `hole-out-of-place` to
+ * `hole-not-allowed`. A hole stands in exactly one place — the NAME of a `@@property( … )` from
+ * this file — and reading one is `var($(name))`.
  */
 export function holeOutOfPlace(what: "a declaration" | "a property name" | "a selector" | "a frame"): string {
   const door =

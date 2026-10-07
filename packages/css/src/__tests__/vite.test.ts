@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "vitest";
-import { ramondaCss } from "../vite";
+import { ramondaCss } from "../adapters/vite";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

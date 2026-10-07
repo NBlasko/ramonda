@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { namedSites, syntaxesIn } from "../compiler/references";
-import { keyIn } from "../key";
+import { keyIn } from "../runtime/key";
 import { transform } from "../compiler/transform";
 
 /**

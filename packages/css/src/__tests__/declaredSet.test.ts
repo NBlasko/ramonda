@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { settingsAgainst, settingsIn } from "../compiler/declaredSet";
-import { kind } from "../declared";
+import { kind } from "../config/declared";
 
 /**
  * The judgement a block, a stylesheet and a `style` attribute share — whether a token

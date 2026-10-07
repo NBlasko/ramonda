@@ -14,10 +14,8 @@ import { type Term, SyntaxNotationError, parseValueSyntax } from "./valueSyntax"
  *
  * ## Why it is here and not in the generator
  *
- * The rule came from the slot generator, which opened a component that claimed no longhand so a
- * flat list could reach the parts of `<single-animation>`. Keeping a second copy of it for the
- * parser is the fault `one-rule-many-consumers` names, so it lives here once and
- * `scripts/build-grammar-shapes.mjs` reads its LEAVES.
+ * The slot generator and the parser both need this rule, so it lives here once and
+ * `scripts/build-grammar-shapes.mjs` reads its LEAVES — two copies of one rule drift apart the first time one is corrected.
  *
  * ## The one thing it does that a flat reading cannot
  *
@@ -87,9 +85,10 @@ export function openedFor(
      * Its OWN claim first; the one carried down from a group only where it has none.
      *
      * A group of alternatives claims the union of its branches, and letting that replace a branch's
-     * own claim made every branch feed every longhand the group reaches — `timeline-trigger` came
-     * out with all five leaves on `timeline-trigger-name`. The carried claim is for the branch that
-     * claims nothing by itself, like `<custom-ident>` beside `none`; it is a fallback, not an override.
+     * own claim would make every branch feed every longhand the group reaches — `timeline-trigger`
+     * would get all five leaves on `timeline-trigger-name`. The carried claim is for the branch
+     * that claims nothing by itself, like `<custom-ident>` beside `none`; it is a fallback, not an
+     * override.
      */
     const own = longhandsFor(one, longhands, syntax);
     const mine = own.length > 0 ? own : (claimed ?? own);
@@ -106,9 +105,9 @@ export function openedFor(
        * Only a group of ALTERNATIVES carries its claim down, and only to its own branches.
        *
        * `[ none | <custom-ident> ]` is two ways of writing one component. A sequence is different
-       * components, and carrying a claim THROUGH one gave `timeline-trigger`'s range leaves the
-       * name. So a sequence, `||` or `&&` hands nothing down — each of its components answers for
-       * itself — and an alternative's claim stops at the alternative.
+       * components, and carrying a claim THROUGH one would give `timeline-trigger`'s range leaves
+       * the name. So a sequence, `||` or `&&` hands nothing down — each of its components answers
+       * for itself — and an alternative's claim stops at the alternative.
        */
       const carry = one.kind === "alt" && mine.length > 0 ? mine : undefined;
       const parts: Term[] = [];
@@ -133,10 +132,10 @@ export function openedFor(
       /**
        * Only notation this cannot read, which is a part that cannot be opened and so a refusal.
        *
-       * A bare `catch` here was measured swallowing a `RangeError` instead: with the depth cap
-       * lifted, `<loop>` opening itself overflowed the stack INSIDE the parse, the catch turned
-       * that into a refusal, and the case passed while the cap it was written for did nothing.
-       * A cap that can be removed without a test noticing is not a cap.
+       * Not a bare `catch`: with the depth cap lifted, `<loop>` opening itself overflows the stack
+       * INSIDE the parse, and a bare catch would turn that into a refusal — so the case would pass
+       * while the cap it was written for did nothing. A cap that can be removed without a test
+       * noticing is not a cap.
        */
       if (thrown instanceof SyntaxNotationError) return undefined;
       throw thrown;

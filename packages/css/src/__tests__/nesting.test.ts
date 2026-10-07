@@ -3,7 +3,7 @@ import { CssBlockError } from "../compiler/errors";
 import { checkSource } from "../compiler/source";
 import { transform } from "../compiler/transform";
 import { virtualFile } from "../compiler/virtual";
-import { formatText } from "../tooling";
+import { formatText } from "../adapters/tooling";
 
 /**
  * Every construct of the block's logic inside every container, two levels deep.

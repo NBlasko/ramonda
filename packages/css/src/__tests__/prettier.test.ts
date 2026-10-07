@@ -1,7 +1,7 @@
 import prettier from "prettier";
 import { describe, expect, test } from "vitest";
-import plugin from "../prettier";
-import { formatText } from "../tooling";
+import plugin from "../adapters/prettier";
+import { formatText } from "../adapters/tooling";
 
 /**
  * Prettier, measured rather than described.

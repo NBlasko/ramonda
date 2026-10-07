@@ -1,9 +1,10 @@
-import { holdsVar } from "../holdsVar";
+import { holdsVar } from "./holdsVar";
 import { BY_HAND } from "./splitByHand";
 import { GRAMMAR_SHAPES, type GrammarLeaf, type GrammarShape } from "./grammarShapes.generated";
 import { INITIAL_VALUES } from "./initials.generated";
 import { KEYWORDS, UNIT_TYPE, VALUE_WORDS } from "./keywords.generated";
 import { matchValue } from "./matchValue";
+import { remember } from "./remember";
 import { type Shape, SHAPES } from "./shapes.generated";
 import type { Term } from "./valueSyntax";
 
@@ -37,8 +38,7 @@ export const WIDE: readonly string[] = ["inherit", "initial", "unset", "revert",
 /**
  * Top-level separators only.
  *
- * `rgb(1, 1, 1)` is ONE value, and splitting on every space tore it into three — the first thing
- * the engines caught, before a line of the real splitter existed.
+ * `rgb(1, 1, 1)` is ONE value, and splitting on every space would tear it into three.
  */
 export function tokensOf(value: string, separator = /\s/): string[] {
   const out: string[] = [];
@@ -189,8 +189,10 @@ export function misplacedWord(
 /** A colour is tested directly rather than expanded: `<color>` is 192 words, and every border family takes one. */
 const COLOUR_WORDS = new Set((KEYWORDS.color ?? "").split(" ").filter((one) => one !== ""));
 const COLOUR_CALL = /^(rgba?|hsla?|hwb|lab|lch|oklab|oklch|color|color-mix|light-dark)\(/i;
-/** The spelling `rules.ts` and `flatten.ts` already use: optional space after the bang, any case. */
-/** `!important`, however it is spelt — ONE pattern for the split, the flattener and the checker. */
+/**
+ * `!important`, however it is spelt — ONE pattern for the split and the flattener. The checker takes
+ * the same spelling off a value with `withoutImportant`.
+ */
 export const IMPORTANT = /!\s*important\s*$/i;
 const A_NUMBER = /^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i;
 const A_DIMENSION = /^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?([a-z%]+)$/i;
@@ -207,8 +209,8 @@ function primitivesOf(token: string): readonly string[] {
   /**
    * A `--name` is a DASHED-IDENT, which is how a timeline, an anchor and a position area are named.
    *
-   * Nothing produced this type, so `scroll-timeline: --carousel block` matched no slot and the whole
-   * value was refused — and the generator could not see it, because it only checks what splits.
+   * Without it `scroll-timeline: --carousel block` matches no slot and the whole value is refused —
+   * and the generator cannot see that, because it only checks what splits.
    */
   if (token.startsWith("--")) return ["dashed-ident"];
   if (token.startsWith('"') || token.startsWith("'")) return ["string"];
@@ -258,7 +260,12 @@ function accepts(slot: GrammarLeaf, token: string): boolean {
  * prefixed shorthand is in neither table, stays whole, and the layer — where the question is only
  * *do these two fight*, and they do — keeps its fallback.
  */
-export function splitOf(property: string, value: string): Record<string, string> | undefined {
+export const splitOf: (property: string, value: string) => Readonly<Record<string, string>> | undefined = remember(
+  10_000,
+  splitOnce,
+);
+
+function splitOnce(property: string, value: string): Record<string, string> | undefined {
   const bang = IMPORTANT.exec(value);
   const bare = bang === null ? value : value.slice(0, bang.index);
 
@@ -273,13 +280,13 @@ export function splitOf(property: string, value: string): Record<string, string>
   /**
    * By hand FIRST where a family has it. Eighteen families have both — `background-position`,
    * `animation-range`, `place-*`, `grid-row`/`-column`, `border-radius` among them — and the table
-   * was the weaker answer each time: learned from sentinels, it read a value unlike them wrong or
+   * was the weaker answer each time: learned from sentinels, it reads a value unlike them wrong or
    * not at all. The hand rules are checked against all three engines, value by value, by
    * `check-hand-splits.mjs` and `check-must-split.mjs`.
    *
    * The table stays for what the CHECKER reads — `word-out-of-its-longhand` asks `misplacedWord` of
    * its `takes` — which is about whether a word is valid CSS for a longhand, not about how a value
-   * is split; a review asked, and on every value those gates hold it reports nothing.
+   * is split; on every value those gates hold it reports nothing.
    */
   const split =
     byHand !== undefined
@@ -301,11 +308,11 @@ export function splitOf(property: string, value: string): Record<string, string>
 /**
  * The items of one longhand, with every RESET written as a value rather than as `initial`.
  *
- * A longhand no part of the grammar reached is marked `initial`, which says exactly the right
- * thing and is valid on its own. It is not valid as one item of a comma-separated value: `initial`
- * is a CSS-wide keyword, and all three engines reject `scroll-timeline-axis: initial, initial`
- * outright. A rejected declaration sets nothing, so the longhand the shorthand was supposed to
- * reset keeps whatever another class left on it — the silent direction, and how this shipped.
+ * A longhand no part of the grammar reached is marked `initial`, which says exactly the right thing
+ * and is valid on its own. It is not valid as one item of a comma-separated value: `initial` is a
+ * CSS-wide keyword, and all three engines reject `scroll-timeline-axis: initial, initial` outright.
+ * A rejected declaration sets nothing, so the longhand the shorthand was supposed to reset keeps
+ * whatever another class left on it — the silent direction.
  *
  * The value comes from `initials.generated.ts`, measured on an element nothing has styled and
  * written back in the same run to prove it is a value that may be specified. A longhand the engines
@@ -374,9 +381,8 @@ function namesIt(leaf: GrammarLeaf, token: string): boolean {
  * ```
  *
  * The first is what the slot passes get wrong and the parse exists for; the second and third are
- * what the parse got wrong until the line was drawn here rather than at "any other leaf accepts
- * it". A leaf that spells the token beats an open one; a leaf that would take any `--x` or any
- * length does not.
+ * why the line is drawn here rather than at "any other leaf accepts it". A leaf that spells the
+ * token beats an open one; a leaf that would take any `--x` or any length does not.
  *
  * A leaf that names the token ITSELF never reaches this — `accepts` answers first, which is what
  * keeps `list-style: none` on the type where `list-style-image` also spells `none`.
@@ -444,8 +450,8 @@ function byGrammar(shape: GrammarShape, value: string): Record<string, string> |
     if (leaf.longhands.length > 1 && got.length > 1) return undefined;
     /**
      * Several leaves may feed ONE longhand, and then their tokens add up rather than overwrite.
-     * `font-variant-numeric` is fed by five leaves of `font-variant`; each used to write the whole
-     * longhand, so `tabular-nums slashed-zero` kept only the last.
+     * `font-variant-numeric` is fed by five leaves of `font-variant`, and `tabular-nums
+     * slashed-zero` must keep both.
      */
     for (const longhand of leaf.longhands) {
       const token = got.join(" ");
@@ -498,8 +504,7 @@ export function splitByGrammar(shape: GrammarShape, value: string): Record<strin
    *
    * Measured, `animation: auto` is `animation-name: auto` in Firefox and touches nothing in
    * Chromium or WebKit — so either answer is wrong in some browser. The value keeps its shorthand
-   * and every other value of the family still splits, which is what refusing the whole family for
-   * one value used to cost.
+   * and every other value of the family still splits.
    */
   if (shape.contested !== undefined || shape.partial !== undefined) {
     const written = tokensOf(value, /[\s,]/).map((one) => one.toLowerCase());
@@ -534,9 +539,9 @@ export function splitByGrammar(shape: GrammarShape, value: string): Record<strin
    *
    * `animation: 4s, 9s` gives `animation-duration: 4s, 9s` and `animation-timeline: auto` — one
    * value for two items. Which longhands do that is measured and carried in the shape, because the
-   * grammar cannot say: `animation-timeline` has a part in the item and `animation-range-start`
-   * has none, and both behave this way. A rule written from the grammar — "a longhand no part
-   * mentions is reset once" — got `animation-timeline` wrong, and the corpus caught it.
+   * grammar cannot say: `animation-timeline` has a part in the item and `animation-range-start` has
+   * none, and both behave this way. A rule written from the grammar — "a longhand no part mentions
+   * is reset once" — gets `animation-timeline` wrong.
    */
   const once = new Set(shape.resetOnce ?? []);
 
@@ -563,20 +568,27 @@ export function splitByGrammar(shape: GrammarShape, value: string): Record<strin
   return out;
 }
 
+/** A property's foldable words, made once per property rather than on every value. */
+const foldable = new Map<string, ReadonlySet<string>>();
+
 /**
  * A value with the property's KEYWORDS in lower case, and everything else as written.
  *
  * The compiler folds a keyword's case only for a property whose values are a closed list, so a
- * property that also takes names of the author's own — `grid-column`, `font`, `container` — reached
- * the hand rules as written: `grid-column: SPAN 2` matched nothing and stayed whole, though every
- * engine takes it, CSS keywords ignoring case. Folded here, word by word, and only a word the
+ * property that also takes names of the author's own — `grid-column`, `font`, `container` — would
+ * reach the hand rules as written: `grid-column: SPAN 2` would match nothing and stay whole, though
+ * every engine takes it, CSS keywords ignoring case. Folded here, word by word, and only a word the
  * property lists; a quoted string, a function's contents and a name keep their case — a container's
  * NAME is before its `/`, and only the type after it is folded. So does a grid line name in
- * brackets: `[Dense]` and `[None]` are names spelled like keywords, and folding them made the split
- * name a different line than the shorthand, in all three engines. A review found it.
+ * brackets: `[Dense]` and `[None]` are names spelled like keywords, and folding them would make the
+ * split name a different line than the shorthand, in all three engines.
  */
 function keywordsFolded(property: string, value: string): string {
-  const words = new Set((VALUE_WORDS[property] ?? "").split(" ").filter((one) => one !== "" && !one.endsWith("()")));
+  let words = foldable.get(property);
+  if (words === undefined) {
+    words = new Set((VALUE_WORDS[property] ?? "").split(" ").filter((one) => one !== "" && !one.endsWith("()")));
+    foldable.set(property, words);
+  }
   if (words.size === 0) return value;
   let out = "";
   let word = "";

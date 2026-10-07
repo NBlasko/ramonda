@@ -2,11 +2,11 @@ import { existsSync, readFileSync } from "node:fs";
 import { type Groups, namesIn } from "./codegen";
 import { isTokenDeclaration } from "./declared";
 import { KINDS } from "./declared";
-import { PRIMITIVE, PROPERTIES, UNIT_TYPE } from "./compiler/keywords.generated";
-import type { Kind } from "./token";
-import type { CssArity, CssNumeric, CssProperties, CssShorthand } from "./properties.generated";
-import type { CssUnit, CssUnitFamily } from "./units.generated";
-import { RENAMED_RULES, RULE_IDS, nearest } from "./compiler/rules";
+import { PRIMITIVE, PROPERTIES, UNIT_TYPE } from "../compiler/keywords.generated";
+import type { Kind } from "../runtime/token";
+import type { CssArity, CssNumeric, CssProperties, CssShorthand } from "../properties.generated";
+import type { CssUnit, CssUnitFamily } from "../units.generated";
+import { RENAMED_RULES, RULE_IDS, nearest } from "../compiler/rules";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { dirname, join, resolve, sep } from "node:path";
@@ -43,31 +43,24 @@ export interface Config {
    * A project rule rather than a CSS one: `em` is valid CSS and a team may still have decided
    * against it. Absent, every unit CSS has is fine.
    *
-   * **Keyed by family because a flat list could not say what anybody meant.** `units: ["px", "rem"]`
-   * was this key, and it meant *every unit in CSS and nothing else* — so measured, a project stating
-   * the one rule it wanted got four reports on ordinary CSS it had no opinion about:
+   * **Keyed by family because a flat list cannot say what anybody means.** `units: ["px", "rem"]`
+   * would mean *every unit in CSS and nothing else*, so a project stating the one rule it wanted
+   * would get reports on `200ms`, `50%`, `45deg` and `1fr` — ordinary CSS it had no opinion about.
+   * The families come from `UNIT_TYPE`, generated with an assertion that every unit lands in
+   * exactly one, so a unit CSS adds fails the build until somebody classifies it.
    *
-   *     transition: all 200ms ease      ms is a time
-   *     width: 50%                      % is a percentage
-   *     rotate: 45deg                   deg is an angle
-   *     grid-template-columns: 1fr      fr is a flex
-   *
-   * To say "lengths are px and rem" you had to enumerate the units of five other families. The
-   * families come from `UNIT_TYPE`, generated with an assertion that every unit lands in exactly
-   * one, so a unit CSS adds fails the build until somebody classifies it.
-   *
-   * **This is the project-wide sweep, and it is read by a RULE.** Its namesake inside
-   * {@link PropertyRule} is a different thing wearing the same word: that one is per property and
-   * reaches the TYPES, so it can only bind a property whose value is a dimension. This one reads
-   * every value in every block, including the ones no type describes — `transition`, `rotate`,
+   * **This is the project-wide sweep, and it is read by a RULE.** Its namesake inside {@link
+   * PropertyRule} is a different thing wearing the same word: that one is per property and reaches
+   * the TYPES, so it can only bind a property whose value is a dimension. This one reads every
+   * value in every block, including the ones no type describes — `transition`, `rotate`,
    * `grid-template-columns`. Neither can do the other's job, which is why both exist.
    */
   readonly units?: UnitsByFamily;
   /**
-   * The variables this project DECLARES — a name, a kind and a fallback each.
+   * The tokens this project DECLARES — a name, a kind and a fallback each.
    *
    * ```ts
-   * variables: {
+   * tokens: {
    *   $color: kind("color",  { primary: { main: "#3b82f6" } }),
    *   $size:  kind("length", { control: { md: "30px" } }),
    * }
@@ -85,9 +78,9 @@ export interface Config {
   /**
    * Custom property names this compiler cannot see, so a `var()` reading one is not reported.
    *
-   * It sees every name a block SETS, anywhere in the build, and every name {@link variables}
-   * declares — that is what makes the check exact and what makes this list short. Two things it
-   * cannot see, and both are ordinary:
+   * It sees every name a block SETS, anywhere in the build, and every token {@link tokens} declares
+   * — that is what makes the check exact and what makes this list short. Two things it cannot see,
+   * and both are ordinary:
    *
    * - a name set by a stylesheet it does not compile — a third-party theme, a hand-written
    *   `global.css`;
@@ -96,9 +89,9 @@ export interface Config {
    * A name with a FALLBACK needs no entry: `var(--brand, #10b981)` says in CSS's own words that the
    * value may be absent, and is never reported.
    *
-   * **This was `variables` until that key became the declarations.** `DESIGN.md` has it growing a
-   * reader — a function returning `{ name, value, where }`, so a project's own theme file can be
-   * checked rather than trusted — and a plain list of names is the first form of it.
+   * `DESIGN.md` has this growing a reader — a function returning `{ name, value, where }`, so a
+   * project's own theme file can be checked rather than trusted — and a plain list of names is the
+   * first form of it.
    */
   readonly externalCustomProperties?: readonly string[];
   /**
@@ -140,10 +133,11 @@ export interface Config {
    * outDir: "design-system",
    * ```
    *
-   * The folder holds `index.ts` — one export per group (`$color`), `Value`, `Var` and this project's narrowed
-   * property map — and `variables.css`, which sets them. Both are meant to be COMMITTED: they are
-   * codegen output like any other, and this repository's own `keywords.generated.ts` is committed
-   * with a gate catching drift, which is what prevents drift rather than hiding the file.
+   * The folder holds `index.ts` — one export per group (`$color`), `Value`, `Var` and this
+   * project's narrowed property map — and `tokens.css`, which sets them. Both are meant to be
+   * COMMITTED: they are codegen output like any other, and this repository's own
+   * `keywords.generated.ts` is committed with a gate catching drift, which is what prevents drift
+   * rather than hiding the file.
    *
    * A name is offered because a project may already have a folder called `css-system`, and a
    * generated one silently landing beside it is worse than a key. It is read from this file's TEXT
@@ -162,11 +156,10 @@ export interface Config {
  * a name known to one of them and not the others would be a report in `ramonda-css check` that the
  * build does not make, or the reverse.
  *
- * - what {@link Config.variables} DECLARES, which codegen also writes into the stylesheet;
- * - what {@link Config.alsoSets} names, which is everything this compiler cannot see.
+ * - what {@link Config.tokens} DECLARES, which codegen also writes into the stylesheet;
+ * - what {@link Config.externalCustomProperties} names, which is everything this compiler cannot see.
  *
- * The first of those is why declaring a variable no longer means writing its name twice: a name that
- * is declared is a name `var()` may read, and nothing has to say so a second time.
+ * A name that is declared is a name `var()` may read, and nothing has to say so a second time.
  */
 export function knownNames(config: Config): readonly string[] {
   const declared = config.tokens === undefined ? [] : namesIn(config.tokens).map((one) => one.name);
@@ -243,28 +236,25 @@ export type PropertyRule<P extends PropertyName | "*" | KindSelector = PropertyN
      */
     readonly values?: P extends CssNumeric ? readonly number[] : readonly (string | number)[];
     /**
-     * Whether a value here may only be a declared VARIABLE, never a literal.
+     * Whether a value here may only be a declared TOKEN, never a literal.
      *
      * ```ts
      * "<color>": { hardcoded: false },      // no colour is written out anywhere
      * "border":  { hardcoded: true },     // except in this one
      * ```
      *
-     * Asked for by the user, in their words: *"za boje moze reci da hoce samo kroz tokene i
-     * variable da radi, nece hardcoded values."* A closed list of every permitted colour is not
-     * that — a palette is fifty values that change, and pinning them in a property's type puts it
-     * in two places.
+     * A closed list of every permitted colour is not that — a palette is fifty values that change,
+     * and pinning them in a property's type puts it in two places.
      *
      * **Usually written on a KIND**, because a colour reaches 40 properties and a length 127.
-     * Written on a property it is the exemption, which is the thing the old top-level list could
-     * not express.
+     * Written on a property it is the exemption.
      *
      * Two machineries answer it and both are needed. A property that says what it takes is narrowed
      * by its TYPE, which is exact. A composite one — `border-left: 4px solid red` — has no type
      * worth narrowing, and the `hardcoded-not-allowed` rule reads its value instead.
      *
-     * `currentcolor`, a bare `0`, the CSS-wide keywords and `var()` all still go in: none of them is
-     * a value somebody hardcoded, and refusing them would be refusing what CSS itself provides.
+     * `currentcolor`, a bare `0`, the CSS-wide keywords and `var()` all still go in: none of them
+     * is a value somebody hardcoded, and refusing them would be refusing what CSS itself provides.
      */
     readonly hardcoded?: boolean;
   };
@@ -273,12 +263,12 @@ export type PropertyRule<P extends PropertyName | "*" | KindSelector = PropertyN
  * A KIND, written the way CSS writes a type — `"<length>"`, `"<color>"`.
  *
  * The middle selector. It reaches every property whose value IS that kind, which is what makes a
- * setting like `variablesOnly` sayable at all: a colour reaches 40 properties and a length 127, and
+ * setting like `hardcoded` sayable at all: a colour reaches 40 properties and a length 127, and
  * nobody is going to list them.
  *
  * Not a vocabulary of ours. `<length>` is the same word already written in `kind("length", …)` and
- * registered in `@property { syntax }`, so a project that has declared a variable has already used
- * it. The angle brackets are CSS's own notation for a type and keep it apart from a property name.
+ * registered in `@property { syntax }`, so a project that has declared a token has already used it.
+ * The angle brackets are CSS's own notation for a type and keep it apart from a property name.
  *
  * A kind matches a property through the SAME table the narrowing uses, so `"<length>"` reaches
  * `padding-left`, whose grammar is `<length-percentage>`. A project saying *lengths* means lengths.
@@ -299,11 +289,6 @@ export type KindSelector = `<${Kind}>`;
  * **In that order, each binding more tightly than the one before**, which is the same shape CSS
  * itself has and the reason the selectors are spelled the way they are. See {@link rulesFor} for
  * the merge, which is key by key so two shared configs still combine.
- *
- * `"*"` was the only selector, and `variablesOnly` was a top-level key listing kinds — the one
- * setting keyed by kind while every other was keyed by property. Asked by the user, whose worry was
- * the config growing: this is one key fewer at the top, and it gains the exemption the top-level
- * list could not express.
  */
 export type PropertyRules = { readonly [P in PropertyName | "*" | KindSelector]?: PropertyRule<P> };
 
@@ -315,14 +300,9 @@ export interface ConfigEnvironment {
 /**
  * What `production` means to each consumer, in ONE place, because there are four of them.
  *
- * A review found this wired nowhere: every caller passed two arguments, so `environment` was always
- * `{}` and `env.production` was always `undefined` — while the docs gave
- * `env.production ? ["px"] : ["px", "rem", "em"]` as the example, and this package's own reason for
- * the config being TypeScript rather than JSON is that a setting may depend on the environment. It
- * silently took the development branch of every such config, in production builds included.
- *
- * The mechanism had a test and the WIRING had none, which is the shape to watch for: a unit test
- * proves the function, and nothing proves anybody calls it properly.
+ * The config is TypeScript rather than JSON so that a setting may depend on the environment —
+ * `env.production ? ["px"] : ["px", "rem", "em"]` — and a consumer that passed nothing would
+ * silently take the development branch of every such config, production builds included.
  *
  * A consumer that genuinely knows says so — a bundler is told which build this is. One that cannot
  * know falls back to `NODE_ENV`, which is the convention every tool in the ecosystem already reads.
@@ -360,13 +340,12 @@ const KNOWN = new Set([
 const MOVED = new Set(["variablesOnly", "variables", "alsoSets"]);
 
 /**
- * Keys that were a setting and are not, with the sentence that says where the answer comes from now.
+ * Keys that were a setting and are not, with the sentence that says where the answer comes from
+ * now.
  *
- * `format: { indent }` was accepted, validated, and read by NOBODY — a review found it wired to
- * nothing, so a project that set it was told nothing and got two spaces. Wiring it up would have
- * been the wrong repair: `ramonda-css format` runs the project's own formatter and puts the block
- * back at the indentation that tool chose, and how wide a level is has already been said to that
- * tool. A second place to say it could only ever disagree with the first.
+ * `format: { indent }` is not a setting: `ramonda-css format` runs the project's own formatter and
+ * puts the block back at the indentation that tool chose, and how wide a level is has already been
+ * said to that tool. A second place to say it could only ever disagree with the first.
  *
  * Named rather than merely unknown, because somebody who wrote it was told it was a setting.
  */
@@ -384,14 +363,14 @@ const DECIDED_ELSEWHERE = new Map([
  *
  * **Where it stops matters more than where it looks**, because this file is not merely read: it is
  * transpiled and run through `new Function`, inside `tsserver`, on merely opening a folder, and
- * nothing is shown to say which file was loaded. Until a review found it, the only stop was the
- * filesystem root — so a `ramonda.css.ts` left in a home directory from an experiment, or unzipped
- * beside a downloaded project, silently became the settings of every project opened afterwards.
+ * nothing is shown to say which file was loaded. With the filesystem root as the only stop, a
+ * `ramonda.css.ts` left in a home directory from an experiment, or unzipped beside a downloaded
+ * project, would silently become the settings of every project opened afterwards.
  *
  * The repository root is the outermost thing that is still "the project": it is checked, and the
  * walk ends there — which is what lets a monorepo keep one config its packages share, while a
  * package's own still wins by being found first. A project that is not a repository stops before
- * the home directory instead, which is the case this exists for.
+ * the home directory instead.
  *
  * A directory under `node_modules` is skipped whole: a dependency's own file is not this project's
  * settings, whatever it holds.
@@ -436,14 +415,14 @@ export function findConfig(from: string): string | undefined {
 /**
  * A config this cannot use, said rather than thrown.
  *
- * Every way `ramonda.css.ts` can be wrong already had a careful sentence — a rule id that is not one,
- * with a *did you mean*; an async config; `units` as a string. Measured, all of them reached a person
- * as a Node crash: `throw new Error(…)`, a caret, and a stack. The words were right and the shape was
- * a failure of the tool rather than a fault in their file.
+ * Every way `ramonda.css.ts` can be wrong has a careful sentence — a rule id that is not one, with
+ * a *did you mean*; an async config; `units` as a string. Thrown, each reached a person as a Node
+ * crash: a caret and a stack. The words were right and the shape was a failure of the tool rather
+ * than a fault in their file.
  *
- * Its own class so the CLI can tell it from a bug of ours, which is the same distinction `ToolFailed`
- * draws for a tool that would not run — and for the same reason: one of those is the author's to fix
- * and the other is not.
+ * Its own class so the CLI can tell it from a bug of ours, which is the same distinction
+ * `ToolFailed` draws for a tool that would not run — and for the same reason: one of those is the
+ * author's to fix and the other is not.
  */
 export class ConfigError extends Error {
   constructor(message: string) {
@@ -496,27 +475,22 @@ function textOf(path: string): string {
 }
 
 /**
- * The settings that govern a FILE — one answer to the question three consumers each answered their
- * own way.
+ * The settings that govern a FILE — one answer for every consumer.
  *
  * ## Why the file, and not a directory
  *
- * A review found one setting read from three roots: `check.ts` walked up from the tsconfig's
- * directory, `vite.ts` and `esbuild.ts` from `process.cwd()`, and the editor from
- * `host.getCurrentDirectory()`. In a monorepo those are three different files for one source file —
- * so the units the editor squiggles against need not be the units the build enforces, and which one
- * an author meets depends on where they typed a command. The ninth occurrence of the repository's
- * recurring fault: one rule, many consumers, and nothing making them agree.
+ * Walking up from a directory gives each consumer its own root: the tsconfig's directory for
+ * `check.ts`, `process.cwd()` for the bundlers, `host.getCurrentDirectory()` for the editor. In a
+ * monorepo those are three different files for one source file — so the units the editor squiggles
+ * against need not be the units the build enforces.
  *
  * The file being compiled is the only anchor that is a property of the work rather than of the
  * shell, so it is the anchor. Every consumer passes the file it is holding.
  *
  * ## Why the cache is keyed on the config's own text
  *
- * The other half of the same finding: `vite.ts` and `esbuild.ts` read the config once when the
- * plugin was constructed and never again, so a dev server kept compiling the settings it booted
- * with while the editor — which re-reads per pass — had already moved on. One file, two tools, two
- * answers, and the author is told the build agrees with the editor.
+ * A bundler that read the config once, when the plugin was constructed, would keep compiling the
+ * settings it booted with while the editor — which re-reads per pass — had already moved on.
  *
  * Keyed on the TEXT, that cannot happen and there is no hook to remember to call: a changed config
  * is a changed key, a config written after the process started is found by the same walk as any
@@ -525,10 +499,9 @@ function textOf(path: string): string {
  * are the cost — happen once per thing the config says.
  *
  * Measured, five directories deep, 2000 files: **39 µs a file** against **253 µs** for reading it
- * afresh each time, and of those 39 the walk is 20 and the read 13. So the cache pays for itself six
- * times over, and what is left is stat calls. Caching the WALK too would take most of the rest, and
- * it is deliberately not done: a directory already asked about would never notice a config written
- * into it, which is precisely the staleness this exists to remove.
+ * afresh each time, and of those 39 the walk is 20 and the read 13. Caching the WALK too would take
+ * most of the rest, and it is deliberately not done: a directory already asked about would never
+ * notice a config written into it, which is precisely the staleness this exists to remove.
  *
  * The environment is a FUNCTION for the same reason the read is lazy. Vite constructs a plugin
  * before any hook runs and only says which build this is in `config`, so a reader that captured the
@@ -579,9 +552,9 @@ function load(path: string, source: string, typescript: typeof ts, environment: 
         /**
          * Without it, `import path from "node:path"` — which is how a default import is written and
          * how every editor completes one — becomes `path_1.default` against a module that has no
-         * `default`, and the config dies on `Cannot read properties of undefined`. A review found
-         * it. The interop helper is emitted into the transpiled text, so nothing has to be
-         * available at runtime for it to work.
+         * `default`, and the config dies on `Cannot read properties of undefined`. The interop
+         * helper is emitted into the transpiled text, so nothing has to be available at runtime for
+         * it to work.
          */
         esModuleInterop: true,
       },
@@ -594,15 +567,10 @@ function load(path: string, source: string, typescript: typeof ts, environment: 
        *
        *     export default { variables: {{{ };     →     exports.default = { variables: {} };
        *
-       * So the config LOADED — valid, empty, and nobody's. Nothing threw and nothing was undefined,
-       * so every consumer that does not type-check `ramonda.css.ts` ran with no settings at all: a
-       * real Vite build exited 0 and shipped `.r-pl-2rem` and `.r-c-#ff0000`, the unit and the
-       * hardcoded colour that very config forbids. Only `ramonda-css check` caught it, because it
-       * alone type-checks the file.
-       *
-       * The note above {@link readConfig} names this exact failure — *a tool that quietly ran with
-       * defaults because somebody's config had a typo* — so it is refused here, where every
-       * consumer goes through.
+       * So the config LOADED — valid, empty, and nobody's — and a real Vite build exited 0 and
+       * shipped the unit and the hardcoded colour that very config forbids. The note above {@link
+       * readConfig} names this exact failure — *a tool that quietly ran with defaults because
+       * somebody's config had a typo* — so it is refused here, where every consumer goes through.
        *
        * Syntactic diagnostics only, which is the right severity: this says the file does not PARSE,
        * never that a value has the wrong type. Measured clean on every valid config in this
@@ -727,42 +695,38 @@ function madeByKind(value: unknown): boolean {
 }
 
 /**
- * The VALUES, which used to be a cast and nothing else.
+ * The VALUES, checked rather than cast.
  *
- * A review traced where an unchecked value lands, and it is not a diagnostic: `units: "px"` reaches
- * `allowed.map` in `rules.ts` and throws a `TypeError` from inside the editor's
- * `getScriptSnapshot` — which tsserver calls for every file in the program, so **one wrong value in
- * one config takes down completion, hover and every squiggle in the whole project**, on every
- * keystroke, because the cache is written after the throw. The build dies with a stack naming
- * neither the file nor the key.
+ * An unchecked value does not land in a diagnostic: `units: "px"` reaches `allowed.map` in the
+ * rules and throws a `TypeError` from inside the editor's `getScriptSnapshot` — which tsserver
+ * calls for every file in the program, so **one wrong value in one config takes down completion,
+ * hover and every squiggle in the whole project**, on every keystroke. The build dies with a stack
+ * naming neither the file nor the key.
  *
  * Nothing types this file: the documented example is a bare object literal, and `units: "px"` is
  * the obvious thing to write when the list has one entry. So the value is checked here, where the
- * message can name the file and say what to write instead — which is the same standard the key
- * check above already met.
+ * message can name the file and say what to write instead — the same standard the key check above
+ * meets.
  */
 /** Every CSS property name, as a set, for the `properties` keys. */
 const PROPERTY_NAMES = new Set(PROPERTIES);
 
 /**
- * The settings INSIDE one `properties` entry, which the validation used to stop short of.
- *
- * The note above {@link validate} traced where an unchecked value lands and refused to leave it
- * there: a `TypeError` thrown out of `getScriptSnapshot` takes down completion, hover and every
- * squiggle in the project, on every keystroke. That reasoning was applied to the top-level keys and
- * not one level down — and measured, the same two keys land in the same place:
+ * The settings INSIDE one `properties` entry, checked for the same reason {@link validate} checks
+ * the top level: a `TypeError` thrown out of `getScriptSnapshot` takes down completion, hover and
+ * every squiggle in the project. Measured one level down:
  *
  *     properties: { "<length>": { units: { length: ["px"] } } }
  *     → TypeError: units.map is not a function, with a stack naming neither the file nor the key
  *
- * `units` is the sharp one. The TOP-LEVEL key changed to be keyed by FAMILY and says so when a list
- * arrives; per property it is still a list, because one property has one set of units and no family
- * to disambiguate. So an author who learns the top-level lesson and applies it here was thanked
- * with a crash. The message below says which shape belongs where.
+ * `units` is the sharp one. The TOP-LEVEL key is keyed by FAMILY; per property it is a list,
+ * because one property has one set of units and no family to disambiguate. So an author who learns
+ * the top-level lesson and applies it here would meet a crash. The message below says which shape
+ * belongs where.
  *
- * The other three were not crashes, which is worse in its own way: `shorthand: "no"`,
- * `variablesOnly: "yes"` and a key that is not a setting at all were accepted in silence and did
- * nothing — a rule the author believes they wrote and nobody enforces.
+ * The others are not crashes, which is worse in its own way: `shorthand: "no"` or a key that is not
+ * a setting at all would be accepted in silence and do nothing — a rule the author believes they
+ * wrote and nobody enforces.
  */
 function settings(key: string, entry: unknown, refuse: (says: string) => never): void {
   if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
@@ -814,10 +778,10 @@ function settings(key: string, entry: unknown, refuse: (says: string) => never):
        * A QUOTED number where CSS measures the property in numbers, which the TYPE refuses and the
        * build could not.
        *
-       * `values: ["1", "10"]` on `z-index` type-checks nowhere and ran everywhere: nothing
-       * type-checks a config in the build, so it went in — and then every use site refused it,
-       * because a quoted value is `string-not-allowed`. A setting that permits what the checker will
-       * not take is worse than one that refuses outright.
+       * Nothing type-checks a config in the build, so `values: ["1", "10"]` on `z-index` would go
+       * in — and then every use site would refuse it, because a quoted value is
+       * `string-not-allowed`. A setting that permits what the checker will not take is worse than
+       * one that refuses outright.
        *
        * Asked of `PRIMITIVE`, which is what the use-site rules read, so the type, the validator and
        * the rule cannot disagree about which properties these are.
@@ -900,10 +864,10 @@ function validate(config: Record<string, unknown>, path: string): void {
   /**
    * The keys this config had before tokens were called tokens, each refused with the new spelling.
    *
-   * `variables` held the project's TOKENS — and CSS calls a custom property a "variable", so a config
-   * with `variables` beside settings about custom properties read as one thing said twice. The user
-   * could not tell them apart when reading a config. `alsoSets` named the outside ones without saying
-   * so. A list in `variables` is older still, and its names belong in the second key too.
+   * `variables` held the project's TOKENS — and CSS calls a custom property a "variable", so a
+   * config with `variables` beside settings about custom properties read as one thing said twice.
+   * `alsoSets` named the outside ones without saying so. A list in `variables` is older still, and
+   * its names belong in the second key too.
    */
   if (config.variables !== undefined) {
     refuse(
@@ -1002,9 +966,9 @@ function validate(config: Record<string, unknown>, path: string): void {
       /**
        * A closed list on the SWEEP, refused rather than quietly doing nothing.
        *
-       * `"*": { values: [...] }` is expressible and meant nothing: a list of permitted values for
+       * `"*": { values: [...] }` is expressible and means nothing: a list of permitted values for
        * all 935 properties is not a thing anybody intends, and the one property it would be right
-       * for is named. It was silently skipped until a review asked what it did.
+       * for is named.
        */
       if (key === "*" && (properties as Record<string, { values?: unknown }>)[key]?.values !== undefined) {
         refuse(
@@ -1026,11 +990,11 @@ function validate(config: Record<string, unknown>, path: string): void {
         }
       } else if (key !== "*" && !PROPERTY_NAMES.has(key) && !key.startsWith("--")) {
         /**
-         * A misspelled PROPERTY NAME, which was silent while a misspelled KIND was refused.
+         * A misspelled PROPERTY NAME, refused like a misspelled KIND.
          *
-         * Two halves of one key disagreeing: `"<lenght>"` stopped the config and `"padding-lft"`
-         * was accepted and did nothing at all. That is the failure {@link readConfig}'s own note
-         * refuses — a tool quietly running with defaults because somebody's config had a typo.
+         * Otherwise `"<lenght>"` stops the config and `"padding-lft"` is accepted and does nothing
+         * at all — the failure {@link readConfig}'s own note refuses, a tool quietly running with
+         * defaults because somebody's config had a typo.
          */
         const meant = nearest(key, PROPERTIES);
         refuse(

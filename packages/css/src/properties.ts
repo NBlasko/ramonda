@@ -1,4 +1,4 @@
-import type { CssVar, KindOfSyntax } from "./token";
+import type { CssVar, KindOfSyntax } from "./runtime/token";
 /**
  * `@ramonda/css/properties` — the type a block is checked against.
  *
@@ -33,9 +33,9 @@ import type { CssVar, KindOfSyntax } from "./token";
  * Regenerate with `node scripts/build-css-properties.mjs`; `pnpm check` runs it with `--check`.
  */
 export type { CssGlobal, CssProperties, CssValue, Keyword, Narrowed } from "./properties.generated";
-export type { StyleValue } from "./types";
+export type { StyleValue } from "./runtime/types";
 
-import type { StyleValue } from "./types";
+import type { StyleValue } from "./runtime/types";
 
 /**
  * What a NAMED site's body is typed by — `@@font-face( … )`, `@@property( … )`.
@@ -46,7 +46,7 @@ import type { StyleValue } from "./types";
  * that would load nothing becomes a type error rather than a rule of ours.
  */
 export type { CssFontFaceDescriptors, CssPropertyDescriptors } from "./properties.generated";
-export type { CssVar } from "./token";
+export type { CssVar } from "./runtime/token";
 
 /**
  * What `@@property( … )` binds: the generated name, carrying the kind its `syntax` declared.

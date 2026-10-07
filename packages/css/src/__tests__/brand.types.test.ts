@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import type { CssBlock, CssSpreadable } from "../properties";
-import { mergeClassNames } from "../merge";
+import { mergeClassNames } from "../runtime/merge";
 
 /**
  * WHAT THE BRAND STILL REFUSES, now that a block IS a string.

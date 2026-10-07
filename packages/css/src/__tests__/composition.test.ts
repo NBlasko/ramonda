@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "vitest";
 import { keyToken } from "../compiler/names";
-import { conditionsOf, forget, mergeClassNames, namesOf, shorthands } from "../merge";
+import { conditionsOf, forget, mergeClassNames, namesOf, shorthands } from "../runtime/merge";
 import { transform } from "../compiler/transform";
 import { sheetRank } from "../compiler/flatten";
 

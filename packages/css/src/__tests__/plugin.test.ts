@@ -7,7 +7,7 @@ import ts from "typescript";
 import { describe, expect, test } from "vitest";
 import { virtualFile } from "../compiler/virtual";
 import { SELECTORS } from "../compiler/keywords.generated";
-import { NO_COMPILER, init } from "../plugin";
+import { NO_COMPILER, init } from "../adapters/plugin";
 
 const require = createRequire(import.meta.url);
 
@@ -776,7 +776,7 @@ describe("the language service surface", () => {
   };
 
   test("every method carrying a position or an edit is proxied, or listed with its reason", () => {
-    const plugin = readFileSync(join(PACKAGE, "src", "plugin.ts"), "utf8");
+    const plugin = readFileSync(join(PACKAGE, "src", "adapters", "plugin.ts"), "utf8");
     const proxied = new Set([...plugin.matchAll(/proxy\.(\w+)\s*=/g)].map((one) => one[1]));
 
     const unanswered = surface()

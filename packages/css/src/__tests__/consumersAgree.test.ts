@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, test } from "vitest";
-import { checkProject } from "../check";
+import { checkProject } from "../adapters/check";
 import { fileMayHoldABlock } from "../compiler/scan";
 
 /**
@@ -95,10 +95,10 @@ describe("which files can hold a block", () => {
 
   /** And nobody keeps a copy of the question. */
   test.each([
-    "../../css/src/plugin.ts",
-    "../../css/src/check.ts",
-    "../../css/src/vite.ts",
-    "../../css/src/esbuild.ts",
+    "../../css/src/adapters/plugin.ts",
+    "../../css/src/adapters/check.ts",
+    "../../css/src/adapters/vite.ts",
+    "../../css/src/adapters/esbuild.ts",
     // Another package, and the one the last sweep missed: it bundles this compiler and overlays
     // every file a `ts.CompilerHost` is handed.
     "../../check/src/analyze.ts",

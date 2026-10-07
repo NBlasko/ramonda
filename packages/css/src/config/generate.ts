@@ -9,35 +9,30 @@ import { ConfigError, findConfig, readConfig } from "./config";
  * can use.
  *
  * Without this, `$color.primary.main` parses, compiles, colours and checks, and a project still has
- * no `$` to import and no stylesheet setting the variables. Three callers need it and must agree:
- * the CLI, for CI and for the first run; and both bundler plugins, so an ordinary `dev` needs no
+ * no `$` to import and no stylesheet setting the tokens. Three callers need it and must agree: the
+ * CLI, for CI and for the first run; and both bundler plugins, so an ordinary `dev` needs no
  * command at all.
  *
  * ## Where the files go, and why there is nothing to configure
  *
- * Beside the config, named after it:
+ * Beside the config:
  *
  *     ramonda.css.ts   ->   css-system/index.ts       one export per group, and the types
  *                      ->   css-system/tokens.css     `:root`, and an `@property` for each
  *
- * **A folder, committed, and its name is the project's.** They were two files beside the config and
- * gitignored; the user asked for both halves — *"ja mislim da to ne treba da bude ignorisano, kao
- * sto se i ostale codegen stvari ne ignorisu"*, and the repo agrees with itself there, since
- * `keywords.generated.ts` is committed and a gate catches drift.
- *
- * `.ramonda/` was proposed and refused: a leading dot reads as *not committed*, and these are. The
- * name had to be agnostic besides — `@ramonda/css` is usable outside Ramonda, where a folder named
- * after the framework says nothing, and inside one where it says nothing either. `css-system/` is
- * the shape Panda CSS's `styled-system/` made familiar, and `outDir` renames it for a project that
- * already has something there.
+ * **A folder, committed, and its name is the project's.** Codegen output is committed like the rest
+ * of this repository's — `keywords.generated.ts` is, and a gate catches drift. `.ramonda/` was
+ * refused: a leading dot reads as *not committed*, and these are. The name is agnostic besides,
+ * because `@ramonda/css` is usable outside Ramonda; `outDir` renames it for a project that already
+ * has something there.
  *
  * The config is already found by walking up from a file, which is what decides WHICH project a file
- * belongs to in a monorepo — so putting the output beside it means a package's own variables land in
+ * belongs to in a monorepo — so putting the output beside it means a package's own tokens land in
  * that package, with no second question to answer and no setting to get wrong.
  *
- * The stylesheet is a plain file the project imports once. It could have been pushed through the
- * bundler machinery this package already has; a file is better, because it works in every bundler,
- * in none, and in a test — and because a reader can open it.
+ * The stylesheet is a plain file the project imports once. A file is better than the bundler
+ * machinery this package already has, because it works in every bundler, in none, and in a test —
+ * and because a reader can open it.
  */
 
 /** Where the generated files go, unless a project says otherwise with `outDir`. */
@@ -52,8 +47,7 @@ export const OUT_DIR = "css-system";
  *
  * A config that computes it falls back to the default here while `writeGenerated`, which has the
  * real config, writes somewhere else — so the two readings are compared and the disagreement is
- * REFUSED. See {@link agreeOnTheFolder}: it was left to surface on its own once, and what surfaced
- * was a sentence telling the author to run a command they had just run.
+ * REFUSED. See {@link agreeOnTheFolder}.
  */
 function outDirFor(config: string): string {
   try {
@@ -67,9 +61,9 @@ function outDirFor(config: string): string {
 /**
  * The two readings of `outDir` have to agree, and this is where the disagreement can still be said.
  *
- * Codegen has the real config and {@link outDirFor} has only the text, which is the trade that keeps
- * the per-file lookups cheap. When they differ the files land in one folder and everything that
- * reads them looks in another — and measured, what the author is shown is
+ * Codegen has the real config and {@link outDirFor} has only the text, which is the trade that
+ * keeps the per-file lookups cheap. When they differ the files land in one folder and everything
+ * that reads them looks in another — and measured, what the author is shown is
  *
  *     TS2339  Property 'size' does not exist on type
  *             '"Declare your variables in ramonda.css.ts, then run `ramonda-css …`"'
@@ -77,9 +71,6 @@ function outDirFor(config: string): string {
  * advice they have just followed. They would run it again, it would write the same two files, and
  * nothing would change. A comment that only MENTIONS the key causes it too, because the text reader
  * takes the first `outDir:` in the file.
- *
- * The note this replaces said the mismatch was *a mismatch a project can see and fix*. It was not:
- * nothing named it, and the one sentence shown was untrue.
  */
 function agreeOnTheFolder(path: string, folder: string): void {
   const text = outDirFor(path);
@@ -130,15 +121,9 @@ function put(path: string, text: string, write: boolean): Written {
   /**
    * A file at this name that is NOT ours is kept, and the run stops.
    *
-   * Found by probing what each writer is willing to overwrite: this wrote straight over a
-   * hand-written file and said nothing. The loss is unrecoverable, because
-   * `ramonda.css.generated.*` is in `.gitignore` by this package's own instruction — there is no
-   * copy to go back to.
-   *
-   * The name carries `generated` and the convention is plain, which is the argument for writing
-   * anyway. It is the same argument `restore` refused to accept about a block a formatter had
-   * eaten: an inconvenience is survivable and somebody's work is not. Looking at the target before
-   * overwriting it costs one read, and the read was already happening.
+   * Writing over a hand-written file would lose it with nothing said, and its work may not be
+   * committed yet. An inconvenience is survivable and somebody's work is not, and looking at the
+   * target before overwriting it costs one read that was already happening.
    *
    * LOOSELY, on the package's name rather than the whole sentence, so a file written by an older
    * version is still ours and is still replaced.

@@ -30,7 +30,7 @@ export { CssBlockError, holeOutOfPlace, positionOf } from "./errors";
  * is written into the class itself — see `keyToken`.
  */
 export { HASH_LENGTH, classNameFor, keyTextOf, keyToken, substitute, variableNameFor } from "./names";
-export { keyIn, partsOf } from "../key";
+export { keyIn, partsOf } from "../runtime/key";
 export { HOLE, normalise } from "./normalise";
 export type { ReadBlock, ReadOptions, Span } from "./read";
 export { Sheet } from "./sheet";

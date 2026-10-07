@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
-import { explain, ruleFor } from "../codegen";
-import type { PropertyRules } from "../config";
+import { explain, ruleFor } from "../config/codegen";
+import type { PropertyRules } from "../config/config";
 import { PRIMITIVE } from "../compiler/keywords.generated";
 
 /**
