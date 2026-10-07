@@ -139,7 +139,7 @@ describe("naming what a property accepts", () => {
   test("the module exports `Value`, so a hole's value can be annotated", () => {
     const { module: written } = generate(simple);
 
-    expect(written).toContain("export type Value<P extends keyof CssProperties> = CssProperties[P];");
+    expect(written).toContain("export type Value<P extends keyof CssProperties> = Spelled<CssProperties[P]>;");
     // The three names the rows below are written in terms of. The whole import line is NOT asserted:
     // it also carries everything the module passes on, which is its own test — and a list that has
     // to be repeated in an assertion is a list that stops the next name being added to it.

@@ -1003,8 +1003,14 @@ export function generate(declarations: Declarations, rules?: PropertyRules, path
     `  [nested: \`&\${string}\`]: CssBlockShape[];\n` +
     `} & { [at: \`@\${string}\`]: CssBlockShape[] } & { [dashed: \`-\${string}\`]: CssValue };\n` +
     `export type {\n${PASSED_THROUGH.map((one) => `  ${one},`).join("\n")}\n};\n\n` +
-    `/** What one property accepts in this project — \`const gap: Value<"padding-left"> = "8px"\`. */\n` +
-    `export type Value<P extends keyof CssProperties> = CssProperties[P];\n` +
+    `/**\n` +
+    ` * What one property accepts in this project, as an ELEMENT takes it — \`const gap: Value<"gap"> = "8px"\`.\n` +
+    ` *\n` +
+    ` * A value made outside a block goes onto an element, a \`style\` or a registered property, and\n` +
+    ` * every value there is a string — so a number the block's shape holds is written as text.\n` +
+    ` */\n` +
+    `export type Value<P extends keyof CssProperties> = Spelled<CssProperties[P]>;\n` +
+    `type Spelled<V> = V extends number ? \`\${V}\` : V;\n` +
     byKind(named);
 
   return { css, module };

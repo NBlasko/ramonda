@@ -13,6 +13,10 @@ import { type Value } from "../../css-system";
  *
  * It is not a demo of anything and is not routed. It exists to be broken on purpose.
  */
+/** Where `inset` below lands: a registered property, read by a block and set on the element. */
+const indent = @@property( syntax: "<length>"; initial-value: 0px; inherits: false; );
+const indented = @@( display: block; padding-left: var($(indent)); );
+
 export default class ConfigPlayground extends Component {
   /**
    * A value made OUTSIDE the block, which is what `Value<…>` is for.
@@ -21,8 +25,8 @@ export default class ConfigPlayground extends Component {
    * be anything at run time. Change this to `"12pxx"` and it stops compiling; that is the cost of a
    * property saying what it takes, and the annotation is the whole of the answer.
    *
-   * It does not go INTO the block: a runtime value in a declaration is refused. This is the shape a
-   * value takes when it is set on the element, or handed to `toStyle`.
+   * It does not go INTO the block: a runtime value in a declaration is refused. It goes onto the
+   * element, as the second `<span>` below does.
    */
   readonly inset: Value<"padding-left"> = "12px";
 
@@ -71,6 +75,10 @@ export default class ConfigPlayground extends Component {
         )}
       >
         <span className="label">Edit ramonda.css.ts and watch this file</span>
+        {/* `Value<…>` is a string, so it goes straight onto the element — try `this.inset` as `12pxx`. */}
+        <span className={indented} style={{ [indent]: this.inset }}>
+          indented by a value made outside the block
+        </span>
       </div>
     );
   }

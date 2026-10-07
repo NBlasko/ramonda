@@ -204,18 +204,41 @@ each produce any dimension and nothing in a type can read inside one, so `calc(1
 ### In a project with a config, name the property instead
 
 `CssDimension` says *a length*. When your project has a
-[`ramonda.css.ts`](/style-blocks/config), it can say *whatever this property takes here* — units
-narrowed, closed lists, `hardcoded: false` and all:
+[`ramonda.css.ts`](/style-blocks/config), `Value<"gap">` says *whatever `gap` takes here* — units
+narrowed, closed lists, `hardcoded: false` and all. One property, one name, and the answer moves
+when the config does.
+
+**For a value made at run time, this type is the only place that rule holds.** A block reads such a
+value through `var()`, and `gap: var($(space))` is accepted however your config narrows `gap` — the
+value does not exist yet. The `style` attribute takes any string. So the type goes on the value,
+where it is made — most often a prop:
 
 ```tsx
 import type { Value } from "../css-system";
 
-declare const n: number;
+const space = @@property( syntax: "<length>"; initial-value: 8px; inherits: false; );
+const stack = @@( display: flex; gap: var($(space)); );
 
-const gap: Value<"gap"> = `${n}px`;
+class Stack extends Component<{ gap: Value<"gap"> }> {
+  render() {
+    return <div className={stack} style={{ [space]: this.props.gap }}>…</div>;
+  }
+}
 ```
 
-One property, one name, and the answer moves when the config does.
+In a project that writes `gap` in `px`, `<Stack gap="3rem" />` is refused on the caller's line. The
+same type holds a value your code chooses before setting it — from data, a measurement, or more
+than one condition:
+
+```tsx
+import type { Value } from "../css-system";
+
+const gapFor = (rows: number): Value<"gap"> => (rows > 50 ? "4px" : "8px");
+```
+
+**Inside a block you never need it.** A value written there is checked as it is, and a choice
+between fixed values is a [choice](/style-blocks/composing#a-choice-between-two-values) —
+`gap: $(dense) ? 4px : 8px;` — which compiles to two classes and sets nothing on the element.
 
 And `AnyToken<"color">` is *any token this project declares of that kind* — which is what you want when
 a function chooses between them and hands the one it picked on:

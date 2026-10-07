@@ -551,6 +551,28 @@ describe("what a project's property rules do", () => {
     expect(output).not.toContain("problem");
   });
 
+  /**
+   * `Value<K>` is a value made outside a block, and outside a block it goes onto an ELEMENT — a
+   * `style` object, or a registered property's value — where every value is a string. Built from
+   * the block's shape it held `0` and a numeric list as NUMBERS, so a value typed with it did not
+   * fit the one place it exists to go.
+   */
+  test("`Value` is what an element takes: a string, numbers written as text", () => {
+    const gap = withRules(
+      `{ "z-index": { values: [1, 2, 5, 10] } }`,
+      `import type { Value } from "../css-system";\n` +
+        `export const onElement = (g: Value<"gap">): Record<string, string | undefined> => ({ gap: g });\n`,
+    );
+    const layer = withRules(
+      `{ "z-index": { values: [1, 2, 5, 10] } }`,
+      `import type { Value } from "../css-system";\nexport const ok: Value<"z-index"> = "10";\nexport const no: Value<"z-index"> = "3";\n`,
+    );
+
+    expect(gap).not.toContain("problem");
+    expect(layer).toContain("problem");
+    expect(layer).not.toMatch(/Card\.tsx:2:/);
+  });
+
   test("a closed list of values refuses everything else", () => {
     const refused = withRules(
       `{ "z-index": { values: [1, 2, 5, 10] } }`,
