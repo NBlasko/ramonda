@@ -55,6 +55,9 @@ interface UserConfigLike {
  * Asked of `this.meta.viteVersion`, which Vite 7 and 8 both set. Nothing that runs the hook outside
  * Vite sets it, so an unknown version is answered the way Vite 7 is — the arrangement this package
  * shipped with.
+ *
+ * `@ramonda/css`'s Vite plugin asks the same question the same way, for its dependency scan. It is a
+ * second copy because neither package depends on the other; the two must keep giving one answer.
  */
 function transformsWithOxc(context: ConfigContextLike | void): boolean {
   const version = context?.meta?.viteVersion;

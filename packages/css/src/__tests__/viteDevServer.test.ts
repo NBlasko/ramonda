@@ -378,4 +378,45 @@ describe.each(VITES)("on %s", (_name, create) => {
       hot.call(undefined, { file: join(server.config.root, "src", "styles.css"), read: () => "" }),
     ).resolves.toBeUndefined();
   });
+
+  /**
+   * The dependency SCAN, through the server that runs it rather than through the shape of the option.
+   *
+   * The scan is how this broke the first time — reported from a real `pnpm dev`, every bare import
+   * left unbundled because the walk could not parse a block — and it is the pass Vite 8 rewrote:
+   * Rolldown walks the entries now, and an esbuild plugin handed to it is only translated. A unit test
+   * can say the plugin is handed over in the right shape; only a server can say the walk got past the
+   * block to the import behind it.
+   */
+  test("the dependency scan reads past a block to the bare import behind it", async () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), "ramonda-css-scan-")));
+    roots.push(root);
+    symlinkSync(join(REPO, "node_modules"), join(root, "node_modules"));
+    mkdirSync(join(root, "src"), { recursive: true });
+    const runtime = join(root, "runtime.js");
+    writeFileSync(runtime, "export const block = (...a) => a;\nexport const merge = (...a) => a;\n");
+    // `mdn-data`: a bare name the repository's own `node_modules` resolves, AFTER the block.
+    writeFileSync(
+      join(root, "src", "main.ts"),
+      `const a = @@( display: flex; );\nimport data from "mdn-data";\nconsole.log(a, data);\n`,
+    );
+
+    const server = await createServer({
+      root,
+      logLevel: "silent",
+      optimizeDeps: { entries: ["src/main.ts"], force: true },
+      server: { middlewareMode: true, ws: false, watch: null },
+      plugins: [ramondaCss({ runtime }) as never],
+    });
+    servers.push(server);
+
+    const optimizer = (
+      server.environments as unknown as Record<
+        string,
+        { depsOptimizer?: { scanProcessing?: Promise<void>; metadata: { discovered: Record<string, unknown> } } }
+      >
+    ).client?.depsOptimizer;
+    await optimizer?.scanProcessing;
+    expect(Object.keys(optimizer?.metadata.discovered ?? {})).toContain("mdn-data");
+  });
 });

@@ -446,7 +446,9 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
       /**
        * Vite 8 walks the entries with Rolldown, and reads `esbuildOptions` only to translate it, with
        * a warning on every start. So each is handed the scan in its own shape. The version is Vite's
-       * own `this.meta.viteVersion`; a caller that sets none is answered as Vite 7.
+       * own `this.meta.viteVersion`; a caller that sets none is answered as Vite 7 — the same answer,
+       * read the same way, as `@ramonda/build`'s plugin gives for its transform. Neither package
+       * depends on the other, so it is a second copy, and the two must keep agreeing.
        */
       const version = (this as { meta?: { viteVersion?: string } } | undefined)?.meta?.viteVersion;
       const major = Number.parseInt(version ?? "7", 10);
