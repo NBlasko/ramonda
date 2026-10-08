@@ -26,3 +26,6 @@ export const ENGINE_KEYWORDS: Readonly<Record<string, readonly string[]>> = {
   "word-wrap": ["anywhere"],
   "writing-mode": ["lr","rl","tb"],
 };
+
+/** Properties an engine takes more than one word for — a list, a pair, a `repeat()` — so no union. */
+export const ENGINE_OPEN: readonly string[] = ["column-rule-style"];

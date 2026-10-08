@@ -2,7 +2,7 @@
 
 
 //
-// 837 properties, 158 of them a closed keyword set. Everything else is `string | number`
+// 837 properties, 157 of them a closed keyword set. Everything else is `string | number`
 // and its typos belong to the CSS checker — see the script for the measurement behind that split.
 
 /** Every property accepts these, whatever else it accepts. */
@@ -1994,7 +1994,7 @@ export interface CssProperties {
    * Initial: `none`. Inherited: no.
    * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/column-rule-style
    */
-  "column-rule-style": Keyword<"none" | "hidden" | "dotted" | "dashed" | "solid" | "double" | "groove" | "ridge" | "inset" | "outset">;
+  "column-rule-style": CssValue;
   /**
    * `column-rule-width` — `<line-width>`
    * Initial: `medium`. Inherited: no.
