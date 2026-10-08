@@ -49,12 +49,17 @@ A few things are Ramonda's, because only Ramonda can know them:
 
 ```ts
 // vitest.config.ts
+import { ramonda } from "@ramonda/build/vite";
+
 export default defineConfig({
   define: { __DEV__: JSON.stringify(process.env.NODE_ENV !== "production") },
-  esbuild: { jsx: "automatic", jsxImportSource: "@ramonda/core", target: "es2022" },
+  plugins: [ramonda()],
   test: { globals: true, environment: "jsdom", setupFiles: ["./test/setup.ts"] },
 });
 ```
+
+The tests go through the same transform as the app, so they get the same plugin. That
+is not only tidiness: on Vite 8 nothing else lowers the decorators.
 
 There is no setup file to write for JSX. The compiler imports Ramonda's runtime per file, so
 nothing has to be put on `globalThis` and there is no factory name to keep in step with the config.

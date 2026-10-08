@@ -4081,7 +4081,7 @@ not have failed. It goes through the watcher now, so the server's own instance h
 
 **A request a browser cannot make.** A file gaining its first block measured as *the JavaScript
 names a class the stylesheet does not define*, which is precisely the fault the first test in that
-file exists for. The transform appends `import "<absolute path>?ramonda-css.css"`, so a client
+file exists for. The transform appends `import "<absolute path>.ramonda-css.css"`, so a client
 learns that URL only by reading the JavaScript; asking for it first hits `load` with an id Vite has
 not resolved, creates the module empty, and Vite caches that. Tracing `load` is what settled it.
 

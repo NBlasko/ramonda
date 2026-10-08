@@ -2,6 +2,7 @@
   "name": "playground",
   "version": "1.0.1",
   "private": true,
+  "type": "module",
   "description": "",
   "main": "index.js",
   "scripts": {
@@ -17,8 +18,9 @@
     "@ramonda/core": "workspace:^"
   },
   "devDependencies": {
+    "@ramonda/build": "workspace:^",
     "@ramonda/devtools": "workspace:^",
     "@types/node": "^26.6.4",
-    "vite": "^7.3.6"
+    "vite": "^8.3.4"
   }
 }

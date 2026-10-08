@@ -44,7 +44,7 @@ import { type SourceMap, transform } from "../compiler/transform";
  * had been transformed, the sheet was empty, and the build was green with an unstyled page. A
  * bundler does not wait for the transform to finish.
  *
- * So the plugin appends `import "<file>?ramonda-css"` to the file whose blocks produced the rules.
+ * So the plugin appends `import "<file>.ramonda-css.css"` to the file whose blocks produced the rules.
  * The ordering problem cannot arise — the rules exist because that file was just read — an app
  * imports nothing, and **the CSS follows the JavaScript chunk**, which is what per-route splitting
  * needs and is a decision the bundler has already made.
@@ -89,10 +89,11 @@ export interface HotUpdate {
    * The running server, which only the CONFIG path needs — see `reconfigure`.
    *
    * Declared optional because both hooks this is the parameter of are handed slightly different
-   * shapes by Vite, and because a test may call the hook with neither. Nothing else here asks for
-   * it: an ordinary save invalidates itself through the module Vite already knows changed.
+   * shapes by Vite, and because a test may call the hook with neither.
    */
   readonly server?: { moduleGraph?: ModuleGraphLike };
+  /** The modules Vite found for the saved file — which do not include its stylesheet; see `recompile`. */
+  readonly modules?: readonly unknown[];
 }
 
 /** What `reconfigure` needs of Vite's module graph, and nothing more. */
@@ -111,8 +112,8 @@ export interface CssPluginLike {
   resolveId(this: unknown, id: string): string | null;
   load(this: unknown, id: string): string | { code: string; map: SourceMap } | null;
   transform(this: unknown, code: string, id: string): { code: string; map: SourceMap } | null;
-  handleHotUpdate(this: unknown, context: HotUpdate): Promise<void>;
-  hotUpdate(this: unknown, context: HotUpdate): Promise<void>;
+  handleHotUpdate(this: unknown, context: HotUpdate): Promise<unknown[] | undefined>;
+  hotUpdate(this: unknown, context: HotUpdate): Promise<unknown[] | undefined>;
   generateBundle(this: unknown, options: unknown, bundle: Bundle): void;
 }
 
@@ -120,13 +121,20 @@ export interface CssPluginLike {
 export type Bundle = Record<string, { type?: string; fileName?: string; source?: unknown }>;
 
 /**
- * The query that turns a source file's id into its stylesheet's.
+ * What turns a source file's id into its stylesheet's.
  *
- * A query rather than a prefix, and a `.css` extension after it, because Vite decides a module is
- * CSS from its id — so the id has to keep the real path (which is how the graph knows which file the
- * stylesheet belongs to) and end in something Vite reads as a stylesheet.
+ * A suffix rather than a prefix, ending in `.css`, because Vite decides a module is CSS from its id —
+ * so the id has to keep the real path (which is how the graph knows which file the stylesheet
+ * belongs to) and end in something Vite reads as a stylesheet.
+ *
+ * **Not a query.** It was `?ramonda-css.css`, and Vite 8 fails the build on it: its Oxc transform
+ * decides a module's language from the path with the query cut off, finds `Card.tsx`, and stops with
+ * *Failed to detect the lang of Card.tsx?ramonda-css.css*. Measured on 8.3.4; Vite 7 read either.
  */
-const SUFFIX = "?ramonda-css.css";
+const SUFFIX = ".ramonda-css.css";
+
+/** A module the scan may need to read: where a block can be written. */
+const SCRIPT = /\.[cm]?[jt]sx?$/;
 
 export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
   /**
@@ -286,14 +294,17 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
   }
 
   /** What both hot-update hooks do. See where they are returned for why there are two of them. */
-  async function recompile(context: HotUpdate): Promise<void> {
+  async function recompile(this: unknown, context: HotUpdate): Promise<unknown[] | undefined> {
     const file = context.file;
-    if (basename(file) === "ramonda.css.ts") return reconfigure(file, context);
-    if (!fileMayHoldABlock(file) || file.includes("node_modules")) return;
+    if (basename(file) === "ramonda.css.ts") {
+      await reconfigure(file, context);
+      return undefined;
+    }
+    if (!fileMayHoldABlock(file) || file.includes("node_modules")) return undefined;
 
     const code = await context.read();
     // A file that has never held a block, and does not now, has nothing here to be stale.
-    if (!styled.has(file) && !mayHoldABlock(code)) return;
+    if (!styled.has(file) && !mayHoldABlock(code)) return undefined;
 
     try {
       compile(file, code);
@@ -301,6 +312,22 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
       // Swallowed on purpose — see the hooks. The memo still holds the last compile that worked,
       // and its source is not this one, so the transform will compile again and report.
     }
+
+    /**
+     * The file's stylesheet goes out with the file, because Vite no longer finds it on its own.
+     *
+     * While the id was `Card.tsx?ramonda-css.css` Vite filed the stylesheet under `Card.tsx`, and a
+     * save of that file updated both. Under `Card.tsx.ramonda-css.css` — see {@link SUFFIX} — it is a
+     * module of its own, and measured, every save served the previous save's rules. Read from the
+     * graph of the environment being updated, which is the one `hotUpdate` runs for; a stylesheet
+     * nothing has asked for yet is not in it, and the first request will be served fresh anyway.
+     */
+    const graph =
+      (this as { environment?: { moduleGraph?: ModuleGraphLike } } | undefined)?.environment?.moduleGraph ??
+      context.server?.moduleGraph;
+    const sheetModule = graph?.getModuleById(file + SUFFIX);
+    if (sheetModule === undefined || sheetModule === null || context.modules === undefined) return undefined;
+    return [...context.modules, sheetModule];
   }
 
   /**
@@ -349,6 +376,29 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
     }
   }
 
+  /**
+   * A file as the dependency scan needs it: parseable, with its imports. Only that, because all the
+   * scan wants is the imports; a block the real transform would refuse is left alone rather than
+   * thrown from, since a scan is not where an author should meet a diagnostic.
+   */
+  const scanned = (path: string): { code: string; loader: string } | null => {
+    let source: string;
+    try {
+      source = readFileSync(path, "utf8");
+    } catch {
+      return null;
+    }
+    if (!mayHoldABlock(source)) return null;
+
+    try {
+      const result = transform(source, { filename: path, runtime: options.runtime, read: readModule });
+      return result === undefined ? null : { code: result.code, loader: loaderFor(path) };
+    } catch {
+      // The real transform reports it, at the author's own line. Twice is worse.
+      return null;
+    }
+  };
+
   return {
     name: "ramonda-css",
 
@@ -393,49 +443,59 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
        * panel names the `.tsx` line beside each rule — see `load`.
        */
       const devSourcemap = (userConfig as { css?: { devSourcemap?: boolean } } | undefined)?.css?.devSourcemap;
+      /**
+       * Vite 8 walks the entries with Rolldown, and reads `esbuildOptions` only to translate it, with
+       * a warning on every start. So each is handed the scan in its own shape. The version is Vite's
+       * own `this.meta.viteVersion`; a caller that sets none is answered as Vite 7.
+       */
+      const version = (this as { meta?: { viteVersion?: string } } | undefined)?.meta?.viteVersion;
+      const major = Number.parseInt(version ?? "7", 10);
+      const optimizeDeps =
+        major >= 8
+          ? {
+              rolldownOptions: {
+                plugins: [
+                  {
+                    name: "ramonda-css:scan",
+                    load: {
+                      filter: { id: SCRIPT },
+                      handler(id: string) {
+                        // A filter has to be a RegExp; the question every consumer asks is this.
+                        if (!fileMayHoldABlock(id)) return null;
+                        const result = scanned(id);
+                        return result === null ? null : { code: result.code, moduleType: result.loader };
+                      },
+                    },
+                  },
+                ],
+              },
+            }
+          : {
+              esbuildOptions: {
+                plugins: [
+                  {
+                    name: "ramonda-css:scan",
+                    setup(build: ScanBuild) {
+                      build.onLoad({ filter: SCRIPT }, (args: { path: string }) => {
+                        if (!fileMayHoldABlock(args.path)) return null;
+                        const result = scanned(args.path);
+                        return result === null ? null : { contents: result.code, loader: result.loader };
+                      });
+                    },
+                  },
+                ],
+              },
+            };
       return {
         ...(devSourcemap === undefined ? { css: { devSourcemap: true } } : {}),
-        optimizeDeps: {
-          esbuildOptions: {
-            plugins: [
-              {
-                name: "ramonda-css:scan",
-                setup(build: ScanBuild) {
-                  build.onLoad({ filter: /\.[cm]?[jt]sx?$/ }, (args: { path: string }) => {
-                    // esbuild's filter has to be a RegExp; the question every consumer asks is this.
-                    if (!fileMayHoldABlock(args.path)) return null;
-                    let source: string;
-                    try {
-                      source = readFileSync(args.path, "utf8");
-                    } catch {
-                      return null;
-                    }
-                    if (!mayHoldABlock(source)) return null;
-
-                    try {
-                      const result = transform(source, {
-                        filename: args.path,
-                        runtime: options.runtime,
-                        read: readModule,
-                      });
-                      return result === undefined ? null : { contents: result.code, loader: loaderFor(args.path) };
-                    } catch {
-                      // The real transform reports it, at the author's own line. Twice is worse.
-                      return null;
-                    }
-                  });
-                },
-              },
-            ],
-          },
-        },
+        optimizeDeps,
       };
     },
     /** See the note above: this is what puts the transform before esbuild. Measured, not assumed. */
     enforce: "pre",
 
     /**
-     * Claimed here, or Vite tries to read `Card.tsx?ramonda-css.css` off the disk and fails. The
+     * Claimed here, or Vite tries to read `Card.tsx.ramonda-css.css` off the disk and fails. The
      * name is returned unchanged because it already carries the real path, which is what makes the
      * graph put the stylesheet beside the file it belongs to.
      */

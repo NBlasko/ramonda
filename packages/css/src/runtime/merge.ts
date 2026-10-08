@@ -198,9 +198,6 @@ export function forget(): void {
   NAMES.clear();
 }
 
-/** Whether this is a development build, spelled so that nothing breaks where nobody defines it. */
-const inDevelopment = (): boolean => typeof process !== "undefined" && process.env?.NODE_ENV !== "production";
-
 /**
  * How strongly a key's CONDITIONS override, or `undefined` when the pair cannot be compared.
  *
@@ -441,7 +438,15 @@ export function mergeClassNames(...parts: readonly (string | false | null | unde
    * Only when more than one part was composed. A single block's contradictions are the compiler's
    * to report, at the author's own line, and it does — this exists for what a spread hides.
    */
-  if (given > 1 && inDevelopment()) {
+  /**
+   * Whether this is a development build, spelled so that nothing breaks where nobody defines it —
+   * and spelled out HERE, as a ternary, because both are measured. A bundler replaces
+   * `process.env.NODE_ENV` and a minifier is then expected to drop this branch. Vite 8's does not
+   * inline a function that returns a constant, and does not fold `typeof process < "u" && false`;
+   * with either spelling the warning, its words and its slot table stayed in a production bundle.
+   * Asked on each call rather than once, so a test can switch `NODE_ENV`.
+   */
+  if (given > 1 && (typeof process === "undefined" ? false : process.env?.NODE_ENV !== "production")) {
     warnAboutOrder(chosen);
     warnAboutWholeShorthands(chosen);
   }

@@ -224,11 +224,16 @@ or set `RAMONDA_TL_SKIP_AUTO_CLEANUP`.
 
 ```ts
 // vitest.config.ts
+import { ramonda } from "@ramonda/build/vite";
+
 export default defineConfig({
-  esbuild: { jsx: "automatic", jsxImportSource: "@ramonda/core" },
+  plugins: [ramonda()],
   test: { globals: true, environment: "jsdom", setupFiles: ["./test/setup.ts"] },
 });
 ```
+
+The same plugin the app's own Vite config uses: on Vite 8 it is the only thing that lowers the
+decorators.
 
 There is no setup file to write for JSX. With the automatic runtime the compiler imports what it
 needs per file, so nothing has to be put on `globalThis` and there is no factory name to keep in

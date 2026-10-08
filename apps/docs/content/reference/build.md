@@ -71,6 +71,21 @@ plugin has had its turn, and checks what they actually agreed on. If something l
 with a target that leaves the decorators in, that is where you hear about it — reported with the
 value that won, rather than the value this plugin asked for.
 
+### On Vite 8
+
+Vite 8 transforms with Oxc instead of esbuild, and **Oxc cannot lower a TC39 decorator** for any
+target. An `esbuild` block still works there only in the sense that Vite translates it into Oxc's
+settings, with a warning — the target reaches nothing, and the build is green with the decorators
+still in it.
+
+So on Vite 8 the plugin gives Oxc the two JSX settings, and lowers the decorators itself: after Oxc
+has turned each of your modules into JavaScript, it runs esbuild over the ones that hold an `@`, with
+the same `es2022` target. Nothing changes in your config — the same `plugins: [ramonda()]` is right
+on both — and a dependency, which is published compiled, is left alone.
+
+The refusals follow: `oxc: false`, and an `oxc.jsx` that is not the automatic runtime pointed at
+`@ramonda/core`, are refused the way their esbuild spellings are.
+
 ## esbuild
 
 For a build you call yourself, spread the options in:
@@ -217,6 +232,7 @@ about it — is different in each:
 | a `target` that leaves the decorators in | set it to `es2022`, or remove it |
 | `jsx` or `jsxImportSource` that disagrees | remove it, and make your tsconfig agree |
 | `esbuild: false` | remove that line — there is no target to set while the transform is off |
+| `oxc: false`, on Vite 8 | remove that line, for the same reason |
 
 It could win every one of those arguments silently, since Vite merges a plugin's config over the
 user's. That is exactly why it does not. A setting that gets quietly reversed is a setting you

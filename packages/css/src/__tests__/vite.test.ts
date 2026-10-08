@@ -98,12 +98,12 @@ describe("the stylesheet, one module per file", () => {
    *
    * Per file, the ordering cannot arise: the rules exist because that file was just read.
    */
-  const cssOf = (file: string) => `${file}?ramonda-css.css`;
+  const cssOf = (file: string) => `${file}.ramonda-css.css`;
 
   test("a styled file gains an import of its own rules", () => {
     const { transform } = hooks();
 
-    expect(transform.call({}, STYLED, "/src/Card.tsx")?.code).toContain(`import "/src/Card.tsx?ramonda-css.css";`);
+    expect(transform.call({}, STYLED, "/src/Card.tsx")?.code).toContain(`import "/src/Card.tsx.ramonda-css.css";`);
   });
 
   test("a file with no block gains nothing, because it owns no rules", () => {
@@ -175,7 +175,7 @@ describe("the stylesheet, one module per file", () => {
 });
 
 describe("a save, which is what a dev server does all day", () => {
-  const cssOf = (file: string) => `${file}?ramonda-css.css`;
+  const cssOf = (file: string) => `${file}.ramonda-css.css`;
 
   test("a block the author deleted leaves the sheet with it", () => {
     const { transform, load } = hooks();
@@ -318,7 +318,7 @@ describe("what an app has to write", () => {
     const { transform } = hooks();
 
     expect(ramondaCss().name).toBe("ramonda-css");
-    expect(transform.call({}, STYLED, "/src/Card.tsx")?.code).toContain("?ramonda-css.css");
+    expect(transform.call({}, STYLED, "/src/Card.tsx")?.code).toContain(".ramonda-css.css");
   });
 });
 
@@ -345,7 +345,7 @@ describe("the assembled stylesheet", () => {
   const built = () => {
     const plugin = ramondaCss();
     plugin.transform.call({}, SOURCE, "/src/Card.tsx");
-    return { plugin, css: cssText(plugin.load("/src/Card.tsx?ramonda-css.css")) ?? "" };
+    return { plugin, css: cssText(plugin.load("/src/Card.tsx.ramonda-css.css")) ?? "" };
   };
 
   const bundleOf = (css: string) => ({
@@ -569,6 +569,62 @@ describe("the dependency scan", () => {
 });
 
 /**
+ * The same scan on Vite 8, which walks the entries with Rolldown and reads `optimizeDeps.esbuildOptions`
+ * only to translate it, with a warning. The plugin is handed over in Rolldown's own shape there.
+ */
+describe("the dependency scan on Vite 8", () => {
+  const VITE_8 = { meta: { viteVersion: "8.3.4" } };
+
+  function scanner() {
+    const plugin = ramondaCss();
+    const config = (plugin.config as (this: unknown, config: object, env: object) => unknown).call(
+      VITE_8,
+      {},
+      { mode: "development" },
+    ) as {
+      optimizeDeps: {
+        esbuildOptions?: unknown;
+        rolldownOptions: {
+          plugins: { name: string; load: { filter: { id: RegExp }; handler(id: string): unknown } }[];
+        };
+      };
+    };
+    expect(config.optimizeDeps.esbuildOptions).toBeUndefined();
+    const [scan] = config.optimizeDeps.rolldownOptions.plugins;
+    return scan;
+  }
+
+  test("the plugin contributes one, under the same name", () => {
+    expect(scanner().name).toBe("ramonda-css:scan");
+  });
+
+  test("a file with a block is handed back as something Rolldown can parse", () => {
+    const scan = scanner();
+    const root = mkdtempSync(join(tmpdir(), "ramonda-css-scan-"));
+    roots.push(root);
+    const path = join(root, "Card.tsx");
+    writeFileSync(path, `import { thing } from "./thing";\nconst a = <div className={@@( display: flex; )}>x</div>;\n`);
+
+    expect(scan.load.filter.id.test(path)).toBe(true);
+    const result = scan.load.handler(path) as { code: string; moduleType: string };
+    expect(result.code).not.toContain("@@(");
+    expect(result.code).toContain(`from "./thing"`);
+    expect(result.moduleType).toBe("tsx");
+  });
+
+  test("a file with no block is left to Rolldown", () => {
+    const scan = scanner();
+    const root = mkdtempSync(join(tmpdir(), "ramonda-css-scan-"));
+    roots.push(root);
+    const path = join(root, "Plain.ts");
+    writeFileSync(path, "const a = 1;\n");
+
+    expect(scan.load.handler(path)).toBeNull();
+    expect(scan.load.handler("/nowhere/at/all.tsx")).toBeNull();
+  });
+});
+
+/**
  * WHICH config the build enforces, which a review found was the one above the working directory.
  *
  * In a monorepo that is a different file from the one the editor reads for the same source file, so
@@ -679,7 +735,7 @@ describe("a file's stylesheet, with its source map", () => {
     const plugin = ramondaCss();
     plugin.config.call({}, {}, { mode: "development" });
     plugin.transform.call({}, STYLED, file);
-    const loaded = plugin.load.call({}, `${file}?ramonda-css.css`);
+    const loaded = plugin.load.call({}, `${file}.ramonda-css.css`);
 
     if (loaded === null || typeof loaded === "string") throw new Error("the dev server handed back no map");
     const { code, map } = loaded;
@@ -694,7 +750,7 @@ describe("a file's stylesheet, with its source map", () => {
     plugin.config.call({}, {}, { mode, command: "build" });
     plugin.transform.call({}, STYLED, "/src/Card.tsx");
 
-    expect(typeof plugin.load.call({}, "/src/Card.tsx?ramonda-css.css")).toBe("string");
+    expect(typeof plugin.load.call({}, "/src/Card.tsx.ramonda-css.css")).toBe("string");
   });
 
   test("the dev server is told to pass the map on, unless the project said otherwise", () => {
