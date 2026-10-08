@@ -368,6 +368,28 @@ describe("every hand-split family, each way it can go", () => {
     ["text-box", "trim-start", { "text-box-trim": "trim-start", "text-box-edge": "auto" }],
     ["text-box", "cap alphabetic", { "text-box-trim": "trim-both", "text-box-edge": "cap alphabetic" }],
     ["text-box", "trim-end text", { "text-box-trim": "trim-end", "text-box-edge": "text" }],
+    // The two halves of `timeline-trigger`, which became shorthands of their own — an end left out
+    // is the start's range name, as in `animation-range`, and otherwise each half's own blank.
+    [
+      "timeline-trigger-activation-range",
+      "contain",
+      { "timeline-trigger-activation-range-start": "contain", "timeline-trigger-activation-range-end": "contain" },
+    ],
+    [
+      "timeline-trigger-activation-range",
+      "10%",
+      { "timeline-trigger-activation-range-start": "10%", "timeline-trigger-activation-range-end": "normal" },
+    ],
+    [
+      "timeline-trigger-active-range",
+      "cover 10% exit",
+      { "timeline-trigger-active-range-start": "cover 10%", "timeline-trigger-active-range-end": "exit" },
+    ],
+    [
+      "timeline-trigger-active-range",
+      "10%",
+      { "timeline-trigger-active-range-start": "10%", "timeline-trigger-active-range-end": "auto" },
+    ],
     [
       "-webkit-border-before",
       "1px solid red",
@@ -375,6 +397,35 @@ describe("every hand-split family, each way it can go", () => {
         "-webkit-border-before-width": "1px",
         "-webkit-border-before-style": "solid",
         "-webkit-border-before-color": "red",
+      },
+    ],
+    // Its three siblings, which an engine started reporting as shorthands too — WebKit 27 — and
+    // which are the same alias of one logical side each.
+    [
+      "-webkit-border-after",
+      "2px dotted blue",
+      {
+        "-webkit-border-after-width": "2px",
+        "-webkit-border-after-style": "dotted",
+        "-webkit-border-after-color": "blue",
+      },
+    ],
+    [
+      "-webkit-border-end",
+      "2px dotted blue",
+      {
+        "-webkit-border-end-width": "2px",
+        "-webkit-border-end-style": "dotted",
+        "-webkit-border-end-color": "blue",
+      },
+    ],
+    [
+      "-webkit-border-start",
+      "2px dotted blue",
+      {
+        "-webkit-border-start-width": "2px",
+        "-webkit-border-start-style": "dotted",
+        "-webkit-border-start-color": "blue",
       },
     ],
     [

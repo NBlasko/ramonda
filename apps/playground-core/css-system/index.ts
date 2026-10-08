@@ -108,7 +108,7 @@ export const $motion = Object.freeze({
   "calm": "var(--motion-calm)" as Token<"time", Fixed<"400ms">>,
 });
 
-/** The 205 properties this project narrows, and what each takes. */
+/** The 215 properties this project narrows, and what each takes. */
 interface Narrowings {
   /**
    * `z-index` — only the 5 value(s) this project permits.
@@ -156,10 +156,22 @@ interface Narrowings {
   "-ms-scrollbar-track-color": Narrowed<never, CssColor | Token<"color">>;
   /** `-ms-wrap-margin` — a length, and this project's tokens of that kind. */
   "-ms-wrap-margin": Narrowed<never, CssDimension<CssLengthUnit> | Token<"length">>;
+  /** `-webkit-border-after-color` — a colour, and this project's tokens of that kind. */
+  "-webkit-border-after-color": Narrowed<never, CssColor | Token<"color">>;
+  /** `-webkit-border-after-width` — a length, and this project's tokens of that kind. */
+  "-webkit-border-after-width": Narrowed<"medium" | "thick" | "thin", CssDimension<CssLengthUnit> | Token<"length">>;
   /** `-webkit-border-before-color` — a colour, and this project's tokens of that kind. */
   "-webkit-border-before-color": Narrowed<never, CssColor | Token<"color">>;
   /** `-webkit-border-before-width` — a length, and this project's tokens of that kind. */
   "-webkit-border-before-width": Narrowed<"medium" | "thick" | "thin", CssDimension<CssLengthUnit> | Token<"length">>;
+  /** `-webkit-border-end-color` — a colour, and this project's tokens of that kind. */
+  "-webkit-border-end-color": Narrowed<never, CssColor | Token<"color">>;
+  /** `-webkit-border-end-width` — a length, and this project's tokens of that kind. */
+  "-webkit-border-end-width": Narrowed<"medium" | "thick" | "thin", CssDimension<CssLengthUnit> | Token<"length">>;
+  /** `-webkit-border-start-color` — a colour, and this project's tokens of that kind. */
+  "-webkit-border-start-color": Narrowed<never, CssColor | Token<"color">>;
+  /** `-webkit-border-start-width` — a length, and this project's tokens of that kind. */
+  "-webkit-border-start-width": Narrowed<"medium" | "thick" | "thin", CssDimension<CssLengthUnit> | Token<"length">>;
   /** `-webkit-line-clamp` — a whole number, and this project's tokens of that kind. */
   "-webkit-line-clamp": Narrowed<"none", number | `${number}` | `${string}(${string})` | Token<"integer" | "number">>;
   /** `-webkit-mask-position-x` — a length or a percentage, and this project's tokens of that kind. */
@@ -290,6 +302,8 @@ interface Narrowings {
   "flex-basis": Narrowed<"auto" | "content" | "fit-content" | "max-content" | "min-content", CssDimension<CssLengthUnit | "%"> | Token<"length" | "length-percentage" | "percentage">>;
   /** `flex-grow` — a number, and this project's tokens of that kind. */
   "flex-grow": Narrowed<never, number | `${number}` | `${string}(${string})` | Token<"number" | "integer">>;
+  /** `flex-line-count` — a whole number, and this project's tokens of that kind. */
+  "flex-line-count": Narrowed<never, number | `${number}` | `${string}(${string})` | Token<"integer" | "number">>;
   /** `flex-shrink` — a number, and this project's tokens of that kind. */
   "flex-shrink": Narrowed<never, number | `${number}` | `${string}(${string})` | Token<"number" | "integer">>;
   /** `flood-color` — a colour, and this project's tokens of that kind. */
@@ -434,6 +448,10 @@ interface Narrowings {
   "right": Narrowed<"auto", CssDimension<CssLengthUnit | "%"> | Token<"length" | "length-percentage" | "percentage">>;
   /** `row-gap` — a length or a percentage, and this project's tokens of that kind. */
   "row-gap": Narrowed<"normal", CssDimension<CssLengthUnit | "%"> | Token<"length" | "length-percentage" | "percentage">>;
+  /** `rx` — a length or a percentage, and this project's tokens of that kind. */
+  "rx": Narrowed<"auto", CssDimension<CssLengthUnit | "%"> | Token<"length" | "length-percentage" | "percentage">>;
+  /** `ry` — a length or a percentage, and this project's tokens of that kind. */
+  "ry": Narrowed<"auto", CssDimension<CssLengthUnit | "%"> | Token<"length" | "length-percentage" | "percentage">>;
   /** `scroll-margin` — a length, and this project's tokens of that kind. */
   "scroll-margin": Narrowed<never, CssDimension<CssLengthUnit> | Token<"length"> | `${string} ${string}`>;
   /** `scroll-margin-block` — a length, and this project's tokens of that kind. */
@@ -490,24 +508,26 @@ interface Narrowings {
   "stroke-miterlimit": Narrowed<never, number | `${number}` | `${string}(${string})` | Token<"number" | "integer">>;
   /** `text-decoration-color` — a colour, and this project's tokens of that kind. */
   "text-decoration-color": Narrowed<never, CssColor | Token<"color">>;
-  /** `text-decoration-inset` — a length, and this project's tokens of that kind. */
-  "text-decoration-inset": Narrowed<"auto", CssDimension<CssLengthUnit> | Token<"length">>;
+  /** `text-decoration-inset` — a length or a percentage, and this project's tokens of that kind. */
+  "text-decoration-inset": Narrowed<"auto", CssDimension<CssLengthUnit | "%"> | Token<"length" | "length-percentage" | "percentage">>;
   /** `text-emphasis-color` — a colour, and this project's tokens of that kind. */
   "text-emphasis-color": Narrowed<never, CssColor | Token<"color">>;
+  /** `text-fit` — a percentage, and this project's tokens of that kind. */
+  "text-fit": Narrowed<"consistent" | "grow" | "none" | "per-line" | "per-line-all" | "shrink", CssDimension<"%"> | Token<"percentage">>;
   /** `text-size-adjust` — a percentage, and this project's tokens of that kind. */
   "text-size-adjust": Narrowed<"auto" | "none", CssDimension<"%"> | Token<"percentage">>;
-  /** `timeline-trigger-exit-range` — a length or a percentage, and this project's tokens of that kind. */
-  "timeline-trigger-exit-range": Narrowed<"auto" | "contain" | "cover" | "entry" | "entry-crossing" | "exit" | "exit-crossing" | "normal", CssDimension<CssLengthUnit | "%"> | Token<"length" | "length-percentage" | "percentage">>;
-  /** `timeline-trigger-exit-range-end` — a length or a percentage, and this project's tokens of that kind. */
-  "timeline-trigger-exit-range-end": Narrowed<"auto" | "contain" | "cover" | "entry" | "entry-crossing" | "exit" | "exit-crossing" | "normal", CssDimension<CssLengthUnit | "%"> | Token<"length" | "length-percentage" | "percentage">>;
-  /** `timeline-trigger-exit-range-start` — a length or a percentage, and this project's tokens of that kind. */
-  "timeline-trigger-exit-range-start": Narrowed<"auto" | "contain" | "cover" | "entry" | "entry-crossing" | "exit" | "exit-crossing" | "normal", CssDimension<CssLengthUnit | "%"> | Token<"length" | "length-percentage" | "percentage">>;
-  /** `timeline-trigger-range` — a length or a percentage, and this project's tokens of that kind. */
-  "timeline-trigger-range": Narrowed<"contain" | "cover" | "entry" | "entry-crossing" | "exit" | "exit-crossing" | "normal", CssDimension<CssLengthUnit | "%"> | Token<"length" | "length-percentage" | "percentage">>;
-  /** `timeline-trigger-range-end` — a length or a percentage, and this project's tokens of that kind. */
-  "timeline-trigger-range-end": Narrowed<"contain" | "cover" | "entry" | "entry-crossing" | "exit" | "exit-crossing" | "normal", CssDimension<CssLengthUnit | "%"> | Token<"length" | "length-percentage" | "percentage">>;
-  /** `timeline-trigger-range-start` — a length or a percentage, and this project's tokens of that kind. */
-  "timeline-trigger-range-start": Narrowed<"contain" | "cover" | "entry" | "entry-crossing" | "exit" | "exit-crossing" | "normal", CssDimension<CssLengthUnit | "%"> | Token<"length" | "length-percentage" | "percentage">>;
+  /** `timeline-trigger-activation-range` — a length or a percentage, and this project's tokens of that kind. */
+  "timeline-trigger-activation-range": Narrowed<"contain" | "cover" | "entry" | "entry-crossing" | "exit" | "exit-crossing" | "normal", CssDimension<CssLengthUnit | "%"> | Token<"length" | "length-percentage" | "percentage">>;
+  /** `timeline-trigger-activation-range-end` — a length or a percentage, and this project's tokens of that kind. */
+  "timeline-trigger-activation-range-end": Narrowed<"contain" | "cover" | "entry" | "entry-crossing" | "exit" | "exit-crossing" | "normal", CssDimension<CssLengthUnit | "%"> | Token<"length" | "length-percentage" | "percentage">>;
+  /** `timeline-trigger-activation-range-start` — a length or a percentage, and this project's tokens of that kind. */
+  "timeline-trigger-activation-range-start": Narrowed<"contain" | "cover" | "entry" | "entry-crossing" | "exit" | "exit-crossing" | "normal", CssDimension<CssLengthUnit | "%"> | Token<"length" | "length-percentage" | "percentage">>;
+  /** `timeline-trigger-active-range` — a length or a percentage, and this project's tokens of that kind. */
+  "timeline-trigger-active-range": Narrowed<"auto" | "contain" | "cover" | "entry" | "entry-crossing" | "exit" | "exit-crossing" | "normal", CssDimension<CssLengthUnit | "%"> | Token<"length" | "length-percentage" | "percentage">>;
+  /** `timeline-trigger-active-range-end` — a length or a percentage, and this project's tokens of that kind. */
+  "timeline-trigger-active-range-end": Narrowed<"auto" | "contain" | "cover" | "entry" | "entry-crossing" | "exit" | "exit-crossing" | "normal", CssDimension<CssLengthUnit | "%"> | Token<"length" | "length-percentage" | "percentage">>;
+  /** `timeline-trigger-active-range-start` — a length or a percentage, and this project's tokens of that kind. */
+  "timeline-trigger-active-range-start": Narrowed<"auto" | "contain" | "cover" | "entry" | "entry-crossing" | "exit" | "exit-crossing" | "normal", CssDimension<CssLengthUnit | "%"> | Token<"length" | "length-percentage" | "percentage">>;
   /** `top` — a length or a percentage, and this project's tokens of that kind. */
   "top": Narrowed<"auto", CssDimension<CssLengthUnit | "%"> | Token<"length" | "length-percentage" | "percentage">>;
   /** `transition-delay` — a time, and this project's tokens of that kind. */

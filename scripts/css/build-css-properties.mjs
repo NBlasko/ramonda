@@ -1087,9 +1087,10 @@ const named = [
      *
      * A shorthand's clear-list can only name a property this list holds, so a leaf missing from it is
      * a leaf the merge cannot clear. Measured: Chromium resets four `timeline-trigger-activation-*`
-     * and `timeline-trigger-active-*` longhands that `mdn-data` has never heard of — it lists
-     * `timeline-trigger-exit-range-*` instead — so `timeline-trigger` could not clear them and the
-     * longhand's class would have landed and won.
+     * and `timeline-trigger-active-*` longhands that `mdn-data` before 2.37 had never heard of — it
+     * listed `timeline-trigger-exit-range-*` instead — so `timeline-trigger` could not clear them and
+     * the longhand's class would have landed and won. 2.37 has caught up; the next gap will not
+     * announce itself.
      *
      * A leaf with no `mdn-data` entry gets `CssValue` and no value checking, the same as an
      * engine-only prefixed name, and that is the honest answer: there is no grammar to read.

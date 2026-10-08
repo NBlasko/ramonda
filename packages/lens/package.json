@@ -52,8 +52,8 @@
   },
   "devDependencies": {
     "@ramonda/check": "workspace:^",
-    "@types/node": "^26.4.1",
-    "immer": "^11.1.18",
+    "@types/node": "^26.6.4",
+    "immer": "^11.1.21",
     "tsup": "^8.5.1",
     "typescript": "^5.9.3",
     "vite": "7.3.6",

@@ -2,7 +2,7 @@
 
 
 //
-// 828 properties, 154 of them a closed keyword set. Everything else is `string | number`
+// 837 properties, 158 of them a closed keyword set. Everything else is `string | number`
 // and its typos belong to the CSS checker — see the script for the measurement behind that split.
 
 /** Every property accepts these, whatever else it accepts. */
@@ -34,14 +34,30 @@ export interface CssArity {
   "-ms-scroll-limit": 1 | 2 | 3 | 4;
   "-ms-scroll-snap-x": 1 | 2;
   "-ms-scroll-snap-y": 1 | 2;
+  "-webkit-border-after": 1;
+  "-webkit-border-after-color": 1;
+  "-webkit-border-after-style": 1;
+  "-webkit-border-after-width": 1;
+  "-webkit-border-before": 1;
+  "-webkit-border-before-color": 1;
   "-webkit-border-before-style": 1;
   "-webkit-border-before-width": 1;
+  "-webkit-border-end": 1;
+  "-webkit-border-end-color": 1;
+  "-webkit-border-end-style": 1;
+  "-webkit-border-end-width": 1;
+  "-webkit-border-start": 1;
+  "-webkit-border-start-color": 1;
+  "-webkit-border-start-style": 1;
+  "-webkit-border-start-width": 1;
   "block-size": 1;
   "border-block": 1;
   "border-block-color": 1 | 2;
+  "border-block-end": 1;
   "border-block-end-color": 1;
   "border-block-end-style": 1;
   "border-block-end-width": 1;
+  "border-block-start": 1;
   "border-block-start-color": 1;
   "border-block-start-style": 1;
   "border-block-start-width": 1;
@@ -55,9 +71,11 @@ export interface CssArity {
   "border-end-start-radius": 1;
   "border-inline": 1;
   "border-inline-color": 1 | 2;
+  "border-inline-end": 1;
   "border-inline-end-color": 1;
   "border-inline-end-style": 1;
   "border-inline-end-width": 1;
+  "border-inline-start": 1;
   "border-inline-start-color": 1;
   "border-inline-start-style": 1;
   "border-inline-start-width": 1;
@@ -70,8 +88,6 @@ export interface CssArity {
   "border-top-left-radius": 1 | 2;
   "border-top-right-radius": 1 | 2;
   "border-width": 1 | 2 | 3 | 4;
-  "column-rule-style": 1;
-  "column-rule-width": 1;
   "corner-block-end-shape": 1 | 2;
   "corner-block-start-shape": 1 | 2;
   "corner-bottom-shape": 1 | 2;
@@ -131,10 +147,10 @@ export interface CssArity {
  * a quoted value is not a number — so the config permitted what the checker would not take. Read
  * from the same grammar the rules read, rather than listed by hand.
  */
-export type CssNumeric = "-ms-hyphenate-limit-chars" | "-ms-hyphenate-limit-lines" | "-webkit-line-clamp" | "animation-iteration-count" | "box-flex" | "box-flex-group" | "box-ordinal-group" | "column-count" | "flex-grow" | "flex-shrink" | "font-weight" | "hyphenate-limit-chars" | "line-clamp" | "math-depth" | "max-lines" | "order" | "orphans" | "reading-order" | "stroke-miterlimit" | "widows" | "z-index";
+export type CssNumeric = "-ms-hyphenate-limit-chars" | "-ms-hyphenate-limit-lines" | "-webkit-line-clamp" | "animation-iteration-count" | "box-flex" | "box-flex-group" | "box-ordinal-group" | "column-count" | "flex-grow" | "flex-line-count" | "flex-shrink" | "font-weight" | "hyphenate-limit-chars" | "line-clamp" | "math-depth" | "max-lines" | "order" | "orphans" | "reading-order" | "stroke-miterlimit" | "widows" | "z-index";
 
 /** Every property the engines call a shorthand — the only ones a project may switch off. */
-export type CssShorthand = "-webkit-border-before" | "-webkit-mask-position" | "-webkit-text-stroke" | "all" | "animation" | "animation-range" | "background" | "background-position" | "border" | "border-block" | "border-block-color" | "border-block-end" | "border-block-start" | "border-block-style" | "border-block-width" | "border-bottom" | "border-color" | "border-image" | "border-inline" | "border-inline-color" | "border-inline-end" | "border-inline-start" | "border-inline-style" | "border-inline-width" | "border-left" | "border-radius" | "border-right" | "border-style" | "border-top" | "border-width" | "column-rule" | "columns" | "contain-intrinsic-size" | "container" | "corner-block-end-shape" | "corner-block-start-shape" | "corner-bottom-shape" | "corner-inline-end-shape" | "corner-inline-start-shape" | "corner-left-shape" | "corner-right-shape" | "corner-shape" | "corner-top-shape" | "flex" | "flex-flow" | "font" | "font-synthesis" | "font-variant" | "gap" | "grid" | "grid-area" | "grid-column" | "grid-gap" | "grid-row" | "grid-template" | "inset" | "inset-block" | "inset-inline" | "interest-delay" | "list-style" | "margin" | "margin-block" | "margin-inline" | "marker" | "mask" | "mask-border" | "mask-position" | "offset" | "outline" | "overflow" | "overscroll-behavior" | "padding" | "padding-block" | "padding-inline" | "place-content" | "place-items" | "place-self" | "position-try" | "scroll-margin" | "scroll-margin-block" | "scroll-margin-inline" | "scroll-padding" | "scroll-padding-block" | "scroll-padding-inline" | "scroll-timeline" | "text-box" | "text-decoration" | "text-emphasis" | "text-wrap" | "timeline-trigger" | "transition" | "view-timeline" | "white-space";
+export type CssShorthand = "-webkit-border-after" | "-webkit-border-before" | "-webkit-border-end" | "-webkit-border-start" | "-webkit-mask-position" | "-webkit-text-stroke" | "all" | "animation" | "animation-range" | "background" | "background-position" | "border" | "border-block" | "border-block-color" | "border-block-end" | "border-block-start" | "border-block-style" | "border-block-width" | "border-bottom" | "border-color" | "border-image" | "border-inline" | "border-inline-color" | "border-inline-end" | "border-inline-start" | "border-inline-style" | "border-inline-width" | "border-left" | "border-radius" | "border-right" | "border-style" | "border-top" | "border-width" | "column-rule" | "columns" | "contain-intrinsic-size" | "container" | "corner-block-end-shape" | "corner-block-start-shape" | "corner-bottom-shape" | "corner-inline-end-shape" | "corner-inline-start-shape" | "corner-left-shape" | "corner-right-shape" | "corner-shape" | "corner-top-shape" | "flex" | "flex-flow" | "font" | "font-synthesis" | "font-variant" | "gap" | "grid" | "grid-area" | "grid-column" | "grid-gap" | "grid-row" | "grid-template" | "inset" | "inset-block" | "inset-inline" | "interest-delay" | "list-style" | "margin" | "margin-block" | "margin-inline" | "marker" | "mask" | "mask-border" | "mask-position" | "offset" | "outline" | "overflow" | "overscroll-behavior" | "padding" | "padding-block" | "padding-inline" | "place-content" | "place-items" | "place-self" | "position-try" | "scroll-margin" | "scroll-margin-block" | "scroll-margin-inline" | "scroll-padding" | "scroll-padding-block" | "scroll-padding-inline" | "scroll-timeline" | "text-box" | "text-decoration" | "text-emphasis" | "text-wrap" | "timeline-trigger" | "timeline-trigger-activation-range" | "timeline-trigger-active-range" | "transition" | "view-timeline" | "white-space";
 
 export type Narrowed<K extends string, V> =
   | K
@@ -152,7 +168,7 @@ export interface CssProperties {
    * `-moz-appearance` — `none | button | button-arrow-down | button-arrow-next | button-arrow-previous | button-arrow-up | button-bevel | button-focus | caret | checkbox | checkbox-container | checkbox-label | checkmenuitem | dualbutton | groupbox | listbox | listitem | menuarrow | menubar | menucheckbox | menuimage | menuitem | menuitemtext | menulist | menulist-button | menulist-text | menulist-textfield | menupopup | menuradio | menuseparator | meterbar | meterchunk | progressbar | progressbar-vertical | progresschunk | progresschunk-vertical | radio | radio-container | radio-label | radiomenuitem | range | range-thumb | resizer | resizerpanel | scale-horizontal | scalethumbend | scalethumb-horizontal | scalethumbstart | scalethumbtick | scalethumb-vertical | scale-vertical | scrollbarbutton-down | scrollbarbutton-left | scrollbarbutton-right | scrollbarbutton-up | scrollbarthumb-horizontal | scrollbarthumb-vertical | scrollbartrack-horizontal | scrollbartrack-vertical | searchfield | separator | sheet | spinner | spinner-downbutton | spinner-textfield | spinner-upbutton | splitter | statusbar | statusbarpanel | tab | tabpanel | tabpanels | tab-scroll-arrow-back | tab-scroll-arrow-forward | textfield | textfield-multiline | toolbar | toolbarbutton | toolbarbutton-dropdown | toolbargripper | toolbox | tooltip | treeheader | treeheadercell | treeheadersortarrow | treeitem | treeline | treetwisty | treetwistyopen | treeview | -moz-mac-unified-toolbar | -moz-win-borderless-glass | -moz-win-browsertabbar-toolbox | -moz-win-communicationstext | -moz-win-communications-toolbox | -moz-win-exclude-glass | -moz-win-glass | -moz-win-mediatext | -moz-win-media-toolbox | -moz-window-button-box | -moz-window-button-box-maximized | -moz-window-button-close | -moz-window-button-maximize | -moz-window-button-minimize | -moz-window-button-restore | -moz-window-frame-bottom | -moz-window-frame-left | -moz-window-frame-right | -moz-window-titlebar | -moz-window-titlebar-maximized`
    * Initial: `noneButOverriddenInUserAgentCSS`. Inherited: no.
    * Status: nonstandard.
-   * @see https://developer.mozilla.org/docs/Web/CSS/appearance
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/appearance
    */
   "-moz-appearance": CssValue;
   /**
@@ -207,21 +223,21 @@ export interface CssProperties {
    * `-moz-float-edge` — `border-box | content-box | margin-box | padding-box`
    * Initial: `content-box`. Inherited: no.
    * Status: nonstandard.
-   * @see https://developer.mozilla.org/docs/Web/CSS/-moz-float-edge
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/-moz-float-edge
    */
   "-moz-float-edge": Keyword<"border-box" | "content-box" | "margin-box" | "padding-box">;
   /**
    * `-moz-force-broken-image-icon` — `0 | 1`
    * Initial: `0`. Inherited: no.
    * Status: nonstandard.
-   * @see https://developer.mozilla.org/docs/Web/CSS/-moz-force-broken-image-icon
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/-moz-force-broken-image-icon
    */
   "-moz-force-broken-image-icon": CssValue;
   /**
    * `-moz-orient` — `inline | block | horizontal | vertical`
    * Initial: `inline`. Inherited: no.
    * Status: nonstandard.
-   * @see https://developer.mozilla.org/docs/Web/CSS/-moz-orient
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/-moz-orient
    */
   "-moz-orient": Keyword<"inline" | "block" | "horizontal" | "vertical">;
   /** `-moz-osx-font-smoothing` — a vendor-prefixed property, from the engine's own list. */
@@ -274,21 +290,21 @@ export interface CssProperties {
    * `-moz-user-focus` — `ignore | normal | select-after | select-before | select-menu | select-same | select-all | none`
    * Initial: `none`. Inherited: no.
    * Status: nonstandard.
-   * @see https://developer.mozilla.org/docs/Web/CSS/-moz-user-focus
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/-moz-user-focus
    */
   "-moz-user-focus": Keyword<"ignore" | "normal" | "select-after" | "select-before" | "select-menu" | "select-same" | "select-all" | "none">;
   /**
    * `-moz-user-input` — `auto | none | enabled | disabled`
    * Initial: `auto`. Inherited: yes.
    * Status: nonstandard.
-   * @see https://developer.mozilla.org/docs/Web/CSS/-moz-user-input
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/-moz-user-input
    */
   "-moz-user-input": Keyword<"auto" | "none" | "enabled" | "disabled">;
   /**
    * `-moz-user-modify` — `read-only | read-write | write-only`
    * Initial: `read-only`. Inherited: yes.
    * Status: nonstandard.
-   * @see https://developer.mozilla.org/docs/Web/CSS/user-modify
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/user-modify
    */
   "-moz-user-modify": Keyword<"read-only" | "read-write" | "write-only">;
   /**
@@ -619,7 +635,7 @@ export interface CssProperties {
    * `-webkit-appearance` — `none | button | button-bevel | caret | checkbox | default-button | inner-spin-button | listbox | listitem | media-controls-background | media-controls-fullscreen-background | media-current-time-display | media-enter-fullscreen-button | media-exit-fullscreen-button | media-fullscreen-button | media-mute-button | media-overlay-play-button | media-play-button | media-seek-back-button | media-seek-forward-button | media-slider | media-sliderthumb | media-time-remaining-display | media-toggle-closed-captions-button | media-volume-slider | media-volume-slider-container | media-volume-sliderthumb | menulist | menulist-button | menulist-text | menulist-textfield | meter | progress-bar | progress-bar-value | push-button | radio | searchfield | searchfield-cancel-button | searchfield-decoration | searchfield-results-button | searchfield-results-decoration | slider-horizontal | slider-vertical | sliderthumb-horizontal | sliderthumb-vertical | square-button | textarea | textfield | -apple-pay-button`
    * Initial: `noneButOverriddenInUserAgentCSS`. Inherited: no.
    * Status: nonstandard.
-   * @see https://developer.mozilla.org/docs/Web/CSS/appearance
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/appearance
    */
   "-webkit-appearance": CssValue;
   /** `-webkit-backdrop-filter` — a vendor-prefixed property, from the engine's own list. */
@@ -632,36 +648,52 @@ export interface CssProperties {
   "-webkit-background-origin": CssValue;
   /** `-webkit-background-size` — a vendor-prefixed property, from the engine's own list. */
   "-webkit-background-size": CssValue;
-  /** `-webkit-border-after` — a vendor-prefixed property, from the engine's own list. */
+  /**
+   * `-webkit-border-after` — `<'border-top'>`
+   * Initial: `border-block-end-width, border-block-end-style, border-block-end-color`. Inherited: no.
+   * Status: nonstandard.
+   */
   "-webkit-border-after": CssValue;
-  /** `-webkit-border-after-color` — a vendor-prefixed property, from the engine's own list. */
+  /**
+   * `-webkit-border-after-color` — `<'border-top-color'>`
+   * Initial: `currentcolor`. Inherited: no.
+   * Status: nonstandard.
+   */
   "-webkit-border-after-color": CssValue;
-  /** `-webkit-border-after-style` — a vendor-prefixed property, from the engine's own list. */
+  /**
+   * `-webkit-border-after-style` — `<'border-top-style'>`
+   * Initial: `none`. Inherited: no.
+   * Status: nonstandard.
+   */
   "-webkit-border-after-style": CssValue;
-  /** `-webkit-border-after-width` — a vendor-prefixed property, from the engine's own list. */
+  /**
+   * `-webkit-border-after-width` — `<'border-top-width'>`
+   * Initial: `medium`. Inherited: no.
+   * Status: nonstandard.
+   */
   "-webkit-border-after-width": CssValue;
   /**
-   * `-webkit-border-before` — `<'border-width'> || <'border-style'> || <color>`
-   * Initial: `border-width, border-style, color`. Inherited: yes.
+   * `-webkit-border-before` — `<'border-top'>`
+   * Initial: `border-block-start-width, border-block-start-style, border-block-start-color`. Inherited: no.
    * Status: nonstandard.
-   * @see https://developer.mozilla.org/docs/Web/CSS/-webkit-border-before
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/-webkit-border-before
    */
   "-webkit-border-before": CssValue;
   /**
-   * `-webkit-border-before-color` — `<color>`
-   * Initial: `currentcolor`. Inherited: yes.
+   * `-webkit-border-before-color` — `<'border-top-color'>`
+   * Initial: `currentcolor`. Inherited: no.
    * Status: nonstandard.
    */
   "-webkit-border-before-color": CssValue;
   /**
-   * `-webkit-border-before-style` — `<'border-style'>`
-   * Initial: `none`. Inherited: yes.
+   * `-webkit-border-before-style` — `<'border-top-style'>`
+   * Initial: `none`. Inherited: no.
    * Status: nonstandard.
    */
   "-webkit-border-before-style": CssValue;
   /**
-   * `-webkit-border-before-width` — `<'border-width'>`
-   * Initial: `medium`. Inherited: yes.
+   * `-webkit-border-before-width` — `<'border-top-width'>`
+   * Initial: `medium`. Inherited: no.
    * Status: nonstandard.
    */
   "-webkit-border-before-width": CssValue;
@@ -669,13 +701,29 @@ export interface CssProperties {
   "-webkit-border-bottom-left-radius": CssValue;
   /** `-webkit-border-bottom-right-radius` — a vendor-prefixed property, from the engine's own list. */
   "-webkit-border-bottom-right-radius": CssValue;
-  /** `-webkit-border-end` — a vendor-prefixed property, from the engine's own list. */
+  /**
+   * `-webkit-border-end` — `<'border-top'>`
+   * Initial: `border-inline-end-width, border-inline-end-style, border-inline-end-color`. Inherited: no.
+   * Status: nonstandard.
+   */
   "-webkit-border-end": CssValue;
-  /** `-webkit-border-end-color` — a vendor-prefixed property, from the engine's own list. */
+  /**
+   * `-webkit-border-end-color` — `<'border-top-color'>`
+   * Initial: `currentcolor`. Inherited: no.
+   * Status: nonstandard.
+   */
   "-webkit-border-end-color": CssValue;
-  /** `-webkit-border-end-style` — a vendor-prefixed property, from the engine's own list. */
+  /**
+   * `-webkit-border-end-style` — `<'border-top-style'>`
+   * Initial: `none`. Inherited: no.
+   * Status: nonstandard.
+   */
   "-webkit-border-end-style": CssValue;
-  /** `-webkit-border-end-width` — a vendor-prefixed property, from the engine's own list. */
+  /**
+   * `-webkit-border-end-width` — `<'border-top-width'>`
+   * Initial: `medium`. Inherited: no.
+   * Status: nonstandard.
+   */
   "-webkit-border-end-width": CssValue;
   /** `-webkit-border-horizontal-spacing` — a vendor-prefixed property, from the engine's own list. */
   "-webkit-border-horizontal-spacing": CssValue;
@@ -683,13 +731,29 @@ export interface CssProperties {
   "-webkit-border-image": CssValue;
   /** `-webkit-border-radius` — a vendor-prefixed property, from the engine's own list. */
   "-webkit-border-radius": CssValue;
-  /** `-webkit-border-start` — a vendor-prefixed property, from the engine's own list. */
+  /**
+   * `-webkit-border-start` — `<'border-top'>`
+   * Initial: `border-inline-start-width, border-inline-start-style, border-inline-start-color`. Inherited: no.
+   * Status: nonstandard.
+   */
   "-webkit-border-start": CssValue;
-  /** `-webkit-border-start-color` — a vendor-prefixed property, from the engine's own list. */
+  /**
+   * `-webkit-border-start-color` — `<'border-top-color'>`
+   * Initial: `currentcolor`. Inherited: no.
+   * Status: nonstandard.
+   */
   "-webkit-border-start-color": CssValue;
-  /** `-webkit-border-start-style` — a vendor-prefixed property, from the engine's own list. */
+  /**
+   * `-webkit-border-start-style` — `<'border-top-style'>`
+   * Initial: `none`. Inherited: no.
+   * Status: nonstandard.
+   */
   "-webkit-border-start-style": CssValue;
-  /** `-webkit-border-start-width` — a vendor-prefixed property, from the engine's own list. */
+  /**
+   * `-webkit-border-start-width` — `<'border-top-width'>`
+   * Initial: `medium`. Inherited: no.
+   * Status: nonstandard.
+   */
   "-webkit-border-start-width": CssValue;
   /** `-webkit-border-top-left-radius` — a vendor-prefixed property, from the engine's own list. */
   "-webkit-border-top-left-radius": CssValue;
@@ -719,7 +783,7 @@ export interface CssProperties {
    * `-webkit-box-reflect` — `[ above | below | right | left ]? <length>? <image>?`
    * Initial: `none`. Inherited: no.
    * Status: nonstandard.
-   * @see https://developer.mozilla.org/docs/Web/CSS/-webkit-box-reflect
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/-webkit-box-reflect
    */
   "-webkit-box-reflect": CssValue;
   /** `-webkit-box-shadow` — a vendor-prefixed property, from the engine's own list. */
@@ -807,7 +871,7 @@ export interface CssProperties {
   /**
    * `-webkit-line-clamp` — `none | <integer>`
    * Initial: `none`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/-webkit-line-clamp
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/-webkit-line-clamp
    */
   "-webkit-line-clamp": CssValue;
   /** `-webkit-line-grid` — a vendor-prefixed property, from the engine's own list. */
@@ -850,77 +914,77 @@ export interface CssProperties {
    * `-webkit-mask-clip` — `[ <coord-box> | no-clip | border | padding | content | text ]#`
    * Initial: `border`. Inherited: no.
    * Status: nonstandard.
-   * @see https://developer.mozilla.org/docs/Web/CSS/mask-clip
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/mask-clip
    */
   "-webkit-mask-clip": CssValue;
   /**
    * `-webkit-mask-composite` — `<composite-style>#`
    * Initial: `source-over`. Inherited: no.
    * Status: nonstandard.
-   * @see https://developer.mozilla.org/docs/Web/CSS/-webkit-mask-composite
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/-webkit-mask-composite
    */
   "-webkit-mask-composite": CssValue;
   /**
    * `-webkit-mask-image` — `<mask-reference>#`
    * Initial: `none`. Inherited: no.
    * Status: nonstandard.
-   * @see https://developer.mozilla.org/docs/Web/CSS/mask-image
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/mask-image
    */
   "-webkit-mask-image": CssValue;
   /**
    * `-webkit-mask-origin` — `[ <coord-box> | border | padding | content ]#`
    * Initial: `padding`. Inherited: no.
    * Status: nonstandard.
-   * @see https://developer.mozilla.org/docs/Web/CSS/mask-origin
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/mask-origin
    */
   "-webkit-mask-origin": CssValue;
   /**
    * `-webkit-mask-position` — `<position>#`
    * Initial: `0% 0%`. Inherited: no.
    * Status: nonstandard.
-   * @see https://developer.mozilla.org/docs/Web/CSS/mask-position
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/mask-position
    */
   "-webkit-mask-position": CssValue;
   /**
    * `-webkit-mask-position-x` — `[ <length-percentage> | left | center | right ]#`
    * Initial: `0%`. Inherited: no.
    * Status: nonstandard.
-   * @see https://developer.mozilla.org/docs/Web/CSS/-webkit-mask-position-x
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/-webkit-mask-position-x
    */
   "-webkit-mask-position-x": CssValue;
   /**
    * `-webkit-mask-position-y` — `[ <length-percentage> | top | center | bottom ]#`
    * Initial: `0%`. Inherited: no.
    * Status: nonstandard.
-   * @see https://developer.mozilla.org/docs/Web/CSS/-webkit-mask-position-y
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/-webkit-mask-position-y
    */
   "-webkit-mask-position-y": CssValue;
   /**
    * `-webkit-mask-repeat` — `<repeat-style>#`
    * Initial: `repeat`. Inherited: no.
    * Status: nonstandard.
-   * @see https://developer.mozilla.org/docs/Web/CSS/mask-repeat
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/mask-repeat
    */
   "-webkit-mask-repeat": CssValue;
   /**
    * `-webkit-mask-repeat-x` — `repeat | no-repeat | space | round`
    * Initial: `repeat`. Inherited: no.
    * Status: nonstandard.
-   * @see https://developer.mozilla.org/docs/Web/CSS/-webkit-mask-repeat-x
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/-webkit-mask-repeat-x
    */
   "-webkit-mask-repeat-x": Keyword<"repeat" | "no-repeat" | "space" | "round">;
   /**
    * `-webkit-mask-repeat-y` — `repeat | no-repeat | space | round`
    * Initial: `repeat`. Inherited: no.
    * Status: nonstandard.
-   * @see https://developer.mozilla.org/docs/Web/CSS/-webkit-mask-repeat-y
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/-webkit-mask-repeat-y
    */
   "-webkit-mask-repeat-y": Keyword<"repeat" | "no-repeat" | "space" | "round">;
   /**
    * `-webkit-mask-size` — `<bg-size>#`
    * Initial: `auto auto`. Inherited: no.
    * Status: nonstandard.
-   * @see https://developer.mozilla.org/docs/Web/CSS/mask-size
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/mask-size
    */
   "-webkit-mask-size": CssValue;
   /** `-webkit-mask-source-type` — a vendor-prefixed property, from the engine's own list. */
@@ -977,7 +1041,7 @@ export interface CssProperties {
    * `-webkit-tap-highlight-color` — `<color>`
    * Initial: `black`. Inherited: yes.
    * Status: nonstandard.
-   * @see https://developer.mozilla.org/docs/Web/CSS/-webkit-tap-highlight-color
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/-webkit-tap-highlight-color
    */
   "-webkit-tap-highlight-color": CssValue;
   /** `-webkit-text-combine` — a vendor-prefixed property, from the engine's own list. */
@@ -1005,7 +1069,7 @@ export interface CssProperties {
   /**
    * `-webkit-text-fill-color` — `<color>`
    * Initial: `currentcolor`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/-webkit-text-fill-color
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/-webkit-text-fill-color
    */
   "-webkit-text-fill-color": CssValue;
   /** `-webkit-text-orientation` — a vendor-prefixed property, from the engine's own list. */
@@ -1017,19 +1081,19 @@ export interface CssProperties {
   /**
    * `-webkit-text-stroke` — `<length> || <color>`
    * Initial: `-webkit-text-stroke-width, -webkit-text-stroke-color`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/-webkit-text-stroke
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/-webkit-text-stroke
    */
   "-webkit-text-stroke": CssValue;
   /**
    * `-webkit-text-stroke-color` — `<color>`
    * Initial: `currentcolor`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/-webkit-text-stroke-color
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/-webkit-text-stroke-color
    */
   "-webkit-text-stroke-color": CssValue;
   /**
    * `-webkit-text-stroke-width` — `<length>`
    * Initial: `0`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/-webkit-text-stroke-width
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/-webkit-text-stroke-width
    */
   "-webkit-text-stroke-width": CssValue;
   /** `-webkit-text-underline-position` — a vendor-prefixed property, from the engine's own list. */
@@ -1040,7 +1104,7 @@ export interface CssProperties {
    * `-webkit-touch-callout` — `default | none`
    * Initial: `default`. Inherited: yes.
    * Status: nonstandard.
-   * @see https://developer.mozilla.org/docs/Web/CSS/-webkit-touch-callout
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/-webkit-touch-callout
    */
   "-webkit-touch-callout": Keyword<"default" | "none">;
   /** `-webkit-transform` — a vendor-prefixed property, from the engine's own list. */
@@ -1077,7 +1141,7 @@ export interface CssProperties {
    * `-webkit-user-select` — `auto | text | none | all`
    * Initial: `auto`. Inherited: no.
    * Status: nonstandard.
-   * @see https://developer.mozilla.org/docs/Web/CSS/user-select
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/user-select
    */
   "-webkit-user-select": Keyword<"auto" | "text" | "none" | "all">;
   /** `-webkit-writing-mode` — a vendor-prefixed property, from the engine's own list. */
@@ -1085,25 +1149,25 @@ export interface CssProperties {
   /**
    * `accent-color` — `auto | <color>`
    * Initial: `auto`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/accent-color
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/accent-color
    */
   "accent-color": CssValue;
   /**
    * `align-content` — `normal | <baseline-position> | <content-distribution> | <overflow-position>? <content-position>`
    * Initial: `normal`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/align-content
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/align-content
    */
   "align-content": CssValue;
   /**
    * `align-items` — `normal | stretch | <baseline-position> | [ <overflow-position>? <self-position> ] | anchor-center`
    * Initial: `normal`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/align-items
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/align-items
    */
   "align-items": CssValue;
   /**
    * `align-self` — `auto | normal | stretch | <baseline-position> | <overflow-position>? <self-position> | anchor-center`
    * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/align-self
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/align-self
    */
   "align-self": CssValue;
   /**
@@ -1115,20 +1179,20 @@ export interface CssProperties {
   /**
    * `alignment-baseline` — `baseline | alphabetic | ideographic | middle | central | mathematical | text-before-edge | text-after-edge`
    * Initial: `baseline`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/alignment-baseline
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/alignment-baseline
    */
   "alignment-baseline": Keyword<"baseline" | "alphabetic" | "ideographic" | "middle" | "central" | "mathematical" | "text-before-edge" | "text-after-edge" | "auto" | "hanging" | "text-bottom" | "text-top">;
   /**
    * `all` — `initial | inherit | unset | revert | revert-layer`
    * Initial: `noPracticalInitialValue`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/all
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/all
    */
   all: Keyword<"initial" | "inherit" | "unset" | "revert" | "revert-layer">;
   /**
    * `anchor-name` — `none | <dashed-ident>#`
    * Initial: `none`. Inherited: no.
    * Status: experimental.
-   * @see https://developer.mozilla.org/docs/Web/CSS/anchor-name
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/anchor-name
    */
   "anchor-name": CssValue;
   /**
@@ -1140,89 +1204,89 @@ export interface CssProperties {
   /**
    * `animation` — `<single-animation>#`
    * Initial: `animation-name, animation-duration, animation-timing-function, animation-delay, animation-iteration-count, animation-direction, animation-fill-mode, animation-play-state, animation-timeline`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/animation
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/animation
    */
   animation: CssValue;
   /**
    * `animation-composition` — `<single-animation-composition>#`
    * Initial: `replace`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/animation-composition
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/animation-composition
    */
   "animation-composition": CssValue;
   /**
    * `animation-delay` — `<time>#`
    * Initial: `0s`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/animation-delay
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/animation-delay
    */
   "animation-delay": CssValue;
   /**
    * `animation-direction` — `<single-animation-direction>#`
    * Initial: `normal`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/animation-direction
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/animation-direction
    */
   "animation-direction": CssValue;
   /**
    * `animation-duration` — `[ auto | <time [0s,∞]> ]#`
    * Initial: `0s`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/animation-duration
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/animation-duration
    */
   "animation-duration": CssValue;
   /**
    * `animation-fill-mode` — `<single-animation-fill-mode>#`
    * Initial: `none`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/animation-fill-mode
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/animation-fill-mode
    */
   "animation-fill-mode": CssValue;
   /**
    * `animation-iteration-count` — `<single-animation-iteration-count>#`
    * Initial: `1`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/animation-iteration-count
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/animation-iteration-count
    */
   "animation-iteration-count": CssValue;
   /**
    * `animation-name` — `[ none | <keyframes-name> ]#`
    * Initial: `none`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/animation-name
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/animation-name
    */
   "animation-name": CssValue;
   /**
    * `animation-play-state` — `<single-animation-play-state>#`
    * Initial: `running`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/animation-play-state
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/animation-play-state
    */
   "animation-play-state": CssValue;
   /**
    * `animation-range` — `[ <'animation-range-start'> <'animation-range-end'>? ]#`
    * Initial: `animation-range-start, animation-range-end`. Inherited: no.
    * Status: experimental.
-   * @see https://developer.mozilla.org/docs/Web/CSS/animation-range
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/animation-range
    */
   "animation-range": CssValue;
   /**
    * `animation-range-end` — `[ normal | <length-percentage> | <timeline-range-name> <length-percentage>? ]#`
    * Initial: `normal`. Inherited: no.
    * Status: experimental.
-   * @see https://developer.mozilla.org/docs/Web/CSS/animation-range-end
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/animation-range-end
    */
   "animation-range-end": CssValue;
   /**
    * `animation-range-start` — `[ normal | <length-percentage> | <timeline-range-name> <length-percentage>? ]#`
    * Initial: `normal`. Inherited: no.
    * Status: experimental.
-   * @see https://developer.mozilla.org/docs/Web/CSS/animation-range-start
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/animation-range-start
    */
   "animation-range-start": CssValue;
   /**
    * `animation-timeline` — `<single-animation-timeline>#`
    * Initial: `auto`. Inherited: no.
    * Status: experimental.
-   * @see https://developer.mozilla.org/docs/Web/CSS/animation-timeline
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/animation-timeline
    */
   "animation-timeline": CssValue;
   /**
    * `animation-timing-function` — `<easing-function>#`
    * Initial: `ease`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/animation-timing-function
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/animation-timing-function
    */
   "animation-timing-function": CssValue;
   /**
@@ -1234,97 +1298,97 @@ export interface CssProperties {
   /**
    * `appearance` — `none | auto | <compat-auto> | <compat-special>`
    * Initial: `none`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/appearance
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/appearance
    */
   appearance: Keyword<"none" | "auto" | "searchfield" | "textarea" | "checkbox" | "radio" | "menulist" | "listbox" | "meter" | "progress-bar" | "button" | "textfield" | "menulist-button">;
   /**
    * `aspect-ratio` — `auto || <ratio>`
    * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/aspect-ratio
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/aspect-ratio
    */
   "aspect-ratio": CssValue;
   /**
    * `backdrop-filter` — `none | <filter-value-list>`
    * Initial: `none`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/backdrop-filter
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/backdrop-filter
    */
   "backdrop-filter": CssValue;
   /**
    * `backface-visibility` — `visible | hidden`
    * Initial: `visible`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/backface-visibility
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/backface-visibility
    */
   "backface-visibility": Keyword<"visible" | "hidden">;
   /**
    * `background` — `<bg-layer>#? , <final-bg-layer>`
    * Initial: `background-image, background-position, background-size, background-repeat, background-origin, background-clip, background-attachment, background-color`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/background
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/background
    */
   background: CssValue;
   /**
    * `background-attachment` — `<attachment>#`
    * Initial: `scroll`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/background-attachment
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/background-attachment
    */
   "background-attachment": CssValue;
   /**
    * `background-blend-mode` — `<blend-mode>#`
    * Initial: `normal`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/background-blend-mode
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/background-blend-mode
    */
   "background-blend-mode": CssValue;
   /**
    * `background-clip` — `<bg-clip>#`
    * Initial: `border-box`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/background-clip
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/background-clip
    */
   "background-clip": CssValue;
   /**
    * `background-color` — `<color>`
    * Initial: `transparent`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/background-color
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/background-color
    */
   "background-color": CssValue;
   /**
    * `background-image` — `<bg-image>#`
    * Initial: `none`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/background-image
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/background-image
    */
   "background-image": CssValue;
   /**
    * `background-origin` — `<visual-box>#`
    * Initial: `padding-box`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/background-origin
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/background-origin
    */
   "background-origin": CssValue;
   /**
    * `background-position` — `<bg-position>#`
    * Initial: `0% 0%`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/background-position
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/background-position
    */
   "background-position": CssValue;
   /**
    * `background-position-x` — `[ center | [ [ left | right | x-start | x-end ]? <length-percentage>? ]! ]#`
    * Initial: `0%`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/background-position-x
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/background-position-x
    */
   "background-position-x": CssValue;
   /**
    * `background-position-y` — `[ center | [ [ top | bottom | y-start | y-end ]? <length-percentage>? ]! ]#`
    * Initial: `0%`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/background-position-y
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/background-position-y
    */
   "background-position-y": CssValue;
   /**
    * `background-repeat` — `<repeat-style>#`
    * Initial: `repeat`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/background-repeat
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/background-repeat
    */
   "background-repeat": CssValue;
   /**
    * `background-size` — `<bg-size>#`
    * Initial: `auto auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/background-size
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/background-size
    */
   "background-size": CssValue;
   /**
@@ -1335,477 +1399,483 @@ export interface CssProperties {
   /**
    * `baseline-source` — `auto | first | last`
    * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/baseline-source
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/baseline-source
    */
   "baseline-source": Keyword<"auto" | "first" | "last">;
   /**
    * `block-size` — `<'width'>`
    * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/block-size
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/block-size
    */
   "block-size": CssValue;
   /**
    * `border` — `<line-width> || <line-style> || <color>`
    * Initial: `border-width, border-style, border-color`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/border
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/border
    */
   border: CssValue;
   /**
-   * `border-block` — `<'border-block-start'>`
+   * `border-block` — `<'border-top'>`
    * Initial: `border-block-width, border-block-style, border-block-color`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/border-block
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/border-block
    */
   "border-block": CssValue;
   /**
    * `border-block-color` — `<'border-top-color'>{1,2}`
-   * Initial: `currentcolor`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/border-block-color
+   * Initial: `border-block-start-color, border-block-end-color`. Inherited: no.
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/border-block-color
    */
   "border-block-color": CssValue;
   /**
-   * `border-block-end` — `<'border-top-width'> || <'border-top-style'> || <color>`
-   * Initial: `border-top-width, border-top-style, border-top-color`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/border-block-end
+   * `border-block-end` — `<'border-top'>`
+   * Initial: `border-block-end-width, border-block-end-style, border-block-end-color`. Inherited: no.
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/border-block-end
    */
   "border-block-end": CssValue;
   /**
    * `border-block-end-color` — `<'border-top-color'>`
    * Initial: `currentcolor`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/border-block-end-color
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/border-block-end-color
    */
   "border-block-end-color": CssValue;
   /**
    * `border-block-end-style` — `<'border-top-style'>`
    * Initial: `none`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/border-block-end-style
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/border-block-end-style
    */
   "border-block-end-style": CssValue;
   /**
    * `border-block-end-width` — `<'border-top-width'>`
    * Initial: `medium`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/border-block-end-width
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/border-block-end-width
    */
   "border-block-end-width": CssValue;
   /**
-   * `border-block-start` — `<'border-top-width'> || <'border-top-style'> || <color>`
-   * Initial: `border-width, border-style, color`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/border-block-start
+   * `border-block-start` — `<'border-top'>`
+   * Initial: `border-block-start-width, border-block-start-style, border-block-start-color`. Inherited: no.
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/border-block-start
    */
   "border-block-start": CssValue;
   /**
    * `border-block-start-color` — `<'border-top-color'>`
    * Initial: `currentcolor`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/border-block-start-color
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/border-block-start-color
    */
   "border-block-start-color": CssValue;
   /**
    * `border-block-start-style` — `<'border-top-style'>`
    * Initial: `none`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/border-block-start-style
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/border-block-start-style
    */
   "border-block-start-style": CssValue;
   /**
    * `border-block-start-width` — `<'border-top-width'>`
    * Initial: `medium`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/border-block-start-width
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/border-block-start-width
    */
   "border-block-start-width": CssValue;
   /**
    * `border-block-style` — `<'border-top-style'>{1,2}`
-   * Initial: `none`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/border-block-style
+   * Initial: `border-block-start-style, border-block-end-style`. Inherited: no.
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/border-block-style
    */
   "border-block-style": CssValue;
   /**
    * `border-block-width` — `<'border-top-width'>{1,2}`
-   * Initial: `medium`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/border-block-width
+   * Initial: `border-block-start-width, border-block-end-width`. Inherited: no.
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/border-block-width
    */
   "border-block-width": CssValue;
   /**
    * `border-bottom` — `<line-width> || <line-style> || <color>`
    * Initial: `border-bottom-width, border-bottom-style, border-bottom-color`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/border-bottom
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/border-bottom
    */
   "border-bottom": CssValue;
   /**
    * `border-bottom-color` — `<'border-top-color'>`
    * Initial: `currentcolor`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/border-bottom-color
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/border-bottom-color
    */
   "border-bottom-color": CssValue;
   /**
    * `border-bottom-left-radius` — `<length-percentage [0,∞]>{1,2}`
    * Initial: `0`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/border-bottom-left-radius
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/border-bottom-left-radius
    */
   "border-bottom-left-radius": CssValue;
   /**
    * `border-bottom-right-radius` — `<length-percentage [0,∞]>{1,2}`
    * Initial: `0`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/border-bottom-right-radius
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/border-bottom-right-radius
    */
   "border-bottom-right-radius": CssValue;
   /**
    * `border-bottom-style` — `<line-style>`
    * Initial: `none`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/border-bottom-style
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/border-bottom-style
    */
   "border-bottom-style": Keyword<"none" | "hidden" | "dotted" | "dashed" | "solid" | "double" | "groove" | "ridge" | "inset" | "outset">;
   /**
    * `border-bottom-width` — `<line-width>`
    * Initial: `medium`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/border-bottom-width
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/border-bottom-width
    */
   "border-bottom-width": CssValue;
   /**
    * `border-collapse` — `separate | collapse`
    * Initial: `separate`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/border-collapse
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/border-collapse
    */
   "border-collapse": Keyword<"separate" | "collapse">;
   /**
    * `border-color` — `<color>{1,4}`
    * Initial: `border-top-color, border-right-color, border-bottom-color, border-left-color`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/border-color
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/border-color
    */
   "border-color": CssValue;
   /**
    * `border-end-end-radius` — `<'border-top-left-radius'>`
    * Initial: `0`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/border-end-end-radius
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/border-end-end-radius
    */
   "border-end-end-radius": CssValue;
   /**
    * `border-end-start-radius` — `<'border-top-left-radius'>`
    * Initial: `0`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/border-end-start-radius
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/border-end-start-radius
    */
   "border-end-start-radius": CssValue;
   /**
    * `border-image` — `<'border-image-source'> || <'border-image-slice'> [ / <'border-image-width'> | / <'border-image-width'>? / <'border-image-outset'> ]? || <'border-image-repeat'>`
    * Initial: `border-image-source, border-image-slice, border-image-width, border-image-outset, border-image-repeat`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/border-image
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/border-image
    */
   "border-image": CssValue;
   /**
    * `border-image-outset` — `[ <length [0,∞]> | <number [0,∞]> ]{1,4}`
    * Initial: `0`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/border-image-outset
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/border-image-outset
    */
   "border-image-outset": CssValue;
   /**
    * `border-image-repeat` — `[ stretch | repeat | round | space ]{1,2}`
    * Initial: `stretch`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/border-image-repeat
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/border-image-repeat
    */
   "border-image-repeat": CssValue;
   /**
    * `border-image-slice` — `[ <number [0,∞]> | <percentage [0,∞]> ]{1,4} && fill?`
    * Initial: `100%`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/border-image-slice
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/border-image-slice
    */
   "border-image-slice": CssValue;
   /**
    * `border-image-source` — `none | <image>`
    * Initial: `none`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/border-image-source
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/border-image-source
    */
   "border-image-source": CssValue;
   /**
    * `border-image-width` — `[ <length-percentage [0,∞]> | <number [0,∞]> | auto ]{1,4}`
    * Initial: `1`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/border-image-width
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/border-image-width
    */
   "border-image-width": CssValue;
   /**
-   * `border-inline` — `<'border-block-start'>`
+   * `border-inline` — `<'border-top'>`
    * Initial: `border-inline-width, border-inline-style, border-inline-color`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/border-inline
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/border-inline
    */
   "border-inline": CssValue;
   /**
    * `border-inline-color` — `<'border-top-color'>{1,2}`
-   * Initial: `currentcolor`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/border-inline-color
+   * Initial: `border-inline-start-color, border-inline-end-color`. Inherited: no.
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/border-inline-color
    */
   "border-inline-color": CssValue;
   /**
-   * `border-inline-end` — `<'border-top-width'> || <'border-top-style'> || <color>`
-   * Initial: `border-width, border-style, color`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/border-inline-end
+   * `border-inline-end` — `<'border-top'>`
+   * Initial: `border-inline-end-width, border-inline-end-style, border-inline-end-color`. Inherited: no.
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/border-inline-end
    */
   "border-inline-end": CssValue;
   /**
    * `border-inline-end-color` — `<'border-top-color'>`
    * Initial: `currentcolor`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/border-inline-end-color
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/border-inline-end-color
    */
   "border-inline-end-color": CssValue;
   /**
    * `border-inline-end-style` — `<'border-top-style'>`
    * Initial: `none`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/border-inline-end-style
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/border-inline-end-style
    */
   "border-inline-end-style": CssValue;
   /**
    * `border-inline-end-width` — `<'border-top-width'>`
    * Initial: `medium`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/border-inline-end-width
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/border-inline-end-width
    */
   "border-inline-end-width": CssValue;
   /**
-   * `border-inline-start` — `<'border-top-width'> || <'border-top-style'> || <color>`
-   * Initial: `border-width, border-style, color`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/border-inline-start
+   * `border-inline-start` — `<'border-top'>`
+   * Initial: `border-inline-start-width, border-inline-start-style, border-inline-start-color`. Inherited: no.
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/border-inline-start
    */
   "border-inline-start": CssValue;
   /**
    * `border-inline-start-color` — `<'border-top-color'>`
    * Initial: `currentcolor`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/border-inline-start-color
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/border-inline-start-color
    */
   "border-inline-start-color": CssValue;
   /**
    * `border-inline-start-style` — `<'border-top-style'>`
    * Initial: `none`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/border-inline-start-style
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/border-inline-start-style
    */
   "border-inline-start-style": CssValue;
   /**
    * `border-inline-start-width` — `<'border-top-width'>`
    * Initial: `medium`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/border-inline-start-width
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/border-inline-start-width
    */
   "border-inline-start-width": CssValue;
   /**
    * `border-inline-style` — `<'border-top-style'>{1,2}`
-   * Initial: `none`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/border-inline-style
+   * Initial: `border-inline-start-style, border-inline-end-style`. Inherited: no.
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/border-inline-style
    */
   "border-inline-style": CssValue;
   /**
    * `border-inline-width` — `<'border-top-width'>{1,2}`
-   * Initial: `medium`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/border-inline-width
+   * Initial: `border-inline-start-width, border-inline-end-width`. Inherited: no.
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/border-inline-width
    */
   "border-inline-width": CssValue;
   /**
    * `border-left` — `<line-width> || <line-style> || <color>`
    * Initial: `border-left-width, border-left-style, border-left-color`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/border-left
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/border-left
    */
   "border-left": CssValue;
   /**
    * `border-left-color` — `<color>`
    * Initial: `currentcolor`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/border-left-color
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/border-left-color
    */
   "border-left-color": CssValue;
   /**
    * `border-left-style` — `<line-style>`
    * Initial: `none`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/border-left-style
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/border-left-style
    */
   "border-left-style": Keyword<"none" | "hidden" | "dotted" | "dashed" | "solid" | "double" | "groove" | "ridge" | "inset" | "outset">;
   /**
    * `border-left-width` — `<line-width>`
    * Initial: `medium`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/border-left-width
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/border-left-width
    */
   "border-left-width": CssValue;
   /**
    * `border-radius` — `<length-percentage [0,∞]>{1,4} [ / <length-percentage [0,∞]>{1,4} ]?`
    * Initial: `border-top-left-radius, border-top-right-radius, border-bottom-right-radius, border-bottom-left-radius`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/border-radius
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/border-radius
    */
   "border-radius": CssValue;
   /**
    * `border-right` — `<line-width> || <line-style> || <color>`
    * Initial: `border-right-width, border-right-style, border-right-color`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/border-right
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/border-right
    */
   "border-right": CssValue;
   /**
    * `border-right-color` — `<color>`
    * Initial: `currentcolor`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/border-right-color
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/border-right-color
    */
   "border-right-color": CssValue;
   /**
    * `border-right-style` — `<line-style>`
    * Initial: `none`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/border-right-style
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/border-right-style
    */
   "border-right-style": Keyword<"none" | "hidden" | "dotted" | "dashed" | "solid" | "double" | "groove" | "ridge" | "inset" | "outset">;
   /**
    * `border-right-width` — `<line-width>`
    * Initial: `medium`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/border-right-width
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/border-right-width
    */
   "border-right-width": CssValue;
   /**
+   * `border-shape` — `none | [ <basic-shape> <geometry-box>?]{1,2}`
+   * Initial: `none`. Inherited: no.
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/border-shape
+   */
+  "border-shape": CssValue;
+  /**
    * `border-spacing` — `<length>{1,2}`
    * Initial: `0`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/border-spacing
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/border-spacing
    */
   "border-spacing": CssValue;
   /**
    * `border-start-end-radius` — `<'border-top-left-radius'>`
    * Initial: `0`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/border-start-end-radius
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/border-start-end-radius
    */
   "border-start-end-radius": CssValue;
   /**
    * `border-start-start-radius` — `<'border-top-left-radius'>`
    * Initial: `0`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/border-start-start-radius
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/border-start-start-radius
    */
   "border-start-start-radius": CssValue;
   /**
    * `border-style` — `<line-style>{1,4}`
    * Initial: `border-top-style, border-right-style, border-bottom-style, border-left-style`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/border-style
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/border-style
    */
   "border-style": CssValue;
   /**
    * `border-top` — `<line-width> || <line-style> || <color>`
    * Initial: `border-top-width, border-top-style, border-top-color`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/border-top
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/border-top
    */
   "border-top": CssValue;
   /**
    * `border-top-color` — `<color>`
    * Initial: `currentcolor`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/border-top-color
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/border-top-color
    */
   "border-top-color": CssValue;
   /**
    * `border-top-left-radius` — `<length-percentage [0,∞]>{1,2}`
    * Initial: `0`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/border-top-left-radius
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/border-top-left-radius
    */
   "border-top-left-radius": CssValue;
   /**
    * `border-top-right-radius` — `<length-percentage [0,∞]>{1,2}`
    * Initial: `0`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/border-top-right-radius
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/border-top-right-radius
    */
   "border-top-right-radius": CssValue;
   /**
    * `border-top-style` — `<line-style>`
    * Initial: `none`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/border-top-style
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/border-top-style
    */
   "border-top-style": Keyword<"none" | "hidden" | "dotted" | "dashed" | "solid" | "double" | "groove" | "ridge" | "inset" | "outset">;
   /**
    * `border-top-width` — `<line-width>`
    * Initial: `medium`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/border-top-width
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/border-top-width
    */
   "border-top-width": CssValue;
   /**
    * `border-width` — `<line-width>{1,4}`
    * Initial: `border-top-width, border-right-width, border-bottom-width, border-left-width`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/border-width
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/border-width
    */
   "border-width": CssValue;
   /**
    * `bottom` — `auto | <length-percentage> | <anchor()> | <anchor-size()>`
    * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/bottom
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/bottom
    */
   bottom: CssValue;
   /**
    * `box-align` — `start | center | end | baseline | stretch`
    * Initial: `stretch`. Inherited: no.
    * Status: nonstandard.
-   * @see https://developer.mozilla.org/docs/Web/CSS/box-align
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/box-align
    */
   "box-align": Keyword<"start" | "center" | "end" | "baseline" | "stretch">;
   /**
    * `box-decoration-break` — `slice | clone`
    * Initial: `slice`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/box-decoration-break
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/box-decoration-break
    */
   "box-decoration-break": Keyword<"slice" | "clone">;
   /**
    * `box-direction` — `normal | reverse | inherit`
    * Initial: `normal`. Inherited: no.
    * Status: nonstandard.
-   * @see https://developer.mozilla.org/docs/Web/CSS/box-direction
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/box-direction
    */
   "box-direction": Keyword<"normal" | "reverse" | "inherit">;
   /**
    * `box-flex` — `<number>`
    * Initial: `0`. Inherited: no.
    * Status: nonstandard.
-   * @see https://developer.mozilla.org/docs/Web/CSS/box-flex
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/box-flex
    */
   "box-flex": CssValue;
   /**
    * `box-flex-group` — `<integer>`
    * Initial: `1`. Inherited: no.
    * Status: nonstandard.
-   * @see https://developer.mozilla.org/docs/Web/CSS/box-flex-group
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/box-flex-group
    */
   "box-flex-group": CssValue;
   /**
    * `box-lines` — `single | multiple`
    * Initial: `single`. Inherited: no.
    * Status: nonstandard.
-   * @see https://developer.mozilla.org/docs/Web/CSS/box-lines
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/box-lines
    */
   "box-lines": Keyword<"single" | "multiple">;
   /**
    * `box-ordinal-group` — `<integer>`
    * Initial: `1`. Inherited: no.
    * Status: nonstandard.
-   * @see https://developer.mozilla.org/docs/Web/CSS/box-ordinal-group
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/box-ordinal-group
    */
   "box-ordinal-group": CssValue;
   /**
    * `box-orient` — `horizontal | vertical | inline-axis | block-axis | inherit`
    * Initial: `inline-axis`. Inherited: no.
    * Status: nonstandard.
-   * @see https://developer.mozilla.org/docs/Web/CSS/box-orient
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/box-orient
    */
   "box-orient": Keyword<"horizontal" | "vertical" | "inline-axis" | "block-axis" | "inherit">;
   /**
    * `box-pack` — `start | center | end | justify`
    * Initial: `start`. Inherited: no.
    * Status: nonstandard.
-   * @see https://developer.mozilla.org/docs/Web/CSS/box-pack
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/box-pack
    */
   "box-pack": Keyword<"start" | "center" | "end" | "justify">;
   /**
    * `box-shadow` — `none | <shadow>#`
    * Initial: `none`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/box-shadow
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/box-shadow
    */
   "box-shadow": CssValue;
   /**
    * `box-sizing` — `content-box | border-box`
    * Initial: `content-box`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/box-sizing
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/box-sizing
    */
   "box-sizing": Keyword<"content-box" | "border-box">;
   /**
    * `break-after` — `auto | avoid | always | all | avoid-page | page | left | right | recto | verso | avoid-column | column | avoid-region | region`
    * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/break-after
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/break-after
    */
   "break-after": Keyword<"auto" | "avoid" | "always" | "all" | "avoid-page" | "page" | "left" | "right" | "recto" | "verso" | "avoid-column" | "column" | "avoid-region" | "region">;
   /**
    * `break-before` — `auto | avoid | always | all | avoid-page | page | left | right | recto | verso | avoid-column | column | avoid-region | region`
    * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/break-before
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/break-before
    */
   "break-before": Keyword<"auto" | "avoid" | "always" | "all" | "avoid-page" | "page" | "left" | "right" | "recto" | "verso" | "avoid-column" | "column" | "avoid-region" | "region">;
   /**
    * `break-inside` — `auto | avoid | avoid-page | avoid-column | avoid-region`
    * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/break-inside
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/break-inside
    */
   "break-inside": Keyword<"auto" | "avoid" | "avoid-page" | "avoid-column" | "avoid-region">;
   /** `buffered-rendering` — a vendor-prefixed property, from the engine's own list. */
@@ -1813,7 +1883,7 @@ export interface CssProperties {
   /**
    * `caption-side` — `top | bottom`
    * Initial: `top`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/caption-side
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/caption-side
    */
   "caption-side": Keyword<"top" | "bottom">;
   /**
@@ -1824,13 +1894,13 @@ export interface CssProperties {
   /**
    * `caret-animation` — `auto | manual`
    * Initial: `auto`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/caret-animation
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/caret-animation
    */
   "caret-animation": Keyword<"auto" | "manual">;
   /**
    * `caret-color` — `auto | <color>`
    * Initial: `auto`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/caret-color
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/caret-color
    */
   "caret-color": CssValue;
   /**
@@ -1841,32 +1911,32 @@ export interface CssProperties {
   /**
    * `clear` — `none | left | right | both | inline-start | inline-end`
    * Initial: `none`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/clear
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/clear
    */
   clear: Keyword<"none" | "left" | "right" | "both" | "inline-start" | "inline-end">;
   /**
    * `clip` — `<shape> | auto`
    * Initial: `auto`. Inherited: no.
    * Status: obsolete.
-   * @see https://developer.mozilla.org/docs/Web/CSS/clip
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/clip
    */
   clip: CssValue;
   /**
    * `clip-path` — `<clip-source> | [ <basic-shape> || <geometry-box> ] | none`
    * Initial: `none`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/clip-path
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/clip-path
    */
   "clip-path": CssValue;
   /**
    * `clip-rule` — `nonzero | evenodd`
    * Initial: `nonzero`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/clip-rule
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/clip-rule
    */
   "clip-rule": Keyword<"nonzero" | "evenodd">;
   /**
    * `color` — `<color>`
    * Initial: `canvastext`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/color
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/color
    */
   color: CssValue;
   /** `color-interpolation` — a vendor-prefixed property, from the engine's own list. */
@@ -1874,416 +1944,424 @@ export interface CssProperties {
   /**
    * `color-interpolation-filters` — `auto | sRGB | linearRGB`
    * Initial: `linearRGB`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/color-interpolation-filters
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/color-interpolation-filters
    */
   "color-interpolation-filters": Keyword<"auto" | "sRGB" | "linearRGB">;
   /**
    * `color-scheme` — `normal | [ light | dark | <custom-ident> ]+ && only?`
    * Initial: `normal`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/color-scheme
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/color-scheme
    */
   "color-scheme": CssValue;
   /**
    * `column-count` — `<integer> | auto`
    * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/column-count
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/column-count
    */
   "column-count": CssValue;
   /**
    * `column-fill` — `auto | balance`
    * Initial: `balance`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/column-fill
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/column-fill
    */
   "column-fill": Keyword<"auto" | "balance">;
   /**
    * `column-gap` — `normal | <length-percentage>`
    * Initial: `normal`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/column-gap
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/column-gap
    */
   "column-gap": CssValue;
   /**
    * `column-height` — `auto | <length [0,∞]>`
    * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/column-height
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/column-height
    */
   "column-height": CssValue;
   /**
    * `column-rule` — `<'column-rule-width'> || <'column-rule-style'> || <'column-rule-color'>`
    * Initial: `column-rule-width, column-rule-style, column-rule-color`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/column-rule
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/column-rule
    */
   "column-rule": CssValue;
   /**
    * `column-rule-color` — `<color>`
    * Initial: `currentcolor`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/column-rule-color
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/column-rule-color
    */
   "column-rule-color": CssValue;
   /**
-   * `column-rule-style` — `<'border-style'>`
+   * `column-rule-style` — `<line-style>`
    * Initial: `none`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/column-rule-style
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/column-rule-style
    */
-  "column-rule-style": CssValue;
+  "column-rule-style": Keyword<"none" | "hidden" | "dotted" | "dashed" | "solid" | "double" | "groove" | "ridge" | "inset" | "outset">;
   /**
-   * `column-rule-width` — `<'border-width'>`
+   * `column-rule-width` — `<line-width>`
    * Initial: `medium`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/column-rule-width
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/column-rule-width
    */
   "column-rule-width": CssValue;
   /**
    * `column-span` — `none | all`
    * Initial: `none`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/column-span
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/column-span
    */
   "column-span": Keyword<"none" | "all">;
   /**
    * `column-width` — `auto | <length [0,∞]>`
    * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/column-width
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/column-width
    */
   "column-width": CssValue;
   /**
    * `column-wrap` — `auto | nowrap | wrap`
    * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/column-wrap
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/column-wrap
    */
   "column-wrap": Keyword<"auto" | "nowrap" | "wrap">;
   /**
    * `columns` — `[ <'column-width'> || <'column-count'> ] [ / <'column-height'> ]?`
    * Initial: `column-width, column-count, column-height`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/columns
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/columns
    */
   columns: CssValue;
   /**
    * `contain` — `none | strict | content | [ [ size || inline-size ] || layout || style || paint ]`
    * Initial: `none`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/contain
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/contain
    */
   contain: CssValue;
   /**
    * `contain-intrinsic-block-size` — `auto? [ none | <length> ]`
    * Initial: `none`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/contain-intrinsic-block-size
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/contain-intrinsic-block-size
    */
   "contain-intrinsic-block-size": CssValue;
   /**
    * `contain-intrinsic-height` — `auto? [ none | <length> ]`
    * Initial: `none`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/contain-intrinsic-height
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/contain-intrinsic-height
    */
   "contain-intrinsic-height": CssValue;
   /**
    * `contain-intrinsic-inline-size` — `auto? [ none | <length> ]`
    * Initial: `none`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/contain-intrinsic-inline-size
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/contain-intrinsic-inline-size
    */
   "contain-intrinsic-inline-size": CssValue;
   /**
    * `contain-intrinsic-size` — `[ auto? [ none | <length> ] ]{1,2}`
    * Initial: `contain-intrinsic-width, contain-intrinsic-height`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/contain-intrinsic-size
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/contain-intrinsic-size
    */
   "contain-intrinsic-size": CssValue;
   /**
    * `contain-intrinsic-width` — `auto? [ none | <length> ]`
    * Initial: `none`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/contain-intrinsic-width
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/contain-intrinsic-width
    */
   "contain-intrinsic-width": CssValue;
   /**
    * `container` — `<'container-name'> [ / <'container-type'> ]?`
    * Initial: `container-name, container-type`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/container
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/container
    */
   container: CssValue;
   /**
    * `container-name` — `none | <custom-ident>+`
    * Initial: `none`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/container-name
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/container-name
    */
   "container-name": CssValue;
   /**
    * `container-type` — `normal | [ [ size | inline-size ] || scroll-state ]`
    * Initial: `normal`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/container-type
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/container-type
    */
   "container-type": CssValue;
   /**
    * `content` — `normal | none | [ <content-replacement> | <content-list> ] [ / [ <string> | <counter> | <attr()> ]+ ]?`
    * Initial: `normal`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/content
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/content
    */
   content: CssValue;
   /**
    * `content-visibility` — `visible | auto | hidden`
    * Initial: `visible`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/content-visibility
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/content-visibility
    */
   "content-visibility": Keyword<"visible" | "auto" | "hidden">;
   /**
    * `corner-block-end-shape` — `<corner-shape-value>{1,2}`
    * Initial: `corner-end-start-shape, corner-end-end-shape`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/corner-block-end-shape
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/corner-block-end-shape
    */
   "corner-block-end-shape": CssValue;
   /**
    * `corner-block-start-shape` — `<corner-shape-value>{1,2}`
    * Initial: `corner-start-start-shape, corner-start-end-shape`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/corner-block-start-shape
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/corner-block-start-shape
    */
   "corner-block-start-shape": CssValue;
   /**
    * `corner-bottom-left-shape` — `<corner-shape-value>`
    * Initial: `round`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/corner-bottom-left-shape
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/corner-bottom-left-shape
    */
   "corner-bottom-left-shape": CssValue;
   /**
    * `corner-bottom-right-shape` — `<corner-shape-value>`
    * Initial: `round`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/corner-bottom-right-shape
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/corner-bottom-right-shape
    */
   "corner-bottom-right-shape": CssValue;
   /**
    * `corner-bottom-shape` — `<corner-shape-value>{1,2}`
    * Initial: `corner-bottom-left-shape, corner-bottom-right-shape`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/corner-bottom-shape
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/corner-bottom-shape
    */
   "corner-bottom-shape": CssValue;
   /**
    * `corner-end-end-shape` — `<corner-shape-value>`
    * Initial: `round`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/corner-end-end-shape
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/corner-end-end-shape
    */
   "corner-end-end-shape": CssValue;
   /**
    * `corner-end-start-shape` — `<corner-shape-value>`
    * Initial: `round`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/corner-end-start-shape
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/corner-end-start-shape
    */
   "corner-end-start-shape": CssValue;
   /**
    * `corner-inline-end-shape` — `<corner-shape-value>{1,2}`
    * Initial: `corner-start-end-shape, corner-end-end-shape`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/corner-inline-end-shape
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/corner-inline-end-shape
    */
   "corner-inline-end-shape": CssValue;
   /**
    * `corner-inline-start-shape` — `<corner-shape-value>{1,2}`
    * Initial: `corner-start-start-shape, corner-start-end-shape`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/corner-inline-start-shape
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/corner-inline-start-shape
    */
   "corner-inline-start-shape": CssValue;
   /**
    * `corner-left-shape` — `<corner-shape-value>{1,2}`
    * Initial: `corner-top-left-shape, corner-bottom-left-shape`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/corner-left-shape
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/corner-left-shape
    */
   "corner-left-shape": CssValue;
   /**
    * `corner-right-shape` — `<corner-shape-value>{1,2}`
    * Initial: `corner-top-right-shape, corner-bottom-right-shape`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/corner-right-shape
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/corner-right-shape
    */
   "corner-right-shape": CssValue;
   /**
    * `corner-shape` — `<corner-shape-value>{1,4}`
    * Initial: `corner-top-left-shape, corner-top-right-shape, corner-bottom-left-shape, corner-bottom-right-shape`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/corner-shape
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/corner-shape
    */
   "corner-shape": CssValue;
   /**
    * `corner-start-end-shape` — `<corner-shape-value>`
    * Initial: `round`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/corner-start-end-shape
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/corner-start-end-shape
    */
   "corner-start-end-shape": CssValue;
   /**
    * `corner-start-start-shape` — `<corner-shape-value>`
    * Initial: `round`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/corner-start-start-shape
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/corner-start-start-shape
    */
   "corner-start-start-shape": CssValue;
   /**
    * `corner-top-left-shape` — `<corner-shape-value>`
    * Initial: `round`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/corner-top-left-shape
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/corner-top-left-shape
    */
   "corner-top-left-shape": CssValue;
   /**
    * `corner-top-right-shape` — `<corner-shape-value>`
    * Initial: `round`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/corner-top-right-shape
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/corner-top-right-shape
    */
   "corner-top-right-shape": CssValue;
   /**
    * `corner-top-shape` — `<corner-shape-value>{1,2}`
    * Initial: `corner-top-left-shape, corner-top-right-shape`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/corner-top-shape
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/corner-top-shape
    */
   "corner-top-shape": CssValue;
   /**
    * `counter-increment` — `[ <counter-name> <integer>? ]+ | none`
    * Initial: `none`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/counter-increment
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/counter-increment
    */
   "counter-increment": CssValue;
   /**
    * `counter-reset` — `[ <counter-name> <integer>? | <reversed-counter-name> <integer>? ]+ | none`
    * Initial: `none`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/counter-reset
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/counter-reset
    */
   "counter-reset": CssValue;
   /**
    * `counter-set` — `[ <counter-name> <integer>? ]+ | none`
    * Initial: `none`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/counter-set
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/counter-set
    */
   "counter-set": CssValue;
   /**
    * `cursor` — `[ [ <url> [ <x> <y> ]? , ]* <cursor-predefined> ]`
    * Initial: `auto`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/cursor
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/cursor
    */
   cursor: CssValue;
   /**
    * `cx` — `<length> | <percentage>`
    * Initial: `0`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/cx
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/cx
    */
   cx: CssValue;
   /**
    * `cy` — `<length> | <percentage>`
    * Initial: `0`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/cy
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/cy
    */
   cy: CssValue;
   /**
    * `d` — `none | path(<string>)`
    * Initial: `none`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/d
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/d
    */
   d: CssValue;
   /**
    * `direction` — `ltr | rtl`
    * Initial: `ltr`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/direction
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/direction
    */
   direction: Keyword<"ltr" | "rtl">;
   /**
    * `display` — `[ <display-outside> || <display-inside> ] | <display-listitem> | <display-internal> | <display-box> | <display-legacy>`
    * Initial: `inline`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/display
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/display
    */
   display: CssValue;
   /**
    * `dominant-baseline` — `auto | text-bottom | alphabetic | ideographic | middle | central | mathematical | hanging | text-top`
    * Initial: `auto`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/dominant-baseline
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/dominant-baseline
    */
   "dominant-baseline": Keyword<"auto" | "text-bottom" | "alphabetic" | "ideographic" | "middle" | "central" | "mathematical" | "hanging" | "text-top" | "text-after-edge" | "text-before-edge">;
   /**
    * `dynamic-range-limit` — `standard | no-limit | constrained | <dynamic-range-limit-mix()>`
    * Initial: `no-limit`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/dynamic-range-limit
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/dynamic-range-limit
    */
   "dynamic-range-limit": CssValue;
   /**
    * `empty-cells` — `show | hide`
    * Initial: `show`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/empty-cells
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/empty-cells
    */
   "empty-cells": Keyword<"show" | "hide">;
   /**
    * `field-sizing` — `content | fixed`
    * Initial: `fixed`. Inherited: no.
    * Status: experimental.
-   * @see https://developer.mozilla.org/docs/Web/CSS/field-sizing
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/field-sizing
    */
   "field-sizing": Keyword<"content" | "fixed">;
   /**
    * `fill` — `<paint>`
    * Initial: `black`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/fill
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/fill
    */
   fill: CssValue;
   /**
    * `fill-opacity` — `<'opacity'>`
    * Initial: `1`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/fill-opacity
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/fill-opacity
    */
   "fill-opacity": CssValue;
   /**
    * `fill-rule` — `nonzero | evenodd`
    * Initial: `nonzero`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/fill-rule
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/fill-rule
    */
   "fill-rule": Keyword<"nonzero" | "evenodd">;
   /**
    * `filter` — `none | <filter-value-list>`
    * Initial: `none`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/filter
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/filter
    */
   filter: CssValue;
+  /** `fit-tolerance` — a vendor-prefixed property, from the engine's own list. */
+  "fit-tolerance": CssValue;
   /**
    * `flex` — `none | [ <'flex-grow'> <'flex-shrink'>? || <'flex-basis'> ]`
    * Initial: `flex-grow, flex-shrink, flex-basis`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/flex
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/flex
    */
   flex: CssValue;
   /**
    * `flex-basis` — `content | <'width'>`
    * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/flex-basis
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/flex-basis
    */
   "flex-basis": CssValue;
   /**
    * `flex-direction` — `row | row-reverse | column | column-reverse`
    * Initial: `row`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/flex-direction
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/flex-direction
    */
   "flex-direction": Keyword<"row" | "row-reverse" | "column" | "column-reverse">;
   /**
    * `flex-flow` — `<'flex-direction'> || <'flex-wrap'>`
    * Initial: `flex-direction, flex-wrap`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/flex-flow
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/flex-flow
    */
   "flex-flow": CssValue;
   /**
    * `flex-grow` — `<number>`
    * Initial: `0`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/flex-grow
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/flex-grow
    */
   "flex-grow": CssValue;
   /**
+   * `flex-line-count` — `<integer [1,∞]>`
+   * Initial: `1`. Inherited: no.
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/flex-line-count
+   */
+  "flex-line-count": CssValue;
+  /**
    * `flex-shrink` — `<number>`
    * Initial: `1`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/flex-shrink
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/flex-shrink
    */
   "flex-shrink": CssValue;
   /**
-   * `flex-wrap` — `nowrap | wrap | wrap-reverse`
+   * `flex-wrap` — `nowrap | [ wrap | wrap-reverse ] || balance`
    * Initial: `nowrap`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/flex-wrap
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/flex-wrap
    */
-  "flex-wrap": Keyword<"nowrap" | "wrap" | "wrap-reverse" | "balance">;
+  "flex-wrap": CssValue;
   /**
    * `float` — `left | right | none | inline-start | inline-end`
    * Initial: `none`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/float
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/float
    */
   float: Keyword<"left" | "right" | "none" | "inline-start" | "inline-end">;
   /**
    * `flood-color` — `<color>`
    * Initial: `black`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/flood-color
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/flood-color
    */
   "flood-color": CssValue;
   /**
    * `flood-opacity` — `<'opacity'>`
    * Initial: `black`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/flood-opacity
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/flood-opacity
    */
   "flood-opacity": CssValue;
   /** `flow-tolerance` — a vendor-prefixed property, from the engine's own list. */
@@ -2291,166 +2369,166 @@ export interface CssProperties {
   /**
    * `font` — `[ [ <'font-style'> || <font-variant-css2> || <'font-weight'> || <font-width-css3> ]? <'font-size'> [ / <'line-height'> ]? <'font-family'># ] | <system-family-name>`
    * Initial: `font-style, font-variant, font-weight, font-stretch, font-size, line-height, font-family`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/font
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/font
    */
   font: CssValue;
   /**
    * `font-family` — `[ <family-name> | <generic-family> ]#`
    * Initial: `dependsOnUserAgent`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/font-family
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/font-family
    */
   "font-family": CssValue;
   /**
    * `font-feature-settings` — `normal | <feature-tag-value>#`
    * Initial: `normal`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/font-feature-settings
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/font-feature-settings
    */
   "font-feature-settings": CssValue;
   /**
    * `font-kerning` — `auto | normal | none`
    * Initial: `auto`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/font-kerning
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/font-kerning
    */
   "font-kerning": Keyword<"auto" | "normal" | "none">;
   /**
    * `font-language-override` — `normal | <string>`
    * Initial: `normal`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/font-language-override
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/font-language-override
    */
   "font-language-override": CssValue;
   /**
    * `font-optical-sizing` — `auto | none`
    * Initial: `auto`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/font-optical-sizing
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/font-optical-sizing
    */
   "font-optical-sizing": Keyword<"auto" | "none">;
   /**
    * `font-palette` — `normal | light | dark | <palette-identifier> | <palette-mix()>`
    * Initial: `normal`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/font-palette
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/font-palette
    */
   "font-palette": CssValue;
   /**
    * `font-size` — `<absolute-size> | <relative-size> | <length-percentage [0,∞]> | math`
    * Initial: `medium`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/font-size
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/font-size
    */
   "font-size": CssValue;
   /**
    * `font-size-adjust` — `none | [ ex-height | cap-height | ch-width | ic-width | ic-height ]? [ from-font | <number> ]`
    * Initial: `none`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/font-size-adjust
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/font-size-adjust
    */
   "font-size-adjust": CssValue;
   /**
    * `font-smooth` — `auto | never | always | <absolute-size> | <length>`
    * Initial: `auto`. Inherited: yes.
    * Status: nonstandard.
-   * @see https://developer.mozilla.org/docs/Web/CSS/font-smooth
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/font-smooth
    */
   "font-smooth": CssValue;
   /**
    * `font-stretch` — `<font-stretch-absolute>`
    * Initial: `normal`. Inherited: yes.
    * Status: obsolete.
-   * @see https://developer.mozilla.org/docs/Web/CSS/font-stretch
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/font-stretch
    */
   "font-stretch": CssValue;
   /**
    * `font-style` — `normal | italic | oblique <angle>?`
    * Initial: `normal`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/font-style
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/font-style
    */
   "font-style": CssValue;
   /**
    * `font-synthesis` — `none | [ weight || style || small-caps || position]`
    * Initial: `weight style small-caps position `. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/font-synthesis
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/font-synthesis
    */
   "font-synthesis": CssValue;
   /**
    * `font-synthesis-position` — `auto | none`
    * Initial: `none`. Inherited: yes.
    * Status: experimental.
-   * @see https://developer.mozilla.org/docs/Web/CSS/font-synthesis-position
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/font-synthesis-position
    */
   "font-synthesis-position": Keyword<"auto" | "none">;
   /**
    * `font-synthesis-small-caps` — `auto | none`
    * Initial: `auto`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/font-synthesis-small-caps
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/font-synthesis-small-caps
    */
   "font-synthesis-small-caps": Keyword<"auto" | "none">;
   /**
    * `font-synthesis-style` — `auto | none`
    * Initial: `auto`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/font-synthesis-style
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/font-synthesis-style
    */
   "font-synthesis-style": Keyword<"auto" | "none">;
   /**
    * `font-synthesis-weight` — `auto | none`
    * Initial: `auto`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/font-synthesis-weight
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/font-synthesis-weight
    */
   "font-synthesis-weight": Keyword<"auto" | "none">;
   /**
    * `font-variant` — `normal | none | [ <common-lig-values> || <discretionary-lig-values> || <historical-lig-values> || <contextual-alt-values> || stylistic( <feature-value-name> ) || historical-forms || styleset( <feature-value-name># ) || character-variant( <feature-value-name># ) || swash( <feature-value-name> ) || ornaments( <feature-value-name> ) || annotation( <feature-value-name> ) || [ small-caps | all-small-caps | petite-caps | all-petite-caps | unicase | titling-caps ] || <numeric-figure-values> || <numeric-spacing-values> || <numeric-fraction-values> || ordinal || slashed-zero || <east-asian-variant-values> || <east-asian-width-values> || ruby ]`
    * Initial: `normal`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/font-variant
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/font-variant
    */
   "font-variant": CssValue;
   /**
    * `font-variant-alternates` — `normal | [ stylistic( <feature-value-name> ) || historical-forms || styleset( <feature-value-name># ) || character-variant( <feature-value-name># ) || swash( <feature-value-name> ) || ornaments( <feature-value-name> ) || annotation( <feature-value-name> ) ]`
    * Initial: `normal`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/font-variant-alternates
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/font-variant-alternates
    */
   "font-variant-alternates": CssValue;
   /**
    * `font-variant-caps` — `normal | small-caps | all-small-caps | petite-caps | all-petite-caps | unicase | titling-caps`
    * Initial: `normal`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/font-variant-caps
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/font-variant-caps
    */
   "font-variant-caps": Keyword<"normal" | "small-caps" | "all-small-caps" | "petite-caps" | "all-petite-caps" | "unicase" | "titling-caps">;
   /**
    * `font-variant-east-asian` — `normal | [ <east-asian-variant-values> || <east-asian-width-values> || ruby ]`
    * Initial: `normal`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/font-variant-east-asian
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/font-variant-east-asian
    */
   "font-variant-east-asian": CssValue;
   /**
    * `font-variant-emoji` — `normal | text | emoji | unicode`
    * Initial: `normal`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/font-variant-emoji
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/font-variant-emoji
    */
   "font-variant-emoji": Keyword<"normal" | "text" | "emoji" | "unicode">;
   /**
    * `font-variant-ligatures` — `normal | none | [ <common-lig-values> || <discretionary-lig-values> || <historical-lig-values> || <contextual-alt-values> ]`
    * Initial: `normal`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/font-variant-ligatures
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/font-variant-ligatures
    */
   "font-variant-ligatures": CssValue;
   /**
    * `font-variant-numeric` — `normal | [ <numeric-figure-values> || <numeric-spacing-values> || <numeric-fraction-values> || ordinal || slashed-zero ]`
    * Initial: `normal`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/font-variant-numeric
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/font-variant-numeric
    */
   "font-variant-numeric": CssValue;
   /**
    * `font-variant-position` — `normal | sub | super`
    * Initial: `normal`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/font-variant-position
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/font-variant-position
    */
   "font-variant-position": Keyword<"normal" | "sub" | "super">;
   /**
    * `font-variation-settings` — `normal | [ <string> <number> ]#`
    * Initial: `normal`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/font-variation-settings
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/font-variation-settings
    */
   "font-variation-settings": CssValue;
   /**
    * `font-weight` — `<font-weight-absolute> | bolder | lighter`
    * Initial: `normal`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/font-weight
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/font-weight
    */
   "font-weight": CssValue;
   /**
@@ -2462,13 +2540,19 @@ export interface CssProperties {
   /**
    * `forced-color-adjust` — `auto | none | preserve-parent-color`
    * Initial: `auto`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/forced-color-adjust
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/forced-color-adjust
    */
   "forced-color-adjust": Keyword<"auto" | "none" | "preserve-parent-color">;
   /**
+   * `frame-sizing` — `auto | content-width | content-height | content-block-size | content-inline-size`
+   * Initial: `auto`. Inherited: no.
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/frame-sizing
+   */
+  "frame-sizing": Keyword<"auto" | "content-width" | "content-height" | "content-block-size" | "content-inline-size">;
+  /**
    * `gap` — `<'row-gap'> <'column-gap'>?`
    * Initial: `row-gap, column-gap`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/gap
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/gap
    */
   gap: CssValue;
   /** `glyph-orientation-vertical` — a vendor-prefixed property, from the engine's own list. */
@@ -2476,161 +2560,163 @@ export interface CssProperties {
   /**
    * `grid` — `<'grid-template'> | <'grid-template-rows'> / [ auto-flow && dense? ] <'grid-auto-columns'>? | [ auto-flow && dense? ] <'grid-auto-rows'>? / <'grid-template-columns'>`
    * Initial: `grid-template-rows, grid-template-columns, grid-template-areas, grid-auto-rows, grid-auto-columns, grid-auto-flow, grid-column-gap, grid-row-gap, column-gap, row-gap`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/grid
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/grid
    */
   grid: CssValue;
   /**
    * `grid-area` — `<grid-line> [ / <grid-line> ]{0,3}`
    * Initial: `grid-row-start, grid-column-start, grid-row-end, grid-column-end`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/grid-area
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/grid-area
    */
   "grid-area": CssValue;
   /**
    * `grid-auto-columns` — `<track-size>+`
    * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/grid-auto-columns
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/grid-auto-columns
    */
   "grid-auto-columns": CssValue;
   /**
    * `grid-auto-flow` — `[ row | column ] || dense`
    * Initial: `row`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/grid-auto-flow
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/grid-auto-flow
    */
   "grid-auto-flow": CssValue;
   /**
    * `grid-auto-rows` — `<track-size>+`
    * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/grid-auto-rows
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/grid-auto-rows
    */
   "grid-auto-rows": CssValue;
   /**
    * `grid-column` — `<grid-line> [ / <grid-line> ]?`
    * Initial: `grid-column-start, grid-column-end`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/grid-column
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/grid-column
    */
   "grid-column": CssValue;
   /**
    * `grid-column-end` — `<grid-line>`
    * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/grid-column-end
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/grid-column-end
    */
   "grid-column-end": CssValue;
   /**
    * `grid-column-gap` — `<length-percentage>`
    * Initial: `0`. Inherited: no.
    * Status: obsolete.
-   * @see https://developer.mozilla.org/docs/Web/CSS/column-gap
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/column-gap
    */
   "grid-column-gap": CssValue;
   /**
    * `grid-column-start` — `<grid-line>`
    * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/grid-column-start
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/grid-column-start
    */
   "grid-column-start": CssValue;
   /**
    * `grid-gap` — `<'grid-row-gap'> <'grid-column-gap'>?`
    * Initial: `grid-row-gap, grid-column-gap`. Inherited: no.
    * Status: obsolete.
-   * @see https://developer.mozilla.org/docs/Web/CSS/gap
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/gap
    */
   "grid-gap": CssValue;
   /**
    * `grid-row` — `<grid-line> [ / <grid-line> ]?`
    * Initial: `grid-row-start, grid-row-end`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/grid-row
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/grid-row
    */
   "grid-row": CssValue;
   /**
    * `grid-row-end` — `<grid-line>`
    * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/grid-row-end
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/grid-row-end
    */
   "grid-row-end": CssValue;
   /**
    * `grid-row-gap` — `<length-percentage>`
    * Initial: `0`. Inherited: no.
    * Status: obsolete.
-   * @see https://developer.mozilla.org/docs/Web/CSS/row-gap
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/row-gap
    */
   "grid-row-gap": CssValue;
   /**
    * `grid-row-start` — `<grid-line>`
    * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/grid-row-start
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/grid-row-start
    */
   "grid-row-start": CssValue;
   /**
    * `grid-template` — `none | [ <'grid-template-rows'> / <'grid-template-columns'> ] | [ <line-names>? <string> <track-size>? <line-names>? ]+ [ / <explicit-track-list> ]?`
    * Initial: `grid-template-columns, grid-template-rows, grid-template-areas`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/grid-template
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/grid-template
    */
   "grid-template": CssValue;
   /**
    * `grid-template-areas` — `none | <string>+`
    * Initial: `none`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/grid-template-areas
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/grid-template-areas
    */
   "grid-template-areas": CssValue;
   /**
    * `grid-template-columns` — `none | <track-list> | <auto-track-list> | subgrid <line-name-list>?`
    * Initial: `none`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/grid-template-columns
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/grid-template-columns
    */
   "grid-template-columns": CssValue;
   /**
    * `grid-template-rows` — `none | <track-list> | <auto-track-list> | subgrid <line-name-list>?`
    * Initial: `none`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/grid-template-rows
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/grid-template-rows
    */
   "grid-template-rows": CssValue;
   /**
    * `hanging-punctuation` — `none | [ first || [ force-end | allow-end ] || last ]`
    * Initial: `none`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/hanging-punctuation
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/hanging-punctuation
    */
   "hanging-punctuation": CssValue;
   /**
    * `height` — `auto | <length-percentage [0,∞]> | min-content | max-content | fit-content | fit-content(<length-percentage [0,∞]>) | <calc-size()> | <anchor-size()>`
    * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/height
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/height
    */
   height: CssValue;
   /**
    * `hyphenate-character` — `auto | <string>`
    * Initial: `auto`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/hyphenate-character
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/hyphenate-character
    */
   "hyphenate-character": CssValue;
   /**
    * `hyphenate-limit-chars` — `[ auto | <integer> ]{1,3}`
    * Initial: `auto`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/hyphenate-limit-chars
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/hyphenate-limit-chars
    */
   "hyphenate-limit-chars": CssValue;
+  /** `hyphenate-limit-lines` — a vendor-prefixed property, from the engine's own list. */
+  "hyphenate-limit-lines": CssValue;
   /**
    * `hyphens` — `none | manual | auto`
    * Initial: `manual`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/hyphens
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/hyphens
    */
   hyphens: Keyword<"none" | "manual" | "auto">;
   /**
    * `image-orientation` — `from-image | <angle> | [ <angle>? flip ]`
    * Initial: `from-image`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/image-orientation
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/image-orientation
    */
   "image-orientation": CssValue;
   /**
    * `image-rendering` — `auto | crisp-edges | pixelated | smooth`
    * Initial: `auto`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/image-rendering
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/image-rendering
    */
   "image-rendering": Keyword<"auto" | "crisp-edges" | "pixelated" | "smooth" | "optimizeSpeed">;
   /**
    * `image-resolution` — `[ from-image || <resolution> ] && snap?`
    * Initial: `1dppx`. Inherited: yes.
    * Status: experimental.
-   * @see https://developer.mozilla.org/docs/Web/CSS/image-resolution
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/image-resolution
    */
   "image-resolution": CssValue;
   /**
@@ -2642,7 +2728,7 @@ export interface CssProperties {
   /**
    * `initial-letter` — `normal | [ <number> <integer>? ]`
    * Initial: `normal`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/initial-letter
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/initial-letter
    */
   "initial-letter": CssValue;
   /**
@@ -2654,104 +2740,104 @@ export interface CssProperties {
   /**
    * `inline-size` — `<'width'>`
    * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/inline-size
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/inline-size
    */
   "inline-size": CssValue;
   /**
    * `inset` — `<'top'>{1,4}`
    * Initial: `top, bottom, left, right`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/inset
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/inset
    */
   inset: CssValue;
   /**
    * `inset-block` — `<'top'>{1,2}`
    * Initial: `inset-block-start, inset-block-end`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/inset-block
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/inset-block
    */
   "inset-block": CssValue;
   /**
    * `inset-block-end` — `<'top'>`
    * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/inset-block-end
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/inset-block-end
    */
   "inset-block-end": CssValue;
   /**
    * `inset-block-start` — `<'top'>`
    * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/inset-block-start
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/inset-block-start
    */
   "inset-block-start": CssValue;
   /**
    * `inset-inline` — `<'top'>{1,2}`
    * Initial: `inset-inline-start, inset-inline-end`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/inset-inline
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/inset-inline
    */
   "inset-inline": CssValue;
   /**
    * `inset-inline-end` — `<'top'>`
    * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/inset-inline-end
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/inset-inline-end
    */
   "inset-inline-end": CssValue;
   /**
    * `inset-inline-start` — `<'top'>`
    * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/inset-inline-start
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/inset-inline-start
    */
   "inset-inline-start": CssValue;
   /**
    * `interactivity` — `auto | inert`
    * Initial: `auto`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/interactivity
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/interactivity
    */
   interactivity: Keyword<"auto" | "inert">;
   /**
    * `interest-delay` — `<'interest-delay-start'>{1,2}`
    * Initial: `interest-delay-start, interest-delay-end`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/interest-delay-end
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/interest-delay-end
    */
   "interest-delay": CssValue;
   /**
    * `interest-delay-end` — `normal | <time>`
    * Initial: `normal`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/interest-delay-end
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/interest-delay-end
    */
   "interest-delay-end": CssValue;
   /**
    * `interest-delay-start` — `normal | <time>`
    * Initial: `normal`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/interest-delay-start
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/interest-delay-start
    */
   "interest-delay-start": CssValue;
   /**
    * `interpolate-size` — `numeric-only | allow-keywords`
    * Initial: `numeric-only`. Inherited: yes.
    * Status: experimental.
-   * @see https://developer.mozilla.org/docs/Web/CSS/interpolate-size
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/interpolate-size
    */
   "interpolate-size": Keyword<"numeric-only" | "allow-keywords">;
   /**
    * `isolation` — `auto | isolate`
    * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/isolation
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/isolation
    */
   isolation: Keyword<"auto" | "isolate">;
   /**
    * `justify-content` — `normal | <content-distribution> | <overflow-position>? [ <content-position> | left | right ]`
    * Initial: `normal`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/justify-content
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/justify-content
    */
   "justify-content": CssValue;
   /**
    * `justify-items` — `normal | stretch | <baseline-position> | <overflow-position>? [ <self-position> | left | right ] | legacy | legacy && [ left | right | center ] | anchor-center`
    * Initial: `legacy`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/justify-items
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/justify-items
    */
   "justify-items": CssValue;
   /**
    * `justify-self` — `auto | normal | stretch | <baseline-position> | <overflow-position>? [ <self-position> | left | right ] | anchor-center`
    * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/justify-self
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/justify-self
    */
   "justify-self": CssValue;
   /**
@@ -2763,249 +2849,256 @@ export interface CssProperties {
   /**
    * `left` — `auto | <length-percentage> | <anchor()> | <anchor-size()>`
    * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/left
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/left
    */
   left: CssValue;
   /**
    * `letter-spacing` — `normal | <length>`
    * Initial: `normal`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/letter-spacing
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/letter-spacing
    */
   "letter-spacing": CssValue;
   /**
    * `lighting-color` — `<color>`
    * Initial: `white`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/lighting-color
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/lighting-color
    */
   "lighting-color": CssValue;
   /**
    * `line-break` — `auto | loose | normal | strict | anywhere`
    * Initial: `auto`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/line-break
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/line-break
    */
   "line-break": Keyword<"auto" | "loose" | "normal" | "strict" | "anywhere">;
   /**
    * `line-clamp` — `none | <integer>`
    * Initial: `none`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/line-clamp
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/line-clamp
    */
   "line-clamp": CssValue;
   /**
    * `line-height` — `normal | <number> | <length> | <percentage>`
    * Initial: `normal`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/line-height
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/line-height
    */
   "line-height": CssValue;
   /**
    * `line-height-step` — `<length>`
    * Initial: `0`. Inherited: yes.
    * Status: experimental.
-   * @see https://developer.mozilla.org/docs/Web/CSS/line-height-step
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/line-height-step
    */
   "line-height-step": CssValue;
   /**
+   * `link-parameters` — `none | <param()>#`
+   * Initial: `none`. Inherited: no.
+   * Status: experimental.
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/link-parameters
+   */
+  "link-parameters": CssValue;
+  /**
    * `list-style` — `<'list-style-type'> || <'list-style-position'> || <'list-style-image'>`
    * Initial: `list-style-type, list-style-position, list-style-image`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/list-style
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/list-style
    */
   "list-style": CssValue;
   /**
    * `list-style-image` — `<image> | none`
    * Initial: `none`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/list-style-image
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/list-style-image
    */
   "list-style-image": CssValue;
   /**
    * `list-style-position` — `inside | outside`
    * Initial: `outside`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/list-style-position
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/list-style-position
    */
   "list-style-position": Keyword<"inside" | "outside">;
   /**
    * `list-style-type` — `<counter-style> | <string> | none`
    * Initial: `disc`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/list-style-type
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/list-style-type
    */
   "list-style-type": CssValue;
   /**
    * `margin` — `<'margin-top'>{1,4}`
    * Initial: `margin-bottom, margin-left, margin-right, margin-top`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/margin
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/margin
    */
   margin: CssValue;
   /**
    * `margin-block` — `<'margin-top'>{1,2}`
    * Initial: `margin-block-start, margin-block-end`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/margin-block
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/margin-block
    */
   "margin-block": CssValue;
   /**
    * `margin-block-end` — `<'margin-top'>`
    * Initial: `0`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/margin-block-end
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/margin-block-end
    */
   "margin-block-end": CssValue;
   /**
    * `margin-block-start` — `<'margin-top'>`
    * Initial: `0`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/margin-block-start
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/margin-block-start
    */
   "margin-block-start": CssValue;
   /**
    * `margin-bottom` — `<length-percentage> | auto | <anchor-size()>`
    * Initial: `0`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/margin-bottom
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/margin-bottom
    */
   "margin-bottom": CssValue;
   /**
    * `margin-inline` — `<'margin-top'>{1,2}`
    * Initial: `margin-inline-start, margin-inline-end`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/margin-inline
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/margin-inline
    */
   "margin-inline": CssValue;
   /**
    * `margin-inline-end` — `<'margin-top'>`
    * Initial: `0`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/margin-inline-end
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/margin-inline-end
    */
   "margin-inline-end": CssValue;
   /**
    * `margin-inline-start` — `<'margin-top'>`
    * Initial: `0`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/margin-inline-start
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/margin-inline-start
    */
   "margin-inline-start": CssValue;
   /**
    * `margin-left` — `<length-percentage> | auto | <anchor-size()>`
    * Initial: `0`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/margin-left
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/margin-left
    */
   "margin-left": CssValue;
   /**
    * `margin-right` — `<length-percentage> | auto | <anchor-size()>`
    * Initial: `0`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/margin-right
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/margin-right
    */
   "margin-right": CssValue;
   /**
    * `margin-top` — `<length-percentage> | auto | <anchor-size()>`
    * Initial: `0`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/margin-top
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/margin-top
    */
   "margin-top": CssValue;
   /**
    * `margin-trim` — `none | in-flow | all`
    * Initial: `none`. Inherited: no.
    * Status: experimental.
-   * @see https://developer.mozilla.org/docs/Web/CSS/margin-trim
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/margin-trim
    */
   "margin-trim": Keyword<"none" | "in-flow" | "all" | "block" | "inline">;
   /**
    * `marker` — `none | <url>`
    * Initial: `marker-start, marker-mid, marker-end`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/marker
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/marker
    */
   marker: CssValue;
   /**
    * `marker-end` — `none | <url>`
    * Initial: `none`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/marker-end
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/marker-end
    */
   "marker-end": CssValue;
   /**
    * `marker-mid` — `none | <url>`
    * Initial: `none`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/marker-mid
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/marker-mid
    */
   "marker-mid": CssValue;
   /**
    * `marker-start` — `none | <url>`
    * Initial: `none`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/marker-start
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/marker-start
    */
   "marker-start": CssValue;
   /**
    * `mask` — `<mask-layer>#`
    * Initial: `mask-image, mask-mode, mask-repeat, mask-position, mask-clip, mask-origin, mask-size, mask-composite`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/mask
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/mask
    */
   mask: CssValue;
   /**
    * `mask-border` — `<'mask-border-source'> || <'mask-border-slice'> [ / <'mask-border-width'>? [ / <'mask-border-outset'> ]? ]? || <'mask-border-repeat'> || <'mask-border-mode'>`
    * Initial: `mask-border-mode, mask-border-outset, mask-border-repeat, mask-border-slice, mask-border-source, mask-border-width`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/mask-border
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/mask-border
    */
   "mask-border": CssValue;
   /**
    * `mask-border-mode` — `luminance | alpha`
    * Initial: `alpha`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/mask-border-mode
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/mask-border-mode
    */
   "mask-border-mode": Keyword<"luminance" | "alpha">;
   /**
    * `mask-border-outset` — `[ <length> | <number> ]{1,4}`
    * Initial: `0`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/mask-border-outset
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/mask-border-outset
    */
   "mask-border-outset": CssValue;
   /**
    * `mask-border-repeat` — `[ stretch | repeat | round | space ]{1,2}`
    * Initial: `stretch`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/mask-border-repeat
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/mask-border-repeat
    */
   "mask-border-repeat": CssValue;
   /**
    * `mask-border-slice` — `<number-percentage>{1,4} fill?`
    * Initial: `0`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/mask-border-slice
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/mask-border-slice
    */
   "mask-border-slice": CssValue;
   /**
    * `mask-border-source` — `none | <image>`
    * Initial: `none`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/mask-border-source
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/mask-border-source
    */
   "mask-border-source": CssValue;
   /**
    * `mask-border-width` — `[ <length-percentage> | <number> | auto ]{1,4}`
    * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/mask-border-width
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/mask-border-width
    */
   "mask-border-width": CssValue;
   /**
    * `mask-clip` — `[ <coord-box> | no-clip ]#`
    * Initial: `border-box`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/mask-clip
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/mask-clip
    */
   "mask-clip": CssValue;
   /**
    * `mask-composite` — `<compositing-operator>#`
    * Initial: `add`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/mask-composite
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/mask-composite
    */
   "mask-composite": CssValue;
   /**
    * `mask-image` — `<mask-reference>#`
    * Initial: `none`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/mask-image
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/mask-image
    */
   "mask-image": CssValue;
   /**
    * `mask-mode` — `<masking-mode>#`
    * Initial: `match-source`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/mask-mode
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/mask-mode
    */
   "mask-mode": CssValue;
   /**
    * `mask-origin` — `<coord-box>#`
    * Initial: `border-box`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/mask-origin
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/mask-origin
    */
   "mask-origin": CssValue;
   /**
    * `mask-position` — `<position>#`
    * Initial: `0% 0%`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/mask-position
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/mask-position
    */
   "mask-position": CssValue;
   /** `mask-position-x` — a vendor-prefixed property, from the engine's own list. */
@@ -3015,63 +3108,63 @@ export interface CssProperties {
   /**
    * `mask-repeat` — `<repeat-style>#`
    * Initial: `repeat`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/mask-repeat
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/mask-repeat
    */
   "mask-repeat": CssValue;
   /**
    * `mask-size` — `<bg-size>#`
    * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/mask-size
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/mask-size
    */
   "mask-size": CssValue;
   /**
    * `mask-type` — `luminance | alpha`
    * Initial: `luminance`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/mask-type
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/mask-type
    */
   "mask-type": Keyword<"luminance" | "alpha">;
   /**
    * `masonry-auto-flow` — `[ pack | next ] || [ definite-first | ordered ]`
    * Initial: `pack`. Inherited: no.
    * Status: nonstandard.
-   * @see https://developer.mozilla.org/docs/Web/CSS/grid-auto-flow
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/grid-auto-flow
    */
   "masonry-auto-flow": CssValue;
   /**
    * `math-depth` — `auto-add | add(<integer>) | <integer>`
    * Initial: `0`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/math-depth
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/math-depth
    */
   "math-depth": CssValue;
   /**
    * `math-shift` — `normal | compact`
    * Initial: `normal`. Inherited: yes.
    * Status: experimental.
-   * @see https://developer.mozilla.org/docs/Web/CSS/math-shift
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/math-shift
    */
   "math-shift": Keyword<"normal" | "compact">;
   /**
    * `math-style` — `normal | compact`
    * Initial: `normal`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/math-style
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/math-style
    */
   "math-style": Keyword<"normal" | "compact">;
   /**
    * `max-block-size` — `<'max-width'>`
    * Initial: `none`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/max-block-size
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/max-block-size
    */
   "max-block-size": CssValue;
   /**
    * `max-height` — `none | <length-percentage [0,∞]> | min-content | max-content | fit-content | fit-content(<length-percentage [0,∞]>) | <calc-size()> | <anchor-size()>`
    * Initial: `none`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/max-height
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/max-height
    */
   "max-height": CssValue;
   /**
    * `max-inline-size` — `<'max-width'>`
    * Initial: `none`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/max-inline-size
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/max-inline-size
    */
   "max-inline-size": CssValue;
   /**
@@ -3083,49 +3176,49 @@ export interface CssProperties {
   /**
    * `max-width` — `none | <length-percentage [0,∞]> | min-content | max-content | fit-content | fit-content(<length-percentage [0,∞]>) | <calc-size()> | <anchor-size()>`
    * Initial: `none`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/max-width
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/max-width
    */
   "max-width": CssValue;
   /**
    * `min-block-size` — `<'min-width'>`
    * Initial: `0`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/min-block-size
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/min-block-size
    */
   "min-block-size": CssValue;
   /**
    * `min-height` — `auto | <length-percentage [0,∞]> | min-content | max-content | fit-content | fit-content(<length-percentage [0,∞]>) | <calc-size()> | <anchor-size()>`
    * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/min-height
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/min-height
    */
   "min-height": CssValue;
   /**
    * `min-inline-size` — `<'min-width'>`
    * Initial: `0`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/min-inline-size
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/min-inline-size
    */
   "min-inline-size": CssValue;
   /**
    * `min-width` — `auto | <length-percentage [0,∞]> | min-content | max-content | fit-content | fit-content(<length-percentage [0,∞]>) | <calc-size()> | <anchor-size()>`
    * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/min-width
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/min-width
    */
   "min-width": CssValue;
   /**
    * `mix-blend-mode` — `<blend-mode> | plus-darker | plus-lighter`
    * Initial: `normal`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/mix-blend-mode
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/mix-blend-mode
    */
   "mix-blend-mode": Keyword<"normal" | "multiply" | "screen" | "overlay" | "darken" | "lighten" | "color-dodge" | "color-burn" | "hard-light" | "soft-light" | "difference" | "exclusion" | "hue" | "saturation" | "color" | "luminosity" | "plus-darker" | "plus-lighter">;
   /**
    * `object-fit` — `fill | contain | cover | none | scale-down`
    * Initial: `fill`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/object-fit
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/object-fit
    */
   "object-fit": Keyword<"fill" | "contain" | "cover" | "none" | "scale-down">;
   /**
    * `object-position` — `<position>`
-   * Initial: `50% 50%`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/object-position
+   * Initial: `50% 50%`. Inherited: no.
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/object-position
    */
   "object-position": CssValue;
   /**
@@ -3137,103 +3230,103 @@ export interface CssProperties {
   /**
    * `offset` — `[ <'offset-position'>? [ <'offset-path'> [ <'offset-distance'> || <'offset-rotate'> ]? ]? ]! [ / <'offset-anchor'> ]?`
    * Initial: `offset-position, offset-path, offset-distance, offset-anchor, offset-rotate`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/offset
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/offset
    */
   offset: CssValue;
   /**
    * `offset-anchor` — `auto | <position>`
    * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/offset-anchor
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/offset-anchor
    */
   "offset-anchor": CssValue;
   /**
    * `offset-distance` — `<length-percentage>`
    * Initial: `0`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/offset-distance
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/offset-distance
    */
   "offset-distance": CssValue;
   /**
    * `offset-path` — `none | <offset-path> || <coord-box>`
    * Initial: `none`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/offset-path
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/offset-path
    */
   "offset-path": CssValue;
   /**
    * `offset-position` — `normal | auto | <position>`
    * Initial: `normal`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/offset-position
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/offset-position
    */
   "offset-position": CssValue;
   /**
    * `offset-rotate` — `[ auto | reverse ] || <angle>`
    * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/offset-rotate
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/offset-rotate
    */
   "offset-rotate": CssValue;
   /**
    * `opacity` — `<opacity-value>`
    * Initial: `1`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/opacity
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/opacity
    */
   opacity: CssValue;
   /**
    * `order` — `<integer>`
    * Initial: `0`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/order
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/order
    */
   order: CssValue;
   /**
    * `orphans` — `<integer>`
    * Initial: `2`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/orphans
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/orphans
    */
   orphans: CssValue;
   /**
    * `outline` — `<'outline-width'> || <'outline-style'> || <'outline-color'>`
    * Initial: `outline-width, outline-style, outline-color`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/outline
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/outline
    */
   outline: CssValue;
   /**
    * `outline-color` — `auto | <color>`
    * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/outline-color
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/outline-color
    */
   "outline-color": CssValue;
   /**
    * `outline-offset` — `<length>`
    * Initial: `0`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/outline-offset
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/outline-offset
    */
   "outline-offset": CssValue;
   /**
    * `outline-style` — `auto | <outline-line-style>`
    * Initial: `none`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/outline-style
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/outline-style
    */
   "outline-style": Keyword<"auto" | "none" | "dotted" | "dashed" | "solid" | "double" | "groove" | "ridge" | "inset" | "outset">;
   /**
    * `outline-width` — `<line-width>`
    * Initial: `medium`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/outline-width
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/outline-width
    */
   "outline-width": CssValue;
   /**
    * `overflow` — `[ visible | hidden | clip | scroll | auto ]{1,2}`
    * Initial: `visible`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/overflow
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/overflow
    */
   overflow: CssValue;
   /**
    * `overflow-anchor` — `auto | none`
    * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/overflow-anchor
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/overflow-anchor
    */
   "overflow-anchor": Keyword<"auto" | "none" | "visible">;
   /**
    * `overflow-block` — `visible | hidden | clip | scroll | auto`
    * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/overflow-block
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/overflow-block
    */
   "overflow-block": Keyword<"visible" | "hidden" | "clip" | "scroll" | "auto" | "overlay">;
   /**
@@ -3245,179 +3338,185 @@ export interface CssProperties {
   /**
    * `overflow-clip-margin` — `<visual-box> || <length [0,∞]>`
    * Initial: `0px`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/overflow-clip-margin
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/overflow-clip-margin
    */
   "overflow-clip-margin": CssValue;
   /**
    * `overflow-inline` — `visible | hidden | clip | scroll | auto`
    * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/overflow-inline
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/overflow-inline
    */
   "overflow-inline": Keyword<"visible" | "hidden" | "clip" | "scroll" | "auto" | "overlay">;
   /**
    * `overflow-wrap` — `normal | break-word | anywhere`
    * Initial: `normal`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/overflow-wrap
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/overflow-wrap
    */
   "overflow-wrap": Keyword<"normal" | "break-word" | "anywhere">;
   /**
    * `overflow-x` — `visible | hidden | clip | scroll | auto`
    * Initial: `visible`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/overflow-x
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/overflow-x
    */
   "overflow-x": Keyword<"visible" | "hidden" | "clip" | "scroll" | "auto" | "overlay">;
   /**
    * `overflow-y` — `visible | hidden | clip | scroll | auto`
    * Initial: `visible`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/overflow-y
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/overflow-y
    */
   "overflow-y": Keyword<"visible" | "hidden" | "clip" | "scroll" | "auto" | "overlay">;
   /**
    * `overlay` — `none | auto`
    * Initial: `none`. Inherited: no.
    * Status: experimental.
-   * @see https://developer.mozilla.org/docs/Web/CSS/overlay
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/overlay
    */
   overlay: Keyword<"none" | "auto">;
   /**
    * `overscroll-behavior` — `[ contain | none | auto ]{1,2}`
    * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/overscroll-behavior
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/overscroll-behavior
    */
   "overscroll-behavior": CssValue;
   /**
    * `overscroll-behavior-block` — `contain | none | auto`
    * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/overscroll-behavior-block
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/overscroll-behavior-block
    */
   "overscroll-behavior-block": Keyword<"contain" | "none" | "auto">;
   /**
    * `overscroll-behavior-inline` — `contain | none | auto`
    * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/overscroll-behavior-inline
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/overscroll-behavior-inline
    */
   "overscroll-behavior-inline": Keyword<"contain" | "none" | "auto">;
   /**
    * `overscroll-behavior-x` — `contain | none | auto`
    * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/overscroll-behavior-x
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/overscroll-behavior-x
    */
   "overscroll-behavior-x": Keyword<"contain" | "none" | "auto">;
   /**
    * `overscroll-behavior-y` — `contain | none | auto`
    * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/overscroll-behavior-y
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/overscroll-behavior-y
    */
   "overscroll-behavior-y": Keyword<"contain" | "none" | "auto">;
   /**
    * `padding` — `<'padding-top'>{1,4}`
    * Initial: `padding-bottom, padding-left, padding-right, padding-top`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/padding
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/padding
    */
   padding: CssValue;
   /**
    * `padding-block` — `<'padding-top'>{1,2}`
    * Initial: `padding-block-start, padding-block-end`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/padding-block
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/padding-block
    */
   "padding-block": CssValue;
   /**
    * `padding-block-end` — `<'padding-top'>`
    * Initial: `0`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/padding-block-end
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/padding-block-end
    */
   "padding-block-end": CssValue;
   /**
    * `padding-block-start` — `<'padding-top'>`
    * Initial: `0`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/padding-block-start
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/padding-block-start
    */
   "padding-block-start": CssValue;
   /**
    * `padding-bottom` — `<length-percentage [0,∞]>`
    * Initial: `0`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/padding-bottom
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/padding-bottom
    */
   "padding-bottom": CssValue;
   /**
    * `padding-inline` — `<'padding-top'>{1,2}`
    * Initial: `padding-inline-start, padding-inline-end`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/padding-inline
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/padding-inline
    */
   "padding-inline": CssValue;
   /**
    * `padding-inline-end` — `<'padding-top'>`
    * Initial: `0`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/padding-inline-end
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/padding-inline-end
    */
   "padding-inline-end": CssValue;
   /**
    * `padding-inline-start` — `<'padding-top'>`
    * Initial: `0`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/padding-inline-start
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/padding-inline-start
    */
   "padding-inline-start": CssValue;
   /**
    * `padding-left` — `<length-percentage [0,∞]>`
    * Initial: `0`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/padding-left
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/padding-left
    */
   "padding-left": CssValue;
   /**
    * `padding-right` — `<length-percentage [0,∞]>`
    * Initial: `0`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/padding-right
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/padding-right
    */
   "padding-right": CssValue;
   /**
    * `padding-top` — `<length-percentage [0,∞]>`
    * Initial: `0`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/padding-top
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/padding-top
    */
   "padding-top": CssValue;
   /**
    * `page` — `auto | <custom-ident>`
    * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/page
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/page
    */
   page: CssValue;
   /**
    * `page-break-after` — `auto | always | avoid | left | right | recto | verso`
    * Initial: `auto`. Inherited: no.
    * Status: obsolete.
-   * @see https://developer.mozilla.org/docs/Web/CSS/page-break-after
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/page-break-after
    */
   "page-break-after": Keyword<"auto" | "always" | "avoid" | "left" | "right" | "recto" | "verso">;
   /**
    * `page-break-before` — `auto | always | avoid | left | right | recto | verso`
    * Initial: `auto`. Inherited: no.
    * Status: obsolete.
-   * @see https://developer.mozilla.org/docs/Web/CSS/page-break-before
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/page-break-before
    */
   "page-break-before": Keyword<"auto" | "always" | "avoid" | "left" | "right" | "recto" | "verso">;
   /**
    * `page-break-inside` — `auto | avoid`
    * Initial: `auto`. Inherited: no.
    * Status: obsolete.
-   * @see https://developer.mozilla.org/docs/Web/CSS/page-break-inside
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/page-break-inside
    */
   "page-break-inside": Keyword<"auto" | "avoid">;
   /**
    * `paint-order` — `normal | [ fill || stroke || markers ]`
    * Initial: `normal`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/paint-order
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/paint-order
    */
   "paint-order": CssValue;
   /**
+   * `path-length` — `none | <length> [0,∞]`
+   * Initial: `none`. Inherited: no.
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/path-length
+   */
+  "path-length": CssValue;
+  /**
    * `perspective` — `none | <length>`
    * Initial: `none`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/perspective
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/perspective
    */
   perspective: CssValue;
   /**
    * `perspective-origin` — `<position>`
    * Initial: `50% 50%`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/perspective-origin
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/perspective-origin
    */
   "perspective-origin": CssValue;
   /** `perspective-origin-x` — a vendor-prefixed property, from the engine's own list. */
@@ -3427,133 +3526,133 @@ export interface CssProperties {
   /**
    * `place-content` — `<'align-content'> <'justify-content'>?`
    * Initial: `align-content, justify-content`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/place-content
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/place-content
    */
   "place-content": CssValue;
   /**
    * `place-items` — `<'align-items'> <'justify-items'>?`
    * Initial: `align-items, justify-items`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/place-items
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/place-items
    */
   "place-items": CssValue;
   /**
    * `place-self` — `<'align-self'> <'justify-self'>?`
    * Initial: `align-self, justify-self`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/place-self
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/place-self
    */
   "place-self": CssValue;
   /**
    * `pointer-events` — `auto | none | visiblePainted | visibleFill | visibleStroke | visible | painted | fill | stroke | all | inherit`
    * Initial: `auto`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/pointer-events
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/pointer-events
    */
   "pointer-events": Keyword<"auto" | "none" | "visiblePainted" | "visibleFill" | "visibleStroke" | "visible" | "painted" | "fill" | "stroke" | "all" | "inherit">;
   /**
    * `position` — `static | relative | absolute | sticky | fixed`
    * Initial: `static`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/position
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/position
    */
   position: Keyword<"static" | "relative" | "absolute" | "sticky" | "fixed">;
   /**
-   * `position-anchor` — `auto | none | <anchor-name>`
-   * Initial: `none`. Inherited: no.
+   * `position-anchor` — `normal | auto | none | <anchor-name> | match-parent`
+   * Initial: `normal`. Inherited: no.
    * Status: experimental.
-   * @see https://developer.mozilla.org/docs/Web/CSS/position-anchor
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/position-anchor
    */
   "position-anchor": CssValue;
   /**
    * `position-area` — `none | <position-area>`
    * Initial: `none`. Inherited: no.
    * Status: experimental.
-   * @see https://developer.mozilla.org/docs/Web/CSS/position-area
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/position-area
    */
   "position-area": CssValue;
   /**
    * `position-try` — `<'position-try-order'>? <'position-try-fallbacks'>`
    * Initial: `position-try-fallbacks, position-try-order`. Inherited: no.
    * Status: experimental.
-   * @see https://developer.mozilla.org/docs/Web/CSS/position-try
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/position-try
    */
   "position-try": CssValue;
   /**
    * `position-try-fallbacks` — `none | [ [<dashed-ident> || <try-tactic>] | <'position-area'> ]#`
    * Initial: `none`. Inherited: no.
    * Status: experimental.
-   * @see https://developer.mozilla.org/docs/Web/CSS/position-try-fallbacks
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/position-try-fallbacks
    */
   "position-try-fallbacks": CssValue;
   /**
    * `position-try-order` — `normal | <try-size>`
    * Initial: `normal`. Inherited: no.
    * Status: experimental.
-   * @see https://developer.mozilla.org/docs/Web/CSS/position-try-order
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/position-try-order
    */
   "position-try-order": Keyword<"normal" | "most-width" | "most-height" | "most-block-size" | "most-inline-size">;
   /**
    * `position-visibility` — `always | [ anchors-valid || anchors-visible || no-overflow ]`
    * Initial: `anchors-visible`. Inherited: no.
    * Status: experimental.
-   * @see https://developer.mozilla.org/docs/Web/CSS/position-visibility
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/position-visibility
    */
   "position-visibility": CssValue;
   /**
    * `print-color-adjust` — `economy | exact`
    * Initial: `economy`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/print-color-adjust
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/print-color-adjust
    */
   "print-color-adjust": Keyword<"economy" | "exact">;
   /**
    * `quotes` — `none | auto | [ <string> <string> ]+`
    * Initial: `dependsOnUserAgent`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/quotes
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/quotes
    */
   quotes: CssValue;
   /**
    * `r` — `<length> | <percentage>`
    * Initial: `0`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/r
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/r
    */
   r: CssValue;
   /**
    * `reading-flow` — `normal | source-order | flex-visual | flex-flow | grid-rows | grid-columns | grid-order`
    * Initial: `normal`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/reading-flow
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/reading-flow
    */
   "reading-flow": Keyword<"normal" | "source-order" | "flex-visual" | "flex-flow" | "grid-rows" | "grid-columns" | "grid-order">;
   /**
    * `reading-order` — `<integer>`
    * Initial: `0`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/reading-order
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/reading-order
    */
   "reading-order": CssValue;
   /**
    * `resize` — `none | both | horizontal | vertical | block | inline`
    * Initial: `none`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/resize
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/resize
    */
   resize: Keyword<"none" | "both" | "horizontal" | "vertical" | "block" | "inline">;
   /**
    * `right` — `auto | <length-percentage> | <anchor()> | <anchor-size()>`
    * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/right
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/right
    */
   right: CssValue;
   /**
    * `rotate` — `none | <angle> | [ x | y | z | <number>{3} ] && <angle>`
    * Initial: `none`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/rotate
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/rotate
    */
   rotate: CssValue;
   /**
    * `row-gap` — `normal | <length-percentage>`
    * Initial: `normal`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/row-gap
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/row-gap
    */
   "row-gap": CssValue;
   /**
    * `ruby-align` — `start | center | space-between | space-around`
    * Initial: `space-around`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/ruby-align
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/ruby-align
    */
   "ruby-align": Keyword<"start" | "center" | "space-between" | "space-around">;
   /**
@@ -3570,31 +3669,37 @@ export interface CssProperties {
   /**
    * `ruby-position` — `[ alternate || [ over | under ] ] | inter-character`
    * Initial: `alternate`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/ruby-position
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/ruby-position
    */
   "ruby-position": CssValue;
   /**
-   * `rx` — `<length> | <percentage>`
-   * Initial: `0`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/rx
+   * `rx` — `<length-percentage> | auto`
+   * Initial: `auto`. Inherited: no.
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/rx
    */
   rx: CssValue;
   /**
-   * `ry` — `<length> | <percentage>`
-   * Initial: `0`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/ry
+   * `ry` — `<length-percentage> | auto`
+   * Initial: `auto`. Inherited: no.
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/ry
    */
   ry: CssValue;
   /**
    * `scale` — `none | [ <number> | <percentage> ]{1,3}`
    * Initial: `none`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/scale
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/scale
    */
   scale: CssValue;
   /**
+   * `scroll-axis-lock` — `auto | none`
+   * Initial: `auto`. Inherited: no.
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/scroll-axis-lock
+   */
+  "scroll-axis-lock": Keyword<"auto" | "none">;
+  /**
    * `scroll-behavior` — `auto | smooth`
    * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/scroll-behavior
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/scroll-behavior
    */
   "scroll-behavior": Keyword<"auto" | "smooth">;
   /**
@@ -3606,145 +3711,145 @@ export interface CssProperties {
   /**
    * `scroll-margin` — `<length>{1,4}`
    * Initial: `scroll-margin-bottom, scroll-margin-left, scroll-margin-right, scroll-margin-top`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/scroll-margin
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/scroll-margin
    */
   "scroll-margin": CssValue;
   /**
    * `scroll-margin-block` — `<length>{1,2}`
    * Initial: `scroll-margin-block-start, scroll-margin-block-end`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/scroll-margin-block
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/scroll-margin-block
    */
   "scroll-margin-block": CssValue;
   /**
    * `scroll-margin-block-end` — `<length>`
    * Initial: `0`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/scroll-margin-block-end
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/scroll-margin-block-end
    */
   "scroll-margin-block-end": CssValue;
   /**
    * `scroll-margin-block-start` — `<length>`
    * Initial: `0`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/scroll-margin-block-start
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/scroll-margin-block-start
    */
   "scroll-margin-block-start": CssValue;
   /**
    * `scroll-margin-bottom` — `<length>`
    * Initial: `0`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/scroll-margin-bottom
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/scroll-margin-bottom
    */
   "scroll-margin-bottom": CssValue;
   /**
    * `scroll-margin-inline` — `<length>{1,2}`
    * Initial: `scroll-margin-inline-start, scroll-margin-inline-end`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/scroll-margin-inline
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/scroll-margin-inline
    */
   "scroll-margin-inline": CssValue;
   /**
    * `scroll-margin-inline-end` — `<length>`
    * Initial: `0`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/scroll-margin-inline-end
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/scroll-margin-inline-end
    */
   "scroll-margin-inline-end": CssValue;
   /**
    * `scroll-margin-inline-start` — `<length>`
    * Initial: `0`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/scroll-margin-inline-start
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/scroll-margin-inline-start
    */
   "scroll-margin-inline-start": CssValue;
   /**
    * `scroll-margin-left` — `<length>`
    * Initial: `0`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/scroll-margin-left
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/scroll-margin-left
    */
   "scroll-margin-left": CssValue;
   /**
    * `scroll-margin-right` — `<length>`
    * Initial: `0`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/scroll-margin-right
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/scroll-margin-right
    */
   "scroll-margin-right": CssValue;
   /**
    * `scroll-margin-top` — `<length>`
    * Initial: `0`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/scroll-margin-top
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/scroll-margin-top
    */
   "scroll-margin-top": CssValue;
   /**
    * `scroll-marker-group` — `none | before | after`
    * Initial: `none`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/scroll-marker-group
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/scroll-marker-group
    */
   "scroll-marker-group": Keyword<"none" | "before" | "after">;
   /**
    * `scroll-padding` — `[ auto | <length-percentage> ]{1,4}`
    * Initial: `scroll-padding-bottom, scroll-padding-left, scroll-padding-right, scroll-padding-top`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/scroll-padding
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/scroll-padding
    */
   "scroll-padding": CssValue;
   /**
    * `scroll-padding-block` — `[ auto | <length-percentage> ]{1,2}`
    * Initial: `scroll-padding-block-start, scroll-padding-block-end`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/scroll-padding-block
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/scroll-padding-block
    */
   "scroll-padding-block": CssValue;
   /**
    * `scroll-padding-block-end` — `auto | <length-percentage>`
    * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/scroll-padding-block-end
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/scroll-padding-block-end
    */
   "scroll-padding-block-end": CssValue;
   /**
    * `scroll-padding-block-start` — `auto | <length-percentage>`
    * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/scroll-padding-block-start
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/scroll-padding-block-start
    */
   "scroll-padding-block-start": CssValue;
   /**
    * `scroll-padding-bottom` — `auto | <length-percentage>`
    * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/scroll-padding-bottom
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/scroll-padding-bottom
    */
   "scroll-padding-bottom": CssValue;
   /**
    * `scroll-padding-inline` — `[ auto | <length-percentage> ]{1,2}`
    * Initial: `scroll-padding-inline-start, scroll-padding-inline-end`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/scroll-padding-inline
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/scroll-padding-inline
    */
   "scroll-padding-inline": CssValue;
   /**
    * `scroll-padding-inline-end` — `auto | <length-percentage>`
    * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/scroll-padding-inline-end
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/scroll-padding-inline-end
    */
   "scroll-padding-inline-end": CssValue;
   /**
    * `scroll-padding-inline-start` — `auto | <length-percentage>`
    * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/scroll-padding-inline-start
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/scroll-padding-inline-start
    */
   "scroll-padding-inline-start": CssValue;
   /**
    * `scroll-padding-left` — `auto | <length-percentage>`
    * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/scroll-padding-left
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/scroll-padding-left
    */
   "scroll-padding-left": CssValue;
   /**
    * `scroll-padding-right` — `auto | <length-percentage>`
    * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/scroll-padding-right
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/scroll-padding-right
    */
   "scroll-padding-right": CssValue;
   /**
    * `scroll-padding-top` — `auto | <length-percentage>`
    * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/scroll-padding-top
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/scroll-padding-top
    */
   "scroll-padding-top": CssValue;
   /**
    * `scroll-snap-align` — `[ none | start | end | center ]{1,2}`
    * Initial: `none`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/scroll-snap-align
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/scroll-snap-align
    */
   "scroll-snap-align": CssValue;
   /**
@@ -3774,13 +3879,13 @@ export interface CssProperties {
   /**
    * `scroll-snap-stop` — `normal | always`
    * Initial: `normal`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/scroll-snap-stop
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/scroll-snap-stop
    */
   "scroll-snap-stop": Keyword<"normal" | "always">;
   /**
    * `scroll-snap-type` — `none | [ x | y | block | inline | both ] [ mandatory | proximity ]?`
    * Initial: `none`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/scroll-snap-type
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/scroll-snap-type
    */
   "scroll-snap-type": CssValue;
   /**
@@ -3798,70 +3903,70 @@ export interface CssProperties {
   /**
    * `scroll-target-group` — `none | auto`
    * Initial: `none`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/scroll-target-group
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/scroll-target-group
    */
   "scroll-target-group": Keyword<"none" | "auto">;
   /**
    * `scroll-timeline` — `[ <'scroll-timeline-name'> <'scroll-timeline-axis'>? ]#`
    * Initial: `scroll-timeline-name, scroll-timeline-axis`. Inherited: no.
    * Status: experimental.
-   * @see https://developer.mozilla.org/docs/Web/CSS/scroll-timeline
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/scroll-timeline
    */
   "scroll-timeline": CssValue;
   /**
    * `scroll-timeline-axis` — `[ block | inline | x | y ]#`
    * Initial: `block`. Inherited: no.
    * Status: experimental.
-   * @see https://developer.mozilla.org/docs/Web/CSS/scroll-timeline-axis
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/scroll-timeline-axis
    */
   "scroll-timeline-axis": CssValue;
   /**
    * `scroll-timeline-name` — `[ none | <dashed-ident> ]#`
    * Initial: `none`. Inherited: no.
    * Status: experimental.
-   * @see https://developer.mozilla.org/docs/Web/CSS/scroll-timeline-name
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/scroll-timeline-name
    */
   "scroll-timeline-name": CssValue;
   /**
    * `scrollbar-color` — `auto | <color>{2}`
    * Initial: `auto`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/scrollbar-color
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/scrollbar-color
    */
   "scrollbar-color": CssValue;
   /**
    * `scrollbar-gutter` — `auto | stable && both-edges?`
    * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/scrollbar-gutter
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/scrollbar-gutter
    */
   "scrollbar-gutter": CssValue;
   /**
    * `scrollbar-width` — `auto | thin | none`
    * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/scrollbar-width
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/scrollbar-width
    */
   "scrollbar-width": Keyword<"auto" | "thin" | "none">;
   /**
    * `shape-image-threshold` — `<opacity-value>`
    * Initial: `0.0`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/shape-image-threshold
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/shape-image-threshold
    */
   "shape-image-threshold": CssValue;
   /**
    * `shape-margin` — `<length-percentage>`
    * Initial: `0`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/shape-margin
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/shape-margin
    */
   "shape-margin": CssValue;
   /**
    * `shape-outside` — `none | [ <shape-box> || <basic-shape> ] | <image>`
    * Initial: `none`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/shape-outside
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/shape-outside
    */
   "shape-outside": CssValue;
   /**
    * `shape-rendering` — `auto | optimizeSpeed | crispEdges | geometricPrecision`
-   * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/shape-rendering
+   * Initial: `auto`. Inherited: yes.
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/shape-rendering
    */
   "shape-rendering": Keyword<"auto" | "optimizeSpeed" | "crispEdges" | "geometricPrecision">;
   /**
@@ -3873,19 +3978,19 @@ export interface CssProperties {
   /**
    * `stop-color` — `<'color'>`
    * Initial: `black`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/stop-color
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/stop-color
    */
   "stop-color": CssValue;
   /**
    * `stop-opacity` — `<'opacity'>`
    * Initial: `black`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/stop-opacity
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/stop-opacity
    */
   "stop-opacity": CssValue;
   /**
    * `stroke` — `<paint>`
    * Initial: `stroke-dasharray, stroke-dashoffset, stroke-linecap, stroke-linejoin, stroke-miterlimit, stroke-opacity, stroke-width`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/stroke
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/stroke
    */
   stroke: CssValue;
   /**
@@ -3897,79 +4002,79 @@ export interface CssProperties {
   /**
    * `stroke-dasharray` — `none | <dasharray>`
    * Initial: `none`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/stroke-dasharray
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/stroke-dasharray
    */
   "stroke-dasharray": CssValue;
   /**
    * `stroke-dashoffset` — `<length-percentage> | <number>`
    * Initial: `0`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/stroke-dashoffset
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/stroke-dashoffset
    */
   "stroke-dashoffset": CssValue;
   /**
    * `stroke-linecap` — `butt | round | square`
    * Initial: `butt`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/stroke-linecap
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/stroke-linecap
    */
   "stroke-linecap": Keyword<"butt" | "round" | "square">;
   /**
    * `stroke-linejoin` — `miter | miter-clip | round | bevel | arcs`
    * Initial: `miter`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/stroke-linejoin
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/stroke-linejoin
    */
   "stroke-linejoin": Keyword<"miter" | "miter-clip" | "round" | "bevel" | "arcs">;
   /**
    * `stroke-miterlimit` — `<number>`
    * Initial: `4`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/stroke-miterlimit
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/stroke-miterlimit
    */
   "stroke-miterlimit": CssValue;
   /**
    * `stroke-opacity` — `<'opacity'>`
    * Initial: `1`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/stroke-opacity
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/stroke-opacity
    */
   "stroke-opacity": CssValue;
   /**
    * `stroke-width` — `<length-percentage> | <number>`
    * Initial: `1px`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/stroke-width
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/stroke-width
    */
   "stroke-width": CssValue;
   /**
    * `tab-size` — `<integer> | <length>`
    * Initial: `8`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/tab-size
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/tab-size
    */
   "tab-size": CssValue;
   /**
    * `table-layout` — `auto | fixed`
    * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/table-layout
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/table-layout
    */
   "table-layout": Keyword<"auto" | "fixed">;
   /**
    * `text-align` — `start | end | left | right | center | justify | match-parent`
    * Initial: `startOrNamelessValueIfLTRRightIfRTL`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/text-align
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/text-align
    */
   "text-align": Keyword<"start" | "end" | "left" | "right" | "center" | "justify" | "match-parent">;
   /**
    * `text-align-last` — `auto | start | end | left | right | center | justify`
    * Initial: `auto`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/text-align-last
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/text-align-last
    */
   "text-align-last": Keyword<"auto" | "start" | "end" | "left" | "right" | "center" | "justify" | "match-parent">;
   /**
    * `text-anchor` — `start | middle | end`
    * Initial: `start`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/text-anchor
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/text-anchor
    */
   "text-anchor": Keyword<"start" | "middle" | "end">;
   /**
    * `text-autospace` — `normal | <autospace> | auto`
    * Initial: `normal`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/text-autospace
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/text-autospace
    */
   "text-autospace": CssValue;
   /**
@@ -3990,231 +4095,229 @@ export interface CssProperties {
   /**
    * `text-combine-upright` — `none | all | [ digits <integer>? ]`
    * Initial: `none`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/text-combine-upright
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/text-combine-upright
    */
   "text-combine-upright": CssValue;
   /**
    * `text-decoration` — `<'text-decoration-line'> || <'text-decoration-style'> || <'text-decoration-color'> || <'text-decoration-thickness'>`
    * Initial: `text-decoration-color, text-decoration-style, text-decoration-line`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/text-decoration
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/text-decoration
    */
   "text-decoration": CssValue;
   /**
    * `text-decoration-color` — `<color>`
    * Initial: `currentcolor`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/text-decoration-color
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/text-decoration-color
    */
   "text-decoration-color": CssValue;
   /**
-   * `text-decoration-inset` — `<length>{1,2} | auto`
+   * `text-decoration-inset` — `<length-percentage>{1,2} | auto`
    * Initial: `0`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/text-decoration-inset
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/text-decoration-inset
    */
   "text-decoration-inset": CssValue;
   /**
    * `text-decoration-line` — `none | [ underline || overline || line-through || blink ] | spelling-error | grammar-error`
    * Initial: `none`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/text-decoration-line
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/text-decoration-line
    */
   "text-decoration-line": CssValue;
   /**
    * `text-decoration-skip` — `none | [ objects || [ spaces | [ leading-spaces || trailing-spaces ] ] || edges || box-decoration ]`
    * Initial: `objects`. Inherited: yes.
    * Status: experimental.
-   * @see https://developer.mozilla.org/docs/Web/CSS/text-decoration-skip
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/text-decoration-skip
    */
   "text-decoration-skip": CssValue;
   /**
    * `text-decoration-skip-ink` — `auto | all | none`
    * Initial: `auto`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/text-decoration-skip-ink
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/text-decoration-skip-ink
    */
   "text-decoration-skip-ink": Keyword<"auto" | "all" | "none">;
   /**
    * `text-decoration-style` — `solid | double | dotted | dashed | wavy`
    * Initial: `solid`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/text-decoration-style
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/text-decoration-style
    */
   "text-decoration-style": Keyword<"solid" | "double" | "dotted" | "dashed" | "wavy">;
   /**
    * `text-decoration-thickness` — `auto | from-font | <length> | <percentage>`
    * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/text-decoration-thickness
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/text-decoration-thickness
    */
   "text-decoration-thickness": CssValue;
   /**
    * `text-emphasis` — `<'text-emphasis-style'> || <'text-emphasis-color'>`
    * Initial: `text-emphasis-style, text-emphasis-color`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/text-emphasis
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/text-emphasis
    */
   "text-emphasis": CssValue;
   /**
    * `text-emphasis-color` — `<color>`
    * Initial: `currentcolor`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/text-emphasis-color
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/text-emphasis-color
    */
   "text-emphasis-color": CssValue;
   /**
    * `text-emphasis-position` — `auto | [ over | under ] && [ right | left ]?`
    * Initial: `auto`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/text-emphasis-position
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/text-emphasis-position
    */
   "text-emphasis-position": CssValue;
   /**
    * `text-emphasis-style` — `none | [ [ filled | open ] || [ dot | circle | double-circle | triangle | sesame ] ] | <string>`
    * Initial: `none`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/text-emphasis-style
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/text-emphasis-style
    */
   "text-emphasis-style": CssValue;
   /**
+   * `text-fit` — `[ none | grow | shrink ] [consistent | per-line | per-line-all]? <percentage>?`
+   * Initial: `none`. Inherited: yes.
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/text-fit
+   */
+  "text-fit": CssValue;
+  /**
    * `text-indent` — `<length-percentage> && hanging? && each-line?`
    * Initial: `0`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/text-indent
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/text-indent
    */
   "text-indent": CssValue;
   /**
    * `text-justify` — `auto | inter-character | inter-word | none`
    * Initial: `auto`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/text-justify
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/text-justify
    */
   "text-justify": Keyword<"auto" | "inter-character" | "inter-word" | "none">;
   /**
    * `text-orientation` — `mixed | upright | sideways`
    * Initial: `mixed`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/text-orientation
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/text-orientation
    */
   "text-orientation": Keyword<"mixed" | "upright" | "sideways">;
   /**
    * `text-overflow` — `[ clip | ellipsis | <string> ]{1,2}`
    * Initial: `clip`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/text-overflow
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/text-overflow
    */
   "text-overflow": CssValue;
   /**
    * `text-rendering` — `auto | optimizeSpeed | optimizeLegibility | geometricPrecision`
    * Initial: `auto`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/text-rendering
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/text-rendering
    */
   "text-rendering": Keyword<"auto" | "optimizeSpeed" | "optimizeLegibility" | "geometricPrecision">;
   /**
    * `text-shadow` — `none | <shadow-t>#`
    * Initial: `none`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/text-shadow
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/text-shadow
    */
   "text-shadow": CssValue;
   /**
    * `text-size-adjust` — `none | auto | <percentage>`
    * Initial: `autoForSmartphoneBrowsersSupportingInflation`. Inherited: yes.
    * Status: experimental.
-   * @see https://developer.mozilla.org/docs/Web/CSS/text-size-adjust
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/text-size-adjust
    */
   "text-size-adjust": CssValue;
   /**
    * `text-spacing-trim` — `space-all | normal | space-first | trim-start`
    * Initial: `normal`. Inherited: yes.
    * Status: experimental.
-   * @see https://developer.mozilla.org/docs/Web/CSS/text-spacing-trim
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/text-spacing-trim
    */
   "text-spacing-trim": Keyword<"space-all" | "normal" | "space-first" | "trim-start">;
   /**
    * `text-transform` — `none | [ capitalize | uppercase | lowercase ] || full-width || full-size-kana | math-auto`
    * Initial: `none`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/text-transform
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/text-transform
    */
   "text-transform": CssValue;
   /**
    * `text-underline-offset` — `auto | <length> | <percentage>`
    * Initial: `auto`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/text-underline-offset
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/text-underline-offset
    */
   "text-underline-offset": CssValue;
   /**
    * `text-underline-position` — `auto | from-font | [ under || [ left | right ] ]`
    * Initial: `auto`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/text-underline-position
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/text-underline-position
    */
   "text-underline-position": CssValue;
   /**
    * `text-wrap` — `<'text-wrap-mode'> || <'text-wrap-style'>`
    * Initial: `wrap`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/text-wrap
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/text-wrap
    */
   "text-wrap": CssValue;
   /**
    * `text-wrap-mode` — `wrap | nowrap`
    * Initial: `wrap`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/text-wrap-mode
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/text-wrap-mode
    */
   "text-wrap-mode": Keyword<"wrap" | "nowrap">;
   /**
    * `text-wrap-style` — `auto | balance | stable | pretty`
    * Initial: `auto`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/text-wrap-style
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/text-wrap-style
    */
   "text-wrap-style": Keyword<"auto" | "balance" | "stable" | "pretty">;
   /**
    * `timeline-scope` — `none | <dashed-ident>#`
    * Initial: `none`. Inherited: no.
    * Status: experimental.
-   * @see https://developer.mozilla.org/docs/Web/CSS/timeline-scope
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/timeline-scope
    */
   "timeline-scope": CssValue;
   /**
-   * `timeline-trigger` — `none | [ <'timeline-trigger-name'> <'timeline-trigger-source'> <'timeline-trigger-range'> [ '/' <'timeline-trigger-exit-range'> ]? ]#`
-   * Initial: `timeline-trigger-name, timeline-trigger-source, timeline-trigger-range, timeline-trigger-exit-range`. Inherited: no.
+   * `timeline-trigger` — `none | [ <'timeline-trigger-name'> <'timeline-trigger-source'> <'timeline-trigger-activation-range'> [ '/' <'timeline-trigger-active-range'> ]? ]#`
+   * Initial: `timeline-trigger-name, timeline-trigger-source, timeline-trigger-activation-range, timeline-trigger-active-range`. Inherited: no.
    * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/timeline-trigger
    */
   "timeline-trigger": CssValue;
-  /** `timeline-trigger-activation-range-end` — a vendor-prefixed property, from the engine's own list. */
+  /**
+   * `timeline-trigger-activation-range` — `[ <'timeline-trigger-activation-range-start'> <'timeline-trigger-activation-range-end'>? ]#`
+   * Initial: `timeline-trigger-activation-range-start, timeline-trigger-activation-range-end`. Inherited: no.
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/timeline-trigger-activation-range
+   */
+  "timeline-trigger-activation-range": CssValue;
+  /**
+   * `timeline-trigger-activation-range-end` — `[ normal | <length-percentage> | <timeline-range-name> <length-percentage>? ]#`
+   * Initial: `normal`. Inherited: no.
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/timeline-trigger-activation-range-end
+   */
   "timeline-trigger-activation-range-end": CssValue;
-  /** `timeline-trigger-activation-range-start` — a vendor-prefixed property, from the engine's own list. */
+  /**
+   * `timeline-trigger-activation-range-start` — `[ normal | <length-percentage> | <timeline-range-name> <length-percentage>? ]#`
+   * Initial: `normal`. Inherited: no.
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/timeline-trigger-activation-range-start
+   */
   "timeline-trigger-activation-range-start": CssValue;
-  /** `timeline-trigger-active-range-end` — a vendor-prefixed property, from the engine's own list. */
+  /**
+   * `timeline-trigger-active-range` — `[ <'timeline-trigger-active-range-start'> <'timeline-trigger-active-range-end'>? ]#`
+   * Initial: `timeline-trigger-active-range-start, timeline-trigger-active-range-end`. Inherited: no.
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/timeline-trigger-active-range
+   */
+  "timeline-trigger-active-range": CssValue;
+  /**
+   * `timeline-trigger-active-range-end` — `[ auto | normal | <length-percentage> | <timeline-range-name> <length-percentage>? ]#`
+   * Initial: `auto`. Inherited: no.
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/timeline-trigger-active-range-end
+   */
   "timeline-trigger-active-range-end": CssValue;
-  /** `timeline-trigger-active-range-start` — a vendor-prefixed property, from the engine's own list. */
+  /**
+   * `timeline-trigger-active-range-start` — `[ auto | normal | <length-percentage> | <timeline-range-name> <length-percentage>? ]#`
+   * Initial: `auto`. Inherited: no.
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/timeline-trigger-active-range-start
+   */
   "timeline-trigger-active-range-start": CssValue;
-  /**
-   * `timeline-trigger-exit-range` — `[ <'timeline-trigger-exit-range-start'> <'timeline-trigger-exit-range-end'>? ]#`
-   * Initial: `timeline-trigger-exit-range-start, timeline-trigger-exit-range-end`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/timeline-trigger-exit-range
-   */
-  "timeline-trigger-exit-range": CssValue;
-  /**
-   * `timeline-trigger-exit-range-end` — `[ auto | normal | <length-percentage> | <timeline-range-name> <length-percentage>? ]#`
-   * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/timeline-trigger-exit-range-end
-   */
-  "timeline-trigger-exit-range-end": CssValue;
-  /**
-   * `timeline-trigger-exit-range-start` — `[ auto | normal | <length-percentage> | <timeline-range-name> <length-percentage>? ]#`
-   * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/timeline-trigger-exit-range-start
-   */
-  "timeline-trigger-exit-range-start": CssValue;
   /**
    * `timeline-trigger-name` — `none | <dashed-ident>#`
    * Initial: `none`. Inherited: no.
    * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/timeline-trigger-name
    */
   "timeline-trigger-name": CssValue;
-  /**
-   * `timeline-trigger-range` — `[ <'timeline-trigger-range-start'> <'timeline-trigger-range-end'>? ]#`
-   * Initial: `timeline-trigger-range-start, timeline-trigger-range-end`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/timeline-trigger-range
-   */
-  "timeline-trigger-range": CssValue;
-  /**
-   * `timeline-trigger-range-end` — `[ normal | <length-percentage> | <timeline-range-name> <length-percentage>? ]#`
-   * Initial: `normal`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/timeline-trigger-range-end
-   */
-  "timeline-trigger-range-end": CssValue;
-  /**
-   * `timeline-trigger-range-start` — `[ normal | <length-percentage> | <timeline-range-name> <length-percentage>? ]#`
-   * Initial: `normal`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/timeline-trigger-range-start
-   */
-  "timeline-trigger-range-start": CssValue;
   /**
    * `timeline-trigger-source` — `<single-animation-timeline>#`
    * Initial: `auto`. Inherited: no.
@@ -4224,31 +4327,31 @@ export interface CssProperties {
   /**
    * `top` — `auto | <length-percentage> | <anchor()> | <anchor-size()>`
    * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/top
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/top
    */
   top: CssValue;
   /**
    * `touch-action` — `auto | none | [ [ pan-x | pan-left | pan-right ] || [ pan-y | pan-up | pan-down ] || pinch-zoom ] | manipulation`
    * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/touch-action
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/touch-action
    */
   "touch-action": CssValue;
   /**
    * `transform` — `none | <transform-list>`
    * Initial: `none`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/transform
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/transform
    */
   transform: CssValue;
   /**
    * `transform-box` — `content-box | border-box | fill-box | stroke-box | view-box`
    * Initial: `view-box`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/transform-box
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/transform-box
    */
   "transform-box": Keyword<"content-box" | "border-box" | "fill-box" | "stroke-box" | "view-box">;
   /**
    * `transform-origin` — `[ <length-percentage> | left | center | right | top | bottom ] | [ [ <length-percentage> | left | center | right ] && [ <length-percentage> | top | center | bottom ] ] <length>?`
    * Initial: `50% 50% 0`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/transform-origin
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/transform-origin
    */
   "transform-origin": CssValue;
   /** `transform-origin-x` — a vendor-prefixed property, from the engine's own list. */
@@ -4260,49 +4363,49 @@ export interface CssProperties {
   /**
    * `transform-style` — `flat | preserve-3d`
    * Initial: `flat`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/transform-style
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/transform-style
    */
   "transform-style": Keyword<"flat" | "preserve-3d">;
   /**
    * `transition` — `<single-transition>#`
    * Initial: `transition-delay, transition-duration, transition-property, transition-timing-function, transition-behavior`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/transition
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/transition
    */
   transition: CssValue;
   /**
    * `transition-behavior` — `<transition-behavior-value>#`
    * Initial: `normal`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/transition-behavior
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/transition-behavior
    */
   "transition-behavior": CssValue;
   /**
    * `transition-delay` — `<time>#`
    * Initial: `0s`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/transition-delay
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/transition-delay
    */
   "transition-delay": CssValue;
   /**
    * `transition-duration` — `<time>#`
    * Initial: `0s`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/transition-duration
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/transition-duration
    */
   "transition-duration": CssValue;
   /**
    * `transition-property` — `none | <single-transition-property>#`
    * Initial: `all`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/transition-property
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/transition-property
    */
   "transition-property": CssValue;
   /**
    * `transition-timing-function` — `<easing-function>#`
    * Initial: `ease`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/transition-timing-function
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/transition-timing-function
    */
   "transition-timing-function": CssValue;
   /**
    * `translate` — `none | <length-percentage> [ <length-percentage> <length>? ]?`
    * Initial: `none`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/translate
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/translate
    */
   translate: CssValue;
   /**
@@ -4314,53 +4417,53 @@ export interface CssProperties {
   /**
    * `unicode-bidi` — `normal | embed | isolate | bidi-override | isolate-override | plaintext`
    * Initial: `normal`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/unicode-bidi
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/unicode-bidi
    */
   "unicode-bidi": Keyword<"normal" | "embed" | "isolate" | "bidi-override" | "isolate-override" | "plaintext">;
   /**
    * `user-select` — `auto | text | none | all`
    * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/user-select
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/user-select
    */
   "user-select": Keyword<"auto" | "text" | "none" | "all">;
   /**
    * `vector-effect` — `none | non-scaling-stroke | non-scaling-size | non-rotation | fixed-position`
    * Initial: `none`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/vector-effect
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/vector-effect
    */
   "vector-effect": Keyword<"none" | "non-scaling-stroke" | "non-scaling-size" | "non-rotation" | "fixed-position">;
   /**
    * `vertical-align` — `baseline | sub | super | text-top | text-bottom | middle | top | bottom | <percentage> | <length>`
    * Initial: `baseline`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/vertical-align
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/vertical-align
    */
   "vertical-align": CssValue;
   /**
    * `view-timeline` — `[ <'view-timeline-name'> [ <'view-timeline-axis'> || <'view-timeline-inset'> ]? ]#`
    * Initial: `view-timeline-name, view-timeline-axis`. Inherited: no.
    * Status: experimental.
-   * @see https://developer.mozilla.org/docs/Web/CSS/view-timeline
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/view-timeline
    */
   "view-timeline": CssValue;
   /**
    * `view-timeline-axis` — `[ block | inline | x | y ]#`
    * Initial: `block`. Inherited: no.
    * Status: experimental.
-   * @see https://developer.mozilla.org/docs/Web/CSS/view-timeline-axis
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/view-timeline-axis
    */
   "view-timeline-axis": CssValue;
   /**
    * `view-timeline-inset` — `[ [ auto | <length-percentage> ]{1,2} ]#`
    * Initial: `auto`. Inherited: no.
    * Status: experimental.
-   * @see https://developer.mozilla.org/docs/Web/CSS/view-timeline-inset
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/view-timeline-inset
    */
   "view-timeline-inset": CssValue;
   /**
    * `view-timeline-name` — `[ none | <dashed-ident> ]#`
    * Initial: `none`. Inherited: no.
    * Status: experimental.
-   * @see https://developer.mozilla.org/docs/Web/CSS/view-timeline-name
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/view-timeline-name
    */
   "view-timeline-name": CssValue;
   /**
@@ -4371,91 +4474,107 @@ export interface CssProperties {
   /**
    * `view-transition-name` — `none | <custom-ident> | match-element`
    * Initial: `none`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/view-transition-name
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/view-transition-name
    */
   "view-transition-name": CssValue;
   /**
+   * `view-transition-scope` — `none | all`
+   * Initial: `none`. Inherited: no.
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/view-transition-scope
+   */
+  "view-transition-scope": Keyword<"none" | "all">;
+  /**
    * `visibility` — `visible | hidden | collapse`
    * Initial: `visible`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/visibility
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/visibility
    */
   visibility: Keyword<"visible" | "hidden" | "collapse">;
   /**
    * `white-space` — `normal | pre | pre-wrap | pre-line | <'white-space-collapse'> || <'text-wrap-mode'>`
    * Initial: `normal`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/white-space
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/white-space
    */
   "white-space": CssValue;
   /**
    * `white-space-collapse` — `collapse | preserve | preserve-breaks | preserve-spaces | break-spaces`
    * Initial: `collapse`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/white-space-collapse
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/white-space-collapse
    */
   "white-space-collapse": Keyword<"collapse" | "preserve" | "preserve-breaks" | "preserve-spaces" | "break-spaces">;
+  /** `white-space-trim` — a vendor-prefixed property, from the engine's own list. */
+  "white-space-trim": CssValue;
   /**
    * `widows` — `<integer>`
    * Initial: `2`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/widows
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/widows
    */
   widows: CssValue;
   /**
    * `width` — `auto | <length-percentage [0,∞]> | min-content | max-content | fit-content | fit-content(<length-percentage [0,∞]>) | <calc-size()> | <anchor-size()>`
    * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/width
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/width
    */
   width: CssValue;
   /**
    * `will-change` — `auto | <animateable-feature>#`
    * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/will-change
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/will-change
    */
   "will-change": CssValue;
   /**
+   * `window-drag` — `none | move`
+   * Initial: `none`. Inherited: yes.
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/window-drag
+   */
+  "window-drag": Keyword<"none" | "move">;
+  /**
    * `word-break` — `normal | break-all | keep-all | break-word | auto-phrase`
    * Initial: `normal`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/word-break
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/word-break
    */
   "word-break": Keyword<"normal" | "break-all" | "keep-all" | "break-word" | "auto-phrase">;
   /**
    * `word-spacing` — `normal | <length>`
    * Initial: `normal`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/word-spacing
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/word-spacing
    */
   "word-spacing": CssValue;
   /**
    * `word-wrap` — `normal | break-word`
    * Initial: `normal`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/overflow-wrap
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/overflow-wrap
    */
   "word-wrap": Keyword<"normal" | "break-word" | "anywhere">;
+  /** `wrap-inside` — a vendor-prefixed property, from the engine's own list. */
+  "wrap-inside": CssValue;
   /**
    * `writing-mode` — `horizontal-tb | vertical-rl | vertical-lr | sideways-rl | sideways-lr`
    * Initial: `horizontal-tb`. Inherited: yes.
-   * @see https://developer.mozilla.org/docs/Web/CSS/writing-mode
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/writing-mode
    */
   "writing-mode": Keyword<"horizontal-tb" | "vertical-rl" | "vertical-lr" | "sideways-rl" | "sideways-lr" | "lr" | "rl" | "tb">;
   /**
    * `x` — `<length> | <percentage>`
    * Initial: `0`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/x
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/x
    */
   x: CssValue;
   /**
    * `y` — `<length> | <percentage>`
    * Initial: `0`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/y
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/y
    */
   y: CssValue;
   /**
    * `z-index` — `auto | <integer>`
    * Initial: `auto`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/z-index
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/z-index
    */
   "z-index": CssValue;
   /**
    * `zoom` — `normal | reset | <number [0,∞]> || <percentage [0,∞]>`
    * Initial: `1`. Inherited: no.
-   * @see https://developer.mozilla.org/docs/Web/CSS/zoom
+   * @see https://developer.mozilla.org/docs/Web/CSS/Reference/Properties/zoom
    */
   zoom: CssValue;
 }

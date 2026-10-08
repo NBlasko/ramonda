@@ -393,7 +393,15 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
   try {
     browser = await pw[engine].launch();
     const tab = await browser.newPage();
-    await tab.setContent("<!doctype html><html><body><div id=x>t</div><div id=y>t</div></body></html>");
+    /**
+     * Each element after a line of its own, so the two sit in the SAME place. Compared as the first
+     * and second child of the body they did not: Chromium 156 adds no height for the emphasis marks
+     * over the very first line of a page, so `text-emphasis` measured 18px written and 26px split —
+     * every computed value equal, and the same 26px either way once both had a line above them.
+     */
+    await tab.setContent(
+      "<!doctype html><html><body><div>a</div><div id=x>t</div><div>a</div><div id=y>t</div></body></html>",
+    );
 
     for (const [family, values] of Object.entries(MUST)) {
       const splits = values.map((value) => split(family, value) ?? null);

@@ -248,6 +248,16 @@ export const BY_HAND: Readonly<Record<string, (value: string) => Record<string, 
   "animation-range": (value) => ranges(value, "animation-range-start", "animation-range-end"),
 
   /**
+   * The two halves of `timeline-trigger`, shorthands of their own since Chromium split them. The same
+   * rule as `animation-range` — measured: `contain` alone runs to `contain`, which a table learned
+   * from sentinels wrote as `normal` — and each half's own blank, as `triggerOf` has it.
+   */
+  "timeline-trigger-activation-range": (value) =>
+    ranges(value, "timeline-trigger-activation-range-start", "timeline-trigger-activation-range-end"),
+  "timeline-trigger-active-range": (value) =>
+    ranges(value, "timeline-trigger-active-range-start", "timeline-trigger-active-range-end", "auto"),
+
+  /**
    * Per item: a name, an optional source, the activation range, and after a `/` the active range.
    * Chromium is the only engine with it, and what it does is what this writes — measured.
    */
@@ -565,10 +575,19 @@ export const BY_HAND: Readonly<Record<string, (value: string) => Record<string, 
   "-webkit-mask-position": (value) => positions(value, "-webkit-mask-position-x", "-webkit-mask-position-y", false),
 
   /**
-   * An alias of `border-block-start`, split into its OWN prefixed longhands. Splitting it into the
-   * standard ones would make it work in Firefox, which does not have it and drops the declaration.
+   * Aliases of one logical side each — `before` is `border-block-start`, `after` its end, `start` and
+   * `end` the inline ones — split into their OWN prefixed longhands. Splitting them into the standard
+   * ones would make them work in Firefox, which does not have them and drops the declaration.
    */
-  "-webkit-border-before": (value) => {
+  "-webkit-border-before": webkitSide("before"),
+  "-webkit-border-after": webkitSide("after"),
+  "-webkit-border-start": webkitSide("start"),
+  "-webkit-border-end": webkitSide("end"),
+};
+
+/** `width || style || color`, into that side's own prefixed longhands — see the four entries using it. */
+function webkitSide(side: string) {
+  return (value: string): Record<string, string> | undefined => {
     const tokens = tokensOf(value);
     if (tokens.length === 0 || tokens.length > 3) return undefined;
     let width: string | undefined;
@@ -581,12 +600,12 @@ export const BY_HAND: Readonly<Record<string, (value: string) => Record<string, 
       else return undefined;
     }
     return {
-      "-webkit-border-before-width": width ?? "medium",
-      "-webkit-border-before-style": style ?? "none",
-      "-webkit-border-before-color": color ?? "currentcolor",
+      [`-webkit-border-${side}-width`]: width ?? "medium",
+      [`-webkit-border-${side}-style`]: style ?? "none",
+      [`-webkit-border-${side}-color`]: color ?? "currentcolor",
     };
-  },
-};
+  };
+}
 
 const flex = (grow: string, shrink: string, basis: string) => ({
   "flex-grow": grow,
@@ -1041,10 +1060,10 @@ function rangeOf(t: readonly string[], blank: string): [string, string] | undefi
   return [start[0], end[0]];
 }
 
-function ranges(value: string, start: string, end: string): Record<string, string> | undefined {
+function ranges(value: string, start: string, end: string, blank = "normal"): Record<string, string> | undefined {
   const items = itemsOf(value);
   if (items === undefined) return undefined;
-  const read = items.map((one) => rangeOf(tokensOf(one), "normal"));
+  const read = items.map((one) => rangeOf(tokensOf(one), blank));
   if (read.some((one) => one === undefined)) return undefined;
   const pairs = read as [string, string][];
   return { [start]: pairs.map((one) => one[0]).join(", "), [end]: pairs.map((one) => one[1]).join(", ") };
