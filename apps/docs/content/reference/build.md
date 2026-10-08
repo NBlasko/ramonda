@@ -11,8 +11,8 @@ Three settings decide whether a Ramonda app runs at all. One of them has a defau
 and gets no warning from anywhere. So they are not yours to keep in step by hand: `@ramonda/build`
 owns them, and your app names none.
 
-```bash
-npm add -D @ramonda/build
+```install
+-D @ramonda/build
 ```
 
 ```ts

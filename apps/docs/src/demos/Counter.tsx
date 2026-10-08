@@ -1,8 +1,5 @@
 import { Component, state } from "@ramonda/core";
 
-// The whole model in a dozen lines: a field that IS state, an ordinary method as
-// the handler, and a render that reads the field. No constructor, no binding, no
-// setter — `this.count = ...` is the update.
 export class Counter extends Component {
   @state count = 0;
 
@@ -11,15 +8,6 @@ export class Counter extends Component {
   }
 
   render() {
-    return (
-      <div>
-        <p className="demo-row">
-          {/* Methods are bound for you, so passing one as a handler just works. */}
-          <button type="button" onclick={this.increment}>
-            count is {this.count}
-          </button>
-        </p>
-      </div>
-    );
+    return <button onclick={this.increment}>count is {this.count}</button>;
   }
 }

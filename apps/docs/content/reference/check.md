@@ -2,7 +2,7 @@
 title: Checking your app
 description: ramonda-check reads your source and proves what a running page would not tell you; ramonda-check-bundle reads what your build emitted.
 section: Reference
-order: 112
+order: 113
 ---
 
 # Checking your app
@@ -19,8 +19,8 @@ fine.
 `@ramonda/check` closes it from the other side: it reads your source and **proves** the provider is
 above the consumer, before anything runs.
 
-```bash
-npm add -D @ramonda/check
+```install
+-D @ramonda/check
 ```
 
 ```jsonc

@@ -7,8 +7,19 @@ order: 105
 
 # Devtools
 
-```
-pnpm add -D @ramonda/devtools
+A panel inside your app, in development, that shows the component tree, each component's state,
+props and hooks, and the query cache — and takes you from something on the screen to the component
+that drew it.
+
+![The panel docked beside the app, with ProductCard focused: its props, its Query hook's state, and what
+that hook reads from context](/devtools/tree.webp)
+
+## Setup
+
+A development dependency:
+
+```install
+-D @ramonda/devtools
 ```
 
 ```ts
@@ -32,9 +43,6 @@ A variable specifier is left alone by the bundler, which means the browser has t
 `@ramonda/devtools` on its own — and it cannot. So only your app can load the panel: it is the one that
 knows the package is installed, and its bundler is the one that can resolve it. If you have never seen
 the badge, that missing line is why.
-
-![The panel docked beside the app, with ProductCard focused: its props, its Query hook's state, and what
-that hook reads from context](/devtools/tree.webp)
 
 ## Finding a component
 

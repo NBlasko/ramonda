@@ -2544,6 +2544,8 @@ describe("a project with nothing that compiles a block", () => {
 
     expect(said).toHaveLength(1);
     expect(String(said[0].messageText)).toContain("a build will refuse this file");
+    // The page that says how to set it up — the overview no longer carries the steps.
+    expect(String(said[0].messageText)).toContain("https://ramonda.dev/style-blocks/setup");
     expect(said[0].category).toBe(ts.DiagnosticCategory.Error);
   });
 

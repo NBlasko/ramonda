@@ -45,4 +45,9 @@ export interface PageMeta {
    * ordinary shape of a site rather than a loss.
    */
   nav?: boolean;
+  /**
+   * The file this page is written in, from the repository root — what "Edit this page" opens.
+   * Absent for a page generated from code, which has no file of its own to edit.
+   */
+  source?: string;
 }

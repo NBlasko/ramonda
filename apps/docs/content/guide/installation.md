@@ -11,13 +11,15 @@ order: 10
 
 The scaffolder sets up a runnable project for you, with the build already configured:
 
-```
-npm create ramonda@latest my-app
+```install
+create ramonda@latest my-app
 ```
 
 It asks a couple of questions — a client-side app or a server-rendered one, and which
 packages and tooling to add ([router](/routing), [lens](/lens), [testing](/testing),
-[devtools](/devtools), and Biome for lint + format) — then:
+[devtools](/devtools), and Biome for lint + format) — then, in the folder it made, install (unless
+you let it) and start the dev server. With another package manager, it is the same two commands in
+its own spelling:
 
 ```
 cd my-app
@@ -25,17 +27,16 @@ npm install   # unless you let it install for you
 npm run dev
 ```
 
-Open the address it prints and you have a working Ramonda app. (`pnpm create ramonda`
-and `yarn create ramonda` work too.)
+Open the address it prints and you have a working Ramonda app.
 
 If you're starting fresh, stop here — the rest of this page is for adding Ramonda to a
 project you already have.
 
 ## Adding Ramonda to an existing project
 
-```
-npm install @ramonda/core
-npm install -D @ramonda/build
+```install
+@ramonda/core
+-D @ramonda/build
 ```
 
 Ramonda has no runtime dependencies. It needs three settings from your bundler, and

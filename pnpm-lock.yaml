@@ -73,6 +73,9 @@ importers:
       '@ramonda/check':
         specifier: workspace:^
         version: link:../../packages/check
+      '@ramonda/css':
+        specifier: workspace:^
+        version: link:../../packages/css
       '@ramonda/theme':
         specifier: workspace:^
         version: link:../../packages/theme

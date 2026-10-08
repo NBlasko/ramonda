@@ -32,6 +32,7 @@
     "@playwright/test": "^1.49.0",
     "@ramonda/build": "workspace:^",
     "@ramonda/check": "workspace:^",
+    "@ramonda/css": "workspace:^",
     "@ramonda/theme": "workspace:^",
     "@types/node": "^26.4.1",
     "esbuild": "0.28.2",

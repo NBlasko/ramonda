@@ -3,32 +3,12 @@ import type { RamondaNode, VNode } from "@ramonda/core";
 import { Router, RouteOutlet } from "@ramonda/router";
 import { Navigator, Link, routes, pages } from "./routes";
 import { Search } from "./Search";
+import { grouped } from "./navigation";
 
 interface SidebarProps {
   /** Called when a link inside is clicked, so the mobile drawer can close. */
   onNavigate?: () => void;
 }
-
-/**
- * Sidebar entries grouped by their frontmatter `section`.
- *
- * A page may opt out with `nav: false`, and 158 of them do — the generated rules and diagnostics.
- * They are reached from their index, from a report that named one, or from search; nobody scrolls a
- * list of 158 names looking for `RMD047`. Measured while they were still listed: the sidebar was
- * **83% of every page's HTML**, repeated across all 252 pages.
- */
-const grouped = (() => {
-  const groups = new Map<string, (typeof pages)[number][]>();
-  for (const page of pages) {
-    // `in` rather than a property read: `pages` is `as const`, so the union's members only carry
-    // the keys they were written with, and most were written without this one.
-    if ("nav" in page && page.nav === false) continue;
-    const key = page.section || "";
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key)!.push(page);
-  }
-  return [...groups.entries()];
-})();
 
 class Sidebar extends Component<SidebarProps> {
   route = this.use(Navigator);

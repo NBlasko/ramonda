@@ -570,6 +570,19 @@ article img[src$=".gif"] {
   border-radius: 10px;
 }
 
+/**
+ * The editor GIFs are a whole editor window, drawn by `scripts/build-editor-gifs.mjs` with its own
+ * frame — so full width, no second border, and the space held before they arrive so the prose does
+ * not jump. 760 × 400 is the size the script draws at.
+ */
+article img[src^="/media/"] {
+  width: 760px;
+  max-width: 100%;
+  aspect-ratio: 760 / 400;
+  border: none;
+  box-shadow: none;
+}
+
 /* ── prose tables, lists, blockquotes ──────────────────────────────────── */
 /* A DataTable is a real table until the screen is too narrow for one, at which point each row
    becomes a card: a full-width name bar that stays put, and the remaining cells scrolling under it
@@ -1085,4 +1098,85 @@ article pre.shiki {
 .demo-ok {
   color: var(--rmd-ok);
   margin: 0 0 8px;
+}
+
+/* The foot of a page: the pages either side, in sidebar order, and where to edit this one. */
+.page-footer {
+  margin-top: 48px;
+  padding-top: 24px;
+  border-top: 1px solid var(--rmd-line);
+}
+.pager {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+.pager-link {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 48%;
+  padding: 12px 16px;
+  border: 1px solid var(--rmd-line);
+  border-radius: 8px;
+  color: var(--rmd-fg);
+  text-decoration: none;
+}
+.pager-link:hover {
+  border-color: var(--rmd-accent);
+}
+.pager-next {
+  margin-left: auto;
+  text-align: right;
+}
+.pager-label {
+  font-size: 0.8em;
+  color: var(--rmd-muted);
+}
+.edit-page {
+  display: inline-block;
+  margin-top: 16px;
+  font-size: 0.9em;
+  color: var(--rmd-muted);
+}
+@media (max-width: 600px) {
+  .pager {
+    flex-direction: column;
+  }
+  .pager-link {
+    max-width: none;
+  }
+  .pager-next {
+    margin-left: 0;
+  }
+}
+
+/* One piece of code seen several ways — an install per manager, a block as written and as built. */
+.code-tabs {
+  margin: 1.4em 0;
+}
+.code-tabs .code-block {
+  margin-top: 0;
+}
+.code-tabs-bar {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+.code-tab {
+  padding: 4px 10px;
+  border: 1px solid var(--rmd-line);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--rmd-muted);
+  font: inherit;
+  font-size: 0.85em;
+  cursor: pointer;
+}
+.code-tab:hover {
+  color: var(--rmd-fg);
+}
+.code-tab.active {
+  border-color: var(--rmd-accent);
+  color: var(--rmd-fg);
 }

@@ -1,3 +1,5 @@
+import { compiledExample } from "./compiled-example.mjs";
+import { installCommands } from "./install-commands.mjs";
 import { readdirSync, readFileSync, writeFileSync, statSync, mkdirSync, rmSync, existsSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -65,6 +67,8 @@ const md = new MarkdownIt({
     // it has to reach `toTree` with its language intact. Returning "" lets
     // markdown-it emit its own <pre><code class="language-demo:Name">.
     if (lang.startsWith("demo:")) return "";
+    // An `install` fence is written once and shown per package manager — see `installCommands`.
+    if (lang === INSTALL || lang === COMPILED) return "";
 
     return highlighter.codeToHtml(code, {
       lang: KNOWN_LANGS.has(lang) ? lang : "text",
@@ -83,6 +87,34 @@ const ATTRIBUTE_ALIASES = { class: "className", for: "htmlFor" };
  * a string that can drift from the code it claims to show.
  */
 const DEMO_PREFIX = "language-demo:";
+
+/** An `install` fence's name, and the page being rendered so a fault in one can name it. */
+const INSTALL = "install";
+
+/**
+ * A block shown as written, as the classes an element gets, and as the CSS the build emits — a
+ * fence written ```tsx compiled. It is compiled HERE, by the real compiler, so what the page says
+ * the build does is what the build does; and on disk it stays a `tsx` fence, so `check-examples`
+ * checks it like any other. Rendering reads it as its own language — see `withCompiledFences`.
+ */
+const COMPILED = "compiled";
+
+/** `tsx compiled` → `compiled` for the renderer, which loses everything after a fence's language. */
+function withCompiledFences(body) {
+  return body.replace(/^```tsx compiled$/gm, "```" + COMPILED);
+}
+
+let currentFile = "";
+
+/** Code highlighted as the given language, as the tree a page carries. */
+function highlighted(code, lang) {
+  const html = highlighter.codeToHtml(code, {
+    lang: KNOWN_LANGS.has(lang) ? lang : "text",
+    themes: { light: "github-light", dark: "github-dark" },
+    defaultColor: false,
+  });
+  return toTree(new JSDOM(`<body>${html}</body>`).window.document.body.firstElementChild);
+}
 
 /** "RMD004 — Props mutated" → "rmd004-props-mutated". */
 function slugify(text) {
@@ -157,6 +189,30 @@ function toTree(node) {
     const cls = code?.getAttribute("class") ?? "";
     if (cls.startsWith(DEMO_PREFIX)) {
       return { t: "demo", a: { name: cls.slice(DEMO_PREFIX.length) } };
+    }
+    if (cls === `language-${INSTALL}`) {
+      return {
+        t: "tabs",
+        a: { remember: "package-manager", label: "Package manager" },
+        c: installCommands(code.textContent ?? "", currentFile).map(([manager, command]) => ({
+          t: "tab",
+          a: { name: manager },
+          c: [highlighted(command, "sh")],
+        })),
+      };
+    }
+    if (cls === `language-${COMPILED}`) {
+      const written = code.textContent ?? "";
+      const { classes, css } = compiledExample(written, currentFile);
+      return {
+        t: "tabs",
+        a: { label: "Written and built" },
+        c: [
+          { t: "tab", a: { name: "Written" }, c: [highlighted(written.trimEnd(), "tsx")] },
+          { t: "tab", a: { name: "Classes" }, c: [highlighted(classes, "text")] },
+          { t: "tab", a: { name: "CSS" }, c: [highlighted(css, "css")] },
+        ],
+      };
     }
   }
 
@@ -234,16 +290,37 @@ function toRoutePath(file) {
  * break that way: the code is the one part of a diagnostic that never changes, because a code is
  * never reused.
  */
+/**
+ * A link to an anchor in the same file — `#rmd048-…`, `#capturing-them` — moved to where that
+ * heading went when the file was split: a code's heading is its own page now, and everything else
+ * is on the index. Written in the one file, they are the natural links to write; left as they are,
+ * every one pointed at an anchor that is not on the page it is read on.
+ */
+function relink(text) {
+  return text.replace(/\]\(#([^)\s]+)\)/g, (_, anchor) => {
+    const code = /^(rm[a-z]\d{3})(?:-|$)/.exec(anchor);
+    return code === null ? `](/reference/diagnostics#${anchor})` : `](/reference/diagnostics/${code[1]})`;
+  });
+}
+
 function diagnosticPages(source) {
   const { data, body } = splitFrontmatter(source);
   const lines = body.split("\n");
 
-  /** Where each family and each code starts, in file order. */
+  /**
+   * Where each family and each code starts, in file order.
+   *
+   * The page's own title is the first `# ` heading and is NOT a family. It was told apart by being
+   * on line 0 — but the body starts with the blank line the frontmatter leaves, so the title was on
+   * line 1, read as a family, and everything between it and the first code (the introduction,
+   * "Capturing them") was on no page at all.
+   */
+  const title = lines.findIndex((line) => line.startsWith("# "));
   const marks = [];
   lines.forEach((line, at) => {
     const family = /^# (.+)$/.exec(line);
     const code = /^## (RM[A-Z]\d{3})\s+—\s+(.+)$/.exec(line);
-    if (family && at > 0) marks.push({ kind: "family", at, name: family[1] });
+    if (family && at > title) marks.push({ kind: "family", at, name: family[1] });
     if (code) marks.push({ kind: "code", at, code: code[1], title: code[2] });
   });
 
@@ -307,8 +384,8 @@ function diagnosticPages(source) {
 
   const front = Object.entries(data).map(([key, value]) => `${key}: ${value}`);
   return {
-    index: { source: ["---", ...front, "---", "", ...index, ""].join("\n"), path: "/reference/diagnostics" },
-    pages: made,
+    index: { source: relink(["---", ...front, "---", "", ...index, ""].join("\n")), path: "/reference/diagnostics" },
+    pages: made.map((page) => ({ ...page, source: relink(page.source) })),
   };
 }
 
@@ -476,11 +553,16 @@ function pageFor(rule, at) {
  * things answering one question, drifting apart quietly. So the rule pages below are markdown
  * handed to this function, not markup built another way.
  */
-function pageOf(source, routePath, label) {
+/**
+ * One page's metadata and tree. `editable` is the file it is written in, from the repository root —
+ * what "Edit this page" opens — and nothing for a page generated from code rather than written.
+ */
+function pageOf(source, routePath, label, editable) {
   {
     const file = label;
+    currentFile = label;
     const { data, body } = splitFrontmatter(source);
-    const dom = new JSDOM(`<body>${md.render(body)}</body>`);
+    const dom = new JSDOM(`<body>${md.render(withCompiledFences(body))}</body>`);
     addHeadingIds(dom.window.document);
     const tree = Array.from(dom.window.document.body.childNodes)
       .map(toTree)
@@ -513,6 +595,7 @@ function pageOf(source, routePath, label) {
       // Frontmatter is text, so the flag is compared as text — the same shape as `order` above,
       // which is `Number(...)` for the same reason.
       ...(String(data.nav) === "false" ? { nav: false } : {}),
+      ...(editable === undefined ? {} : { source: editable }),
       tree,
     };
   }
@@ -527,13 +610,17 @@ function pageOf(source, routePath, label) {
  */
 const diagnosticsFile = join(contentDir, "reference", "diagnostics.md");
 const split = diagnosticPages(readFileSync(diagnosticsFile, "utf8"));
+/** Where every one of those pages is edited: the one file they are split from. */
+const DIAGNOSTICS_SOURCE = `apps/docs/${relative(root, diagnosticsFile)}`;
 
 const pages = [
   ...walkFiles(contentDir)
     .filter((file) => file !== diagnosticsFile)
-    .map((file) => pageOf(readFileSync(file, "utf8"), toRoutePath(file), relative(root, file))),
-  pageOf(split.index.source, split.index.path, "reference/diagnostics (index)"),
-  ...split.pages.map((made) => pageOf(made.source, made.path, made.label)),
+    .map((file) =>
+      pageOf(readFileSync(file, "utf8"), toRoutePath(file), relative(root, file), `apps/docs/${relative(root, file)}`),
+    ),
+  pageOf(split.index.source, split.index.path, "reference/diagnostics (index)", DIAGNOSTICS_SOURCE),
+  ...split.pages.map((made) => pageOf(made.source, made.path, made.label, DIAGNOSTICS_SOURCE)),
   ...rulePages().map((made) => pageOf(made.source, made.path, made.label)),
 ].sort((a, b) => a.order - b.order || a.path.localeCompare(b.path));
 

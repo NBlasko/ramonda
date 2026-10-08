@@ -43,6 +43,10 @@ jobs:
       # differ between machines — and `pnpm bench:css` is how somebody measures for real.
       - name: The CSS benchmark still runs
         run: node scripts/css/bench-css.mjs 5
+      # The editor GIFs on the style blocks pages are drawn from the plugin's own answers; this asks
+      # them again and fails when a message or a completion has moved since. No browser needed.
+      - name: The editor GIFs show what the editor says
+        run: node apps/docs/scripts/build-editor-gifs.mjs --check
       # oxlint over the whole monorepo in one pass (config: .oxlintrc.json). Hard
       # gate: the tree is clean today (0 errors).
       - name: Lint (oxlint)
