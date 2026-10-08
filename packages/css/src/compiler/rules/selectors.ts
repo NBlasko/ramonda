@@ -115,16 +115,29 @@ export function mediaFeatures(block: Block, findings: Finding[]): void {
   }
 }
 
-/** A `(feature: value)` pair inside a condition, with the value as written. */
-const A_PAIR = /\(\s*([a-zA-Z][\w-]*)\s*:\s*([^()]*?)\s*\)/g;
+/**
+ * A `(feature: value)` pair inside a condition. The value is taken whole and trimmed by `pairsIn`:
+ * written as a lazy match between two runs of spaces, the three traded the same characters and a
+ * pair that never closed took 65 s at 5,000 spaces.
+ */
+const A_PAIR = /\(\s*([a-zA-Z][\w-]*)\s*:([^()]*)\)/g;
+
+/** Each pair in a prelude: the whole match, the name, the value as written, and where it starts. */
+function* pairsIn(prelude: string): Generator<{ whole: string; name: string; value: string; index: number }> {
+  for (const found of prelude.matchAll(A_PAIR)) {
+    const [whole, name, raw] = found;
+    yield { whole, name, value: raw.trim(), index: found.index ?? 0 };
+  }
+}
 
 /** What kind of value this is, as `MEDIA_KINDS` names them — or nothing for one this cannot read. */
 function kindOf(value: string): string | undefined {
   if (value === "0") return "zero";
-  if (/^[+-]?(?:\d+\.?\d*|\.\d+)$/.test(value)) return "number";
+  // `\d+(?:\.\d*)?` and not `\d+\.?\d*`, whose two runs of digits share every digit: quadratic.
+  if (/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(value)) return "number";
   if (/^\d+(?:\.\d+)?\s*\/\s*\d+(?:\.\d+)?$/.test(value)) return "ratio";
   if (/^\d+(?:\.\d+)?(?:dppx|dpi|dpcm|x)$/i.test(value)) return "resolution";
-  if (/^[+-]?(?:\d+\.?\d*|\.\d+)[a-z%]+$/i.test(value)) return "length";
+  if (/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)[a-z%]+$/i.test(value)) return "length";
   return undefined;
 }
 
@@ -149,13 +162,12 @@ export function mediaValues(block: Block, findings: Finding[]): void {
   for (const item of rulesIn(block)) {
     if (!item.prelude.startsWith("@media") || item.at === undefined) continue;
 
-    for (const found of item.prelude.matchAll(A_PAIR)) {
-      const [whole, name, value] = found;
+    for (const { whole, name, value, index } of pairsIn(item.prelude)) {
       const words = MEDIA_WORDS[name.toLowerCase()];
       const kinds = MEDIA_KINDS[name.toLowerCase()];
       if (words === undefined || kinds === undefined || value === "") continue;
 
-      const at = item.at + (found.index ?? 0) + whole.indexOf(value, whole.indexOf(":"));
+      const at = item.at + index + whole.indexOf(value, whole.indexOf(":"));
       const kind = kindOf(value);
       if (kind === undefined) {
         if (!/^[a-zA-Z][\w-]*$/.test(value) || words.includes(value.toLowerCase())) continue;
@@ -208,15 +220,14 @@ export function supportsAMediaFeature(block: Block, findings: Finding[]): void {
   for (const item of rulesIn(block)) {
     if (!item.prelude.startsWith("@supports") || item.at === undefined) continue;
 
-    for (const found of item.prelude.matchAll(A_PAIR)) {
-      const [whole, name, value] = found;
+    for (const { whole, name, value, index } of pairsIn(item.prelude)) {
       if (!FEATURE_NAMES.has(name.toLowerCase())) continue;
       const property = PROPERTY_NAMES.has(name.toLowerCase());
       if (property && kindOf(value) !== "length") continue;
 
       findings.push({
         rule: "supports-a-media-feature",
-        at: item.at + (found.index ?? 0) + whole.indexOf(name),
+        at: item.at + index + whole.indexOf(name),
         length: name.length,
         message:
           `\`@supports\` asks whether a property is supported, and \`${name}\` here is ` +

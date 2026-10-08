@@ -19,7 +19,7 @@
  * `@media (min-width: 80rem)` in another at a 1600px viewport, in both file orders.
  */
 function pixelsOf(text: string): number | undefined {
-  const found = /^\s*(-?\d*\.?\d+)(px|rem|em)\s*$/i.exec(text);
+  const found = /^\s*(-?(?:\d*\.)?\d+)(px|rem|em)\s*$/i.exec(text);
   if (found === null) return undefined;
   const value = Number(found[1]);
   return found[2].toLowerCase() === "px" ? value : value * 16;

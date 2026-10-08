@@ -625,11 +625,11 @@ const SYNTHESIS = ["weight", "style", "small-caps", "position"];
 const TRIM = ["none", "trim-start", "trim-end", "trim-both"];
 const LINE_STYLE = ["none", "hidden", "dotted", "dashed", "solid", "double", "groove", "ridge", "inset", "outset"];
 
-const NUMBER = /^[+]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i;
-const LENGTH = /^([+]?(\d+\.?\d*|\.\d+)[a-z]+|0|calc\(.*\))$/i;
-const LINE_WIDTH = /^(thin|medium|thick|0|[+]?(\d+\.?\d*|\.\d+)[a-z]+|calc\(.*\))$/i;
+const NUMBER = /^[+]?(\d+(?:\.\d*)?|\.\d+)(e[+-]?\d+)?$/i;
+const LENGTH = /^([+]?(\d+(?:\.\d*)?|\.\d+)[a-z]+|0|calc\(.*\))$/i;
+const LINE_WIDTH = /^(thin|medium|thick|0|[+]?(\d+(?:\.\d*)?|\.\d+)[a-z]+|calc\(.*\))$/i;
 const BASIS =
-  /^(auto|content|max-content|min-content|fit-content|fit-content\(.*\)|[+]?(\d+\.?\d*|\.\d+)([a-z]+|%)|calc\(.*\))$/i;
+  /^(auto|content|max-content|min-content|fit-content|fit-content\(.*\)|[+]?(\d+(?:\.\d*)?|\.\d+)([a-z]+|%)|calc\(.*\))$/i;
 
 /**
  * The edges every engine with `text-box` takes. Narrower than the grammar on purpose: Chromium
@@ -766,10 +766,10 @@ function itemsOf(value: string): string[] | undefined {
 
 const X_EDGE = ["left", "right"];
 const Y_EDGE = ["top", "bottom"];
-const OFFSET = /^([+-]?(\d+\.?\d*|\.\d+)([a-z]+|%)?|calc\(.*\))$/i;
+const OFFSET = /^([+-]?(\d+(?:\.\d*)?|\.\d+)([a-z]+|%)?|calc\(.*\))$/i;
 /** A length, a percentage or a `calc()` — and `0`, the one number CSS takes as a length. */
 const isOffset = (one: string | undefined) =>
-  one !== undefined && (one === "0" || (OFFSET.test(one) && !/^[+-]?(\d+\.?\d*|\.\d+)$/.test(one)));
+  one !== undefined && (one === "0" || (OFFSET.test(one) && !/^[+-]?(\d+(?:\.\d*)?|\.\d+)$/.test(one)));
 
 /**
  * One `<position>` as its horizontal and vertical parts, as CSS reads it.
@@ -1323,7 +1323,7 @@ function place(
   return { [first]: a.join(" "), [second]: other.join(" ") };
 }
 
-const ANGLE = /^[+-]?(\d+\.?\d*|\.\d+)(deg|rad|grad|turn)$/i;
+const ANGLE = /^[+-]?(\d+(?:\.\d*)?|\.\d+)(deg|rad|grad|turn)$/i;
 /** What an `offset-path` may be written as: a shape function, a `url()`, a box, or `none`. */
 const OFFSET_PATH =
   /^(none|(ray|path|url|inset|circle|ellipse|polygon|xywh|rect|shape)\(.*\)|content-box|padding-box|border-box|fill-box|stroke-box|view-box)$/i;

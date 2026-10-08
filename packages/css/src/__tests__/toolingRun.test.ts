@@ -1,6 +1,6 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { ToolFailed } from "../adapters/tools";
 import { filesUnder, formatFile, formatText, lintFile, readReport, toolIn } from "../adapters/tooling";
@@ -284,9 +284,15 @@ describe("which files a run is about", () => {
     return root;
   }
 
+  // Written with `/` whatever the system: these ask WHICH files, and Windows answers `src\a.ts`.
   const under = (root: string, ...paths: string[]) =>
     filesUnder(paths, root)
-      .map((path) => path.slice(root.length + 1))
+      .map((path) =>
+        path
+          .slice(root.length + 1)
+          .split(sep)
+          .join("/"),
+      )
       .sort();
 
   test("every source file below a directory, and nothing else", () => {

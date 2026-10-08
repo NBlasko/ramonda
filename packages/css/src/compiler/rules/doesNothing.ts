@@ -111,7 +111,7 @@ const A_REAL_DISPLAY = (display: string): boolean => {
  * out: it costs a report nobody was going to write, and the alternative is arithmetic in a rule.
  */
 const DEFINITE =
-  /^(0|[+-]?(\d+\.?\d*|\.\d+)(px|rem|em|ch|ex|cap|ic|lh|rlh|cm|mm|q|in|pt|pc|vw|vh|vmin|vmax|svw|svh|lvw|lvh|dvw|dvh|vb|vi))$/i;
+  /^(0|[+-]?(\d+(?:\.\d*)?|\.\d+)(px|rem|em|ch|ex|cap|ic|lh|rlh|cm|mm|q|in|pt|pc|vw|vh|vmin|vmax|svw|svh|lvw|lvh|dvw|dvh|vb|vi))$/i;
 
 /** A value nothing here can reason about: a keyword that resolves elsewhere, or a variable. */
 const OPAQUE = (value: string): boolean => GLOBAL.has(value) || value.includes("var(");

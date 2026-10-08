@@ -416,7 +416,7 @@ export const KNOWN_UNITS = new Set(UNITS);
  * And the unit may not be followed by a word character, which is what keeps a bare `2e3` out: with
  * the exponent optional, the engine would otherwise back off to a unit of `e` and leave the `3`.
  */
-const A_UNIT = /(?<![\w.#-])\d*\.?\d+(?:[eE][+-]?\d+)?([a-zA-Z%]+)(?![\w.])/g;
+const A_UNIT = /(?<![\w.#-])(?:\d*\.)?\d+(?:[eE][+-]?\d+)?([a-zA-Z%]+)(?![\w.])/g;
 
 /**
  * Every unit written in a value, with the two places one is not a unit stepped over.
@@ -636,7 +636,7 @@ const UNIT = new Set(UNIT_REQUIRED);
 const UNIT_EVERYWHERE = new Set(UNIT_REQUIRED_EVERYWHERE);
 const WHOLE = new Set(WHOLE_NUMBER);
 const WHOLE_EVERYWHERE = new Set(WHOLE_NUMBER_EVERYWHERE);
-const A_NUMBER = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i;
+const A_NUMBER = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i;
 
 /**
  * The words of a value at its top level, each with its offset — not inside a call, where `repeat(3,

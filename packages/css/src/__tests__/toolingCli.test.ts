@@ -283,7 +283,7 @@ describe("lint", () => {
     const { output, status } = run(root, ["lint", "src/Card.tsx"]);
 
     expect(status).toBe(1);
-    expect(output).toContain("src/Card.tsx:2:");
+    expect(output).toContain(`${join("src", "Card.tsx")}:2:`);
     expect(output).toContain("debugger");
   });
 
@@ -299,7 +299,7 @@ describe("lint", () => {
     const { output } = run(root, ["lint", "src/Card.tsx"]);
 
     expect(line).toBeGreaterThan(10);
-    expect(output).toContain(`src/Card.tsx:${line}:`);
+    expect(output).toContain(`${join("src", "Card.tsx")}:${line}:`);
   });
 
   test("a file with a block and nothing wrong is clean", () => {
@@ -317,7 +317,7 @@ describe("lint", () => {
     const { output, status } = run(root, ["lint", "src/Plain.ts"]);
 
     expect(status).toBe(1);
-    expect(output).toContain("src/Plain.ts:2:");
+    expect(output).toContain(`${join("src", "Plain.ts")}:2:`);
   });
 
   /**

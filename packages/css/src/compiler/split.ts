@@ -194,8 +194,8 @@ const COLOUR_CALL = /^(rgba?|hsla?|hwb|lab|lch|oklab|oklch|color|color-mix|light
  * the same spelling off a value with `withoutImportant`.
  */
 export const IMPORTANT = /!\s*important\s*$/i;
-const A_NUMBER = /^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i;
-const A_DIMENSION = /^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?([a-z%]+)$/i;
+const A_NUMBER = /^[+-]?(\d+(?:\.\d*)?|\.\d+)(e[+-]?\d+)?$/i;
+const A_DIMENSION = /^[+-]?(\d+(?:\.\d*)?|\.\d+)(e[+-]?\d+)?([a-z%]+)$/i;
 
 /** Which primitives a token could be. A bare number is BOTH a number and an integer when it has no point. */
 function primitivesOf(token: string): readonly string[] {

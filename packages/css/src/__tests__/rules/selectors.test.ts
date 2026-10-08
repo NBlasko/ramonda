@@ -501,6 +501,26 @@ describe("an at-rule name", () => {
  * read like a breakpoint somebody meant to write.
  */
 describe("a condition that cannot switch", () => {
+  /**
+   * Answered in LINEAR time, because the editor asks on every keystroke. A pair that never closed —
+   * `(a:` and a long run of spaces — took 65 s at 5,000 spaces, the lazy value and the spaces around
+   * it trading the same characters; and a run of zeros with no end was quadratic in the number test.
+   * Measured before the fix: 2,000 spaces ~4 s, 20,000 zeros ~1.7 s.
+   */
+  test.each([
+    ["a pair that never closes", `  @media (min-width:${" ".repeat(2_000)}(x)) { color: red; }`],
+    ["a pair that never closes, in @supports", `  @supports (min-width:${" ".repeat(2_000)}(x)) { color: red; }`],
+    ["a number that never ends", `  @media (min-width: 0${"00".repeat(10_000)}!) { color: red; }`],
+    // The same digits as a declaration's value: the splitter and the value rules read numbers with the
+    // same pattern, and it was in twelve places.
+    ["a value that never ends", `  padding: 0${"00".repeat(10_000)}!;`],
+    ["a length that never ends", `  margin: 1${"00".repeat(10_000)}.;`],
+  ])("%s is answered at once", (_what, css) => {
+    const started = performance.now();
+    rules(css);
+    expect(performance.now() - started).toBeLessThan(250);
+  });
+
   test.each([
     ["a value the feature does not have", "  @media (prefers-color-scheme: drak) { color: red; }"],
     ["another", "  @media (hover: hovr) { color: red; }"],
