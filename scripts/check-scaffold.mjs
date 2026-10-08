@@ -68,18 +68,38 @@ const FIRST_PARTY = ["core", "router", "server", "check", "build", "css"];
  * opts into. But the install the documentation teaches had never been RUN: the scaffolder's own
  * tests read templates as text, and this gate packed every first-party package except that one.
  *
- * So the `spa` run does what a reader does after scaffolding — add the dependency, put the plugin in
- * the array that is already there, write a block — and then installs and builds exactly as before.
- * `ssr` still covers a project with no CSS at all, so both shapes are checked without a third build.
+ * So both runs do what a reader does after scaffolding — add the dependency, put the plugin in the
+ * array that is already there, write a block — and build. `ssr` builds TWICE: once as scaffolded,
+ * which is the project with no CSS at all, and once with the block, because its production build is
+ * esbuild and its page is assembled by the template's own scripts. A block there once compiled, put
+ * its class on the page, wrote `client.css` beside the bundle — and the page linked nothing, so it
+ * shipped unstyled and every step exited 0.
  *
  * The plugin goes AFTER `ramonda()` on purpose. It declares `enforce: "pre"`, so the array's order
  * is not supposed to matter, and the place a reader would paste it is the end.
  */
-function addStyleBlocks(app, tarball) {
+function addCssDependency(app, tarball) {
   const manifest = join(app, "package.json");
   const pkg = JSON.parse(readFileSync(manifest, "utf8"));
   pkg.dependencies = { ...pkg.dependencies, "@ramonda/css": `file:${tarball}` };
   writeFileSync(manifest, `${JSON.stringify(pkg, null, 2)}\n`);
+}
+
+function addStyleBlocks(app) {
+  // The production build of `ssr` is esbuild, so the reader puts the plugin there as well — with
+  // the `filter` the setup page tells them to set.
+  if (mode === "ssr") {
+    const script = join(app, "scripts", "build.mjs");
+    const before = readFileSync(script, "utf8");
+    const after = before
+      .replace(
+        'import { ramondaOptions, ramondaDefine } from "@ramonda/build/esbuild";',
+        'import { ramondaOptions, ramondaDefine } from "@ramonda/build/esbuild";\nimport { ramondaCss } from "@ramonda/css/esbuild";',
+      )
+      .replace("plugins: []", "plugins: [ramondaCss({ filter: /src\\/.*\\.tsx$/ })]");
+    if (!after.includes("ramondaCss({")) fail("could not wire `ramondaCss()` into the generated scripts/build.mjs");
+    writeFileSync(script, after);
+  }
 
   const config = join(app, "vite.config.ts");
   const before = readFileSync(config, "utf8");
@@ -100,6 +120,14 @@ function addStyleBlocks(app, tarball) {
   );
   if (styled === app_) fail("could not put a style block in the generated App.tsx");
   writeFileSync(source, styled);
+}
+
+/** The `href` of every `<link rel="stylesheet">` in a page. */
+function stylesheetsOf(html) {
+  return [...html.matchAll(/<link\b[^>]*>/g)]
+    .map(([tag]) => tag)
+    .filter((tag) => /\brel="stylesheet"/.test(tag))
+    .map((tag) => /\bhref="([^"]+)"/.exec(tag)?.[1] ?? "");
 }
 
 function run(command, args, options = {}) {
@@ -167,7 +195,11 @@ async function serves(port = 5100 + Math.floor(Math.random() * 400), attempt = 0
         }
         try {
           const response = await fetch(`http://localhost:${port}${path}`);
-          return { status: response.status, body: await response.text() };
+          return {
+            status: response.status,
+            type: response.headers.get("content-type") ?? "",
+            body: await response.text(),
+          };
         } catch {
           await new Promise((r) => setTimeout(r, 150));
         }
@@ -189,6 +221,18 @@ async function serves(port = 5100 + Math.floor(Math.random() * 400), attempt = 0
       if (title.trim() === "") fail(`${path} was served with an empty <title>`, body.slice(0, 400));
       for (const marker of ["<!--ssr-->", "<!--head-->", "<!--portals-->"]) {
         if (body.includes(marker)) fail(`${path} was served still containing ${marker}`);
+      }
+    }
+
+    // The sheet the page links, from the server that serves the page: a link the server answers
+    // with a 404, or with `index.html`, styles nothing exactly as no link does.
+    const page = await get("/");
+    if (page === "retry") return "retry";
+    for (const href of stylesheetsOf(page.body)) {
+      const sheet = await get(href);
+      if (sheet === "retry") return "retry";
+      if (sheet.status !== 200 || !sheet.type.startsWith("text/css")) {
+        fail(`${href} was served as ${sheet.status} ${sheet.type}, not as a stylesheet`, log);
       }
     }
 
@@ -255,8 +299,9 @@ try {
   }
 
   // A reader's next step, once they want styles: the documented install, on the project they were
-  // just given. Only in `spa`, so the other run still covers a project with no CSS in it.
-  if (mode === "spa") addStyleBlocks(app, tarballs.get("@ramonda/css"));
+  // just given. `ssr` writes its block only after a first build without one — see `addCssDependency`.
+  addCssDependency(app, tarballs.get("@ramonda/css"));
+  if (mode === "spa") addStyleBlocks(app);
 
   /* ── 3. point its first-party deps at the tarballs ────────────────────────────────────────── */
   const manifest = join(app, "package.json");
@@ -282,12 +327,14 @@ try {
     fail("`npm install` failed in the generated project", outputOf(error));
   }
 
-  let built;
-  try {
-    built = run("npm", ["run", "build"], { cwd: app });
-  } catch (error) {
-    fail("`npm run build` failed in the generated project", outputOf(error));
-  }
+  const buildProject = () => {
+    try {
+      run("npm", ["run", "build"], { cwd: app });
+    } catch (error) {
+      fail("`npm run build` failed in the generated project", outputOf(error));
+    }
+  };
+  buildProject();
 
   /* ── 5. what the build EMITTED, not just that it exited 0 ─────────────────────────────────── */
   // Three of the faults above left the build perfectly green. A page with no title is not an
@@ -318,6 +365,36 @@ try {
       if (html.includes(marker)) fail(`the baked page still contains ${marker}, so nothing filled it`);
     }
     checks.push(`title "${title}"`, "a description");
+
+    // With no CSS in the project, a link would point at a file the build never wrote.
+    if (stylesheetsOf(html).length > 0) {
+      fail("the baked page of a project with no CSS links a stylesheet", stylesheetsOf(html).join("\n"));
+    }
+
+    /**
+     * **Then the block, built and baked.** Its class on the page proves only that the server bundle
+     * compiled it. The page has to LINK a sheet, and the sheet has to hold the rule — the shape that
+     * shipped was the first without the second.
+     */
+    addStyleBlocks(app);
+    buildProject();
+    const styled = readFileSync(baked, "utf8");
+    if (styled.includes("@@(")) fail("`@@(` survived into the baked page — the plugin did not run");
+    if (!/class="[^"]*\br-[a-zA-Z0-9_.:-]+/.test(styled)) fail("no compiled class reached the baked page");
+    const linked = stylesheetsOf(styled);
+    if (linked.length === 0) {
+      fail("the baked page links no stylesheet — its classes style nothing", styled.slice(0, 600));
+    }
+    const sheets = linked.map((href) => {
+      const file = join(app, "dist", "client", href);
+      if (!href.startsWith("/assets/") || !existsSync(file))
+        fail(`the baked page links ${href}, which the build did not write`);
+      return readFileSync(file, "utf8");
+    });
+    if (!sheets.some((text) => /padding-left:\s*40px/.test(text))) {
+      fail("the stylesheet the baked page links does not carry the block's rules", sheets.join("\n").slice(0, 400));
+    }
+    checks.push("a style block that compiled and is linked");
   } else {
     const index = join(app, "dist/index.html");
     if (!existsSync(index)) fail("the build produced no dist/index.html");
@@ -369,7 +446,6 @@ try {
   console.log(
     `[scaffold] ${mode}: ${rewritten} workspace package(s), installed, built, and it has ${checks.join(", ")}`,
   );
-  void built;
 } finally {
   rmSync(work, { recursive: true, force: true });
 }

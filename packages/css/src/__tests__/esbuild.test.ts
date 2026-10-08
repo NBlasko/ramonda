@@ -1,4 +1,13 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -152,6 +161,21 @@ describe("a build", () => {
     expect(css).not.toMatch(/\.r-gap-\s*\{/);
     for (const one of named.filter((one) => !markers.includes(one)))
       expect(css, `${one} is named by the JavaScript`).toContain(`.${one}`);
+  });
+
+  /**
+   * esbuild heads each module's CSS with a comment naming it, and names a module in a namespace of
+   * its own by the path it was resolved to. That path was absolute, so an unminified build — the
+   * SSR template's — shipped `/Users/<name>/…` to every visitor, and two machines built two sheets.
+   */
+  test("the stylesheet does not carry the path of the machine that built it", async () => {
+    const root = project({ "index.tsx": APP });
+    const { css } = outputs(await build(root, { absWorkingDir: root }));
+
+    expect(css).toContain("display: flex");
+    expect(css).toContain("/* ramonda-css:index.tsx?ramonda-css.css */");
+    expect(css).not.toContain(root);
+    expect(css).not.toContain(realpathSync(root));
   });
 
   /**

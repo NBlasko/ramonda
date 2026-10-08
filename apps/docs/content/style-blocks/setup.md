@@ -45,6 +45,24 @@ export const plugins = [ramondaCss({ filter: /src\/.*\.tsx$/ })];
 be read before it can be asked whether it holds a block. Pointing the plugin at the tree that holds
 them means nothing else is opened at all.
 
+**Link the stylesheet esbuild writes.** It puts every rule in a `.css` file beside the bundle —
+`client.js` gets `client.css` — and nothing loads that file until your HTML links it. Vite does
+the linking itself.
+
+### A server-rendered app
+
+A server-rendered app from [`create-ramonda`](/guide/installation) runs Vite in development and
+esbuild for the production build, so the plugin goes in two files:
+
+- `vite.config.ts`: add `ramondaCss()` to the `plugins` array beside `ramonda()`.
+- `scripts/build.mjs`: put `ramondaCss({ filter: /src\/.*\.tsx$/ })` in the empty `plugins` array.
+  Both bundles need it. The server bundle writes the class names into the HTML, and the client
+  bundle carries the rules.
+
+You don't add a `<link>`. The build writes the page the server sends, and it links the stylesheet
+when there is one. In development the rules come with the script, so a page can show unstyled for a
+moment before it loads.
+
 ### A code-split app
 
 **Under Vite**, a route that is already code-split gets its own stylesheet, without being asked. A

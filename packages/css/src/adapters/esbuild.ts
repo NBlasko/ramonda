@@ -1,5 +1,5 @@
-import { readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { readFileSync, realpathSync } from "node:fs";
+import { dirname, relative, resolve } from "node:path";
 import ts from "typescript";
 import { knownNames, configReader, environmentOf } from "../config/config";
 import { variablesSheetFor, writeGenerated } from "../config/generate";
@@ -189,7 +189,18 @@ export function ramondaCss(options: EsbuildCssPluginOptions = {}): EsbuildCssPlu
       production = productionFrom(build.initialOptions);
       writeGenerated(build.initialOptions?.absWorkingDir ?? process.cwd(), ts);
 
-      build.onResolve({ filter: /\?ramonda-css\.css$/ }, (args) => ({ path: args.path, namespace: NAMESPACE }));
+      /**
+       * RELATIVE to the working directory, because esbuild prints this path into the stylesheet as a
+       * comment over the module's rules. Absolute, an unminified build shipped the builder's own
+       * `/Users/<name>/…` to every visitor.
+       */
+      // Its real path, since that is what esbuild resolves a file to: from `/var`, a file under the
+      // `/private/var` it links to was named `../../private/var/…`.
+      const workingDir = realpathSync(build.initialOptions?.absWorkingDir ?? process.cwd());
+      build.onResolve({ filter: /\?ramonda-css\.css$/ }, (args) => ({
+        path: relative(workingDir, args.path),
+        namespace: NAMESPACE,
+      }));
 
       /**
        * `resolveDir` is the folder of the file that holds the block, so a relative `url( … )` is read
@@ -197,7 +208,7 @@ export function ramondaCss(options: EsbuildCssPluginOptions = {}): EsbuildCssPlu
        * and `url("./a.png")` failed with the file right beside it.
        */
       build.onLoad({ filter: /.*/, namespace: NAMESPACE }, (args) => {
-        const file = args.path.slice(0, -SUFFIX.length);
+        const file = resolve(workingDir, args.path.slice(0, -SUFFIX.length));
         return { contents: sheet.cssFor(file), loader: "css", resolveDir: dirname(file) };
       });
 

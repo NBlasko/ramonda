@@ -59,10 +59,8 @@ if (isProd) {
     store: fileStore({ dir: resolve(here, "dist/isr") }),
     render: bakeShared,
   });
-  prodTemplate = readFileSync(resolve(here, "index.html"), "utf8").replace(
-    "/src/entry-client.tsx",
-    "/assets/client.js",
-  );
+  // The shell `scripts/build.mjs` wrote, with the built script and stylesheet already in it.
+  prodTemplate = readFileSync(resolve(here, "dist/client/index.html"), "utf8");
 } else {
   const { createServer: createViteServer } = await import("vite");
   vite = await createViteServer({
