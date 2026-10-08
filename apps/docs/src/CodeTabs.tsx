@@ -32,6 +32,10 @@ function stored(key: string): string | undefined {
  *
  * The server renders the first tab; a remembered choice is read once the page is in a browser, so
  * the markup the client adopts is the markup the server wrote.
+ *
+ * Toggle buttons in a group rather than the ARIA tab pattern: that pattern promises a tab panel and
+ * arrow-key movement, and a screen reader announcing tabs that do not behave like tabs is worse
+ * than plain buttons that say which one is pressed.
  */
 export class CodeTabs extends Component<CodeTabsProps> {
   @state chosen = "";
@@ -91,13 +95,12 @@ export class CodeTabs extends Component<CodeTabsProps> {
     const tab = this.tabs().find((one) => one.name === shown);
     return (
       <div className="code-tabs">
-        <div className="code-tabs-bar" role="tablist" aria-label={this.props.node.a?.label ?? "Views"}>
+        <div className="code-tabs-bar" role="group" aria-label={this.props.node.a?.label ?? "Views"}>
           {this.tabs().map((one) => (
             <button
               key={one.name}
               type="button"
-              role="tab"
-              aria-selected={one.name === shown ? "true" : "false"}
+              aria-pressed={one.name === shown ? "true" : "false"}
               className={one.name === shown ? "code-tab active" : "code-tab"}
               data-tab={one.name}
               onclick={this.choose}

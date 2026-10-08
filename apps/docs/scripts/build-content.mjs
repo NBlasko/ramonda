@@ -290,16 +290,37 @@ function toRoutePath(file) {
  * break that way: the code is the one part of a diagnostic that never changes, because a code is
  * never reused.
  */
+/**
+ * A link to an anchor in the same file — `#rmd048-…`, `#capturing-them` — moved to where that
+ * heading went when the file was split: a code's heading is its own page now, and everything else
+ * is on the index. Written in the one file, they are the natural links to write; left as they are,
+ * every one pointed at an anchor that is not on the page it is read on.
+ */
+function relink(text) {
+  return text.replace(/\]\(#([^)\s]+)\)/g, (_, anchor) => {
+    const code = /^(rm[a-z]\d{3})(?:-|$)/.exec(anchor);
+    return code === null ? `](/reference/diagnostics#${anchor})` : `](/reference/diagnostics/${code[1]})`;
+  });
+}
+
 function diagnosticPages(source) {
   const { data, body } = splitFrontmatter(source);
   const lines = body.split("\n");
 
-  /** Where each family and each code starts, in file order. */
+  /**
+   * Where each family and each code starts, in file order.
+   *
+   * The page's own title is the first `# ` heading and is NOT a family. It was told apart by being
+   * on line 0 — but the body starts with the blank line the frontmatter leaves, so the title was on
+   * line 1, read as a family, and everything between it and the first code (the introduction,
+   * "Capturing them") was on no page at all.
+   */
+  const title = lines.findIndex((line) => line.startsWith("# "));
   const marks = [];
   lines.forEach((line, at) => {
     const family = /^# (.+)$/.exec(line);
     const code = /^## (RM[A-Z]\d{3})\s+—\s+(.+)$/.exec(line);
-    if (family && at > 0) marks.push({ kind: "family", at, name: family[1] });
+    if (family && at > title) marks.push({ kind: "family", at, name: family[1] });
     if (code) marks.push({ kind: "code", at, code: code[1], title: code[2] });
   });
 
@@ -363,8 +384,8 @@ function diagnosticPages(source) {
 
   const front = Object.entries(data).map(([key, value]) => `${key}: ${value}`);
   return {
-    index: { source: ["---", ...front, "---", "", ...index, ""].join("\n"), path: "/reference/diagnostics" },
-    pages: made,
+    index: { source: relink(["---", ...front, "---", "", ...index, ""].join("\n")), path: "/reference/diagnostics" },
+    pages: made.map((page) => ({ ...page, source: relink(page.source) })),
   };
 }
 
