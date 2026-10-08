@@ -91,7 +91,7 @@ describe("the bin", () => {
     );
 
     expect(status).toBe(1);
-    expect(output).toContain("src/Card.tsx:3:5");
+    expect(output).toContain(`${join("src", "Card.tsx")}:3:5`);
     expect(output).toContain("Did you mean `display`?");
   });
 
@@ -111,7 +111,7 @@ describe("the bin", () => {
     expect(output).toContain("could not be read, so nothing was type-checked");
     // One file, and it is the one that failed — so there is nothing else to print after it.
     expect(output).not.toContain("problem(s) in files that read");
-    expect(output).toContain("src/Card.tsx:3:5");
+    expect(output).toContain(`${join("src", "Card.tsx")}:3:5`);
     // The position is printed once, not twice — the message carries its own and it is trimmed off.
     expect(output).not.toContain("Card.tsx:3:5  a hole");
   });

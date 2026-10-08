@@ -91,6 +91,15 @@ const GLOBAL = ["inherit", "initial", "unset", "revert", "revert-layer"];
 
 const extra = {};
 const counts = [];
+/**
+ * **The properties an engine takes MORE than one word for**, which no union may type.
+ *
+ * A union says the value is one of its words. `mdn-data` closed `column-rule-style` over the ten line
+ * styles, and Chromium takes `solid, dashed` and `repeat(2, solid)` — gap decorations — so the union
+ * refused CSS a browser renders. Asked with the property's own words: two of them as a list, two in
+ * a row, and one repeated. Any engine saying yes keeps the property `CssValue`.
+ */
+const open = new Set();
 
 for (const engine of ["chromium", "firefox", "webkit"]) {
   let browser;
@@ -99,9 +108,10 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
     const tab = await browser.newPage();
     // A DOCTYPE: quirks mode is a different CSS, and it has caught this work three times.
     await tab.setContent("<!doctype html><html><head></head><body></body></html>");
-    const found = await tab.evaluate(
+    const { found, more } = await tab.evaluate(
       ({ unions, corpus, global }) => {
         const out = {};
+        const more = [];
         for (const { property, values } of unions) {
           // A property this engine does not know cannot answer about its values.
           if (!CSS.supports(property, "inherit")) continue;
@@ -110,11 +120,19 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
             if (allowed.has(word)) continue;
             if (CSS.supports(property, word)) (out[property] ??= []).push(word);
           }
+          const [a, b = a] = values.filter((one) => !global.includes(one));
+          if (
+            a !== undefined &&
+            [`${a}, ${b}`, `${a} ${b}`, `repeat(2, ${a})`].some((v) => CSS.supports(property, v))
+          ) {
+            more.push(property);
+          }
         }
-        return out;
+        return { found: out, more };
       },
       { unions, corpus, global: GLOBAL },
     );
+    for (const property of more) open.add(property);
     let n = 0;
     for (const [property, words] of Object.entries(found)) {
       for (const word of words) {
@@ -145,6 +163,9 @@ const merged = unionOfMap(
   previous,
   Object.fromEntries(Object.entries(extra).map(([name, values]) => [name, [...values]])),
 );
+/** Kept across machines the same way: a property any engine anywhere took a list for stays open. */
+const previousOpen = previousFrom(OUT, /ENGINE_OPEN: readonly string\[\] = (\[[\s\S]*?\])\s*;/, []);
+const opened = [...new Set([...previousOpen, ...open])].sort();
 const names = Object.keys(merged);
 const total = names.reduce((n, one) => n + merged[one].length, 0);
 const wrote = writeOrCheck(
@@ -162,10 +183,15 @@ const wrote = writeOrCheck(
     `/** Property -> the extra values, beside what its \`Keyword<…>\` union already holds. */\n` +
     `export const ENGINE_KEYWORDS: Readonly<Record<string, readonly string[]>> = {\n` +
     names.map((one) => `  ${JSON.stringify(one)}: ${JSON.stringify(merged[one])},\n`).join("") +
-    `};\n`,
+    `};\n` +
+    `\n` +
+    `/** Properties an engine takes more than one word for — a list, a pair, a \`repeat()\` — so no union. */\n` +
+    `export const ENGINE_OPEN: readonly string[] = ${JSON.stringify(opened)};\n`,
   "build-engine-keywords",
   check,
 );
 
 for (const [engine, n] of counts) console.log(`[keywords] ${engine.padEnd(10)} ${String(n).padStart(4)}`);
-console.log(`[keywords] ${wrote ? "wrote" : "up to date —"} ${total} value(s) across ${names.length} properties`);
+console.log(
+  `[keywords] ${wrote ? "wrote" : "up to date —"} ${total} value(s) across ${names.length} properties, ${opened.length} open`,
+);

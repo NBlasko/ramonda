@@ -4,31 +4,34 @@
 // `a_{b,c}_d` is `a_b_d a_c_d`. The merge follows a member that is itself a shorthand.
 
 export const CLEARS_TABLE = `
+_webkit_border_after: _webkit_border_after_{color,style,width} border_block_{end,end_color,end_style,end_width}
 _webkit_border_before: _webkit_border_before_{color,style,width} border_block_{start,start_color,start_style,start_width}
+_webkit_border_end: _webkit_border_end_color _webkit_border_end_style _webkit_border_end_width border_inline_{end,end_color,end_style,end_width}
+_webkit_border_start: _webkit_border_start_{color,style,width} border_inline_{start,start_color,start_style,start_width}
 _webkit_mask: _webkit_mask_{clip,composite,image,origin,position,repeat,size,source_type} mask_{clip,composite,image,mode,origin,position,repeat,size}
 _webkit_mask_position: _webkit_mask_position_{x,y} mask_position mask_position_{x,y}
 _webkit_text_stroke: _webkit_text_stroke_{color,width}
-all: _apple_pay_button_style _apple_pay_button_type _moz_appearance _moz_box_align _moz_box_direction _moz_box_flex _moz_box_ordinal_group _moz_box_orient _moz_box_pack _moz_float_edge _moz_force_broken_image_icon _moz_orient _moz_osx_font_smoothing _moz_text_size_adjust _webkit_{appearance,backdrop_filter,background_clip,background_origin,border_horizontal_spacing,border_vertical_spacing,box_align,box_decoration_break,box_direction,box_flex,box_flex_group,box_lines,box_ordinal_group,box_orient,box_pack,box_reflect,box_shadow,column_axis,column_progression,cursor_visibility,font_smoothing,hyphenate_limit_after,hyphenate_limit_before,hyphenate_limit_lines,initial_letter,line_align,line_box_contain,line_clamp,line_grid,line_snap,locale,mask,nbsp_mode,rtl_ordering,ruby_position,tap_highlight_color,text_combine,text_decorations_in_effect,text_fill_color,text_security,text_stroke,text_zoom,user_drag,user_modify,user_select} accent_color alignment_baseline anchor_name anchor_scope anim animation_composition appearance aspect_ratio backdrop_filter backface_visibility bg background_blend_mode baseline_shift baseline_source block_size b border_collapse rounded border_spacing box_decoration_break shadow box_sizing break_after break_before break_inside buffered_rendering caption_side caret_color clear clip clip_path clip_rule c color_interpolation color_interpolation_filters color_scheme column_count column_fill column_rule column_span column_width contain contain_intrinsic_block_size contain_intrinsic_inline_size contain_intrinsic_size container content content_visibility counter_increment counter_reset counter_set cur cx cy d disp dominant_baseline dynamic_range_limit empty_cells field_sizing fill fill_opacity fill_rule filter flex flex_flow float flood_color flood_opacity flow_tolerance font font_palette font_synthesis forced_color_adjust gap glyph_orientation_vertical grid grid_area grid_gap hanging_punctuation h hyphenate_character hyphenate_limit_chars hyphens image_orientation image_rendering ime_mode inline_size inset isolation ls lighting_color line_break list_style m margin_trim marker mask mask_type math_depth math_shift math_style max_block_size maxh max_inline_size maxw min_block_size minh min_inline_size minw mix_blend_mode object_fit object_position offset o order orphans ol outline_offset of overflow_anchor overflow_block overflow_clip_margin overflow_inline overflow_wrap overscroll_behavior overscroll_behavior_block overscroll_behavior_inline p page page_break_after page_break_before page_break_inside paint_order perspective perspective_origin perspective_origin_x perspective_origin_y place_content place_items place_self pe pos position_anchor position_area position_try position_visibility print_color_adjust quotes r resize rotate ruby_align ruby_overhang ruby_position rx ry scale scroll_behavior scroll_margin scroll_padding scroll_snap_align scroll_snap_stop scroll_snap_type scroll_timeline scrollbar_color scrollbar_gutter scrollbar_width shape_image_threshold shape_margin shape_outside shape_rendering speak_as stop_color stop_opacity stroke stroke_color stroke_dasharray stroke_dashoffset stroke_linecap stroke_linejoin stroke_miterlimit stroke_opacity stroke_width tab_size table_layout ta text_{align_last,anchor,autospace,box,combine_upright,decoration_inset,decoration_skip,decoration_skip_ink,emphasis,emphasis_position,indent,justify,orientation,overflow,rendering,shadow,underline_offset,underline_position,wrap} td tt timeline_scope touch_action tf transform_{box,origin,origin_x,origin_y,origin_z,style} tr translate us vector_effect vertical_align view_timeline view_transition_{class,name} vis ws widows w will_change word_{break,spacing,wrap} writing_mode x y z zoom
+all: _apple_pay_button_style _apple_pay_button_type _moz_appearance _moz_box_align _moz_box_direction _moz_box_flex _moz_box_ordinal_group _moz_box_orient _moz_box_pack _moz_float_edge _moz_force_broken_image_icon _moz_orient _moz_osx_font_smoothing _moz_text_size_adjust _webkit_{appearance,backdrop_filter,background_clip,background_origin,border_horizontal_spacing,border_vertical_spacing,box_align,box_decoration_break,box_direction,box_flex,box_flex_group,box_lines,box_ordinal_group,box_orient,box_pack,box_reflect,box_shadow,column_axis,column_progression,cursor_visibility,font_smoothing,hyphenate_limit_after,hyphenate_limit_before,hyphenate_limit_lines,initial_letter,line_align,line_box_contain,line_clamp,line_grid,line_snap,locale,mask,nbsp_mode,rtl_ordering,ruby_position,tap_highlight_color,text_combine,text_decorations_in_effect,text_fill_color,text_security,text_stroke,text_zoom,user_drag,user_modify,user_select} accent_color alignment_baseline anchor_name anchor_scope anim animation_composition appearance aspect_ratio backdrop_filter backface_visibility bg background_blend_mode baseline_shift baseline_source block_size b border_collapse rounded border_spacing box_decoration_break shadow box_sizing break_after break_before break_inside buffered_rendering caption_side caret_color clear clip clip_path clip_rule c color_interpolation color_interpolation_filters color_scheme column_count column_fill column_rule column_span column_width contain contain_intrinsic_block_size contain_intrinsic_inline_size contain_intrinsic_size container content content_visibility corner_shape counter_increment counter_reset counter_set cur cx cy d disp dominant_baseline dynamic_range_limit empty_cells field_sizing fill fill_opacity fill_rule filter fit_tolerance flex flex_flow float flood_color flood_opacity flow_tolerance font font_palette font_synthesis forced_color_adjust gap glyph_orientation_vertical grid grid_area grid_gap hanging_punctuation h hyphenate_character hyphenate_limit_chars hyphenate_limit_lines hyphens image_orientation image_rendering ime_mode inline_size inset isolation ls lighting_color line_break link_parameters list_style m margin_trim marker mask mask_type math_depth math_shift math_style max_block_size maxh max_inline_size maxw min_block_size minh min_inline_size minw mix_blend_mode object_fit object_position object_view_box offset o order orphans ol outline_offset of overflow_anchor overflow_block overflow_clip_margin overflow_inline overflow_wrap overscroll_behavior overscroll_behavior_block overscroll_behavior_inline p page page_break_after page_break_before page_break_inside paint_order perspective perspective_origin perspective_origin_x perspective_origin_y place_content place_items place_self pe pos position_anchor position_area position_try position_visibility print_color_adjust quotes r resize rotate ruby_align ruby_overhang ruby_position rx ry scale scroll_behavior scroll_margin scroll_padding scroll_snap_align scroll_snap_stop scroll_snap_type scroll_timeline scrollbar_color scrollbar_gutter scrollbar_width shape_image_threshold shape_margin shape_outside shape_rendering speak_as stop_color stop_opacity stroke stroke_color stroke_dasharray stroke_dashoffset stroke_linecap stroke_linejoin stroke_miterlimit stroke_opacity stroke_width tab_size table_layout ta text_{align_last,anchor,autospace,box,combine_upright,decoration_inset,decoration_skip,decoration_skip_ink,emphasis,emphasis_position,indent,justify,orientation,overflow,rendering,shadow,underline_offset,underline_position,wrap} td tt timeline_scope touch_action tf transform_{box,origin,origin_x,origin_y,origin_z,style} tr translate us vector_effect vertical_align view_timeline view_transition_{class,name} vis ws widows w will_change word_{break,spacing,wrap} wrap_inside writing_mode x y z zoom
 anim: animation_{delay,direction,duration,fill_mode,iteration_count,name,play_state,range,timeline,timing_function}
 animation_range: animation_range_{end,start}
 bg: background_{attachment,clip,origin,position,repeat,size} bgc bgi
 background_position: background_position_{x,y}
 b: border_{block,image,inline} bb bc bl br bs bt bw
-border_block: _webkit_border_before border_block_{color,end,start,style,width}
-border_block_color: _webkit_border_before_color border_block_{end,start}_color
-border_block_end: border_block_end_{color,style,width}
+border_block: _webkit_border_after _webkit_border_before border_block_{color,end,start,style,width}
+border_block_color: _webkit_border_{after,before}_color border_block_{end,start}_color
+border_block_end: _webkit_border_{after,after_color,after_style,after_width} border_block_end_{color,style,width}
 border_block_start: _webkit_border_{before,before_color,before_style,before_width} border_block_start_{color,style,width}
-border_block_style: _webkit_border_before_style border_block_{end,start}_style
-border_block_width: _webkit_border_before_width border_block_{end,start}_width
+border_block_style: _webkit_border_{after,before}_style border_block_{end,start}_style
+border_block_width: _webkit_border_{after,before}_width border_block_{end,start}_width
 bb: border_bottom_{color,style,width}
 bc: border_{block,bottom,inline,left,right,top}_color
 border_image: border_image_{outset,repeat,slice,source,width}
-border_inline: border_inline_{color,end,start,style,width}
-border_inline_color: border_inline_{end,start}_color
-border_inline_end: border_inline_end_{color,style,width}
-border_inline_start: border_inline_start_{color,style,width}
-border_inline_style: border_inline_{end,start}_style
-border_inline_width: border_inline_{end,start}_width
+border_inline: _webkit_border_end _webkit_border_start border_inline_{color,end,start,style,width}
+border_inline_color: _webkit_border_{end,start}_color border_inline_{end,start}_color
+border_inline_end: _webkit_border_{end,end_color,end_style,end_width} border_inline_end_{color,style,width}
+border_inline_start: _webkit_border_{start,start_color,start_style,start_width} border_inline_start_{color,style,width}
+border_inline_style: _webkit_border_{end,start}_style border_inline_{end,start}_style
+border_inline_width: _webkit_border_{end,start}_width border_inline_{end,start}_width
 bl: border_left_{color,style,width}
 rounded: border_{bottom_left,bottom_right,end_end,end_start,start_end,start_start,top_left,top_right}_radius
 br: border_right_{color,style,width}
@@ -94,8 +97,10 @@ text_box: text_box_{edge,trim}
 td: text_decoration_{color,line,style,thickness}
 text_emphasis: text_emphasis_{color,style}
 text_wrap: text_wrap_{mode,style}
-timeline_trigger: timeline_trigger_{activation_range_end,activation_range_start,active_range_end,active_range_start,name,source}
+timeline_trigger: timeline_trigger_{activation_range,active_range,name,source}
+timeline_trigger_activation_range: timeline_trigger_activation_range_{end,start}
+timeline_trigger_active_range: timeline_trigger_active_range_{end,start}
 tr: transition_{behavior,delay,duration,property,timing_function}
 view_timeline: view_timeline_{axis,inset,name}
-ws: text_wrap_mode white_space_collapse
+ws: text_wrap_mode white_space_{collapse,trim}
 `;

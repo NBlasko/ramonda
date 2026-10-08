@@ -943,7 +943,8 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
       // more than one spelling of it, so the pair was half-handled. It is gone rather than
       // completed: this reads the files of a TypeScript program, which are never markup, so the
       // branch was for a case that cannot arrive.
-      return found[1].replace(/\*\/\s*\}?\s*$/, "").trim();
+      // `\s*(?:\}\s*)?` and not `\s*\}?\s*`, whose two runs of spaces shared every space: quadratic.
+      return found[1].replace(/\*\/\s*(?:\}\s*)?$/, "").trim();
     }
     return undefined;
   }

@@ -194,7 +194,7 @@ export function parseValueSyntax(source: string): Term {
         return { kind: "property", name: inside.slice(1, -1) };
       }
       // A range is part of the TYPE — `<time [0s,∞]>` is a time, and the bounds are not ours.
-      return { kind: "data", name: inside.split(/\s*\[/)[0].trim() };
+      return { kind: "data", name: inside.split("[")[0].trim() };
     }
 
     /**

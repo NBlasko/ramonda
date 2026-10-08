@@ -1,10 +1,20 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  symlinkSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { beforeAll, afterEach, describe, expect, test } from "vitest";
 import { biomeFormatter, oxlintLinter } from "../adapters/tools";
+import type { Tool } from "../adapters/tooling";
 import { builtFromThisSource } from "./built";
 
 /** This file runs the BUILD, so a stale `dist` would measure a previous version — see `built.ts`. */
@@ -49,7 +59,8 @@ function project(files: Record<string, string>): string {
    * TO ITSELF, so a symlink somewhere else cannot find it. A real project has the tree, and so does
    * this one.
    */
-  execFileSync("ln", ["-s", join(REPO, "node_modules"), join(root, "node_modules")]);
+  // A junction on Windows, which needs no rights a symlink does; the type is ignored elsewhere.
+  symlinkSync(join(REPO, "node_modules"), join(root, "node_modules"), "junction");
 
   // Four spaces and a narrow line, so a run that used this repository's two-space settings is
   // visibly wrong rather than accidentally right.
@@ -272,7 +283,7 @@ describe("lint", () => {
     const { output, status } = run(root, ["lint", "src/Card.tsx"]);
 
     expect(status).toBe(1);
-    expect(output).toContain("src/Card.tsx:2:");
+    expect(output).toContain(`${join("src", "Card.tsx")}:2:`);
     expect(output).toContain("debugger");
   });
 
@@ -288,7 +299,7 @@ describe("lint", () => {
     const { output } = run(root, ["lint", "src/Card.tsx"]);
 
     expect(line).toBeGreaterThan(10);
-    expect(output).toContain(`src/Card.tsx:${line}:`);
+    expect(output).toContain(`${join("src", "Card.tsx")}:${line}:`);
   });
 
   test("a file with a block and nothing wrong is clean", () => {
@@ -306,7 +317,7 @@ describe("lint", () => {
     const { output, status } = run(root, ["lint", "src/Plain.ts"]);
 
     expect(status).toBe(1);
-    expect(output).toContain("src/Plain.ts:2:");
+    expect(output).toContain(`${join("src", "Plain.ts")}:2:`);
   });
 
   /**
@@ -324,6 +335,20 @@ describe("lint", () => {
 
 describe("when the tool itself says no", () => {
   /**
+   * Swaps this project's `node_modules` — a link to the repository's tree — for one holding only a
+   * stub of `pkg`, whose bin is the Node script given. `toolIn` runs a package's bin script, so a
+   * stub is a package; a script, not a shell file, so it runs wherever the tool would.
+   */
+  function stub(root: string, pkg: string, bin: string, script: string): void {
+    const dir = join(root, "stub", ...pkg.split("/"));
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "package.json"), JSON.stringify({ name: pkg, bin: { [bin]: "tool.js" } }));
+    writeFileSync(join(dir, "tool.js"), script);
+    // The link only — `rmSync` would refuse it as a directory, and a recursive one is not to be risked.
+    unlinkSync(join(root, "node_modules"));
+    renameSync(join(root, "stub"), join(root, "node_modules"));
+  }
+  /**
    * A formatter can fail for reasons that have nothing to do with a style block — a version that is
    * not installed, a platform binary that will not run. What a reader needs then is the tool's own
    * sentence, and a wrapper answering with its own call stack has hidden it.
@@ -336,15 +361,7 @@ describe("when the tool itself says no", () => {
   test("its own words come out, not a stack trace of ours", () => {
     const root = project({ "Card.tsx": STYLED });
 
-    // `toolIn` looks in `node_modules/.bin`, and this project's is a link to the repository's tree.
-    // A directory of its own, swapped in, is how a stub gets there without touching that.
-    const own = join(root, "stub", ".bin");
-    mkdirSync(own, { recursive: true });
-    writeFileSync(join(own, "biome"), `#!/bin/sh\necho "the formatter's own sentence" >&2\nexit 2\n`, {
-      mode: 0o755,
-    });
-    execFileSync("rm", [join(root, "node_modules")]);
-    execFileSync("mv", [join(root, "stub"), join(root, "node_modules")]);
+    stub(root, "@biomejs/biome", "biome", `process.stderr.write("the formatter's own sentence\\n"); process.exit(2);`);
 
     const { output, status } = run(root, ["format", "src/Card.tsx"]);
 
@@ -373,13 +390,7 @@ describe("when the tool itself says no", () => {
   test("a linter that fails is not a file that lints clean", () => {
     const root = project({ "Card.tsx": STYLED });
 
-    const own = join(root, "stub", ".bin");
-    mkdirSync(own, { recursive: true });
-    writeFileSync(join(own, "oxlint"), `#!/bin/sh\necho "oxlint: cannot read .oxlintrc.json" >&2\nexit 1\n`, {
-      mode: 0o755,
-    });
-    execFileSync("rm", [join(root, "node_modules")]);
-    execFileSync("mv", [join(root, "stub"), join(root, "node_modules")]);
+    stub(root, "oxlint", "oxlint", `process.stderr.write("oxlint: cannot read .oxlintrc.json\\n"); process.exit(1);`);
 
     const { output, status } = run(root, ["lint", "src/Card.tsx"]);
 
@@ -392,11 +403,7 @@ describe("when the tool itself says no", () => {
   test("nor is one that fails silently", () => {
     const root = project({ "Card.tsx": STYLED });
 
-    const own = join(root, "stub", ".bin");
-    mkdirSync(own, { recursive: true });
-    writeFileSync(join(own, "oxlint"), `#!/bin/sh\nexit 101\n`, { mode: 0o755 });
-    execFileSync("rm", [join(root, "node_modules")]);
-    execFileSync("mv", [join(root, "stub"), join(root, "node_modules")]);
+    stub(root, "oxlint", "oxlint", "process.exit(101);");
 
     const { output, status } = run(root, ["lint", "src/Card.tsx"]);
 
@@ -436,14 +443,13 @@ describe("what the wrapper refuses to guess", () => {
  * program that prints is the cheapest way to fill one.
  */
 describe("a tool that says more than a megabyte", () => {
-  /** An executable that ignores its arguments and prints `bytes` of output. */
-  function printer(bytes: number, out: "stdout" | "stderr" = "stdout"): string {
+  /** A tool that ignores its arguments and prints `bytes` of output. */
+  function printer(bytes: number, out: "stdout" | "stderr" = "stdout"): Tool {
     const root = mkdtempSync(join(tmpdir(), "ramonda-css-big-"));
     projects.push(root);
     const path = join(root, "printer.mjs");
-    writeFileSync(path, `#!/usr/bin/env node\nprocess.${out}.write("x".repeat(${bytes}));\n`);
-    execFileSync("chmod", ["+x", path]);
-    return path;
+    writeFileSync(path, `process.${out}.write("x".repeat(${bytes}));\n`);
+    return { command: process.execPath, args: [path] };
   }
 
   test("the formatter reads all of it", () => {
@@ -463,11 +469,10 @@ describe("a tool that says more than a megabyte", () => {
     const root = mkdtempSync(join(tmpdir(), "ramonda-css-big-"));
     projects.push(root);
     const path = join(root, "printer.mjs");
-    writeFileSync(path, `#!/usr/bin/env node\nprocess.stdout.write(${JSON.stringify(report)});\n`);
-    execFileSync("chmod", ["+x", path]);
+    writeFileSync(path, `process.stdout.write(${JSON.stringify(report)});\n`);
 
     expect(report.length).toBeGreaterThan(1024 * 1024);
-    expect(oxlintLinter(path, REPO)(join(REPO, "Probe.tsx"))).toHaveLength(6000);
+    expect(oxlintLinter({ command: process.execPath, args: [path] }, REPO)(join(REPO, "Probe.tsx"))).toHaveLength(6000);
   });
 });
 

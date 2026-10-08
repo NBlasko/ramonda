@@ -771,7 +771,11 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
   try {
     browser = await pw[engine].launch();
     const tab = await browser.newPage();
-    await tab.setContent("<!doctype html><html><body><div id=x>t</div><div id=y>t</div></body></html>");
+    // Each after a line of its own, so the two sit in the same place — see `check-must-split.mjs`,
+    // where the first child of the body measured differently from the second in Chromium 156.
+    await tab.setContent(
+      "<!doctype html><html><body><div>a</div><div id=x>t</div><div>a</div><div id=y>t</div></body></html>",
+    );
 
     for (const family of Object.keys(BY_HAND)) {
       const has = await tab.evaluate(

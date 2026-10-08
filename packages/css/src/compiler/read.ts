@@ -75,7 +75,7 @@ export function opensCode(source: string, at: number): boolean {
 /** The word that opens a condition's other branches: `else when $( … ) { … }` and `else { … }`. */
 export const ELSE = "else";
 /** The head of a branch that has a condition of its own. */
-export const ELSE_CONDITION = `${ELSE} ${CONDITION}`;
+const ELSE_CONDITION = `${ELSE} ${CONDITION}`;
 
 /** A prelude that is TRYING to be a condition, well formed or not — the word and a boundary. */
 const OPENS_A_CONDITION = new RegExp(`^(?:${ELSE}\\s+)?${CONDITION}\\b`);

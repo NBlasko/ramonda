@@ -45,7 +45,7 @@ function activate(context) {
       const text = document.getText();
 
       try {
-        const formatted = execFileSync(command, ["format", `--stdin-file-path=${file}`], {
+        const formatted = execFileSync(command.command, [...command.args, "format", `--stdin-file-path=${file}`], {
           cwd: dirname(file),
           input: text,
           encoding: "utf8",

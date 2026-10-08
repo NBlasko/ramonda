@@ -56,6 +56,8 @@ by the next build and caught by `pnpm check`.
 | `keywords.generated.ts` | `build-css-properties.mjs` | mdn-data |
 | `keywords.engine.generated.ts` | `build-engine-keywords.mjs` | the three engines, measured |
 | `numberless.generated.ts` | `build-numberless-properties.mjs` | the three engines, measured |
+| `numbers.generated.ts` | `build-number-properties.mjs` | the three engines, measured |
+| `mediaValues.generated.ts` | `build-media-values.mjs` | the three engines, measured |
 | `prefixed.generated.ts` | `build-prefixed-properties.mjs` | mdn-data + the engines |
 | `leaves.generated.ts` | `build-shorthand-leaves.mjs` | mdn-data + the engines |
 | `shapes.generated.ts` | `build-shorthand-shapes.mjs` | the three engines, measured |
@@ -164,16 +166,16 @@ pnpm check                           # the whole gate, from the repo root
 
 ## What is unfinished
 
-`split.ts` asks two tables and one hand-written file, and between them they answer **92 families** — every shorthand there is, but `all` and
+`split.ts` asks two tables and one hand-written file, and between them they answer **97 families** — every shorthand there is, but `all` and
 `-webkit-mask`, below.
 
 `SHAPES` answers a POSITIONAL family — how many values were written decides which longhand each one
-feeds, and no grammar is needed at all. **48 families.** A length family also carries whether it
+feeds, and no grammar is needed at all. **50 families.** A length family also carries whether it
 takes a negative and a percentage, asked of the engines: `scroll-margin` takes no `10%`, and a split
 of `scroll-margin: 10% 5px` would set the `5px` a browser drops with the rest.
 
 Everything else is read against the family's own grammar, opened by `openGrammar.ts` until every
-leaf belongs to a longhand and carried in `grammarShapes.generated.ts`. **27 families**, including
+leaf belongs to a longhand and carried in `grammarShapes.generated.ts`. **28 families**, including
 `animation`, `transition` and `font-variant`, none of which a flat list of slots can hold.
 
 `splitByHand.ts` answers the families that fit neither, with CSS's own rules written out: a keyword
@@ -181,8 +183,8 @@ standing for several longhands (`white-space: pre`, `flex: none`), a word that s
 (`font-synthesis: weight`), a part copied into the parts left out (`grid-area: a`), and every form
 of `<position>` for `background-position`, `mask-position` and `-webkit-mask-position`, and
 `background` and `mask` layer by layer on top of it, `font`, the ranges of `animation-range` and
-`timeline-trigger`, `grid` and `grid-template` with their area strings, `mask-border`, and the
-fallbacks of `position-try`. **35 by hand.**
+`timeline-trigger` and its two halves, `grid` and `grid-template` with their area strings, `mask-border`, and the
+fallbacks of `position-try`. **40 by hand.**
 Eighteen of them are in a table too, and the hand rules win: a table is learned from sentinels, and
 a value no sentinel was ever like it read wrong or not at all. `grid-column: 2` set the end to `2`
 where every engine says `auto`; `animation-range: cover` ran to `normal`, not to `cover`; and

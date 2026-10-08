@@ -2,7 +2,7 @@
 // rather than read: each browser is launched and asked CSS.supports(property, value). No engine
 // source is used. See THIRD-PARTY.md. Do not edit.
 //
-// The properties every engine refuses every bare number for, out of 566 with a
+// The properties every engine refuses every bare number for, out of 575 with a
 // closed keyword set. A number written into one of these is a mistake CSS itself has no word for.
 
 /** Properties that accept no bare number, in any engine measured. */

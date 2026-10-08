@@ -92,12 +92,14 @@ function isEmpty(dir: string): boolean {
 }
 
 /** Cancel helper: clack returns a symbol when the user hits Ctrl-C. */
-function guard<T>(value: T | symbol): T {
+// `Exclude` rather than `T | symbol`: a prompt answers with its own `unique symbol` on cancel, and
+// that is not `symbol` to inference, so `T` swallowed it and every answer stayed a possible symbol.
+function guard<T>(value: T): Exclude<T, symbol> {
   if (p.isCancel(value)) {
     p.cancel("Cancelled.");
     process.exit(0);
   }
-  return value as T;
+  return value as Exclude<T, symbol>;
 }
 
 /**

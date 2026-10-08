@@ -200,6 +200,9 @@ jobs:
       #   shorthand leaves      it was missing 37, after two hand-patches for the same fault
       #   union keywords        14 values Chromium accepts that the type map refused
       #
+      # And two facts no source has at all: the numbers a property drops (`gap: 12`, `z-index: 1.5`),
+      # and the values each media feature understands (`prefers-color-scheme: drak` never matches).
+      #
       # The last is the one that matters most: `properties.ts` states the line these protect —
       # "rejecting valid CSS is the one failure a type map may not have" — and an `mdn-data` bump or
       # a browser release can reopen any of them silently. `pnpm check` cannot ask, because three
@@ -210,6 +213,8 @@ jobs:
           node scripts/css/build-shorthand-leaves.mjs --check
           node scripts/css/build-engine-keywords.mjs --check
           node scripts/css/build-numberless-properties.mjs --check
+          node scripts/css/build-number-properties.mjs --check
+          node scripts/css/build-media-values.mjs --check
 
       # The splitter's tables and the gates over it. Each one launches Chromium, Firefox and WebKit,
       # so they cannot run in `lint`, which has none — they sat there on this branch and CI had never
@@ -299,6 +304,31 @@ jobs:
           parallel: true
           allow-empty: true
         continue-on-error: true
+
+  # The one place anything here runs on Windows. Not the whole suite: the files that start another
+  # program — `ramonda-css format`/`lint` running biome and oxlint, and the editor extension running
+  # `ramonda-css` — because that is where an operating system decides whether a command runs at all.
+  # They looked for the `.bin` shims, and on Windows those are a shell script and a `.cmd`, neither
+  # of which `execFileSync` can start without a shell. They run each package's own bin script with
+  # Node now, and this is what says so.
+  windows:
+    name: Windows (the commands that start a program)
+    runs-on: windows-latest
+    steps:
+      # Checked out as committed. The runner's git turns every line ending into CRLF otherwise, and a
+      # test that compares formatted text would be measuring the checkout rather than the code.
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+      - run: pnpm exec turbo run build --filter=@ramonda/css
+      - name: Test the commands that start a program
+        working-directory: packages/css
+        run: >-
+          pnpm exec vitest run
+          src/__tests__/toolingRun.test.ts
+          src/__tests__/toolingCli.test.ts
+          src/__tests__/cli.test.ts
+          src/__tests__/extension.test.ts
 
   test:
     name: Test

@@ -19,7 +19,7 @@
  * `@media (min-width: 80rem)` in another at a 1600px viewport, in both file orders.
  */
 function pixelsOf(text: string): number | undefined {
-  const found = /^\s*(-?\d*\.?\d+)(px|rem|em)\s*$/i.exec(text);
+  const found = /^\s*(-?(?:\d*\.)?\d+)(px|rem|em)\s*$/i.exec(text);
   if (found === null) return undefined;
   const value = Number(found[1]);
   return found[2].toLowerCase() === "px" ? value : value * 16;
@@ -51,8 +51,10 @@ function* widthsStated(condition: string): Generator<{ which: "min" | "max"; pix
   }
 
   // The range form. Only a group that holds a comparison, so an ordinary condition is skipped.
-  for (const [, inside] of condition.matchAll(/\(([^()]*[<>][^()]*)\)/g)) {
-    const parts = inside.split(/\s*(<=|>=|<|>)\s*/);
+  // The text before the FIRST comparison holds none, so the two halves cannot both take a `<`; and the
+  // spaces around each part are trimmed rather than matched, which was quadratic in a run of them.
+  for (const [, inside] of condition.matchAll(/\(([^()<>]*[<>][^()]*)\)/g)) {
+    const parts = inside.split(/(<=|>=|<|>)/).map((one) => one.trim());
     const at = parts.findIndex((one) => one.trim().toLowerCase() === "width");
     // `height`, `aspect-ratio`, `resolution` — a comparison, and not one about width.
     if (at === -1) continue;
@@ -190,10 +192,9 @@ export function exclusive(a: readonly string[], b: readonly string[]): boolean {
 
   const featuresOf = (text: string) =>
     new Map(
-      [...text.matchAll(/\(\s*([a-z-]+)\s*:\s*([^)]+)\)/gi)].map(([, name, value]) => [
-        name.toLowerCase(),
-        value.trim(),
-      ]),
+      // The value is trimmed below, not by spaces in the pattern: two runs of `\s` around `[^)]+` share
+      // every space, and a pair that never closed was quadratic in them.
+      [...text.matchAll(/\(\s*([a-z-]+)\s*:([^)]+)\)/gi)].map(([, name, value]) => [name.toLowerCase(), value.trim()]),
     );
   const mine = featuresOf(one);
   const theirs = featuresOf(other);

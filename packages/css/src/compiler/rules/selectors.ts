@@ -1,6 +1,7 @@
 /** Rules about a nested rule's selector or at-rule: unknown, out of place, or reaching another element. */
 
-import { AT_RULE_LINKS, MEDIA_FEATURES, NOT_IN_A_RULE, SELECTORS } from "../keywords.generated";
+import { AT_RULE_LINKS, MEDIA_FEATURES, NOT_IN_A_RULE, PROPERTIES, SELECTORS } from "../keywords.generated";
+import { MEDIA_KINDS, MEDIA_WORDS } from "../mediaValues.generated";
 import { nearest } from "../nearest";
 import { branchOf } from "../read";
 import { selectorsOf, type Block, type BlockItem, type NestedRule, rulesIn } from "./shared";
@@ -115,6 +116,180 @@ export function mediaFeatures(block: Block, findings: Finding[]): void {
 }
 
 /**
+ * A `(feature: value)` pair inside a condition. The value is taken whole and trimmed by `pairsIn`:
+ * written as a lazy match between two runs of spaces, the three traded the same characters and a
+ * pair that never closed took 65 s at 5,000 spaces.
+ */
+const A_PAIR = /\(\s*([a-zA-Z][\w-]*)\s*:([^()]*)\)/g;
+
+/** Each pair in a prelude: the whole match, the name, the value as written, and where it starts. */
+function* pairsIn(prelude: string): Generator<{ whole: string; name: string; value: string; index: number }> {
+  for (const found of prelude.matchAll(A_PAIR)) {
+    const [whole, name, raw] = found;
+    yield { whole, name, value: raw.trim(), index: found.index ?? 0 };
+  }
+}
+
+/** What kind of value this is, as `MEDIA_KINDS` names them — or nothing for one this cannot read. */
+function kindOf(value: string): string | undefined {
+  if (value === "0") return "zero";
+  // `\d+(?:\.\d*)?` and not `\d+\.?\d*`, whose two runs of digits share every digit: quadratic.
+  if (/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(value)) return "number";
+  if (/^\d+(?:\.\d+)?\s*\/\s*\d+(?:\.\d+)?$/.test(value)) return "ratio";
+  if (/^\d+(?:\.\d+)?(?:dppx|dpi|dpcm|x)$/i.test(value)) return "resolution";
+  if (/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)[a-z%]+$/i.test(value)) return "length";
+  return undefined;
+}
+
+const KIND_NAMES: Readonly<Record<string, string>> = {
+  length: "a length",
+  zero: "zero",
+  number: "a number",
+  ratio: "a ratio",
+  resolution: "a resolution",
+};
+
+/**
+ * A value a media feature does not have — which makes the condition `unknown`, not false.
+ *
+ * Measured in Chromium, Firefox and WebKit: `@media (prefers-color-scheme: drak)` and `@media
+ * (min-width: 40)` are both kept and both never match, because a query an engine does not understand
+ * is neither true nor false. `mediaValues.generated.ts` is what each feature's value may be — a word
+ * from its list, or a kind of value — written by asking the engines, and a feature no engine knows is
+ * absent, so nothing is said about it.
+ */
+export function mediaValues(block: Block, findings: Finding[]): void {
+  for (const item of rulesIn(block)) {
+    if (!item.prelude.startsWith("@media") || item.at === undefined) continue;
+
+    for (const { whole, name, value, index } of pairsIn(item.prelude)) {
+      const words = MEDIA_WORDS[name.toLowerCase()];
+      const kinds = MEDIA_KINDS[name.toLowerCase()];
+      if (words === undefined || kinds === undefined || value === "") continue;
+
+      const at = item.at + index + whole.indexOf(value, whole.indexOf(":"));
+      const kind = kindOf(value);
+      if (kind === undefined) {
+        if (!/^[a-zA-Z][\w-]*$/.test(value) || words.includes(value.toLowerCase())) continue;
+        const meant = nearest(value.toLowerCase(), words as string[]);
+        findings.push({
+          rule: "unknown-media-value",
+          at,
+          length: value.length,
+          message:
+            `\`${value}\` is not a value of \`${name}\`, so this condition never matches and a browser ` +
+            `keeps it anyway. ${meant === undefined ? `It takes ${words.map((one) => `\`${one}\``).join(", ")}.` : `Did you mean \`${meant}\`?`}`,
+        });
+        continue;
+      }
+      if (!kinds.includes(kind)) findings.push(wrongKind(name, value, kind, kinds, at));
+    }
+
+    // The range form, `(width >= 40)` and `(40 < width <= 80rem)`: a value of the wrong kind on either
+    // side leaves it unknown exactly as the colon form does.
+    for (const { name, value, at } of rangesIn(item.prelude)) {
+      const kinds = MEDIA_KINDS[name.toLowerCase()];
+      const kind = kindOf(value);
+      if (kinds === undefined || kind === undefined || kinds.includes(kind)) continue;
+      findings.push(wrongKind(name, value, kind, kinds, item.at + at));
+    }
+  }
+}
+
+/** A value of a kind the feature does not take — the one sentence both forms of a condition say. */
+function wrongKind(name: string, value: string, kind: string, kinds: readonly string[], at: number): Finding {
+  const fix = kind === "number" && kinds.includes("length") ? ` Write \`${value}px\`, or the unit you meant.` : "";
+  return {
+    rule: "unknown-media-value",
+    at,
+    length: value.length,
+    message:
+      `\`${name}\` does not take ${KIND_NAMES[kind]}, so this condition never matches and a browser ` +
+      `keeps it anyway. It takes ${
+        kinds
+          .filter((one) => one !== "zero")
+          .map((one) => KIND_NAMES[one])
+          .join(" or ") || "a word"
+      }.${fix}`,
+  };
+}
+
+/**
+ * Each value compared with a feature in a range group — `(width >= 40)` gives `width` and `40` — and
+ * where the value starts in the prelude. Read by hand, a group at a time: a pattern with text on both
+ * sides of an operator is the shape that was quadratic before.
+ */
+function* rangesIn(prelude: string): Generator<{ name: string; value: string; at: number }> {
+  let open = prelude.indexOf("(");
+  while (open !== -1) {
+    const close = prelude.indexOf(")", open + 1);
+    if (close === -1) return;
+    const inner = prelude.slice(open + 1, close);
+    // A nested group opens again inside this one; the innermost is asked on its own turn.
+    const nested = inner.lastIndexOf("(");
+    if (nested !== -1) {
+      open += 1 + nested;
+      continue;
+    }
+    if (/[<>=]/.test(inner) && !inner.includes(":")) {
+      const parts = inner.split(/(<=|>=|<|>|=)/);
+      const names = parts.filter(
+        (one, index) => index % 2 === 0 && MEDIA_KINDS[one.trim().toLowerCase()] !== undefined,
+      );
+      if (names.length === 1) {
+        const name = names[0].trim();
+        let from = open + 1;
+        for (const [index, part] of parts.entries()) {
+          const value = part.trim();
+          if (index % 2 === 0 && value !== "" && value !== name) {
+            yield { name, value, at: prelude.indexOf(value, from) };
+          }
+          from += part.length;
+        }
+      }
+    }
+    open = prelude.indexOf("(", close + 1);
+  }
+}
+
+/** Every media feature by name, unprefixed — what `@supports` is asked about by mistake. */
+const FEATURE_NAMES = new Set(MEDIA_FEATURES);
+const PROPERTY_NAMES = new Set(PROPERTIES);
+
+/**
+ * A media feature written into `@supports`, which asks whether a PROPERTY is supported.
+ *
+ * Measured in Chromium, Firefox and WebKit: `@supports (min-width: 40rem)` is TRUE — `min-width` is
+ * a property and `40rem` a value it takes — and `@supports (orientation: landscape)` is FALSE,
+ * because `orientation` is no property. Either way the group never switches, and each reads like the
+ * breakpoint somebody meant as `@media`.
+ *
+ * A feature that is also a property is reported only with a plain dimension: `@supports (min-width:
+ * fit-content)` is a real question about a keyword, and an engine may well say no.
+ */
+export function supportsAMediaFeature(block: Block, findings: Finding[]): void {
+  for (const item of rulesIn(block)) {
+    if (!item.prelude.startsWith("@supports") || item.at === undefined) continue;
+
+    for (const { whole, name, value, index } of pairsIn(item.prelude)) {
+      if (!FEATURE_NAMES.has(name.toLowerCase())) continue;
+      const property = PROPERTY_NAMES.has(name.toLowerCase());
+      if (property && kindOf(value) !== "length") continue;
+
+      findings.push({
+        rule: "supports-a-media-feature",
+        at: item.at + index + whole.indexOf(name),
+        length: name.length,
+        message:
+          `\`@supports\` asks whether a property is supported, and \`${name}\` here is ` +
+          (property ? "a property every browser has, so this is always true" : "no property, so this is never true") +
+          `. A media feature belongs in \`@media (${name}: ${value})\`.`,
+      });
+    }
+  }
+}
+
+/**
  * A prelude spelled a way that is the same CSS and a different class.
  *
  * `:hover` and `:HOVER` are one rule to a browser, and two keys here — because a declaration's key
@@ -210,7 +385,8 @@ function rootUnderTheElement(selector: string): boolean {
   let flat = selector
     .trim()
     .replace(/"[^"]*"|'[^']*'/g, '""')
-    .replace(/\[[^\]]*\]/g, "[]");
+    // `[^[\]]`, so a bracket that never closes is not rescanned from every `[` before it.
+    .replace(/\[[^[\]]*\]/g, "[]");
   for (let before = ""; before !== flat; ) {
     before = flat;
     flat = flat.replace(/\([^()]*\)/g, "()");

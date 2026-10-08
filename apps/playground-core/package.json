@@ -18,16 +18,16 @@
   "license": "ISC",
   "dependencies": {
     "@ramonda/core": "workspace:^",
+    "@ramonda/css": "workspace:*",
     "@ramonda/form": "workspace:^",
     "@ramonda/query": "workspace:^",
-    "@ramonda/router": "workspace:^",
-    "@ramonda/css": "workspace:*"
+    "@ramonda/router": "workspace:^"
   },
   "devDependencies": {
-    "@playwright/test": "^1.49.0",
+    "@playwright/test": "^1.64.0",
     "@ramonda/build": "workspace:^",
     "@ramonda/devtools": "workspace:^",
-    "@types/node": "^26.4.1",
+    "@types/node": "^26.6.4",
     "vite": "^7.3.6"
   }
 }

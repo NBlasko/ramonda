@@ -51,7 +51,8 @@
          in a file you had no reason to open. -->
     <!--portals-->
     <!-- Dev (Vite) serves this source directly with HMR; the production build
-         rewrites it to the bundled /assets/client.js (see server.mjs). -->
+         rewrites it to the bundled /assets/client.js, and links the stylesheet esbuild wrote
+         beside it if there is one (see scripts/build.mjs). -->
     <script type="module" src="/src/entry-client.tsx"></script>
   </body>
 </html>

@@ -421,7 +421,9 @@ describe("a vendor prefix", () => {
     "-webkit-text-stroke",
     "-ms-overflow-style",
   ])("%s is a real property and is left alone", (name) => {
-    expect(checkNamedFree(`${name}: 3;`)).toEqual([]);
+    // The NAME is the subject. `3` is a fine value for some of these and a dropped one for others —
+    // `-webkit-text-stroke` takes a length — which another rule says.
+    expect(checkNamedFree(`${name}: 3;`).filter((one) => one.rule === "unknown-property")).toEqual([]);
   });
 
   /** A near miss is offered where there is one, the same as for a bare name. */

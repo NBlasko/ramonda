@@ -21,7 +21,7 @@ beforeAll(builtFromThisSource);
 const PACKAGE = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const BIN = join(PACKAGE, "bin.mjs");
 const { commandFor } = createRequire(join(PACKAGE, "package.json"))("../../tools/vscode-css/locate.js") as {
-  commandFor: (file: string) => string | undefined;
+  commandFor: (file: string) => { command: string; args: string[] } | undefined;
 };
 
 const rooms: string[] = [];
@@ -29,39 +29,44 @@ afterEach(() => {
   for (const one of rooms.splice(0)) rmSync(one, { recursive: true, force: true });
 });
 
-/** A project with its own `ramonda-css`, and a dependency that has one too. */
+/** A project with `@ramonda/css` installed, whose package names `bin.mjs` as `ramonda-css`. */
 function project(): string {
   const root = mkdtempSync(join(tmpdir(), "ramonda-css-vscode-"));
   rooms.push(root);
-  mkdirSync(join(root, "node_modules", ".bin"), { recursive: true });
-  writeFileSync(join(root, "node_modules", ".bin", "ramonda-css"), "#!/bin/sh\n");
+  const own = join(root, "node_modules", "@ramonda", "css");
+  mkdirSync(own, { recursive: true });
+  writeFileSync(
+    join(own, "package.json"),
+    JSON.stringify({ name: "@ramonda/css", bin: { "ramonda-css": "./bin.mjs" } }),
+  );
   mkdirSync(join(root, "src", "deep"), { recursive: true });
   return root;
 }
 
 describe("which `ramonda-css` a file gets", () => {
+  /**
+   * The script the PACKAGE names, run by `node` — not the shim in `.bin`, which is a different file
+   * on every system and one `execFileSync` cannot run on Windows: the extensionless one is a shell
+   * script, and Node 20.12 refuses a `.cmd` without a shell. See `toolIn` in `tooling.ts`.
+   */
   test("the project's own, from anywhere inside it", () => {
     const root = project();
-    const its = join(root, "node_modules", ".bin", "ramonda-css");
+    const its = { command: "node", args: [join(root, "node_modules", "@ramonda", "css", "bin.mjs")] };
 
-    expect(commandFor(join(root, "src", "Card.tsx"))).toBe(its);
-    expect(commandFor(join(root, "src", "deep", "Card.tsx"))).toBe(its);
+    expect(commandFor(join(root, "src", "Card.tsx"))).toEqual(its);
+    expect(commandFor(join(root, "src", "deep", "Card.tsx"))).toEqual(its);
   });
 
-  /**
-   * The spelling a WINDOWS install writes — see `toolIn`, which had the same gap and was found with
-   * it. Not measured on Windows, because there is none here and CI runs `ubuntu-latest` for every
-   * job; the lookup is what is measured.
-   */
-  test.each([".cmd", ".exe", ".ps1"])("the %s a Windows install writes", (extension) => {
+  /** The shims alone are not the command: they are what a Windows install cannot run. */
+  test("not a shim in `.bin`, in any spelling", () => {
     const root = mkdtempSync(join(tmpdir(), "ramonda-css-vscode-"));
     rooms.push(root);
     const bin = join(root, "node_modules", ".bin");
     mkdirSync(bin, { recursive: true });
-    writeFileSync(join(bin, `ramonda-css${extension}`), "");
+    for (const spelling of ["", ".cmd", ".ps1"]) writeFileSync(join(bin, `ramonda-css${spelling}`), "");
     mkdirSync(join(root, "src"), { recursive: true });
 
-    expect(commandFor(join(root, "src", "Card.tsx"))).toBe(join(bin, `ramonda-css${extension}`));
+    expect(commandFor(join(root, "src", "Card.tsx"))).toBeUndefined();
   });
 
   /**

@@ -5587,19 +5587,12 @@ them, and this one hands back nothing: there is no decomposition to find, and re
 
 Measured 2026-10-07 — each of these still compiles, or is still undecided:
 
-- **Five declarations a browser drops, or a group it never switches, that this compiles.** No rule and
-  no type reports them; each is a new refusal, and what a build rejects is the user's call.
-
-  | | what a browser does |
-  |---|---|
-  | `gap: 12`, `letter-spacing: 12` | drops it — a bare number where a length goes |
-  | `z-index: 1.5` | drops it — `<integer>` cannot be a type (neither `number` nor `` `${number}` `` refuses `1.5`), so it has to be a rule |
-  | `@supports (min-width: 40rem)` | always TRUE — a group that can never be off, reading like a breakpoint |
-  | `@media (prefers-color-scheme: drak)` | never matches; the feature NAME is checked and its value is not |
-
-  The oracle for all of them is `(f)` against `not (f)` in a real browser, which already verifies
-  the media features. As a TYPE, any of these costs a flat four instantiations — measured with 100
-  properties declared, at 1, 12, 40 and 80 set.
+- **CLOSED 2026-10-08: the five declarations a browser drops, or a group it never switches.** Four
+  rules now, each reading a table the engines wrote: `number-without-a-unit` (`gap: 12`, 163
+  properties), `fraction-where-a-whole-number-goes` (`z-index: 1.5`, 15), `unknown-media-value`
+  (`prefers-color-scheme: drak`, and `min-width: 40`, which is not a length) and
+  `supports-a-media-feature` (`@supports (min-width: 40rem)` always true, `(orientation: landscape)`
+  never). See `build-number-properties.mjs` and `build-media-values.mjs`.
 
 - **Two conditions the mode table does not name.** `@media (min-height: …)` against `@media (hover:
   hover)` share its last slot, so the file's own order decides and another file can reverse it;
@@ -5607,8 +5600,11 @@ Measured 2026-10-07 — each of these still compiles, or is still undecided:
   spread. Either the table grows to name them, or a slot is derived from the condition's own text
   with a report when the author's order disagrees.
 
-- **`windows-latest` in CI.** Every job is `ubuntu-latest`. `toolIn` and `vscode/locate.js` look for
-  the `.cmd` spelling, but whether `execFileSync` then runs one cleanly has never been measured.
+- **CLOSED 2026-10-08: `windows-latest` in CI.** `toolIn` and `vscode-css/locate.js` looked for the
+  `.bin` shims, plain name first — on Windows a shell script, and next to it a `.cmd` that Node 20.12
+  refuses to start without a shell. Both now run the script the tool's PACKAGE names as its bin, with
+  Node, which is one file on every system. The `windows` job in `checks.yml` runs the four test files
+  that start a program, on `windows-latest`.
 
 - **`virtual.test.ts` timed out once in CI, at 60 s, unexplained.** Not the change it failed on
   (9.2 s with, 9.6 s without); the slowest case is ~750 ms locally, so a per-test timeout needs

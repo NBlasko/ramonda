@@ -15,10 +15,8 @@ const origin = "http://localhost:5173";
 // The DOM must exist before the app module is imported (class fields/decorators run at import).
 installDom(`${origin}/`);
 const { staticPaths, prerender } = await import("../dist/server/entry-server.js");
-const template = (await readFile(resolve(root, "index.html"), "utf-8")).replace(
-  "/src/entry-client.tsx",
-  "/assets/client.js",
-);
+// The shell `scripts/build.mjs` wrote, with the built script and stylesheet already in it.
+const template = await readFile(resolve(root, "dist/client/index.html"), "utf-8");
 
 // Every page in the ISR cache was baked by the bundle this build just replaced, so serving one
 // afterwards hands the browser old markup for a new client bundle — a hydration mismatch, and old

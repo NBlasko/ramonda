@@ -8,7 +8,8 @@ import { urlsIn, withoutQuery } from "../urlsIn";
 import { wordSet } from "../wordSet";
 import { nearest } from "../nearest";
 import { NUMBERLESS } from "../numberless.generated";
-import { GLOBAL, KNOWN, STRINGS_FIT, type Block, words, declarationsIn } from "./shared";
+import { UNIT_REQUIRED, UNIT_REQUIRED_EVERYWHERE, WHOLE_NUMBER, WHOLE_NUMBER_EVERYWHERE } from "../numbers.generated";
+import { GLOBAL, KNOWN, STRINGS_FIT, type Block, words, declarationsIn, withoutImportant } from "./shared";
 import { type Finding } from "./index";
 import { bareColon, endOfCall, endOfString, terminator } from "./text";
 import { onlyCase } from "./properties";
@@ -211,6 +212,8 @@ export function urlNotFound(
  * name the author invented and nothing here can judge it.
  */
 export function unknownValue(item: Declaration, findings: Finding[]): void {
+  numberDropped(item, findings);
+
   const names = PROPERTY_NAMED[item.property];
   if (names !== undefined) return propertyNames(item, names, findings);
 
@@ -413,7 +416,7 @@ export const KNOWN_UNITS = new Set(UNITS);
  * And the unit may not be followed by a word character, which is what keeps a bare `2e3` out: with
  * the exponent optional, the engine would otherwise back off to a unit of `e` and leave the `3`.
  */
-const A_UNIT = /(?<![\w.#-])\d*\.?\d+(?:[eE][+-]?\d+)?([a-zA-Z%]+)(?![\w.])/g;
+const A_UNIT = /(?<![\w.#-])(?:\d*\.)?\d+(?:[eE][+-]?\d+)?([a-zA-Z%]+)(?![\w.])/g;
 
 /**
  * Every unit written in a value, with the two places one is not a unit stepped over.
@@ -629,6 +632,125 @@ export function stringNotAllowed(item: Declaration, findings: Finding[]): void {
  * A HOLE is left alone, for the reason `non-canonical-spelling` gives: what a hole evaluates to is
  * not text the author wrote, and the types are what answer for it.
  */
+const UNIT = new Set(UNIT_REQUIRED);
+const UNIT_EVERYWHERE = new Set(UNIT_REQUIRED_EVERYWHERE);
+const WHOLE = new Set(WHOLE_NUMBER);
+const WHOLE_EVERYWHERE = new Set(WHOLE_NUMBER_EVERYWHERE);
+const A_NUMBER = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i;
+
+/**
+ * The words of a value at its top level, each with its offset — not inside a call, where `repeat(3,
+ * 1fr)` and `calc(100% - 12px)` hold numbers that are right, and not inside a string.
+ */
+function topLevelWords(text: string): { word: string; at: number }[] {
+  const out: { word: string; at: number }[] = [];
+  let depth = 0;
+  let quote = "";
+  let start = -1;
+  let called = false;
+  const end = (at: number) => {
+    if (start !== -1 && !called) out.push({ word: text.slice(start, at), at: start });
+    start = -1;
+    called = false;
+  };
+  for (let at = 0; at < text.length; at++) {
+    const c = text[at];
+    if (quote !== "") {
+      if (c === quote) quote = "";
+      continue;
+    }
+    if (c === '"' || c === "'") {
+      quote = c;
+      called = true;
+      continue;
+    }
+    if (c === "(") {
+      depth++;
+      called = true;
+      continue;
+    }
+    if (c === ")") {
+      depth = Math.max(0, depth - 1);
+      continue;
+    }
+    if (depth > 0) continue;
+    if (/[\s,/]/.test(c)) {
+      end(at);
+      continue;
+    }
+    if (start === -1) start = at;
+  }
+  end(text.length);
+  return out;
+}
+
+/**
+ * A number a browser DROPS where no type can refuse it — `gap: 12` and `z-index: 1.5`.
+ *
+ * Both are lists the engines wrote: `numbers.generated.ts`, where every engine refuses the number
+ * and accepts the right one. Measured in Chromium, Firefox and WebKit, each declaration below is
+ * gone from the element without a word anywhere:
+ *
+ *     gap: 12         dropped — and `12px` and `0` are kept
+ *     z-index: 1.5    dropped — and `1` is kept
+ *
+ * A number standing alone is reported for every property in the list. One AMONG other words only
+ * where the engines were asked that too — `margin: 4px 12` is dropped, while the `0` in
+ * `box-shadow: 0 0 1px red` is a length — which is the `_EVERYWHERE` half of each list. A zero is
+ * never reported: it needs no unit.
+ */
+function numberDropped(item: Declaration, findings: Finding[]): void {
+  // A name in capitals is the same property, and its value is dropped the same way.
+  const property = item.property.toLowerCase();
+  const unit = UNIT.has(property);
+  const whole = WHOLE.has(property);
+  if (!unit && !whole) return;
+
+  const only = item.value.filter((part) => part.kind === "text" && !part.resolved);
+  if (only.length !== item.value.length || only.length !== 1) return;
+  const part = only[0];
+  if (part.kind !== "text" || part.at === undefined) return;
+
+  const text = withoutImportant(part.text.slice(0, terminator(part.text)));
+  const all = topLevelWords(text);
+  const numbers = all.filter((one) => A_NUMBER.test(one.word));
+  const asked = (everywhere: Set<string>) => (all.length === 1 || everywhere.has(property) ? numbers : []);
+
+  if (unit) {
+    for (const one of asked(UNIT_EVERYWHERE)) {
+      if (Number(one.word) === 0) continue;
+      findings.push({
+        rule: "number-without-a-unit",
+        at: part.at + one.at,
+        length: one.word.length,
+        message:
+          `\`${item.property}\` takes a length, and a browser drops \`${one.word}\` — a number with no ` +
+          `unit is not one. Write \`${one.word}px\`, or the unit you meant.`,
+      });
+    }
+  }
+  if (whole) {
+    for (const one of asked(WHOLE_EVERYWHERE)) {
+      /**
+       * Whole by its SPELLING, not by its value: all three engines drop `z-index: 1.0` and `1e2`, an
+       * integer to `Number.isInteger`, because CSS reads `<integer>` off the token — digits, and
+       * nothing else.
+       */
+      if (/^[+-]?\d+$/.test(one.word)) continue;
+      const value = Number(one.word);
+      const fix = Number.isInteger(value)
+        ? `Write \`${value}\`.`
+        : `Write \`${Math.floor(value)}\` or \`${Math.ceil(value)}\`.`;
+      findings.push({
+        rule: "fraction-where-a-whole-number-goes",
+        at: part.at + one.at,
+        length: one.word.length,
+        message: `\`${item.property}\` takes a whole number, and a browser drops \`${one.word}\`. ${fix}`,
+      });
+    }
+  }
+}
+
 function numberWhereKeywordsGo(item: Declaration, findings: Finding[]): void {
   if (!NUMBERLESS.includes(item.property)) return;
 

@@ -149,6 +149,19 @@ const ENGINE_KEYWORDS = previousFrom(
   {},
 );
 
+/**
+ * Properties an engine takes MORE than one word for — `column-rule-style: solid, dashed` in Chromium —
+ * so a union of their words would refuse CSS a browser renders. Typed `CssValue`, and their words are
+ * still checked one by one, as before a grammar closed them. See `build-engine-keywords.mjs`.
+ */
+const ENGINE_OPEN = new Set(
+  previousFrom(
+    join(root, "packages/css/src/compiler/keywords.engine.generated.ts"),
+    /ENGINE_OPEN: readonly string\[\] = (\[[\s\S]*?\])\s*;/,
+    [],
+  ),
+);
+
 const PREFIXED = required(
   "packages/css/src/compiler/prefixed.generated.ts",
   /PREFIXED: readonly string\[\] = (\[[\s\S]*?\])\s*;/,
@@ -1087,9 +1100,10 @@ const named = [
      *
      * A shorthand's clear-list can only name a property this list holds, so a leaf missing from it is
      * a leaf the merge cannot clear. Measured: Chromium resets four `timeline-trigger-activation-*`
-     * and `timeline-trigger-active-*` longhands that `mdn-data` has never heard of — it lists
-     * `timeline-trigger-exit-range-*` instead — so `timeline-trigger` could not clear them and the
-     * longhand's class would have landed and won.
+     * and `timeline-trigger-active-*` longhands that `mdn-data` before 2.37 had never heard of — it
+     * listed `timeline-trigger-exit-range-*` instead — so `timeline-trigger` could not clear them and
+     * the longhand's class would have landed and won. 2.37 has caught up; the next gap will not
+     * announce itself.
      *
      * A leaf with no `mdn-data` entry gets `CssValue` and no value checking, the same as an
      * engine-only prefixed name, and that is the honest answer: there is no grammar to read.
@@ -1152,7 +1166,7 @@ for (const name of named) {
    * Third time `mdn-data` has not been enough, and the third time the answer is the same: ask the
    * engines. See `build-engine-keywords.mjs`, whose output this merges.
    */
-  const grammar = keywordsOf(properties[name].syntax);
+  const grammar = ENGINE_OPEN.has(name) ? undefined : keywordsOf(properties[name].syntax);
   const keywords = grammar === undefined ? undefined : [...new Set([...grammar, ...(ENGINE_KEYWORDS[name] ?? [])])];
   const key = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(name) ? name : JSON.stringify(name);
   /**

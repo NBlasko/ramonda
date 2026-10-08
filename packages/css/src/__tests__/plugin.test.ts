@@ -2008,7 +2008,7 @@ describe("hover", () => {
   test("and the at-rule's MDN link, which is generated rather than written", () => {
     const { documentation } = hovered(BLOCK, "@media");
 
-    expect(documentation).toContain("developer.mozilla.org/docs/Web/CSS/@media");
+    expect(documentation).toContain("developer.mozilla.org/docs/Web/CSS/Reference/At-rules/@media");
   });
 
   test.each([
@@ -2018,7 +2018,7 @@ describe("hover", () => {
     const { signature, documentation } = hovered(code, name);
 
     expect(signature).toContain(name);
-    expect(documentation).toContain(`developer.mozilla.org/docs/Web/CSS/${name}`);
+    expect(documentation).toContain(`developer.mozilla.org/docs/Web/CSS/Reference/At-rules/${name}`);
   });
 
   /** An at-rule nobody has heard of shows its own text, which is still the honest answer. */

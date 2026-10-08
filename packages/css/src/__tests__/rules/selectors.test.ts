@@ -490,3 +490,88 @@ describe("an at-rule name", () => {
     expect(checkNamedFree("@-moz-document url-prefix() { color: red; }")).toEqual([]);
   });
 });
+
+/**
+ * A media condition a browser keeps and never matches, and a `@supports` that cannot switch.
+ *
+ * Measured in Chromium, Firefox and WebKit: a value the engine does not know makes the condition
+ * `unknown`, so it is neither true nor false — `(f)` and `not (f)` both fail. And `@supports` asks
+ * whether a PROPERTY is supported: `(min-width: 40rem)` is a property and always is, while
+ * `(orientation: landscape)` is not one and never is. Either way the group never switches, and both
+ * read like a breakpoint somebody meant to write.
+ */
+describe("a condition that cannot switch", () => {
+  /**
+   * Answered in LINEAR time, because the editor asks on every keystroke. A pair that never closed —
+   * `(a:` and a long run of spaces — took 65 s at 5,000 spaces, the lazy value and the spaces around
+   * it trading the same characters; and a run of zeros with no end was quadratic in the number test.
+   * Measured before the fix: 2,000 spaces ~4 s, 20,000 zeros ~1.7 s.
+   */
+  test.each([
+    ["a pair that never closes", `  @media (min-width:${" ".repeat(2_000)}(x)) { color: red; }`],
+    ["a pair that never closes, in @supports", `  @supports (min-width:${" ".repeat(2_000)}(x)) { color: red; }`],
+    ["a number that never ends", `  @media (min-width: 0${"00".repeat(10_000)}!) { color: red; }`],
+    ["a range of nothing but comparisons", `  @media (${"<".repeat(20_000)}) { color: red; }`],
+    ["a range with a long run of spaces", `  @media (width${" ".repeat(20_000)}>= 40) { color: red; }`],
+    // The same digits as a declaration's value: the splitter and the value rules read numbers with the
+    // same pattern, and it was in twelve places.
+    ["a value that never ends", `  padding: 0${"00".repeat(10_000)}!;`],
+    ["a length that never ends", `  margin: 1${"00".repeat(10_000)}.;`],
+  ])("%s is answered at once", (_what, css) => {
+    const started = performance.now();
+    rules(css);
+    expect(performance.now() - started).toBeLessThan(250);
+  });
+
+  test.each([
+    ["a value the feature does not have", "  @media (prefers-color-scheme: drak) { color: red; }"],
+    ["another", "  @media (hover: hovr) { color: red; }"],
+    ["a width with no unit", "  @media (min-width: 40) { color: red; }"],
+    // The range form, which every engine leaves unknown the same way.
+    ["a range with no unit", "  @media (width >= 40) { color: red; }"],
+    ["a range written the other way round", "  @media (40 <= width) { color: red; }"],
+    ["a range on both sides", "  @media (40rem < width <= 80) { color: red; }"],
+  ])("%s is reported", (_what, css) => {
+    expect(rules(css)).toContain("unknown-media-value");
+  });
+
+  test("a range's number is reported where it is written", () => {
+    const css = "  @media (40rem < width <= 80) { color: red; }";
+    const [found] = check(css).filter((one) => one.rule === "unknown-media-value");
+    const source = `<div className={@@(\n${css}\n)}>x</div>`;
+    expect(source.slice(found.at, found.at + found.length)).toBe("80");
+    expect(found.message).toContain("Write `80px`");
+  });
+
+  test("and the near miss is offered", () => {
+    expect(messages("  @media (prefers-color-scheme: drak) { color: red; }").join(" ")).toContain("`dark`");
+  });
+
+  test.each([
+    ["a breakpoint in @supports, always true", "  @supports (min-width: 40rem) { color: red; }"],
+    ["a media feature in @supports, never true", "  @supports (orientation: landscape) { color: red; }"],
+    ["another", "  @supports (hover: hover) { color: red; }"],
+  ])("%s is reported", (_what, css) => {
+    expect(rules(css)).toContain("supports-a-media-feature");
+  });
+
+  test.each([
+    ["a real media condition", "  @media (prefers-color-scheme: dark) { color: red; }"],
+    ["a breakpoint", "  @media (min-width: 40rem) { color: red; }"],
+    ["zero", "  @media (min-width: 0) { color: red; }"],
+    ["a ratio", "  @media (min-aspect-ratio: 16/9) { color: red; }"],
+    ["a range with a unit", "  @media (width >= 40rem) { color: red; }"],
+    ["a range on both sides", "  @media (400px <= width <= 70rem) { color: red; }"],
+    ["a ratio in a range", "  @media (aspect-ratio > 16/9) { color: red; }"],
+    ["a resolution in a range", "  @media (resolution >= 2dppx) { color: red; }"],
+    ["a range around calc", "  @media (width >= calc(40rem + 1px)) { color: red; }"],
+    ["zero in a range", "  @media (width > 0) { color: red; }"],
+    ["a resolution", "  @media (min-resolution: 2dppx) { color: red; }"],
+    ["a real @supports", "  @supports (display: grid) { color: red; }"],
+    ["a sizing keyword in @supports, which is a real question", "  @supports (min-width: fit-content) { color: red; }"],
+  ])("%s is silent", (_what, css) => {
+    const found = rules(css);
+    expect(found).not.toContain("unknown-media-value");
+    expect(found).not.toContain("supports-a-media-feature");
+  });
+});

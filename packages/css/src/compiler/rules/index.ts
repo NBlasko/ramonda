@@ -19,7 +19,14 @@ import {
   unknownVariable,
   variableByHand,
 } from "./tokens";
-import { layerInABlock, mediaFeatures, rootInABlock, stylesAnotherElement } from "./selectors";
+import {
+  layerInABlock,
+  mediaFeatures,
+  mediaValues,
+  rootInABlock,
+  stylesAnotherElement,
+  supportsAMediaFeature,
+} from "./selectors";
 import { spelling } from "./properties";
 import {
   againstRegisteredSyntax,
@@ -128,6 +135,13 @@ export const RULE_IDS = [
   "url-not-found",
   "styles-another-element",
   "unknown-media-feature",
+  // A value a media feature does not have, and a media feature asked of `@supports`. See
+  // `mediaValues` and `supportsAMediaFeature`.
+  "unknown-media-value",
+  "supports-a-media-feature",
+  // A number a browser drops where no type refuses it — `gap: 12`, `z-index: 1.5`. See `numberDropped`.
+  "number-without-a-unit",
+  "fraction-where-a-whole-number-goes",
   "value-and-registered-syntax",
   "unit-not-allowed",
   "value-not-allowed",
@@ -379,6 +393,8 @@ export function checkBlock(written: AnyBlock, options: CheckOptions = {}): Findi
   valueDiffersAcrossEngines(block, findings);
   holeAsAVariableName(block, findings);
   mediaFeatures(block, findings);
+  mediaValues(block, findings);
+  supportsAMediaFeature(block, findings);
   spelling(block, findings);
   layerInABlock(block, findings);
   rootInABlock(block, findings);

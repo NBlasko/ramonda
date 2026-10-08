@@ -1029,3 +1029,73 @@ describe("`!important` is not one of the values", () => {
     expect(found(css)).toContain("too-many-values");
   });
 });
+
+/**
+ * A number a browser DROPS, which no type refuses: `gap: 12` and `z-index: 1.5`.
+ *
+ * Measured in Chromium, Firefox and WebKit through `CSS.supports` — see
+ * `scripts/css/build-number-properties.mjs`, which writes the lists these read. Each shape below is
+ * dropped by all three: the declaration is gone, the element keeps whatever it had, and nothing
+ * anywhere says so.
+ */
+describe("a number a browser drops", () => {
+  test.each([
+    ["a length with no unit", "  gap: 12;"],
+    ["a font size with no unit", "  font-size: 16;"],
+    ["a negative one", "  letter-spacing: -1;"],
+    ["a decimal one", "  width: 1.5;"],
+    ["one of a box shorthand's values", "  margin: 4px 12;"],
+  ])("%s is reported", (_what, css) => {
+    expect(rules(css)).toContain("number-without-a-unit");
+  });
+
+  test.each([
+    ["a fraction where a whole number goes", "  z-index: 1.5;"],
+    ["in a column count", "  column-count: 2.5;"],
+    ["in a grid line", "  grid-column: 1 / 2.5;"],
+    // A whole number is a SPELLING, not a value: all three engines drop `1.0` and `1e2` for an
+    // integer, which `Number.isInteger` called whole.
+    ["a whole value written with a point", "  z-index: 1.0;"],
+    ["a whole value written with an exponent", "  z-index: 1e2;"],
+    ["one in an order", "  order: 2.0;"],
+    ["one at a grid line", "  grid-row: 1.0 / 2;"],
+  ])("%s is reported", (_what, css) => {
+    expect(rules(css)).toContain("fraction-where-a-whole-number-goes");
+  });
+
+  /** A property name in capitals is the same property, and the browser drops its value the same way. */
+  test("in a property written in capitals", () => {
+    expect(rules("  GAP: 12;")).toContain("number-without-a-unit");
+    expect(rules("  Z-Index: 1.5;")).toContain("fraction-where-a-whole-number-goes");
+  });
+
+  test("and a whole value with a point is offered the integer, once", () => {
+    const said = messages("  z-index: 1.0;").join(" ");
+    expect(said).toContain("Write `1`.");
+    expect(said).not.toContain("`1` or `1`");
+  });
+
+  /** What every one of the engines accepts, and so must stay silent. */
+  test.each([
+    ["zero, which needs no unit", "  margin: 0;"],
+    ["zero among lengths", "  padding: 0 12px;"],
+    ["a length", "  gap: 12px;"],
+    ["a property that takes a number", "  line-height: 1.5;"],
+    ["a flex factor", "  flex: 1;"],
+    ["a number inside a function", "  grid-template-columns: repeat(3, 1fr);"],
+    ["inside calc", "  width: calc(100% - 12px);"],
+    ["a whole z-index", "  z-index: 10;"],
+    ["a negative whole one", "  order: -1;"],
+    ["an opacity, a number by grammar", "  opacity: 0.5;"],
+    ["a shadow, whose 0 is a length", "  box-shadow: 0 0 1px red;"],
+  ])("%s is silent", (_what, css) => {
+    const found = rules(css);
+    expect(found).not.toContain("number-without-a-unit");
+    expect(found).not.toContain("fraction-where-a-whole-number-goes");
+  });
+
+  test("says what to write instead", () => {
+    expect(messages("  gap: 12;").join(" ")).toContain("12px");
+    expect(messages("  z-index: 1.5;").join(" ")).toMatch(/`1`.*`2`/);
+  });
+});
