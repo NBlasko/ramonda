@@ -511,6 +511,8 @@ describe("a condition that cannot switch", () => {
     ["a pair that never closes", `  @media (min-width:${" ".repeat(2_000)}(x)) { color: red; }`],
     ["a pair that never closes, in @supports", `  @supports (min-width:${" ".repeat(2_000)}(x)) { color: red; }`],
     ["a number that never ends", `  @media (min-width: 0${"00".repeat(10_000)}!) { color: red; }`],
+    ["a range of nothing but comparisons", `  @media (${"<".repeat(20_000)}) { color: red; }`],
+    ["a range with a long run of spaces", `  @media (width${" ".repeat(20_000)}>= 40) { color: red; }`],
     // The same digits as a declaration's value: the splitter and the value rules read numbers with the
     // same pattern, and it was in twelve places.
     ["a value that never ends", `  padding: 0${"00".repeat(10_000)}!;`],
@@ -525,8 +527,20 @@ describe("a condition that cannot switch", () => {
     ["a value the feature does not have", "  @media (prefers-color-scheme: drak) { color: red; }"],
     ["another", "  @media (hover: hovr) { color: red; }"],
     ["a width with no unit", "  @media (min-width: 40) { color: red; }"],
+    // The range form, which every engine leaves unknown the same way.
+    ["a range with no unit", "  @media (width >= 40) { color: red; }"],
+    ["a range written the other way round", "  @media (40 <= width) { color: red; }"],
+    ["a range on both sides", "  @media (40rem < width <= 80) { color: red; }"],
   ])("%s is reported", (_what, css) => {
     expect(rules(css)).toContain("unknown-media-value");
+  });
+
+  test("a range's number is reported where it is written", () => {
+    const css = "  @media (40rem < width <= 80) { color: red; }";
+    const [found] = check(css).filter((one) => one.rule === "unknown-media-value");
+    const source = `<div className={@@(\n${css}\n)}>x</div>`;
+    expect(source.slice(found.at, found.at + found.length)).toBe("80");
+    expect(found.message).toContain("Write `80px`");
   });
 
   test("and the near miss is offered", () => {
@@ -546,6 +560,12 @@ describe("a condition that cannot switch", () => {
     ["a breakpoint", "  @media (min-width: 40rem) { color: red; }"],
     ["zero", "  @media (min-width: 0) { color: red; }"],
     ["a ratio", "  @media (min-aspect-ratio: 16/9) { color: red; }"],
+    ["a range with a unit", "  @media (width >= 40rem) { color: red; }"],
+    ["a range on both sides", "  @media (400px <= width <= 70rem) { color: red; }"],
+    ["a ratio in a range", "  @media (aspect-ratio > 16/9) { color: red; }"],
+    ["a resolution in a range", "  @media (resolution >= 2dppx) { color: red; }"],
+    ["a range around calc", "  @media (width >= calc(40rem + 1px)) { color: red; }"],
+    ["zero in a range", "  @media (width > 0) { color: red; }"],
     ["a resolution", "  @media (min-resolution: 2dppx) { color: red; }"],
     ["a real @supports", "  @supports (display: grid) { color: red; }"],
     ["a sizing keyword in @supports, which is a real question", "  @supports (min-width: fit-content) { color: red; }"],

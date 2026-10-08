@@ -700,8 +700,10 @@ function topLevelWords(text: string): { word: string; at: number }[] {
  * never reported: it needs no unit.
  */
 function numberDropped(item: Declaration, findings: Finding[]): void {
-  const unit = UNIT.has(item.property);
-  const whole = WHOLE.has(item.property);
+  // A name in capitals is the same property, and its value is dropped the same way.
+  const property = item.property.toLowerCase();
+  const unit = UNIT.has(property);
+  const whole = WHOLE.has(property);
   if (!unit && !whole) return;
 
   const only = item.value.filter((part) => part.kind === "text" && !part.resolved);
@@ -712,7 +714,7 @@ function numberDropped(item: Declaration, findings: Finding[]): void {
   const text = withoutImportant(part.text.slice(0, terminator(part.text)));
   const all = topLevelWords(text);
   const numbers = all.filter((one) => A_NUMBER.test(one.word));
-  const asked = (everywhere: Set<string>) => (all.length === 1 || everywhere.has(item.property) ? numbers : []);
+  const asked = (everywhere: Set<string>) => (all.length === 1 || everywhere.has(property) ? numbers : []);
 
   if (unit) {
     for (const one of asked(UNIT_EVERYWHERE)) {
@@ -729,15 +731,21 @@ function numberDropped(item: Declaration, findings: Finding[]): void {
   }
   if (whole) {
     for (const one of asked(WHOLE_EVERYWHERE)) {
+      /**
+       * Whole by its SPELLING, not by its value: all three engines drop `z-index: 1.0` and `1e2`, an
+       * integer to `Number.isInteger`, because CSS reads `<integer>` off the token — digits, and
+       * nothing else.
+       */
+      if (/^[+-]?\d+$/.test(one.word)) continue;
       const value = Number(one.word);
-      if (Number.isInteger(value)) continue;
+      const fix = Number.isInteger(value)
+        ? `Write \`${value}\`.`
+        : `Write \`${Math.floor(value)}\` or \`${Math.ceil(value)}\`.`;
       findings.push({
         rule: "fraction-where-a-whole-number-goes",
         at: part.at + one.at,
         length: one.word.length,
-        message:
-          `\`${item.property}\` takes a whole number, and a browser drops \`${one.word}\`. ` +
-          `Write \`${Math.floor(value)}\` or \`${Math.ceil(value)}\`.`,
+        message: `\`${item.property}\` takes a whole number, and a browser drops \`${one.word}\`. ${fix}`,
       });
     }
   }

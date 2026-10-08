@@ -178,7 +178,7 @@ A typo in one of these ids is caught too: writing `unknown-unti` in
 | `unknown-media-value` | a media feature's value it does not have, so the condition never matches |
 | `supports-a-media-feature` | a media feature asked of `@supports`, which is always true or never |
 | `number-without-a-unit` | a number with no unit where a length goes — a browser drops it |
-| `fraction-where-a-whole-number-goes` | a fraction where a whole number goes — a browser drops it |
+| `fraction-where-a-whole-number-goes` | a number not written as a whole one — `1.5`, `1.0`, `1e2` — where a whole number goes; a browser drops it |
 | `value-and-registered-syntax` | a value a registered custom property cannot hold |
 | `unit-not-allowed` | a unit your `ramonda.css.ts` does not allow |
 | `value-not-allowed` | a value outside the closed list your `ramonda.css.ts` gave this property |

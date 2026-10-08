@@ -182,22 +182,73 @@ export function mediaValues(block: Block, findings: Finding[]): void {
         });
         continue;
       }
-      if (kinds.includes(kind)) continue;
-      const fix = kind === "number" && kinds.includes("length") ? ` Write \`${value}px\`, or the unit you meant.` : "";
-      findings.push({
-        rule: "unknown-media-value",
-        at,
-        length: value.length,
-        message:
-          `\`${name}\` does not take ${KIND_NAMES[kind]}, so this condition never matches and a browser ` +
-          `keeps it anyway. It takes ${
-            kinds
-              .filter((one) => one !== "zero")
-              .map((one) => KIND_NAMES[one])
-              .join(" or ") || "a word"
-          }.${fix}`,
-      });
+      if (!kinds.includes(kind)) findings.push(wrongKind(name, value, kind, kinds, at));
     }
+
+    // The range form, `(width >= 40)` and `(40 < width <= 80rem)`: a value of the wrong kind on either
+    // side leaves it unknown exactly as the colon form does.
+    for (const { name, value, at } of rangesIn(item.prelude)) {
+      const kinds = MEDIA_KINDS[name.toLowerCase()];
+      const kind = kindOf(value);
+      if (kinds === undefined || kind === undefined || kinds.includes(kind)) continue;
+      findings.push(wrongKind(name, value, kind, kinds, item.at + at));
+    }
+  }
+}
+
+/** A value of a kind the feature does not take — the one sentence both forms of a condition say. */
+function wrongKind(name: string, value: string, kind: string, kinds: readonly string[], at: number): Finding {
+  const fix = kind === "number" && kinds.includes("length") ? ` Write \`${value}px\`, or the unit you meant.` : "";
+  return {
+    rule: "unknown-media-value",
+    at,
+    length: value.length,
+    message:
+      `\`${name}\` does not take ${KIND_NAMES[kind]}, so this condition never matches and a browser ` +
+      `keeps it anyway. It takes ${
+        kinds
+          .filter((one) => one !== "zero")
+          .map((one) => KIND_NAMES[one])
+          .join(" or ") || "a word"
+      }.${fix}`,
+  };
+}
+
+/**
+ * Each value compared with a feature in a range group — `(width >= 40)` gives `width` and `40` — and
+ * where the value starts in the prelude. Read by hand, a group at a time: a pattern with text on both
+ * sides of an operator is the shape that was quadratic before.
+ */
+function* rangesIn(prelude: string): Generator<{ name: string; value: string; at: number }> {
+  let open = prelude.indexOf("(");
+  while (open !== -1) {
+    const close = prelude.indexOf(")", open + 1);
+    if (close === -1) return;
+    const inner = prelude.slice(open + 1, close);
+    // A nested group opens again inside this one; the innermost is asked on its own turn.
+    const nested = inner.lastIndexOf("(");
+    if (nested !== -1) {
+      open += 1 + nested;
+      continue;
+    }
+    if (/[<>=]/.test(inner) && !inner.includes(":")) {
+      const parts = inner.split(/(<=|>=|<|>|=)/);
+      const names = parts.filter(
+        (one, index) => index % 2 === 0 && MEDIA_KINDS[one.trim().toLowerCase()] !== undefined,
+      );
+      if (names.length === 1) {
+        const name = names[0].trim();
+        let from = open + 1;
+        for (const [index, part] of parts.entries()) {
+          const value = part.trim();
+          if (index % 2 === 0 && value !== "" && value !== name) {
+            yield { name, value, at: prelude.indexOf(value, from) };
+          }
+          from += part.length;
+        }
+      }
+    }
+    open = prelude.indexOf("(", close + 1);
   }
 }
 

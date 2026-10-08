@@ -1053,8 +1053,26 @@ describe("a number a browser drops", () => {
     ["a fraction where a whole number goes", "  z-index: 1.5;"],
     ["in a column count", "  column-count: 2.5;"],
     ["in a grid line", "  grid-column: 1 / 2.5;"],
+    // A whole number is a SPELLING, not a value: all three engines drop `1.0` and `1e2` for an
+    // integer, which `Number.isInteger` called whole.
+    ["a whole value written with a point", "  z-index: 1.0;"],
+    ["a whole value written with an exponent", "  z-index: 1e2;"],
+    ["one in an order", "  order: 2.0;"],
+    ["one at a grid line", "  grid-row: 1.0 / 2;"],
   ])("%s is reported", (_what, css) => {
     expect(rules(css)).toContain("fraction-where-a-whole-number-goes");
+  });
+
+  /** A property name in capitals is the same property, and the browser drops its value the same way. */
+  test("in a property written in capitals", () => {
+    expect(rules("  GAP: 12;")).toContain("number-without-a-unit");
+    expect(rules("  Z-Index: 1.5;")).toContain("fraction-where-a-whole-number-goes");
+  });
+
+  test("and a whole value with a point is offered the integer, once", () => {
+    const said = messages("  z-index: 1.0;").join(" ");
+    expect(said).toContain("Write `1`.");
+    expect(said).not.toContain("`1` or `1`");
   });
 
   /** What every one of the engines accepts, and so must stay silent. */
