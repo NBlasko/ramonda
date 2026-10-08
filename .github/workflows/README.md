@@ -489,10 +489,10 @@ it. So the sequence is: merge features → merge the Version PR (publishes) → 
 so merging to `main` published them at the versions they already carried. Every
 bump since comes from a changeset.
 
-`CHANGELOG`s link back to PRs and authors via `@changesets/changelog-github`,
-which reads `GITHUB_TOKEN` — already provided in CI. (Running `pnpm changeset
-version` locally would need a `GITHUB_TOKEN` in your env; normally you let the
-Version PR do it.)
+`CHANGELOG`s are written by `@changesets/cli/changelog` (`.changeset/config.json`):
+each entry is the changeset's own text, with no links to PRs or authors, and
+`pnpm changeset version` runs locally with no token. Normally you let the Version
+PR do it.
 
 ## What passes today (measured)
 

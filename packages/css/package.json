@@ -93,7 +93,7 @@
     "format": "biome format --write src"
   },
   "dependencies": {
-    "magic-string": "^0.30.21"
+    "magic-string": "^1.4.3"
   },
   "peerDependencies": {
     "prettier": "^3",
@@ -108,7 +108,7 @@
     "tsup": "^8.5.1",
     "typescript": "^5.9.3",
     "vite": "7.3.6",
-    "vitest": "^4.1.11"
+    "vitest": "^5.0.3"
   },
   "peerDependenciesMeta": {
     "prettier": {

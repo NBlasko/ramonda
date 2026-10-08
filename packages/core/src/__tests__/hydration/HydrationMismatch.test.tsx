@@ -365,6 +365,13 @@ describe("hydration mismatch (RMD007)", () => {
    * mismatch for styles that render identically — which is what made RMD007
    * fire on markup that was entirely correct. Inline styles are legal; the
    * comparator was wrong.
+   *
+   * It is also why `jsdom` is pinned to 28.0.0 — in every package, and as an
+   * override in the root `package.json`, so a peer cannot bring another. From 28.1
+   * it brings `cssstyle` 6, which DROPS a declaration whose name is not lower
+   * case — `COLOR:red` parses to nothing — where Chromium, Firefox and WebKit
+   * all keep it as `color: red`. Measured 2026-10-08 on 28.1, 29.1 and 30.1;
+   * this test is the one that fails, and it is right to.
    */
   test("a style the DOM rewrites is not a mismatch", async () => {
     class Styled extends Component {

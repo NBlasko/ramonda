@@ -1,4 +1,5 @@
 import "@testing-library/jest-dom";
+import type { TestingLibraryMatchers } from "@testing-library/jest-dom/matchers";
 import { afterEach } from "vitest";
 import userEvent from "@testing-library/user-event";
 
@@ -9,6 +10,17 @@ import { componentAt, componentsIn, unmountChildrenNodes } from "../core/DiffAnd
 import { markComponents } from "../hydration/ssr";
 import { flushSync } from "../testing";
 import { configureDev } from "../";
+
+/**
+ * The DOM matchers' TYPES, which `@testing-library/jest-dom` 7 adds to `jest.Matchers` and to vitest's
+ * `Assertion<T>`. Vitest 5 reads neither: its `Assertion` takes `<R, T>` now, so that augmentation no
+ * longer merges, and the extension point it names for a matcher is `Matchers<R, T>`. The matchers
+ * themselves are registered by the import above; only what `tsc` sees was lost.
+ */
+declare module "vitest" {
+  interface Matchers<R extends void | Promise<void> = void | Promise<void>, T = unknown>
+    extends TestingLibraryMatchers<unknown, R> {}
+}
 
 const originalWindow = { ...window };
 
