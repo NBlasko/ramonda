@@ -49,9 +49,12 @@ updates:
     # only exists in one of these majors will not arrive as a pull request. The
     # alert still fires — that is the part that must not be silenced.
     ignore:
-      # Vite 8 switched to the oxc transformer, which ignores the `esbuild:
-      # { jsxFactory: "h" }` block every vitest config here relies on.
-      - dependency-name: vite
+      # `vite-7` is an alias of Vite 7 kept on purpose: `@ramonda/build` and
+      # `@ramonda/css` run their real builds on it beside Vite 8, because an app
+      # may be on either. Bumped to 8, that half would test Vite 8 twice and say
+      # nothing. (Whether Dependabot matches an alias by this name is not
+      # measured; a PR that moves it is the sign it does not.)
+      - dependency-name: vite-7
         update-types: ["version-update:semver-major"]
       # Pinned exactly: 28.1+ changed CSSOM `cssText` serialization, which breaks
       # the RMD007 style-normalization test.

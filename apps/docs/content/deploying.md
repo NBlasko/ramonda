@@ -40,8 +40,10 @@ page that has actually broken a build here.
 
 `@state`, `@compute` and the rest are TC39 decorators, and **no browser engine parses them
 today**. Your
-bundler has to transform them away, and whether it does comes down to one setting: below `esnext`,
-esbuild rewrites them into helpers; at `esnext` it leaves them exactly as written.
+bundler has to transform them away. Under esbuild, and so under Vite 7, that comes down to one
+setting: below `esnext`, esbuild rewrites them into helpers; at `esnext` it leaves them exactly as
+written. Vite 8 transforms with Oxc, which leaves them as written whatever it is told — there,
+`ramonda()` from `@ramonda/build` lowers them itself.
 
 **Nothing tells you when that goes wrong.** The build succeeds, prints no warning, and emits a file
 that dies with `SyntaxError: Invalid or unexpected token` the moment a browser reads it. It happened
