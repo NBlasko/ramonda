@@ -5587,19 +5587,12 @@ them, and this one hands back nothing: there is no decomposition to find, and re
 
 Measured 2026-10-07 — each of these still compiles, or is still undecided:
 
-- **Five declarations a browser drops, or a group it never switches, that this compiles.** No rule and
-  no type reports them; each is a new refusal, and what a build rejects is the user's call.
-
-  | | what a browser does |
-  |---|---|
-  | `gap: 12`, `letter-spacing: 12` | drops it — a bare number where a length goes |
-  | `z-index: 1.5` | drops it — `<integer>` cannot be a type (neither `number` nor `` `${number}` `` refuses `1.5`), so it has to be a rule |
-  | `@supports (min-width: 40rem)` | always TRUE — a group that can never be off, reading like a breakpoint |
-  | `@media (prefers-color-scheme: drak)` | never matches; the feature NAME is checked and its value is not |
-
-  The oracle for all of them is `(f)` against `not (f)` in a real browser, which already verifies
-  the media features. As a TYPE, any of these costs a flat four instantiations — measured with 100
-  properties declared, at 1, 12, 40 and 80 set.
+- **CLOSED 2026-10-08: the five declarations a browser drops, or a group it never switches.** Four
+  rules now, each reading a table the engines wrote: `number-without-a-unit` (`gap: 12`, 163
+  properties), `fraction-where-a-whole-number-goes` (`z-index: 1.5`, 15), `unknown-media-value`
+  (`prefers-color-scheme: drak`, and `min-width: 40`, which is not a length) and
+  `supports-a-media-feature` (`@supports (min-width: 40rem)` always true, `(orientation: landscape)`
+  never). See `build-number-properties.mjs` and `build-media-values.mjs`.
 
 - **Two conditions the mode table does not name.** `@media (min-height: …)` against `@media (hover:
   hover)` share its last slot, so the file's own order decides and another file can reverse it;

@@ -1,6 +1,7 @@
 /** Rules about a nested rule's selector or at-rule: unknown, out of place, or reaching another element. */
 
-import { AT_RULE_LINKS, MEDIA_FEATURES, NOT_IN_A_RULE, SELECTORS } from "../keywords.generated";
+import { AT_RULE_LINKS, MEDIA_FEATURES, NOT_IN_A_RULE, PROPERTIES, SELECTORS } from "../keywords.generated";
+import { MEDIA_KINDS, MEDIA_WORDS } from "../mediaValues.generated";
 import { nearest } from "../nearest";
 import { branchOf } from "../read";
 import { selectorsOf, type Block, type BlockItem, type NestedRule, rulesIn } from "./shared";
@@ -109,6 +110,118 @@ export function mediaFeatures(block: Block, findings: Finding[]): void {
         message:
           `\`${name}\` is not a media feature, so this condition never matches and the rules inside ` +
           `it never apply — a browser keeps it rather than refusing it. Did you mean \`${meant}\`?`,
+      });
+    }
+  }
+}
+
+/** A `(feature: value)` pair inside a condition, with the value as written. */
+const A_PAIR = /\(\s*([a-zA-Z][\w-]*)\s*:\s*([^()]*?)\s*\)/g;
+
+/** What kind of value this is, as `MEDIA_KINDS` names them — or nothing for one this cannot read. */
+function kindOf(value: string): string | undefined {
+  if (value === "0") return "zero";
+  if (/^[+-]?(?:\d+\.?\d*|\.\d+)$/.test(value)) return "number";
+  if (/^\d+(?:\.\d+)?\s*\/\s*\d+(?:\.\d+)?$/.test(value)) return "ratio";
+  if (/^\d+(?:\.\d+)?(?:dppx|dpi|dpcm|x)$/i.test(value)) return "resolution";
+  if (/^[+-]?(?:\d+\.?\d*|\.\d+)[a-z%]+$/i.test(value)) return "length";
+  return undefined;
+}
+
+const KIND_NAMES: Readonly<Record<string, string>> = {
+  length: "a length",
+  zero: "zero",
+  number: "a number",
+  ratio: "a ratio",
+  resolution: "a resolution",
+};
+
+/**
+ * A value a media feature does not have — which makes the condition `unknown`, not false.
+ *
+ * Measured in Chromium, Firefox and WebKit: `@media (prefers-color-scheme: drak)` and `@media
+ * (min-width: 40)` are both kept and both never match, because a query an engine does not understand
+ * is neither true nor false. `mediaValues.generated.ts` is what each feature's value may be — a word
+ * from its list, or a kind of value — written by asking the engines, and a feature no engine knows is
+ * absent, so nothing is said about it.
+ */
+export function mediaValues(block: Block, findings: Finding[]): void {
+  for (const item of rulesIn(block)) {
+    if (!item.prelude.startsWith("@media") || item.at === undefined) continue;
+
+    for (const found of item.prelude.matchAll(A_PAIR)) {
+      const [whole, name, value] = found;
+      const words = MEDIA_WORDS[name.toLowerCase()];
+      const kinds = MEDIA_KINDS[name.toLowerCase()];
+      if (words === undefined || kinds === undefined || value === "") continue;
+
+      const at = item.at + (found.index ?? 0) + whole.indexOf(value, whole.indexOf(":"));
+      const kind = kindOf(value);
+      if (kind === undefined) {
+        if (!/^[a-zA-Z][\w-]*$/.test(value) || words.includes(value.toLowerCase())) continue;
+        const meant = nearest(value.toLowerCase(), words as string[]);
+        findings.push({
+          rule: "unknown-media-value",
+          at,
+          length: value.length,
+          message:
+            `\`${value}\` is not a value of \`${name}\`, so this condition never matches and a browser ` +
+            `keeps it anyway. ${meant === undefined ? `It takes ${words.map((one) => `\`${one}\``).join(", ")}.` : `Did you mean \`${meant}\`?`}`,
+        });
+        continue;
+      }
+      if (kinds.includes(kind)) continue;
+      const fix = kind === "number" && kinds.includes("length") ? ` Write \`${value}px\`, or the unit you meant.` : "";
+      findings.push({
+        rule: "unknown-media-value",
+        at,
+        length: value.length,
+        message:
+          `\`${name}\` does not take ${KIND_NAMES[kind]}, so this condition never matches and a browser ` +
+          `keeps it anyway. It takes ${
+            kinds
+              .filter((one) => one !== "zero")
+              .map((one) => KIND_NAMES[one])
+              .join(" or ") || "a word"
+          }.${fix}`,
+      });
+    }
+  }
+}
+
+/** Every media feature by name, unprefixed — what `@supports` is asked about by mistake. */
+const FEATURE_NAMES = new Set(MEDIA_FEATURES);
+const PROPERTY_NAMES = new Set(PROPERTIES);
+
+/**
+ * A media feature written into `@supports`, which asks whether a PROPERTY is supported.
+ *
+ * Measured in Chromium, Firefox and WebKit: `@supports (min-width: 40rem)` is TRUE — `min-width` is
+ * a property and `40rem` a value it takes — and `@supports (orientation: landscape)` is FALSE,
+ * because `orientation` is no property. Either way the group never switches, and each reads like the
+ * breakpoint somebody meant as `@media`.
+ *
+ * A feature that is also a property is reported only with a plain dimension: `@supports (min-width:
+ * fit-content)` is a real question about a keyword, and an engine may well say no.
+ */
+export function supportsAMediaFeature(block: Block, findings: Finding[]): void {
+  for (const item of rulesIn(block)) {
+    if (!item.prelude.startsWith("@supports") || item.at === undefined) continue;
+
+    for (const found of item.prelude.matchAll(A_PAIR)) {
+      const [whole, name, value] = found;
+      if (!FEATURE_NAMES.has(name.toLowerCase())) continue;
+      const property = PROPERTY_NAMES.has(name.toLowerCase());
+      if (property && kindOf(value) !== "length") continue;
+
+      findings.push({
+        rule: "supports-a-media-feature",
+        at: item.at + (found.index ?? 0) + whole.indexOf(name),
+        length: name.length,
+        message:
+          `\`@supports\` asks whether a property is supported, and \`${name}\` here is ` +
+          (property ? "a property every browser has, so this is always true" : "no property, so this is never true") +
+          `. A media feature belongs in \`@media (${name}: ${value})\`.`,
       });
     }
   }

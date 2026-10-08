@@ -111,7 +111,9 @@ does, and the result is our own record of it. The same holds for the shorthand t
 `scripts/css/build-shorthand-shapes.mjs` and `scripts/css/build-grammar-shapes.mjs` feed each family values
 and read back which longhand took which, `scripts/css/build-shorthand-leaves.mjs` asks what a shorthand
 resets, and `scripts/css/build-initial-values.mjs` what each longhand computes to when nothing sets it. See those, `scripts/css/build-engine-keywords.mjs` and
-`scripts/css/build-prefixed-properties.mjs`.
+`scripts/css/build-prefixed-properties.mjs`. `scripts/css/build-number-properties.mjs` asks which numbers
+each property drops, and `scripts/css/build-media-values.mjs` which values each media feature
+understands, through `matchMedia` — a measurement of the same kind.
 
 **The editor grammars.** `tools/vscode-css` injects into TypeScript and CSS by REFERENCE —
 `"include": "source.css#property-values"` and its neighbours — rather than embedding a copy of

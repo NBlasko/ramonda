@@ -56,6 +56,8 @@ by the next build and caught by `pnpm check`.
 | `keywords.generated.ts` | `build-css-properties.mjs` | mdn-data |
 | `keywords.engine.generated.ts` | `build-engine-keywords.mjs` | the three engines, measured |
 | `numberless.generated.ts` | `build-numberless-properties.mjs` | the three engines, measured |
+| `numbers.generated.ts` | `build-number-properties.mjs` | the three engines, measured |
+| `mediaValues.generated.ts` | `build-media-values.mjs` | the three engines, measured |
 | `prefixed.generated.ts` | `build-prefixed-properties.mjs` | mdn-data + the engines |
 | `leaves.generated.ts` | `build-shorthand-leaves.mjs` | mdn-data + the engines |
 | `shapes.generated.ts` | `build-shorthand-shapes.mjs` | the three engines, measured |

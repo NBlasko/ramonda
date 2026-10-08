@@ -490,3 +490,48 @@ describe("an at-rule name", () => {
     expect(checkNamedFree("@-moz-document url-prefix() { color: red; }")).toEqual([]);
   });
 });
+
+/**
+ * A media condition a browser keeps and never matches, and a `@supports` that cannot switch.
+ *
+ * Measured in Chromium, Firefox and WebKit: a value the engine does not know makes the condition
+ * `unknown`, so it is neither true nor false — `(f)` and `not (f)` both fail. And `@supports` asks
+ * whether a PROPERTY is supported: `(min-width: 40rem)` is a property and always is, while
+ * `(orientation: landscape)` is not one and never is. Either way the group never switches, and both
+ * read like a breakpoint somebody meant to write.
+ */
+describe("a condition that cannot switch", () => {
+  test.each([
+    ["a value the feature does not have", "  @media (prefers-color-scheme: drak) { color: red; }"],
+    ["another", "  @media (hover: hovr) { color: red; }"],
+    ["a width with no unit", "  @media (min-width: 40) { color: red; }"],
+  ])("%s is reported", (_what, css) => {
+    expect(rules(css)).toContain("unknown-media-value");
+  });
+
+  test("and the near miss is offered", () => {
+    expect(messages("  @media (prefers-color-scheme: drak) { color: red; }").join(" ")).toContain("`dark`");
+  });
+
+  test.each([
+    ["a breakpoint in @supports, always true", "  @supports (min-width: 40rem) { color: red; }"],
+    ["a media feature in @supports, never true", "  @supports (orientation: landscape) { color: red; }"],
+    ["another", "  @supports (hover: hover) { color: red; }"],
+  ])("%s is reported", (_what, css) => {
+    expect(rules(css)).toContain("supports-a-media-feature");
+  });
+
+  test.each([
+    ["a real media condition", "  @media (prefers-color-scheme: dark) { color: red; }"],
+    ["a breakpoint", "  @media (min-width: 40rem) { color: red; }"],
+    ["zero", "  @media (min-width: 0) { color: red; }"],
+    ["a ratio", "  @media (min-aspect-ratio: 16/9) { color: red; }"],
+    ["a resolution", "  @media (min-resolution: 2dppx) { color: red; }"],
+    ["a real @supports", "  @supports (display: grid) { color: red; }"],
+    ["a sizing keyword in @supports, which is a real question", "  @supports (min-width: fit-content) { color: red; }"],
+  ])("%s is silent", (_what, css) => {
+    const found = rules(css);
+    expect(found).not.toContain("unknown-media-value");
+    expect(found).not.toContain("supports-a-media-feature");
+  });
+});
