@@ -1,5 +1,95 @@
 # @ramonda/css
 
+## 0.8.0
+
+### Minor Changes
+
+- 4331ede: **A value cast to a style block is reported: `cast-to-a-block`.** A prop typed `CssBlock<…>` refuses
+  a plain object, a string of classes and a block its allow-list does not take — a cast was the one
+  way past, and then nothing checked what the prop held. Measured through the merge: an object cast to
+  a block throws from inside the render, a style string becomes classes named `color:` and `red;`, and
+  a refused block lands without a word. The editor and `ramonda-css check` report it, told by the
+  block type's brand, so an alias, a type alias and a cast to a list of blocks are caught, and a
+  project's own type named `CssBlock` is not. Minor, because code that compiled before can now be reported.
+- 9b70593: **Four declarations a browser drops without a word are reported now.** Each was measured in
+  Chromium, Firefox and WebKit. The first three read a table the engines wrote; the fourth reads
+  `mdn-data`'s lists of media features and properties:
+
+  - `number-without-a-unit` — `gap: 12`, `font-size: 16`, `margin: 4px 12`. A number with no unit where
+    a length goes is dropped; zero is not reported, and a number inside a call — `repeat(3, 1fr)` — is
+    left alone.
+  - `fraction-where-a-whole-number-goes` — `z-index: 1.5`, `column-count: 2.5`, `grid-column: 1 / 2.5`,
+    and `z-index: 1.0` or `1e2` too: a whole number is a spelling, and every engine drops those. No type
+    can refuse it: `number` takes `1.5`.
+  - `unknown-media-value` — `@media (prefers-color-scheme: drak)`, `@media (min-width: 40)` and the
+    range form `@media (width >= 40)`. A value the feature does not have is kept and never matches; the
+    near miss is offered.
+  - `supports-a-media-feature` — `@supports (min-width: 40rem)` is always true and
+    `@supports (orientation: landscape)` never; both read like the `@media` that was meant.
+
+  Minor, because code that built before can now be refused.
+
+- 0877247: **`Value<"…">` is what an element takes: a string.** A value made outside a block goes onto an
+  element — a `style` object or a registered property's value — and every value there is a string.
+  `Value` was built from the block's shape, which holds `0` and a project's numeric list as numbers,
+  so `style={{ [space]: props.gap }}` with `gap: Value<"gap">` did not type-check. A number is now
+  written as text: `Value<"z-index">` with `values: [1, 2, 5, 10]` is `"1" | "2" | "5" | "10"`.
+  Minor, because a number assigned to a `Value` must now be a string. Run `ramonda-css codegen` to
+  update `css-system`.
+
+  The page on writing blocks says where such a value goes — a prop, or a value code chooses — and that
+  inside a block you never need it.
+
+### Patch Changes
+
+- 8718057: **The editor's "nothing in this project compiles a style block" points at the setup page.** The
+  documentation's overview of style blocks no longer carries the install steps; they are on
+  `ramonda.dev/style-blocks/setup`, which is where the message sends a reader now.
+- fb80994: **The property map follows newer engines and `mdn-data`.** Fifteen properties are new — among them
+  `white-space-trim`, `text-fit` and the two halves of `timeline-trigger`,
+  `timeline-trigger-activation-range` and `timeline-trigger-active-range`, which split the way
+  `animation-range` does. The six `timeline-trigger-range` and `timeline-trigger-exit-range` names are
+  gone: no engine has them, and Chromium uses the new ones. `-webkit-border-after`, `-start` and `-end`
+  split into their own longhands, as `-webkit-border-before` already did. `column-rule-style` stays
+  `CssValue`: mdn-data now closes it over the ten line styles, and Chromium takes a list of them —
+  `solid, dashed`, `repeat(2, solid)` — so the engines are asked, and a property they take more than one
+  word for is never a union. The hover link of an at-rule points at MDN's current page.
+- cdbf8a5: **A build and the editor do less work per file.** A property's keyword list was split into a set on
+  every value it checked, a block head's pattern was compiled on every head, and every file importing
+  a module read and parsed it again. Each is made once now, and so is splitting a shorthand, folding a
+  value's keywords and naming a property in a class — once per value, not once per time it is
+  written. Measured on 1000 files of ten blocks (`pnpm bench:css`): a build went from 6.1 to 2.3 ms per
+  file, the editor's check from 3.3 to 1.2 ms.
+
+  **A long block no longer takes the square of its length.** `override-out-of-order` compared every
+  declaration with every one before it: a block of 4000 custom properties — a generated theme — took
+  3.2 s to build, and 16 000 took 57 s. It compares only the declarations that can fight now, and 8000
+  take 0.14 s. Nothing a block compiles to, or reports, changes.
+
+- 607c07a: Updated `magic-string` to 1.
+- 5447e3d: **A long run of digits, or a condition that never closes, no longer stalls the editor.** A number was
+  read by a pattern whose two runs of digits shared every digit, in fifteen places, and a `(feature:
+value)` pair that never closed took 65 seconds at 5,000 spaces. Both are read in linear time now.
+- 6bf03f8: **Eight more patterns read in linear time**, found by checking every regular expression in the
+  repository with a ReDoS checker and measuring each one it flagged. In `@ramonda/css`: a media pair, and
+  both halves of a range comparison, that the runtime reads; a registered type's name, an import with a
+  long run of spaces, and an attribute bracket that never closes. In `@ramonda/check`: an `aria-valuenow` number and the
+  reason of an ignore directive. Each took 2–5 seconds on 40,000 characters, and each now takes
+  milliseconds.
+- fc9c7b4: **An esbuild stylesheet no longer carries the path of the machine that built it.** esbuild heads
+  each module's CSS with a comment naming it, and a block's sheet was named by its absolute path, so an
+  unminified build shipped `/Users/<name>/…` to every visitor. The name is relative to the build's
+  working directory now.
+- 32a80d7: **`ramonda-css format` and `lint` run on Windows.** They looked for biome and oxlint in
+  `node_modules/.bin`, plain name first — on Windows that is a shell script, and the `.cmd` beside it is
+  one Node refuses to start without a shell. They now run the script each tool's package names as its
+  bin, with Node, which is the same file on every system. The editor extension does the same for
+  `ramonda-css` itself.
+- 80e12b1: **A misplaced hole no longer hides a misspelt property elsewhere in the block.** In the editor and
+  in `ramonda-css check`, `$(name): 24px;` beside `colr: red;` reported the hole and not `colr`: every
+  `unknown-property` in the block was dropped while a hole was out of place. The name holding the hole
+  never needed that — it is not one word, so the rule passes it by — and `colr` is reported now.
+
 ## 0.7.0
 
 ### Minor Changes
