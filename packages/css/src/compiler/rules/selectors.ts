@@ -334,7 +334,8 @@ function rootUnderTheElement(selector: string): boolean {
   let flat = selector
     .trim()
     .replace(/"[^"]*"|'[^']*'/g, '""')
-    .replace(/\[[^\]]*\]/g, "[]");
+    // `[^[\]]`, so a bracket that never closes is not rescanned from every `[` before it.
+    .replace(/\[[^[\]]*\]/g, "[]");
   for (let before = ""; before !== flat; ) {
     before = flat;
     flat = flat.replace(/\([^()]*\)/g, "()");

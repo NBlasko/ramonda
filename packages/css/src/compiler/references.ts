@@ -159,7 +159,9 @@ function imported(source: string, options: Imported, texts?: string[]): Map<stri
     const theirs = sitesOfAModule(text);
     let used = false;
     for (const one of names) {
-      const [exported, local] = one.split(/\s+as\s+/);
+      // Split on words rather than on `\s+as\s+`, which was quadratic in a run of spaces with no `as`.
+      const words = one.split(/\s+/);
+      const [exported, local] = words.length === 3 && words[1] === "as" ? [words[0], words[2]] : [one, undefined];
       const name = theirs.get(exported.trim());
       if (name !== undefined) {
         out.set((local ?? exported).trim(), name);
