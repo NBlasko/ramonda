@@ -195,7 +195,14 @@ function compiled(source) {
   return { classes, css: tokens + sheet.cssFor(FILE) };
 }
 
-const escape = (value) => value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+/** Text made safe for HTML — in an element or inside a quoted attribute, which a class list is. */
+const escape = (value) =>
+  value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
 
 /** Where an offset sits, as a line and a column of the text. */
 function place(offset, of) {
@@ -213,16 +220,40 @@ const LINE = 24;
 const THEMES = {
   light: {
     shiki: "github-light",
-    vars: "--bg:#fff;--bar:#f6f8fa;--line:#d0d7de;--muted:#57606a;--gutter:#8c959f;--caret:#0969da;--squig:%23cf222e;--on:#ddf4ff;--fg:#1f2328;--shadow:rgba(140,149,159,.25)",
+    colors: {
+      bg: "#fff",
+      bar: "#f6f8fa",
+      line: "#d0d7de",
+      muted: "#57606a",
+      gutter: "#8c959f",
+      caret: "#0969da",
+      squig: "#cf222e",
+      on: "#ddf4ff",
+      fg: "#1f2328",
+      shadow: "rgba(140,149,159,.25)",
+    },
   },
   dark: {
     shiki: "github-dark",
-    vars: "--bg:#0d1117;--bar:#161b22;--line:#30363d;--muted:#8b949e;--gutter:#6e7681;--caret:#2f81f7;--squig:%23f85149;--on:#13233a;--fg:#e6edf3;--shadow:rgba(1,4,9,.8)",
+    colors: {
+      bg: "#0d1117",
+      bar: "#161b22",
+      line: "#30363d",
+      muted: "#8b949e",
+      gutter: "#6e7681",
+      caret: "#2f81f7",
+      squig: "#f85149",
+      on: "#13233a",
+      fg: "#e6edf3",
+      shadow: "rgba(1,4,9,.8)",
+    },
   },
 };
 
 const style = (theme) => `
-  :root{${THEMES[theme].vars.replace("%23", "#")}}
+  :root{${Object.entries(THEMES[theme].colors)
+    .map(([name, value]) => `--${name}:${value}`)
+    .join(";")}}
   html,body{margin:0;background:var(--bg)}
   #shot{width:760px;height:400px;box-sizing:border-box;font:14px/${LINE}px ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:10px;overflow:hidden}
   .bar{height:30px;background:var(--bar);border-bottom:1px solid var(--line);font:12px/30px -apple-system,system-ui,sans-serif;color:var(--muted);padding:0 14px}
@@ -231,7 +262,7 @@ const style = (theme) => `
   .code{position:relative;flex:1}
   .code pre{margin:0;padding:0;background:transparent!important;font:inherit}
   .caret{position:absolute;width:2px;height:${LINE - 4}px;background:var(--caret)}
-  .squiggle{position:absolute;height:3px;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='6' height='3'%3E%3Cpath d='M0 2 L1.5 0.5 L3 2 L4.5 0.5 L6 2' stroke='${THEMES[theme].vars.match(/--squig:([^;]+)/)[1]}' fill='none'/%3E%3C/svg%3E") repeat-x}
+  .squiggle{position:absolute;height:3px;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='6' height='3'%3E%3Cpath d='M0 2 L1.5 0.5 L3 2 L4.5 0.5 L6 2' stroke='${encodeURIComponent(THEMES[theme].colors.squig)}' fill='none'/%3E%3C/svg%3E") repeat-x}
   .popup{position:absolute;min-width:220px;background:var(--bar);border:1px solid var(--line);border-radius:6px;box-shadow:0 8px 24px var(--shadow);padding:4px 0}
   .popup div{padding:0 10px;height:22px;line-height:22px;white-space:pre}
   .popup .on{background:var(--on)}
