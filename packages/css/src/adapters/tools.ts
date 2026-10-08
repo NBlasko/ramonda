@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { type Reported, readReport } from "./tooling";
+import { type Reported, type Tool, readReport } from "./tooling";
 
 /**
  * Invoking the two tools this knows how to drive.
@@ -61,10 +61,10 @@ export class ToolFailed extends Error {
  * silence: *"The content was not formatted because the path is ignored"*, the text handed back
  * unchanged, and a `--check` that passed having done nothing.
  */
-export function biomeFormatter(binary: string, cwd: string): (text: string, path: string) => string {
+export function biomeFormatter(tool: Tool, cwd: string): (text: string, path: string) => string {
   return (text, path) => {
     try {
-      return execFileSync(binary, ["format", `--stdin-file-path=${asIfNamed(path)}`], {
+      return execFileSync(tool.command, [...tool.args, "format", `--stdin-file-path=${asIfNamed(path)}`], {
         cwd,
         input: text,
         encoding: "utf8",
@@ -108,11 +108,15 @@ function asIfNamed(path: string): string {
   return path.replace(/([^./\\]+)(\.[cm]?[jt]sx?)$/, "$1.ramonda-css$2");
 }
 
-export function oxlintLinter(binary: string, cwd: string): (path: string) => Reported[] {
+export function oxlintLinter(tool: Tool, cwd: string): (path: string) => Reported[] {
   return (path) => {
     try {
       return readReport(
-        execFileSync(binary, ["--format=json", path], { cwd, encoding: "utf8", maxBuffer: MAX_OUTPUT }),
+        execFileSync(tool.command, [...tool.args, "--format=json", path], {
+          cwd,
+          encoding: "utf8",
+          maxBuffer: MAX_OUTPUT,
+        }),
       );
     } catch (error) {
       const failed = error as { stdout?: string; stderr?: string };

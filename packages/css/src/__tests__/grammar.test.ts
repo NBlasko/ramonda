@@ -499,9 +499,10 @@ describe("the VS Code extension", () => {
   test("it looks for the project's own `ramonda-css`, and answers nothing when there is none", async () => {
     const { commandFor } = await import(join(EXTENSION, "locate.js"));
 
-    expect(commandFor(resolve(GRAMMAR, "..", "..", "src", "index.ts"))).toContain(
-      join("node_modules", ".bin", "ramonda-css"),
-    );
+    // The package's own bin script, run by `node` — see `locate.js` for why not the `.bin` shim.
+    const found = commandFor(resolve(GRAMMAR, "..", "..", "src", "index.ts"));
+    expect(found.command).toBe("node");
+    expect(found.args[0]).toContain(join("node_modules", "@ramonda", "css", "bin.mjs"));
     expect(commandFor("/")).toBeUndefined();
   });
 

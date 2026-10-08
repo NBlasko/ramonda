@@ -316,52 +316,70 @@ describe("which files a run is about", () => {
 });
 
 describe("finding the tool", () => {
-  test("is where a project keeps its binaries", () => {
-    const root = mkdtempSync(join(tmpdir(), "ramonda-css-run-"));
-    files.push(root);
-    mkdirSync(join(root, "node_modules", ".bin"), { recursive: true });
-    writeFileSync(join(root, "node_modules", ".bin", "biome"), "");
+  /** A project holding `name`, whose package.json names `bin` as its command. */
+  function installed(name: string, bin: unknown, at = mkdtempSync(join(tmpdir(), "ramonda-css-run-"))): string {
+    files.push(at);
+    const dir = join(at, "node_modules", ...name.split("/"));
+    mkdirSync(join(dir, "bin"), { recursive: true });
+    writeFileSync(join(dir, "package.json"), JSON.stringify({ name, bin }));
+    writeFileSync(join(dir, "bin", "tool"), "");
+    return at;
+  }
 
-    expect(toolIn(root, "biome")).toBe(join(root, "node_modules", ".bin", "biome"));
+  /**
+   * **The script the PACKAGE names, run by Node — never the shim in `.bin`.**
+   *
+   * The shim is a different file on every system. npm and pnpm write `biome`, `biome.cmd` and
+   * `biome.ps1` on Windows, and the extensionless one is a shell script for Git Bash; `execFileSync`
+   * runs neither that nor — since Node 20.12, without a shell — the `.cmd`. The package's own bin is
+   * one JavaScript file everywhere, and `process.execPath` runs it with no shell at all.
+   */
+  test("is the script its package names, run by this Node", () => {
+    const root = installed("@biomejs/biome", { biome: "bin/tool" });
+    const dir = join(root, "node_modules", "@biomejs", "biome");
+
+    expect(toolIn(root, "@biomejs/biome", "biome")).toEqual({
+      command: process.execPath,
+      args: [join(dir, "bin", "tool")],
+    });
+  });
+
+  test("a bin written as one string is the package's own command", () => {
+    const root = installed("oxlint", "./bin/tool");
+
+    expect(toolIn(root, "oxlint", "oxlint")?.args).toEqual([join(root, "node_modules", "oxlint", "bin", "tool")]);
+  });
+
+  /** A workspace hoists its tools to the ROOT, so a package being worked on has none of its own. */
+  test("walked upwards from a package inside the project", () => {
+    const root = installed("@biomejs/biome", { biome: "bin/tool" });
+    mkdirSync(join(root, "packages", "app"), { recursive: true });
+
+    expect(toolIn(join(root, "packages", "app"), "@biomejs/biome", "biome")?.args[0]).toContain(root);
   });
 
   test("and nothing when it is not installed, so a caller can say so rather than guess", () => {
     const root = mkdtempSync(join(tmpdir(), "ramonda-css-run-"));
     files.push(root);
 
-    expect(toolIn(root, "biome")).toBeUndefined();
+    expect(toolIn(root, "@biomejs/biome", "biome")).toBeUndefined();
   });
 
-  /**
-   * **THE SPELLING WINDOWS USES**, which this looked for and would not have found.
-   *
-   * npm and pnpm write THREE files into `.bin` on Windows — `biome`, `biome.cmd` and `biome.ps1` —
-   * and the extensionless one is a shell script for Git Bash. `execFileSync` does not use a shell, so
-   * on Windows it is the `.cmd` that can be run, and this returned the shell script.
-   *
-   * **Not measured, and that has to be said plainly: there is no Windows here.** What IS measured is
-   * the lookup, which is what this asserts. CI runs `ubuntu-latest` for every job, so nothing in this
-   * repository has ever executed on Windows — see the review note in the TODO.
-   */
-  test.each([".cmd", ".ps1", ".exe"])("finds the %s a Windows install writes", (extension) => {
+  /** A shim alone is not the tool: it is what a Windows install cannot run. */
+  test("nor when only a shim in `.bin` is there", () => {
     const root = mkdtempSync(join(tmpdir(), "ramonda-css-run-"));
     files.push(root);
     mkdirSync(join(root, "node_modules", ".bin"), { recursive: true });
-    writeFileSync(join(root, "node_modules", ".bin", `biome${extension}`), "");
+    for (const spelling of ["", ".cmd", ".ps1"])
+      writeFileSync(join(root, "node_modules", ".bin", `biome${spelling}`), "");
 
-    expect(toolIn(root, "biome")).toBe(join(root, "node_modules", ".bin", `biome${extension}`));
+    expect(toolIn(root, "@biomejs/biome", "biome")).toBeUndefined();
   });
 
-  /** And the extensionless one still wins where it exists, which is every POSIX install. */
-  test("the plain name first, which is what a POSIX install has", () => {
-    const root = mkdtempSync(join(tmpdir(), "ramonda-css-run-"));
-    files.push(root);
-    const bin = join(root, "node_modules", ".bin");
-    mkdirSync(bin, { recursive: true });
-    writeFileSync(join(bin, "biome"), "");
-    writeFileSync(join(bin, "biome.cmd"), "");
+  test("nor when the package names no such command", () => {
+    const root = installed("@biomejs/biome", { other: "bin/tool" });
 
-    expect(toolIn(root, "biome")).toBe(join(bin, "biome"));
+    expect(toolIn(root, "@biomejs/biome", "biome")).toBeUndefined();
   });
 });
 

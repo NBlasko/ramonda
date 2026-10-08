@@ -5600,8 +5600,11 @@ Measured 2026-10-07 — each of these still compiles, or is still undecided:
   spread. Either the table grows to name them, or a slot is derived from the condition's own text
   with a report when the author's order disagrees.
 
-- **`windows-latest` in CI.** Every job is `ubuntu-latest`. `toolIn` and `vscode/locate.js` look for
-  the `.cmd` spelling, but whether `execFileSync` then runs one cleanly has never been measured.
+- **CLOSED 2026-10-08: `windows-latest` in CI.** `toolIn` and `vscode-css/locate.js` looked for the
+  `.bin` shims, plain name first — on Windows a shell script, and next to it a `.cmd` that Node 20.12
+  refuses to start without a shell. Both now run the script the tool's PACKAGE names as its bin, with
+  Node, which is one file on every system. The `windows` job in `checks.yml` runs the four test files
+  that start a program, on `windows-latest`.
 
 - **`virtual.test.ts` timed out once in CI, at 60 s, unexplained.** Not the change it failed on
   (9.2 s with, 9.6 s without); the slowest case is ~750 ms locally, so a per-test timeout needs

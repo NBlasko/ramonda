@@ -34,34 +34,37 @@ export interface ToolFinding {
   readonly message: string;
 }
 
+/** A command to run: this Node, and the script a tool's package names as its bin. */
+export interface Tool {
+  readonly command: string;
+  readonly args: readonly string[];
+}
+
 /**
  * Where a tool lives, or `undefined` when it is not installed.
  *
  * **Walked upwards, the way Node resolves a module.** A workspace hoists its tools to the ROOT's
- * `node_modules/.bin`, so looking only beside the package being worked on finds nothing at all —
- * and a monorepo is the ordinary case, not the exotic one.
- */
-/**
- * The spellings an install writes, plain one first.
+ * `node_modules`, so looking only beside the package being worked on finds nothing at all — and a
+ * monorepo is the ordinary case, not the exotic one.
  *
- * npm and pnpm write THREE files into `.bin` on Windows — `biome`, `biome.cmd` and `biome.ps1` — and
- * the extensionless one is a shell script for Git Bash. `execFileSync` uses no shell, so on Windows
- * it is the `.cmd` that can be run, and this looked for the shell script and nothing else.
- *
- * **Not measured, and that has to be said: there is no Windows here, and CI runs `ubuntu-latest` for
- * every job — so nothing in this repository has ever executed on one.** What IS measured is the
- * lookup, in `toolingRun.test.ts`. The plain name is first, so every POSIX install answers exactly as
- * it did.
+ * **The package's own bin script, run by `process.execPath` — never the shim in `.bin`.** The shim is
+ * a different file on every system: on Windows npm and pnpm write `biome`, `biome.cmd` and
+ * `biome.ps1`, the extensionless one a shell script for Git Bash. `execFileSync` uses no shell, so it
+ * cannot run that one, and since Node 20.12 it refuses a `.cmd` too (`EINVAL`) unless given a shell
+ * — which would then have to quote every path. This looked for those spellings, plain one first, and
+ * so returned the shell script on exactly the system the spellings were for. Both tools ship their
+ * bin as one Node script that picks the native binary itself.
  */
-const SPELLINGS = ["", ".cmd", ".exe", ".ps1"];
-
-export function toolIn(directory: string, name: string): string | undefined {
+export function toolIn(directory: string, pkg: string, bin: string): Tool | undefined {
   let at = resolve(directory);
 
   for (;;) {
-    for (const spelling of SPELLINGS) {
-      const found = join(at, "node_modules", ".bin", `${name}${spelling}`);
-      if (existsSync(found)) return found;
+    const dir = join(at, "node_modules", ...pkg.split("/"));
+    const manifest = join(dir, "package.json");
+    if (existsSync(manifest)) {
+      const declared = (JSON.parse(readFileSync(manifest, "utf8")) as { bin?: string | Record<string, string> }).bin;
+      const script = typeof declared === "string" ? declared : declared?.[bin];
+      return script === undefined ? undefined : { command: process.execPath, args: [join(dir, script)] };
     }
 
     const up = dirname(at);

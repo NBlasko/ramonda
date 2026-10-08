@@ -305,6 +305,31 @@ jobs:
           allow-empty: true
         continue-on-error: true
 
+  # The one place anything here runs on Windows. Not the whole suite: the files that start another
+  # program — `ramonda-css format`/`lint` running biome and oxlint, and the editor extension running
+  # `ramonda-css` — because that is where an operating system decides whether a command runs at all.
+  # They looked for the `.bin` shims, and on Windows those are a shell script and a `.cmd`, neither
+  # of which `execFileSync` can start without a shell. They run each package's own bin script with
+  # Node now, and this is what says so.
+  windows:
+    name: Windows (the commands that start a program)
+    runs-on: windows-latest
+    steps:
+      # Checked out as committed. The runner's git turns every line ending into CRLF otherwise, and a
+      # test that compares formatted text would be measuring the checkout rather than the code.
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+      - run: pnpm exec turbo run build --filter=@ramonda/css
+      - name: Test the commands that start a program
+        working-directory: packages/css
+        run: >-
+          pnpm exec vitest run
+          src/__tests__/toolingRun.test.ts
+          src/__tests__/toolingCli.test.ts
+          src/__tests__/cli.test.ts
+          src/__tests__/extension.test.ts
+
   test:
     name: Test
     runs-on: ubuntu-latest

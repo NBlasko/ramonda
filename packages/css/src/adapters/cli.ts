@@ -237,7 +237,7 @@ function runTool(which: "format" | "lint", args: readonly string[]): never {
   }
 
   const name = which === "format" ? "biome" : "oxlint";
-  const binary = toolIn(cwd, name);
+  const binary = toolIn(cwd, which === "format" ? "@biomejs/biome" : "oxlint", name);
   if (binary === undefined) {
     console.error(`\n${TAG} \`${name}\` is not installed here, so there is nothing to run.\n`);
     process.exit(1);

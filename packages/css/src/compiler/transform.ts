@@ -80,7 +80,7 @@ export interface TransformOptions {
 }
 
 /** What starts a source mark — see {@link TransformOptions.marks}. */
-export const SOURCE_MARK = "r:src:";
+const SOURCE_MARK = "r:src:";
 
 /** The otherwise arm's place among the arms — a key no arm can be written as, since an arm is text. */
 const OTHERWISE = "\u0000otherwise";

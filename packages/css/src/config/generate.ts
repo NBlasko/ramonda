@@ -36,7 +36,7 @@ import { ConfigError, findConfig, readConfig } from "./config";
  */
 
 /** Where the generated files go, unless a project says otherwise with `outDir`. */
-export const OUT_DIR = "css-system";
+const OUT_DIR = "css-system";
 
 /**
  * The folder a config names, read from its TEXT rather than by transpiling it.
