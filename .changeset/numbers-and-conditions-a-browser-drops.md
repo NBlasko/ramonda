@@ -3,7 +3,8 @@
 ---
 
 **Four declarations a browser drops without a word are reported now.** Each was measured in
-Chromium, Firefox and WebKit, and each reads a table the engines wrote:
+Chromium, Firefox and WebKit. The first three read a table the engines wrote; the fourth reads
+`mdn-data`'s lists of media features and properties:
 
 - `number-without-a-unit` — `gap: 12`, `font-size: 16`, `margin: 4px 12`. A number with no unit where
   a length goes is dropped; zero is not reported, and a number inside a call — `repeat(3, 1fr)` — is
