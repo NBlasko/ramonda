@@ -128,3 +128,19 @@ describe("a section's first page", () => {
     expect(installFirst).toEqual([]);
   });
 });
+
+/** A drawn GIF in `/media/` is shown in its dark twin on a dark page — see `Markdown.tsx`. */
+describe("a GIF of the editor", () => {
+  it("has a dark twin, and a twin has its light one", () => {
+    const media = join(content, "..", "public", "media");
+    const gifs = readdirSync(media).filter((name) => name.endsWith(".gif"));
+    const alone = gifs.filter((name) =>
+      name.endsWith("-dark.gif")
+        ? !gifs.includes(name.replace(/-dark\.gif$/, ".gif"))
+        : !gifs.includes(name.replace(/\.gif$/, "-dark.gif")),
+    );
+
+    expect(gifs.length).toBeGreaterThan(1);
+    expect(alone).toEqual([]);
+  });
+});
