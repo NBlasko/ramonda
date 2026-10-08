@@ -1,5 +1,16 @@
 # Ramonda CSS
 
+## 0.5.0
+
+- **Goes with `@ramonda/css` 0.8.0.** The colours are unchanged; the copy of the compiler this
+  extension carries, for a project that has none of its own, is the new one. It brings 0.8.0's checks
+  to such a project: a number with no unit where a length goes, a fraction where a whole number goes,
+  a media value the feature does not have, a media feature written in `@supports`, and a value cast
+  to a style block.
+- **Formatting works on Windows.** The project's own `ramonda-css` is run through
+  Node, by the script its package names, instead of by the shell file in `node_modules/.bin`, which
+  Windows cannot start that way.
+
 ## 0.4.0
 
 - **Goes with `@ramonda/css` 0.7.0**, whose project tokens are called tokens — `tokens` in
