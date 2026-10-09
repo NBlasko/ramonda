@@ -1,5 +1,52 @@
 # @ramonda/css
 
+## 0.9.0
+
+### Minor Changes
+
+- 3c991e0: **`hardcoded` is judged per value, and the report names the token that already holds it.** A property
+  taking a length or a percentage was judged as one: `"<percentage>": { hardcoded: true }` beside a locked
+  `<length>` let `width: 12px` through too — measured — and the type, merged the same way, could be
+  stricter than the rule on the same line. Each value is asked about its own kind now, in the rule and
+  in the type alike, so percentages can be set free while lengths stay tokens. And `12px` where
+  `$space.m` is `12px` says to write `$space.m` — or the token whose `light-dark()` pair holds a colour
+  written out. Minor, because a config relying on the old merge can now refuse a length it let through.
+
+  `ramonda-css explain` says the same: where a length and a percentage get different answers, it
+  prints both, each with the selector that decided it — it printed one, which was wrong for lengths.
+
+- 8a06152: **`ramonda-css lint` runs through biome in a project whose linter is biome.** It took only oxlint,
+  so a project that chose biome for both halves — `create-ramonda`'s Biome add-on — could format its
+  files with blocks and not lint them: `biome lint .` stops at the first `@@(`. It is oxlint when the
+  project has an `.oxlintrc.json` or no biome, and biome otherwise, with the project's own rules and
+  every position mapped home as before. A biome that fails, or prints a report this cannot read, is a
+  failure — never a file that lints clean.
+- 7fc5826: **Style blocks work on Vite 8.** A file's stylesheet was the module `Card.tsx?ramonda-css.css`, and
+  Vite 8 stops the build on it: it reads the language from the path without the query, finds `.tsx`,
+  and fails with _Failed to detect the lang_. It is `Card.tsx.ramonda-css.css` now, and a save sends
+  it out with the file. The dependency scan is handed to Rolldown in its own shape, so a dev server on
+  Vite 8 starts without a deprecation warning. And the order warning, which is for development only,
+  no longer reaches a production bundle on Vite 8: its minifier did not fold the check that guards it.
+
+  **And `ramondaCss()` is a Vite plugin to the type checker**, on Vite 7 and Vite 8: it handed back a
+  read-only source map, and its `config` hook said it returned `unknown`, so a typed `vite.config.ts`
+  assigning it to `Plugin` did not compile — and on Vite 7, neither did `defineConfig`.
+
+### Patch Changes
+
+- 8a06152: **A binding a block reads through `$( … )` is no longer called unused.** A reference to a
+  `@@keyframes` or `@@property` site is resolved at build time to the site's generated name, and the
+  file the linter and the editor read held that name and nothing else — so `const spin = @@keyframes(…)`
+  read only as `animation: $(spin) …` was reported unused by oxlint and biome, and the editor's
+  list of references missed the use. It is read there now, at the author's own position.
+- 9913371: **A token written as `light-dark(light, dark)` stays registered on Vite 8.** Vite 8 minifies CSS
+  with lightningcss, which rewrites the pair into `var()`s — inside the token's `@property`
+  registration too, and a browser refuses an `initial-value` that holds a `var()`. Measured on a
+  Vite 8 build: every such token unregistered in Chromium, Firefox and WebKit, so a value of the wrong
+  kind was no longer caught. The registration's `initial-value` is now the light half, which is what
+  the engines resolved the pair to there anyway; `:root` keeps the pair, and the page follows the
+  reader's scheme as before.
+
 ## 0.8.0
 
 ### Minor Changes
