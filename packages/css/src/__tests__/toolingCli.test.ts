@@ -333,6 +333,145 @@ describe("lint", () => {
   });
 });
 
+/**
+ * Lint through BIOME, for a project whose linter is biome — one with no `.oxlintrc.json`.
+ *
+ * The same mapping home as oxlint's, through a different tool and a different report. Biome lints the
+ * virtual copy outside the project only with its VCS ignore file switched off: with it on, measured on
+ * biome 2.5, a path outside the project is an internal error ("This is a bug in Biome").
+ */
+describe("lint, through biome", () => {
+  /** The project above, with biome's linter on and no oxlint config — so biome is its linter. */
+  function biomeProject(files: Record<string, string>, rules: Record<string, unknown> = {}): string {
+    const root = project(files);
+    rmSync(join(root, ".oxlintrc.json"));
+    writeFileSync(
+      join(root, "biome.json"),
+      JSON.stringify({
+        $schema: "https://biomejs.dev/schemas/2.4.5/schema.json",
+        vcs: { enabled: true, clientKind: "git", useIgnoreFile: true },
+        linter: { enabled: true, rules: { recommended: true, ...rules } },
+      }),
+    );
+    return root;
+  }
+
+  test("a fault in a file with a block is reported at the author's own line", () => {
+    const root = biomeProject({ "Card.tsx": `export function f() {\n  debugger;\n}\n${STYLED}` });
+
+    const { output, status } = run(root, ["lint", "src/Card.tsx"]);
+
+    expect(status, output).toBe(1);
+    expect(output).toContain(`${join("src", "Card.tsx")}:2:3`);
+    expect(output).toContain("noDebugger");
+  });
+
+  test("and one BELOW the block is not shifted by it", () => {
+    const root = biomeProject({ "Card.tsx": `${STYLED}\nexport function after() {\n  debugger;\n}\n` });
+    const source = readFileSync(join(root, "src", "Card.tsx"), "utf8");
+    const line = source.split("\n").findIndex((text) => text.includes("debugger")) + 1;
+
+    const { output } = run(root, ["lint", "src/Card.tsx"]);
+
+    expect(line).toBeGreaterThan(10);
+    expect(output).toContain(`${join("src", "Card.tsx")}:${line}:3`);
+  });
+
+  test("a file with no block is linted as it is", () => {
+    const root = biomeProject({ "Plain.ts": `export function f() {\n  debugger;\n}\n` });
+
+    const { output, status } = run(root, ["lint", "src/Plain.ts"]);
+
+    expect(status).toBe(1);
+    expect(output).toContain(`${join("src", "Plain.ts")}:2:3`);
+    expect(output).toContain("noDebugger");
+  });
+
+  /** The project's own settings reach the copy outside it — the reason the copy can live elsewhere. */
+  test("with the project's own rules: one it switched off stays off", () => {
+    const root = biomeProject(
+      { "Card.tsx": `export function f() {\n  debugger;\n}\n${STYLED}` },
+      { suspicious: { noDebugger: "off" } },
+    );
+
+    const { output, status } = run(root, ["lint", "src/Card.tsx"]);
+
+    expect(status, output).toBe(0);
+    expect(output).toContain("lint clean");
+  });
+
+  test("a file with a block and nothing wrong is clean", () => {
+    const { status, output } = run(biomeProject({ "Card.tsx": STYLED }), ["lint", "src/Card.tsx"]);
+
+    expect(status, output).toBe(0);
+  });
+  /**
+   * A project hands `src` to the wrapper and keeps it out of biome's own run — `biome lint .` cannot
+   * read a block. Biome answers an excluded path with an empty report, so a wrapper that linted the
+   * file IN PLACE would call every file without a block clean. Measured on biome 2.5.
+   */
+  test("a file biome's own config excludes is still linted through the wrapper", () => {
+    const root = biomeProject({ "Plain.ts": `export function f() {\n  debugger;\n}\n` });
+    const config = JSON.parse(readFileSync(join(root, "biome.json"), "utf8"));
+    writeFileSync(join(root, "biome.json"), JSON.stringify({ ...config, files: { includes: ["**", "!src"] } }));
+
+    const { output, status } = run(root, ["lint", "src/Plain.ts"]);
+
+    expect(status, output).toBe(1);
+    expect(output).toContain(`${join("src", "Plain.ts")}:2:3`);
+  });
+});
+
+/**
+ * A binding a block reads through `$( … )` is USED.
+ *
+ * A reference to a `@@keyframes` or `@@property` site is resolved at build time to the site's
+ * generated name, and the virtual file wrote that name and nothing else — so the binding had no
+ * reader there, and every linter called it unused. Found by the scaffold gate: the template's own
+ * `spin`, reported by biome on a fresh project. The same would be true of oxlint's `no-unused-vars`,
+ * TypeScript's `noUnusedLocals`, and the editor's list of references.
+ */
+describe("a binding a block reads", () => {
+  const SPINS = `const spin = @@keyframes(
+  to { transform: rotate(360deg); }
+);
+
+export const mark = @@(
+  animation: $(spin) 900ms linear infinite;
+);
+`;
+
+  test("is not unused to oxlint", () => {
+    const root = project({ "Mark.tsx": SPINS });
+    writeFileSync(join(root, ".oxlintrc.json"), JSON.stringify({ rules: { "no-unused-vars": "error" } }));
+
+    const { output, status } = run(root, ["lint", "src/Mark.tsx"]);
+    expect(status, output).toBe(0);
+  });
+
+  test("nor to biome", () => {
+    const root = project({ "Mark.tsx": SPINS });
+    rmSync(join(root, ".oxlintrc.json"));
+    writeFileSync(
+      join(root, "biome.json"),
+      JSON.stringify({ linter: { enabled: true, rules: { correctness: { noUnusedVariables: "error" } } } }),
+    );
+
+    const { output, status } = run(root, ["lint", "src/Mark.tsx"]);
+    expect(status, output).toBe(0);
+  });
+
+  /** The control: a binding nothing reads is still reported, so the silence above is a reading. */
+  test("and one nothing reads still is", () => {
+    const root = project({ "Mark.tsx": SPINS.replace("animation: $(spin) 900ms linear infinite;", "opacity: 1;") });
+    writeFileSync(join(root, ".oxlintrc.json"), JSON.stringify({ rules: { "no-unused-vars": "error" } }));
+
+    const { output, status } = run(root, ["lint", "src/Mark.tsx"]);
+    expect(status).toBe(1);
+    expect(output).toContain("spin");
+  });
+});
+
 describe("when the tool itself says no", () => {
   /**
    * Swaps this project's `node_modules` — a link to the repository's tree — for one holding only a
@@ -409,6 +548,28 @@ describe("when the tool itself says no", () => {
 
     expect(status).toBe(1);
     expect(output).not.toContain("lint clean");
+  });
+
+  /**
+   * Biome's linter, under the same rule — and with one more way to come back empty: its JSON report
+   * is marked experimental, free to change in a patch, so a report this cannot read is a failure.
+   * Only biome is stubbed, so it is the project's linter.
+   */
+  test.each([
+    ["one that says why it cannot run", `process.stderr.write("biome: cannot read biome.json\\n"); process.exit(1);`],
+    ["one whose report is not JSON", `process.stdout.write("{ not json"); process.exit(1);`],
+    ["one that exits 0 and prints nothing", ""],
+  ])("biome: %s is not a file that lints clean", (_what, script) => {
+    const root = project({ "Card.tsx": STYLED });
+    rmSync(join(root, ".oxlintrc.json"));
+
+    stub(root, "@biomejs/biome", "biome", script);
+
+    const { output, status } = run(root, ["lint", "src/Card.tsx"]);
+
+    expect(status).toBe(1);
+    expect(output).not.toContain("lint clean");
+    expect(output).toContain("refused");
   });
 });
 

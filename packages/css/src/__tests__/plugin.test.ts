@@ -1063,6 +1063,22 @@ export default [a, after];
     expect(service.getSignatureHelpItems(FILE, blank, undefined)).toBeUndefined();
   });
 
+  /**
+   * A binding a block reads through `$( … )` is one of its references. The block holds the site's
+   * generated NAME, so the virtual file read nothing of the binding there until it wrote the author's
+   * own expression beside the declaration — and a reference list missed the use.
+   */
+  test("a reference list includes a `$( … )` that names the site", () => {
+    const SPINS = `const spin = @@keyframes(\n  to { transform: rotate(360deg); }\n);\nexport const mark = @@(\n  animation: $(spin) 900ms linear infinite;\n);\n`;
+    const { service, source } = editor(SPINS);
+    const declared = source.indexOf("spin");
+    const used = source.indexOf("$(spin)") + 2;
+
+    const found = (service.getReferencesAtPosition(FILE, declared) ?? []).map((one) => one.textSpan.start);
+    expect(found).toContain(declared);
+    expect(found).toContain(used);
+  });
+
   test("a reference list, a bound span and the flat outline all land on the author's text", () => {
     const { service, source } = editor(CODE);
     const use = source.indexOf("before", source.indexOf("after"));

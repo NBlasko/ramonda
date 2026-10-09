@@ -630,3 +630,121 @@ describe("the Node floor", () => {
     expect(pkg.engines?.node).toBe(`>=${MIN_NODE}`);
   });
 });
+
+/**
+ * The `css` add-on: style blocks from the first page, under the strictest config the package has.
+ *
+ * Read as text here, which is cheap and says WHAT was written. Whether it builds, serves and links
+ * its stylesheet is the scaffold gate's question (`scripts/check-scaffold.mjs`), which installs and
+ * builds both modes with this add-on.
+ */
+describe("the css add-on", () => {
+  test.each(["spa", "ssr"] as const)("%s: the package, the config and a page written in blocks", (mode) => {
+    const { pkg, read, dir } = make(mode, ["css"]);
+    expect(pkg.dependencies["@ramonda/css"]).toMatch(/^~\d+\.\d+\.\d+$/);
+    expect(existsSync(join(dir, "ramonda.css.ts"))).toBe(true);
+    // Generated, and shipped: an editor opened before the first `dev` reads the tokens from here.
+    expect(existsSync(join(dir, "css-system", "tokens.css"))).toBe(true);
+    expect(existsSync(join(dir, "css-system", "index.ts"))).toBe(true);
+
+    const app = read("src/App.tsx");
+    expect(app).toContain("@@(");
+    // Every element's class is a block; a class written as a string has no rule anywhere now.
+    expect(app).not.toMatch(/className="/);
+  });
+
+  test.each(["spa", "ssr"] as const)("%s: the type check reads blocks, which `tsc` cannot", (mode) => {
+    const scripts = (make(mode, ["css"]).pkg as unknown as { scripts: Record<string, string> }).scripts;
+    expect(scripts.typecheck).toBe("ramonda-css");
+  });
+
+  test.each(["spa", "ssr"] as const)("%s: the plugin is in every build that compiles a block", (mode) => {
+    const { read } = make(mode, ["css"]);
+    expect(read("vite.config.ts")).toContain('import { ramondaCss } from "@ramonda/css/vite";');
+    expect(read("vite.config.ts")).toMatch(/plugins: \[ramonda\(\), ramondaCss\(\)\]/);
+    if (mode === "ssr") {
+      const build = read("scripts/build.mjs");
+      expect(build).toContain('import { ramondaCss } from "@ramonda/css/esbuild";');
+      expect(build).toMatch(/plugins: \[ramondaCss\(\{ filter: /);
+    }
+  });
+
+  /**
+   * No import of `tokens.css` to remember: both plugins add it beside every file holding a block,
+   * and every token this page reads, it reads in a block. The scaffold gate checks the tokens reach
+   * the built page.
+   */
+  test.each(["spa", "ssr"] as const)("%s: the entry is the template's own", (mode) => {
+    const entry = mode === "spa" ? "src/main.tsx" : "src/entry-client.tsx";
+    expect(make(mode, ["css"]).read(entry)).toBe(make(mode, []).read(entry));
+  });
+
+  test.each(["spa", "ssr"] as const)("%s: the old stylesheet's rules are gone, and the scheme stays", (mode) => {
+    const { read } = make(mode, ["css"]);
+    const base = mode === "spa" ? read("src/style.css") : read("index.html");
+    expect(base).not.toMatch(/\.card\b/);
+    expect(base).toContain("color-scheme: light dark");
+  });
+
+  test("the config is the strict one: colours and lengths only from tokens", () => {
+    const config = make("spa", ["css"]).read("ramonda.css.ts");
+    expect(config).toContain('"<color>": { hardcoded: false }');
+    expect(config).toContain('"<length>": { hardcoded: false }');
+    expect(config).toContain("unknownCustomProperties: false");
+    expect(config).toContain("styleOtherElements: false");
+  });
+
+  test.each(["spa", "ssr"] as const)("%s: without it, nothing of it", (mode) => {
+    const { pkg, read, dir } = make(mode, []);
+    expect(pkg.dependencies["@ramonda/css"]).toBeUndefined();
+    expect(existsSync(join(dir, "ramonda.css.ts"))).toBe(false);
+    expect(read("src/App.tsx")).not.toContain("@@(");
+    expect((pkg as unknown as { scripts: Record<string, string> }).scripts.typecheck).toBe("tsc --noEmit");
+    expect(read("vite.config.ts")).not.toContain("ramondaCss");
+  });
+});
+
+/**
+ * The tests go through the transform the app does. The config used to carry an `esbuild` block,
+ * which Vite 8 only translates into Oxc's settings — and Oxc cannot lower a decorator, so a project
+ * with the `testing` add-on failed its first `vitest run` with `SyntaxError: Invalid or unexpected
+ * token`. Measured on a scaffolded project.
+ */
+describe("the testing add-on", () => {
+  test.each(["spa", "ssr"] as const)("%s: the tests take the app's plugin, not an esbuild block", (mode) => {
+    const config = make(mode, ["testing"]).read("vitest.config.ts");
+    expect(config).toContain('import { ramonda } from "@ramonda/build/vite";');
+    expect(config).toMatch(/plugins: \[ramonda\(\)\]/);
+    expect(config).not.toContain("esbuild");
+  });
+
+  test.each(["spa", "ssr"] as const)("%s: and with blocks, the plugin that reads them", (mode) => {
+    const config = make(mode, ["testing", "css"]).read("vitest.config.ts");
+    expect(config).toContain('import { ramondaCss } from "@ramonda/css/vite";');
+    expect(config).toMatch(/plugins: \[ramonda\(\), ramondaCss\(\)\]/);
+  });
+});
+
+/**
+ * Biome with style blocks: `biome lint .` stops at the first `@@(`, measured on a scaffolded project.
+ * So `src` — where blocks are written — goes through `ramonda-css`, which runs the project's own biome
+ * over what it can parse, and biome's own run takes everything else.
+ */
+describe("the biome add-on with the css add-on", () => {
+  test.each(["spa", "ssr"] as const)("%s: src goes through the wrapper, the rest through biome", (mode) => {
+    const scripts = (make(mode, ["biome", "css"]).pkg as unknown as { scripts: Record<string, string> }).scripts;
+    expect(scripts.lint).toBe("biome lint . && ramonda-css lint src");
+    expect(scripts.format).toBe("biome format --write . && ramonda-css format src");
+  });
+
+  test("and biome's own run leaves out src, the build's output and the generated tokens", () => {
+    const config = JSON.parse(make("spa", ["biome", "css"]).read("biome.json")) as { files: { includes: string[] } };
+    expect(config.files.includes).toEqual(["**", "!src", "!dist", "!css-system"]);
+  });
+
+  test("without blocks, biome runs as it is", () => {
+    const scripts = (make("spa", ["biome"]).pkg as unknown as { scripts: Record<string, string> }).scripts;
+    expect(scripts.lint).toBe("biome lint .");
+    expect(scripts.format).toBe("biome format --write .");
+  });
+});

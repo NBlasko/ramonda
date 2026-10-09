@@ -1030,6 +1030,52 @@ export default defineConfig({
   });
 
   /**
+   * Percentages set free on their own selector — in the types as in the rule.
+   *
+   * `width` takes a length or a percentage, and the type was narrowed per property: with `<length>`
+   * locked and `<percentage>` free it either refused `100%` or accepted `12px`, whichever selector
+   * the merge ended on. The literal half the project set free stays in the type now, and only it.
+   */
+  describe("`<percentage>` free beside a locked `<length>`", () => {
+    const CONFIG = `import { kind } from "@ramonda/css/config";
+export default {
+  tokens: { $space: kind("length", { sm: "8px" }) },
+  properties: {
+    "<length>": { hardcoded: false },
+    "<percentage>": { hardcoded: true },
+  },
+};
+`;
+
+    test.each([
+      ["a percentage", "width: 100%;", false],
+      ["a length written out", "width: 12px;", true],
+      ["the token", "width: $space.sm;", false],
+      ["a zero", "width: 0;", false],
+    ])("%s", (_what, css, refused) => {
+      const output = withBoth(CONFIG, `export const a = <div className={@@( ${css} )}>x</div>;\n`);
+
+      expect(output.includes("problem"), output).toBe(refused);
+    });
+
+    /** And the other way round, where a type merged per property was STRICTER than the rule. */
+    test.each([
+      ["a length written out", "width: 12px;", false],
+      ["a percentage", "width: 100%;", true],
+    ])("with only `<percentage>` locked, %s", (_what, css, refused) => {
+      const config = CONFIG.replace('"<length>": { hardcoded: false }', '"<length>": { hardcoded: true }').replace(
+        '"<percentage>": { hardcoded: true }',
+        '"<percentage>": { hardcoded: false }',
+      );
+      const output = withBoth(config, `export const a = <div className={@@( ${css} )}>x</div>;\n`);
+
+      expect(output.includes("problem"), output).toBe(refused);
+      // One voice: the type and the rule agree, so a refusal is never the compiler's alone.
+      expect(output).not.toContain("TS2322");
+    });
+  });
+
+  /**
    * `hardcoded: false` said as a SELECTOR inside `properties`, which is where it belongs.
    *
    * It was a top-level key listing kinds — `variablesOnly: ["length"]` — which made it the one

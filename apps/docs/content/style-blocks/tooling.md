@@ -37,8 +37,11 @@ parse:
 
 ```bash
 ramonda-css format src        # your biome, your config
-ramonda-css lint src          # your oxlint, your rules
+ramonda-css lint src          # your linter, your rules
 ```
+
+`lint` runs oxlint when the project has an `.oxlintrc.json`, or has no biome; biome otherwise —
+so a project that chose biome for both halves keeps one tool.
 
 Each replaces every block with something that parses, runs your own tool, and puts the block back at
 the indentation the tool chose. **Exclude the files that hold a block from those tools' own runs**,

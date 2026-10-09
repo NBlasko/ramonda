@@ -231,6 +231,62 @@ describe("a literal where the project said that kind comes from variables", () =
     expect(found.message).toContain("hardcoded");
   });
 
+  /**
+   * A percentage exempted on its own selector exempts PERCENTAGES. The rule was asked per property,
+   * and `width` is both kinds, so `"<percentage>": { hardcoded: true }` — sorted after `<length>` —
+   * let `12px` through as well. Measured on a scaffolded project. Each value is asked about its own
+   * kind now; `<length>` still reaches a percentage, as above, until `<percentage>` says otherwise.
+   */
+  test("`<percentage>` set free frees the percentages and nothing else", () => {
+    const config: Config = {
+      tokens: VARIABLES,
+      properties: { "<length>": { hardcoded: false }, "<percentage>": { hardcoded: true } },
+    };
+    const of = (decl: string) =>
+      checkBlock(readBlock(`@@(\n  ${decl};\n)`, 2, "C.tsx").block, { config }).map((one) => one.rule);
+
+    expect(of("width: 100%")).toEqual([]);
+    expect(of("width: 12px")).toEqual(["hardcoded-not-allowed"]);
+    expect(of("padding: 50% 8px")).toEqual(["hardcoded-not-allowed"]);
+    expect(of("padding: $space.gutter 50%")).toEqual([]);
+  });
+
+  test("and the message says which kind the value is, not every kind the property takes", () => {
+    const [found] = checkBlock(readBlock(`@@(\n  width: 12px;\n)`, 2, "C.tsx").block, {
+      config: { properties: { "<length>": { hardcoded: false } } },
+    });
+
+    expect(found.message).toContain("`12px` is a length written out");
+  });
+
+  /**
+   * The token that already holds the value, named — the fix in one step, for an author and for a
+   * tool writing the code. Asked for by the user, for a config strict enough that an assistant
+   * writing a page cannot drift off the scale.
+   */
+  test("a value a token already holds names that token", () => {
+    const config: Config = {
+      tokens: {
+        $space: kind("length", { s: "8px", m: "12px", gutter: "12px" }),
+        $color: kind("color", { accent: "light-dark(#7a4fbf, #b18ae6)", line: "#ece3f5" }),
+      },
+      properties: { "<length>": { hardcoded: false }, "<color>": { hardcoded: false } },
+    };
+    const message = (decl: string) =>
+      checkBlock(readBlock(`@@(\n  ${decl};\n)`, 2, "C.tsx").block, { config }).find(
+        (one) => one.rule === "hardcoded-not-allowed",
+      )?.message ?? "";
+
+    expect(message("margin-top: 12px")).toContain("`$space.m` or `$space.gutter`");
+    expect(message("color: #ECE3F5")).toContain("`$color.line`");
+    // Either half of a pair: the value a reader sees in one scheme is still that token's.
+    expect(message("color: #7a4fbf")).toContain("`$color.accent`");
+    // Inside a composite, through the colour walk.
+    expect(message("border-left: 4px solid #ece3f5")).toContain("`$color.line`");
+    // And no token holding it is the old advice.
+    expect(message("margin-top: 13px")).toContain("Declare it in");
+  });
+
   test("and with no `hardcoded: false` anywhere, every one of these is silent", () => {
     const of = (decl: string) => checkBlock(readBlock(`@@(\n  ${decl};\n)`, 2, "C.tsx").block, {}).map((o) => o.rule);
 

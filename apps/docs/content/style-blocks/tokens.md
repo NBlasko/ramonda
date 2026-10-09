@@ -100,8 +100,10 @@ the same text in both places. Setting a token from code with `toStyle` takes one
 
 **`css-system/` is written by the compiler**, and it is where the groups come from. Run
 `npx ramonda-css codegen` once, or let the build plugin do it; either way the folder holds
-`index.ts` (one export per group — `$color`, `$space` — and this project's types) and `tokens.css` (the values). Import the
-stylesheet once, wherever your app's CSS goes:
+`index.ts` (one export per group — `$color`, `$space` — and this project's types) and `tokens.css` (the values). The
+build plugin imports the stylesheet beside every file that holds a block, so a page whose blocks
+read its tokens has them. Only a page that reads a token from code, and loads no file with a block,
+imports it itself:
 
 ```ts
 import "../css-system/tokens.css";

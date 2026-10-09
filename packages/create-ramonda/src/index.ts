@@ -50,7 +50,7 @@ function tool(name: string): string {
 }
 
 type Mode = "spa" | "ssr";
-type AddOn = "router" | "query" | "form" | "lens" | "testing" | "devtools" | "biome";
+type AddOn = "css" | "router" | "query" | "form" | "lens" | "testing" | "devtools" | "biome";
 
 interface Deps {
   dependencies: Record<string, string>;
@@ -178,6 +178,11 @@ async function main(): Promise<void> {
       message: "Add packages and tooling? " + pc.dim("(space to toggle, enter to confirm)"),
       required: false,
       options: [
+        {
+          value: "css" as AddOn,
+          label: "CSS",
+          hint: "@ramonda/css — style blocks, tokens, and a strict config to start from",
+        },
         { value: "router" as AddOn, label: "Router", hint: "@ramonda/router — routes and links" },
         { value: "query" as AddOn, label: "Query", hint: "@ramonda/query — cached, race-free async data" },
         { value: "form" as AddOn, label: "Form", hint: "@ramonda/form — typed fields and schema validation" },
@@ -192,7 +197,7 @@ async function main(): Promise<void> {
         },
         { value: "biome" as AddOn, label: "Biome", hint: "@biomejs/biome — lint + format in one tool" },
       ],
-      initialValues: ["devtools" as AddOn],
+      initialValues: ["css" as AddOn, "devtools" as AddOn],
     }),
   );
 
@@ -283,6 +288,11 @@ export function scaffold({ targetDir, name, mode, addons }: ScaffoldOptions): vo
   if (addons.includes("query")) deps.dependencies["@ramonda/query"] = ramonda("@ramonda/query");
   if (addons.includes("form")) deps.dependencies["@ramonda/form"] = ramonda("@ramonda/form");
   if (addons.includes("lens")) deps.dependencies["@ramonda/lens"] = ramonda("@ramonda/lens");
+  // A dependency, not a tool: a compiled block imports its runtime from the package.
+  if (addons.includes("css")) {
+    deps.dependencies["@ramonda/css"] = ramonda("@ramonda/css");
+    useStyleBlocks(targetDir, mode);
+  }
   if (addons.includes("devtools")) {
     deps.devDependencies["@ramonda/devtools"] = ramonda("@ramonda/devtools");
     importDevtools(targetDir, mode, addons);
@@ -329,12 +339,12 @@ export function scaffold({ targetDir, name, mode, addons }: ScaffoldOptions): vo
     // unchanged and the suite died with `SyntaxError: Invalid or unexpected token`. The SPA
     // template had it already, which is why only SSR was broken.
     deps.devDependencies["vite"] = tool("vite");
-    writeTestingFiles(targetDir, mode);
+    writeTestingFiles(targetDir, mode, addons.includes("css"));
   }
 
   if (addons.includes("biome")) {
     deps.devDependencies["@biomejs/biome"] = tool("@biomejs/biome");
-    writeBiomeConfig(targetDir);
+    writeBiomeConfig(targetDir, addons.includes("css"));
   }
 
   writePnpmSettings(targetDir);
@@ -348,13 +358,76 @@ export function scaffold({ targetDir, name, mode, addons }: ScaffoldOptions): vo
   const extraScripts: Record<string, string> = {};
   if (addons.includes("testing")) extraScripts.test = "vitest";
   if (addons.includes("biome")) {
-    extraScripts.lint = "biome lint .";
-    extraScripts.format = "biome format --write .";
+    // Biome cannot read a style block, so with blocks `src` goes through `ramonda-css`, which runs
+    // this project's own biome over what it can parse and maps every position home. Biome's own run
+    // takes the rest; `biome.json` leaves `src` out of it.
+    const blocks = addons.includes("css");
+    extraScripts.lint = blocks ? "biome lint . && ramonda-css lint src" : "biome lint .";
+    extraScripts.format = blocks ? "biome format --write . && ramonda-css format src" : "biome format --write .";
   }
+  // `tsc` cannot read a style block; `ramonda-css` is the same check with blocks read.
+  if (addons.includes("css")) extraScripts.typecheck = "ramonda-css";
   if (Object.keys(extraScripts).length > 0) {
     pkg.scripts = { ...(pkg.scripts as object), ...extraScripts };
   }
   writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
+}
+
+/**
+ * The `css` add-on: the page written in style blocks, under a strict `ramonda.css.ts`.
+ *
+ * The files that DIFFER are whole files in `templates/css/` — the config, and each mode's page.
+ * Everything else is one line added to a file the base template already has, so that file has one
+ * copy; each edit names the text it expects, and throws when the template no longer has it, so a
+ * changed template fails the scaffolder's tests rather than producing a project without its plugin.
+ */
+function useStyleBlocks(targetDir: string, mode: Mode): void {
+  cpSync(join(templatesDir, "css", "ramonda.css.ts"), join(targetDir, "ramonda.css.ts"));
+  // What codegen writes from that config, committed beside it in this repository — so an editor
+  // opened before the first `dev` already reads the tokens. The repository's own gate fails when it
+  // no longer matches the config, so it cannot ship stale.
+  cpSync(join(templatesDir, "css", "css-system"), join(targetDir, "css-system"), { recursive: true });
+  cpSync(join(templatesDir, "css", mode), targetDir, { recursive: true });
+
+  edit(join(targetDir, "vite.config.ts"), [
+    [
+      'import { ramonda } from "@ramonda/build/vite";\n',
+      'import { ramonda } from "@ramonda/build/vite";\nimport { ramondaCss } from "@ramonda/css/vite";\n',
+    ],
+    ["plugins: [ramonda()],", "plugins: [ramonda(), ramondaCss()],"],
+  ]);
+
+  if (mode === "spa") return;
+
+  edit(join(targetDir, "scripts", "build.mjs"), [
+    [
+      'import { ramondaOptions, ramondaDefine } from "@ramonda/build/esbuild";\n',
+      'import { ramondaOptions, ramondaDefine } from "@ramonda/build/esbuild";\nimport { ramondaCss } from "@ramonda/css/esbuild";\n',
+    ],
+    [
+      "  // Where a bundler plugin goes, in both builds at once — `@ramonda/css`'s, for instance.\n  plugins: [],",
+      "  // The style blocks, in both builds at once. `filter` names the files that may hold one,\n" +
+        "  // because esbuild hands a plugin a path rather than the code.\n" +
+        "  plugins: [ramondaCss({ filter: /src\\/.*\\.tsx$/ })],",
+    ],
+  ]);
+
+  // The shell keeps only what a block cannot reach: the document itself.
+  const shell = join(targetDir, "index.html");
+  const html = readFileSync(shell, "utf8");
+  const style = /    <style>[\s\S]*?<\/style>\n/;
+  if (!style.test(html)) throw new Error("[create-ramonda] the SSR index.html has no <style> to replace");
+  writeFileSync(shell, html.replace(style, readFileSync(join(templatesDir, "css", "shell-style.html"), "utf8")));
+}
+
+/** Each `[from, to]` once, in order — and a `from` the file does not hold is the template having moved. */
+function edit(file: string, changes: readonly (readonly [string, string])[]): void {
+  let text = readFileSync(file, "utf8");
+  for (const [from, to] of changes) {
+    if (!text.includes(from)) throw new Error(`[create-ramonda] ${file} no longer holds: ${from}`);
+    text = text.replace(from, to);
+  }
+  writeFileSync(file, text);
 }
 
 /**
@@ -452,17 +525,19 @@ onlyBuiltDependencies:
 }
 
 /** A vitest config + one example test, dropped in when the Testing add-on is picked. */
-function writeTestingFiles(targetDir: string, mode: Mode): void {
+/**
+ * `vitest.config.ts` takes the plugins the app's own Vite config takes, because the tests go through
+ * the same transform. It held an `esbuild` block once, and on Vite 8 that reaches Oxc only as JSX
+ * settings — the decorators stayed in and the first `vitest run` died with a `SyntaxError`.
+ */
+function writeTestingFiles(targetDir: string, mode: Mode, css: boolean): void {
   writeFileSync(
     join(targetDir, "vitest.config.ts"),
     `import { defineConfig } from "vitest/config";
-
+import { ramonda } from "@ramonda/build/vite";
+${css ? 'import { ramondaCss } from "@ramonda/css/vite";\n' : ""}
 export default defineConfig({
-  esbuild: {
-    jsx: "automatic",
-    jsxImportSource: "@ramonda/core",
-    target: "es2022",
-  },
+  plugins: [ramonda()${css ? ", ramondaCss()" : ""}],
   test: {
     environment: "jsdom",
   },
@@ -492,17 +567,34 @@ test("renders the heading", () => {
  * to turn on the recommended lint rules; `vcs.useIgnoreFile` keeps it off .gitignored
  * paths (dist, node_modules). The schema version tracks tool("@biomejs/biome") so the two never drift.
  */
-function writeBiomeConfig(targetDir: string): void {
+function writeBiomeConfig(targetDir: string, blocks: boolean): void {
   const version = tool("@biomejs/biome").replace(/^\D*/, "");
   const config = {
     $schema: `https://biomejs.dev/schemas/${version}/schema.json`,
     vcs: { enabled: true, clientKind: "git", useIgnoreFile: true },
-    files: { ignoreUnknown: true },
+    files: {
+      ignoreUnknown: true,
+      // `src` is the wrapper's — see the scripts — and the build's output and the generated tokens
+      // are nobody's to lint or format.
+      ...(blocks ? { includes: ["**", "!src", "!dist", "!css-system"] } : {}),
+    },
     formatter: { enabled: true, indentStyle: "space", indentWidth: 2, lineWidth: 120 },
     linter: { enabled: true, rules: { preset: "recommended" } },
     javascript: { formatter: { quoteStyle: "double" } },
   };
-  writeFileSync(join(targetDir, "biome.json"), JSON.stringify(config, null, 2) + "\n");
+  // A list of short strings on one line, which is how biome itself writes one — so the project's
+  // first `biome format .` does not report the config it was given.
+  const text = JSON.stringify(config, null, 2).replace(
+    /\[\n\s*("[^"\n]*",?\n\s*)+\]/g,
+    (list) =>
+      `[${list
+        .slice(1, -1)
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .join(" ")}]`,
+  );
+  writeFileSync(join(targetDir, "biome.json"), text + "\n");
 }
 
 function sortKeys(obj: Record<string, string>): Record<string, string> {

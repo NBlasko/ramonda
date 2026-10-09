@@ -24,8 +24,8 @@ tool you have to run separately. TypeScript 5.4 or later.
 ## One plugin in the build
 
 The CSS a block compiles to is a module the bundler already knows about, and it follows the
-JavaScript chunk it belongs to — so there is nothing to import for it. (A project that declares
-[tokens](/style-blocks/tokens) imports one stylesheet, once, for those.)
+JavaScript chunk it belongs to — so there is nothing to import for it, and the same is true of a
+project's [tokens](/style-blocks/tokens).
 
 ```ts
 import { ramondaCss } from "@ramonda/css/vite";
@@ -40,6 +40,10 @@ import { ramondaCss } from "@ramonda/css/esbuild";
 
 export const plugins = [ramondaCss({ filter: /src\/.*\.tsx$/ })];
 ```
+
+**And in the tests.** Vitest transforms through its own config, so a file holding a block reaches
+it unread unless `vitest.config.ts` takes the plugin too — beside `ramonda()`, which lowers the
+decorators there as it does in the app.
 
 **Set `filter` on esbuild.** esbuild hands a plugin a *path* rather than the code, so a file has to
 be read before it can be asked whether it holds a block. Pointing the plugin at the tree that holds
@@ -78,8 +82,11 @@ app is one rule.
 
 ### If you declare tokens
 
-Nothing above changes, and one thing is added: the plugin writes a `css-system/` folder beside
-`ramonda.css.ts` holding the token groups — `$color`, `$space` — and their values, and your app imports the stylesheet once.
+Nothing above changes: the plugin writes a `css-system/` folder beside `ramonda.css.ts` holding the
+token groups — `$color`, `$space` — and their values, and imports the values' stylesheet beside every
+file that holds a block. A page whose blocks read its tokens needs nothing more.
+
+A page that reads a token only from code, and loads no file with a block, imports it once:
 
 ```ts
 import "./css-system/tokens.css";
@@ -88,6 +95,20 @@ import "./css-system/tokens.css";
 Commit that folder. It is generated, and it is also what your editor reads, so a fresh clone that
 has not built anything yet is still checked. `npx ramonda-css codegen` writes it without a build,
 and `--check` fails in CI when what is committed no longer matches the config beside it.
+
+### Move the type check
+
+`tsc` cannot read a block — the syntax is not TypeScript — so a project whose build runs
+`tsc --noEmit` stops on the first file that holds one. `ramonda-css` is the same check with blocks
+read, and it reports every type error in the project, inside a block or not, on the line you wrote:
+
+```jsonc
+// package.json — a project from `create-ramonda` has this script
+"typecheck": "ramonda-css"
+```
+
+Nothing else in the build reads a type. Vite and esbuild strip them and keep going, so without this
+step a type error ships.
 
 ## Two things in your editor
 

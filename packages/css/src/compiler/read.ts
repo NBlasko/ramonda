@@ -622,7 +622,7 @@ export function readBlock(source: string, open: number, filename: string, option
       at = close;
       // `resolved`, because this text is the compiler's and holds nothing anybody can act on — see
       // the field's own note.
-      return { kind: "text", text: written, at: opens, resolved: true };
+      return { kind: "text", text: written, at: opens, resolved: true, reference: { at: start, length: end - start } };
     }
 
     // Unclosed and tolerant: everything to the end of the text is the expression. Mid-typing, that

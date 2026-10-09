@@ -114,6 +114,8 @@ export interface VirtualFile {
     readonly cond?: string;
     /** What `$` is bound to — `__vars.border.thin` is a `var()` in the sheet. */
     readonly vars?: string;
+    /** A block READING a named site — `__ref(spin)` — which is not code setting it. */
+    readonly ref?: string;
   };
   /**
    * The names this file declared for itself — the block helper, composition's two, the hole's type,
@@ -475,6 +477,15 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
   write(`declare function ${hole}<T extends import(${from}).CssValue>(value: T): T;`);
 
   /**
+   * What a resolved reference is written as beside its declaration — `__ref(spin)` — so the binding it
+   * names has a reader. The value holds the site's generated name, which is what the type is about;
+   * this holds the author's own expression, copied, so a linter sees `spin` used and an editor's
+   * reference list finds it. `never`, so it sits in the block's array without being a declaration.
+   */
+  const reference = binding(source, "__ref");
+  write(`declare function ${reference}(site: unknown): never;`);
+
+  /**
    * Every name this file DECLARED, so a consumer can tell them from the author's own.
    *
    * They are in scope for the whole file, which is what makes them work — and what made TypeScript
@@ -482,7 +493,7 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
    * 1000 belong. `binding` already picks a name the source does not contain, so nothing of the
    * author's is ever removed by filtering these out.
    */
-  const bindings: string[] = [block, lookup, condition, spread, hole, variables];
+  const bindings: string[] = [block, lookup, condition, spread, hole, reference, variables];
 
   /**
    * One more declaration per KIND of named site the file holds, and only the kinds it holds.
@@ -653,7 +664,7 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
     code,
     preamble,
     bindings,
-    helpers: { block, from: spread, hole, cond: condition, vars: variables },
+    helpers: { block, from: spread, hole, cond: condition, vars: variables, ref: reference },
     homeOf: (offset) => homeOf(segments, offset),
     spanOf: (start, length) => spanOf(segments, start, length),
     virtualOf: (offset) => virtualOf(bySource, offset) ?? slotFor(slots, offset),
@@ -846,6 +857,14 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
         keepLine(item.end);
       }
       write(single ? "," : "},");
+      if (!single && item.kind === "declaration") {
+        for (const part of item.value) {
+          if (part.kind !== "text" || part.reference === undefined) continue;
+          write(`${reference}(`);
+          copy(part.reference.at, part.reference.at + part.reference.length);
+          write("),");
+        }
+      }
     }
   }
 

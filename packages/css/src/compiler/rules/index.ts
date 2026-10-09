@@ -437,8 +437,8 @@ export function checkBlock(written: AnyBlock, options: CheckOptions = {}): Findi
     // set to a value in its range was refused as a hardcoded colour: two rules saying opposite
     // things about one line. So `hardcoded` stands aside on it, whichever of its paths reported.
     const before = findings.length;
-    literalNotAllowed(block, config?.properties, findings);
     const tokens = config === undefined ? undefined : declaredByName(config);
+    literalNotAllowed(block, config?.properties, findings, tokens);
     if (tokens !== undefined && tokens.size > 0 && findings.length > before) {
       const spans: [number, number][] = [];
       const collect = (items: readonly BlockItem[]): void => {

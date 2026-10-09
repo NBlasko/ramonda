@@ -235,9 +235,46 @@ function registration(one: Named): string {
     `@property ${one.name} {\n` +
     `  syntax: "${SYNTAX[one.kind]}";\n` +
     `  inherits: true;\n` +
-    `  initial-value: ${one.value};\n` +
+    `  initial-value: ${lightHalf(String(one.value))};\n` +
     `}`
   );
+}
+
+/**
+ * A value with every `light-dark(light, dark)` in it replaced by its light half — for the
+ * registration's `initial-value`, and only there.
+ *
+ * Vite 8 minifies CSS with lightningcss, which lowers `light-dark()` into
+ * `var(--lightningcss-light, …) var(--lightningcss-dark, …)` wherever it appears. An `initial-value`
+ * holding a `var()` is not computationally independent, so the browser drops the whole `@property`
+ * rule — measured: every such token unregistered on a Vite 8 build in Chromium, Firefox and WebKit,
+ * and registered on the same project built with Vite 7. The light half is what all three engines
+ * resolve the pair to as an initial value in both schemes, so nothing a reader sees changes; the
+ * `:root` value keeps the pair, and that is what follows the scheme.
+ *
+ * Read by hand rather than with a pattern, because a pair can nest inside another call — or inside
+ * its own light half — and the commas that matter are the ones at its own depth.
+ */
+function lightHalf(value: string): string {
+  const at = value.toLowerCase().indexOf("light-dark(");
+  if (at === -1) return value;
+  const open = at + "light-dark(".length;
+  let depth = 0;
+  let comma = -1;
+  for (let index = open; index < value.length; index++) {
+    const char = value[index];
+    if (char === "(") depth++;
+    else if (char === ")") {
+      if (depth === 0) {
+        // Not a pair this can read — leave it as written rather than guess at it.
+        if (comma === -1) return value;
+        const light = value.slice(open, comma).trim();
+        return lightHalf(value.slice(0, at) + light + value.slice(index + 1));
+      }
+      depth--;
+    } else if (char === "," && depth === 0 && comma === -1) comma = index;
+  }
+  return value;
 }
 
 /**
@@ -486,6 +523,46 @@ export function ruleFor(rules: PropertyRules | undefined, property: string): Any
   return Object.assign({}, sweep, ...byKind, own) as AnyRule;
 }
 
+/**
+ * Whether a value of ONE kind may be written out on this property — `hardcoded` asked of the value,
+ * not of the property.
+ *
+ * A property can take two kinds: `width` is a length or a percentage, and `"<percentage>": {
+ * hardcoded: true }` sorted after `<length>` used to free the property whole, `12px` included —
+ * measured on a scaffolded project. So a LENGTH is not asked of `<percentage>`. A percentage is still
+ * asked of `<length>`, which reached it before this existed and which a project may be relying on,
+ * and the narrower `<percentage>` binds after it. The sweep first and the property's own name last,
+ * as in {@link ruleFor}.
+ */
+export function hardcodedFor(
+  rules: PropertyRules | undefined,
+  property: string,
+  valueKind: string,
+): boolean | undefined {
+  return hardcodedDecision(rules, property, valueKind)?.value as boolean | undefined;
+}
+
+/**
+ * {@link hardcodedFor}'s answer with the selector that gave it — what `explain` prints, so the rule,
+ * the type and the explanation read one walk rather than three.
+ */
+function hardcodedDecision(rules: PropertyRules | undefined, property: string, valueKind: string): Setting | undefined {
+  if (rules === undefined) return undefined;
+  const asked = kindsOf(property).filter((kind) => !(valueKind === "length" && kind === "percentage"));
+  let decided: Setting | undefined;
+  for (const selector of ["*", ...[...asked].sort().map((kind) => `<${kind}>`), property]) {
+    const said = (rules[selector as keyof PropertyRules] as AnyRule | undefined)?.hardcoded;
+    if (said === undefined) continue;
+    decided = {
+      name: "hardcoded",
+      value: said,
+      from: selector,
+      ...(decided === undefined ? {} : { overriding: decided.from }),
+    };
+  }
+  return decided;
+}
+
 /** One setting that applies to a property, and the selector that decided it. */
 export interface Setting {
   readonly name: string;
@@ -494,6 +571,11 @@ export interface Setting {
   readonly from: string;
   /** The selector it overrode, when a looser one had also said something. */
   readonly overriding?: string;
+  /**
+   * The kind of VALUE it is about, when the property takes two and the project answered them
+   * differently — `hardcoded` on `width`, for a length and for a percentage. See {@link hardcodedFor}.
+   */
+  readonly of?: string;
 }
 
 export interface Explained {
@@ -539,6 +621,24 @@ export function explain(rules: PropertyRules | undefined, property: string): Exp
       if (value === undefined) continue;
       const before = found.get(name);
       found.set(name, { name, value, from: selector, ...(before === undefined ? {} : { overriding: before.from }) });
+    }
+  }
+
+  /**
+   * `hardcoded` is asked of each value's own kind, so where a length and a percentage get different
+   * answers one row would be wrong for one of them. Two rows then, each from the walk the rule uses.
+   */
+  if (kind === "length-percentage") {
+    const length = hardcodedDecision(rules, property, "length");
+    const percentage = hardcodedDecision(rules, property, "percentage");
+    if (length !== undefined && percentage !== undefined && length.value !== percentage.value) {
+      found.delete("hardcoded");
+      return {
+        property,
+        known,
+        kind,
+        settings: [...found.values(), { ...length, of: "length" }, { ...percentage, of: "percentage" }],
+      };
     }
   }
 
@@ -687,6 +787,12 @@ function propertyMap(rules: PropertyRules | undefined): Mapped {
      * A property with no kind cannot express that — nothing can check a token into it — so the
      * literals stay rather than the property being narrowed to nothing a person could write.
      */
+    /*
+     * Merged per PROPERTY here, where the rule and the open type ask per value kind (`hardcodedFor`).
+     * Said out loud because it is the one reader left that way: a closed list names exact values, so
+     * a project freeing percentages beside a list on a length-or-percentage property keeps the
+     * stricter answer for the whole list. Measured nowhere in this repository or its template.
+     */
     const onlyVariables = rule.hardcoded === false && kinds !== undefined;
     const written = onlyVariables ? "" : `${permitted.join(" | ")}`;
     const said = onlyVariables
@@ -713,8 +819,25 @@ function propertyMap(rules: PropertyRules | undefined): Mapped {
      * it is not a colour anybody hardcoded, it is a reference to the inherited one. Refusing it
      * would be refusing an escape hatch CSS itself provides.
      */
-    const onlyVariables = ruleFor(rules, property).hardcoded === false;
     const value = withUnits(narrow.value, ruleFor(rules, property).units);
+
+    /**
+     * A length or a percentage, asked one kind at a time — the same question the rule asks of each
+     * value, through {@link hardcodedFor}. Merged per property, `"<percentage>": { hardcoded: true }`
+     * beside a locked `<length>` either refused `100%` or accepted `12px`, whichever selector sorted
+     * last; and the rule and the type disagreed about the same line.
+     */
+    const mixed = primitive === "length-percentage";
+    const lengthLocked = mixed && hardcodedFor(rules, property, "length") === false;
+    const percentLocked = mixed && hardcodedFor(rules, property, "percentage") === false;
+    const onlyVariables = mixed ? lengthLocked && percentLocked : ruleFor(rules, property).hardcoded === false;
+    /** The literal half a project set free, when it locked the other. */
+    const freed =
+      mixed && lengthLocked !== percentLocked
+        ? lengthLocked
+          ? 'CssDimension<"%">'
+          : withUnits("CssDimension<CssLengthUnit>", ruleFor(rules, property).units)
+        : undefined;
 
     /**
      * A property that takes SEVERAL values admits a multi-value string, and the shape is
@@ -788,16 +911,16 @@ function propertyMap(rules: PropertyRules | undefined): Mapped {
      * constrains its first parameter to `string`, and `0` is a number — measured, `TS2344` on every
      * row.
      */
-    const zero = onlyVariables && value.includes("CssDimension") ? ` | 0 | "0"` : "";
+    const zero = (onlyVariables || freed !== undefined) && value.includes("CssDimension") ? ` | 0 | "0"` : "";
     const kept = onlyVariables
       ? primitive === "color"
         ? `${head === "never" ? "" : `${head} | `}"currentcolor"`
         : head
       : head;
-    const literals = onlyVariables ? "" : `${value} | `;
+    const literals = onlyVariables ? "" : `${freed ?? value} | `;
 
     rows.push(
-      `  /** \`${property}\` — ${narrow.said}${onlyVariables ? ", and only as one of this project's tokens" : ", and this project's tokens of that kind"}. */\n` +
+      `  /** \`${property}\` — ${narrow.said}${onlyVariables ? ", and only as one of this project's tokens" : freed !== undefined ? `, the ${lengthLocked ? "length" : "percentage"} only as one of this project's tokens` : ", and this project's tokens of that kind"}. */\n` +
         `  ${JSON.stringify(property)}: Narrowed<${kept}, ${literals}Token<${kinds}${ranged}>${several}${zero}>;`,
     );
   }

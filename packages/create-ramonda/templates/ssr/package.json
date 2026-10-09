@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "node server.mjs",
     "build:bundles": "node scripts/build.mjs",
-    "build": "ramonda-check && npm run build:bundles && node scripts/prerender.mjs && ramonda-check-bundle dist",
+    "typecheck": "tsc --noEmit",
+    "build": "ramonda-check && npm run typecheck && npm run build:bundles && node scripts/prerender.mjs && ramonda-check-bundle dist",
     "start": "node server.mjs --prod"
   }
 }

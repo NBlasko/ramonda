@@ -101,6 +101,30 @@ describe("the stylesheet", () => {
     expect(css.match(/@property/g)).toHaveLength(3);
   });
 
+  /**
+   * **A `light-dark()` pair registers with its light half.** Vite 8 minifies CSS with lightningcss,
+   * which lowers `light-dark()` into `var(--lightningcss-light, …) var(--lightningcss-dark, …)` —
+   * everywhere, the registration included — and an `initial-value` holding a `var()` is not one a
+   * browser accepts. Measured on a Vite 8 build: every such token unregistered in Chromium, Firefox
+   * and WebKit, and registered in the same project built with Vite 7. The light half is what the
+   * engines resolved the pair to as an initial value anyway, in both schemes; the value on `:root`
+   * keeps the pair, which is what follows the reader's scheme.
+   */
+  test("a `light-dark()` pair registers with its light half, and `:root` keeps the pair", () => {
+    const { css } = generate({
+      $color: kind("color", {
+        page: "light-dark(#fbf8ff, #14101a)",
+        mixed: "color-mix(in srgb, light-dark(#ffffff, #000000) 50%, light-dark(red, blue))",
+      }),
+    });
+
+    expect(css).toContain("--color-page: light-dark(#fbf8ff, #14101a);");
+    expect(css).toContain(
+      '@property --color-page {\n  syntax: "<color>";\n  inherits: true;\n  initial-value: #fbf8ff;\n}',
+    );
+    expect(css).toContain("initial-value: color-mix(in srgb, #ffffff 50%, red);");
+  });
+
   test("no variables is no stylesheet, rather than an empty one", () => {
     expect(generate({}).css).toBe("");
   });

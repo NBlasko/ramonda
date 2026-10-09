@@ -327,7 +327,8 @@ ramonda-css codegen           # --check to report a stale css-system/
 ramonda-css explain padding   # what the config does to one property, and which line decided it
 ```
 
-Neither reimplements anything — the project's own biome and oxlint do the work, with their own
+Neither reimplements anything — the project's own biome and oxlint do the work (`lint` takes oxlint
+when the project configured it, biome otherwise), with their own
 configuration, because both read it from the working directory rather than from the file's path. The
 linter is given the same virtual file `tsc` gets and its diagnostics are mapped home; the formatter
 is given a copy with the blocks replaced by something that parses, and they go back at whatever
