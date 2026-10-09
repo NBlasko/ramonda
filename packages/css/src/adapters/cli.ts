@@ -3,6 +3,7 @@ import { existsSync, readFileSync, statSync, writeSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import ts from "typescript";
 import { checkProject } from "./check";
+import { withoutItsApi } from "./typescriptApi";
 import { NARROW, explain } from "../config/codegen";
 import { PRIMITIVE } from "../compiler/keywords.generated";
 import { nearest } from "../compiler/nearest";
@@ -64,6 +65,13 @@ const where = (file: string) => relative(process.cwd(), file) || file;
 if (argv.includes("--help") || argv.includes("-h")) {
   console.log(USAGE);
   process.exit(0);
+}
+
+/** Before any command, since each of them reads source through TypeScript's API. */
+const noApi = withoutItsApi(ts);
+if (noApi !== undefined) {
+  console.error(`\n${TAG} ${noApi}\n`);
+  process.exit(1);
 }
 
 /**

@@ -373,7 +373,8 @@ for (const field of findings["arrow-fields"]) {
 ```
 
 `typescript` is a peer dependency: the analyzer uses **your** compiler, so it reads your syntax and
-your config rather than guessing at them.
+your config rather than guessing at them. TypeScript 5 or 6, not 7: TypeScript 7 has no JavaScript API to read
+your source with, so `ramonda-check` stops and says so.
 
 ### It does not typecheck
 

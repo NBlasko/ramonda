@@ -525,7 +525,7 @@ reports rather than letting the last one win).
 
 ## Pinned dev dependencies (do not blindly bump)
 
-Three dev/build-time deps are deliberately held back. **None of them affect the
+Two dev/build-time deps are deliberately held back. **None of them affect the
 published packages** (those ship via tsup/esbuild; consumers bring their own
 TypeScript). Each latest major breaks the setup for no shipped benefit — revisit
 only with the fix in hand:
@@ -538,12 +538,11 @@ only with the fix in hand:
   Vite 8 was held back for a while, because its Oxc transform ignored the `esbuild` block every
   vitest config used and cannot lower a TC39 decorator at all. Every config now uses `ramonda()`
   from `@ramonda/build`, which lowers them itself on Vite 8.
-- **`jsdom` pinned to `28.0.0`.** 28.1+/29 changed CSSOM `cssText` serialization
-  (a color keyword comes back as `rgb(...)`), which breaks the RMD007 style-
-  normalization test and a test that spies on `cssText`.
-- **`typescript` held at `^5.9`.** TS 7 (the native rewrite) removed `baseUrl`,
-  which every tsconfig uses with `paths`, and tsup's `.d.ts` generation is not
-  known to support it yet.
+- **`typescript` held at `^5.9`.** TS 7 (the native rewrite) has no JavaScript
+  API: its package exports `version` and nothing else (measured on 7.0.2), and
+  `@ramonda/check`, `@ramonda/css` and the editor plugin all read source through
+  that API. Their peer ranges say `<7` for the same reason. TS 7 also removed
+  `baseUrl`, which every tsconfig here uses with `paths`.
 
 ## Deliberate gaps (the "we'll add more later" list)
 

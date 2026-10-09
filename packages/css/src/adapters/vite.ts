@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { basename, dirname, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
+import { requireItsApi } from "./typescriptApi";
 import { knownNames, type Config, configReader, environmentOf } from "../config/config";
 import { forgetGenerated, variablesSheetFor, writeGenerated } from "../config/generate";
 import { settingsAgainst } from "../compiler/declaredSet";
@@ -175,6 +176,7 @@ const SUFFIX = ".ramonda-css.css";
 const SCRIPT = /\.[cm]?[jt]sx?$/;
 
 export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
+  requireItsApi(ts);
   /**
    * The project's own settings, through the same reader the editor and `ramonda-check` use, with
    * `typescript` — a peer dependency, so a project with a tsconfig has it. Node 24 can `require` a
