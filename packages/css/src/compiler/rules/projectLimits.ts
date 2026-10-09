@@ -2,7 +2,7 @@
 
 import { KEYWORDS, PRIMITIVE, SHORTHANDS, UNIT_TYPE } from "../keywords.generated";
 import { type PropertyRules } from "../../config/config";
-import { NARROW, ruleFor, tokensOnlyKinds } from "../../config/codegen";
+import { type Named, NARROW, hardcodedFor, ruleFor, tokensOnlyKinds } from "../../config/codegen";
 import { propertyName } from "../normalise";
 import { wordSet } from "../wordSet";
 import { SHAPES } from "../shapes.generated";
@@ -36,10 +36,15 @@ const HEX = /#[0-9a-fA-F]{3,8}(?![\w-])/;
  * `currentcolor` is not a colour somebody hardcoded, it is a reference to the inherited one, and
  * `var()` is the escape CSS itself provides. Neither is reported.
  */
-export function literalNotAllowed(block: Block, rules: PropertyRules | undefined, findings: Finding[]): void {
+export function literalNotAllowed(
+  block: Block,
+  rules: PropertyRules | undefined,
+  findings: Finding[],
+  tokens: ReadonlyMap<string, Named> | undefined = undefined,
+): void {
   const kinds = tokensOnlyKinds(rules);
   if (kinds.length === 0) return;
-  dimensionNotAllowed(block, rules, findings);
+  dimensionNotAllowed(block, rules, findings, tokens);
   if (!kinds.includes("color")) return;
 
   for (const item of declarationsIn(block)) {
@@ -71,7 +76,7 @@ export function literalNotAllowed(block: Block, rules: PropertyRules | undefined
         length: found[0].length,
         message:
           `\`${found[0].trim()}\` is a colour written out, and this project takes colours only from its ` +
-          `own tokens.\n\n        Declare it in \`ramonda.css.ts\` and write \`$group.name\`, or set ` +
+          `own tokens.\n\n        ${wayOut(found[0].trim(), "color", tokens)}, or set ` +
           `\`${JSON.stringify(property)}: { hardcoded: true }\` beside \`"<color>"\`.`,
       });
       break;
@@ -97,7 +102,12 @@ export function literalNotAllowed(block: Block, rules: PropertyRules | undefined
  * and is not a value anybody reached for instead of a token. `var()` is what CSS itself provides. A
  * HOLE evaluates at render and is nobody's to read. A keyword is not a dimension at all.
  */
-function dimensionNotAllowed(block: Block, rules: PropertyRules | undefined, findings: Finding[]): void {
+function dimensionNotAllowed(
+  block: Block,
+  rules: PropertyRules | undefined,
+  findings: Finding[],
+  tokens: ReadonlyMap<string, Named> | undefined,
+): void {
   const kinds = tokensOnlyKinds(rules);
 
   for (const item of declarationsIn(block)) {
@@ -147,8 +157,8 @@ function dimensionNotAllowed(block: Block, rules: PropertyRules | undefined, fin
     // No kind, no answer: nothing can say what a composite property's pieces should have been.
     // A colour inside one is the colour walk's, which reads the value rather than the type.
     if (primitive === undefined) continue;
-    const rule = ruleFor(rules, property);
-    if (rule.hardcoded !== false) continue;
+    // Nothing on this property is held to tokens, whatever kind a value turns out to be.
+    if (ruleFor(rules, property).hardcoded !== false && hardcodedFor(rules, property, "length") !== false) continue;
 
     for (const value of topLevelValues(item.value)) {
       const text = value.text;
@@ -165,19 +175,47 @@ function dimensionNotAllowed(block: Block, rules: PropertyRules | undefined, fin
       // A zero needs no unit in CSS and is not a value anybody wrote instead of reaching for one.
       if (Number(text) === 0) continue;
 
+      // Asked of the VALUE's own kind: on `width`, `100%` and `12px` can have different answers.
+      const unit = A_DIMENSION.exec(text)?.[2]?.toLowerCase();
+      const kind = isColour ? "color" : ((unit === undefined ? undefined : UNIT_TYPE[unit]) ?? primitive);
+      if (hardcodedFor(rules, property, kind) !== false) continue;
+
       findings.push({
         rule: "hardcoded-not-allowed",
         at: value.at,
         length: text.length,
         message:
-          `\`${text}\` is ${NARROW[primitive]?.said ?? "a value"} written out, and this project takes ` +
-          `them only from its own tokens.` +
-          `\n\n        Declare it in \`ramonda.css.ts\` and write \`$group.name\`, or set ` +
-          `\`${JSON.stringify(property)}: { hardcoded: true }\`.`,
+          `\`${text}\` is ${NARROW[kind]?.said ?? NARROW[primitive]?.said ?? "a value"} written out, and this ` +
+          `project takes them only from its own tokens.` +
+          `\n\n        ${wayOut(text, kind, tokens)}, or set \`${JSON.stringify(property)}: { hardcoded: true }\`.`,
       });
       break;
     }
   }
+}
+
+/**
+ * What to write instead: the token that already holds this value, when one does.
+ *
+ * Asked for by the user, for a config strict enough to keep an assistant on the scale: "declare it
+ * and write `$group.name`" sends the reader into the config to find what was there all along. A
+ * token of the same kind whose value is this one — or either half of its `light-dark()` pair, the
+ * value a reader sees in one scheme — is named, and every one of them when several are.
+ */
+function wayOut(text: string, kind: string, tokens: ReadonlyMap<string, Named> | undefined): string {
+  const wanted = text.toLowerCase();
+  const holders = [...(tokens?.values() ?? [])]
+    .filter((one) => one.kind === kind || (kind === "percentage" && one.kind === "length-percentage"))
+    .filter((one) => halvesOf(String(one.value)).some((half) => half.toLowerCase() === wanted))
+    .map((one) => `\`$${one.path}\``);
+  if (holders.length === 0) return "Declare it in `ramonda.css.ts` and write `$group.name`";
+  return `Write ${holders.join(" or ")}, which \`ramonda.css.ts\` declares with that value`;
+}
+
+/** A value, or the two halves of a `light-dark( … )` pair — each one a value a reader may see. */
+function halvesOf(value: string): string[] {
+  const pair = /^\s*light-dark\(([^,()]*),([^,()]*)\)\s*$/i.exec(value);
+  return pair === null ? [value.trim()] : [pair[1].trim(), pair[2].trim()];
 }
 
 /**

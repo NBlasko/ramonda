@@ -523,6 +523,33 @@ export function ruleFor(rules: PropertyRules | undefined, property: string): Any
   return Object.assign({}, sweep, ...byKind, own) as AnyRule;
 }
 
+/**
+ * Whether a value of ONE kind may be written out on this property — `hardcoded` asked of the value,
+ * not of the property.
+ *
+ * A property can take two kinds: `width` is a length or a percentage, and `"<percentage>": {
+ * hardcoded: true }` sorted after `<length>` used to free the property whole, `12px` included —
+ * measured on a scaffolded project. So a LENGTH is not asked of `<percentage>`. A percentage is still
+ * asked of `<length>`, which reached it before this existed and which a project may be relying on,
+ * and the narrower `<percentage>` binds after it. The sweep first and the property's own name last,
+ * as in {@link ruleFor}.
+ */
+export function hardcodedFor(
+  rules: PropertyRules | undefined,
+  property: string,
+  valueKind: string,
+): boolean | undefined {
+  if (rules === undefined) return undefined;
+  const asked = kindsOf(property).filter((kind) => !(valueKind === "length" && kind === "percentage"));
+  let answer = (rules["*"] as AnyRule | undefined)?.hardcoded;
+  for (const kind of [...asked].sort()) {
+    const said = (rules[`<${kind}>` as keyof PropertyRules] as AnyRule | undefined)?.hardcoded;
+    if (said !== undefined) answer = said;
+  }
+  const own = (rules[property as keyof PropertyRules] as AnyRule | undefined)?.hardcoded;
+  return own ?? answer;
+}
+
 /** One setting that applies to a property, and the selector that decided it. */
 export interface Setting {
   readonly name: string;
@@ -750,8 +777,25 @@ function propertyMap(rules: PropertyRules | undefined): Mapped {
      * it is not a colour anybody hardcoded, it is a reference to the inherited one. Refusing it
      * would be refusing an escape hatch CSS itself provides.
      */
-    const onlyVariables = ruleFor(rules, property).hardcoded === false;
     const value = withUnits(narrow.value, ruleFor(rules, property).units);
+
+    /**
+     * A length or a percentage, asked one kind at a time — the same question the rule asks of each
+     * value, through {@link hardcodedFor}. Merged per property, `"<percentage>": { hardcoded: true }`
+     * beside a locked `<length>` either refused `100%` or accepted `12px`, whichever selector sorted
+     * last; and the rule and the type disagreed about the same line.
+     */
+    const mixed = primitive === "length-percentage";
+    const lengthLocked = mixed && hardcodedFor(rules, property, "length") === false;
+    const percentLocked = mixed && hardcodedFor(rules, property, "percentage") === false;
+    const onlyVariables = mixed ? lengthLocked && percentLocked : ruleFor(rules, property).hardcoded === false;
+    /** The literal half a project set free, when it locked the other. */
+    const freed =
+      mixed && lengthLocked !== percentLocked
+        ? lengthLocked
+          ? 'CssDimension<"%">'
+          : withUnits("CssDimension<CssLengthUnit>", ruleFor(rules, property).units)
+        : undefined;
 
     /**
      * A property that takes SEVERAL values admits a multi-value string, and the shape is
@@ -825,16 +869,16 @@ function propertyMap(rules: PropertyRules | undefined): Mapped {
      * constrains its first parameter to `string`, and `0` is a number — measured, `TS2344` on every
      * row.
      */
-    const zero = onlyVariables && value.includes("CssDimension") ? ` | 0 | "0"` : "";
+    const zero = (onlyVariables || freed !== undefined) && value.includes("CssDimension") ? ` | 0 | "0"` : "";
     const kept = onlyVariables
       ? primitive === "color"
         ? `${head === "never" ? "" : `${head} | `}"currentcolor"`
         : head
       : head;
-    const literals = onlyVariables ? "" : `${value} | `;
+    const literals = onlyVariables ? "" : `${freed ?? value} | `;
 
     rows.push(
-      `  /** \`${property}\` — ${narrow.said}${onlyVariables ? ", and only as one of this project's tokens" : ", and this project's tokens of that kind"}. */\n` +
+      `  /** \`${property}\` — ${narrow.said}${onlyVariables ? ", and only as one of this project's tokens" : freed !== undefined ? `, the ${lengthLocked ? "length" : "percentage"} only as one of this project's tokens` : ", and this project's tokens of that kind"}. */\n` +
         `  ${JSON.stringify(property)}: Narrowed<${kept}, ${literals}Token<${kinds}${ranged}>${several}${zero}>;`,
     );
   }

@@ -8,3 +8,6 @@ token it declares — light and dark from one `light-dark()` pair each — no cu
 on the spot, and a block styles only its own element. Shorthands are allowed: the compiler keeps
 CSS's order through them, measured with tokens in both directions. The type check runs
 `ramonda-css`, which reads blocks.
+
+A percentage may be written; every other length is a token. And a value written out that a token
+already holds is reported with that token's name, so the fix is one word.

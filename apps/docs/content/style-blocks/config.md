@@ -116,6 +116,20 @@ properties: { "<color>": { hardcoded: false } },
 token. It is the setting that turns a palette from a recommendation into something the build
 enforces. `hardcoded: true` on one property exempts it again.
 
+**Each value is judged as its own kind.** `width` takes a length or a percentage, and
+`"<length>": { hardcoded: false }` holds both; set percentages free beside it and `width: 100%` is
+written while `width: 12px` still has to be a token:
+
+```ts
+properties: {
+  "<length>": { hardcoded: false },
+  "<percentage>": { hardcoded: true },
+},
+```
+
+When a token already holds the value written out, the report names it — `12px` under a `$space.m`
+of `12px` says to write `$space.m`.
+
 Three things it deliberately lets through: a bare `0`, which needs no unit and is nobody's hardcoded
 brand colour (`0px` is refused); `var()`, which is the escape CSS itself provides; and a word that
 names another value rather than being one — `currentcolor`, and CSS's own `inherit`, `initial`,

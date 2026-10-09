@@ -29,9 +29,10 @@ export default defineConfig({
   // A duration is written in `ms` and an angle in `deg`, one spelling each.
   units: { time: ["ms"], angle: ["deg"] },
   properties: {
-    // Colours and lengths only from the tokens above. `0` may still be written.
+    // Colours and lengths only from the tokens above. `0` and a percentage may still be written.
     "<color>": { hardcoded: false },
     "<length>": { hardcoded: false },
+    "<percentage>": { hardcoded: true },
   },
   // No custom property made up on the spot: a shared value is a token.
   unknownCustomProperties: false,

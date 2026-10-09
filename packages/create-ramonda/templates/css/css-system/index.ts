@@ -224,12 +224,12 @@ interface Narrowings {
   "-webkit-border-start-width": Narrowed<"medium" | "thick" | "thin", Token<"length"> | 0 | "0">;
   /** `-webkit-line-clamp` — a whole number, and this project's tokens of that kind. */
   "-webkit-line-clamp": Narrowed<"none", number | `${number}` | `${string}(${string})` | Token<"integer" | "number">>;
-  /** `-webkit-mask-position-x` — a length or a percentage, and only as one of this project's tokens. */
-  "-webkit-mask-position-x": Narrowed<"center" | "left" | "right", Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
-  /** `-webkit-mask-position-y` — a length or a percentage, and only as one of this project's tokens. */
-  "-webkit-mask-position-y": Narrowed<"bottom" | "center" | "top", Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
-  /** `-webkit-mask-size` — a length or a percentage, and only as one of this project's tokens. */
-  "-webkit-mask-size": Narrowed<"auto" | "contain" | "cover", Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `-webkit-mask-position-x` — a length or a percentage, the length only as one of this project's tokens. */
+  "-webkit-mask-position-x": Narrowed<"center" | "left" | "right", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `-webkit-mask-position-y` — a length or a percentage, the length only as one of this project's tokens. */
+  "-webkit-mask-position-y": Narrowed<"bottom" | "center" | "top", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `-webkit-mask-size` — a length or a percentage, the length only as one of this project's tokens. */
+  "-webkit-mask-size": Narrowed<"auto" | "contain" | "cover", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
   /** `-webkit-tap-highlight-color` — a colour, and only as one of this project's tokens. */
   "-webkit-tap-highlight-color": Narrowed<"currentcolor", Token<"color">>;
   /** `-webkit-text-fill-color` — a colour, and only as one of this project's tokens. */
@@ -246,20 +246,20 @@ interface Narrowings {
   "animation-duration": Narrowed<"auto", CssDimension<CssTimeUnit> | Token<"time">>;
   /** `animation-iteration-count` — a number, and this project's tokens of that kind. */
   "animation-iteration-count": Narrowed<"infinite", number | `${number}` | `${string}(${string})` | Token<"number" | "integer">>;
-  /** `animation-range` — a length or a percentage, and only as one of this project's tokens. */
-  "animation-range": Narrowed<"contain" | "cover" | "entry" | "entry-crossing" | "exit" | "exit-crossing" | "normal", Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
-  /** `animation-range-end` — a length or a percentage, and only as one of this project's tokens. */
-  "animation-range-end": Narrowed<"contain" | "cover" | "entry" | "entry-crossing" | "exit" | "exit-crossing" | "normal", Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
-  /** `animation-range-start` — a length or a percentage, and only as one of this project's tokens. */
-  "animation-range-start": Narrowed<"contain" | "cover" | "entry" | "entry-crossing" | "exit" | "exit-crossing" | "normal", Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `animation-range` — a length or a percentage, the length only as one of this project's tokens. */
+  "animation-range": Narrowed<"contain" | "cover" | "entry" | "entry-crossing" | "exit" | "exit-crossing" | "normal", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `animation-range-end` — a length or a percentage, the length only as one of this project's tokens. */
+  "animation-range-end": Narrowed<"contain" | "cover" | "entry" | "entry-crossing" | "exit" | "exit-crossing" | "normal", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `animation-range-start` — a length or a percentage, the length only as one of this project's tokens. */
+  "animation-range-start": Narrowed<"contain" | "cover" | "entry" | "entry-crossing" | "exit" | "exit-crossing" | "normal", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
   /** `background-color` — a colour, and only as one of this project's tokens. */
   "background-color": Narrowed<"currentcolor", Token<"color">>;
-  /** `background-size` — a length or a percentage, and only as one of this project's tokens. */
-  "background-size": Narrowed<"auto" | "contain" | "cover", Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
-  /** `baseline-shift` — a length or a percentage, and only as one of this project's tokens. */
-  "baseline-shift": Narrowed<"baseline" | "sub" | "super", Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
-  /** `block-size` — a length or a percentage, and only as one of this project's tokens. */
-  "block-size": Narrowed<"auto" | "fit-content" | "max-content" | "min-content", Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `background-size` — a length or a percentage, the length only as one of this project's tokens. */
+  "background-size": Narrowed<"auto" | "contain" | "cover", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `baseline-shift` — a length or a percentage, the length only as one of this project's tokens. */
+  "baseline-shift": Narrowed<"baseline" | "sub" | "super", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `block-size` — a length or a percentage, the length only as one of this project's tokens. */
+  "block-size": Narrowed<"auto" | "fit-content" | "max-content" | "min-content", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
   /** `border-block-color` — a colour, and only as one of this project's tokens. */
   "border-block-color": Narrowed<"currentcolor", Token<"color"> | `${string} ${string}`>;
   /** `border-block-end-color` — a colour, and only as one of this project's tokens. */
@@ -274,18 +274,18 @@ interface Narrowings {
   "border-block-width": Narrowed<"medium" | "thick" | "thin", Token<"length"> | `${string} ${string}` | 0 | "0">;
   /** `border-bottom-color` — a colour, and only as one of this project's tokens. */
   "border-bottom-color": Narrowed<"currentcolor", Token<"color">>;
-  /** `border-bottom-left-radius` — a length or a percentage, and only as one of this project's tokens. */
-  "border-bottom-left-radius": Narrowed<never, Token<"length" | "length-percentage" | "percentage"> | `${string} ${string}` | 0 | "0">;
-  /** `border-bottom-right-radius` — a length or a percentage, and only as one of this project's tokens. */
-  "border-bottom-right-radius": Narrowed<never, Token<"length" | "length-percentage" | "percentage"> | `${string} ${string}` | 0 | "0">;
+  /** `border-bottom-left-radius` — a length or a percentage, the length only as one of this project's tokens. */
+  "border-bottom-left-radius": Narrowed<never, CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | `${string} ${string}` | 0 | "0">;
+  /** `border-bottom-right-radius` — a length or a percentage, the length only as one of this project's tokens. */
+  "border-bottom-right-radius": Narrowed<never, CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | `${string} ${string}` | 0 | "0">;
   /** `border-bottom-width` — a length, and only as one of this project's tokens. */
   "border-bottom-width": Narrowed<"medium" | "thick" | "thin", Token<"length"> | 0 | "0">;
   /** `border-color` — a colour, and only as one of this project's tokens. */
   "border-color": Narrowed<"currentcolor", Token<"color"> | `${string} ${string}`>;
-  /** `border-end-end-radius` — a length or a percentage, and only as one of this project's tokens. */
-  "border-end-end-radius": Narrowed<never, Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
-  /** `border-end-start-radius` — a length or a percentage, and only as one of this project's tokens. */
-  "border-end-start-radius": Narrowed<never, Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `border-end-end-radius` — a length or a percentage, the length only as one of this project's tokens. */
+  "border-end-end-radius": Narrowed<never, CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `border-end-start-radius` — a length or a percentage, the length only as one of this project's tokens. */
+  "border-end-start-radius": Narrowed<never, CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
   /** `border-inline-color` — a colour, and only as one of this project's tokens. */
   "border-inline-color": Narrowed<"currentcolor", Token<"color"> | `${string} ${string}`>;
   /** `border-inline-end-color` — a colour, and only as one of this project's tokens. */
@@ -302,30 +302,30 @@ interface Narrowings {
   "border-left-color": Narrowed<"currentcolor", Token<"color">>;
   /** `border-left-width` — a length, and only as one of this project's tokens. */
   "border-left-width": Narrowed<"medium" | "thick" | "thin", Token<"length"> | 0 | "0">;
-  /** `border-radius` — a length or a percentage, and only as one of this project's tokens. */
-  "border-radius": Narrowed<never, Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `border-radius` — a length or a percentage, the length only as one of this project's tokens. */
+  "border-radius": Narrowed<never, CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
   /** `border-right-color` — a colour, and only as one of this project's tokens. */
   "border-right-color": Narrowed<"currentcolor", Token<"color">>;
   /** `border-right-width` — a length, and only as one of this project's tokens. */
   "border-right-width": Narrowed<"medium" | "thick" | "thin", Token<"length"> | 0 | "0">;
   /** `border-spacing` — a length, and only as one of this project's tokens. */
   "border-spacing": Narrowed<never, Token<"length"> | `${string} ${string}` | 0 | "0">;
-  /** `border-start-end-radius` — a length or a percentage, and only as one of this project's tokens. */
-  "border-start-end-radius": Narrowed<never, Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
-  /** `border-start-start-radius` — a length or a percentage, and only as one of this project's tokens. */
-  "border-start-start-radius": Narrowed<never, Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `border-start-end-radius` — a length or a percentage, the length only as one of this project's tokens. */
+  "border-start-end-radius": Narrowed<never, CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `border-start-start-radius` — a length or a percentage, the length only as one of this project's tokens. */
+  "border-start-start-radius": Narrowed<never, CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
   /** `border-top-color` — a colour, and only as one of this project's tokens. */
   "border-top-color": Narrowed<"currentcolor", Token<"color">>;
-  /** `border-top-left-radius` — a length or a percentage, and only as one of this project's tokens. */
-  "border-top-left-radius": Narrowed<never, Token<"length" | "length-percentage" | "percentage"> | `${string} ${string}` | 0 | "0">;
-  /** `border-top-right-radius` — a length or a percentage, and only as one of this project's tokens. */
-  "border-top-right-radius": Narrowed<never, Token<"length" | "length-percentage" | "percentage"> | `${string} ${string}` | 0 | "0">;
+  /** `border-top-left-radius` — a length or a percentage, the length only as one of this project's tokens. */
+  "border-top-left-radius": Narrowed<never, CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | `${string} ${string}` | 0 | "0">;
+  /** `border-top-right-radius` — a length or a percentage, the length only as one of this project's tokens. */
+  "border-top-right-radius": Narrowed<never, CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | `${string} ${string}` | 0 | "0">;
   /** `border-top-width` — a length, and only as one of this project's tokens. */
   "border-top-width": Narrowed<"medium" | "thick" | "thin", Token<"length"> | 0 | "0">;
   /** `border-width` — a length, and only as one of this project's tokens. */
   "border-width": Narrowed<"medium" | "thick" | "thin", Token<"length"> | `${string} ${string}` | 0 | "0">;
-  /** `bottom` — a length or a percentage, and only as one of this project's tokens. */
-  "bottom": Narrowed<"auto", Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `bottom` — a length or a percentage, the length only as one of this project's tokens. */
+  "bottom": Narrowed<"auto", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
   /** `box-flex` — a number, and this project's tokens of that kind. */
   "box-flex": Narrowed<never, number | `${number}` | `${string}(${string})` | Token<"number" | "integer">>;
   /** `box-flex-group` — a whole number, and this project's tokens of that kind. */
@@ -338,8 +338,8 @@ interface Narrowings {
   "color": Narrowed<"currentcolor", Token<"color">>;
   /** `column-count` — a whole number, and this project's tokens of that kind. */
   "column-count": Narrowed<"auto", number | `${number}` | `${string}(${string})` | Token<"integer" | "number">>;
-  /** `column-gap` — a length or a percentage, and only as one of this project's tokens. */
-  "column-gap": Narrowed<"normal", Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `column-gap` — a length or a percentage, the length only as one of this project's tokens. */
+  "column-gap": Narrowed<"normal", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
   /** `column-height` — a length, and only as one of this project's tokens. */
   "column-height": Narrowed<"auto", Token<"length"> | 0 | "0">;
   /** `column-rule-color` — a colour, and only as one of this project's tokens. */
@@ -348,8 +348,8 @@ interface Narrowings {
   "column-rule-width": Narrowed<"medium" | "thick" | "thin", Token<"length"> | 0 | "0">;
   /** `column-width` — a length, and only as one of this project's tokens. */
   "column-width": Narrowed<"auto", Token<"length"> | 0 | "0">;
-  /** `flex-basis` — a length or a percentage, and only as one of this project's tokens. */
-  "flex-basis": Narrowed<"auto" | "content" | "fit-content" | "max-content" | "min-content", Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `flex-basis` — a length or a percentage, the length only as one of this project's tokens. */
+  "flex-basis": Narrowed<"auto" | "content" | "fit-content" | "max-content" | "min-content", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
   /** `flex-grow` — a number, and this project's tokens of that kind. */
   "flex-grow": Narrowed<never, number | `${number}` | `${string}(${string})` | Token<"number" | "integer">>;
   /** `flex-line-count` — a whole number, and this project's tokens of that kind. */
@@ -358,8 +358,8 @@ interface Narrowings {
   "flex-shrink": Narrowed<never, number | `${number}` | `${string}(${string})` | Token<"number" | "integer">>;
   /** `flood-color` — a colour, and only as one of this project's tokens. */
   "flood-color": Narrowed<"currentcolor", Token<"color">>;
-  /** `font-size` — a length or a percentage, and only as one of this project's tokens. */
-  "font-size": Narrowed<"large" | "larger" | "math" | "medium" | "small" | "smaller" | "x-large" | "x-small" | "xx-large" | "xx-small" | "xxx-large", Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `font-size` — a length or a percentage, the length only as one of this project's tokens. */
+  "font-size": Narrowed<"large" | "larger" | "math" | "medium" | "small" | "smaller" | "x-large" | "x-small" | "xx-large" | "xx-small" | "xxx-large", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
   /** `font-smooth` — a length, and only as one of this project's tokens. */
   "font-smooth": Narrowed<"always" | "auto" | "large" | "medium" | "never" | "small" | "x-large" | "x-small" | "xx-large" | "xx-small" | "xxx-large", Token<"length"> | 0 | "0">;
   /** `font-stretch` — a percentage, and this project's tokens of that kind. */
@@ -368,42 +368,42 @@ interface Narrowings {
   "font-weight": Narrowed<"bold" | "bolder" | "lighter" | "normal", number | `${number}` | `${string}(${string})` | Token<"number" | "integer">>;
   /** `font-width` — a percentage, and this project's tokens of that kind. */
   "font-width": Narrowed<"condensed" | "expanded" | "extra-condensed" | "extra-expanded" | "normal" | "semi-condensed" | "semi-expanded" | "ultra-condensed" | "ultra-expanded", CssDimension<"%"> | Token<"percentage">>;
-  /** `gap` — a length or a percentage, and only as one of this project's tokens. */
-  "gap": Narrowed<"normal", Token<"length" | "length-percentage" | "percentage"> | `${string} ${string}` | 0 | "0">;
-  /** `grid-column-gap` — a length or a percentage, and only as one of this project's tokens. */
-  "grid-column-gap": Narrowed<never, Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
-  /** `grid-gap` — a length or a percentage, and only as one of this project's tokens. */
-  "grid-gap": Narrowed<never, Token<"length" | "length-percentage" | "percentage"> | `${string} ${string}` | 0 | "0">;
-  /** `grid-row-gap` — a length or a percentage, and only as one of this project's tokens. */
-  "grid-row-gap": Narrowed<never, Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
-  /** `height` — a length or a percentage, and only as one of this project's tokens. */
-  "height": Narrowed<"auto" | "fit-content" | "max-content" | "min-content", Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `gap` — a length or a percentage, the length only as one of this project's tokens. */
+  "gap": Narrowed<"normal", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | `${string} ${string}` | 0 | "0">;
+  /** `grid-column-gap` — a length or a percentage, the length only as one of this project's tokens. */
+  "grid-column-gap": Narrowed<never, CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `grid-gap` — a length or a percentage, the length only as one of this project's tokens. */
+  "grid-gap": Narrowed<never, CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | `${string} ${string}` | 0 | "0">;
+  /** `grid-row-gap` — a length or a percentage, the length only as one of this project's tokens. */
+  "grid-row-gap": Narrowed<never, CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `height` — a length or a percentage, the length only as one of this project's tokens. */
+  "height": Narrowed<"auto" | "fit-content" | "max-content" | "min-content", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
   /** `hyphenate-limit-chars` — a whole number, and this project's tokens of that kind. */
   "hyphenate-limit-chars": Narrowed<"auto", number | `${number}` | `${string}(${string})` | Token<"integer" | "number">>;
-  /** `inline-size` — a length or a percentage, and only as one of this project's tokens. */
-  "inline-size": Narrowed<"auto" | "fit-content" | "max-content" | "min-content", Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
-  /** `inset` — a length or a percentage, and only as one of this project's tokens. */
-  "inset": Narrowed<"auto", Token<"length" | "length-percentage" | "percentage"> | `${string} ${string}` | 0 | "0">;
-  /** `inset-block` — a length or a percentage, and only as one of this project's tokens. */
-  "inset-block": Narrowed<"auto", Token<"length" | "length-percentage" | "percentage"> | `${string} ${string}` | 0 | "0">;
-  /** `inset-block-end` — a length or a percentage, and only as one of this project's tokens. */
-  "inset-block-end": Narrowed<"auto", Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
-  /** `inset-block-start` — a length or a percentage, and only as one of this project's tokens. */
-  "inset-block-start": Narrowed<"auto", Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
-  /** `inset-inline` — a length or a percentage, and only as one of this project's tokens. */
-  "inset-inline": Narrowed<"auto", Token<"length" | "length-percentage" | "percentage"> | `${string} ${string}` | 0 | "0">;
-  /** `inset-inline-end` — a length or a percentage, and only as one of this project's tokens. */
-  "inset-inline-end": Narrowed<"auto", Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
-  /** `inset-inline-start` — a length or a percentage, and only as one of this project's tokens. */
-  "inset-inline-start": Narrowed<"auto", Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `inline-size` — a length or a percentage, the length only as one of this project's tokens. */
+  "inline-size": Narrowed<"auto" | "fit-content" | "max-content" | "min-content", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `inset` — a length or a percentage, the length only as one of this project's tokens. */
+  "inset": Narrowed<"auto", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | `${string} ${string}` | 0 | "0">;
+  /** `inset-block` — a length or a percentage, the length only as one of this project's tokens. */
+  "inset-block": Narrowed<"auto", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | `${string} ${string}` | 0 | "0">;
+  /** `inset-block-end` — a length or a percentage, the length only as one of this project's tokens. */
+  "inset-block-end": Narrowed<"auto", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `inset-block-start` — a length or a percentage, the length only as one of this project's tokens. */
+  "inset-block-start": Narrowed<"auto", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `inset-inline` — a length or a percentage, the length only as one of this project's tokens. */
+  "inset-inline": Narrowed<"auto", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | `${string} ${string}` | 0 | "0">;
+  /** `inset-inline-end` — a length or a percentage, the length only as one of this project's tokens. */
+  "inset-inline-end": Narrowed<"auto", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `inset-inline-start` — a length or a percentage, the length only as one of this project's tokens. */
+  "inset-inline-start": Narrowed<"auto", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
   /** `interest-delay` — a time, and this project's tokens of that kind. */
   "interest-delay": Narrowed<"normal", CssDimension<CssTimeUnit> | Token<"time"> | `${string} ${string}`>;
   /** `interest-delay-end` — a time, and this project's tokens of that kind. */
   "interest-delay-end": Narrowed<"normal", CssDimension<CssTimeUnit> | Token<"time">>;
   /** `interest-delay-start` — a time, and this project's tokens of that kind. */
   "interest-delay-start": Narrowed<"normal", CssDimension<CssTimeUnit> | Token<"time">>;
-  /** `left` — a length or a percentage, and only as one of this project's tokens. */
-  "left": Narrowed<"auto", Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `left` — a length or a percentage, the length only as one of this project's tokens. */
+  "left": Narrowed<"auto", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
   /** `letter-spacing` — a length, and only as one of this project's tokens. */
   "letter-spacing": Narrowed<"normal", Token<"length"> | 0 | "0">;
   /** `lighting-color` — a colour, and only as one of this project's tokens. */
@@ -412,52 +412,52 @@ interface Narrowings {
   "line-clamp": Narrowed<"none", number | `${number}` | `${string}(${string})` | Token<"integer" | "number">>;
   /** `line-height-step` — a length, and only as one of this project's tokens. */
   "line-height-step": Narrowed<never, Token<"length"> | 0 | "0">;
-  /** `margin` — a length or a percentage, and only as one of this project's tokens. */
-  "margin": Narrowed<"auto", Token<"length" | "length-percentage" | "percentage"> | `${string} ${string}` | 0 | "0">;
-  /** `margin-block` — a length or a percentage, and only as one of this project's tokens. */
-  "margin-block": Narrowed<"auto", Token<"length" | "length-percentage" | "percentage"> | `${string} ${string}` | 0 | "0">;
-  /** `margin-block-end` — a length or a percentage, and only as one of this project's tokens. */
-  "margin-block-end": Narrowed<"auto", Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
-  /** `margin-block-start` — a length or a percentage, and only as one of this project's tokens. */
-  "margin-block-start": Narrowed<"auto", Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
-  /** `margin-bottom` — a length or a percentage, and only as one of this project's tokens. */
-  "margin-bottom": Narrowed<"auto", Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
-  /** `margin-inline` — a length or a percentage, and only as one of this project's tokens. */
-  "margin-inline": Narrowed<"auto", Token<"length" | "length-percentage" | "percentage"> | `${string} ${string}` | 0 | "0">;
-  /** `margin-inline-end` — a length or a percentage, and only as one of this project's tokens. */
-  "margin-inline-end": Narrowed<"auto", Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
-  /** `margin-inline-start` — a length or a percentage, and only as one of this project's tokens. */
-  "margin-inline-start": Narrowed<"auto", Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
-  /** `margin-left` — a length or a percentage, and only as one of this project's tokens. */
-  "margin-left": Narrowed<"auto", Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
-  /** `margin-right` — a length or a percentage, and only as one of this project's tokens. */
-  "margin-right": Narrowed<"auto", Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
-  /** `margin-top` — a length or a percentage, and only as one of this project's tokens. */
-  "margin-top": Narrowed<"auto", Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
-  /** `mask-size` — a length or a percentage, and only as one of this project's tokens. */
-  "mask-size": Narrowed<"auto" | "contain" | "cover", Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `margin` — a length or a percentage, the length only as one of this project's tokens. */
+  "margin": Narrowed<"auto", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | `${string} ${string}` | 0 | "0">;
+  /** `margin-block` — a length or a percentage, the length only as one of this project's tokens. */
+  "margin-block": Narrowed<"auto", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | `${string} ${string}` | 0 | "0">;
+  /** `margin-block-end` — a length or a percentage, the length only as one of this project's tokens. */
+  "margin-block-end": Narrowed<"auto", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `margin-block-start` — a length or a percentage, the length only as one of this project's tokens. */
+  "margin-block-start": Narrowed<"auto", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `margin-bottom` — a length or a percentage, the length only as one of this project's tokens. */
+  "margin-bottom": Narrowed<"auto", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `margin-inline` — a length or a percentage, the length only as one of this project's tokens. */
+  "margin-inline": Narrowed<"auto", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | `${string} ${string}` | 0 | "0">;
+  /** `margin-inline-end` — a length or a percentage, the length only as one of this project's tokens. */
+  "margin-inline-end": Narrowed<"auto", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `margin-inline-start` — a length or a percentage, the length only as one of this project's tokens. */
+  "margin-inline-start": Narrowed<"auto", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `margin-left` — a length or a percentage, the length only as one of this project's tokens. */
+  "margin-left": Narrowed<"auto", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `margin-right` — a length or a percentage, the length only as one of this project's tokens. */
+  "margin-right": Narrowed<"auto", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `margin-top` — a length or a percentage, the length only as one of this project's tokens. */
+  "margin-top": Narrowed<"auto", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `mask-size` — a length or a percentage, the length only as one of this project's tokens. */
+  "mask-size": Narrowed<"auto" | "contain" | "cover", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
   /** `math-depth` — a whole number, and this project's tokens of that kind. */
   "math-depth": Narrowed<"auto-add", number | `${number}` | `${string}(${string})` | Token<"integer" | "number">>;
-  /** `max-block-size` — a length or a percentage, and only as one of this project's tokens. */
-  "max-block-size": Narrowed<"fit-content" | "max-content" | "min-content" | "none", Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
-  /** `max-height` — a length or a percentage, and only as one of this project's tokens. */
-  "max-height": Narrowed<"fit-content" | "max-content" | "min-content" | "none", Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
-  /** `max-inline-size` — a length or a percentage, and only as one of this project's tokens. */
-  "max-inline-size": Narrowed<"fit-content" | "max-content" | "min-content" | "none", Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `max-block-size` — a length or a percentage, the length only as one of this project's tokens. */
+  "max-block-size": Narrowed<"fit-content" | "max-content" | "min-content" | "none", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `max-height` — a length or a percentage, the length only as one of this project's tokens. */
+  "max-height": Narrowed<"fit-content" | "max-content" | "min-content" | "none", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `max-inline-size` — a length or a percentage, the length only as one of this project's tokens. */
+  "max-inline-size": Narrowed<"fit-content" | "max-content" | "min-content" | "none", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
   /** `max-lines` — a whole number, and this project's tokens of that kind. */
   "max-lines": Narrowed<"none", number | `${number}` | `${string}(${string})` | Token<"integer" | "number">>;
-  /** `max-width` — a length or a percentage, and only as one of this project's tokens. */
-  "max-width": Narrowed<"fit-content" | "max-content" | "min-content" | "none", Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
-  /** `min-block-size` — a length or a percentage, and only as one of this project's tokens. */
-  "min-block-size": Narrowed<"auto" | "fit-content" | "max-content" | "min-content", Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
-  /** `min-height` — a length or a percentage, and only as one of this project's tokens. */
-  "min-height": Narrowed<"auto" | "fit-content" | "max-content" | "min-content", Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
-  /** `min-inline-size` — a length or a percentage, and only as one of this project's tokens. */
-  "min-inline-size": Narrowed<"auto" | "fit-content" | "max-content" | "min-content", Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
-  /** `min-width` — a length or a percentage, and only as one of this project's tokens. */
-  "min-width": Narrowed<"auto" | "fit-content" | "max-content" | "min-content", Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
-  /** `offset-distance` — a length or a percentage, and only as one of this project's tokens. */
-  "offset-distance": Narrowed<never, Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `max-width` — a length or a percentage, the length only as one of this project's tokens. */
+  "max-width": Narrowed<"fit-content" | "max-content" | "min-content" | "none", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `min-block-size` — a length or a percentage, the length only as one of this project's tokens. */
+  "min-block-size": Narrowed<"auto" | "fit-content" | "max-content" | "min-content", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `min-height` — a length or a percentage, the length only as one of this project's tokens. */
+  "min-height": Narrowed<"auto" | "fit-content" | "max-content" | "min-content", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `min-inline-size` — a length or a percentage, the length only as one of this project's tokens. */
+  "min-inline-size": Narrowed<"auto" | "fit-content" | "max-content" | "min-content", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `min-width` — a length or a percentage, the length only as one of this project's tokens. */
+  "min-width": Narrowed<"auto" | "fit-content" | "max-content" | "min-content", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `offset-distance` — a length or a percentage, the length only as one of this project's tokens. */
+  "offset-distance": Narrowed<never, CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
   /** `order` — a whole number, and this project's tokens of that kind. */
   "order": Narrowed<never, number | `${number}` | `${string}(${string})` | Token<"integer" | "number">>;
   /** `orphans` — a whole number, and this project's tokens of that kind. */
@@ -468,40 +468,40 @@ interface Narrowings {
   "outline-offset": Narrowed<never, Token<"length"> | 0 | "0">;
   /** `outline-width` — a length, and only as one of this project's tokens. */
   "outline-width": Narrowed<"medium" | "thick" | "thin", Token<"length"> | 0 | "0">;
-  /** `padding` — a length or a percentage, and only as one of this project's tokens. */
-  "padding": Narrowed<never, Token<"length" | "length-percentage" | "percentage"> | `${string} ${string}` | 0 | "0">;
-  /** `padding-block` — a length or a percentage, and only as one of this project's tokens. */
-  "padding-block": Narrowed<never, Token<"length" | "length-percentage" | "percentage"> | `${string} ${string}` | 0 | "0">;
-  /** `padding-block-end` — a length or a percentage, and only as one of this project's tokens. */
-  "padding-block-end": Narrowed<never, Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
-  /** `padding-block-start` — a length or a percentage, and only as one of this project's tokens. */
-  "padding-block-start": Narrowed<never, Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
-  /** `padding-bottom` — a length or a percentage, and only as one of this project's tokens. */
-  "padding-bottom": Narrowed<never, Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
-  /** `padding-inline` — a length or a percentage, and only as one of this project's tokens. */
-  "padding-inline": Narrowed<never, Token<"length" | "length-percentage" | "percentage"> | `${string} ${string}` | 0 | "0">;
-  /** `padding-inline-end` — a length or a percentage, and only as one of this project's tokens. */
-  "padding-inline-end": Narrowed<never, Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
-  /** `padding-inline-start` — a length or a percentage, and only as one of this project's tokens. */
-  "padding-inline-start": Narrowed<never, Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
-  /** `padding-left` — a length or a percentage, and only as one of this project's tokens. */
-  "padding-left": Narrowed<never, Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
-  /** `padding-right` — a length or a percentage, and only as one of this project's tokens. */
-  "padding-right": Narrowed<never, Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
-  /** `padding-top` — a length or a percentage, and only as one of this project's tokens. */
-  "padding-top": Narrowed<never, Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `padding` — a length or a percentage, the length only as one of this project's tokens. */
+  "padding": Narrowed<never, CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | `${string} ${string}` | 0 | "0">;
+  /** `padding-block` — a length or a percentage, the length only as one of this project's tokens. */
+  "padding-block": Narrowed<never, CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | `${string} ${string}` | 0 | "0">;
+  /** `padding-block-end` — a length or a percentage, the length only as one of this project's tokens. */
+  "padding-block-end": Narrowed<never, CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `padding-block-start` — a length or a percentage, the length only as one of this project's tokens. */
+  "padding-block-start": Narrowed<never, CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `padding-bottom` — a length or a percentage, the length only as one of this project's tokens. */
+  "padding-bottom": Narrowed<never, CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `padding-inline` — a length or a percentage, the length only as one of this project's tokens. */
+  "padding-inline": Narrowed<never, CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | `${string} ${string}` | 0 | "0">;
+  /** `padding-inline-end` — a length or a percentage, the length only as one of this project's tokens. */
+  "padding-inline-end": Narrowed<never, CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `padding-inline-start` — a length or a percentage, the length only as one of this project's tokens. */
+  "padding-inline-start": Narrowed<never, CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `padding-left` — a length or a percentage, the length only as one of this project's tokens. */
+  "padding-left": Narrowed<never, CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `padding-right` — a length or a percentage, the length only as one of this project's tokens. */
+  "padding-right": Narrowed<never, CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `padding-top` — a length or a percentage, the length only as one of this project's tokens. */
+  "padding-top": Narrowed<never, CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
   /** `perspective` — a length, and only as one of this project's tokens. */
   "perspective": Narrowed<"none", Token<"length"> | 0 | "0">;
   /** `reading-order` — a whole number, and this project's tokens of that kind. */
   "reading-order": Narrowed<never, number | `${number}` | `${string}(${string})` | Token<"integer" | "number">>;
-  /** `right` — a length or a percentage, and only as one of this project's tokens. */
-  "right": Narrowed<"auto", Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
-  /** `row-gap` — a length or a percentage, and only as one of this project's tokens. */
-  "row-gap": Narrowed<"normal", Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
-  /** `rx` — a length or a percentage, and only as one of this project's tokens. */
-  "rx": Narrowed<"auto", Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
-  /** `ry` — a length or a percentage, and only as one of this project's tokens. */
-  "ry": Narrowed<"auto", Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `right` — a length or a percentage, the length only as one of this project's tokens. */
+  "right": Narrowed<"auto", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `row-gap` — a length or a percentage, the length only as one of this project's tokens. */
+  "row-gap": Narrowed<"normal", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `rx` — a length or a percentage, the length only as one of this project's tokens. */
+  "rx": Narrowed<"auto", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `ry` — a length or a percentage, the length only as one of this project's tokens. */
+  "ry": Narrowed<"auto", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
   /** `scroll-margin` — a length, and only as one of this project's tokens. */
   "scroll-margin": Narrowed<never, Token<"length"> | `${string} ${string}` | 0 | "0">;
   /** `scroll-margin-block` — a length, and only as one of this project's tokens. */
@@ -524,32 +524,32 @@ interface Narrowings {
   "scroll-margin-right": Narrowed<never, Token<"length"> | 0 | "0">;
   /** `scroll-margin-top` — a length, and only as one of this project's tokens. */
   "scroll-margin-top": Narrowed<never, Token<"length"> | 0 | "0">;
-  /** `scroll-padding` — a length or a percentage, and only as one of this project's tokens. */
-  "scroll-padding": Narrowed<"auto", Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
-  /** `scroll-padding-block` — a length or a percentage, and only as one of this project's tokens. */
-  "scroll-padding-block": Narrowed<"auto", Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
-  /** `scroll-padding-block-end` — a length or a percentage, and only as one of this project's tokens. */
-  "scroll-padding-block-end": Narrowed<"auto", Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
-  /** `scroll-padding-block-start` — a length or a percentage, and only as one of this project's tokens. */
-  "scroll-padding-block-start": Narrowed<"auto", Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
-  /** `scroll-padding-bottom` — a length or a percentage, and only as one of this project's tokens. */
-  "scroll-padding-bottom": Narrowed<"auto", Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
-  /** `scroll-padding-inline` — a length or a percentage, and only as one of this project's tokens. */
-  "scroll-padding-inline": Narrowed<"auto", Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
-  /** `scroll-padding-inline-end` — a length or a percentage, and only as one of this project's tokens. */
-  "scroll-padding-inline-end": Narrowed<"auto", Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
-  /** `scroll-padding-inline-start` — a length or a percentage, and only as one of this project's tokens. */
-  "scroll-padding-inline-start": Narrowed<"auto", Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
-  /** `scroll-padding-left` — a length or a percentage, and only as one of this project's tokens. */
-  "scroll-padding-left": Narrowed<"auto", Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
-  /** `scroll-padding-right` — a length or a percentage, and only as one of this project's tokens. */
-  "scroll-padding-right": Narrowed<"auto", Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
-  /** `scroll-padding-top` — a length or a percentage, and only as one of this project's tokens. */
-  "scroll-padding-top": Narrowed<"auto", Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `scroll-padding` — a length or a percentage, the length only as one of this project's tokens. */
+  "scroll-padding": Narrowed<"auto", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `scroll-padding-block` — a length or a percentage, the length only as one of this project's tokens. */
+  "scroll-padding-block": Narrowed<"auto", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `scroll-padding-block-end` — a length or a percentage, the length only as one of this project's tokens. */
+  "scroll-padding-block-end": Narrowed<"auto", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `scroll-padding-block-start` — a length or a percentage, the length only as one of this project's tokens. */
+  "scroll-padding-block-start": Narrowed<"auto", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `scroll-padding-bottom` — a length or a percentage, the length only as one of this project's tokens. */
+  "scroll-padding-bottom": Narrowed<"auto", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `scroll-padding-inline` — a length or a percentage, the length only as one of this project's tokens. */
+  "scroll-padding-inline": Narrowed<"auto", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `scroll-padding-inline-end` — a length or a percentage, the length only as one of this project's tokens. */
+  "scroll-padding-inline-end": Narrowed<"auto", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `scroll-padding-inline-start` — a length or a percentage, the length only as one of this project's tokens. */
+  "scroll-padding-inline-start": Narrowed<"auto", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `scroll-padding-left` — a length or a percentage, the length only as one of this project's tokens. */
+  "scroll-padding-left": Narrowed<"auto", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `scroll-padding-right` — a length or a percentage, the length only as one of this project's tokens. */
+  "scroll-padding-right": Narrowed<"auto", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `scroll-padding-top` — a length or a percentage, the length only as one of this project's tokens. */
+  "scroll-padding-top": Narrowed<"auto", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
   /** `scrollbar-color` — a colour, and only as one of this project's tokens. */
   "scrollbar-color": Narrowed<"auto" | "currentcolor", Token<"color">>;
-  /** `shape-margin` — a length or a percentage, and only as one of this project's tokens. */
-  "shape-margin": Narrowed<never, Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `shape-margin` — a length or a percentage, the length only as one of this project's tokens. */
+  "shape-margin": Narrowed<never, CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
   /** `stop-color` — a colour, and only as one of this project's tokens. */
   "stop-color": Narrowed<"currentcolor", Token<"color">>;
   /** `stroke-color` — a colour, and only as one of this project's tokens. */
@@ -558,38 +558,38 @@ interface Narrowings {
   "stroke-miterlimit": Narrowed<never, number | `${number}` | `${string}(${string})` | Token<"number" | "integer">>;
   /** `text-decoration-color` — a colour, and only as one of this project's tokens. */
   "text-decoration-color": Narrowed<"currentcolor", Token<"color">>;
-  /** `text-decoration-inset` — a length or a percentage, and only as one of this project's tokens. */
-  "text-decoration-inset": Narrowed<"auto", Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `text-decoration-inset` — a length or a percentage, the length only as one of this project's tokens. */
+  "text-decoration-inset": Narrowed<"auto", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
   /** `text-emphasis-color` — a colour, and only as one of this project's tokens. */
   "text-emphasis-color": Narrowed<"currentcolor", Token<"color">>;
   /** `text-fit` — a percentage, and this project's tokens of that kind. */
   "text-fit": Narrowed<"consistent" | "grow" | "none" | "per-line" | "per-line-all" | "shrink", CssDimension<"%"> | Token<"percentage">>;
   /** `text-size-adjust` — a percentage, and this project's tokens of that kind. */
   "text-size-adjust": Narrowed<"auto" | "none", CssDimension<"%"> | Token<"percentage">>;
-  /** `timeline-trigger-activation-range` — a length or a percentage, and only as one of this project's tokens. */
-  "timeline-trigger-activation-range": Narrowed<"contain" | "cover" | "entry" | "entry-crossing" | "exit" | "exit-crossing" | "normal", Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
-  /** `timeline-trigger-activation-range-end` — a length or a percentage, and only as one of this project's tokens. */
-  "timeline-trigger-activation-range-end": Narrowed<"contain" | "cover" | "entry" | "entry-crossing" | "exit" | "exit-crossing" | "normal", Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
-  /** `timeline-trigger-activation-range-start` — a length or a percentage, and only as one of this project's tokens. */
-  "timeline-trigger-activation-range-start": Narrowed<"contain" | "cover" | "entry" | "entry-crossing" | "exit" | "exit-crossing" | "normal", Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
-  /** `timeline-trigger-active-range` — a length or a percentage, and only as one of this project's tokens. */
-  "timeline-trigger-active-range": Narrowed<"auto" | "contain" | "cover" | "entry" | "entry-crossing" | "exit" | "exit-crossing" | "normal", Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
-  /** `timeline-trigger-active-range-end` — a length or a percentage, and only as one of this project's tokens. */
-  "timeline-trigger-active-range-end": Narrowed<"auto" | "contain" | "cover" | "entry" | "entry-crossing" | "exit" | "exit-crossing" | "normal", Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
-  /** `timeline-trigger-active-range-start` — a length or a percentage, and only as one of this project's tokens. */
-  "timeline-trigger-active-range-start": Narrowed<"auto" | "contain" | "cover" | "entry" | "entry-crossing" | "exit" | "exit-crossing" | "normal", Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
-  /** `top` — a length or a percentage, and only as one of this project's tokens. */
-  "top": Narrowed<"auto", Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `timeline-trigger-activation-range` — a length or a percentage, the length only as one of this project's tokens. */
+  "timeline-trigger-activation-range": Narrowed<"contain" | "cover" | "entry" | "entry-crossing" | "exit" | "exit-crossing" | "normal", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `timeline-trigger-activation-range-end` — a length or a percentage, the length only as one of this project's tokens. */
+  "timeline-trigger-activation-range-end": Narrowed<"contain" | "cover" | "entry" | "entry-crossing" | "exit" | "exit-crossing" | "normal", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `timeline-trigger-activation-range-start` — a length or a percentage, the length only as one of this project's tokens. */
+  "timeline-trigger-activation-range-start": Narrowed<"contain" | "cover" | "entry" | "entry-crossing" | "exit" | "exit-crossing" | "normal", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `timeline-trigger-active-range` — a length or a percentage, the length only as one of this project's tokens. */
+  "timeline-trigger-active-range": Narrowed<"auto" | "contain" | "cover" | "entry" | "entry-crossing" | "exit" | "exit-crossing" | "normal", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `timeline-trigger-active-range-end` — a length or a percentage, the length only as one of this project's tokens. */
+  "timeline-trigger-active-range-end": Narrowed<"auto" | "contain" | "cover" | "entry" | "entry-crossing" | "exit" | "exit-crossing" | "normal", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `timeline-trigger-active-range-start` — a length or a percentage, the length only as one of this project's tokens. */
+  "timeline-trigger-active-range-start": Narrowed<"auto" | "contain" | "cover" | "entry" | "entry-crossing" | "exit" | "exit-crossing" | "normal", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `top` — a length or a percentage, the length only as one of this project's tokens. */
+  "top": Narrowed<"auto", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
   /** `transition-delay` — a time, and this project's tokens of that kind. */
   "transition-delay": Narrowed<never, CssDimension<CssTimeUnit> | Token<"time">>;
   /** `transition-duration` — a time, and this project's tokens of that kind. */
   "transition-duration": Narrowed<never, CssDimension<CssTimeUnit> | Token<"time">>;
-  /** `view-timeline-inset` — a length or a percentage, and only as one of this project's tokens. */
-  "view-timeline-inset": Narrowed<"auto", Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `view-timeline-inset` — a length or a percentage, the length only as one of this project's tokens. */
+  "view-timeline-inset": Narrowed<"auto", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
   /** `widows` — a whole number, and this project's tokens of that kind. */
   "widows": Narrowed<never, number | `${number}` | `${string}(${string})` | Token<"integer" | "number">>;
-  /** `width` — a length or a percentage, and only as one of this project's tokens. */
-  "width": Narrowed<"auto" | "fit-content" | "max-content" | "min-content", Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
+  /** `width` — a length or a percentage, the length only as one of this project's tokens. */
+  "width": Narrowed<"auto" | "fit-content" | "max-content" | "min-content", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
   /** `word-spacing` — a length, and only as one of this project's tokens. */
   "word-spacing": Narrowed<"normal", Token<"length"> | 0 | "0">;
   /** `z-index` — a whole number, and this project's tokens of that kind. */
