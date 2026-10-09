@@ -78,8 +78,11 @@ app is one rule.
 
 ### If you declare tokens
 
-Nothing above changes, and one thing is added: the plugin writes a `css-system/` folder beside
-`ramonda.css.ts` holding the token groups — `$color`, `$space` — and their values, and your app imports the stylesheet once.
+Nothing above changes: the plugin writes a `css-system/` folder beside `ramonda.css.ts` holding the
+token groups — `$color`, `$space` — and their values, and imports the values' stylesheet beside every
+file that holds a block. A page whose blocks read its tokens needs nothing more.
+
+A page that reads a token only from code, and loads no file with a block, imports it once:
 
 ```ts
 import "./css-system/tokens.css";

@@ -235,9 +235,46 @@ function registration(one: Named): string {
     `@property ${one.name} {\n` +
     `  syntax: "${SYNTAX[one.kind]}";\n` +
     `  inherits: true;\n` +
-    `  initial-value: ${one.value};\n` +
+    `  initial-value: ${lightHalf(String(one.value))};\n` +
     `}`
   );
+}
+
+/**
+ * A value with every `light-dark(light, dark)` in it replaced by its light half — for the
+ * registration's `initial-value`, and only there.
+ *
+ * Vite 8 minifies CSS with lightningcss, which lowers `light-dark()` into
+ * `var(--lightningcss-light, …) var(--lightningcss-dark, …)` wherever it appears. An `initial-value`
+ * holding a `var()` is not computationally independent, so the browser drops the whole `@property`
+ * rule — measured: every such token unregistered on a Vite 8 build in Chromium, Firefox and WebKit,
+ * and registered on the same project built with Vite 7. The light half is what all three engines
+ * resolve the pair to as an initial value in both schemes, so nothing a reader sees changes; the
+ * `:root` value keeps the pair, and that is what follows the scheme.
+ *
+ * Read by hand rather than with a pattern, because a pair can nest inside another call — or inside
+ * its own light half — and the commas that matter are the ones at its own depth.
+ */
+function lightHalf(value: string): string {
+  const at = value.toLowerCase().indexOf("light-dark(");
+  if (at === -1) return value;
+  const open = at + "light-dark(".length;
+  let depth = 0;
+  let comma = -1;
+  for (let index = open; index < value.length; index++) {
+    const char = value[index];
+    if (char === "(") depth++;
+    else if (char === ")") {
+      if (depth === 0) {
+        // Not a pair this can read — leave it as written rather than guess at it.
+        if (comma === -1) return value;
+        const light = value.slice(open, comma).trim();
+        return lightHalf(value.slice(0, at) + light + value.slice(index + 1));
+      }
+      depth--;
+    } else if (char === "," && depth === 0 && comma === -1) comma = index;
+  }
+  return value;
 }
 
 /**

@@ -589,6 +589,35 @@ describe.each(VITES)("on %s", (_name, bin) => {
       // guarantee, and it is in the file above.
       expect(Object.values(result.files).join("\n")).toContain("var(--color-primary-main)");
     });
+
+    /**
+     * A token written as a `light-dark()` pair stays REGISTERED through the minifier. Vite 8
+     * minifies with lightningcss, which rewrote the pair into `var()`s inside the registration's
+     * `initial-value` — a value a browser refuses, so the token was silently unregistered in every
+     * engine. See `lightHalf` in codegen.
+     */
+    test("a `light-dark()` token keeps a registration a browser accepts", () => {
+      const root = project(
+        `export const Card = () => <div className={@@( color: $color.page; )}>x</div>;\n`,
+        `import "../css-system/tokens.css";\nimport { Card } from "./Card";\nconsole.log(Card);\n`,
+      );
+      writeFileSync(
+        join(root, "ramonda.css.ts"),
+        `import { kind } from "@ramonda/css/config";\nexport default { tokens: { $color: kind("color", { page: "light-dark(#fbf8ff, #14101a)" }) } };\n`,
+      );
+
+      const result = build(root);
+      expect(result.ok, result.output).toBe(true);
+
+      const css = Object.entries(result.files)
+        .filter(([name]) => name.endsWith(".css"))
+        .map(([, text]) => text)
+        .join("\n");
+      const registration = /@property --color-page\s*\{[^}]*\}/.exec(css)?.[0];
+      expect(registration, "the registration reached the stylesheet").toBeDefined();
+      expect(registration).not.toContain("var(");
+      expect(registration).toMatch(/initial-value:\s*#fbf8ff/);
+    });
   });
 
   /**

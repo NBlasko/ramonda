@@ -497,14 +497,19 @@ jobs:
       # only, and the scaffolder's tests read templates as TEXT.
       #
       # The self-tests first, each planting a fault the check must report, so a check that has
-      # gone quiet fails here rather than passing. `types` runs on both templates because each
-      # meets it through a different command: `ssr` before it has a block (`tsc`), `spa` after
-      # (`ramonda-css`, which reads blocks).
+      # gone quiet fails here rather than passing. `types` runs twice because a project meets it
+      # through two commands: `tsc` before it has a block, and `ramonda-css` — which reads blocks —
+      # in a project made with the `css` add-on.
+      #
+      # Then three projects: `ssr` with no add-on, given `@ramonda/css` the way the setup page
+      # tells an existing project to; and both modes with the `css` add-on, which `npm create
+      # ramonda` picks by default.
       - name: Scaffold a project and build it
         run: |
           SELFTEST=head node scripts/check-scaffold.mjs ssr
           SELFTEST=app node scripts/check-scaffold.mjs ssr
           SELFTEST=types node scripts/check-scaffold.mjs ssr
-          SELFTEST=types node scripts/check-scaffold.mjs spa
+          SELFTEST=types node scripts/check-scaffold.mjs spa css
           node scripts/check-scaffold.mjs ssr
-          node scripts/check-scaffold.mjs spa
+          node scripts/check-scaffold.mjs spa css
+          node scripts/check-scaffold.mjs ssr css

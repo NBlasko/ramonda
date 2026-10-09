@@ -16,8 +16,8 @@ create ramonda@latest my-app
 ```
 
 It asks a couple of questions — a client-side app or a server-rendered one, and which
-packages and tooling to add ([router](/routing), [lens](/lens), [testing](/testing),
-[devtools](/devtools), and Biome for lint + format) — then, in the folder it made, install (unless
+packages and tooling to add ([style blocks](/style-blocks), [router](/routing), [lens](/lens),
+[testing](/testing), [devtools](/devtools), and Biome for lint + format) — then, in the folder it made, install (unless
 you let it) and start the dev server. With another package manager, it is the same two commands in
 its own spelling:
 
