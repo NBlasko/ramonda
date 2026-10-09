@@ -1,5 +1,12 @@
 # create-ramonda
 
+## 0.14.1
+
+### Patch Changes
+
+- 1c770ad: **A project made with the testing add-on gets jsdom 30**, the version the framework's own tests now
+  run on.
+
 ## 0.14.0
 
 ### Minor Changes
