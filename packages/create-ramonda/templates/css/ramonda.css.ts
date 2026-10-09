@@ -4,9 +4,9 @@ import { defineConfig, kind } from "@ramonda/css/config";
  * What a style block may say in this project — read by your editor, by `npm run typecheck` and by
  * the build, so a value outside it is an error before anything runs.
  *
- * It starts strict on purpose: every colour and every length comes from a token below, so a page
- * cannot drift off the scale one hand-typed value at a time. Loosen it where you mean to — see
- * https://ramonda.dev/style-blocks/config.
+ * It starts strict on purpose: every colour and every length but a percentage comes from a token
+ * below, so a page cannot drift off the scale one hand-typed value at a time. Loosen it where you
+ * mean to — see https://ramonda.dev/style-blocks/config.
  */
 export default defineConfig({
   tokens: {
