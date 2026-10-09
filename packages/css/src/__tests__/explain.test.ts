@@ -27,6 +27,29 @@ describe("explain", () => {
   const settingsOf = (property: string) =>
     Object.fromEntries(explain(RULES, property).settings.map((one) => [one.name, one.value]));
 
+  /**
+   * A property taking a length OR a percentage, where the project answered the two differently.
+   *
+   * `hardcoded` is asked of each value's own kind (`hardcodedFor`), and one row saying `true` from
+   * `<percentage>` was false for every length on the property — measured, on the template's own
+   * config, for `width` and `margin-top`. So the two answers are two rows, each with the selector
+   * that decided it; one answer stays one row.
+   */
+  test("`hardcoded` answered differently for a length and a percentage is two rows", () => {
+    const rules: PropertyRules = { "<length>": { hardcoded: false }, "<percentage>": { hardcoded: true } };
+    const rows = explain(rules, "width").settings.filter((one) => one.name === "hardcoded");
+
+    expect(rows.map((one) => [one.of, one.value, one.from])).toEqual([
+      ["length", false, "<length>"],
+      ["percentage", true, "<percentage>"],
+    ]);
+    expect(rows[1].overriding).toBe("<length>");
+    // One answer for both is still one row, with no kind on it.
+    expect(
+      explain({ "<length>": { hardcoded: false } }, "width").settings.filter((one) => one.name === "hardcoded"),
+    ).toEqual([{ name: "hardcoded", value: false, from: "<length>" }]);
+  });
+
   test("a setting from the sweep says so", () => {
     const [arity] = explain(RULES, "padding-left").settings.filter((one) => one.name === "arity");
 

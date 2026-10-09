@@ -475,11 +475,14 @@ function runExplain(property: string | undefined): never {
   } else if (said.settings.length === 0) {
     lines.push(`  ${where(path)} says nothing about it, so it takes whatever CSS allows.`, "");
   } else {
-    const width = Math.max(...said.settings.map((one) => one.name.length));
+    // A setting asked of one kind of value says which: `hardcoded, a length` beside `…, a percentage`.
+    const label = (one: (typeof said.settings)[number]) =>
+      one.of === undefined ? one.name : `${one.name}, ${NARROW[one.of]?.said ?? one.of}`;
+    const width = Math.max(...said.settings.map((one) => label(one).length));
     for (const one of said.settings) {
       const value = Array.isArray(one.value) ? one.value.join(", ") : String(one.value);
       const overriding = one.overriding === undefined ? "" : `   overriding ${JSON.stringify(one.overriding)}`;
-      lines.push(`    ${one.name.padEnd(width)}  ${value.padEnd(12)} ${JSON.stringify(one.from)}${overriding}`);
+      lines.push(`    ${label(one).padEnd(width)}  ${value.padEnd(12)} ${JSON.stringify(one.from)}${overriding}`);
     }
     lines.push("", `  from ${where(path)}`, "");
   }

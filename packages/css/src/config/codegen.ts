@@ -539,15 +539,28 @@ export function hardcodedFor(
   property: string,
   valueKind: string,
 ): boolean | undefined {
+  return hardcodedDecision(rules, property, valueKind)?.value as boolean | undefined;
+}
+
+/**
+ * {@link hardcodedFor}'s answer with the selector that gave it — what `explain` prints, so the rule,
+ * the type and the explanation read one walk rather than three.
+ */
+function hardcodedDecision(rules: PropertyRules | undefined, property: string, valueKind: string): Setting | undefined {
   if (rules === undefined) return undefined;
   const asked = kindsOf(property).filter((kind) => !(valueKind === "length" && kind === "percentage"));
-  let answer = (rules["*"] as AnyRule | undefined)?.hardcoded;
-  for (const kind of [...asked].sort()) {
-    const said = (rules[`<${kind}>` as keyof PropertyRules] as AnyRule | undefined)?.hardcoded;
-    if (said !== undefined) answer = said;
+  let decided: Setting | undefined;
+  for (const selector of ["*", ...[...asked].sort().map((kind) => `<${kind}>`), property]) {
+    const said = (rules[selector as keyof PropertyRules] as AnyRule | undefined)?.hardcoded;
+    if (said === undefined) continue;
+    decided = {
+      name: "hardcoded",
+      value: said,
+      from: selector,
+      ...(decided === undefined ? {} : { overriding: decided.from }),
+    };
   }
-  const own = (rules[property as keyof PropertyRules] as AnyRule | undefined)?.hardcoded;
-  return own ?? answer;
+  return decided;
 }
 
 /** One setting that applies to a property, and the selector that decided it. */
@@ -558,6 +571,11 @@ export interface Setting {
   readonly from: string;
   /** The selector it overrode, when a looser one had also said something. */
   readonly overriding?: string;
+  /**
+   * The kind of VALUE it is about, when the property takes two and the project answered them
+   * differently — `hardcoded` on `width`, for a length and for a percentage. See {@link hardcodedFor}.
+   */
+  readonly of?: string;
 }
 
 export interface Explained {
@@ -603,6 +621,24 @@ export function explain(rules: PropertyRules | undefined, property: string): Exp
       if (value === undefined) continue;
       const before = found.get(name);
       found.set(name, { name, value, from: selector, ...(before === undefined ? {} : { overriding: before.from }) });
+    }
+  }
+
+  /**
+   * `hardcoded` is asked of each value's own kind, so where a length and a percentage get different
+   * answers one row would be wrong for one of them. Two rows then, each from the walk the rule uses.
+   */
+  if (kind === "length-percentage") {
+    const length = hardcodedDecision(rules, property, "length");
+    const percentage = hardcodedDecision(rules, property, "percentage");
+    if (length !== undefined && percentage !== undefined && length.value !== percentage.value) {
+      found.delete("hardcoded");
+      return {
+        property,
+        known,
+        kind,
+        settings: [...found.values(), { ...length, of: "length" }, { ...percentage, of: "percentage" }],
+      };
     }
   }
 
@@ -750,6 +786,12 @@ function propertyMap(rules: PropertyRules | undefined): Mapped {
      *
      * A property with no kind cannot express that — nothing can check a token into it — so the
      * literals stay rather than the property being narrowed to nothing a person could write.
+     */
+    /*
+     * Merged per PROPERTY here, where the rule and the open type ask per value kind (`hardcodedFor`).
+     * Said out loud because it is the one reader left that way: a closed list names exact values, so
+     * a project freeing percentages beside a list on a length-or-percentage property keeps the
+     * stricter answer for the whole list. Measured nowhere in this repository or its template.
      */
     const onlyVariables = rule.hardcoded === false && kinds !== undefined;
     const written = onlyVariables ? "" : `${permitted.join(" | ")}`;
