@@ -1,5 +1,36 @@
 # create-ramonda
 
+## 0.14.0
+
+### Minor Changes
+
+- 9913371: **`@ramonda/css` is an add-on, and on by default.** A new project's page is written in style
+  blocks, under a `ramonda.css.ts` that starts strict: every colour and every length but a percentage
+  comes from a token it declares — light and dark from one `light-dark()` pair each — no custom property is made up
+  on the spot, and a block styles only its own element. Shorthands are allowed: the compiler keeps
+  CSS's order through them, measured with tokens in both directions. The type check runs
+  `ramonda-css`, which reads blocks.
+
+  A value written out that a token already holds is reported with that token's name, so the fix is
+  one word.
+
+- bcbeaae: **A new project's build checks the types.** Vite and esbuild strip types without reading them, so
+  the build of a scaffolded project shipped a type error in silence — measured: `export const x:
+number = "a string"` built green in both templates. `npm run build` now runs `npm run typecheck`
+  second, after `ramonda-check`. It is `ramonda-css` in a project with the `css` add-on, which reads
+  style blocks, and `tsc --noEmit` without it — and the style-blocks setup page says to make it
+  `ramonda-css` once a file holds a block, because `tsc` cannot read one.
+- 7fc5826: A new project is on Vite 8.
+
+### Patch Changes
+
+- 8a06152: **The `testing` add-on's tests run on Vite 8.** Its `vitest.config.ts` carried an `esbuild` block,
+  which Vite 8 only translates into Oxc's settings — and Oxc cannot lower a decorator, so a new
+  project's first `vitest run` died with `SyntaxError: Invalid or unexpected token`. It takes the app's
+  own plugin now, `ramonda()`, and `ramondaCss()` beside it when the project has style blocks. With the
+  Biome add-on and style blocks, `npm run lint` and `npm run format` hand `src` to `ramonda-css`, since
+  biome cannot read a block.
+
 ## 0.13.3
 
 ### Patch Changes
