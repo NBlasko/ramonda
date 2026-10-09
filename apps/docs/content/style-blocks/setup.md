@@ -89,6 +89,20 @@ Commit that folder. It is generated, and it is also what your editor reads, so a
 has not built anything yet is still checked. `npx ramonda-css codegen` writes it without a build,
 and `--check` fails in CI when what is committed no longer matches the config beside it.
 
+### Move the type check
+
+`tsc` cannot read a block — the syntax is not TypeScript — so a project whose build runs
+`tsc --noEmit` stops on the first file that holds one. `ramonda-css` is the same check with blocks
+read, and it reports every type error in the project, inside a block or not, on the line you wrote:
+
+```jsonc
+// package.json — a project from `create-ramonda` has this script
+"typecheck": "ramonda-css"
+```
+
+Nothing else in the build reads a type. Vite and esbuild strip them and keep going, so without this
+step a type error ships.
+
 ## Two things in your editor
 
 They are separate on purpose, and they answer different halves: the plugin decides what is an error,

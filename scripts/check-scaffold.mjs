@@ -54,6 +54,9 @@ const PLANTED = {
   head: { where: "index.html", expect: "the head never reached the HTML" },
   // Removes the marker the app itself lands in, so the page ships with no app.
   app: { where: "index.html", expect: "carries no rendered app" },
+  // A file that does not type-check. Vite strips types without reading them, so nothing else in the
+  // build would stop on it — and `ssr` meets it through `tsc`, `spa` through `ramonda-css`.
+  types: { where: "src/planted.ts", expect: "stopped on a type error" },
 };
 if (selftest !== undefined && PLANTED[selftest] === undefined) {
   console.error(`[scaffold] SELFTEST=${selftest} is not one of: ${Object.keys(PLANTED).join(", ")}`);
@@ -120,6 +123,14 @@ function addStyleBlocks(app) {
   );
   if (styled === app_) fail("could not put a style block in the generated App.tsx");
   writeFileSync(source, styled);
+
+  // And the type check, which the setup page says to move the moment a file holds a block: `tsc`
+  // cannot read one, and `ramonda-css` is the same check with blocks read.
+  const manifest = join(app, "package.json");
+  const pkg = JSON.parse(readFileSync(manifest, "utf8"));
+  if (pkg.scripts?.typecheck !== "tsc --noEmit") fail("the generated project has no `typecheck` script to move");
+  pkg.scripts.typecheck = "ramonda-css";
+  writeFileSync(manifest, `${JSON.stringify(pkg, null, 2)}\n`);
 }
 
 /** The `href` of every `<link rel="stylesheet">` in a page. */
@@ -287,7 +298,9 @@ try {
   `;
   run(process.execPath, ["--input-type=module", "-e", scaffolder]);
 
-  if (selftest !== undefined) {
+  if (selftest === "types") {
+    writeFileSync(join(app, PLANTED.types.where), 'export const planted: number = "a string";\n');
+  } else if (selftest !== undefined) {
     const file = join(app, PLANTED[selftest].where);
     const source = readFileSync(file, "utf8");
     const broken = selftest === "head" ? source.replace("<!--head-->", "") : source.replace("<!--ssr-->", "");
@@ -331,7 +344,10 @@ try {
     try {
       run("npm", ["run", "build"], { cwd: app });
     } catch (error) {
-      fail("`npm run build` failed in the generated project", outputOf(error));
+      const output = outputOf(error);
+      // Said apart, so a planted type error is known to have stopped the build for that reason.
+      if (/\bTS\d{4}\b/.test(output)) fail("`npm run build` stopped on a type error", output);
+      fail("`npm run build` failed in the generated project", output);
     }
   };
   buildProject();

@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "ramonda-check && vite build && ramonda-check-bundle dist",
+    "typecheck": "tsc --noEmit",
+    "build": "ramonda-check && npm run typecheck && vite build && ramonda-check-bundle dist",
     "preview": "vite preview"
   }
 }

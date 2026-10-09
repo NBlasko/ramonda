@@ -496,11 +496,15 @@ jobs:
       # not start. The gate could not see any of them — it runs `ramonda-check` over `apps/docs`
       # only, and the scaffolder's tests read templates as TEXT.
       #
-      # Both self-tests first, each planting a fault the check must report, so a check that has
-      # gone quiet fails here rather than passing.
+      # The self-tests first, each planting a fault the check must report, so a check that has
+      # gone quiet fails here rather than passing. `types` runs on both templates because each
+      # meets it through a different command: `ssr` before it has a block (`tsc`), `spa` after
+      # (`ramonda-css`, which reads blocks).
       - name: Scaffold a project and build it
         run: |
           SELFTEST=head node scripts/check-scaffold.mjs ssr
           SELFTEST=app node scripts/check-scaffold.mjs ssr
+          SELFTEST=types node scripts/check-scaffold.mjs ssr
+          SELFTEST=types node scripts/check-scaffold.mjs spa
           node scripts/check-scaffold.mjs ssr
           node scripts/check-scaffold.mjs spa

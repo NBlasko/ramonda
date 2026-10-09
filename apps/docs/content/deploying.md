@@ -14,23 +14,27 @@ that need the request.
 What is worth reading before the first deploy is the shape of the build, why it ends with a check,
 and the two things that are decided while the build runs rather than when the server starts.
 
-## The build has four steps, and the order is the point
+## The build has five steps, and the order is the point
 
 This is what `create-ramonda` writes for a server-rendered project:
 
 ```sh
-ramonda-check && npm run build:bundles && node scripts/prerender.mjs && ramonda-check-bundle dist
+ramonda-check && npm run typecheck && npm run build:bundles && node scripts/prerender.mjs && ramonda-check-bundle dist
 ```
 
-A client-only project is the same shape with the middle two as one:
+A client-only project is the same shape with the bundle and the prerender as one:
 
 ```sh
-ramonda-check && vite build && ramonda-check-bundle dist
+ramonda-check && npm run typecheck && vite build && ramonda-check-bundle dist
 ```
 
 **[`ramonda-check`](/reference/check) goes first because it is the cheap step.** It reads your
 source and never runs the app, so it fails in seconds on a fault that would otherwise be found
 after the bundle, the prerender and a deploy.
+
+**`npm run typecheck` is second because nothing after it reads a type.** Vite and esbuild strip the
+types and keep going, so without it a type error ships. It is `tsc --noEmit` until a file holds a
+[style block](/style-blocks/setup#move-the-type-check), and `ramonda-css` from then on.
 
 **[`ramonda-check-bundle`](/reference/check#the-bundle-that-did-not-parse) goes last because it is
 the only step that can see the output.** Which is the next section, and it is the one thing on this
