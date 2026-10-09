@@ -530,16 +530,14 @@ published packages** (those ship via tsup/esbuild; consumers bring their own
 TypeScript). Each latest major breaks the setup for no shipped benefit — revisit
 only with the fix in hand:
 
-- **`vite` held at `^7`.** Vite 8 switched to the oxc transformer, which ignores
-  the `esbuild: { jsx: "automatic" }` block the vitest configs use, so JSX stops
-  compiling in tests (`SyntaxError`). To move to 8, configure oxc's JSX pragma in
-  every vitest config. (See the note in `packages/router/vitest.config.ts`.)
+- **`vite-7` held at Vite 7.** The repository is on Vite 8. `@ramonda/build` and
+  `@ramonda/css` also depend on `vite-7`, an alias of Vite 7, and run their real
+  builds and dev servers on both — an app may be on either, and the plugins answer
+  each differently. Moved to 8, that half would run Vite 8 twice and pass.
 
-  **The pin has to be written in every package that runs vitest**, and for a while it was not:
-  `@ramonda/devtools`, `@ramonda/server` and `apps/docs` declared `vitest` and no `vite`, so they
-  inherited whatever vitest brought. Bumping vitest on 2026-09-02 was enough to pull vite 8 in for
-  them, and the docs suite failed with exactly the `SyntaxError` above. A pin that only some
-  manifests carry is not a pin.
+  Vite 8 was held back for a while, because its Oxc transform ignored the `esbuild` block every
+  vitest config used and cannot lower a TC39 decorator at all. Every config now uses `ramonda()`
+  from `@ramonda/build`, which lowers them itself on Vite 8.
 - **`jsdom` pinned to `28.0.0`.** 28.1+/29 changed CSSOM `cssText` serialization
   (a color keyword comes back as `rgb(...)`), which breaks the RMD007 style-
   normalization test and a test that spies on `cssText`.

@@ -72,21 +72,19 @@ Measured across the pipelines this repo has used:
 
 | pipeline | decorators |
 | --- | --- |
-| esbuild directly | stripped ✅ |
+| esbuild, with a target other than `esnext` | stripped ✅ |
 | core's own `tsup` build | stripped ✅ |
-| Vite 7 (esbuild) client build, with a JSX transform configured | stripped ✅ |
+| Vite 7 or Vite 8, with `ramonda()` from `@ramonda/build` | stripped ✅ |
 | Vite 7 client build, with no JSX transform at all | **survive** ❌ |
-| Vite 7 `--ssr` build | **survive** ❌ |
-| Vite 8 (oxc), any mode | **survive** ❌ |
+| Vite 7 `--ssr` build, without the plugin | **survive** ❌ |
+| Vite 8 (Oxc) without the plugin, any mode | **survive** ❌ |
 
-The Vite 7 row that works does so *by accident*: the JSX transform adds an import to
-every module, which forces each one through the esbuild transform, and that
-transform is what removes the decorators. Take the JSX transform away for an unrelated
-reason and they come back.
+Vite 8's transform cannot lower a TC39 decorator for any target, so on Vite 8 the
+plugin lowers them itself.
 
-**So: build with esbuild, and check the output.** A bundle no engine can parse is
-trivially detectable — parse each emitted chunk after building. See
-`apps/playground-ssr` for a setup that does not rely on the accident.
+**So: use [`@ramonda/build`](https://ramonda.dev/reference/build), and check the
+output.** A bundle no engine can parse is trivially detectable — `ramonda-check-bundle`
+from `@ramonda/check` parses each emitted chunk after building.
 
 ## The pieces
 

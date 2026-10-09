@@ -90,6 +90,12 @@ if (sheets.length < 2) {
  * carries its own, which is the whole point of the split. So the walk follows `imports` and stops at
  * `dynamicImports`, because the question is what is on the page when only this chunk has loaded.
  */
+/** A string literal holding classes, in whichever quote the minifier chose. */
+const QUOTED = /["`](r-[^"`]+)["`]/g;
+
+/** How many chunks named a class at all. None is a reading that found nothing, not a pass. */
+let chunksNaming = 0;
+
 const loadedBy = (key, seen = new Set()) => {
   if (seen.has(key)) return [];
   seen.add(key);
@@ -109,10 +115,15 @@ for (const [key, entry] of Object.entries(manifest)) {
    * compiles to — `"r-disp-flex r-gap-8px"`. Splitting is what this check missed when the map became
    * a string: every class but the first was invisible, and the sheet's half below reported all of
    * them as shipped to nobody.
+   *
+   * **In either quote.** Vite 8's minifier writes every string in backticks and Vite 7's in double
+   * quotes. Reading only `"` found no class at all on Vite 8, and this half passed by checking nothing
+   * — which is why the count below is asked for.
    */
   const source = readFileSync(join(dist, entry.file), "utf8");
-  const named = new Set([...source.matchAll(/"(r-[^"]+)"/g)].flatMap((one) => one[1].split(" ")));
+  const named = new Set([...source.matchAll(QUOTED)].flatMap((one) => one[1].split(" ")));
   if (named.size === 0) continue;
+  chunksNaming += 1;
 
   const loaded = loadedBy(key)
     .map((each) => readFileSync(join(dist, each), "utf8"))
@@ -134,10 +145,14 @@ for (const sheet of sheets) {
     // The selector is escaped and the markup's name is not — compare in the markup's spelling.
     const bare = named.slice(1).replace(/\\(.)/g, "$1");
     // Named by a literal holding it alone, or one holding it among others — see the note above.
-    if (!scripts.some((code) => new RegExp(`"[^"]*\\b${escapeRegExp(bare)}(?:"| )`).test(code))) {
+    if (!scripts.some((code) => new RegExp(`["\`][^"\`]*\\b${escapeRegExp(bare)}(?:["\`]| )`).test(code))) {
       faults.push(`${sheet} carries ${bare}, which no chunk names`);
     }
   }
+}
+
+if (chunksNaming === 0) {
+  faults.push("no chunk names a single generated class — the reading found nothing, so nothing was checked");
 }
 
 if (faults.length > 0) {

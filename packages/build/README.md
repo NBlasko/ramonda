@@ -52,6 +52,10 @@ module through the transform — and removing that option broke the output in si
 A setting like that should not be something an app writes out by hand, in one place per bundler it
 runs, and keeps in step with two others forever. So it is not.
 
+Vite 8 made it worse: it transforms with Oxc, which cannot lower a TC39 decorator for any target, so
+no setting saves them there. On Vite 8 the plugin lowers them itself, with esbuild, after Oxc has
+compiled each module. The config is the same `plugins: [ramonda()]` on both.
+
 ## What it sets
 
 | | |

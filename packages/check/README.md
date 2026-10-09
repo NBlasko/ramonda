@@ -135,8 +135,9 @@ the moment a browser reads it — not at build time, not in a test, but on the f
 
 That shipped here once. It had been working by accident: an unrelated esbuild option was forcing
 every module through the transform that strips them, and removing that option broke the output in
-silence. The setting that actually decides it is `target`, and `esnext` — which reads like a
-modernisation — is the one value that leaves the decorators in.
+silence. Under esbuild the setting that actually decides it is `target`, and `esnext` — which reads
+like a modernisation — is the one value that leaves the decorators in. Vite 8 transforms with Oxc,
+which leaves them in whatever it is told, so there only `@ramonda/build`'s plugin removes them.
 
 ```bash
 $ ramonda-check-bundle dist

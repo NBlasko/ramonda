@@ -167,7 +167,9 @@ async function main() {
     }
     console.error(
       "\nA bundle that does not parse fails at load with no stack worth reading.\n" +
-        "If these contain decorators, the build is not running a transform that strips them.",
+        "If these contain decorators, the build is not running a transform that strips them.\n" +
+        "Add `ramonda()` from @ramonda/build to the Vite config, or spread `ramondaOptions` into an\n" +
+        "esbuild build. On Vite 8 the plugin is the only fix: its transform lowers no decorator.",
     );
     process.exit(1);
   }

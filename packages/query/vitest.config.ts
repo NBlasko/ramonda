@@ -2,22 +2,16 @@ import { defineConfig } from "vitest/config";
 import { coverage } from "../../vitest.coverage.mjs";
 import { hookTimeout, testTimeout } from "../../vitest.timeout.mjs";
 import { resolve } from "node:path";
+import { ramonda } from "@ramonda/build/vite";
 
 export default defineConfig({
   define: {
     __DEV__: 'process.env.NODE_ENV !== "production"',
     __TEST__: "true",
   },
-  // Vite 7 transforms with esbuild, Vite 8 with oxc — and when both are
-  // configured it takes oxc and IGNORES the esbuild block entirely. This package
-  // has no vite of its own, so it follows whatever the workspace hoists. Both are
-  // set so it works either way. (Copied from the router, where a hoisted Vite 8
-  // silently dropped the JSX factory and every test stopped parsing.)
-  esbuild: {
-    jsx: "automatic",
-    jsxImportSource: "@ramonda/core",
-    target: "es2022",
-  },
+  // The plugin an app uses. It sets the JSX runtime, and lowers the decorators on Vite 8, where
+  // Oxc cannot and an `esbuild` block here is only translated into Oxc's settings.
+  plugins: [ramonda()],
   resolve: {
     alias: {
       // Run tests against framework source (live), like the router does. The
