@@ -108,14 +108,52 @@ export interface CssPluginLike {
   enforce: "pre";
   /** Rollup's own, and the one hook that runs before anything is resolved — see its use below. */
   buildStart(this: unknown): void;
-  config(this: unknown, userConfig: unknown, environment: { mode?: string; command?: string } | undefined): unknown;
+  config(this: unknown, userConfig: unknown, environment: { mode?: string; command?: string } | undefined): object;
   resolveId(this: unknown, id: string): string | null;
-  load(this: unknown, id: string): string | { code: string; map: SourceMap } | null;
-  transform(this: unknown, code: string, id: string): { code: string; map: SourceMap } | null;
-  handleHotUpdate(this: unknown, context: HotUpdate): Promise<unknown[] | undefined>;
-  hotUpdate(this: unknown, context: HotUpdate): Promise<unknown[] | undefined>;
+  load(this: unknown, id: string): string | { code: string; map: ViteMap } | null;
+  transform(this: unknown, code: string, id: string): { code: string; map: ViteMap } | null;
+  handleHotUpdate(this: unknown, context: HotUpdate): Promise<ModulesBack>;
+  hotUpdate(this: unknown, context: HotUpdate): Promise<ModulesBack>;
   generateBundle(this: unknown, options: unknown, bundle: Bundle): void;
 }
+
+/**
+ * A source map as Vite's bundlers declare one: arrays they may write to, and every source named.
+ *
+ * The compiler's own `SourceMap` is read-only and allows a `null` source, and neither Vite 7 nor
+ * Vite 8 accepts that from a hook, so a typed config holding the plugin did not compile. The compiler
+ * names every source — the file it was given — so the copy changes nothing but the type.
+ */
+interface ViteMap {
+  version: number;
+  file?: string;
+  sources: string[];
+  sourcesContent?: string[];
+  names: string[];
+  mappings: string;
+}
+
+function forVite(map: SourceMap): ViteMap {
+  const { sourcesContent, ...rest } = map;
+  // A source whose text is not known is said by leaving the contents out, which every reader takes;
+  // Vite 7's type has no `null` for one, and an empty string would claim the file was empty.
+  const known = sourcesContent?.every((one) => typeof one === "string") ? (sourcesContent as string[]) : undefined;
+  return {
+    ...rest,
+    sources: map.sources.map((one) => one ?? ""),
+    names: [...map.names],
+    ...(known === undefined ? {} : { sourcesContent: [...known] }),
+  };
+}
+
+/**
+ * What a save hands back to Vite: its own modules, or nothing to leave them as they were.
+ *
+ * `never[]` because the elements are Vite's module nodes, passed straight back, and naming their type
+ * would make Vite a dependency. `unknown[]` was the first spelling and neither Vite 7 nor Vite 8
+ * accepts it — every typed config holding the plugin stopped compiling; see `vitePlugin.types.test`.
+ */
+type ModulesBack = never[] | undefined;
 
 /** What a bundler hands back at the end of a build. Only what this reads is declared. */
 export type Bundle = Record<string, { type?: string; fileName?: string; source?: unknown }>;
@@ -294,7 +332,7 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
   }
 
   /** What both hot-update hooks do. See where they are returned for why there are two of them. */
-  async function recompile(this: unknown, context: HotUpdate): Promise<unknown[] | undefined> {
+  async function recompile(this: unknown, context: HotUpdate): Promise<ModulesBack> {
     const file = context.file;
     if (basename(file) === "ramonda.css.ts") {
       await reconfigure(file, context);
@@ -327,7 +365,7 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
       context.server?.moduleGraph;
     const sheetModule = graph?.getModuleById(file + SUFFIX);
     if (sheetModule === undefined || sheetModule === null || context.modules === undefined) return undefined;
-    return [...context.modules, sheetModule];
+    return [...context.modules, sheetModule] as never[];
   }
 
   /**
@@ -521,7 +559,7 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
         content = undefined;
       }
       const { css, map } = sheet.cssWithMapFor(file, content);
-      return { code: css, map };
+      return { code: css, map: forVite(map) };
     },
 
     transform(this: unknown, code, id) {
@@ -566,7 +604,7 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
             `${declared === undefined ? "" : `import ${JSON.stringify(declared)};\n`}` +
             `import ${JSON.stringify(file + SUFFIX)};\n`;
 
-      return { code: code2, map: result.map };
+      return { code: code2, map: forVite(result.map) };
     },
 
     /**
