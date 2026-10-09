@@ -339,12 +339,12 @@ export function scaffold({ targetDir, name, mode, addons }: ScaffoldOptions): vo
     // unchanged and the suite died with `SyntaxError: Invalid or unexpected token`. The SPA
     // template had it already, which is why only SSR was broken.
     deps.devDependencies["vite"] = tool("vite");
-    writeTestingFiles(targetDir, mode);
+    writeTestingFiles(targetDir, mode, addons.includes("css"));
   }
 
   if (addons.includes("biome")) {
     deps.devDependencies["@biomejs/biome"] = tool("@biomejs/biome");
-    writeBiomeConfig(targetDir);
+    writeBiomeConfig(targetDir, addons.includes("css"));
   }
 
   writePnpmSettings(targetDir);
@@ -358,8 +358,12 @@ export function scaffold({ targetDir, name, mode, addons }: ScaffoldOptions): vo
   const extraScripts: Record<string, string> = {};
   if (addons.includes("testing")) extraScripts.test = "vitest";
   if (addons.includes("biome")) {
-    extraScripts.lint = "biome lint .";
-    extraScripts.format = "biome format --write .";
+    // Biome cannot read a style block, so with blocks `src` goes through `ramonda-css`, which runs
+    // this project's own biome over what it can parse and maps every position home. Biome's own run
+    // takes the rest; `biome.json` leaves `src` out of it.
+    const blocks = addons.includes("css");
+    extraScripts.lint = blocks ? "biome lint . && ramonda-css lint src" : "biome lint .";
+    extraScripts.format = blocks ? "biome format --write . && ramonda-css format src" : "biome format --write .";
   }
   // `tsc` cannot read a style block; `ramonda-css` is the same check with blocks read.
   if (addons.includes("css")) extraScripts.typecheck = "ramonda-css";
@@ -521,17 +525,19 @@ onlyBuiltDependencies:
 }
 
 /** A vitest config + one example test, dropped in when the Testing add-on is picked. */
-function writeTestingFiles(targetDir: string, mode: Mode): void {
+/**
+ * `vitest.config.ts` takes the plugins the app's own Vite config takes, because the tests go through
+ * the same transform. It held an `esbuild` block once, and on Vite 8 that reaches Oxc only as JSX
+ * settings — the decorators stayed in and the first `vitest run` died with a `SyntaxError`.
+ */
+function writeTestingFiles(targetDir: string, mode: Mode, css: boolean): void {
   writeFileSync(
     join(targetDir, "vitest.config.ts"),
     `import { defineConfig } from "vitest/config";
-
+import { ramonda } from "@ramonda/build/vite";
+${css ? 'import { ramondaCss } from "@ramonda/css/vite";\n' : ""}
 export default defineConfig({
-  esbuild: {
-    jsx: "automatic",
-    jsxImportSource: "@ramonda/core",
-    target: "es2022",
-  },
+  plugins: [ramonda()${css ? ", ramondaCss()" : ""}],
   test: {
     environment: "jsdom",
   },
@@ -561,17 +567,34 @@ test("renders the heading", () => {
  * to turn on the recommended lint rules; `vcs.useIgnoreFile` keeps it off .gitignored
  * paths (dist, node_modules). The schema version tracks tool("@biomejs/biome") so the two never drift.
  */
-function writeBiomeConfig(targetDir: string): void {
+function writeBiomeConfig(targetDir: string, blocks: boolean): void {
   const version = tool("@biomejs/biome").replace(/^\D*/, "");
   const config = {
     $schema: `https://biomejs.dev/schemas/${version}/schema.json`,
     vcs: { enabled: true, clientKind: "git", useIgnoreFile: true },
-    files: { ignoreUnknown: true },
+    files: {
+      ignoreUnknown: true,
+      // `src` is the wrapper's — see the scripts — and the build's output and the generated tokens
+      // are nobody's to lint or format.
+      ...(blocks ? { includes: ["**", "!src", "!dist", "!css-system"] } : {}),
+    },
     formatter: { enabled: true, indentStyle: "space", indentWidth: 2, lineWidth: 120 },
     linter: { enabled: true, rules: { preset: "recommended" } },
     javascript: { formatter: { quoteStyle: "double" } },
   };
-  writeFileSync(join(targetDir, "biome.json"), JSON.stringify(config, null, 2) + "\n");
+  // A list of short strings on one line, which is how biome itself writes one — so the project's
+  // first `biome format .` does not report the config it was given.
+  const text = JSON.stringify(config, null, 2).replace(
+    /\[\n\s*("[^"\n]*",?\n\s*)+\]/g,
+    (list) =>
+      `[${list
+        .slice(1, -1)
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .join(" ")}]`,
+  );
+  writeFileSync(join(targetDir, "biome.json"), text + "\n");
 }
 
 function sortKeys(obj: Record<string, string>): Record<string, string> {

@@ -703,3 +703,48 @@ describe("the css add-on", () => {
     expect(read("vite.config.ts")).not.toContain("ramondaCss");
   });
 });
+
+/**
+ * The tests go through the transform the app does. The config used to carry an `esbuild` block,
+ * which Vite 8 only translates into Oxc's settings — and Oxc cannot lower a decorator, so a project
+ * with the `testing` add-on failed its first `vitest run` with `SyntaxError: Invalid or unexpected
+ * token`. Measured on a scaffolded project.
+ */
+describe("the testing add-on", () => {
+  test.each(["spa", "ssr"] as const)("%s: the tests take the app's plugin, not an esbuild block", (mode) => {
+    const config = make(mode, ["testing"]).read("vitest.config.ts");
+    expect(config).toContain('import { ramonda } from "@ramonda/build/vite";');
+    expect(config).toMatch(/plugins: \[ramonda\(\)\]/);
+    expect(config).not.toContain("esbuild");
+  });
+
+  test.each(["spa", "ssr"] as const)("%s: and with blocks, the plugin that reads them", (mode) => {
+    const config = make(mode, ["testing", "css"]).read("vitest.config.ts");
+    expect(config).toContain('import { ramondaCss } from "@ramonda/css/vite";');
+    expect(config).toMatch(/plugins: \[ramonda\(\), ramondaCss\(\)\]/);
+  });
+});
+
+/**
+ * Biome with style blocks: `biome lint .` stops at the first `@@(`, measured on a scaffolded project.
+ * So `src` — where blocks are written — goes through `ramonda-css`, which runs the project's own biome
+ * over what it can parse, and biome's own run takes everything else.
+ */
+describe("the biome add-on with the css add-on", () => {
+  test.each(["spa", "ssr"] as const)("%s: src goes through the wrapper, the rest through biome", (mode) => {
+    const scripts = (make(mode, ["biome", "css"]).pkg as unknown as { scripts: Record<string, string> }).scripts;
+    expect(scripts.lint).toBe("biome lint . && ramonda-css lint src");
+    expect(scripts.format).toBe("biome format --write . && ramonda-css format src");
+  });
+
+  test("and biome's own run leaves out src, the build's output and the generated tokens", () => {
+    const config = JSON.parse(make("spa", ["biome", "css"]).read("biome.json")) as { files: { includes: string[] } };
+    expect(config.files.includes).toEqual(["**", "!src", "!dist", "!css-system"]);
+  });
+
+  test("without blocks, biome runs as it is", () => {
+    const scripts = (make("spa", ["biome"]).pkg as unknown as { scripts: Record<string, string> }).scripts;
+    expect(scripts.lint).toBe("biome lint .");
+    expect(scripts.format).toBe("biome format --write .");
+  });
+});

@@ -159,7 +159,8 @@ describe("what a block becomes", () => {
     expect(preamble).toContain(`__cond<T>(condition: import("./properties").CssCondition<T>): never;`);
     expect(preamble).toContain(`__from<T>(block: import("./properties").CssSpreadable<T>): never;`);
     expect(preamble).toContain(`__val<T extends import("./properties").CssValue>(value: T): T;`);
-    expect(preamble.split("declare function")).toHaveLength(6);
+    expect(preamble).toContain("__ref(site: unknown): never;");
+    expect(preamble.split("declare function")).toHaveLength(7);
     expect(preamble).not.toMatch(/^\s*import /m);
   });
 

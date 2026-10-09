@@ -250,6 +250,12 @@ export interface TextPart {
    * rotate(var($(angle)))` would be reported while the same text written by hand is silent.
    */
   readonly resolved?: true;
+  /**
+   * Where the expression a resolved reference was written as sits in the author's file — `spin` in
+   * `$(spin)`. The text above is the site's generated NAME, so without this nothing the virtual
+   * file holds would read the binding, and every linter called it unused. See `virtualFile`.
+   */
+  readonly reference?: { readonly at: number; readonly length: number };
 }
 
 /**

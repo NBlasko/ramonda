@@ -1,4 +1,7 @@
 import { execFileSync } from "node:child_process";
+import { copyFileSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { basename, join } from "node:path";
 import { type Reported, type Tool, readReport } from "./tooling";
 
 /**
@@ -127,4 +130,87 @@ export function oxlintLinter(tool: Tool, cwd: string): (path: string) => Reporte
       throw new ToolFailed(`${failed.stderr ?? ""}${said}`.trim() || String(error));
     }
   };
+}
+
+/**
+ * Biome, for a project whose linter is biome.
+ *
+ * **Three flags, each measured on biome 2.5.**
+ *
+ * - `--vcs-use-ignore-file=false`: the copy of a file with a block lives OUTSIDE the project, and
+ *   with the ignore file in use biome stops on such a path with an internal error ("This is a bug in
+ *   Biome"). Off, it lints the copy with the project's own rules — a rule the project switched off
+ *   stays off, which the tests ask of the real binary.
+ * - `--reporter=json`, which biome calls experimental and free to change in a patch. So output this
+ *   cannot read is a `ToolFailed`, never a clean file — the same rule as oxlint's.
+ * - `--max-diagnostics=none`: biome prints twenty by default, and the rest of a file's findings
+ *   would be dropped without a word.
+ *
+ * Biome reports a LINE and a COLUMN, where the rest of this module speaks offsets, so each is turned
+ * into one against the file that was linted.
+ *
+ * **Always a copy, never the file in place.** A project hands its sources to this wrapper and keeps
+ * them out of biome's own run, because `biome lint .` cannot read a block — and biome answers a path
+ * its config excludes with an empty report. Linted in place, every file without a block would come
+ * back clean. The copy keeps the basename, and the project's rules still reach it (see above).
+ */
+export function biomeLinter(tool: Tool, cwd: string): (path: string) => Reported[] {
+  return (path) => {
+    const directory = mkdtempSync(join(tmpdir(), "ramonda-css-biome-"));
+    const copy = join(directory, basename(path));
+    try {
+      copyFileSync(path, copy);
+      return biomeReport(tool, cwd, copy);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  };
+}
+
+/** One run of biome's linter over one file it may lint, as findings with offsets. */
+function biomeReport(tool: Tool, cwd: string, path: string): Reported[] {
+  let said: string;
+  try {
+    said = execFileSync(
+      tool.command,
+      [...tool.args, "lint", "--vcs-use-ignore-file=false", "--reporter=json", "--max-diagnostics=none", path],
+      { cwd, encoding: "utf8", maxBuffer: MAX_OUTPUT, stdio: ["ignore", "pipe", "pipe"] },
+    );
+  } catch (error) {
+    const failed = error as { stdout?: string; stderr?: string };
+    said = failed.stdout ?? "";
+    if (!said.includes("{")) throw new ToolFailed(`${failed.stderr ?? ""}${said}`.trim() || String(error));
+  }
+
+  let report: { diagnostics?: BiomeDiagnostic[] };
+  try {
+    report = JSON.parse(said.slice(said.indexOf("{")));
+  } catch {
+    throw new ToolFailed(`biome printed a report this cannot read:\n${said.slice(0, 400)}`);
+  }
+  if (!Array.isArray(report.diagnostics))
+    throw new ToolFailed(`biome printed no diagnostics list:\n${said.slice(0, 400)}`);
+
+  const text = readFileSync(path, "utf8");
+  const lineStarts = [0];
+  for (let index = 0; index < text.length; index++) if (text[index] === "\n") lineStarts.push(index + 1);
+
+  return report.diagnostics.map((diagnostic) => {
+    const start = diagnostic.location?.start;
+    const offset =
+      start === undefined ? undefined : (lineStarts[start.line - 1] ?? text.length) + Math.max(start.column - 1, 0);
+    return {
+      message: diagnostic.message ?? diagnostic.description ?? "",
+      code: diagnostic.category,
+      ...(offset === undefined ? {} : { labels: [{ span: { offset } }] }),
+    };
+  });
+}
+
+/** One entry of biome's JSON report — what this reads of it. */
+interface BiomeDiagnostic {
+  message?: string;
+  description?: string;
+  category?: string;
+  location?: { start?: { line: number; column: number } };
 }

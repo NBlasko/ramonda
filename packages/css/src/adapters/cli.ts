@@ -9,7 +9,7 @@ import { nearest } from "../compiler/nearest";
 import { writeGenerated } from "../config/generate";
 import { ConfigError, environmentOf, findConfig, readConfig } from "../config/config";
 import { filesUnder, formatFile, formatText, lintFile, toolIn } from "./tooling";
-import { ToolFailed, biomeFormatter, oxlintLinter } from "./tools";
+import { ToolFailed, biomeFormatter, biomeLinter, oxlintLinter } from "./tools";
 
 /**
  * `ramonda-css [tsconfig.json]`
@@ -42,7 +42,7 @@ const USAGE = `ramonda-css — the tools for a project whose source TypeScript c
 
   ramonda-css [tsconfig.json]      type-check the project, mapping every diagnostic home
   ramonda-css format <paths…>      format through the project's own biome (--check to report)
-  ramonda-css lint <paths…>        lint through the project's own oxlint
+  ramonda-css lint <paths…>        lint through the project's own oxlint, or its biome
   ramonda-css codegen              write the tokens this project declares, and their types
                                    (--check reports a stale css-system instead of writing)
   ramonda-css explain <property>   what your config does to one property, and which line decided it
@@ -236,10 +236,11 @@ function runTool(which: "format" | "lint", args: readonly string[]): never {
     }
   }
 
-  const name = which === "format" ? "biome" : "oxlint";
-  const binary = toolIn(cwd, which === "format" ? "@biomejs/biome" : "oxlint", name);
+  const name = which === "format" ? "biome" : linterOf(cwd);
+  const binary = toolIn(cwd, name === "biome" ? "@biomejs/biome" : "oxlint", name);
   if (binary === undefined) {
-    console.error(`\n${TAG} \`${name}\` is not installed here, so there is nothing to run.\n`);
+    const missing = which === "lint" ? "Neither `oxlint` nor `biome` is" : `\`${name}\` is not`;
+    console.error(`\n${TAG} ${missing} installed here, so there is nothing to run.\n`);
     process.exit(1);
   }
 
@@ -322,7 +323,7 @@ function runTool(which: "format" | "lint", args: readonly string[]): never {
     process.exit(1);
   }
 
-  const lint = oxlintLinter(binary, cwd);
+  const lint = name === "biome" ? biomeLinter(binary, cwd) : oxlintLinter(binary, cwd);
   let found: ReturnType<typeof lintFile>;
   try {
     found = files.flatMap((file) => lintFile(file, lint));
@@ -349,6 +350,21 @@ function runTool(which: "format" | "lint", args: readonly string[]): never {
     console.error("");
   }
   process.exit(1);
+}
+
+/**
+ * The project's own linter: oxlint where the project configured it, or where biome is not installed;
+ * biome otherwise.
+ *
+ * Asked of the CONFIG first, because a project may have both installed — this repository does — and
+ * the one it wrote a config for is the one it means. A project from `create-ramonda` with the Biome
+ * add-on has `biome.json` and no oxlint at all.
+ */
+function linterOf(cwd: string): "oxlint" | "biome" {
+  const oxlint = toolIn(cwd, "oxlint", "oxlint") !== undefined;
+  const configured = existsSync(resolve(cwd, ".oxlintrc.json"));
+  if (oxlint && (configured || toolIn(cwd, "@biomejs/biome", "biome") === undefined)) return "oxlint";
+  return toolIn(cwd, "@biomejs/biome", "biome") === undefined ? "oxlint" : "biome";
 }
 
 /**

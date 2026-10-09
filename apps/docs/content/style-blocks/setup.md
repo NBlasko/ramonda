@@ -24,8 +24,8 @@ tool you have to run separately. TypeScript 5.4 or later.
 ## One plugin in the build
 
 The CSS a block compiles to is a module the bundler already knows about, and it follows the
-JavaScript chunk it belongs to — so there is nothing to import for it. (A project that declares
-[tokens](/style-blocks/tokens) imports one stylesheet, once, for those.)
+JavaScript chunk it belongs to — so there is nothing to import for it, and the same is true of a
+project's [tokens](/style-blocks/tokens).
 
 ```ts
 import { ramondaCss } from "@ramonda/css/vite";
@@ -40,6 +40,10 @@ import { ramondaCss } from "@ramonda/css/esbuild";
 
 export const plugins = [ramondaCss({ filter: /src\/.*\.tsx$/ })];
 ```
+
+**And in the tests.** Vitest transforms through its own config, so a file holding a block reaches
+it unread unless `vitest.config.ts` takes the plugin too — beside `ramonda()`, which lowers the
+decorators there as it does in the app.
 
 **Set `filter` on esbuild.** esbuild hands a plugin a *path* rather than the code, so a file has to
 be read before it can be asked whether it holds a block. Pointing the plugin at the tree that holds

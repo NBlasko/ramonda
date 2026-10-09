@@ -80,8 +80,23 @@ export function registeredNeverSet(
    */
   for (const file of program.getSourceFiles()) {
     if (file.isDeclarationFile || wanted.size === 0) continue;
+    /**
+     * A block's `$(accent)` is written `__ref(accent)` beside its declaration, so the binding has a
+     * reader for a linter — and that reader is the block READING the property, which is the very
+     * thing this rule finds unset. Struck off as a set, it silenced the rule on every site a block
+     * read, which is every site it exists for.
+     */
+    const blockRead = overlays.get(file.fileName)?.virtual.helpers.ref;
 
     const visit = (node: ts.Node): void => {
+      if (
+        blockRead !== undefined &&
+        ts.isCallExpression(node) &&
+        ts.isIdentifier(node.expression) &&
+        node.expression.text === blockRead
+      ) {
+        return;
+      }
       if (ts.isIdentifier(node)) {
         const found = checker.getSymbolAtLocation(node);
         const symbol =
@@ -98,7 +113,6 @@ export function registeredNeverSet(
   for (const { file, site } of wanted.values()) {
     // Already an offset in the AUTHOR's file: a registered site comes from the CSS walk, which
     // reads the source as written. Nothing to map home.
-    void overlays;
     findings.push({
       rule: "registered-never-set",
       file,

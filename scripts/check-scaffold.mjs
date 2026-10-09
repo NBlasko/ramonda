@@ -41,8 +41,12 @@ const repo = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const mode = process.argv[2] === "spa" ? "spa" : "ssr";
 /**
  * `css` scaffolds with the `css` add-on — what `npm create ramonda` picks by default: the page in
- * style blocks, the strict config and its tokens. Without it the project starts with no CSS, and this
- * adds `@ramonda/css` the way the setup page tells an existing project to.
+ * style blocks, the strict config and its tokens — and with `biome`, whose lint and format are run
+ * because biome cannot read a block, and with `testing`, whose suite is RUN: its config
+ * once held an `esbuild` block that Vite 8 does not lower decorators with, and every project with the
+ * add-on failed its first `vitest run` while this gate, which never ran one, stayed green. Without
+ * `css` the project starts with no CSS, and this adds `@ramonda/css` the way the setup page tells an
+ * existing project to.
  */
 const withAddon = process.argv[3] === "css";
 
@@ -70,7 +74,7 @@ if (selftest !== undefined && PLANTED[selftest] === undefined) {
 }
 
 /** Everything a generated project resolves to this workspace rather than to npm. */
-const FIRST_PARTY = ["core", "router", "server", "check", "build", "css"];
+const FIRST_PARTY = ["core", "router", "server", "check", "build", "css", "testing-library"];
 
 /**
  * `@ramonda/css` is not in either template, and that is right — it is a separate package a project
@@ -172,7 +176,7 @@ function pageInBlocks(sheets, markup) {
   }
   if (!/\br-[a-zA-Z0-9_.:-]+/.test(markup)) fail("no compiled class reached the page");
   if (markup.includes("@@(")) fail("`@@(` survived into the build — the plugin did not run");
-  return "a page in style blocks, with its tokens";
+  return "a page in style blocks, with its tokens, and tests, lint and format that pass";
 }
 
 /** The `href` of every `<link rel="stylesheet">` in a page. */
@@ -336,7 +340,7 @@ try {
   if (!existsSync(cli)) fail("create-ramonda is not built — run `pnpm --filter create-ramonda build` first");
   const scaffolder = `
     import { scaffold } from ${JSON.stringify(cli)};
-    scaffold({ targetDir: ${JSON.stringify(app)}, name: "scaffold-check", mode: ${JSON.stringify(mode)}, addons: ${withAddon ? '["css"]' : "[]"} });
+    scaffold({ targetDir: ${JSON.stringify(app)}, name: "scaffold-check", mode: ${JSON.stringify(mode)}, addons: ${withAddon ? '["css", "testing", "biome"]' : "[]"} });
   `;
   run(process.execPath, ["--input-type=module", "-e", scaffolder]);
 
@@ -395,6 +399,28 @@ try {
     }
   };
   buildProject();
+
+  if (withAddon) {
+    try {
+      run("npx", ["vitest", "run"], { cwd: app });
+    } catch (error) {
+      fail("the generated project's own tests failed", outputOf(error));
+    }
+    // And its linter and formatter: biome cannot read a block, so `src` goes through the wrapper.
+    // The format is CHECKED, both halves of the project's `format` script, so a template that is
+    // not formatted the way it tells a project to format fails here rather than in a first commit.
+    for (const [what, command, args] of [
+      ["npm run lint", "npm", ["run", "lint"]],
+      ["biome format .", "npx", ["biome", "format", "."]],
+      ["ramonda-css format --check src", "npx", ["ramonda-css", "format", "--check", "src"]],
+    ]) {
+      try {
+        run(command, args, { cwd: app });
+      } catch (error) {
+        fail(`the generated project's own \`${what}\` failed`, outputOf(error));
+      }
+    }
+  }
 
   /* ── 5. what the build EMITTED, not just that it exited 0 ─────────────────────────────────── */
   // Three of the faults above left the build perfectly green. A page with no title is not an
