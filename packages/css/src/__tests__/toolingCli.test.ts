@@ -429,7 +429,7 @@ describe("lint, through biome", () => {
  * generated name, and the virtual file wrote that name and nothing else — so the binding had no
  * reader there, and every linter called it unused. Found by the scaffold gate: the template's own
  * `spin`, reported by biome on a fresh project. The same would be true of oxlint's `no-unused-vars`,
- * TypeScript's `noUnusedLocals`, and a rename in the editor.
+ * TypeScript's `noUnusedLocals`, and the editor's list of references.
  */
 describe("a binding a block reads", () => {
   const SPINS = `const spin = @@keyframes(

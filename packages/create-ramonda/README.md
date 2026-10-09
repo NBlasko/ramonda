@@ -49,7 +49,7 @@ router, because server rendering is built on it.
 | [`@ramonda/lens`](https://ramonda.dev/lens) | immutable updates to nested state |
 | [`@ramonda/testing-library`](https://ramonda.dev/testing) | render and query components in tests |
 | [`@ramonda/devtools`](https://ramonda.dev/devtools) | the panel, which grows with the choices above |
-| Biome | lint and format in one tool |
+| Biome | lint and format in one tool — with `@ramonda/css`, `src` goes through `ramonda-css`, which runs the same biome over files it cannot parse |
 
 With `@ramonda/css`, `ramonda.css.ts` starts strict: every colour and every length comes from a
 token it declares, a custom property cannot be made up on the spot, and a block styles only its own

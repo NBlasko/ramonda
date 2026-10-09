@@ -480,7 +480,7 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
    * What a resolved reference is written as beside its declaration — `__ref(spin)` — so the binding it
    * names has a reader. The value holds the site's generated name, which is what the type is about;
    * this holds the author's own expression, copied, so a linter sees `spin` used and an editor's
-   * rename reaches it. `never`, so it sits in the block's array without being a declaration.
+   * reference list finds it. `never`, so it sits in the block's array without being a declaration.
    */
   const reference = binding(source, "__ref");
   write(`declare function ${reference}(site: unknown): never;`);
