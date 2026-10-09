@@ -244,6 +244,7 @@ async function bundle(
   build: typeof viteBuild,
   plugins: NonNullable<Parameters<typeof viteBuild>[0]>["plugins"],
   root: string,
+  ssr = false,
 ) {
   const warnings: string[] = [];
   const result = (await build({
@@ -251,7 +252,14 @@ async function bundle(
     configFile: false,
     customLogger: quiet(warnings),
     plugins,
-    build: { target: "esnext", write: false, minify: false, lib: { entry: join(root, "entry.ts"), formats: ["es"] } },
+    build: {
+      target: "esnext",
+      write: false,
+      minify: false,
+      // A server build takes its own path through Vite, and it is the one that left the decorators in
+      // before this package existed — so it is asked separately rather than assumed from the client's.
+      ...(ssr ? { ssr: join(root, "entry.ts") } : { lib: { entry: join(root, "entry.ts"), formats: ["es" as const] } }),
+    },
   })) as { output: { code?: string }[] }[] | { output: { code?: string }[] };
   // Vite 8 hands back one result for a library build where Vite 7 handed back a list.
   const output = Array.isArray(result) ? result[0].output : result.output;
@@ -283,7 +291,10 @@ const VITES = [
 ] as const;
 
 describe.each(VITES)("what comes out of a real build, on %s", (_name, build) => {
-  test("without the plugin the decorator reaches the bundle; with it, it does not", async () => {
+  test.each([
+    ["client", false],
+    ["server", true],
+  ])("without the plugin the decorator reaches the %s bundle; with it, it does not", async (_which, ssr) => {
     const dir = await mkdtemp(join(tmpdir(), "ramonda-build-vite-"));
     try {
       await writeFile(
@@ -305,10 +316,10 @@ describe.each(VITES)("what comes out of a real build, on %s", (_name, build) => 
        */
       const emitted = join(dir, "out.mjs");
 
-      await writeFile(emitted, (await bundle(build, [], dir)).code);
+      await writeFile(emitted, (await bundle(build, [], dir, ssr)).code);
       await expect(parses(emitted), "the fault should reproduce without the plugin").resolves.toBe(false);
 
-      const fixed = await bundle(build, [ramonda()], dir);
+      const fixed = await bundle(build, [ramonda()], dir, ssr);
       await writeFile(emitted, fixed.code);
       await expect(parses(emitted)).resolves.toBe(true);
       expect(fixed.code).not.toContain("@Host");
