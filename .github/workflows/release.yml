@@ -50,13 +50,13 @@ jobs:
       #
       # No `NODE_AUTH_TOKEN` is written into the .npmrc any more: publishing
       # authenticates with the workflow's own OIDC identity instead. See below.
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
           registry-url: https://registry.npmjs.org
 
       - name: Create Version PR or publish
-        uses: changesets/action@v1
+        uses: changesets/action@v2
         with:
           # When changesets are pending: bump versions + changelogs into a PR.
           version: pnpm changeset version
