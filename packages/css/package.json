@@ -97,7 +97,7 @@
   },
   "peerDependencies": {
     "prettier": "^3",
-    "typescript": ">=5.4.0"
+    "typescript": ">=5.4.0 <7"
   },
   "devDependencies": {
     "@jridgewell/trace-mapping": "^0.3.31",

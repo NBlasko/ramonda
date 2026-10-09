@@ -1,6 +1,7 @@
 import { readFileSync, realpathSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
 import ts from "typescript";
+import { requireItsApi } from "./typescriptApi";
 import { knownNames, configReader, environmentOf } from "../config/config";
 import { variablesSheetFor, writeGenerated } from "../config/generate";
 import { readModule } from "./modules";
@@ -157,6 +158,7 @@ function productionFrom(options: { minify?: boolean; define?: Record<string, str
 }
 
 export function ramondaCss(options: EsbuildCssPluginOptions = {}): EsbuildCssPluginLike {
+  requireItsApi(ts);
   const sheet = new Sheet();
   /**
    * The project's own settings, through the same reader the editor and `ramonda-check` use, with

@@ -1,5 +1,14 @@
 # Ramonda CSS
 
+## 0.6.0
+
+- **Goes with `@ramonda/css` 0.9.0.** The colours are unchanged; the copy of the compiler this
+  extension carries, for a project that has none of its own, is the new one.
+- **A binding a block reads through `$( … )` is a use.** `const spin = @@keyframes(…)`, read only as
+  `animation: $(spin) …`, is no longer called unused, and the editor's list of references finds it.
+- **`hardcoded` is judged per value.** A percentage can be set free while lengths stay tokens, and a
+  value written out where a token already holds it names that token.
+
 ## 0.5.0
 
 - **Goes with `@ramonda/css` 0.8.0.** The colours are unchanged; the copy of the compiler this

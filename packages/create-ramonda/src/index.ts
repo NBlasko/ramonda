@@ -484,7 +484,7 @@ ${body}
  *
  * ## What goes wrong without it
  *
- * pnpm 10 and 11 refuse to run a dependency's build scripts until the project says which are
+ * pnpm 10, 11 and 12 refuse to run a dependency's build scripts until the project says which are
  * allowed, and they exit NON-ZERO when any were skipped:
  *
  * ```
@@ -495,18 +495,18 @@ ${body}
  * every fresh project — measured on both templates, because SSR depends on esbuild directly
  * and the SPA gets it through vite.
  *
- * This monorepo could not have caught it: it pins `pnpm@9.0.0`, which has no such gate.
+ * This monorepo did not catch it at the time: it pinned `pnpm@9.0.0`, which had no such gate.
  *
  * ## Why both keys, and why a YAML file rather than package.json
  *
  * `pnpm-workspace.yaml` is where pnpm 10+ keeps settings, workspace or not — pnpm 11 writes
  * one itself when it wants an answer. The key changed between versions, so both are written:
- * `allowBuilds` is pnpm 11's, `onlyBuiltDependencies` is pnpm 10's. Verified against both
- * (11: exit 0 with either, 10: exit 0 with both, no complaint about the key it does not
- * know).
+ * `allowBuilds` is pnpm 11's and 12's, `onlyBuiltDependencies` is pnpm 10's. Verified against
+ * each (11: exit 0 with either, 10: exit 0 with both, 12.10.1: exit 0 with both and no warning
+ * about the key it does not read).
  *
- * The `pnpm` field in package.json is deliberately NOT used: pnpm 11 warns that it no longer
- * reads it.
+ * The `pnpm` field in package.json is deliberately NOT used: pnpm 11 and 12 warn that they no
+ * longer read it.
  *
  * Written for every project rather than only for pnpm users. It is four lines, npm and yarn
  * ignore it, and the alternative is a project that breaks for whoever clones it with pnpm.
@@ -514,7 +514,7 @@ ${body}
 function writePnpmSettings(targetDir: string): void {
   writeFileSync(
     join(targetDir, "pnpm-workspace.yaml"),
-    `# esbuild needs its install script to put the platform binary in place. pnpm 11 reads
+    `# esbuild needs its install script to put the platform binary in place. pnpm 11+ reads
 # \`allowBuilds\`, pnpm 10 reads \`onlyBuiltDependencies\`; both are here so either works.
 allowBuilds:
   esbuild: true

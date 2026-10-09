@@ -4,7 +4,7 @@ description: Install pnpm, Node.js and workspace dependencies from the frozen lo
 # A composite action so every job sets up the toolchain identically and in one
 # place — bump the Node version or the install flags here and every workflow
 # follows. pnpm is installed BEFORE setup-node so that `cache: pnpm` can find the
-# store, and the version comes from the root `packageManager` field (pnpm@9), so
+# store, and the version comes from the root `packageManager` field, so
 # CI can never drift from what the repo pins.
 runs:
   using: composite

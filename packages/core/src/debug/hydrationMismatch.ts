@@ -48,7 +48,7 @@ function isComparable(name: string, value: unknown): boolean {
  * quoted string) will not normalize perfectly — the cost is a false report on
  * an exotic style, in DEV only, which is the safe direction to fail.
  */
-function normalizeStyle(value: string): string {
+export function normalizeStyle(value: string): string {
   return value
     .split(";")
     .map((declaration) => {

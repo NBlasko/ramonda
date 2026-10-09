@@ -4,6 +4,7 @@ import { Component } from "../../base/Component";
 import { hydrateRoot } from "../../hydration/hydrate";
 import { renderToString } from "../../hydration/ssr";
 import { resetDiagnostics } from "../../debug/diagnostics";
+import { normalizeStyle } from "../../debug/hydrationMismatch";
 import { unnamed } from "../../test/setup";
 
 /**
@@ -366,21 +367,20 @@ describe("hydration mismatch (RMD007)", () => {
    * fire on markup that was entirely correct. Inline styles are legal; the
    * comparator was wrong.
    *
-   * It is also why `jsdom` is pinned to 28.0.0 — in every package, and as an
-   * override in the root `package.json`, so a peer cannot bring another. From 28.1
-   * it brings `cssstyle` 6, which DROPS a declaration whose name is not lower
-   * case — `COLOR:red` parses to nothing — where Chromium, Firefox and WebKit
-   * all keep it as `color: red`. Measured 2026-10-08 on 28.1, 29.1 and 30.1;
-   * this test is the one that fails, and it is right to.
+   * An uppercase property is the third rewrite, and it is not planted here: jsdom
+   * from 28.1 DROPS a declaration whose name is not lower case — `COLOR:red`
+   * parses to nothing — where Chromium, Firefox and WebKit all keep it as
+   * `color: red`. Measured 2026-10-08 on 28.1, 29.1 and 30.1, and again on
+   * 30.1.2. The comparator's half of it is asked directly, in the next test.
    */
   test("a style the DOM rewrites is not a mismatch", async () => {
     class Styled extends Component {
       render() {
-        // None of these survive a DOM round-trip unchanged: no trailing
-        // semicolon, an uppercase property, and loose spacing.
+        // Neither survives a DOM round-trip unchanged: no trailing semicolon,
+        // and loose spacing.
         return (
           <div>
-            <span style="COLOR:red;   font-weight: bold">hi</span>
+            <span style="color:red;   font-weight: bold">hi</span>
           </div>
         );
       }
@@ -390,6 +390,10 @@ describe("hydration mismatch (RMD007)", () => {
     hydrateRoot(<Styled />, container);
 
     expect(captured.all).toEqual([]);
+  });
+
+  test("an uppercase property is the same style as the lower-case one a browser writes", () => {
+    expect(normalizeStyle("COLOR:red;   font-weight: bold")).toBe(normalizeStyle("color: red; font-weight: bold;"));
   });
 
   test("a style that genuinely differs still reports RMD007", async () => {

@@ -19,7 +19,8 @@ TypeScript.
 
 The checking is TypeScript's own, so the package needs yours — it writes a virtual file your compiler
 reads, and a fault in a block arrives as an ordinary `tsc` diagnostic rather than as a report from a
-tool you have to run separately. TypeScript 5.4 or later.
+tool you have to run separately. TypeScript 5.4 or later, and not 7: TypeScript 7 has no JavaScript
+API to read your source with, so the tools stop and say so.
 
 ## One plugin in the build
 

@@ -56,10 +56,6 @@ updates:
       # measured; a PR that moves it is the sign it does not.)
       - dependency-name: vite-7
         update-types: ["version-update:semver-major"]
-      # Pinned exactly: 28.1+ changed CSSOM `cssText` serialization, which breaks
-      # the RMD007 style-normalization test.
-      - dependency-name: jsdom
-        update-types: ["version-update:semver-minor", "version-update:semver-major"]
       # TS 7 (the native rewrite) removed `baseUrl`, which every tsconfig here
       # uses with `paths`.
       - dependency-name: typescript
