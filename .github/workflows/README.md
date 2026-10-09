@@ -258,7 +258,8 @@ Dependabot already do here at no cost. What Snyk is remembered for — shouting
 about transitive advisories in a Next.js app — is the Dependabot half of this
 table, reading the same GitHub Advisory Database.
 
-**One override, and its receipt.** `pnpm.overrides` in the root `package.json`
+**One override, and its receipt.** `overrides` in `pnpm-workspace.yaml` (pnpm 12
+no longer reads the `pnpm` field of `package.json`, and skips it with a warning)
 forces `esbuild` to `>=0.28.1`. Before it, `pnpm audit` reported one low advisory
 ([GHSA-g7r4-m6w7-qqqr](https://github.com/advisories/GHSA-g7r4-m6w7-qqqr) —
 arbitrary file read via esbuild's dev server, on Windows) reachable through 15

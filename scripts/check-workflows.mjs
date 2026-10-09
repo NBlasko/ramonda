@@ -67,6 +67,51 @@ function bypassesIn(text, tasks) {
 
 const tasks = orchestratedTasks();
 
+/**
+ * Inputs `changesets/action` does not have, which it IGNORES rather than refuses.
+ *
+ * v2 renamed every input it shares with v1 — `version` is `version-script`, `publish` is
+ * `publish-script`, `title` is `pr-title`, `commit` is `commit-message`. A workflow that moved to v2
+ * and kept the old names gets a warning in the Actions log and a release step with no publish script:
+ * the version PR still opens, merging it publishes nothing, and every check stays green. That is the
+ * mistake this catches. The list is v2.1.2's `action.yml`, copied 2026-10-09; a later major needs it
+ * read again.
+ */
+const CHANGESETS_INPUTS = new Set([
+  "github-token",
+  "publish-script",
+  "version-script",
+  "commit-message",
+  "pr-title",
+  "pr-draft",
+  "pr-base-branch",
+  "create-github-releases",
+  "push-git-tags",
+  "push-with-git-cli",
+  "cwd",
+]);
+
+function unknownInputsIn(text) {
+  const found = [];
+  const lines = text.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    if (!/uses:\s*changesets\/action@/.test(lines[i])) continue;
+    const withAt = lines.findIndex((line, j) => j > i && /^\s*with:\s*$/.test(line));
+    if (withAt === -1) continue;
+    const indent = lines[withAt].search(/\S/);
+    for (let j = withAt + 1; j < lines.length; j++) {
+      const line = lines[j];
+      if (line.trim() === "" || line.trim().startsWith("#")) continue;
+      if (line.search(/\S/) <= indent) break;
+      const key = /^\s*([\w-]+):/.exec(line)?.[1];
+      if (key !== undefined && line.search(/\S/) === lines[withAt + 1].search(/\S/) && !CHANGESETS_INPUTS.has(key)) {
+        found.push({ line: j + 1, key, text: line.trim() });
+      }
+    }
+  }
+  return found;
+}
+
 if (process.env.SELFTEST === "1") {
   // The offending line exactly as it was, plus the correct form, because a check that flags everything is
   // as useless as one that flags nothing.
@@ -82,7 +127,20 @@ if (process.env.SELFTEST === "1") {
     console.error(`[workflows] SELFTEST failed: the CORRECT form was flagged, so this would block the fix.`);
     process.exit(1);
   }
-  console.log(`[workflows] SELFTEST passed: the bypass is caught, the turbo form is not.`);
+  const v1 =
+    "      - uses: changesets/action@v2\n        with:\n          # a comment\n          publish: pnpm release\n          pr-title: x\n";
+  const v2 =
+    "      - uses: changesets/action@v2\n        with:\n          publish-script: pnpm release\n          pr-title: x\n";
+  const caught = unknownInputsIn(v1);
+  if (caught.length !== 1 || caught[0].key !== "publish") {
+    console.error(`[workflows] SELFTEST failed: a v1 input on changesets/action v2 was not flagged.`);
+    process.exit(1);
+  }
+  if (unknownInputsIn(v2).length !== 0) {
+    console.error(`[workflows] SELFTEST failed: v2's own inputs were flagged.`);
+    process.exit(1);
+  }
+  console.log(`[workflows] SELFTEST passed: the bypass is caught, the turbo form is not; an ignored input is caught.`);
   process.exit(0);
 }
 
@@ -94,6 +152,20 @@ for (const name of readdirSync(dir)) {
   for (const hit of bypassesIn(readFileSync(join(dir, name), "utf8"), tasks)) {
     problems.push({ file: `.github/workflows/${name}`, ...hit });
   }
+}
+
+const ignored = [];
+for (const name of readdirSync(dir)) {
+  if (!name.endsWith(".yml") && !name.endsWith(".yaml")) continue;
+  for (const hit of unknownInputsIn(readFileSync(join(dir, name), "utf8"))) {
+    ignored.push({ file: `.github/workflows/${name}`, ...hit });
+  }
+}
+if (ignored.length > 0) {
+  console.error(`\n[workflows] changesets/action has no input by these names, and ignores them:\n`);
+  for (const p of ignored) console.error(`  ${p.file}:${p.line}\n      ${p.text}\n`);
+  console.error(`  Its inputs are: ${[...CHANGESETS_INPUTS].join(", ")}.\n`);
+  process.exit(1);
 }
 
 if (problems.length > 0) {
