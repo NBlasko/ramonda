@@ -34,7 +34,7 @@
     "@ramonda/check": "workspace:^",
     "@ramonda/css": "workspace:^",
     "@ramonda/theme": "workspace:^",
-    "@types/node": "^26.6.4",
+    "@types/node": "^26.6.5",
     "esbuild": "0.28.2",
     "jsdom": "30.1.2",
     "markdown-it": "^15.0.2",

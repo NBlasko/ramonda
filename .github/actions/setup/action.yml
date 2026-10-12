@@ -13,7 +13,7 @@ runs:
       uses: pnpm/action-setup@v6
 
     - name: Install Node.js
-      uses: actions/setup-node@v5
+      uses: actions/setup-node@v7
       with:
         # The one place the version is decided; release.yml's setup-node reads it
         # from `.nvmrc` rather than repeating it. Node 20 left support in April
@@ -46,7 +46,7 @@ runs:
     # evicted to make room; the restore-keys walk back to this job's last cache,
     # then to any job's.
     - name: Cache turbo
-      uses: actions/cache@v4
+      uses: actions/cache@v6
       with:
         path: .turbo/cache
         key: turbo-${{ runner.os }}-${{ github.job }}-${{ github.sha }}

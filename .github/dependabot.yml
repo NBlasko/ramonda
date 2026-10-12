@@ -28,9 +28,11 @@ updates:
       - /
       - /packages/*
       - /apps/*
+    # Monthly: weekly kept a version pull request open most of the time, for releases
+    # nobody here was waiting on. A vulnerability does not wait for this schedule: the
+    # alert half above reports it as soon as the advisory is published.
     schedule:
-      interval: weekly
-      day: monday
+      interval: monthly
     open-pull-requests-limit: 5
     groups:
       # Two groups, split the way the risk splits: a devDependency bump can break
@@ -65,13 +67,12 @@ updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: weekly
-      day: monday
+      interval: monthly
     groups:
       actions:
         patterns: ["*"]
     # This is the reason the workflows pin exact versions where no moving major
-    # tag exists (`ossf/scorecard-action@v2.4.4`,
+    # tag exists (`ossf/scorecard-action@v2.5.0`,
     # `actions/dependency-review-action@v5.0.0`): a pin that cannot drift under
     # you, plus a bot whose job is to move it deliberately.
     ignore:

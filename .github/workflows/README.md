@@ -220,7 +220,7 @@ worth knowing before adding another bot:
   as `@v4.37.3`, which would mean a pull request for every CodeQL patch release
   from then on. `@v4` already excludes the only change that can break a workflow —
   a new major — so `dependabot.yml` now ignores patch and minor for that action.
-  The exact pins elsewhere (`ossf/scorecard-action@v2.4.4`,
+  The exact pins elsewhere (`ossf/scorecard-action@v2.5.0`,
   `actions/dependency-review-action@v5.0.0`) stay, because those two publish no
   moving major tag to use instead.
 
@@ -557,7 +557,7 @@ only with the fix in hand:
   now. Escalating is one uncommented block in `.github/codeql/codeql-config.yml`,
   and the time to do it is after the default suite's findings are triaged — the
   `innerHTML` writes in `packages/devtools/src/index.ts` first.
-- **SHA-pinned actions.** Workflows pin tags (`@v7`, `@v2.4.4`), not commit SHAs.
+- **SHA-pinned actions.** Workflows pin tags (`@v7`, `@v2.5.0`), not commit SHAs.
   Scorecard marks this down, and it is right that a tag can be moved under you;
   a SHA is also unreadable and drifts silently out of date. Revisit if Dependabot's
   `github-actions` updates prove reliable enough to keep SHAs current.
