@@ -2,6 +2,7 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "target": "ESNext",
+    "types": ["node"],
     "noUnusedLocals": true,
     "jsx": "react-jsx",
     "jsxImportSource": "@ramonda/core",

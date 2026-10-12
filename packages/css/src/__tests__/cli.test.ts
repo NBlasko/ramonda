@@ -47,7 +47,6 @@ function project(card: string): string {
         jsx: "preserve",
         types: [],
         skipLibCheck: true,
-        baseUrl: ".",
         paths: { "@ramonda/css/properties": [join(PACKAGE, "src", "properties.ts")] },
       },
       include: ["src"],

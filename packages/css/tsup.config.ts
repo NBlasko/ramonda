@@ -1,4 +1,5 @@
 import { defineConfig } from "tsup";
+import { dts } from "../../tsup.dts";
 
 export default defineConfig([
   /**
@@ -55,7 +56,7 @@ export default defineConfig([
       prettier: "src/adapters/prettier.ts",
     },
     format: ["esm"],
-    dts: true,
+    dts,
     target: "es2022",
     outDir: "dist",
   },
@@ -71,7 +72,7 @@ export default defineConfig([
   {
     entry: { config: "src/config/entry.ts" },
     format: ["esm", "cjs"],
-    dts: true,
+    dts,
     target: "es2022",
     outDir: "dist",
   },

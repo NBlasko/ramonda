@@ -29,7 +29,7 @@ describe("TypeScript 7, which has no JavaScript API", () => {
     expect(status).toBe(1);
     expect(output).toContain(
       "[ramonda-check] TypeScript 7.0.2 is installed, and it has no JavaScript API to read your source with. " +
-        "Install TypeScript 5 or 6: `npm install -D typescript@5`.",
+        "Install TypeScript 5 or 6: `npm install -D typescript@6`.",
     );
     expect(output).not.toContain("Cannot read properties");
   });

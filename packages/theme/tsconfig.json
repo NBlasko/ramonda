@@ -2,6 +2,7 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "target": "ESNext",
+    "types": ["node"],
     "noUnusedLocals": true,
     "noEmit": true,
     "allowImportingTsExtensions": true

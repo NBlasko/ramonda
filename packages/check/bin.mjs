@@ -19,7 +19,7 @@ const { default: ts } = await import("typescript");
 if (typeof ts.createProgram !== "function") {
   console.error(
     `\n[ramonda-check] TypeScript ${ts.version ?? "(unknown version)"} is installed, and it has no JavaScript API to read your source with. ` +
-      "Install TypeScript 5 or 6: `npm install -D typescript@5`.\n",
+      "Install TypeScript 5 or 6: `npm install -D typescript@6`.\n",
   );
   process.exit(1);
 }

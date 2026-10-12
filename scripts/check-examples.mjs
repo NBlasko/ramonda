@@ -902,6 +902,11 @@ for (const group of groups.values()) {
     // A name the DOM owns too — see `domGlobals`. The reader's import settles it; a fragment
     // showing no imports cannot.
     if ([...shadowed].some((name) => message.includes(`'${name}'`))) continue;
+    // A Node built-in the block imports. TypeScript 5 said so with 2307, which is ignored above;
+    // 6 says it with 2591, the code it also uses for a missing `process` or `__dirname` — and
+    // those must stay reported, because a page that uses them without importing anything is
+    // telling a browser reader something false.
+    if (diagnostic.code === 2591 && message.startsWith("Cannot find name 'node:")) continue;
     const { line, character } = source.getLineAndCharacterOfPosition(diagnostic.start ?? 0);
     const list = byUnit.get(unit) ?? [];
     list.push({

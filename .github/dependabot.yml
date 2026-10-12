@@ -56,8 +56,9 @@ updates:
       # measured; a PR that moves it is the sign it does not.)
       - dependency-name: vite-7
         update-types: ["version-update:semver-major"]
-      # TS 7 (the native rewrite) removed `baseUrl`, which every tsconfig here
-      # uses with `paths`.
+      # TS 7 (the native rewrite) has no JavaScript API, and the checker, the
+      # CSS compiler and the editor plugin all read source through it. It also
+      # removes `baseUrl`, which tsup's declaration build sets (see tsup.dts.ts).
       - dependency-name: typescript
         update-types: ["version-update:semver-major"]
 

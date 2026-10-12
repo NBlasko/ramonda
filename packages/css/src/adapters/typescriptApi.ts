@@ -13,7 +13,7 @@ export function withoutItsApi(ts: { version?: string; createProgram?: unknown })
   if (typeof ts.createProgram === "function") return undefined;
   return (
     `TypeScript ${ts.version ?? "(unknown version)"} is installed, and it has no JavaScript API to read your source with. ` +
-    "Install TypeScript 5 or 6: `npm install -D typescript@5`."
+    "Install TypeScript 5 or 6: `npm install -D typescript@6`."
   );
 }
 

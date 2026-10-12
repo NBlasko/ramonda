@@ -539,11 +539,13 @@ only with the fix in hand:
   Vite 8 was held back for a while, because its Oxc transform ignored the `esbuild` block every
   vitest config used and cannot lower a TC39 decorator at all. Every config now uses `ramonda()`
   from `@ramonda/build`, which lowers them itself on Vite 8.
-- **`typescript` held at `^5.9`.** TS 7 (the native rewrite) has no JavaScript
+- **`typescript` held at `^6`.** TS 7 (the native rewrite) has no JavaScript
   API: its package exports `version` and nothing else (measured on 7.0.2), and
   `@ramonda/check`, `@ramonda/css` and the editor plugin all read source through
-  that API. Their peer ranges say `<7` for the same reason. TS 7 also removed
-  `baseUrl`, which every tsconfig here uses with `paths`.
+  that API. Their peer ranges say `<7` for the same reason, and a scaffolded
+  project gets the newest major below that. TS 7 also removes `baseUrl`, which
+  tsup's declaration build sets on its own; on 6 it is only deprecated, and
+  `tsup.dts.ts` switches that one deprecation off for that one compile.
 
 ## Deliberate gaps (the "we'll add more later" list)
 

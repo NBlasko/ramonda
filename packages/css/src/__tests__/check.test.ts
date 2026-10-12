@@ -62,7 +62,6 @@ function project(files: Record<string, string>, shape: string | null = join(PACK
         jsx: "preserve",
         types: [],
         skipLibCheck: true,
-        baseUrl: ".",
         // What `node_modules` gives a real project. Written out so the map under test is the
         // package's own rather than a fixture.
         ...(shape === null ? {} : { paths: { "@ramonda/css/properties": [shape] } }),
@@ -2641,7 +2640,7 @@ describe("a `$` token in a whole shorthand from another block", () => {
           "ramonda.css.ts": CONFIG,
           "Card.tsx": `const base = @@( ${base} );\nexport const card = @@( ...$(base); ${card} );\n`,
         },
-        "src/props.ts",
+        "./src/props.ts",
       ),
     ).findings;
 

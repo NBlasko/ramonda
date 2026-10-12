@@ -161,6 +161,25 @@ describe("third-party versions", () => {
     expect(all.jsdom).toBe(`^${core.devDependencies.jsdom!.replace(/^[\^~]/, "")}`);
   });
 
+  test("TypeScript is the newest major the CSS compiler and the checker can read with", () => {
+    /**
+     * TS 7 has no JavaScript API, so both peer ranges stop below it. A project scaffolded on an
+     * older major than the tools allow is held back for nothing; one on a newer major installs
+     * a compiler neither tool can run against.
+     */
+    const { pkg } = make("spa", ["css"]);
+    const major = (range: string) => Number(/\d+/.exec(range)![0]);
+    for (const tool of ["css", "check"]) {
+      const peer = (
+        JSON.parse(readFileSync(join(workspace, "packages", tool, "package.json"), "utf8")) as {
+          peerDependencies: Record<string, string>;
+        }
+      ).peerDependencies.typescript!;
+      const below = Number(/<\s*(\d+)/.exec(peer)![1]);
+      expect(major(pkg.devDependencies.typescript!), `@ramonda/${tool} takes ${peer}`).toBe(below - 1);
+    }
+  });
+
   test("vitest brings vite, which is its peer dependency", () => {
     /**
      * Without it vitest has no transform. Measured on a scaffolded SSR project: the .tsx

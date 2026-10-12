@@ -6,7 +6,7 @@
     "build": {
       "dependsOn": ["^build", "content"],
       "env": ["VITE_APP_TYPE", "NODE_ENV"],
-      "inputs": ["$TURBO_DEFAULT$", ".env*"],
+      "inputs": ["$TURBO_DEFAULT$", ".env*", "$TURBO_ROOT$/tsup.dts.ts"],
       "outputs": ["dist/**"]
     },
     "test": {
