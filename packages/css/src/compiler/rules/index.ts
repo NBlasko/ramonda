@@ -37,7 +37,7 @@ import {
   initialValueAndSyntax,
   propertyDescriptorMissing,
 } from "./namedSites";
-import { tooManyValues, unitNotAllowed, urlNotFound } from "./values";
+import { invalidValue, tooManyValues, unitNotAllowed, urlNotFound } from "./values";
 import {
   literalNotAllowed,
   shorthandNotAllowed,
@@ -182,6 +182,8 @@ export const RULE_IDS = [
   "malformed-number",
   // A real unit of a kind the property drops — `z-index: 2x`. See `unitOfTheWrongKind`.
   "unit-of-the-wrong-kind",
+  // A value its property's grammar cannot read, function arguments included. See `validateValue.ts`.
+  "invalid-value",
   "unknown-selector",
   // A missing `:`, an `An+B` no engine reads, a bracket left open. See `malformedSelector`.
   "malformed-selector",
@@ -486,6 +488,16 @@ export function checkBlock(written: AnyBlock, options: CheckOptions = {}): Findi
   // LAST, because it stays quiet wherever another rule has already spoken — see its own note.
   unclosedCall(block, findings);
   missingSemicolon(block, findings);
+  // After EVERY other rule, and only on a declaration none of them named: the grammar knows the value
+  // is wrong, and the rule that says which word is the better report. See `invalidValue`.
+  if (at === undefined) {
+    for (const item of declarationsIn(block)) {
+      const from = item.at ?? 0;
+      const to = item.end ?? Number.POSITIVE_INFINITY;
+      if (item.at === undefined || findings.some((one) => one.at >= from && one.at <= to)) continue;
+      invalidValue(item, findings);
+    }
+  }
   const once = outermost(block, findings);
 
   const silenced = config?.rules;
@@ -570,6 +582,8 @@ function outermost(block: Block, findings: readonly Finding[]): Finding[] {
  * assignable*; `TS2561` is the compiler's own *did you mean* for a bare property name.
  */
 export const SPEAKS_OVER_TYPES: readonly RuleId[] = [
+  /** The whole value, said once: the compiler's `is not assignable` at the same place would be the second. */
+  "invalid-value",
   "hardcoded-not-allowed",
   "unit-not-allowed",
   "value-not-allowed",

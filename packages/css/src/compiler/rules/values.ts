@@ -8,10 +8,13 @@ import {
   PROPERTIES,
   PROPERTY_NAMED,
   SHORTHANDS,
+  UNION_TYPED,
   UNITS,
   UNIT_TYPE,
 } from "../keywords.generated";
 import { splitOf, tokensOf } from "../split";
+import { valueMatchesGrammar } from "../validateValue";
+import { ENGINE_OPEN } from "../keywords.engine.generated";
 import { canonicalValue, propertyName } from "../normalise";
 import { type Declaration, type ValuePart, textOnly, textPartsOf } from "../ast";
 import { urlsIn, withoutQuery } from "../urlsIn";
@@ -759,6 +762,35 @@ export function unitOfTheWrongKindInItsLonghands(item: Declaration, findings: Fi
       message: `\`${found.unit}\` is ${KIND_WORDS[kind] ?? kind} unit, and \`${into[0]}\` — where \`${token}\` lands in \`${item.property}\` — takes none, so a browser drops this declaration.`,
     });
   }
+}
+
+/**
+ * A value its property's grammar cannot read — `rgb(1x 2 3)`, `linear-gradient(redx, blue)`,
+ * `aspect-ratio: 16  9`. Asked last and only where no other rule spoke, so a fault a word gives away
+ * is named by the rule that names it. See `validateValue.ts` for what was measured, and
+ * `check-value-grammar.mjs` for the gate that keeps a valid value from being refused.
+ */
+export function invalidValue(item: Declaration, findings: Finding[]): void {
+  if (item.value.length !== 1) return;
+  const [part] = item.value;
+  if (part.kind !== "text" || part.resolved || part.at === undefined) return;
+  const property = item.property.toLowerCase();
+  // A vendor's own name or word is that vendor's vocabulary, and no grammar here has it — the same
+  // line every rule in this file draws. A property with a whole union for a type is the compiler's
+  // to answer, and it answers with a suggestion this cannot give.
+  // And a property the ENGINES take more of than its grammar says — `column-rule-style: solid, dashed`
+  // — is one this cannot judge: `ENGINE_OPEN` is the measured list.
+  if (property.startsWith("-") || UNION_TYPED.includes(property) || ENGINE_OPEN.includes(property)) return;
+  if (/(?:^|[\s,(/])-(?:webkit|moz|ms|o|apple|epub)-/i.test(part.text)) return;
+  if (valueMatchesGrammar(property, part.text) !== false) return;
+  const text = part.text.replace(/\s*!\s*important\s*$/i, "").trimEnd();
+  const lead = text.length - text.trimStart().length;
+  findings.push({
+    rule: "invalid-value",
+    at: part.at + lead,
+    length: text.trim().length,
+    message: `\`${text.trim()}\` is not a value \`${item.property}\` takes, so a browser drops this declaration.`,
+  });
 }
 
 /** Each `#word` in a value, skipping strings and what `url()` holds — a fragment there is a path. */

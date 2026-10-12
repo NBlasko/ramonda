@@ -174,3 +174,31 @@ describe("a multiplier with no upper bound", () => {
     expect(taken("<time>#", "1s 2s")).toBeUndefined();
   });
 });
+
+/**
+ * Three readings a VALIDATOR needs and the splitter never asked for — each found by the value-grammar
+ * prototype against 1946 real declarations, where they were 46 of 47 false refusals.
+ */
+describe("what checking a value needs", () => {
+  /** `inset? && <length>{2,4}`: `box-shadow: 0 4px` has no `inset`, and `&&` must let it be absent. */
+  test("an optional part of `&&` may be absent", () => {
+    expect(taken("inset? && <length>{2,4}", "0px 4px")).toEqual(["length=0px 4px"]);
+    expect(taken("inset? && <length>{2,4}", "inset 0px 4px")).toEqual(["inset=inset", "length=0px 4px"]);
+  });
+
+  /** CSS Values 4 §2.6: a `,` beside a part that took nothing is left out — `background: yellow`. */
+  test("a comma beside an omitted part is omitted", () => {
+    expect(taken("<custom-ident>#? , <length>", "4px")).toEqual(["length=4px"]);
+    expect(taken("<custom-ident>#? , <length>", "a , 4px")).toEqual(["custom-ident=a", "length=4px"]);
+    expect(taken("<length># , <custom-ident>?", "4px")).toEqual(["length=4px"]);
+  });
+
+  test("but a comma between two parts that are both there is not", () => {
+    expect(taken("<custom-ident> , <length>", "a 4px")).toBeUndefined();
+  });
+
+  /** `#?` is a list that may be absent; reading only the `#` made it required. */
+  test("`#?` may take nothing", () => {
+    expect(taken("<custom-ident>#? <length>", "4px")).toEqual(["length=4px"]);
+  });
+});

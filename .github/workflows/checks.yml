@@ -241,6 +241,8 @@ jobs:
           SELFTEST=hole node scripts/css/check-engine-sweep.mjs
           SELFTEST=fixed node scripts/css/check-engine-sweep.mjs
           node scripts/css/check-engine-sweep.mjs
+          SELFTEST=refuse node scripts/css/check-value-grammar.mjs
+          node scripts/css/check-value-grammar.mjs
 
       - name: Build the playground
         run: pnpm exec turbo run build --filter=playground-core

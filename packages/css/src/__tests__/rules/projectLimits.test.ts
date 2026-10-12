@@ -749,7 +749,8 @@ describe("a config rule inside a nested rule", () => {
     ["a variable, which is the point of the setting", "color: $color.primary.main;"],
     ["a `var()` call", "color: var(--anything);"],
   ])("%s stays silent inside a nested rule too", (_what, css) => {
-    expect(under(`  &:hover {\n    ${css}\n  }`)).toEqual([]);
+    // About `hardcoded-not-allowed` alone: `color: 2px` is no colour, and `invalid-value` says so.
+    expect(under(`  &:hover {\n    ${css}\n  }`)).not.toContain("hardcoded-not-allowed");
   });
 });
 

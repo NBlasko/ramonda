@@ -1301,3 +1301,57 @@ test("a shorthand's long run of digits is answered at once", () => {
   rules(`  margin: ${"0".repeat(20_000)}x auto;`);
   expect(performance.now() - started).toBeLessThan(250);
 });
+
+/**
+ * A value its property's grammar cannot read — a fault inside a call, or between tokens, that no
+ * single word gives away. Each one here is dropped by Chromium, Firefox and WebKit, and each was
+ * silent until `check-engine-sweep.mjs` asked. See `validateValue.ts`.
+ */
+describe("a value its grammar cannot read", () => {
+  test.each([
+    ["a colour name misspelt in a gradient", "  background-image: linear-gradient(redx, blue);"],
+    ["a comma lost in a gradient", "  background-image: linear-gradient(red blue);"],
+    ["a unit inside rgb()", "  color: rgb(1x 2 3);"],
+    ["a comma lost in cubic-bezier()", "  transition-timing-function: cubic-bezier(0.4 0, 0.2, 1);"],
+    ["an angle with no unit", "  transform: rotate(45);"],
+    ["a length with no unit in blur()", "  filter: blur(2);"],
+    ["a slash lost", "  aspect-ratio: 16  9;"],
+    ["a colour space misspelt", "  color: color-mix(in srgbx, red 40%, blue);"],
+  ])("%s is reported", (_what, css) => {
+    expect(rules(css)).toContain("invalid-value");
+  });
+
+  test("says which property, and covers the value", () => {
+    const css = "  transform: rotate(45);";
+    const [found] = check(css).filter((one) => one.rule === "invalid-value");
+    const source = `<div className={@@(\n${css}\n)}>x</div>`;
+    expect(source.slice(found.at, found.at + found.length)).toBe("rotate(45)");
+    expect(found.message).toBe("`rotate(45)` is not a value `transform` takes, so a browser drops this declaration.");
+  });
+
+  test("a fault another rule already names is said once", () => {
+    expect(check("  width: 1p0x;").map((one) => one.rule)).toEqual(["unknown-unit"]);
+  });
+
+  test.each([
+    ["a background colour", "  background: yellow;"],
+    ["a background with layers", "  background: url(a.png) no-repeat 0 0 / 40px 40px, #fff;"],
+    ["a shadow", "  box-shadow: 0 12px 28px #0003, 0 2px 4px #0000001a;"],
+    ["an inset shadow", "  box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.2);"],
+    ["the old rgb()", "  border: 1px solid rgb(77, 146, 33);"],
+    ["a circle", "  clip-path: circle(50%);"],
+    ["display list-item", "  display: list-item;"],
+    ["a colour scheme", "  color-scheme: light dark;"],
+    ["a grid area", "  grid-area: 1 / 1 / 2 / 2;"],
+    ["calc", "  width: calc(100% - 2rem);"],
+    ["a font", '  font: 14px/1.5 -apple-system, system-ui, "Segoe UI", sans-serif;'],
+    ["a variable", "  color: var(--accent);"],
+    ["important", "  color: red !important;"],
+    // Line names are `[` and `]` around words. Found by `check-render-equality.mjs`, whose page
+    // renders exactly this in every engine.
+    ["grid line names", '  grid-template: [top] "h h" 20px [mid] "s m" 30px / 40px 1fr;'],
+    ["named columns", "  grid-template-columns: [full-start] 1fr [content-start] 2fr [content-end];"],
+  ])("%s is silent", (_what, css) => {
+    expect(rules(css)).not.toContain("invalid-value");
+  });
+});
