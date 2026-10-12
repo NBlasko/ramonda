@@ -238,9 +238,9 @@ Firefox and touches nothing in Chromium or WebKit, so no single split writes the
 three. It is listed as `contested` on the shape, and the build refuses it as
 `value-differs-across-engines` — the author's own line renders two ways, so it is not an option.
 
-**Known and not fixed**: `container: card / inline-size` is refused. The positional learner never
-learned the slash form for `container` — its patterns are `1` to `4` — so every value with the `/`
-keeps its shorthand. Safe, and a gap.
+`container` was the one family the positional learner could not read with its `/` — its patterns are
+`1` to `4` — and it is split by hand now (`splitByHand.ts`): `container: card / inline-size` is
+`container-name: card` and `container-type: inline-size`.
 
 A refusal is safe wherever it happens. The declaration stays a shorthand, which is visibly the
 author's own text — where a wrong split is invisible. And a shorthand that reaches the stylesheet

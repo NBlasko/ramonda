@@ -37,7 +37,7 @@ import {
   initialValueAndSyntax,
   propertyDescriptorMissing,
 } from "./namedSites";
-import { invalidValue, tooManyValues, unitNotAllowed, urlNotFound } from "./values";
+import { containerWithoutAType, invalidValue, tooManyValues, unitNotAllowed, urlNotFound } from "./values";
 import {
   literalNotAllowed,
   shorthandNotAllowed,
@@ -149,6 +149,8 @@ export const RULE_IDS = [
   "supports-a-media-feature",
   // A `@supports` condition false by a slip: a near miss, `(gap: 1)`, a missing `:`. See `supportsNeverTrue`.
   "supports-never-true",
+  // `container: card` with no type, which sets the type back to `normal`. See `containerWithoutAType`.
+  "container-without-a-type",
   // A number a browser drops where no type refuses it — `gap: 12`, `z-index: 1.5`. See `numberDropped`.
   "number-without-a-unit",
   "fraction-where-a-whole-number-goes",
@@ -420,6 +422,7 @@ export function checkBlock(written: AnyBlock, options: CheckOptions = {}): Findi
   malformedMedia(block, findings);
   supportsAMediaFeature(block, findings);
   supportsNeverTrue(block, findings);
+  containerWithoutAType(block, findings);
   spelling(block, findings);
   layerInABlock(block, findings);
   rootInABlock(block, findings);

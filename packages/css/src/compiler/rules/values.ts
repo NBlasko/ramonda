@@ -793,6 +793,43 @@ export function invalidValue(item: Declaration, findings: Finding[]): void {
   });
 }
 
+/**
+ * A container's NAME written without its TYPE, in one block — `container: card`, or `container-name:
+ * card` with no `container-type` beside it.
+ *
+ * Measured in Chromium, Firefox and WebKit: `container: card` sets `container-type` back to
+ * `normal`, so a size condition asking for `card` never matches — even on an element whose type
+ * another rule had set — and a name with no type answers a style query only. CSS allows both; agreed
+ * with the user, a block says both: the shorthand carries the type, the longhands stand side by side,
+ * and a container meant for style queries writes `/ normal`. Read within one block, so it needs no
+ * guess about which blocks meet on an element.
+ */
+export function containerWithoutAType(block: Block, findings: Finding[]): void {
+  const items = declarationsIn(block);
+  const typed = items.some((one) => one.property.toLowerCase() === "container-type");
+  for (const item of items) {
+    const property = item.property.toLowerCase();
+    if (property !== "container" && property !== "container-name") continue;
+    const [part] = item.value;
+    if (item.value.length !== 1 || part.kind !== "text" || part.at === undefined) continue;
+    const text = withoutImportant(part.text).trim();
+    if (text === "" || text.toLowerCase() === "none") continue;
+    if (property === "container" && text.includes("/")) continue;
+    if (property === "container-name" && typed) continue;
+    findings.push({
+      rule: "container-without-a-type",
+      at: part.at + part.text.indexOf(text),
+      length: text.length,
+      message:
+        property === "container"
+          ? `\`container: ${text}\` sets \`container-type\` back to \`normal\`, so a size condition asking for it ` +
+            `never matches. Write \`container: ${text} / inline-size\` — or \`/ normal\` for a container asked only about style.`
+          : `\`container-name: ${text}\` has no \`container-type\` beside it, so a size condition asking for it never ` +
+            "matches. Write the type in this block too — or `container: … / normal` for a container asked only about style.",
+    });
+  }
+}
+
 /** Each `#word` in a value, skipping strings and what `url()` holds — a fragment there is a path. */
 function* hashesIn(text: string): Generator<{ hash: string; index: number }> {
   let index = 0;

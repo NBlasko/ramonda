@@ -1266,8 +1266,8 @@ describe("a container name nothing in the project names", () => {
   });
 
   test.each([
-    ["by `container-name`", "  container-name: card;"],
-    ["among several", "  container-name: sidebar card;"],
+    ["by `container-name`", "  container-name: card;\n  container-type: inline-size;"],
+    ["among several", "  container-name: sidebar card;\n  container-type: inline-size;"],
     ["by the `container` shorthand", "  container: card / inline-size;"],
   ])("a name another file gives %s is fine", (_what, body) => {
     const report = check({
@@ -1280,7 +1280,7 @@ describe("a container name nothing in the project names", () => {
 
   test("a near miss in another file is offered", () => {
     const report = check({
-      "Layout.tsx": `const l = <div className={@@(\n  container-name: sidebar;\n)}>x</div>;\nexport default l;\n`,
+      "Layout.tsx": `const l = <div className={@@(\n  container: sidebar / inline-size;\n)}>x</div>;\nexport default l;\n`,
       "Card.tsx": query("sidebr"),
     });
 

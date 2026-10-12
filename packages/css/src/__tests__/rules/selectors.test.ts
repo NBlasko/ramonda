@@ -518,9 +518,14 @@ describe("a condition that cannot switch", () => {
     ["a value that never ends", `  padding: 0${"00".repeat(10_000)}!;`],
     ["a length that never ends", `  margin: 1${"00".repeat(10_000)}.;`],
   ])("%s is answered at once", (_what, css) => {
-    const started = performance.now();
-    rules(css);
-    expect(performance.now() - started).toBeLessThan(250);
+    // The best of three: one run can stall twentyfold under a full gate's parallel load — measured,
+    // 254 ms for a run that takes 12 — and a quadratic reading would be seconds on every one of them.
+    const runs = [0, 1, 2].map(() => {
+      const started = performance.now();
+      rules(css);
+      return performance.now() - started;
+    });
+    expect(Math.min(...runs)).toBeLessThan(250);
   });
 
   test.each([
@@ -796,5 +801,39 @@ describe("a supports condition that is never true by mistake", () => {
     ["a new function", "  @supports (width: calc-size(auto, size)) { color: red; }"],
   ])("%s is silent", (_what, css) => {
     expect(rules(css)).not.toContain("supports-never-true");
+  });
+});
+
+/**
+ * A container's name always comes with its type, in one block. Measured in Chromium, Firefox and
+ * WebKit: `container: card` sets `container-type` back to `normal`, so a size condition asking for
+ * `card` never matches — even on an element whose type another rule had set; and a name with no
+ * type answers a style query only. Agreed with the user: the shorthand carries both, the longhands
+ * are written side by side, and a container meant for style queries says `/ normal`.
+ */
+describe("a container named without its type", () => {
+  test.each([
+    ["the shorthand with a name alone", "  container: card;"],
+    ["several names", "  container: card sidebar;"],
+    ["the name longhand alone", "  container-name: card;"],
+  ])("%s is reported", (_what, css) => {
+    expect(rules(css)).toContain("container-without-a-type");
+  });
+
+  test("the shorthand says what to write", () => {
+    expect(messages("  container: card;").join(" ")).toContain("`container: card / inline-size`");
+    expect(messages("  container: card;").join(" ")).toContain("`/ normal`");
+  });
+
+  test.each([
+    ["the shorthand with a type", "  container: card / inline-size;"],
+    ["a style container, said so", "  container: card / normal;"],
+    ["both longhands", "  container-name: card;\n  container-type: size;"],
+    ["in either order", "  container-type: size;\n  container-name: card;"],
+    ["no name at all", "  container-type: inline-size;"],
+    ["no container", "  container: none;"],
+    ["a name of none", "  container-name: none;"],
+  ])("%s is silent", (_what, css) => {
+    expect(rules(css)).not.toContain("container-without-a-type");
   });
 });

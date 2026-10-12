@@ -1297,9 +1297,13 @@ describe("a shorthand, read through its longhands", () => {
 });
 
 test("a shorthand's long run of digits is answered at once", () => {
-  const started = performance.now();
-  rules(`  margin: ${"0".repeat(20_000)}x auto;`);
-  expect(performance.now() - started).toBeLessThan(250);
+  // The best of three, as the timing tests in `selectors.test.ts` take it: one run can stall under load.
+  const runs = [0, 1, 2].map(() => {
+    const started = performance.now();
+    rules(`  margin: ${"0".repeat(20_000)}x auto;`);
+    return performance.now() - started;
+  });
+  expect(Math.min(...runs)).toBeLessThan(250);
 });
 
 /**

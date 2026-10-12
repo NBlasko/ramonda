@@ -180,8 +180,10 @@ externalCustomProperties: ["--brand-hue", "--brand-chroma"],
 ### `externalContainerNames` — container names from a stylesheet this does not compile
 
 `@container sidebar (min-width: 40rem)` is checked against every container name the build gives —
-`container-name: sidebar` or `container: sidebar / inline-size` in any block. A name no element is
-given never matches, so it is reported. When an outside stylesheet gives the name, list it:
+`container: sidebar / inline-size` in any block, or `container-name` and `container-type` side by side.
+A name always comes with its type, because a name alone never answers a size condition. A name no
+element is given never matches either, so it is reported. When an outside stylesheet gives the name,
+list it:
 
 ```ts
 externalContainerNames: ["sidebar"],
