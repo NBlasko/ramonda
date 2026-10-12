@@ -186,6 +186,12 @@ function askTheChecker(checkProject, cases) {
       join(root, "src", "jsx.d.ts"),
       "declare namespace JSX { interface IntrinsicElements { div: { className?: string; children?: unknown } } interface Element { readonly _b: unique symbol } }",
     );
+    // The container the engines' page names `card`, given here too, so a case asking for `card` is
+    // asked the same question on both sides.
+    writeFileSync(
+      join(root, "src", "layout.tsx"),
+      "export const l = <div className={@@( container: card / size; )}>x</div>;\n",
+    );
     // One file per case: a bracket left open in one must not reach the next.
     for (const [index, one] of cases.entries()) {
       writeFileSync(

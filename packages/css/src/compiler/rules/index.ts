@@ -141,6 +141,10 @@ export const RULE_IDS = [
   "unknown-media-value",
   // A missing `:`, a number nobody reads, a word between conditions. See `malformedMedia`.
   "malformed-media-condition",
+  // The same three for `@container`, read against a container's own features. See `mediaFeatures`.
+  "unknown-container-feature",
+  "unknown-container-value",
+  "malformed-container-condition",
   "supports-a-media-feature",
   // A number a browser drops where no type refuses it — `gap: 12`, `z-index: 1.5`. See `numberDropped`.
   "number-without-a-unit",

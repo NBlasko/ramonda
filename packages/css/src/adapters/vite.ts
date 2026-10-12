@@ -4,7 +4,7 @@ import { basename, dirname, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { requireItsApi } from "./typescriptApi";
-import { knownNames, type Config, configReader, environmentOf } from "../config/config";
+import { knownOutside, type Config, configReader, environmentOf } from "../config/config";
 import { forgetGenerated, variablesSheetFor, writeGenerated } from "../config/generate";
 import { settingsAgainst } from "../compiler/declaredSet";
 import { warnIfStale } from "./stale";
@@ -328,7 +328,7 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
      * A file serves every rule it names, so one file's edit cannot change what another file serves
      * — and its own stylesheet is reloaded along with the JavaScript Vite has just read.
      */
-    sheet.add(file, result.blocks, { ...result.variables, known: knownNames(config) });
+    sheet.add(file, result.blocks, { ...result.variables, ...knownOutside(config) });
     compiled.set(file, { source: code, config, result });
     return result;
   }

@@ -2,7 +2,7 @@ import { readFileSync, realpathSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
 import ts from "typescript";
 import { requireItsApi } from "./typescriptApi";
-import { knownNames, configReader, environmentOf } from "../config/config";
+import { knownOutside, configReader, environmentOf } from "../config/config";
 import { variablesSheetFor, writeGenerated } from "../config/generate";
 import { readModule } from "./modules";
 import { CssBlockError, positionOf } from "../compiler/errors";
@@ -283,7 +283,7 @@ export function ramondaCss(options: EsbuildCssPluginOptions = {}): EsbuildCssPlu
         }
 
         styled.add(args.path);
-        sheet.add(args.path, result.blocks, { ...result.variables, known: knownNames(config) });
+        sheet.add(args.path, result.blocks, { ...result.variables, ...knownOutside(config) });
         const own = sheet.cssFor(args.path);
         /**
          * The project's `tokens.css` is imported here, beside the file's own rules: without it a token

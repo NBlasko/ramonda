@@ -294,6 +294,12 @@ const CSS_LINES = {
   "unknown-media-feature": "a media feature that will never match",
   "malformed-media-condition":
     "a media condition no engine reads — `(min-width 40rem)` with no colon, `4r0em`, a word between conditions that is not `and` or `or` — kept and never matching",
+  "unknown-container-feature":
+    "a container feature CSS does not have, or a media feature such as `hover` in `@container`, so the condition never matches",
+  "unknown-container-value":
+    "a container feature's value it does not take (`(min-width: 40)`), so the condition never matches",
+  "malformed-container-condition":
+    "a container condition no engine reads — `(min-width 40rem)` with no colon, `3e0m`, a word that is not `and`, `or` or `not`",
   "unknown-media-value":
     "a media feature's value it does not have, or a unit no engine has (`40remx`), so the condition never matches",
   "supports-a-media-feature": "a media feature asked of `@supports`, which is always true or never",

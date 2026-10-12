@@ -1,6 +1,6 @@
 import { CssBlockError } from "./errors";
 import { nearest } from "./rules";
-import type { VariableRead, Variables } from "./variables";
+import type { ContainerRead, VariableRead, Variables } from "./variables";
 
 /**
  * One file's custom properties, plus what its OWN config says exists outside the build.
@@ -10,6 +10,25 @@ import type { VariableRead, Variables } from "./variables";
  */
 export interface FileVariables extends Variables {
   readonly known?: readonly string[];
+  /** The container names this file's config says something outside the build gives. */
+  readonly knownContainers?: readonly string[];
+}
+
+/** One `@container` asking for a name no element in the build is given, and the nearest one that is. */
+export interface UnknownContainer {
+  readonly file: string;
+  readonly read: ContainerRead;
+  readonly meant?: string;
+}
+
+/** What to do about it — the same four-way answer a `var()` nothing sets gets, for a container name. */
+export function containerMessageFor(one: UnknownContainer): string {
+  return (
+    `nothing in this build names a container \`${one.read.name}\`, so this condition never matches.` +
+    (one.meant === undefined ? "" : ` Did you mean \`${one.meant}\`?`) +
+    `\n    Name one with \`container-name: ${one.read.name}\`, or add it to \`externalContainerNames\` in ` +
+    `\`ramonda.css.ts\` if a stylesheet this does not compile names it.`
+  );
 }
 
 /** One `var()` whose name nothing in the build sets, and the nearest name that is set. */
@@ -557,6 +576,16 @@ export class Sheet {
    * guess. A near miss among every name the build DOES set is offered beside them.
    */
   verifyVariables(): void {
+    const containers = this.unknownContainers();
+    if (containers.length > 0) {
+      const [first] = containers;
+      throw new CssBlockError(
+        containerMessageFor(first) + (containers.length === 1 ? "" : `\n    ${containers.length - 1} more like it.`),
+        first.file,
+        1,
+        1,
+      );
+    }
     const unknown = this.unknownVariables();
     if (unknown.length === 0) return;
 
@@ -575,6 +604,27 @@ export class Sheet {
    * `ramonda-css check` reports findings with a line and a column; a bundler has no such report and
    * stops the build with the first. One computation, two ways of saying it.
    */
+  /**
+   * A `@container` asking for a name no element in the build is given — the same question as
+   * {@link unknownVariables}, for container names, and answered here for the same reason: a name may
+   * be given three components away. Measured in all three engines: the condition never matches.
+   */
+  unknownContainers(): UnknownContainer[] {
+    const named = new Set<string>();
+    for (const [, variables] of this.variables) for (const name of variables.containersNamed ?? []) named.add(name);
+
+    const unknown: { file: string; read: ContainerRead }[] = [];
+    for (const [file, variables] of this.variables) {
+      const declared = variables.knownContainers ?? [];
+      for (const read of variables.containersRead ?? []) {
+        if (named.has(read.name) || declared.includes(read.name)) continue;
+        unknown.push({ file, read });
+      }
+    }
+    const among = [...named];
+    return unknown.map((one) => ({ ...one, meant: nearest(one.read.name, among) }));
+  }
+
   unknownVariables(): UnknownVariable[] {
     const set = new Set<string>();
     for (const [, variables] of this.variables) for (const name of variables.set) set.add(name);

@@ -1190,6 +1190,31 @@ describe("where the class goes in a nested selector", () => {
  * author's to know: a block sets it, a `@@property` registers it, the config lists it, or the read
  * carries a fallback.
  */
+/**
+ * A `@container` asking for a container name nothing in the build gives — the build stops on it, as
+ * it does on a `var()` nothing sets, and a name another file gives or the config lists is fine.
+ */
+describe("a container name nothing gives", () => {
+  const asks = (name: string) => ({ set: [], read: [], containersRead: [{ name, at: 0, length: name.length }] });
+
+  test("stops the build, saying how to fix it", () => {
+    const sheet = new Sheet();
+    sheet.add("a.tsx", [], asks("cardx"));
+    expect(() => sheet.verifyVariables()).toThrow(/nothing in this build names a container `cardx`/);
+  });
+
+  test("a name another file gives, or the config lists, does not", () => {
+    const given = new Sheet();
+    given.add("a.tsx", [], asks("card"));
+    given.add("b.tsx", [], { set: [], read: [], containersNamed: ["card"] });
+    expect(() => given.verifyVariables()).not.toThrow();
+
+    const listed = new Sheet();
+    listed.add("a.tsx", [], { ...asks("card"), knownContainers: ["card"] });
+    expect(() => listed.verifyVariables()).not.toThrow();
+  });
+});
+
 describe("a variable nothing sets", () => {
   const reads = (name: string, fallback = false) => ({
     set: [],

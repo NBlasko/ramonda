@@ -18,7 +18,7 @@ import {
 import type { Config } from "../config/config";
 import { type Imported, importedSites, namedSites, syntaxesIn } from "./references";
 import { normalise } from "./normalise";
-import { type VariableRead, type Variables, variablesIn } from "./variables";
+import { type ContainerRead, type VariableRead, type Variables, variablesIn } from "./variables";
 import { type Span, readBlock, tryReadBlock } from "./read";
 import { refuse } from "./errors";
 import { ignoredIn, isIgnored } from "./ignore";
@@ -240,6 +240,8 @@ export function transform(source: string, options: TransformOptions = {}): Trans
   /** What every block in this file sets and reads, in one list each — see {@link TransformResult}. */
   const variablesSet: string[] = [];
   const variablesRead: VariableRead[] = [];
+  const containersNamed: string[] = [];
+  const containersRead: ContainerRead[] = [];
 
   /**
    * What the author took responsibility for, so the BUILD honours it too.
@@ -433,6 +435,8 @@ export function transform(source: string, options: TransformOptions = {}): Trans
       const found = variablesIn(read.block);
       variablesSet.push(...found.set);
       variablesRead.push(...found.read);
+      containersNamed.push(...(found.containersNamed ?? []));
+      containersRead.push(...(found.containersRead ?? []));
     }
 
     // Normalised ONCE, for the name and the rule: normalisation walks the whole block.
@@ -1029,7 +1033,7 @@ export function transform(source: string, options: TransformOptions = {}): Trans
     code: magic.toString(),
     map: magic.generateMap({ source: filename, includeContent: true, hires: "boundary" }) as unknown as SourceMap,
     blocks: [...emittedNamed, ...atoms.values()],
-    variables: { set: variablesSet, read: variablesRead },
+    variables: { set: variablesSet, read: variablesRead, containersNamed, containersRead },
   };
 }
 

@@ -64,12 +64,73 @@ export function stylesAnotherElement(block: Block, findings: Finding[]): void {
   walkItems(block.items);
 }
 
-/** A feature's name, wherever it sits inside a `@media` condition. */
+/** A feature's name, wherever it sits inside a condition. */
 const A_FEATURE = /\(\s*([a-zA-Z][\w-]*)\s*[:)<>=]/g;
 const KNOWN_FEATURES = new Set(MEDIA_FEATURES);
 
 /**
- * A `@media` feature that is nearly one CSS has.
+ * A container's own features, measured 2026-10-12 in Chromium, Firefox and WebKit: for each of these
+ * exactly one of `(f …)` and `not (f …)` applies, and for a media feature — `hover`, `resolution`,
+ * `prefers-color-scheme` — neither does, so it never matches in a container.
+ */
+const CONTAINER_SIZES = ["width", "height", "inline-size", "block-size"];
+const CONTAINER_KINDS: Readonly<Record<string, readonly string[]>> = Object.fromEntries([
+  ...CONTAINER_SIZES.flatMap((one) => ["", "min-", "max-"].map((prefix) => [`${prefix}${one}`, ["length", "zero"]])),
+  ...["", "min-", "max-"].map((prefix) => [`${prefix}aspect-ratio`, MEDIA_KINDS["aspect-ratio"]]),
+  ["orientation", []],
+]);
+const CONTAINER_WORDS: Readonly<Record<string, readonly string[]>> = Object.fromEntries(
+  Object.keys(CONTAINER_KINDS).map((one) => [one, one === "orientation" ? ["landscape", "portrait"] : []]),
+);
+
+/** What a condition is read against: its features, their values, and the rule ids that report it. */
+interface Conditions {
+  readonly at: "@media" | "@container";
+  readonly features: readonly string[];
+  readonly words: Readonly<Record<string, readonly string[]>>;
+  readonly kinds: Readonly<Record<string, readonly string[]>>;
+  readonly feature: "unknown-media-feature" | "unknown-container-feature";
+  readonly value: "unknown-media-value" | "unknown-container-value";
+  readonly malformed: "malformed-media-condition" | "malformed-container-condition";
+  readonly noun: string;
+  readonly query: string;
+}
+
+const MEDIA: Conditions = {
+  at: "@media",
+  features: MEDIA_FEATURES,
+  words: MEDIA_WORDS,
+  kinds: MEDIA_KINDS,
+  feature: "unknown-media-feature",
+  value: "unknown-media-value",
+  malformed: "malformed-media-condition",
+  noun: "media feature",
+  query: "media query",
+};
+
+const CONTAINER: Conditions = {
+  at: "@container",
+  features: Object.keys(CONTAINER_KINDS),
+  words: CONTAINER_WORDS,
+  kinds: CONTAINER_KINDS,
+  feature: "unknown-container-feature",
+  value: "unknown-container-value",
+  malformed: "malformed-container-condition",
+  noun: "container feature",
+  query: "container query",
+};
+
+function conditionsOf(prelude: string): Conditions | undefined {
+  if (prelude.startsWith("@media")) return MEDIA;
+  if (prelude.startsWith("@container")) return CONTAINER;
+  return undefined;
+}
+
+/** Whether the group opening at `open` is a function's argument — `style(…)`, `scroll-state(…)` — whose grammar is its own. */
+const isCall = (prelude: string, open: number) => open > 0 && /[\w-]/.test(prelude[open - 1]);
+
+/**
+ * A feature that is nearly one CSS has, in a `@media` or a `@container` condition.
  *
  * The fault it leaves is the quiet kind: measured in Chromium 151, every one of these survives a
  * parse with its text intact, `cssRules` and all —
@@ -77,61 +138,57 @@ const KNOWN_FEATURES = new Set(MEDIA_FEATURES);
  *     @media (min-widht: 40rem)                    kept
  *     @media (prefers-reduced-mErrorotion: reduce) kept
  *     @media (nonsense)                            kept
- *     @media (min-width 40rem)                     kept, and it has no colon
  *
  * — because an unknown feature is `<general-enclosed>` in the grammar, which is **legal CSS that
  * never matches**. So a typo is not invalid; it is a block that silently never applies.
  *
  * A NEAR MISS only, for the reason every table-backed rule here says the same thing: the list is a
  * snapshot, a feature invented after it is valid, and reporting valid CSS is how a checker earns
- * being switched off. `@supports` and `@container` are left alone — their conditions are a
- * different grammar with different names.
+ * being switched off. The one exception is a MEDIA feature in a container, which is no typo: it is
+ * real, it is in the wrong rule, and all three engines never match it there.
  *
- * The table is written down because nothing can supply it, and it is verified against a real
- * browser in `apps/playground-core/browser`: for a name Chromium knows, exactly one of `(f)` and
- * `not (f)` holds; for one it does not, both are false. That is the oracle a stylesheet parse is
- * not.
+ * The media table is verified against a real browser in `apps/playground-core/browser`: for a name
+ * Chromium knows, exactly one of `(f)` and `not (f)` holds; for one it does not, both are false.
  */
 export function mediaFeatures(block: Block, findings: Finding[]): void {
   for (const item of rulesIn(block)) {
-    if (!item.prelude.startsWith("@media") || item.at === undefined) continue;
+    const table = conditionsOf(item.prelude);
+    if (table === undefined || item.at === undefined) continue;
+    const known = new Set(table.features);
+
+    const report = (name: string, at: number) => {
+      if (name.startsWith("-") || known.has(name)) return;
+      const elsewhere = table === CONTAINER && KNOWN_FEATURES.has(name.toLowerCase());
+      const meant = elsewhere ? undefined : (nearest(name, table.features as string[]) ?? typedInto(name));
+      if (!elsewhere && meant === undefined) return;
+      findings.push({
+        rule: table.feature,
+        at,
+        length: name.length,
+        message: elsewhere
+          ? `\`${name}\` is a media feature, and a container never matches it — the rules inside never ` +
+            `apply. Write it in \`@media\`.`
+          : `\`${name}\` is not a ${table.noun}, so this condition never matches and the rules inside ` +
+            `it never apply — a browser keeps it rather than refusing it. Did you mean \`${meant}\`?`,
+      });
+    };
 
     for (const found of item.prelude.matchAll(A_FEATURE)) {
-      const name = found[1];
-      // A browser's own feature is not in CSS's list and is not a typo of anything in it.
-      if (name.startsWith("-") || KNOWN_FEATURES.has(name)) continue;
-
-      const meant = nearest(name, MEDIA_FEATURES as string[]) ?? typedInto(name);
-      if (meant === undefined) continue;
-
-      findings.push({
-        rule: "unknown-media-feature",
-        at: item.at + (found.index ?? 0) + found[0].indexOf(name),
-        length: name.length,
-        message:
-          `\`${name}\` is not a media feature, so this condition never matches and the rules inside ` +
-          `it never apply — a browser keeps it rather than refusing it. Did you mean \`${meant}\`?`,
-      });
+      if (isCall(item.prelude, found.index ?? 0)) continue;
+      report(found[1], item.at + (found.index ?? 0) + found[0].indexOf(found[1]));
     }
 
     // The range form, where the name is not after the `(`: `(400px <= wdith <= 70rem)`. Found silent
     // by `check-engine-sweep.mjs`; asked only when no side of the group is a feature at all.
     for (const { open, inner } of innermostGroups(item.prelude)) {
-      if (inner.includes(":") || !/[<>=]/.test(inner)) continue;
+      if (isCall(item.prelude, open) || inner.includes(":") || !/[<>=]/.test(inner)) continue;
       const sides = inner.split(/<=|>=|<|>|=/).map((one) => one.trim());
-      if (sides.some((one) => KNOWN_FEATURES.has(one.toLowerCase()))) continue;
+      if (sides.some((one) => known.has(one.toLowerCase()))) continue;
       for (const side of sides) {
-        if (!/^[a-zA-Z][\w-]*$/.test(side) || side.startsWith("-")) continue;
-        const meant = nearest(side, MEDIA_FEATURES as string[]);
-        if (meant === undefined) continue;
-        findings.push({
-          rule: "unknown-media-feature",
-          at: item.at + open + 1 + inner.indexOf(side),
-          length: side.length,
-          message:
-            `\`${side}\` is not a media feature, so this condition never matches and the rules inside ` +
-            `it never apply — a browser keeps it rather than refusing it. Did you mean \`${meant}\`?`,
-        });
+        if (!/^[a-zA-Z][\w-]*$/.test(side)) continue;
+        // A name at the start of the group was already asked above, by `A_FEATURE`.
+        if (inner.trimStart().startsWith(side)) continue;
+        report(side, item.at + open + 1 + inner.indexOf(side));
       }
     }
   }
@@ -147,6 +204,7 @@ const A_PAIR = /\(\s*([a-zA-Z][\w-]*)\s*:([^()]*)\)/g;
 /** Each pair in a prelude: the whole match, the name, the value as written, and where it starts. */
 function* pairsIn(prelude: string): Generator<{ whole: string; name: string; value: string; index: number }> {
   for (const found of prelude.matchAll(A_PAIR)) {
+    if (isCall(prelude, found.index ?? 0)) continue;
     const [whole, name, raw] = found;
     yield { whole, name, value: raw.trim(), index: found.index ?? 0 };
   }
@@ -172,25 +230,26 @@ const KIND_NAMES: Readonly<Record<string, string>> = {
 };
 
 /**
- * A value a media feature does not have — which makes the condition `unknown`, not false.
+ * A value a feature does not have — which makes the condition `unknown`, not false.
  *
  * Measured in Chromium, Firefox and WebKit: `@media (prefers-color-scheme: drak)` and `@media
  * (min-width: 40)` are both kept and both never match, because a query an engine does not understand
- * is neither true nor false. `mediaValues.generated.ts` is what each feature's value may be — a word
- * from its list, or a kind of value — written by asking the engines, and a feature no engine knows is
- * absent, so nothing is said about it.
+ * is neither true nor false — and `@container (min-width: 40)` the same. `mediaValues.generated.ts`
+ * is what each media feature's value may be, written by asking the engines; a container's are
+ * `CONTAINER_KINDS` above. A feature no engine knows is absent, so nothing is said about it.
  */
 export function mediaValues(block: Block, findings: Finding[]): void {
   for (const item of rulesIn(block)) {
-    if (!item.prelude.startsWith("@media") || item.at === undefined) continue;
+    const table = conditionsOf(item.prelude);
+    if (table === undefined || item.at === undefined) continue;
 
     for (const { whole, name, value, index } of pairsIn(item.prelude)) {
-      const words = MEDIA_WORDS[name.toLowerCase()];
-      const kinds = MEDIA_KINDS[name.toLowerCase()];
+      const words = table.words[name.toLowerCase()];
+      const kinds = table.kinds[name.toLowerCase()];
       if (words === undefined || kinds === undefined || value === "") continue;
 
       const at = item.at + index + whole.indexOf(value, whole.indexOf(":"));
-      const notAUnit = unknownUnit(value, at) ?? unreadable(value, at);
+      const notAUnit = unknownUnit(table, value, at) ?? unreadable(table, value, at);
       if (notAUnit !== undefined) {
         findings.push(notAUnit);
         continue;
@@ -200,7 +259,7 @@ export function mediaValues(block: Block, findings: Finding[]): void {
         if (!/^[a-zA-Z][\w-]*$/.test(value) || words.includes(value.toLowerCase())) continue;
         const meant = nearest(value.toLowerCase(), words as string[]);
         findings.push({
-          rule: "unknown-media-value",
+          rule: table.value,
           at,
           length: value.length,
           message:
@@ -209,21 +268,21 @@ export function mediaValues(block: Block, findings: Finding[]): void {
         });
         continue;
       }
-      if (!kinds.includes(kind)) findings.push(wrongKind(name, value, kind, kinds, at));
+      if (!kinds.includes(kind)) findings.push(wrongKind(table, name, value, kind, kinds, at));
     }
 
     // The range form, `(width >= 40)` and `(40 < width <= 80rem)`: a value of the wrong kind on either
     // side leaves it unknown exactly as the colon form does.
-    for (const { name, value, at } of rangesIn(item.prelude)) {
-      const notAUnit = unknownUnit(value, item.at + at) ?? unreadable(value, item.at + at);
+    for (const { name, value, at } of rangesIn(table, item.prelude)) {
+      const notAUnit = unknownUnit(table, value, item.at + at) ?? unreadable(table, value, item.at + at);
       if (notAUnit !== undefined) {
         findings.push(notAUnit);
         continue;
       }
-      const kinds = MEDIA_KINDS[name.toLowerCase()];
+      const kinds = table.kinds[name.toLowerCase()];
       const kind = kindOf(value);
       if (kinds === undefined || kind === undefined || kinds.includes(kind)) continue;
-      findings.push(wrongKind(name, value, kind, kinds, item.at + at));
+      findings.push(wrongKind(table, name, value, kind, kinds, item.at + at));
     }
   }
 }
@@ -235,12 +294,12 @@ export function mediaValues(block: Block, findings: Finding[]): void {
  * front of it does not match either, exactly as `(min-width: 40)` does. `kindOf` reads any letters
  * after a number as a length, so this is asked first.
  */
-function unknownUnit(value: string, at: number): Finding | undefined {
+function unknownUnit(table: Conditions, value: string, at: number): Finding | undefined {
   const unit = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)([a-z%]+)$/i.exec(value)?.[1];
   if (unit === undefined || KNOWN_UNITS.has(unit.toLowerCase())) return undefined;
   const meant = nearest(unit.toLowerCase(), UNITS as string[]);
   return {
-    rule: "unknown-media-value",
+    rule: table.value,
     at,
     length: value.length,
     message:
@@ -253,10 +312,10 @@ function unknownUnit(value: string, at: number): Finding | undefined {
  * A value that starts like a number and is not one any engine reads — `4r0em`, `16/9x`. Kept and
  * never matching, measured in all three, exactly as a wrong unit is.
  */
-function unreadable(value: string, at: number): Finding | undefined {
+function unreadable(table: Conditions, value: string, at: number): Finding | undefined {
   if (!/^[+\-.\d]/.test(value) || kindOf(value) !== undefined) return undefined;
   return {
-    rule: "malformed-media-condition",
+    rule: table.malformed,
     at,
     length: value.length,
     message: `\`${value}\` is not a value a browser can read, so this condition never matches and a browser keeps it anyway.`,
@@ -283,30 +342,35 @@ function* innermostGroups(prelude: string): Generator<{ open: number; close: num
 /** The words a media query may hold between its conditions: the keywords, and every media type. */
 const BETWEEN = ["and", "or", "not", "only", "all", "print", "screen"];
 const DEPRECATED_TYPES = ["tty", "tv", "projection", "handheld", "braille", "embossed", "aural", "speech"];
+/** A container query's: the keywords, a container's name first, and its two query functions. */
+const CONTAINER_BETWEEN = ["and", "or", "not"];
+const CONTAINER_CALLS = ["style", "scroll-state"];
 
 /**
- * A `@media` condition no engine can read, in the shapes `check-engine-sweep.mjs` found silent — each
- * one kept by Chromium, Firefox and WebKit and never applied:
+ * A condition no engine can read, in the shapes `check-engine-sweep.mjs` found silent — each one kept
+ * by Chromium, Firefox and WebKit and never applied:
  *
  * - `(min-width 40rem)`: no `:` between a feature and its value;
  * - `(min-width: 40rem) an (max-width: 60rem)`: a word between conditions that is not `and`, `or`,
- *   `not`, `only` or a media type.
+ *   `not` — or, in `@media`, `only` or a media type; in `@container`, the container's name, first.
  *
- * A misspelt feature in the RANGE form is `unknown-media-feature`'s, and a number nobody reads is
+ * A misspelt feature in the RANGE form is the feature rule's, and a number nobody reads is
  * `unreadable`, beside the other values.
  */
 export function malformedMedia(block: Block, findings: Finding[]): void {
   for (const item of rulesIn(block)) {
-    if (!item.prelude.startsWith("@media") || item.at === undefined) continue;
+    const table = conditionsOf(item.prelude);
+    if (table === undefined || item.at === undefined) continue;
     const prelude = item.prelude;
+    const known = new Set(table.features);
 
     for (const { open, close, inner } of innermostGroups(prelude)) {
-      if (inner.includes(":") || /[<>=]/.test(inner)) continue;
+      if (isCall(prelude, open) || inner.includes(":") || /[<>=]/.test(inner)) continue;
       const words = inner.trim().split(/\s+/);
-      if (words.length !== 2 || !KNOWN_FEATURES.has(words[0].toLowerCase())) continue;
+      if (words.length !== 2 || !known.has(words[0].toLowerCase())) continue;
       const group = prelude.slice(open, close + 1);
       findings.push({
-        rule: "malformed-media-condition",
+        rule: table.malformed,
         at: item.at + open,
         length: group.length,
         message:
@@ -317,7 +381,7 @@ export function malformedMedia(block: Block, findings: Finding[]): void {
 
     // The words outside every group, read with each group blanked out so a position still counts.
     let depth = 0;
-    const outside = [...prelude.slice("@media".length)]
+    const outside = [...prelude.slice(table.at.length)]
       .map((one) => {
         if (one === "(") depth++;
         const blank = depth > 0;
@@ -325,16 +389,24 @@ export function malformedMedia(block: Block, findings: Finding[]): void {
         return blank ? " " : one;
       })
       .join("");
+    const allowed = table === MEDIA ? [...BETWEEN, ...DEPRECATED_TYPES] : CONTAINER_BETWEEN;
+    let first = true;
     for (const found of outside.matchAll(/[a-zA-Z][\w-]*/g)) {
       const word = found[0].toLowerCase();
-      if (BETWEEN.includes(word) || DEPRECATED_TYPES.includes(word)) continue;
-      const meant = nearest(word, BETWEEN);
+      const end = table.at.length + (found.index ?? 0) + found[0].length;
+      const called = prelude[end] === "(";
+      const isName = first && !called && table === CONTAINER && !CONTAINER_BETWEEN.includes(word);
+      first = false;
+      if (allowed.includes(word) || isName || (called && table === CONTAINER && CONTAINER_CALLS.includes(word))) {
+        continue;
+      }
+      const meant = nearest(word, table === MEDIA ? BETWEEN : [...CONTAINER_BETWEEN, ...CONTAINER_CALLS]);
       findings.push({
-        rule: "malformed-media-condition",
-        at: item.at + "@media".length + (found.index ?? 0),
+        rule: table.malformed,
+        at: item.at + table.at.length + (found.index ?? 0),
         length: found[0].length,
         message:
-          `\`${found[0]}\` is not a word a media query has, so this condition never matches and a browser keeps ` +
+          `\`${found[0]}\` is not a word a ${table.query} has, so this condition never matches and a browser keeps ` +
           `it anyway. ${meant === undefined ? "Between conditions write `and`, `or` or `not`." : `Did you mean \`${meant}\`?`}`,
       });
     }
@@ -342,10 +414,17 @@ export function malformedMedia(block: Block, findings: Finding[]): void {
 }
 
 /** A value of a kind the feature does not take — the one sentence both forms of a condition say. */
-function wrongKind(name: string, value: string, kind: string, kinds: readonly string[], at: number): Finding {
+function wrongKind(
+  table: Conditions,
+  name: string,
+  value: string,
+  kind: string,
+  kinds: readonly string[],
+  at: number,
+): Finding {
   const fix = kind === "number" && kinds.includes("length") ? ` Write \`${value}px\`, or the unit you meant.` : "";
   return {
-    rule: "unknown-media-value",
+    rule: table.value,
     at,
     length: value.length,
     message:
@@ -364,36 +443,19 @@ function wrongKind(name: string, value: string, kind: string, kinds: readonly st
  * where the value starts in the prelude. Read by hand, a group at a time: a pattern with text on both
  * sides of an operator is the shape that was quadratic before.
  */
-function* rangesIn(prelude: string): Generator<{ name: string; value: string; at: number }> {
-  let open = prelude.indexOf("(");
-  while (open !== -1) {
-    const close = prelude.indexOf(")", open + 1);
-    if (close === -1) return;
-    const inner = prelude.slice(open + 1, close);
-    // A nested group opens again inside this one; the innermost is asked on its own turn.
-    const nested = inner.lastIndexOf("(");
-    if (nested !== -1) {
-      open += 1 + nested;
-      continue;
+function* rangesIn(table: Conditions, prelude: string): Generator<{ name: string; value: string; at: number }> {
+  for (const { open, inner } of innermostGroups(prelude)) {
+    if (isCall(prelude, open) || !/[<>=]/.test(inner) || inner.includes(":")) continue;
+    const parts = inner.split(/(<=|>=|<|>|=)/);
+    const names = parts.filter((one, index) => index % 2 === 0 && table.kinds[one.trim().toLowerCase()] !== undefined);
+    if (names.length !== 1) continue;
+    const name = names[0].trim();
+    let from = open + 1;
+    for (const [index, part] of parts.entries()) {
+      const value = part.trim();
+      if (index % 2 === 0 && value !== "" && value !== name) yield { name, value, at: prelude.indexOf(value, from) };
+      from += part.length;
     }
-    if (/[<>=]/.test(inner) && !inner.includes(":")) {
-      const parts = inner.split(/(<=|>=|<|>|=)/);
-      const names = parts.filter(
-        (one, index) => index % 2 === 0 && MEDIA_KINDS[one.trim().toLowerCase()] !== undefined,
-      );
-      if (names.length === 1) {
-        const name = names[0].trim();
-        let from = open + 1;
-        for (const [index, part] of parts.entries()) {
-          const value = part.trim();
-          if (index % 2 === 0 && value !== "" && value !== name) {
-            yield { name, value, at: prelude.indexOf(value, from) };
-          }
-          from += part.length;
-        }
-      }
-    }
-    open = prelude.indexOf("(", close + 1);
   }
 }
 

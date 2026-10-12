@@ -1243,6 +1243,70 @@ describe("a variable nothing in the project sets", () => {
   });
 });
 
+/**
+ * A `@container` naming a container nothing in the project names. Measured in Chromium, Firefox and
+ * WebKit: `@container cardx (min-width: 20rem)` is kept and never matches when no ancestor is named
+ * `cardx` — found silent by `check-engine-sweep.mjs`. The same shape as a `var()` nothing sets, and
+ * asked where that is, because only the whole project knows every name.
+ */
+describe("a container name nothing in the project names", () => {
+  const query = (name: string) =>
+    `const a = <div className={@@(\n  @container ${name} (min-width: 20rem) { color: red; }\n)}>x</div>;\nexport default a;\n`;
+
+  test("is reported, at the name and with every way to fix it", () => {
+    const report = check({ "Card.tsx": query("cardx") });
+
+    expect(report.findings.map((one) => one.code)).toEqual(["container-name-not-set"]);
+    expect(report.findings[0].line).toBe(2);
+    expect(report.findings[0].column).toBe(14);
+    expect(report.findings[0].message).toContain("nothing in this build names a container `cardx`");
+    expect(report.findings[0].message).toContain("container-name");
+    expect(report.findings[0].message).toContain("externalContainerNames");
+  });
+
+  test.each([
+    ["by `container-name`", "  container-name: card;"],
+    ["among several", "  container-name: sidebar card;"],
+    ["by the `container` shorthand", "  container: card / inline-size;"],
+  ])("a name another file gives %s is fine", (_what, body) => {
+    const report = check({
+      "Layout.tsx": `const l = <div className={@@(\n${body}\n)}>x</div>;\nexport default l;\n`,
+      "Card.tsx": query("card"),
+    });
+
+    expect(report.findings).toEqual([]);
+  });
+
+  test("a near miss in another file is offered", () => {
+    const report = check({
+      "Layout.tsx": `const l = <div className={@@(\n  container-name: sidebar;\n)}>x</div>;\nexport default l;\n`,
+      "Card.tsx": query("sidebr"),
+    });
+
+    expect(report.findings).toHaveLength(1);
+    expect(report.findings[0].message).toContain("Did you mean `sidebar`?");
+  });
+
+  test("a name the config says comes from elsewhere is fine", () => {
+    const report = check({
+      "ramonda.css.ts": `export default { externalContainerNames: ["card"] };\n`,
+      "Card.tsx": query("card"),
+    });
+
+    expect(report.findings).toEqual([]);
+  });
+
+  test.each([
+    ["no name at all", "  @container (min-width: 20rem) { color: red; }"],
+    ["a style query", "  @container style(--theme: dark) { color: red; }"],
+    ["not in front", "  @container not (width > 30em) { color: red; }"],
+  ])("%s is silent", (_what, body) => {
+    const report = check({ "Card.tsx": `const a = <div className={@@(\n${body}\n)}>x</div>;\nexport default a;\n` });
+
+    expect(report.findings).toEqual([]);
+  });
+});
+
 describe("the type a block has", () => {
   test("a binding holding a block is a block, not `never`", () => {
     const report = check({

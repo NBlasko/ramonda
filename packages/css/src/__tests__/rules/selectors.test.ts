@@ -699,3 +699,48 @@ describe("a selector that cannot be read", () => {
     expect(rules(css)).not.toContain("malformed-selector");
   });
 });
+
+/**
+ * A `@container` condition every engine keeps and never applies — the same shapes as `@media`, read
+ * against a container's own features. Measured in Chromium, Firefox and WebKit: `width`, `height`,
+ * `inline-size`, `block-size` and `aspect-ratio`, each with `min-` and `max-`, and `orientation`; a
+ * media feature such as `hover` never matches in a container. Found by `check-engine-sweep.mjs`.
+ */
+describe("a container condition that cannot be read", () => {
+  test.each([
+    ["a misspelt feature", "  @container (min-widt: 40rem) { color: red; }", "unknown-container-feature"],
+    ["in a range", "  @container (wdith > 30em) { color: red; }", "unknown-container-feature"],
+    ["a logical one misspelt", "  @container (inline-siz >= 20rem) { color: red; }", "unknown-container-feature"],
+    ["a media feature", "  @container (hover: hover) { color: red; }", "unknown-container-feature"],
+    ["after a name", "  @container card (mni-width: 20rem) { color: red; }", "unknown-container-feature"],
+    ["a number with no unit", "  @container (min-width: 40) { color: red; }", "unknown-container-value"],
+    ["the same in a range", "  @container (width > 30) { color: red; }", "unknown-container-value"],
+    ["a unit that is not one", "  @container (min-width: 40remx) { color: red; }", "unknown-container-value"],
+    ["a word it does not take", "  @container (orientation: protrait) { color: red; }", "unknown-container-value"],
+    ["a missing colon", "  @container (min-width 40rem) { color: red; }", "malformed-container-condition"],
+    ["a number nobody reads", "  @container (width > 3e0m) { color: red; }", "malformed-container-condition"],
+    ["a comparison lost", "  @container (width  30em) { color: red; }", "malformed-container-condition"],
+  ])("%s is reported", (_what, css, rule) => {
+    expect(rules(css)).toContain(rule);
+  });
+
+  test("a media feature says where it belongs", () => {
+    expect(messages("  @container (hover: hover) { color: red; }").join(" ")).toContain("`@media`");
+  });
+
+  test.each([
+    ["a breakpoint", "  @container (min-width: 40rem) { color: red; }"],
+    ["a name", "  @container card (min-width: 20rem) { color: red; }"],
+    ["a range", "  @container (20rem <= inline-size <= 60rem) { color: red; }"],
+    ["a ratio", "  @container (aspect-ratio > 16/9) { color: red; }"],
+    ["orientation", "  @container (orientation: portrait) { color: red; }"],
+    ["a boolean feature", "  @container (width) { color: red; }"],
+    ["not and and", "  @container not (width > 30em) and (height > 10em) { color: red; }"],
+    ["a style query", "  @container style(--theme: dark) { color: red; }"],
+    ["a scroll-state query", "  @container scroll-state(stuck: top) { color: red; }"],
+  ])("%s is silent", (_what, css) => {
+    const found = rules(css);
+    for (const rule of ["unknown-container-feature", "unknown-container-value", "malformed-container-condition"])
+      expect(found).not.toContain(rule);
+  });
+});
