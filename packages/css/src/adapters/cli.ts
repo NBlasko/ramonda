@@ -164,17 +164,18 @@ if (report.findings.length === 0) {
 }
 
 /**
- * A refusal is a syntax error and it is printed first and alone: nothing was TYPE-checked, and
- * saying "3 errors" when two of them are the compiler's confusion about a file it could not read
- * would be three wrong answers instead of one right one.
+ * A refusal is a syntax error and it is printed first: its file was not TYPE-checked, and saying
+ * "3 errors" when two of them are the compiler's confusion about a file it could not read would be
+ * three wrong answers instead of one right one.
  *
- * **What that reason does not cover is printed after it.** The CSS rules that ran over files which
- * READ perfectly are as true as ever — dropping them, one unreadable block in one file would hide
- * every other file's findings, and a typo anywhere would mean fixing a repository one error per
- * run. The compiler's own diagnostics stay out, which is what the reason is about.
+ * **What that reason does not cover is printed after it** — every other file, the CSS rules and the
+ * type check both. Dropping them, one unreadable block in one file would hide every other file's
+ * findings, and a typo anywhere would mean fixing a repository one error per run.
  */
 if (report.refused) {
-  console.error(`\n${TAG} ${report.refusals.length} block(s) could not be read, so nothing was type-checked:\n`);
+  console.error(
+    `\n${TAG} ${report.refusals.length} block(s) could not be read, so the file(s) holding them were not type-checked:\n`,
+  );
   for (const finding of report.refusals) {
     console.error(`  ${where(finding.file)}:${finding.line}:${finding.column}`);
     console.error(`    ${finding.message.replace(/^.*?:\d+:\d+\s+/, "")}`);

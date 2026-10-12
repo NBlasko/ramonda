@@ -19,7 +19,7 @@ import { type Finding } from "./index";
 import { declarationOutOfPlace, propertyNotAName, repeated, ruleOutOfPlace, unknownProperty } from "./properties";
 import { atRuleOutOfPlace, unknownFrame } from "./selectors";
 import { holeInHead } from "./logic";
-import { stringNotAllowed, unknownFlag, unknownFunction, unknownUnit, unknownValue } from "./values";
+import { invalidHexColor, stringNotAllowed, unknownFlag, unknownFunction, unknownUnit, unknownValue } from "./values";
 import { runOn } from "./text";
 
 /**
@@ -326,6 +326,7 @@ export function walk(items: readonly BlockItem[], findings: Finding[], body?: st
     stringNotAllowed(item, findings);
     unknownUnit(item, findings);
     unknownFunction(item, findings);
+    invalidHexColor(item, findings);
     repeated(item, seen, findings);
   }
 }

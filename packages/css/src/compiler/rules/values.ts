@@ -621,6 +621,51 @@ export function unknownFunction(item: Declaration, findings: Finding[]): void {
   }
 }
 
+/** Each `#word` in a value, skipping strings and what `url()` holds — a fragment there is a path. */
+function* hashesIn(text: string): Generator<{ hash: string; index: number }> {
+  let index = 0;
+  while (index < text.length) {
+    const code = text.charCodeAt(index);
+    if (code === 34 || code === 39) {
+      index = endOfString(text, index) + 1;
+      continue;
+    }
+    if (/^url\(/i.test(text.slice(index, index + 4)) && (index === 0 || !/[\w-]/.test(text[index - 1]))) {
+      index = endOfCall(text, index + 3) + 1;
+      continue;
+    }
+    if (code === 35) {
+      const hash = /^#[\w-]*/.exec(text.slice(index, index + 64))?.[0] ?? "#";
+      yield { hash, index };
+      index += hash.length;
+      continue;
+    }
+    index++;
+  }
+}
+
+/**
+ * A hex colour with the wrong number of digits, or a letter that is not a hex digit — `#abcx`,
+ * `#ab`, `#12345`. Measured: Chromium, Firefox and WebKit all drop the declaration. Found by
+ * `check-engine-sweep.mjs`; nothing reported it, because no type or rule reads a hex colour's shape.
+ */
+export function invalidHexColor(item: Declaration, findings: Finding[]): void {
+  for (const part of item.value) {
+    if (part.kind !== "text" || part.at === undefined) continue;
+    for (const { hash, index } of hashesIn(part.text)) {
+      if (/^#(?:[\da-f]{3,4}|[\da-f]{6}|[\da-f]{8})$/i.test(hash)) continue;
+      // Glued to the hole after it — `#$(hex)` — which is one fault, and it is the hole's.
+      if (index + hash.length === part.text.length && part !== item.value.at(-1)) continue;
+      findings.push({
+        rule: "invalid-hex-color",
+        at: part.at + index,
+        length: hash.length,
+        message: `\`${hash}\` is not a colour: a hex colour has 3, 4, 6 or 8 hex digits, so a browser drops this declaration.`,
+      });
+    }
+  }
+}
+
 /** The one sentence a custom function gets, at its call and at its `@function`. */
 export function customFunction(at: number, length: number): Finding {
   return {

@@ -283,12 +283,17 @@ const CSS_LINES = {
   "unknown-unit": "a unit CSS does not have",
   "unknown-function": "a function CSS does not have (`d(…)`), so the declaration is dropped",
   "custom-function": "a CSS custom function (`--name(…)` or `@function`), which Firefox drops",
+  "invalid-hex-color": "a hex colour without 3, 4, 6 or 8 hex digits (`#abcx`), so the declaration is dropped",
   "unknown-flag": "a `!` at the end of a value that is not `!important`",
   "unclosed-call": "a `(` in a value that no `)` closes — the value runs past the end of the block",
   "unknown-prefix": "a vendor prefix that is not one of the four",
+  "malformed-selector":
+    "a selector no engine reads — `&not(…)` with no colon, `:nth-child(2+1)`, a bracket left open — so the whole rule is dropped",
   "unknown-at-rule": "an at-rule name CSS does not have",
   "unknown-selector": "a pseudo-class or pseudo-element that is not one — the whole rule is dropped",
   "unknown-media-feature": "a media feature that will never match",
+  "malformed-media-condition":
+    "a media condition no engine reads — `(min-width 40rem)` with no colon, `4r0em`, a word between conditions that is not `and` or `or` — kept and never matching",
   "unknown-media-value":
     "a media feature's value it does not have, or a unit no engine has (`40remx`), so the condition never matches",
   "supports-a-media-feature": "a media feature asked of `@supports`, which is always true or never",

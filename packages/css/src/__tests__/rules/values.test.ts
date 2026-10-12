@@ -1162,3 +1162,40 @@ describe("a custom function", () => {
     expect(rules("  width: var(--double);")).not.toContain("custom-function");
   });
 });
+
+/**
+ * A hex colour with the wrong number of digits, or a letter that is not one. All three engines drop
+ * `color: #abcx` and `color: #ab` — found by `check-engine-sweep.mjs`.
+ */
+describe("a hex colour that is not one", () => {
+  test.each([
+    ["a letter that is not hex", "  color: #abcx;"],
+    ["two digits", "  color: #ab;"],
+    ["five digits", "  color: #abcde;"],
+    ["inside a shorthand", "  border: 1px solid #12345;"],
+    ["inside a function", "  background-image: linear-gradient(#fff, #ggg);"],
+  ])("%s is reported", (_what, css) => {
+    expect(rules(css)).toContain("invalid-hex-color");
+  });
+
+  test("says what a hex colour is", () => {
+    const css = "  color: #abcx;";
+    const [found] = check(css).filter((one) => one.rule === "invalid-hex-color");
+    const source = `<div className={@@(\n${css}\n)}>x</div>`;
+    expect(source.slice(found.at, found.at + found.length)).toBe("#abcx");
+    expect(found.message).toBe(
+      "`#abcx` is not a colour: a hex colour has 3, 4, 6 or 8 hex digits, so a browser drops this declaration.",
+    );
+  });
+
+  test.each([
+    ["three", "  color: #abc;"],
+    ["four", "  color: #abcd;"],
+    ["six, upper case", "  color: #AABBCC;"],
+    ["eight", "  color: #aabbcc80;"],
+    ["a fragment in a url", "  background-image: url(sprite.svg#icon);"],
+    ["a hash in a string", '  content: "#1";'],
+  ])("%s is silent", (_what, css) => {
+    expect(rules(css)).not.toContain("invalid-hex-color");
+  });
+});

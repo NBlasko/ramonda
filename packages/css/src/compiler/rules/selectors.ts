@@ -7,6 +7,7 @@ import { branchOf } from "../read";
 import { selectorsOf, type Block, type BlockItem, type NestedRule, rulesIn } from "./shared";
 import { type Finding } from "./index";
 import { typedInto } from "./namedSites";
+import { endOfCall, endOfString } from "./text";
 import { PREFIXES } from "./properties";
 import { KNOWN_UNITS, NUMBER, PERCENTAGE, customFunction } from "./values";
 
@@ -112,6 +113,27 @@ export function mediaFeatures(block: Block, findings: Finding[]): void {
           `it never apply — a browser keeps it rather than refusing it. Did you mean \`${meant}\`?`,
       });
     }
+
+    // The range form, where the name is not after the `(`: `(400px <= wdith <= 70rem)`. Found silent
+    // by `check-engine-sweep.mjs`; asked only when no side of the group is a feature at all.
+    for (const { open, inner } of innermostGroups(item.prelude)) {
+      if (inner.includes(":") || !/[<>=]/.test(inner)) continue;
+      const sides = inner.split(/<=|>=|<|>|=/).map((one) => one.trim());
+      if (sides.some((one) => KNOWN_FEATURES.has(one.toLowerCase()))) continue;
+      for (const side of sides) {
+        if (!/^[a-zA-Z][\w-]*$/.test(side) || side.startsWith("-")) continue;
+        const meant = nearest(side, MEDIA_FEATURES as string[]);
+        if (meant === undefined) continue;
+        findings.push({
+          rule: "unknown-media-feature",
+          at: item.at + open + 1 + inner.indexOf(side),
+          length: side.length,
+          message:
+            `\`${side}\` is not a media feature, so this condition never matches and the rules inside ` +
+            `it never apply — a browser keeps it rather than refusing it. Did you mean \`${meant}\`?`,
+        });
+      }
+    }
   }
 }
 
@@ -168,7 +190,7 @@ export function mediaValues(block: Block, findings: Finding[]): void {
       if (words === undefined || kinds === undefined || value === "") continue;
 
       const at = item.at + index + whole.indexOf(value, whole.indexOf(":"));
-      const notAUnit = unknownUnit(value, at);
+      const notAUnit = unknownUnit(value, at) ?? unreadable(value, at);
       if (notAUnit !== undefined) {
         findings.push(notAUnit);
         continue;
@@ -193,7 +215,7 @@ export function mediaValues(block: Block, findings: Finding[]): void {
     // The range form, `(width >= 40)` and `(40 < width <= 80rem)`: a value of the wrong kind on either
     // side leaves it unknown exactly as the colon form does.
     for (const { name, value, at } of rangesIn(item.prelude)) {
-      const notAUnit = unknownUnit(value, item.at + at);
+      const notAUnit = unknownUnit(value, item.at + at) ?? unreadable(value, item.at + at);
       if (notAUnit !== undefined) {
         findings.push(notAUnit);
         continue;
@@ -225,6 +247,98 @@ function unknownUnit(value: string, at: number): Finding | undefined {
       `\`${unit}\` is not a CSS unit, so this condition never matches and a browser keeps it anyway.` +
       (meant === undefined ? "" : ` Did you mean \`${meant}\`?`),
   };
+}
+
+/**
+ * A value that starts like a number and is not one any engine reads — `4r0em`, `16/9x`. Kept and
+ * never matching, measured in all three, exactly as a wrong unit is.
+ */
+function unreadable(value: string, at: number): Finding | undefined {
+  if (!/^[+\-.\d]/.test(value) || kindOf(value) !== undefined) return undefined;
+  return {
+    rule: "malformed-media-condition",
+    at,
+    length: value.length,
+    message: `\`${value}\` is not a value a browser can read, so this condition never matches and a browser keeps it anyway.`,
+  };
+}
+
+/** Each innermost `( … )` in a prelude, with where it opens and closes. Read by hand: see `rangesIn`. */
+function* innermostGroups(prelude: string): Generator<{ open: number; close: number; inner: string }> {
+  let open = prelude.indexOf("(");
+  while (open !== -1) {
+    const close = prelude.indexOf(")", open + 1);
+    if (close === -1) return;
+    const inner = prelude.slice(open + 1, close);
+    const nested = inner.lastIndexOf("(");
+    if (nested !== -1) {
+      open += 1 + nested;
+      continue;
+    }
+    yield { open, close, inner };
+    open = prelude.indexOf("(", close + 1);
+  }
+}
+
+/** The words a media query may hold between its conditions: the keywords, and every media type. */
+const BETWEEN = ["and", "or", "not", "only", "all", "print", "screen"];
+const DEPRECATED_TYPES = ["tty", "tv", "projection", "handheld", "braille", "embossed", "aural", "speech"];
+
+/**
+ * A `@media` condition no engine can read, in the shapes `check-engine-sweep.mjs` found silent — each
+ * one kept by Chromium, Firefox and WebKit and never applied:
+ *
+ * - `(min-width 40rem)`: no `:` between a feature and its value;
+ * - `(min-width: 40rem) an (max-width: 60rem)`: a word between conditions that is not `and`, `or`,
+ *   `not`, `only` or a media type.
+ *
+ * A misspelt feature in the RANGE form is `unknown-media-feature`'s, and a number nobody reads is
+ * `unreadable`, beside the other values.
+ */
+export function malformedMedia(block: Block, findings: Finding[]): void {
+  for (const item of rulesIn(block)) {
+    if (!item.prelude.startsWith("@media") || item.at === undefined) continue;
+    const prelude = item.prelude;
+
+    for (const { open, close, inner } of innermostGroups(prelude)) {
+      if (inner.includes(":") || /[<>=]/.test(inner)) continue;
+      const words = inner.trim().split(/\s+/);
+      if (words.length !== 2 || !KNOWN_FEATURES.has(words[0].toLowerCase())) continue;
+      const group = prelude.slice(open, close + 1);
+      findings.push({
+        rule: "malformed-media-condition",
+        at: item.at + open,
+        length: group.length,
+        message:
+          `\`${group}\` has no \`:\` between the feature and its value, so this condition never matches and ` +
+          `a browser keeps it anyway. Write \`(${words[0]}: ${words[1]})\`.`,
+      });
+    }
+
+    // The words outside every group, read with each group blanked out so a position still counts.
+    let depth = 0;
+    const outside = [...prelude.slice("@media".length)]
+      .map((one) => {
+        if (one === "(") depth++;
+        const blank = depth > 0;
+        if (one === ")") depth--;
+        return blank ? " " : one;
+      })
+      .join("");
+    for (const found of outside.matchAll(/[a-zA-Z][\w-]*/g)) {
+      const word = found[0].toLowerCase();
+      if (BETWEEN.includes(word) || DEPRECATED_TYPES.includes(word)) continue;
+      const meant = nearest(word, BETWEEN);
+      findings.push({
+        rule: "malformed-media-condition",
+        at: item.at + "@media".length + (found.index ?? 0),
+        length: found[0].length,
+        message:
+          `\`${found[0]}\` is not a word a media query has, so this condition never matches and a browser keeps ` +
+          `it anyway. ${meant === undefined ? "Between conditions write `and`, `or` or `not`." : `Did you mean \`${meant}\`?`}`,
+      });
+    }
+  }
 }
 
 /** A value of a kind the feature does not take — the one sentence both forms of a condition say. */
@@ -556,6 +670,7 @@ const ELSEWHERE = new Set(NOT_IN_A_RULE);
 export function atRuleOutOfPlace(rule: NestedRule, findings: Finding[]): void {
   if (!rule.prelude.startsWith("@")) {
     unknownSelector(rule, findings);
+    malformedSelector(rule, findings);
     return;
   }
 
@@ -618,6 +733,64 @@ function unknownAtRule(rule: NestedRule, name: string, findings: Finding[]): voi
       `inside it, not just one. ` +
       (meant === undefined ? "Check the name." : `Did you mean \`${meant}\`?`),
   });
+}
+
+/** `An+B`, `odd`, `even` or a whole number — what the four `nth-` pseudo-classes take — with an optional `of S`. */
+const AN_PLUS_B = /^(?:odd|even|[+-]?\d+|[+-]?\d*n(?:\s*[+-]\s*\d+)?)(?:\s+of\s+\S.*)?$/i;
+
+/**
+ * A selector every engine drops, in the shapes `check-engine-sweep.mjs` found silent — each measured
+ * refused by `insertRule` in Chromium, Firefox and WebKit, which drops the whole rule:
+ *
+ * - `&not(.a)`: a functional pseudo-class with its `:` missing. A name before `(` is only ever a
+ *   pseudo-class, so a bare one is this.
+ * - `:nth-child(2+1)`: an argument that is not `An+B`, `odd`, `even` or a number.
+ * - `&[data-x="1"`: a bracket left open, or one closed that never opened.
+ *
+ * Strings are stepped over, so `[data-x="]"]` is one attribute.
+ */
+function malformedSelector(rule: NestedRule, findings: Finding[]): void {
+  const text = rule.prelude;
+  const at = rule.at ?? 0;
+  const push = (offset: number, length: number, message: string) =>
+    findings.push({ rule: "malformed-selector", at: at + offset, length, message });
+  const dropped = "so a browser drops the whole rule — every declaration inside it, not just one.";
+
+  const open: number[] = [];
+  for (let index = 0; index < text.length; index++) {
+    const code = text.charCodeAt(index);
+    if (code === 34 || code === 39) {
+      index = endOfString(text, index);
+      continue;
+    }
+    if (code === 91 /* [ */) open.push(index);
+    if (code === 93 /* ] */ && open.pop() === undefined) {
+      push(index, 1, `This \`]\` closes a \`[\` that never opened, ${dropped}`);
+      return;
+    }
+    if (code === 40 /* ( */) {
+      const name = /[a-zA-Z][\w-]*$/.exec(text.slice(Math.max(0, index - 64), index))?.[0];
+      if (name === undefined) continue;
+      const start = index - name.length;
+      const before = text[start - 1];
+      if (before !== ":" && PSEUDO_NAMES.has(`:${name.toLowerCase()}`)) {
+        push(start, name.length + 1, `\`${name}(\` is missing its \`:\`, ${dropped} Write \`:${name}(\`.`);
+        continue;
+      }
+      if (before === ":" && /^nth-(?:last-)?(?:child|of-type)$/i.test(name)) {
+        const close = endOfCall(text, index);
+        const argument = text.slice(index + 1, close).trim();
+        if (!AN_PLUS_B.test(argument)) {
+          push(
+            index + 1,
+            close - index - 1,
+            `\`${argument}\` is not an argument \`:${name}()\` takes, ${dropped} It takes \`An+B\` — \`2n+1\`, \`-n+3\` — \`odd\`, \`even\` or a number.`,
+          );
+        }
+      }
+    }
+  }
+  if (open.length > 0) push(open[0], 1, `This \`[\` is never closed, ${dropped}`);
 }
 
 /**

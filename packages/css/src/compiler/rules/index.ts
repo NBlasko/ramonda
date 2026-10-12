@@ -23,6 +23,7 @@ import {
   layerInABlock,
   mediaFeatures,
   mediaValues,
+  malformedMedia,
   rootInABlock,
   stylesAnotherElement,
   supportsAMediaFeature,
@@ -138,6 +139,8 @@ export const RULE_IDS = [
   // A value a media feature does not have, and a media feature asked of `@supports`. See
   // `mediaValues` and `supportsAMediaFeature`.
   "unknown-media-value",
+  // A missing `:`, a number nobody reads, a word between conditions. See `malformedMedia`.
+  "malformed-media-condition",
   "supports-a-media-feature",
   // A number a browser drops where no type refuses it — `gap: 12`, `z-index: 1.5`. See `numberDropped`.
   "number-without-a-unit",
@@ -166,7 +169,11 @@ export const RULE_IDS = [
   // A function no engine has, and a CSS custom function, which Firefox drops. See `unknownFunction`.
   "unknown-function",
   "custom-function",
+  // A hex colour with the wrong number of digits. See `invalidHexColor`.
+  "invalid-hex-color",
   "unknown-selector",
+  // A missing `:`, an `An+B` no engine reads, a bracket left open. See `malformedSelector`.
+  "malformed-selector",
   "unknown-flag",
   "unclosed-call",
   "unknown-token",
@@ -397,6 +404,7 @@ export function checkBlock(written: AnyBlock, options: CheckOptions = {}): Findi
   holeAsAVariableName(block, findings);
   mediaFeatures(block, findings);
   mediaValues(block, findings);
+  malformedMedia(block, findings);
   supportsAMediaFeature(block, findings);
   spelling(block, findings);
   layerInABlock(block, findings);

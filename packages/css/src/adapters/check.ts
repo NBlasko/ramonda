@@ -83,7 +83,7 @@ export interface Report {
    * was — see the return that keeps them.
    */
   readonly refusals: readonly Finding[];
-  /** A block could not be read, so nothing was type-checked. */
+  /** A block could not be read, so the file holding it was not type-checked. */
   readonly refused: boolean;
   /**
    * Every `ramonda-css-ignore` the run honoured, with the reason the author gave.
@@ -237,27 +237,19 @@ export function checkProject(tsconfig: string, options: CheckOptions = {}): Repo
   }
 
   /**
-   * A refusal stops the TYPE check, and only the type check.
+   * A refusal stops the type check OF ITS OWN FILE, and nothing else.
    *
-   * Reporting the compiler's confusion about a file it could not read would be wrong answers — but
-   * applied to the whole project, one unreadable block in `Card.tsx` would hide `colour: red` in
-   * `Other.tsx`, a file that read perfectly, so a typo anywhere would mean fixing the repository
-   * one error per run.
+   * Reporting the compiler's confusion about a file it could not read would be wrong answers — there
+   * is no virtual file for it, so the program sees the raw block syntax. But the program still runs
+   * for every other file: one unreadable block in `Card.tsx` must not hide a fault in `Other.tsx`,
+   * or a typo anywhere would mean fixing the repository one error per run.
    *
-   * `css` holds only what files that READ produced — a file whose walk threw never reaches the push
-   * — so those findings are exactly the ones the reason does not cover. They are kept, and {@link
-   * Report.refusals} is what lets the caller print the two apart.
+   * Measured 2026-10-12: this used to return here, skipping the whole program, and the reason above
+   * was believed only because its example — `colour: red` — is a fault a RULE reports. A fault only
+   * the TYPES see, `position: absolutex`, vanished from every file beside one broken block. Found by
+   * `scripts/css/check-engine-sweep.mjs`.
    */
-  if (refusals.length > 0) {
-    return {
-      files: parsed.fileNames.length,
-      styled: overlays.size,
-      findings: [...refusals, ...css],
-      refusals,
-      refused: true,
-      exempted,
-    };
-  }
+  const refusedFiles = new Set(refusals.map((one) => one.file));
 
   /**
    * **The project's own `ramonda.css.ts` is type-checked, and a `tsconfig` will not have included
@@ -341,15 +333,16 @@ export function checkProject(tsconfig: string, options: CheckOptions = {}): Repo
     files: parsed.fileNames.length,
     styled: overlays.size,
     findings: [
+      ...refusals,
       ...setup.values(),
       ...inOrder(
         css,
-        findings.filter((one) => !unparseable.has(one.file)),
+        findings.filter((one) => !unparseable.has(one.file) && !refusedFiles.has(one.file)),
         sources,
       ),
     ],
-    refusals: [],
-    refused: false,
+    refusals,
+    refused: refusals.length > 0,
     exempted,
   };
 }

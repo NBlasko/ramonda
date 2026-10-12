@@ -600,3 +600,102 @@ describe("a condition that cannot switch", () => {
     expect(found).not.toContain("supports-a-media-feature");
   });
 });
+
+/**
+ * Four shapes of a `@media` condition every engine keeps and never applies, all silent until
+ * `check-engine-sweep.mjs` asked: a missing `:`, a misspelt feature in the range form, a number no
+ * engine can read, and a word between conditions that is not `and`, `or`, `not` or a media type.
+ */
+describe("a media condition that cannot be read", () => {
+  test.each([
+    ["a missing colon", "  @media (min-width 40rem) { color: red; }", "malformed-media-condition"],
+    ["a missing colon on a word", "  @media (hover hover) { color: red; }", "malformed-media-condition"],
+    [
+      "a missing colon after an and",
+      "  @media screen and (min-width 40rem) { color: red; }",
+      "malformed-media-condition",
+    ],
+    ["a misspelt feature in a range", "  @media (400px <= wdith <= 70rem) { color: red; }", "unknown-media-feature"],
+    ["one letter more in a range", "  @media (400px <= widthx <= 70rem) { color: red; }", "unknown-media-feature"],
+    ["a number nobody reads", "  @media (min-width: 4r0em) { color: red; }", "malformed-media-condition"],
+    ["the same in a range", "  @media (width >= 4r0em) { color: red; }", "malformed-media-condition"],
+    ["a ratio with a unit", "  @media (min-aspect-ratio: 16/9x) { color: red; }", "malformed-media-condition"],
+    [
+      "a word that is not and",
+      "  @media (min-width: 40rem) an (max-width: 60rem) { color: red; }",
+      "malformed-media-condition",
+    ],
+    ["another", "  @media screen andx (min-width: 40rem) { color: red; }", "malformed-media-condition"],
+  ])("%s is reported", (_what, css, rule) => {
+    expect(rules(css)).toContain(rule);
+  });
+
+  test("the missing colon is named where it belongs", () => {
+    const css = "  @media (min-width 40rem) { color: red; }";
+    const [found] = check(css).filter((one) => one.rule === "malformed-media-condition");
+    const source = `<div className={@@(\n${css}\n)}>x</div>`;
+    expect(source.slice(found.at, found.at + found.length)).toBe("(min-width 40rem)");
+    expect(found.message).toBe(
+      "`(min-width 40rem)` has no `:` between the feature and its value, so this condition never matches and a browser keeps it anyway. Write `(min-width: 40rem)`.",
+    );
+  });
+
+  test("and the word between conditions offers the one that was meant", () => {
+    expect(messages("  @media (min-width: 40rem) an (max-width: 60rem) { color: red; }").join(" ")).toContain(
+      "Did you mean `and`?",
+    );
+  });
+
+  test.each([
+    ["a boolean feature", "  @media (hover) { color: red; }"],
+    ["not and only", "  @media only screen and (min-width: 40rem) { color: red; }"],
+    ["not in front", "  @media not print { color: red; }"],
+    ["or between conditions", "  @media (min-width: 40rem) or (orientation: landscape) { color: red; }"],
+    ["a list", "  @media print, (min-width: 40rem) { color: red; }"],
+    ["a range on both sides", "  @media (400px <= width <= 70rem) { color: red; }"],
+    ["a ratio", "  @media (min-aspect-ratio: 16/9) { color: red; }"],
+    ["a decimal", "  @media (min-resolution: 1.5dppx) { color: red; }"],
+    ["not with parentheses", "  @media not (hover: hover) { color: red; }"],
+  ])("%s is silent", (_what, css) => {
+    const found = rules(css);
+    expect(found).not.toContain("malformed-media-condition");
+    expect(found).not.toContain("unknown-media-feature");
+  });
+});
+
+/**
+ * A selector every engine drops, in the three shapes `check-engine-sweep.mjs` found silent: a
+ * functional pseudo-class with its `:` missing, an `An+B` no engine reads, and a bracket left open.
+ */
+describe("a selector that cannot be read", () => {
+  test.each([
+    ["a missing colon", "  &not(.a) { color: red; }"],
+    ["another", "  &has(> img) { color: red; }"],
+    ["nth-child with no n", "  &:nth-child(2+1) { color: red; }"],
+    ["nth-child with a letter after", "  &:nth-child(2n+1x) { color: red; }"],
+    ["nth-child with no sign", "  &:nth-child(2n1) { color: red; }"],
+    ["odd misspelt", "  &:nth-of-type(od) { color: red; }"],
+    ["a bracket left open", '  &[data-x="1" { color: red; }'],
+    ["a bracket never opened", '  &data-x="1"] { color: red; }'],
+  ])("%s is reported", (_what, css) => {
+    expect(rules(css)).toContain("malformed-selector");
+  });
+
+  test("the missing colon says what to write", () => {
+    expect(messages("  &not(.a) { color: red; }").join(" ")).toContain("Write `:not(`");
+  });
+
+  test.each([
+    ["nth-child", "  &:nth-child(2n+1) { color: red; }"],
+    ["with spaces", "  &:nth-child(2n + 1) { color: red; }"],
+    ["a number", "  &:nth-child(3) { color: red; }"],
+    ["negative n", "  &:nth-child(-n+3) { color: red; }"],
+    ["even", "  &:nth-of-type(even) { color: red; }"],
+    ["of a selector", "  &:nth-child(2n of .a) { color: red; }"],
+    ["an attribute", '  &[data-x="1"] { color: red; }'],
+    ["a bracket in a string", '  &[data-x="]"] { color: red; }'],
+    ["is", "  &:is(.a, .b) { color: red; }"],
+  ])("%s is silent", (_what, css) => {
+    expect(rules(css)).not.toContain("malformed-selector");
+  });
+});

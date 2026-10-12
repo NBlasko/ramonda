@@ -1344,9 +1344,33 @@ describe("a refusal, and the files that read anyway", () => {
     expect(said[0].code).toBe("unknown-property");
   });
 
-  /** The compiler's own word stays out, which is what the refusal is about. */
-  test("while no TypeScript diagnostic is reported at all", () => {
-    expect(check(files).findings.filter((one) => typeof one.code === "number" && one.code !== 0)).toEqual([]);
+  /** The compiler's own word about the REFUSED file stays out, which is what the refusal is about. */
+  test("while no TypeScript diagnostic is reported about the file that was refused", () => {
+    const typed = check(files).findings.filter((one) => typeof one.code === "number" && one.code !== 0);
+    expect(typed.filter((one) => one.file.includes("Card.tsx"))).toEqual([]);
+  });
+
+  /**
+   * A fault only the TYPES see, in a file that read perfectly. Measured 2026-10-12: the whole type
+   * check was skipped on any refusal, so `position: absolutex` beside one broken block anywhere
+   * compiled clean — the docstring above promised the opposite, and its own example is a fault a
+   * RULE reports, so it never showed. Found by `check-engine-sweep.mjs`.
+   */
+  test("and a fault only the types see, in another file, is reported", () => {
+    const said = check({
+      ...files,
+      "Typed.tsx": "export const fourth = @@(\n  position: absolutex;\n);\n",
+    }).findings.filter((one) => one.file.includes("Typed.tsx"));
+    expect(said.map((one) => one.code)).toEqual([2820]);
+  });
+
+  /** A file that IMPORTS from the refused one is not blamed for what the refusal left behind. */
+  test("and a file importing from the refused one is not blamed for it", () => {
+    const said = check({
+      ...files,
+      "Uses.tsx": 'import { first } from "./Card";\nexport const both = [first, @@( position: absolute; )];\n',
+    }).findings.filter((one) => one.file.includes("Uses.tsx"));
+    expect(said).toEqual([]);
   });
 });
 
