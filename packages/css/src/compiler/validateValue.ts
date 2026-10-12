@@ -1,6 +1,7 @@
 import { PROPERTY_GRAMMAR, TYPE_GRAMMAR } from "./grammars.generated";
 import { UNIT_TYPE } from "./keywords.generated";
 import { matchValue } from "./matchValue";
+import { withoutImportant } from "./rules/shared";
 import { parseValueSyntax, type Term } from "./valueSyntax";
 
 /**
@@ -436,7 +437,13 @@ function expanded(term: Term): Term {
 
 const argumentsOf = new Map<Term, Term>();
 
-/** Each read costs one; a reading that would run past this is answered "cannot say". */
+/**
+ * Each read costs one; a reading that would run past this is answered "cannot say".
+ *
+ * Measured in review: at 200,000 a `background` of twenty layers took 608 ms to come back "cannot
+ * say", and the editor asks on every keystroke. At 10,000 the corpus loses two readings of 1754 and
+ * the worst value is tens of milliseconds — see the test beside `invalid-value`.
+ */
 let budget = 0;
 class OverBudget extends Error {}
 
@@ -469,7 +476,8 @@ function accepts(term: Term, token: string): boolean {
 
 /** `true` it reads, `false` it does not, `undefined` this cannot say. */
 export function valueMatchesGrammar(property: string, value: string): boolean | undefined {
-  const bare = value.replace(/\s*!\s*important\s*$/i, "").trim();
+  // `withoutImportant`, not a pattern: `\s*!\s*important\s*$` was quadratic in a run of spaces.
+  const bare = withoutImportant(value).trim();
   if (bare === "" || /\b(?:var|env|attr)\(/i.test(bare)) return undefined;
   const source = PROPERTY_GRAMMAR[property.toLowerCase()];
   if (source === undefined) return undefined;
@@ -479,7 +487,7 @@ export function valueMatchesGrammar(property: string, value: string): boolean | 
   if (tokens === undefined) return undefined;
   const top = grammar(source);
   if (top === null) return undefined;
-  budget = 200_000;
+  budget = 10_000;
   try {
     return matchValue(expanded(top), tokens, accepts) !== undefined;
   } catch (error) {

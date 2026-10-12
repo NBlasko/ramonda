@@ -783,7 +783,7 @@ export function invalidValue(item: Declaration, findings: Finding[]): void {
   if (property.startsWith("-") || UNION_TYPED.includes(property) || ENGINE_OPEN.includes(property)) return;
   if (/(?:^|[\s,(/])-(?:webkit|moz|ms|o|apple|epub)-/i.test(part.text)) return;
   if (valueMatchesGrammar(property, part.text) !== false) return;
-  const text = part.text.replace(/\s*!\s*important\s*$/i, "").trimEnd();
+  const text = withoutImportant(part.text).trimEnd();
   const lead = text.length - text.trimStart().length;
   findings.push({
     rule: "invalid-value",

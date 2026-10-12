@@ -189,7 +189,9 @@ export function longhandsAt(where: Regions, source: string, at: number): ts.Quic
 
   const raw = source.slice(value.start, value.end);
   const lead = /^\s*:?\s*/.exec(raw)?.[0].length ?? 0;
-  const text = raw.slice(lead).replace(/\s*;?\s*$/, "");
+  // Trimmed by hand: `\s*;?\s*$` was CUBIC in a run of spaces — 5000 took 65 s, measured in review.
+  let text = raw.slice(lead).trimEnd();
+  if (text.endsWith(";")) text = text.slice(0, -1).trimEnd();
   if (text === "" || text.includes("$")) return undefined;
   const textSpan = { start: value.start + lead, length: text.length };
   /**

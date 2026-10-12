@@ -6,6 +6,7 @@
  *     node scripts/css/check-engine-sweep.mjs --write   # take closed holes off the list; refuses a new one
  *     SELFTEST=hole node scripts/css/check-engine-sweep.mjs    # the checker silent on one drop; must fail
  *     SELFTEST=fixed node scripts/css/check-engine-sweep.mjs   # a closed hole left on it; must fail
+ *     SELFTEST=blind node scripts/css/check-engine-sweep.mjs   # engines that drop nothing; must fail
  *
  * ## What it asks
  *
@@ -241,7 +242,22 @@ const broken = (index, engine) => {
   return verdict !== "ok";
 };
 
+/**
+ * The break `SELFTEST=blind` plants: engines that drop nothing. Every case then reads as kept, no
+ * hole can appear, and the run passes having asked nothing — the shape a broken page or oracle takes.
+ */
+if (selftest === "blind") for (const one of verdicts) for (const engine of ENGINES) one[engine] = "ok";
+
 const faults = [];
+
+/**
+ * How many damaged cases every engine must drop, or the oracle is not answering. Found in review:
+ * 791 of 989 are dropped by all three; a half is well under that and well over none.
+ */
+const dropped = cases.filter((one, index) => !one.isBase && ENGINES.every((engine) => broken(index, engine))).length;
+if (dropped < (cases.length - cases.filter((one) => one.isBase).length) / 2) {
+  faults.push(`only ${dropped} damaged case(s) are dropped by every engine — the engines are not being asked`);
+}
 /**
  * The break `SELFTEST=hole` plants: the checker going silent on one case every engine drops — the
  * regression this gate exists for. Planted in what the checker SAID, not in the list, so it still
@@ -293,7 +309,7 @@ const appeared = holes.filter((one) => !known.has(one));
 const closed = listed.filter((one) => !found.has(one));
 
 if (selftest !== undefined) {
-  const caught = selftest === "hole" ? appeared : closed;
+  const caught = selftest === "hole" ? appeared : selftest === "blind" ? faults : closed;
   if (caught.length > 0) caughtIt("engine-sweep", selftest, caught);
   console.error(`[engine-sweep] SELFTEST=${selftest} caught nothing — the comparison is not working.`);
   process.exit(1);

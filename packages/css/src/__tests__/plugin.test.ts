@@ -518,6 +518,15 @@ describe("hover", () => {
     );
   });
 
+  /** Found in review: the trailing-`;` strip was CUBIC — 5000 spaces took 65 s — and a hover is per caret move. */
+  test("and a hover over a value of long whitespace answers at once", () => {
+    const marked = `const a = <div className={@@( border-left: 4px${" ".repeat(20_000)}so${CARET}lid red; )}>x</div>;\n`;
+    const { service, caret } = editor(marked);
+    const started = performance.now();
+    service.getQuickInfoAtPosition(FILE, caret);
+    expect(performance.now() - started).toBeLessThan(500);
+  });
+
   /** The user's own example: a `var()` may stand for any part, so the build keeps it whole, and says so. */
   test("and over one with a var(), why it is kept whole", () => {
     const marked = `const a = <div className={@@( border-left: 4px so${CARET}lid var(--accent); )}>x</div>;\n`;

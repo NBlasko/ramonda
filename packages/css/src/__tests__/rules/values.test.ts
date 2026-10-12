@@ -1415,3 +1415,32 @@ describe("a family name that begins with a generic family", () => {
     expect(rules(css)).not.toContain("invalid-value");
   });
 });
+
+/**
+ * The grammar is asked on every keystroke in the editor. Measured in review: twenty layers of
+ * `background` took 608 ms before the reading budget came down; "cannot say" is the answer either
+ * way, so it has to be a quick one.
+ */
+test("a long list is answered quickly, whatever the answer", () => {
+  const layers = "url(a.png) no-repeat scroll 0 0 / 40px 40px padding-box border-box, ".repeat(20);
+  // Once first: the grammars are read and cached on the first call, once per editor session, and
+  // under a full gate's load that alone came to more than this test allows.
+  rules(`  background: ${layers}#fff;`);
+  rules(`  transition: ${"opacity 150ms ease-in 0s, ".repeat(20)}transform 1s linear;`);
+  const started = performance.now();
+  rules(`  background: ${layers}#fff;`);
+  rules(`  transition: ${"opacity 150ms ease-in 0s, ".repeat(20)}transform 1s linear;`);
+  expect(performance.now() - started).toBeLessThan(250);
+});
+
+/**
+ * A value of nothing but spaces, the shape a paste leaves. Found in review: the `!important` strip
+ * this rule ran was quadratic in the spaces before it.
+ */
+test("a value of long whitespace is answered at once", () => {
+  const started = performance.now();
+  // A name of two words, which no other rule speaks about — so the grammar is asked, and with it the
+  // `!important` strip, over every one of the spaces.
+  rules(`  font-family: Helvetica${" ".repeat(20_000)}Neue;`);
+  expect(performance.now() - started).toBeLessThan(250);
+});

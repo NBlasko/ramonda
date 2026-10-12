@@ -1260,7 +1260,8 @@ describe("a container name nothing in the project names", () => {
     expect(report.findings[0].line).toBe(2);
     expect(report.findings[0].column).toBe(14);
     expect(report.findings[0].message).toContain("nothing in this build names a container `cardx`");
-    expect(report.findings[0].message).toContain("container-name");
+    // The advice gives the type too: a name alone never answers a size condition, in any engine.
+    expect(report.findings[0].message).toContain("container: cardx / inline-size");
     expect(report.findings[0].message).toContain("externalContainerNames");
   });
 

@@ -26,8 +26,11 @@ export function containerMessageFor(one: UnknownContainer): string {
   return (
     `nothing in this build names a container \`${one.read.name}\`, so this condition never matches.` +
     (one.meant === undefined ? "" : ` Did you mean \`${one.meant}\`?`) +
-    `\n    Name one with \`container-name: ${one.read.name}\`, or add it to \`externalContainerNames\` in ` +
-    `\`ramonda.css.ts\` if a stylesheet this does not compile names it.`
+    // A NAME alone never answers a size condition, measured in all three engines: the element needs a
+    // `container-type` too, so the advice gives both.
+    `\n    Name one with \`container: ${one.read.name} / inline-size\` — a name alone never answers a size ` +
+    `condition — or add it to \`externalContainerNames\` in \`ramonda.css.ts\` if a stylesheet this does ` +
+    `not compile names it.`
   );
 }
 

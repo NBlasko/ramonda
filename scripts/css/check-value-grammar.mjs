@@ -4,6 +4,7 @@
  *     node scripts/css/check-value-grammar.mjs
  *     node scripts/css/check-value-grammar.mjs --collect FILE…   # rebuild the corpus from CSS files
  *     SELFTEST=refuse node scripts/css/check-value-grammar.mjs   # a valid value refused; must fail
+ *     SELFTEST=blind node scripts/css/check-value-grammar.mjs    # a checker that reads nothing; must fail
  *
  * ## Why
  *
@@ -91,7 +92,18 @@ for (const one of sweepCases()) {
 const real = await loadValidator();
 // The break the selftest plants: a validator that refuses one value every engine takes.
 const valueMatchesGrammar =
-  selftest === "refuse" ? (p, v) => (p === "color" && v === "red" ? false : real(p, v)) : real;
+  selftest === "refuse"
+    ? (p, v) => (p === "color" && v === "red" ? false : real(p, v))
+    : selftest === "blind"
+      ? () => undefined
+      : real;
+
+/**
+ * How much of the corpus must be READ, not only not refused. A checker answering "cannot say" to
+ * everything refuses nothing and would pass — the shape a broken reader takes. Found in review: 1752
+ * of 2037 are read, the rest a `var()` or a budget; this floor is well under that and well over none.
+ */
+const MUST_READ = 0.75;
 if (selftest === "refuse") corpus.push(["color", "red"]);
 
 const pw = createRequire(join(ROOT, "apps", "playground-core", "package.json"))("@playwright/test");
@@ -120,13 +132,18 @@ for (const [index, [property, value]] of corpus.entries()) {
 const wrong = refused.filter((one) => DECIDED[one] === undefined);
 const stale = Object.keys(DECIDED).filter((one) => !refused.includes(one));
 
+const blind = read < corpus.length * MUST_READ;
+
 if (selftest !== undefined) {
-  if (wrong.length > 0) caughtIt(TAG, selftest, wrong);
+  if (selftest === "blind" && blind) caughtIt(TAG, selftest, [`read ${read} of ${corpus.length}`]);
+  if (selftest !== "blind" && wrong.length > 0) caughtIt(TAG, selftest, wrong);
   console.error(`[${TAG}] SELFTEST=${selftest} caught nothing — the comparison is not working.`);
   process.exit(1);
 }
 
 for (const one of wrong) console.error(`[${TAG}] REFUSED, and an engine takes it: ${one}`);
 for (const one of stale) console.error(`[${TAG}] decided, and no longer refused — take it out of DECIDED: ${one}`);
-if (wrong.length + stale.length > 0) process.exit(1);
+if (blind)
+  console.error(`[${TAG}] only ${read} of ${corpus.length} declarations were read — the checker is not reading`);
+if (wrong.length + stale.length > 0 || blind) process.exit(1);
 console.log(`[${TAG}] ${corpus.length} declarations, ${read} read, none an engine takes refused`);
