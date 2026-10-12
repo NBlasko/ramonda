@@ -767,6 +767,10 @@ describe("a supports condition that is never true by mistake", () => {
     ["a selector missing its colon", "  @supports selector(has(a)) { color: red; }"],
     ["a misspelt pseudo-class", "  @supports selector(:hasx(a)) { color: red; }"],
     ["a word that is not and", "  @supports (display: grid) andx (gap: 1rem) { color: red; }"],
+    // A value of numbers, units and known functions alone asks about no feature, so its grammar is
+    // asked — `rgb(1x 2 3)` is false in every engine, by a slip.
+    ["a unit inside a colour", "  @supports (color: rgb(1x 2 3)) { color: red; }"],
+    ["arithmetic with no type", "  @supports (width: calc(100 - 2rem)) { color: red; }"],
   ])("%s is reported", (_what, css) => {
     expect(rules(css)).toContain("supports-never-true");
   });
@@ -788,6 +792,8 @@ describe("a supports condition that is never true by mistake", () => {
     ["font-tech()", "  @supports font-tech(color-COLRv1) { color: red; }"],
     ["a newer unit", "  @supports (width: 1cqw) { color: red; }"],
     ["a sizing keyword", "  @supports (min-width: fit-content) { color: red; }"],
+    ["a new value made of known words", "  @supports (display: grid-lanes) { color: red; }"],
+    ["a new function", "  @supports (width: calc-size(auto, size)) { color: red; }"],
   ])("%s is silent", (_what, css) => {
     expect(rules(css)).not.toContain("supports-never-true");
   });

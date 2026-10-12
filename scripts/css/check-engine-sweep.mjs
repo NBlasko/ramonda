@@ -4,7 +4,7 @@
  *
  *     node scripts/css/check-engine-sweep.mjs
  *     node scripts/css/check-engine-sweep.mjs --write   # take closed holes off the list; refuses a new one
- *     SELFTEST=hole node scripts/css/check-engine-sweep.mjs    # a hole taken off the list; must fail
+ *     SELFTEST=hole node scripts/css/check-engine-sweep.mjs    # the checker silent on one drop; must fail
  *     SELFTEST=fixed node scripts/css/check-engine-sweep.mjs   # a closed hole left on it; must fail
  *
  * ## What it asks
@@ -26,12 +26,12 @@
  *   two sizes, because `(broken) and (false)` is plainly false at one of them;
  * - a `@supports` condition: broken if it answers differently from its base.
  *
- * ## Why a baseline, not zero
+ * ## Why a baseline, when it is empty
  *
- * The first run found 240 (2026-10-12), in eight families — function arguments, malformed numbers,
- * missing separators, `@container` and `@supports` unchecked, and more. They are closed family by
- * family; until then they are LISTED, so a new one fails here the day it appears, and a closed one has
- * to come off the list, so the number only falls.
+ * The first run found 243 (2026-10-12), in eight families — function arguments, malformed numbers,
+ * missing separators, `@container` and `@supports` unchecked, and more — and they were closed family by
+ * family the same day, to none. The list stays: a new hole fails here the day it appears, and one that
+ * has to be lived with is put on it on purpose, with `--write --accept-new`, where a review sees it.
  */
 import { readFileSync, rmSync, writeFileSync, mkdtempSync, mkdirSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -242,6 +242,18 @@ const broken = (index, engine) => {
 };
 
 const faults = [];
+/**
+ * The break `SELFTEST=hole` plants: the checker going silent on one case every engine drops — the
+ * regression this gate exists for. Planted in what the checker SAID, not in the list, so it still
+ * bites when the list is empty.
+ */
+if (selftest === "hole") {
+  const caught = cases.findIndex(
+    (one, index) => !one.isBase && said[index].length > 0 && ENGINES.every((engine) => broken(index, engine)),
+  );
+  said[caught] = [];
+}
+
 const holes = [];
 for (const [index, one] of cases.entries()) {
   if (one.isBase) {
@@ -254,7 +266,6 @@ for (const [index, one] of cases.entries()) {
 }
 
 const listed = JSON.parse(readFileSync(BASELINE, "utf8")).holes;
-if (selftest === "hole") listed.splice(listed.indexOf(holes[0]), 1);
 if (selftest === "fixed") listed.push(keyOf(cases.find((one) => !one.isBase && !holes.includes(keyOf(one)))));
 
 if (write) {

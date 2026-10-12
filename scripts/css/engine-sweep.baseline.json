@@ -1,14 +1,4 @@
 {
-  "count": 9,
-  "holes": [
-    "decl | font-family: system-ui sans-serif",
-    "decl | width: calc(100 - 2rem)",
-    "decl | width: calc(100% - 2)",
-    "decl | width: min(100% 40rem)",
-    "decl | width: min(100%, 40)",
-    "decl | width: min(100, 40rem)",
-    "supports | (color: rgb(1 2 3x))",
-    "supports | (color: rgb(1 2x 3))",
-    "supports | (color: rgb(1x 2 3))"
-  ]
+  "count": 0,
+  "holes": []
 }

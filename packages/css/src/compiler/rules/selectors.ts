@@ -1,6 +1,14 @@
 /** Rules about a nested rule's selector or at-rule: unknown, out of place, or reaching another element. */
 
-import { AT_RULE_LINKS, MEDIA_FEATURES, NOT_IN_A_RULE, PROPERTIES, SELECTORS, UNITS } from "../keywords.generated";
+import {
+  AT_RULE_LINKS,
+  FUNCTIONS,
+  MEDIA_FEATURES,
+  NOT_IN_A_RULE,
+  PROPERTIES,
+  SELECTORS,
+  UNITS,
+} from "../keywords.generated";
 import { MEDIA_KINDS, MEDIA_WORDS } from "../mediaValues.generated";
 import { nearest } from "../nearest";
 import { branchOf } from "../read";
@@ -20,6 +28,9 @@ import {
   unknownValue,
 } from "./values";
 import type { Declaration } from "../ast";
+import { valueMatchesGrammar } from "../validateValue";
+
+const KNOWN_CALLS = new Set(FUNCTIONS);
 
 /**
  * A selector whose subject is another element, in a project that keeps a block to its own element.
@@ -606,9 +617,23 @@ export function supportsNeverTrue(block: Block, findings: Finding[]): void {
       unknownUnitIn(declaration, found);
       unknownFunction(declaration, found);
       invalidHexColor(declaration, found);
+      let spoke = false;
       for (const one of found) {
         if (!ALWAYS_WRONG.has(one.rule) && !one.message.includes("Did you mean")) continue;
         say(one.at, one.length, reasonOf(one.message));
+        spoke = true;
+      }
+      /**
+       * The grammar, asked only of a value made of numbers, units, punctuation and functions CSS has:
+       * such a value names no feature a browser may lack, so a refusal is a slip — `rgb(1x 2 3)`,
+       * `calc(100 - 2rem)`. A value with a word in it may be the very question (`display: masonry`).
+       */
+      const words = value
+        .replace(/#[\da-f]+/gi, "")
+        .replace(/(?:\d*\.)?\d+(?:[eE][+-]?\d+)?[a-z%]*/gi, "")
+        .replace(/([a-z-][\w-]*)\(/gi, (whole, call: string) => (KNOWN_CALLS.has(call.toLowerCase()) ? "(" : whole));
+      if (!spoke && !/[a-z]/i.test(words) && valueMatchesGrammar(lowered, value) === false) {
+        say(valueAt, value.length, `\`${value}\` is not a value \`${name}\` takes.`);
       }
     }
 

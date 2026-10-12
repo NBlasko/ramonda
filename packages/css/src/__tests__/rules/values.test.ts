@@ -1355,3 +1355,63 @@ describe("a value its grammar cannot read", () => {
     expect(rules(css)).not.toContain("invalid-value");
   });
 });
+
+/**
+ * The arithmetic inside a math function, read for its TYPE — `calc(100 - 2rem)` subtracts a length
+ * from a number, which every engine drops. Found by `check-engine-sweep.mjs` after `invalid-value`,
+ * which took a math function as any number.
+ */
+describe("a math function whose arithmetic has no type", () => {
+  test.each([
+    ["a number minus a length", "  width: calc(100 - 2rem);"],
+    ["a percentage minus a number", "  width: calc(100% - 2);"],
+    ["a comma lost in min()", "  width: min(100% 40rem);"],
+    ["a number among lengths", "  width: min(100%, 40);"],
+    ["another", "  width: min(100, 40rem);"],
+    ["two lengths multiplied", "  width: calc(2px * 3px);"],
+    ["a plus with no spaces", "  width: calc(1px+2px);"],
+    ["a length where an angle goes", "  transform: rotate(calc(10px + 1px));"],
+  ])("%s is reported", (_what, css) => {
+    expect(rules(css)).toContain("invalid-value");
+  });
+
+  test.each([
+    ["a length minus a percentage", "  width: calc(100% - 2rem);"],
+    ["a length times a number", "  width: calc(2px * 3);"],
+    ["divided by a number", "  width: calc(100% / 3);"],
+    ["nested", "  width: calc((100% - 2rem) / 2 + 1px);"],
+    ["min of mixed", "  width: min(100%, 40rem);"],
+    ["clamp", "  font-size: clamp(1rem, 2vw + 1rem, 3rem);"],
+    ["a number where a number goes", "  line-height: calc(1.2 * 1.5);"],
+    ["an angle", "  transform: rotate(calc(10deg + 5deg));"],
+    ["a constant", "  transform: rotate(calc(pi * 1rad));"],
+    ["a variable inside", "  width: calc(var(--x) * 2);"],
+    ["a length into line-height", "  line-height: calc(1em + 2px);"],
+  ])("%s is silent", (_what, css) => {
+    expect(rules(css)).not.toContain("invalid-value");
+  });
+});
+
+/**
+ * A family name that begins with a generic family — `font-family: system-ui sans-serif`, a comma
+ * lost. Measured in all three engines: a name of several words is refused exactly when its FIRST is
+ * a complete generic (`serif Neue`), and taken otherwise (`My serif`, `ui-monospace Mono`). `mdn-data`
+ * reads a family name as any words, so this is a correction in `validateValue.ts`.
+ */
+describe("a family name that begins with a generic family", () => {
+  test.each([
+    ["a comma lost", "  font-family: system-ui sans-serif;"],
+    ["another", "  font-family: serif Neue;"],
+  ])("%s is reported", (_what, css) => {
+    expect(rules(css)).toContain("invalid-value");
+  });
+
+  test.each([
+    ["a name of several words", "  font-family: Helvetica Neue, sans-serif;"],
+    ["a generic word at the end", "  font-family: My serif;"],
+    ["an incomplete generic first", "  font-family: ui-monospace Mono;"],
+    ["a generic alone", "  font-family: system-ui;"],
+  ])("%s is silent", (_what, css) => {
+    expect(rules(css)).not.toContain("invalid-value");
+  });
+});
