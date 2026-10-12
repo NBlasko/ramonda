@@ -4,7 +4,9 @@
  *
  * Part of the editor plugin — see `../plugin.ts`, which wires these into the language service.
  */
-import { AT_RULE_LINKS, SELECTORS } from "../../compiler/keywords.generated";
+import { AT_RULE_LINKS, SELECTORS, SHORTHANDS } from "../../compiler/keywords.generated";
+import { holdsVar } from "../../compiler/holdsVar";
+import { splitOf } from "../../compiler/split";
 import { CONDITION, MATCH } from "../../compiler/read";
 import { type Regions } from "./regions";
 import type ts from "typescript";
@@ -167,5 +169,63 @@ export function asCss(info: ts.QuickInfo): ts.QuickInfo {
     ],
     // Without the line that just became the signature: moved, not copied.
     documentation: [{ text: text.slice(whole.length), kind: "text" }],
+  };
+}
+
+/**
+ * Over a SHORTHAND's value, the longhands it is written as — `border-left: 4px solid var(--accent)`
+ * is `border-left-width: 4px`, `border-left-style: solid`, `border-left-color: var(--accent)`.
+ *
+ * A user asked for a hover over a value to say something about the VALUE: it used to repeat the
+ * property's grammar, which the property name already shows. Every shorthand is written out as its
+ * longhands, so this is the split the build itself makes — `splitOf`. One with a `var()` is kept
+ * whole, and the hover says why. A value with a hole or a `$` path in it, or one the split does not
+ * read, keeps the property's own answer.
+ */
+export function longhandsAt(where: Regions, source: string, at: number): ts.QuickInfo | undefined {
+  const value = where.values.find((one) => at >= one.start && at <= one.end);
+  if (value === undefined || SHORTHANDS[value.property.toLowerCase()] === undefined) return undefined;
+  if (where.holes.some((hole) => hole.start < value.end && hole.end > value.start)) return undefined;
+
+  const raw = source.slice(value.start, value.end);
+  const lead = /^\s*:?\s*/.exec(raw)?.[0].length ?? 0;
+  const text = raw.slice(lead).replace(/\s*;?\s*$/, "");
+  if (text === "" || text.includes("$")) return undefined;
+  const textSpan = { start: value.start + lead, length: text.length };
+  /**
+   * A `var()` stops the split — it may stand for any part of the value, and only the page knows
+   * which — so the build keeps this one declaration whole, and a hover says that rather than nothing.
+   */
+  if (holdsVar(text)) {
+    return {
+      kind: "property" as ts.ScriptElementKind,
+      kindModifiers: "",
+      textSpan,
+      displayParts: [{ text: `${value.property}: ${text}`, kind: "text" }],
+      documentation: [
+        {
+          text:
+            "Kept whole, not written as its longhands: a `var()` may stand for any part of the value, " +
+            "and only the page knows which.",
+          kind: "text",
+        },
+      ],
+    };
+  }
+  const split = splitOf(value.property.toLowerCase(), text);
+  if (split === undefined) return undefined;
+
+  const lines = Object.entries(split).map(([longhand, part]) => `${longhand}: ${part}`);
+  return {
+    kind: "property" as ts.ScriptElementKind,
+    kindModifiers: "",
+    textSpan,
+    displayParts: [{ text: lines.join("\n"), kind: "text" }],
+    documentation: [
+      {
+        text: `This \`${value.property}\` is written into the stylesheet as these longhands.`,
+        kind: "text",
+      },
+    ],
   };
 }

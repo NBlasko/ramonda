@@ -499,6 +499,52 @@ describe("hover", () => {
     expect(ts.displayPartsToString(info?.displayParts ?? [])).toContain("row-reverse");
   });
 
+  /**
+   * Over a SHORTHAND's value, the longhands it is written as — the split the build makes, so a reader
+   * sees which part of `4px solid var(--accent)` goes where. A user asked for the value to say
+   * something about itself rather than repeat the property's grammar.
+   */
+  test("over a shorthand's value, it is the longhands the value becomes", () => {
+    const marked = `const a = <div className={@@( border-left: 4px so${CARET}lid currentColor; )}>x</div>;\n`;
+    const { service, caret, source } = editor(marked);
+
+    const info = service.getQuickInfoAtPosition(FILE, caret);
+    const said = ts.displayPartsToString(info?.displayParts ?? []);
+    expect(said).toContain("border-left-width: 4px");
+    expect(said).toContain("border-left-style: solid");
+    expect(said).toContain("border-left-color: currentColor");
+    expect(source.slice(info?.textSpan.start, (info?.textSpan.start ?? 0) + (info?.textSpan.length ?? 0))).toBe(
+      "4px solid currentColor",
+    );
+  });
+
+  /** The user's own example: a `var()` may stand for any part, so the build keeps it whole, and says so. */
+  test("and over one with a var(), why it is kept whole", () => {
+    const marked = `const a = <div className={@@( border-left: 4px so${CARET}lid var(--accent); )}>x</div>;\n`;
+    const { service, caret } = editor(marked);
+
+    const info = service.getQuickInfoAtPosition(FILE, caret);
+    const said = ts.displayPartsToString(info?.displayParts ?? []);
+    expect(said).toBe("border-left: 4px solid var(--accent)");
+    expect(ts.displayPartsToString(info?.documentation ?? [])).toContain("`var()`");
+  });
+
+  test("and a longhand's value is still the property's own answer", () => {
+    const marked = `const a = <div className={@@( color: r${CARET}ed; )}>x</div>;\n`;
+    const { service, caret } = editor(marked);
+    expect(ts.displayPartsToString(service.getQuickInfoAtPosition(FILE, caret)?.displayParts ?? [])).not.toContain(
+      "color-",
+    );
+  });
+
+  test("and a shorthand value it cannot split keeps the property's own answer", () => {
+    const marked = `const a = <div className={@@( border-left: $(w)px so${CARET}lid red; )}>x</div>;\n`;
+    const { service, caret } = editor(marked);
+    expect(ts.displayPartsToString(service.getQuickInfoAtPosition(FILE, caret)?.displayParts ?? [])).not.toContain(
+      "border-left-style: solid",
+    );
+  });
+
   test("over a property name, it is that property with what it accepts", () => {
     const marked = `const a = <div className={@@( flex-dir${CARET}ection: column; )}>x</div>;\n`;
     const { service, caret } = editor(marked);

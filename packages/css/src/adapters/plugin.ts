@@ -10,7 +10,7 @@ import { EMPTY_REGIONS, regions, type Regions } from "./editor/regions";
 import { cssFindings, ours, withoutRepeats } from "./editor/diagnostics";
 import { back, bar, elsewhere, home, isCss, mapped, tree } from "./editor/spans";
 import { caretIn, entryFor, selectorsFor, unquoted, valueWords } from "./editor/completion";
-import { asCss, quickInfoAt, spoken } from "./editor/hover";
+import { asCss, longhandsAt, quickInfoAt, spoken } from "./editor/hover";
 
 /**
  * The TypeScript language service plugin: what makes a block writable rather than merely correct.
@@ -775,6 +775,11 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
          */
         const said = spoken(cache.get(fileName)?.where ?? EMPTY_REGIONS, position);
         if (said !== undefined) return said;
+        // Over a shorthand's value, what it is written as. See `longhandsAt`.
+        const snapshot = readSnapshot(fileName);
+        const written = snapshot?.getText(0, snapshot.getLength()) ?? "";
+        const longhands = longhandsAt(cache.get(fileName)?.where ?? EMPTY_REGIONS, written, position);
+        if (longhands !== undefined) return longhands;
 
         const got =
           service.getQuickInfoAtPosition(fileName, at) ?? quickInfoAt(service, fileName, file.declarationOf(position));
