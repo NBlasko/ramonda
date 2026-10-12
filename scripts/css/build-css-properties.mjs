@@ -1774,6 +1774,48 @@ if (notARange !== undefined) {
   process.exit(1);
 }
 
+/**
+ * Functions an engine parses that no `mdn-data` grammar names. Measured with `CSS.supports` in
+ * Chromium 156, Firefox 157 and WebKit 27.2 (2026-10-12): each is accepted by at least one. `url` is
+ * here because `mdn-data` models it as a token, not a call; `media`, `supports` and `style` are the
+ * conditions inside `if()`. Left out, measured refused by all three: `first-valid`, `device-cmyk`,
+ * `stripes`.
+ */
+const MORE_FUNCTIONS = [
+  "contrast-color",
+  "if",
+  "media",
+  "progress",
+  "random",
+  "random-item",
+  "sibling-count",
+  "sibling-index",
+  "style",
+  "supports",
+  "url",
+];
+
+/** Every function name in a grammar `mdn-data` has — properties, types and at-rules — plus the measured supplement, lowered. */
+const allFunctions = (() => {
+  const names = new Set(MORE_FUNCTIONS);
+  const scan = (text) => {
+    for (const found of String(text ?? "").matchAll(/([a-zA-Z-][\w-]*)\(/g)) names.add(found[1].toLowerCase());
+  };
+  for (const file of ["properties", "syntaxes", "functions", "types"]) {
+    for (const [name, entry] of Object.entries(require(`mdn-data/css/${file}.json`))) {
+      if (file === "functions") scan(name);
+      scan(entry.syntax);
+    }
+  }
+  // A descriptor's grammar too: `format()`, `local()` and `tech()` are called only in `@font-face`'s
+  // `src`, and a named block checks that value with the same rule.
+  for (const rule of Object.values(require("mdn-data/css/at-rules.json"))) {
+    scan(rule.syntax);
+    for (const descriptor of Object.values(rule.descriptors ?? {})) scan(descriptor.syntax);
+  }
+  return [...names].sort();
+})();
+
 const allUnits = [...new Set([...Object.keys(unitsData), ...MORE_UNITS].map((unit) => unit.toLowerCase()))].sort();
 
 const unclassified = allUnits.filter((one) => !classified.has(one));
@@ -1927,6 +1969,13 @@ export const STRING_ALLOWED: readonly string[] = ${JSON.stringify(stringAllowed)
  * thirty alone would report \`height: 100dvh\` as a fault.
  */
 export const UNITS: readonly string[] = ${JSON.stringify(allUnits)};
+
+/**
+ * Every function CSS has, lower-cased — each one a grammar in \`mdn-data\` calls, plus the ones an
+ * engine parses and no grammar names (\`if\`, \`sibling-index\`, \`url\`). A name in neither is one
+ * every engine refuses, so the declaration is dropped. See \`unknownFunction\`.
+ */
+export const FUNCTIONS: readonly string[] = ${JSON.stringify(allFunctions)};
 
 /**
  * Each unit's value TYPE, so a rule can ask whether \`<angle>\` accepts \`12px\`.

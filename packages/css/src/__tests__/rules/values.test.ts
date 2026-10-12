@@ -58,8 +58,9 @@ describe("a bare word a property does not accept", () => {
     ["a string inside a function", `  display: nonsense("flexx");`],
   ])("%s is silent", (_what, css) => {
     // Each of these is a shape the word reader has to STEP OVER rather than judge: a string's
-    // contents and a function's arguments are their own grammars.
-    expect(rules(css)).toEqual([]);
+    // contents and a function's arguments are their own grammars. `nonsense()` itself is
+    // `unknown-function`'s to report, and it does.
+    expect(rules(css).filter((one) => one !== "unknown-function")).toEqual([]);
   });
 
   /**
@@ -1097,5 +1098,67 @@ describe("a number a browser drops", () => {
   test("says what to write instead", () => {
     expect(messages("  gap: 12;").join(" ")).toContain("12px");
     expect(messages("  z-index: 1.5;").join(" ")).toMatch(/`1`.*`2`/);
+  });
+});
+
+/**
+ * A function name no engine has. Measured with `CSS.supports` in Chromium, Firefox and WebKit:
+ * `width: d(10px)` is refused by all three, so the declaration is dropped — and nothing said so.
+ */
+describe("a function CSS does not have", () => {
+  test.each([
+    ["one letter", "  border-left: 4px solid d(--accent);"],
+    ["a near miss of var", "  color: vra(--accent);"],
+    ["inside calc", "  width: calc(100% - mni(2rem, 4vw));"],
+  ])("%s is reported", (_what, css) => {
+    expect(rules(css)).toContain("unknown-function");
+  });
+
+  test("names the call, and the one that was meant", () => {
+    const css = "  color: vra(--accent);";
+    const [found] = check(css).filter((one) => one.rule === "unknown-function");
+    const source = `<div className={@@(\n${css}\n)}>x</div>`;
+    expect(source.slice(found.at, found.at + found.length)).toBe("vra");
+    expect(found.message).toBe(
+      "`vra()` is not a CSS function, so a browser drops this declaration. Did you mean `var()`?",
+    );
+  });
+
+  test.each([
+    ["var", "  color: var(--accent);"],
+    ["a gradient", "  background-image: linear-gradient(red, blue);"],
+    ["maths", "  width: clamp(1rem, calc(2vw + 1px), min(3rem, 10%));"],
+    ["a url", "  background-image: url(a.png);"],
+    // In no `mdn-data` grammar, and parsed by at least one engine — the measured supplement.
+    // One branch: a `;` ends a declaration in a block, so `if()` with an `else` is a different question.
+    ["if, and the condition inside it", "  width: if(media(width > 1px): 10px);"],
+    ["sibling-index", "  width: calc(sibling-index() * 1px);"],
+    ["contrast-color", "  color: contrast-color(red);"],
+    ["a vendor's own", "  background-image: -webkit-gradient(linear, left top, left bottom, from(red), to(blue));"],
+    ["a word in a string", '  content: "d(x)";'],
+  ])("%s is silent", (_what, css) => {
+    expect(rules(css)).not.toContain("unknown-function");
+  });
+});
+
+/**
+ * A CSS custom function, `@function --name(…)` and a call to it. Measured: Chromium 156 and
+ * WebKit 27.2 run it; Firefox 157 drops the `@function` and every declaration that calls one, so it
+ * is not offered — see DESIGN, "Custom functions".
+ */
+describe("a custom function", () => {
+  test("a call is refused", () => {
+    expect(rules("  width: --double(10px);")).toContain("custom-function");
+    expect(messages("  width: --double(10px);").join(" ")).toContain("Firefox");
+  });
+
+  test("and so is the rule that declares one, instead of being called an at-rule CSS lacks", () => {
+    const found = rules("  @function --double(--n <length>) returns <length> { result: calc(var(--n) * 2); }");
+    expect(found).toContain("custom-function");
+    expect(found).not.toContain("unknown-at-rule");
+  });
+
+  test("a custom property is not a call", () => {
+    expect(rules("  width: var(--double);")).not.toContain("custom-function");
   });
 });

@@ -1,7 +1,7 @@
 /** Rules about a declaration's VALUE: a word, a unit, a flag, a string, how many values, a `url()`. */
 
 import { type PropertyRules, type UnitsByFamily } from "../../config/config";
-import { ARITY, KEYWORDS, PROPERTIES, PROPERTY_NAMED, UNITS, UNIT_TYPE } from "../keywords.generated";
+import { ARITY, FUNCTIONS, KEYWORDS, PROPERTIES, PROPERTY_NAMED, UNITS, UNIT_TYPE } from "../keywords.generated";
 import { canonicalValue, propertyName } from "../normalise";
 import { type Declaration, type ValuePart, textOnly, textPartsOf } from "../ast";
 import { urlsIn, withoutQuery } from "../urlsIn";
@@ -12,7 +12,7 @@ import { UNIT_REQUIRED, UNIT_REQUIRED_EVERYWHERE, WHOLE_NUMBER, WHOLE_NUMBER_EVE
 import { GLOBAL, KNOWN, STRINGS_FIT, type Block, words, declarationsIn, withoutImportant } from "./shared";
 import { type Finding } from "./index";
 import { bareColon, endOfCall, endOfString, terminator } from "./text";
-import { onlyCase } from "./properties";
+import { PREFIXES, onlyCase } from "./properties";
 
 /**
  * More values than this project allows a property to take — `padding: 8px 12px` under `arity: 1`.
@@ -551,6 +551,86 @@ export function unknownUnit(item: Declaration, findings: Finding[]): void {
       });
     }
   }
+}
+
+const KNOWN_FUNCTIONS = new Set(FUNCTIONS);
+
+/** Each call in a value — its name and where the name starts — skipping strings and what `url()` holds. */
+function* callsIn(text: string): Generator<{ name: string; index: number }> {
+  let index = 0;
+  while (index < text.length) {
+    const code = text.charCodeAt(index);
+    if (code === 34 || code === 39) {
+      index = endOfString(text, index) + 1;
+      continue;
+    }
+    const name = /^-{0,2}[a-zA-Z_][\w-]*/.exec(text.slice(index, index + 64))?.[0];
+    if (name === undefined || (index > 0 && /[\w-]/.test(text[index - 1]))) {
+      index++;
+      continue;
+    }
+    const open = index + name.length;
+    if (text[open] === "(") {
+      yield { name, index };
+      // What `url()` holds is a path, and what a vendor's own call holds is that vendor's grammar —
+      // `-webkit-gradient(…, from(red), to(blue))` — so neither is read for calls.
+      if (name.toLowerCase() === "url" || /^-[a-z]+-/i.test(name)) {
+        index = endOfCall(text, open) + 1;
+        continue;
+      }
+    }
+    index = open;
+  }
+}
+
+/**
+ * A call to a function CSS does not have — `d(--accent)`, `vra(--accent)`.
+ *
+ * Measured with `CSS.supports` in Chromium 156, Firefox 157 and WebKit 27.2: all three refuse
+ * `width: d(10px)`, so the declaration is dropped, and nothing in this package said so. The list is
+ * every function a `mdn-data` grammar calls plus the ones an engine parses that none names — see
+ * `FUNCTIONS`. A vendor's own (`-webkit-gradient`) is the browser's, so only its prefix is checked.
+ *
+ * And a call to a CSS CUSTOM function, `--double(10px)`, is refused outright: Firefox 157 drops every
+ * declaration that calls one. See DESIGN, "Custom functions".
+ */
+export function unknownFunction(item: Declaration, findings: Finding[]): void {
+  for (const part of item.value) {
+    if (part.kind !== "text" || part.at === undefined) continue;
+
+    for (const { name, index } of callsIn(part.text)) {
+      const lowered = name.toLowerCase();
+      if (lowered.startsWith("--")) {
+        findings.push(customFunction(part.at + index, name.length));
+        continue;
+      }
+      if (KNOWN_FUNCTIONS.has(lowered)) continue;
+      const prefix = /^(-[a-z]+-)/.exec(lowered)?.[1];
+      if (prefix !== undefined && PREFIXES.includes(prefix)) continue;
+
+      const meant = nearest(lowered, FUNCTIONS as string[]);
+      findings.push({
+        rule: "unknown-function",
+        at: part.at + index,
+        length: name.length,
+        message:
+          `\`${name}()\` is not a CSS function, so a browser drops this declaration.` +
+          (meant === undefined ? "" : ` Did you mean \`${meant}()\`?`),
+      });
+    }
+  }
+}
+
+/** The one sentence a custom function gets, at its call and at its `@function`. */
+export function customFunction(at: number, length: number): Finding {
+  return {
+    rule: "custom-function",
+    at,
+    length,
+    message:
+      "CSS custom functions are not offered: Firefox drops `@function` and every declaration that calls one. " +
+      "Compute the value with `calc()`, a token, or a `@@property` set from code.",
+  };
 }
 
 /**

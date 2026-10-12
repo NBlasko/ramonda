@@ -281,13 +281,16 @@ const CSS_LINES = {
   "unknown-property": "a property name that is nearly one CSS has",
   "unknown-value": "a word this property does not take",
   "unknown-unit": "a unit CSS does not have",
+  "unknown-function": "a function CSS does not have (`d(…)`), so the declaration is dropped",
+  "custom-function": "a CSS custom function (`--name(…)` or `@function`), which Firefox drops",
   "unknown-flag": "a `!` at the end of a value that is not `!important`",
   "unclosed-call": "a `(` in a value that no `)` closes — the value runs past the end of the block",
   "unknown-prefix": "a vendor prefix that is not one of the four",
   "unknown-at-rule": "an at-rule name CSS does not have",
   "unknown-selector": "a pseudo-class or pseudo-element that is not one — the whole rule is dropped",
   "unknown-media-feature": "a media feature that will never match",
-  "unknown-media-value": "a media feature's value it does not have, so the condition never matches",
+  "unknown-media-value":
+    "a media feature's value it does not have, or a unit no engine has (`40remx`), so the condition never matches",
   "supports-a-media-feature": "a media feature asked of `@supports`, which is always true or never",
   "number-without-a-unit": "a number with no unit where a length goes — a browser drops it",
   "fraction-where-a-whole-number-goes":

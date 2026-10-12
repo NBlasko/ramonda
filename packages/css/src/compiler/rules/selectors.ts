@@ -1,6 +1,6 @@
 /** Rules about a nested rule's selector or at-rule: unknown, out of place, or reaching another element. */
 
-import { AT_RULE_LINKS, MEDIA_FEATURES, NOT_IN_A_RULE, PROPERTIES, SELECTORS } from "../keywords.generated";
+import { AT_RULE_LINKS, MEDIA_FEATURES, NOT_IN_A_RULE, PROPERTIES, SELECTORS, UNITS } from "../keywords.generated";
 import { MEDIA_KINDS, MEDIA_WORDS } from "../mediaValues.generated";
 import { nearest } from "../nearest";
 import { branchOf } from "../read";
@@ -8,7 +8,7 @@ import { selectorsOf, type Block, type BlockItem, type NestedRule, rulesIn } fro
 import { type Finding } from "./index";
 import { typedInto } from "./namedSites";
 import { PREFIXES } from "./properties";
-import { NUMBER, PERCENTAGE } from "./values";
+import { KNOWN_UNITS, NUMBER, PERCENTAGE, customFunction } from "./values";
 
 /**
  * A selector whose subject is another element, in a project that keeps a block to its own element.
@@ -168,6 +168,11 @@ export function mediaValues(block: Block, findings: Finding[]): void {
       if (words === undefined || kinds === undefined || value === "") continue;
 
       const at = item.at + index + whole.indexOf(value, whole.indexOf(":"));
+      const notAUnit = unknownUnit(value, at);
+      if (notAUnit !== undefined) {
+        findings.push(notAUnit);
+        continue;
+      }
       const kind = kindOf(value);
       if (kind === undefined) {
         if (!/^[a-zA-Z][\w-]*$/.test(value) || words.includes(value.toLowerCase())) continue;
@@ -188,12 +193,38 @@ export function mediaValues(block: Block, findings: Finding[]): void {
     // The range form, `(width >= 40)` and `(40 < width <= 80rem)`: a value of the wrong kind on either
     // side leaves it unknown exactly as the colon form does.
     for (const { name, value, at } of rangesIn(item.prelude)) {
+      const notAUnit = unknownUnit(value, item.at + at);
+      if (notAUnit !== undefined) {
+        findings.push(notAUnit);
+        continue;
+      }
       const kinds = MEDIA_KINDS[name.toLowerCase()];
       const kind = kindOf(value);
       if (kinds === undefined || kind === undefined || kinds.includes(kind)) continue;
       findings.push(wrongKind(name, value, kind, kinds, item.at + at));
     }
   }
+}
+
+/**
+ * A number followed by letters that are not a unit — `40remGreska`, `40remx`.
+ *
+ * Measured in Chromium, Firefox and WebKit: the condition is kept and never matches, and `not` in
+ * front of it does not match either, exactly as `(min-width: 40)` does. `kindOf` reads any letters
+ * after a number as a length, so this is asked first.
+ */
+function unknownUnit(value: string, at: number): Finding | undefined {
+  const unit = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)([a-z%]+)$/i.exec(value)?.[1];
+  if (unit === undefined || KNOWN_UNITS.has(unit.toLowerCase())) return undefined;
+  const meant = nearest(unit.toLowerCase(), UNITS as string[]);
+  return {
+    rule: "unknown-media-value",
+    at,
+    length: value.length,
+    message:
+      `\`${unit}\` is not a CSS unit, so this condition never matches and a browser keeps it anyway.` +
+      (meant === undefined ? "" : ` Did you mean \`${meant}\`?`),
+  };
 }
 
 /** A value of a kind the feature does not take — the one sentence both forms of a condition say. */
@@ -529,6 +560,10 @@ export function atRuleOutOfPlace(rule: NestedRule, findings: Finding[]): void {
   }
 
   const name = `@${rule.prelude.slice(1).split(/[\s(]/, 1)[0].toLowerCase()}`;
+  if (name === "@function") {
+    findings.push(customFunction(rule.at ?? 0, name.length));
+    return;
+  }
   if (!ELSEWHERE.has(name)) {
     unknownAtRule(rule, name, findings);
     return;

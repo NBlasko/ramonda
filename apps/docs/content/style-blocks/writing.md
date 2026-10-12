@@ -237,19 +237,12 @@ narrowing reaches a value made at run time only through its type, which is why t
 **And `space` is registered as `*`**, because a `syntax` has to take everything the property does:
 `gap` also takes `normal`, a CSS-wide keyword and a `var()`. A narrower one refuses part of what the
 type allows — `toStyle`, which checks a value against the `syntax`, will not put a `Value<"gap">`
-into a `<length-percentage>`. The
-same type holds a value your code chooses before setting it — from data, a measurement, or more
-than one condition:
-
-```tsx
-import type { Value } from "../css-system";
-
-const gapFor = (rows: number): Value<"gap"> => (rows > 50 ? "4px" : "8px");
-```
+into a `<length-percentage>`.
 
 **Inside a block you never need it.** A value written there is checked as it is, and a choice
 between fixed values is a [choice](/style-blocks/composing#a-choice-between-two-values) —
-`gap: $(dense) ? 4px : 8px;` — which compiles to two classes and sets nothing on the element.
+`gap: $(dense) ? 4px : 8px;` — which compiles to two classes and sets nothing on the element. A
+function that hands back a whole block is typed [`CssBlock`](/style-blocks/prop), not `Value`.
 
 And `AnyToken<"color">` is *any token this project declares of that kind* — which is what you want when
 a function chooses between them and hands the one it picked on:

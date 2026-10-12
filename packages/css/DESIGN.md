@@ -4341,6 +4341,52 @@ group's others, in both bundlers; every shape left alone behaves exactly as toda
 green; a changeset (`patch`) and one sentence on `variables.md` (reading a variable in code costs
 nothing after a build) say so.
 
+### 21. Custom functions — REFUSED now, a declared binding PARKED until Firefox ships them
+
+**Decided with the user 2026-10-12.** CSS has custom functions:
+
+```css
+@function --double(--n <length>) returns <length> { result: calc(var(--n) * 2); }
+.box { width: --double(10px); }
+```
+
+#### Measured, 2026-10-12
+
+| Engine | `@function` | `width: --double(10px)` | `width: --double(red)` |
+| --- | --- | --- | --- |
+| Chromium 156 | kept (`CSSFunctionRule`) | `20px` | kept, computes to `auto` |
+| WebKit 27.2 | kept | `20px` | kept, computes to `auto` |
+| Firefox 157 | **dropped** | **declaration dropped** | dropped |
+
+A wrong argument is not refused anywhere: it is kept and is invalid at computed-value time, so the
+property falls back without a word. The types are the only place it could be caught.
+
+#### Now: refused
+
+`custom-function` reports a call (`--double(…)`) and a `@function` written in a block, with one
+sentence: Firefox drops both. By the rule *cannot make it work → not offered*, nothing else. Before
+this, `@function` was reported as `unknown-at-rule` ("not an at-rule CSS has"), which was false.
+
+The descriptors inside one written in a block (`result`) are still reported as properties, exactly as
+`@property`'s are today — a separate fault, not this one.
+
+#### When Firefox ships it: a binding, like `@@property`
+
+```tsx
+const double = @@function( --n <length> ) returns <length> { result: calc(var(--n) * 2); };
+const box = @@( width: $(double)(10px); );
+```
+
+- A binding, not config + codegen. Config holds VALUES (tokens); a function is code, imported where it
+  is used — the same reason `@@property` is a binding.
+- Never a local escape inside a block: `@function` must sit at the top of a stylesheet, as
+  `@property` must, so it cannot live inside an element's rule.
+- The argument and return types are read from the declaration, as `syntax` is for `@@property`, so
+  `$(double)(red)` is a type error on the line it is written — which is exactly the case the engines
+  accept silently.
+
+Re-measure all three engines before starting; the table above is the reason it waits.
+
 ## A published package meets an application — the cascade across a version boundary
 
 **Measured 2026-09-23, in Chromium, against real stylesheets from the real `Sheet`. NOT built.**

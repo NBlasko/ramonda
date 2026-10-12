@@ -163,6 +163,9 @@ export const RULE_IDS = [
   "ignore-without-a-reason",
   "unknown-prefix",
   "unknown-at-rule",
+  // A function no engine has, and a CSS custom function, which Firefox drops. See `unknownFunction`.
+  "unknown-function",
+  "custom-function",
   "unknown-selector",
   "unknown-flag",
   "unclosed-call",

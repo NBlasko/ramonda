@@ -535,6 +535,31 @@ describe("a condition that cannot switch", () => {
     expect(rules(css)).toContain("unknown-media-value");
   });
 
+  /**
+   * A unit no engine has. Measured in Chromium, Firefox and WebKit: `(min-width: 40remGreska)` is
+   * kept and never matches — and `not (min-width: 40remx)` does not match either, because the
+   * condition is unknown, not false. The kind test took any letters after a number as a length.
+   */
+  test.each([
+    ["a unit that is not one", "  @media (min-width: 40remGreska) { color: red; }"],
+    ["one letter too many", "  @media (max-width: 40remx) { color: red; }"],
+    ["in the range form", "  @media (width >= 40remx) { color: red; }"],
+    ["on either side of a range", "  @media (40remx < width <= 80rem) { color: red; }"],
+  ])("%s is reported", (_what, css) => {
+    expect(rules(css)).toContain("unknown-media-value");
+  });
+
+  test("the unit is named, with the one that was meant", () => {
+    const css = "  @media (min-width: 40remGreska) { color: red; }";
+    const [found] = check(css).filter((one) => one.rule === "unknown-media-value");
+    const source = `<div className={@@(\n${css}\n)}>x</div>`;
+    expect(source.slice(found.at, found.at + found.length)).toBe("40remGreska");
+    expect(found.message).toBe(
+      "`remGreska` is not a CSS unit, so this condition never matches and a browser keeps it anyway.",
+    );
+    expect(messages("  @media (max-width: 40remx) { color: red; }").join(" ")).toContain("Did you mean `rem`?");
+  });
+
   test("a range's number is reported where it is written", () => {
     const css = "  @media (40rem < width <= 80) { color: red; }";
     const [found] = check(css).filter((one) => one.rule === "unknown-media-value");
