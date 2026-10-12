@@ -68,7 +68,8 @@ const DECIDED = {
  * nothing anywhere to say so. A check whose own blind spot reads as success is the shape it exists
  * to refuse.
  */
-const INVOCATION = /(?:SELFTEST=([A-Za-z0-9_-]+)\s+)?node\s+["']?(?:\.\/)?(scripts\/[a-z0-9-]+\.mjs)["']?([^&|\n]*)/g;
+const INVOCATION =
+  /(?:SELFTEST=([A-Za-z0-9_-]+)\s+)?node\s+["']?(?:\.\/)?((?:[a-z0-9-]+\/)+[a-z0-9-]+\.mjs)["']?([^&|\n]*)/g;
 
 function invocationsIn(text) {
   const found = new Set();
@@ -181,11 +182,23 @@ if (process.env.SELFTEST === "spelling") {
   const same = ["node scripts/x.mjs", "node ./scripts/x.mjs", 'node "scripts/x.mjs"', "node  scripts/x.mjs"];
   const read = same.map((one) => [...invocationsIn(one)][0]);
 
-  if (read.every((one) => one === "scripts/x.mjs")) {
-    console.log("[gate-parity] SELFTEST spelling: four spellings of one call read as one, as they must");
+  // A gate in a folder under `scripts/`. Every `scripts/css/` gate was invisible here until
+  // 2026-10-12 — the pattern took one path segment — so this run said all of them were covered.
+  const nested = [...invocationsIn("SELFTEST=x node scripts/css/check-x.mjs --check")][0];
+  // And one that is not under `scripts/` at all — `apps/docs/scripts/build-editor-gifs.mjs`.
+  const elsewhere = [...invocationsIn("node apps/docs/scripts/x.mjs --check")][0];
+
+  if (
+    read.every((one) => one === "scripts/x.mjs") &&
+    nested === "SELFTEST=x scripts/css/check-x.mjs --check" &&
+    elsewhere === "apps/docs/scripts/x.mjs --check"
+  ) {
+    console.log("[gate-parity] SELFTEST spelling: four spellings of one call read as one, and a folder is read too");
     process.exit(0);
   }
-  console.error(`[gate-parity] SELFTEST spelling: they read as ${JSON.stringify(read)} — a gate could hide here`);
+  console.error(
+    `[gate-parity] SELFTEST spelling: they read as ${JSON.stringify([...read, nested, elsewhere])} — a gate could hide here`,
+  );
   process.exit(1);
 }
 
