@@ -27,6 +27,7 @@ import {
   rootInABlock,
   stylesAnotherElement,
   supportsAMediaFeature,
+  supportsNeverTrue,
 } from "./selectors";
 import { spelling } from "./properties";
 import {
@@ -146,6 +147,8 @@ export const RULE_IDS = [
   "unknown-container-value",
   "malformed-container-condition",
   "supports-a-media-feature",
+  // A `@supports` condition false by a slip: a near miss, `(gap: 1)`, a missing `:`. See `supportsNeverTrue`.
+  "supports-never-true",
   // A number a browser drops where no type refuses it — `gap: 12`, `z-index: 1.5`. See `numberDropped`.
   "number-without-a-unit",
   "fraction-where-a-whole-number-goes",
@@ -410,6 +413,7 @@ export function checkBlock(written: AnyBlock, options: CheckOptions = {}): Findi
   mediaValues(block, findings);
   malformedMedia(block, findings);
   supportsAMediaFeature(block, findings);
+  supportsNeverTrue(block, findings);
   spelling(block, findings);
   layerInABlock(block, findings);
   rootInABlock(block, findings);

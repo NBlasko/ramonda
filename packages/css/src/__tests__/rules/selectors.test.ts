@@ -744,3 +744,51 @@ describe("a container condition that cannot be read", () => {
       expect(found).not.toContain(rule);
   });
 });
+
+/**
+ * A `@supports` condition that is never true because of a slip, not because a browser lacks the
+ * feature — found silent by `check-engine-sweep.mjs`, all three engines answering `false` where the
+ * base answered `true`.
+ *
+ * `@supports` exists to ask about what a browser may NOT have, so a word this does not know is not a
+ * fault: `(display: masonry)` is a real question. Only a near miss of a known word, a number with no
+ * unit, a broken colour or a missing `:` is reported — each one false in every engine, by mistake.
+ */
+describe("a supports condition that is never true by mistake", () => {
+  test.each([
+    ["a misspelt property", "  @supports (displayx: grid) { color: red; }"],
+    ["a misspelt value", "  @supports (display: gird) { color: red; }"],
+    ["a missing colon", "  @supports (display grid) { color: red; }"],
+    ["a missing colon before a function", "  @supports (color rgb(1 2 3)) { color: red; }"],
+    ["a number with no unit", "  @supports (gap: 1) { color: red; }"],
+    ["a misspelt function", "  @supports (color: rgbx(1 2 3)) { color: red; }"],
+    ["a broken hex colour", "  @supports (color: #abcx) { color: red; }"],
+    ["a misspelt selector()", "  @supports selectorx(:has(a)) { color: red; }"],
+    ["a selector missing its colon", "  @supports selector(has(a)) { color: red; }"],
+    ["a misspelt pseudo-class", "  @supports selector(:hasx(a)) { color: red; }"],
+    ["a word that is not and", "  @supports (display: grid) andx (gap: 1rem) { color: red; }"],
+  ])("%s is reported", (_what, css) => {
+    expect(rules(css)).toContain("supports-never-true");
+  });
+
+  test("the message says what is wrong and what it costs", () => {
+    expect(messages("  @supports (display: gird) { color: red; }").join(" ")).toBe(
+      "`@supports` is never true here: `display` does not accept `gird`. Did you mean `grid`? The rules inside never apply.",
+    );
+  });
+
+  test.each([
+    ["a real question", "  @supports (display: grid) { color: red; }"],
+    ["not", "  @supports not (display: grid) { color: red; }"],
+    ["and", "  @supports (display: grid) and (gap: 1rem) { color: red; }"],
+    ["a value this does not know", "  @supports (grid-template-rows: masonry) { color: red; }"],
+    ["a custom property", "  @supports (--x: 1) { color: red; }"],
+    ["a vendor property", "  @supports (-webkit-appearance: none) { color: red; }"],
+    ["selector()", "  @supports selector(:has(a)) { color: red; }"],
+    ["font-tech()", "  @supports font-tech(color-COLRv1) { color: red; }"],
+    ["a newer unit", "  @supports (width: 1cqw) { color: red; }"],
+    ["a sizing keyword", "  @supports (min-width: fit-content) { color: red; }"],
+  ])("%s is silent", (_what, css) => {
+    expect(rules(css)).not.toContain("supports-never-true");
+  });
+});

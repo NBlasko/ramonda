@@ -9,7 +9,17 @@ import { type Finding } from "./index";
 import { typedInto } from "./namedSites";
 import { endOfCall, endOfString } from "./text";
 import { PREFIXES } from "./properties";
-import { KNOWN_UNITS, NUMBER, PERCENTAGE, customFunction } from "./values";
+import {
+  KNOWN_UNITS,
+  NUMBER,
+  PERCENTAGE,
+  customFunction,
+  invalidHexColor,
+  unknownFunction,
+  unknownUnit as unknownUnitIn,
+  unknownValue,
+} from "./values";
+import type { Declaration } from "../ast";
 
 /**
  * A selector whose subject is another element, in a project that keeps a block to its own element.
@@ -492,6 +502,162 @@ export function supportsAMediaFeature(block: Block, findings: Finding[]): void {
           (property ? "a property every browser has, so this is always true" : "no property, so this is never true") +
           `. A media feature belongs in \`@media (${name}: ${value})\`.`,
       });
+    }
+  }
+}
+
+/** The rules whose finding in a `@supports` value is a fault whatever the browser: no near miss needed. */
+const ALWAYS_WRONG = new Set(["number-without-a-unit", "fraction-where-a-whole-number-goes", "invalid-hex-color"]);
+const SUPPORTS_CALLS = ["selector", "font-tech", "font-format"];
+
+/** A finding's own reason, without the part that is true of a declaration and not of a condition. */
+function reasonOf(message: string): string {
+  return message
+    .replace(/,? so a browser drops this declaration\./, ".")
+    .replace(/,? so a browser drops the whole rule — every declaration inside it, not just one\.?/, ".")
+    .trim();
+}
+
+/**
+ * Each `( … )` of a `@supports` condition that is a test rather than a group of tests: its own
+ * parentheses counted, so `(color: rgb(1 2 3))` is one test and not the `(1 2 3)` inside it. A group
+ * holding other groups — `((a: b) or (c: d))` — is stepped into.
+ */
+function* conditionGroups(prelude: string): Generator<{ open: number; close: number; inner: string }> {
+  for (let open = prelude.indexOf("("); open !== -1; ) {
+    if (isCall(prelude, open)) {
+      open = prelude.indexOf("(", endOfCall(prelude, open) + 1);
+      continue;
+    }
+    const close = endOfCall(prelude, open);
+    const inner = prelude.slice(open + 1, close);
+    if (inner.trimStart().startsWith("(") || /^\s*not\b/i.test(inner)) {
+      open = prelude.indexOf("(", open + 1);
+      continue;
+    }
+    yield { open, close, inner };
+    open = prelude.indexOf("(", close + 1);
+  }
+}
+
+/**
+ * A `@supports` condition that is never true because of a slip — `(display: gird)`, `(gap: 1)`,
+ * `(display grid)`, `selector(has(a))`. Found silent by `check-engine-sweep.mjs`: every engine
+ * answers `false` where the condition meant would answer `true`, so the rules inside never apply.
+ *
+ * **A word this does not know is not a fault here.** `@supports` exists to ask about what a browser
+ * may not have, so `(display: masonry)` is a real question and must stay silent. What IS reported is
+ * what no future browser makes true: a near miss of a word that exists, a number with no unit, a
+ * broken hex colour, a missing `:`. The value is read by the same rules a declaration is, and only
+ * their near misses and their always-wrong findings are kept.
+ */
+export function supportsNeverTrue(block: Block, findings: Finding[]): void {
+  for (const item of rulesIn(block)) {
+    if (!item.prelude.startsWith("@supports") || item.at === undefined) continue;
+    const prelude = item.prelude;
+    const base = item.at;
+    const say = (at: number, length: number, reason: string) =>
+      findings.push({
+        rule: "supports-never-true",
+        at,
+        length,
+        message: `\`@supports\` is never true here: ${reason} The rules inside never apply.`,
+      });
+
+    for (const { open, close, inner } of conditionGroups(prelude)) {
+      const colon = inner.indexOf(":");
+      if (colon === -1) {
+        const [property, ...rest] = inner.trim().split(/\s+/);
+        if (rest.length > 0 && PROPERTY_NAMES.has(property.toLowerCase())) {
+          const group = prelude.slice(open, close + 1);
+          say(
+            base + open,
+            group.length,
+            `\`${group}\` has no \`:\` between the property and its value. Write \`(${property}: ${rest.join(" ")})\`.`,
+          );
+        }
+        continue;
+      }
+      const name = inner.slice(0, colon).trim();
+      const value = inner.slice(colon + 1).trim();
+      const lowered = name.toLowerCase();
+      // A custom property takes anything, and a vendor's own has a vocabulary nothing here knows.
+      if (name === "" || value === "" || lowered.startsWith("-")) continue;
+      const nameAt = base + open + 1 + inner.indexOf(name);
+
+      if (!PROPERTY_NAMES.has(lowered)) {
+        const meant = nearest(lowered, PROPERTIES as string[]);
+        if (meant !== undefined)
+          say(nameAt, name.length, `\`${name}\` is not a CSS property. Did you mean \`${meant}\`?`);
+        continue;
+      }
+
+      const valueAt =
+        base + open + 1 + colon + 1 + (inner.slice(colon + 1).length - inner.slice(colon + 1).trimStart().length);
+      const declaration: Declaration = {
+        kind: "declaration",
+        property: lowered,
+        at: nameAt,
+        valueAt,
+        value: [{ kind: "text", text: value, at: valueAt }],
+      } as Declaration;
+      const found: Finding[] = [];
+      unknownValue(declaration, found);
+      unknownUnitIn(declaration, found);
+      unknownFunction(declaration, found);
+      invalidHexColor(declaration, found);
+      for (const one of found) {
+        if (!ALWAYS_WRONG.has(one.rule) && !one.message.includes("Did you mean")) continue;
+        say(one.at, one.length, reasonOf(one.message));
+      }
+    }
+
+    // What stands between the groups: `and`, `or`, `not`, and the condition functions.
+    let depth = 0;
+    const outside = [...prelude.slice("@supports".length)]
+      .map((one) => {
+        if (one === "(") depth++;
+        const blank = depth > 0;
+        if (one === ")") depth--;
+        return blank ? " " : one;
+      })
+      .join("");
+    for (const found of outside.matchAll(/[a-zA-Z][\w-]*/g)) {
+      const word = found[0];
+      const at = "@supports".length + (found.index ?? 0);
+      const open = at + word.length;
+      if (prelude[open] === "(") {
+        if (word.toLowerCase() === "selector") {
+          const close = endOfCall(prelude, open);
+          const argument: NestedRule = {
+            kind: "rule",
+            prelude: prelude.slice(open + 1, close),
+            at: base + open + 1,
+            items: [],
+          };
+          const inSelector: Finding[] = [];
+          unknownSelector(argument, inSelector);
+          malformedSelector(argument, inSelector);
+          for (const one of inSelector) say(one.at, one.length, reasonOf(one.message));
+          continue;
+        }
+        if (SUPPORTS_CALLS.includes(word.toLowerCase())) continue;
+        const meant = nearest(word.toLowerCase(), SUPPORTS_CALLS);
+        if (meant !== undefined)
+          say(
+            base + at,
+            word.length,
+            `\`${word}()\` is not a condition \`@supports\` has. Did you mean \`${meant}()\`?`,
+          );
+        continue;
+      }
+      if (["and", "or", "not"].includes(word.toLowerCase())) continue;
+      const meant = nearest(word.toLowerCase(), ["and", "or", "not"]);
+      say(
+        base + at,
+        word.length,
+        `\`${word}\` is not a word \`@supports\` has.${meant === undefined ? " Between conditions write `and`, `or` or `not`." : ` Did you mean \`${meant}\`?`}`,
+      );
     }
   }
 }

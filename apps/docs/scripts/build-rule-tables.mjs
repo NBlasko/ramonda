@@ -300,6 +300,8 @@ const CSS_LINES = {
     "a container feature's value it does not take (`(min-width: 40)`), so the condition never matches",
   "malformed-container-condition":
     "a container condition no engine reads — `(min-width 40rem)` with no colon, `3e0m`, a word that is not `and`, `or` or `not`",
+  "supports-never-true":
+    "a `@supports` condition false by a slip — `(display: gird)`, `(gap: 1)`, a missing colon — never a feature a browser may lack",
   "unknown-media-value":
     "a media feature's value it does not have, or a unit no engine has (`40remx`), so the condition never matches",
   "supports-a-media-feature": "a media feature asked of `@supports`, which is always true or never",
