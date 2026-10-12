@@ -283,6 +283,9 @@ const CSS_LINES = {
   "unknown-unit": "a unit CSS does not have",
   "unknown-function": "a function CSS does not have (`d(…)`), so the declaration is dropped",
   "custom-function": "a CSS custom function (`--name(…)` or `@function`), which Firefox drops",
+  "unit-of-the-wrong-kind":
+    "a real unit of a kind the property does not take (`z-index: 2x`, `width: 2s`), so the declaration is dropped",
+  "malformed-number": "a decimal point with no digit after it (`0.`), so the declaration is dropped",
   "invalid-hex-color": "a hex colour without 3, 4, 6 or 8 hex digits (`#abcx`), so the declaration is dropped",
   "unknown-flag": "a `!` at the end of a value that is not `!important`",
   "unclosed-call": "a `(` in a value that no `)` closes — the value runs past the end of the block",

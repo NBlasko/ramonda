@@ -3,7 +3,7 @@
  * may only go down.
  *
  *     node scripts/css/check-engine-sweep.mjs
- *     node scripts/css/check-engine-sweep.mjs --write   # rewrite the baseline after closing holes
+ *     node scripts/css/check-engine-sweep.mjs --write   # take closed holes off the list; refuses a new one
  *     SELFTEST=hole node scripts/css/check-engine-sweep.mjs    # a hole taken off the list; must fail
  *     SELFTEST=fixed node scripts/css/check-engine-sweep.mjs   # a closed hole left on it; must fail
  *
@@ -258,6 +258,19 @@ if (selftest === "hole") listed.splice(listed.indexOf(holes[0]), 1);
 if (selftest === "fixed") listed.push(keyOf(cases.find((one) => !one.isBase && !holes.includes(keyOf(one)))));
 
 if (write) {
+  /**
+   * `--write` takes holes OFF the list and never puts one on. Run after a change that opened a new
+   * hole, it used to list that hole as known — measured 2026-10-12, five regressions went onto the
+   * list in one run, and the gate would then have passed them. A new one has to be fixed, or listed
+   * on purpose with `--accept-new`.
+   */
+  const before = new Set(JSON.parse(readFileSync(BASELINE, "utf8")).holes);
+  const opened = holes.filter((one) => !before.has(one));
+  if (opened.length > 0 && !process.argv.includes("--accept-new")) {
+    for (const one of opened) console.error(`[engine-sweep] NEW HOLE, not written: ${one}`);
+    console.error("[engine-sweep] fix it, or run with --accept-new to list it on purpose.");
+    process.exit(1);
+  }
   writeFileSync(BASELINE, `${JSON.stringify({ count: holes.length, holes: holes.sort() }, null, 2)}\n`);
   console.log(`[engine-sweep] baseline written: ${holes.length} hole(s) in ${cases.length} cases`);
   process.exit(faults.length > 0 ? 1 : 0);

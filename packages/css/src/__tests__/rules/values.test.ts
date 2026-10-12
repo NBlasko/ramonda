@@ -1199,3 +1199,105 @@ describe("a hex colour that is not one", () => {
     expect(rules(css)).not.toContain("invalid-hex-color");
   });
 });
+
+/**
+ * A unit read the way CSS reads one — an identifier, digits allowed after its first letter — and a
+ * decimal point with no digit after it. Found silent by `check-engine-sweep.mjs`: all three engines
+ * drop `width: 1p0x` (a `1` with the unit `p0x`), `font: 12px1.5 …` and `opacity: 0.`.
+ */
+describe("a number CSS cannot read", () => {
+  test.each([
+    ["a digit inside the unit", "  width: 1p0x;", "unknown-unit", "p0x"],
+    ["another", "  width: 5v0w;", "unknown-unit", "v0w"],
+    ["two numbers run together", "  font: 12px1.5 sans-serif;", "unknown-unit", "px1"],
+    // Read whole after a `%` too: `%x` is one unit no engine has, not `%` and a stray letter.
+    ["a letter after a percent", "  width: calc(100%x - 2rem);", "unknown-unit", "%x"],
+    ["a point with nothing after it", "  opacity: 0.;", "malformed-number", "0."],
+    ["in a longer value", "  scale: 1.;", "malformed-number", "1."],
+  ])("%s is reported, on what was written", (_what, css, rule, text) => {
+    const found = check(css).filter((one) => one.rule === rule);
+    const source = `<div className={@@(\n${css}\n)}>x</div>`;
+    expect(found.map((one) => source.slice(one.at, one.at + one.length))).toEqual([text]);
+  });
+
+  test.each([
+    ["an exponent", "  width: 1e2px;"],
+    ["an exponent and no unit", "  line-height: 2e0;"],
+    ["a fraction", "  opacity: .5;"],
+    ["a version in a string", '  content: "1.";'],
+    ["a ratio", "  aspect-ratio: 16 / 9;"],
+    ["a span", "  grid-area: 1 / span 2;"],
+  ])("%s is silent", (_what, css) => {
+    const found = rules(css);
+    expect(found).not.toContain("unknown-unit");
+    expect(found).not.toContain("malformed-number");
+  });
+});
+
+/**
+ * A real unit of a kind the property drops — `z-index: 2x`, where `x` is a resolution. Found silent
+ * by `check-engine-sweep.mjs`: `unknown-unit` knows `x` is a unit, and nothing asked whether THIS
+ * property takes a resolution. The table is measured, `build-number-properties.mjs`.
+ */
+describe("a unit of a kind the property does not take", () => {
+  test.each([
+    ["a resolution in z-index", "  z-index: 2x;"],
+    ["in opacity", "  opacity: 0.5x;"],
+    ["in line-height", "  line-height: 1.5x;"],
+    ["in font-weight", "  font-weight: 600x;"],
+    ["a time in width", "  width: 2s;"],
+    ["an angle in a length", "  padding-left: 10deg;"],
+  ])("%s is reported", (_what, css) => {
+    expect(rules(css)).toContain("unit-of-the-wrong-kind");
+  });
+
+  test("says what the unit is", () => {
+    expect(messages("  z-index: 2x;").join(" ")).toContain("`x` is a resolution");
+  });
+
+  test.each([
+    ["a length", "  width: 10px;"],
+    ["a number", "  line-height: 1.5;"],
+    ["a length in line-height", "  line-height: 20px;"],
+    ["an angle", "  rotate: 10deg;"],
+    ["a time", "  transition-duration: 1s;"],
+    ["a percentage", "  opacity: 50%;"],
+    ["a fraction of space", "  grid-template-columns: 1fr 2fr;"],
+    ["inside calc", "  line-height: calc(1px * 2);"],
+  ])("%s is silent", (_what, css) => {
+    expect(rules(css)).not.toContain("unit-of-the-wrong-kind");
+  });
+});
+
+/**
+ * A shorthand's value checked slot by slot, through the longhands it splits into — the rules a
+ * longhand gets, given to each part. `margin: 0x auto` is `margin-top: 0x`, and `margin-top` takes
+ * no resolution: all three engines drop it. Found silent by `check-engine-sweep.mjs`.
+ */
+describe("a shorthand, read through its longhands", () => {
+  test.each([
+    ["a unit of the wrong kind", "  margin: 0x auto;", "unit-of-the-wrong-kind", "x"],
+    ["on every side", "  inset: 0x;", "unit-of-the-wrong-kind", "x"],
+    ["a number with no unit", "  padding: 4 8px;", "number-without-a-unit", "4"],
+  ])("%s is reported once, where it was written", (_what, css, rule, text) => {
+    const found = check(css).filter((one) => one.rule === rule);
+    const source = `<div className={@@(\n${css}\n)}>x</div>`;
+    expect(found.map((one) => source.slice(one.at, one.at + one.length))).toEqual([text]);
+  });
+
+  test.each([
+    ["a margin", "  margin: 0 auto;"],
+    ["a padding", "  padding: 4px 8px;"],
+    ["an inset", "  inset: 0;"],
+  ])("%s is silent", (_what, css) => {
+    const found = rules(css);
+    expect(found).not.toContain("unit-of-the-wrong-kind");
+    expect(found).not.toContain("number-without-a-unit");
+  });
+});
+
+test("a shorthand's long run of digits is answered at once", () => {
+  const started = performance.now();
+  rules(`  margin: ${"0".repeat(20_000)}x auto;`);
+  expect(performance.now() - started).toBeLessThan(250);
+});

@@ -1,14 +1,30 @@
 /** Rules about a declaration's VALUE: a word, a unit, a flag, a string, how many values, a `url()`. */
 
 import { type PropertyRules, type UnitsByFamily } from "../../config/config";
-import { ARITY, FUNCTIONS, KEYWORDS, PROPERTIES, PROPERTY_NAMED, UNITS, UNIT_TYPE } from "../keywords.generated";
+import {
+  ARITY,
+  FUNCTIONS,
+  KEYWORDS,
+  PROPERTIES,
+  PROPERTY_NAMED,
+  SHORTHANDS,
+  UNITS,
+  UNIT_TYPE,
+} from "../keywords.generated";
+import { splitOf, tokensOf } from "../split";
 import { canonicalValue, propertyName } from "../normalise";
 import { type Declaration, type ValuePart, textOnly, textPartsOf } from "../ast";
 import { urlsIn, withoutQuery } from "../urlsIn";
 import { wordSet } from "../wordSet";
 import { nearest } from "../nearest";
 import { NUMBERLESS } from "../numberless.generated";
-import { UNIT_REQUIRED, UNIT_REQUIRED_EVERYWHERE, WHOLE_NUMBER, WHOLE_NUMBER_EVERYWHERE } from "../numbers.generated";
+import {
+  UNIT_KIND_REFUSED,
+  UNIT_REQUIRED,
+  UNIT_REQUIRED_EVERYWHERE,
+  WHOLE_NUMBER,
+  WHOLE_NUMBER_EVERYWHERE,
+} from "../numbers.generated";
 import { GLOBAL, KNOWN, STRINGS_FIT, type Block, words, declarationsIn, withoutImportant } from "./shared";
 import { type Finding } from "./index";
 import { bareColon, endOfCall, endOfString, terminator } from "./text";
@@ -416,7 +432,13 @@ export const KNOWN_UNITS = new Set(UNITS);
  * And the unit may not be followed by a word character, which is what keeps a bare `2e3` out: with
  * the exponent optional, the engine would otherwise back off to a unit of `e` and leave the `3`.
  */
-const A_UNIT = /(?<![\w.#-])(?:\d*\.)?\d+(?:[eE][+-]?\d+)?([a-zA-Z%]+)(?![\w.])/g;
+const A_UNIT = /(?<![\w.#-])(?:\d*\.)?\d+(?:[eE][+-]?\d+)?(?![eE][+-]?\d)(%[\w-]*|[a-zA-Z_][\w-]*)/g;
+
+/**
+ * A number whose decimal point has no digit after it — `0.`, `1.`. CSS reads the point as a separate
+ * character, so the value is not one: measured, all three engines drop `opacity: 0.`.
+ */
+const A_BARE_POINT = /(?<![\w.#-])\d+\.(?![\w.])/g;
 
 /**
  * Every unit written in a value, with the two places one is not a unit stepped over.
@@ -432,7 +454,27 @@ const A_UNIT = /(?<![\w.#-])(?:\d*\.)?\d+(?:[eE][+-]?\d+)?([a-zA-Z%]+)(?![\w.])/
  * positions.
  */
 export function* unitsIn(text: string, at: number): Generator<{ unit: string; at: number; length: number }> {
-  /** The stretches that are value text — outside every string and every `url( … )`. */
+  for (const stretch of valueStretches(text)) {
+    for (const found of stretch.text.matchAll(A_UNIT)) {
+      yield {
+        unit: found[1],
+        at: at + stretch.at + found.index + found[0].length - found[1].length,
+        length: found[1].length,
+      };
+    }
+  }
+}
+
+/** Every `1.` written in a value, outside strings and `url()`, the same stretches `unitsIn` reads. */
+export function* barePointsIn(text: string, at: number): Generator<{ number: string; at: number }> {
+  for (const stretch of valueStretches(text)) {
+    for (const found of stretch.text.matchAll(A_BARE_POINT))
+      yield { number: found[0], at: at + stretch.at + found.index };
+  }
+}
+
+/** The stretches of a value that are value text — outside every string and every `url( … )`. */
+function valueStretches(text: string): { text: string; at: number }[] {
   const stretches: { text: string; at: number }[] = [];
   let from = 0;
   let index = 0;
@@ -457,16 +499,7 @@ export function* unitsIn(text: string, at: number): Generator<{ unit: string; at
     index++;
   }
   stretches.push({ text: text.slice(from), at: from });
-
-  for (const stretch of stretches) {
-    for (const found of stretch.text.matchAll(A_UNIT)) {
-      yield {
-        unit: found[1],
-        at: at + stretch.at + found.index + found[0].length - found[1].length,
-        length: found[1].length,
-      };
-    }
-  }
+  return stretches;
 }
 
 /**
@@ -538,6 +571,14 @@ export function unknownUnit(item: Declaration, findings: Finding[]): void {
   for (const part of item.value) {
     if (part.kind !== "text" || part.at === undefined) continue;
 
+    for (const found of barePointsIn(part.text, part.at)) {
+      findings.push({
+        rule: "malformed-number",
+        at: found.at,
+        length: found.number.length,
+        message: `\`${found.number}\` is not a number CSS reads: a decimal point needs a digit after it, so a browser drops this declaration. Write \`${found.number.slice(0, -1)}\`.`,
+      });
+    }
     for (const found of unitsIn(part.text, part.at)) {
       const unit = found.unit.toLowerCase();
       if (KNOWN_UNITS.has(unit)) continue;
@@ -618,6 +659,105 @@ export function unknownFunction(item: Declaration, findings: Finding[]): void {
           (meant === undefined ? "" : ` Did you mean \`${meant}()\`?`),
       });
     }
+  }
+}
+
+const REFUSED_KINDS = new Set(UNIT_KIND_REFUSED);
+const KIND_WORDS: Readonly<Record<string, string>> = {
+  length: "a length",
+  angle: "an angle",
+  time: "a time",
+  frequency: "a frequency",
+  resolution: "a resolution",
+  flex: "a share of the free space",
+  percentage: "a percentage",
+};
+
+/** Whether each character of a value stands outside every call — a unit inside `calc()` is the call's. */
+function topLevel(text: string): boolean[] {
+  const outside: boolean[] = [];
+  let depth = 0;
+  for (let index = 0; index < text.length; index++) {
+    const code = text.charCodeAt(index);
+    if (code === 34 || code === 39) {
+      const end = endOfString(text, index);
+      for (let one = index; one <= end && one < text.length; one++) outside[one] = false;
+      index = end;
+      continue;
+    }
+    if (code === 40) depth++;
+    outside[index] = depth === 0;
+    if (code === 41) depth = Math.max(0, depth - 1);
+  }
+  return outside;
+}
+
+/**
+ * A real unit of a kind the property drops — `z-index: 2x`, `x` being a resolution; `width: 2s`.
+ * `unknown-unit` knows the unit exists and nothing asked whether THIS property takes its kind. Found
+ * silent by `check-engine-sweep.mjs`.
+ *
+ * The table is measured, `UNIT_KIND_REFUSED` in `numbers.generated.ts`: each LONGHAND that takes some
+ * number, asked one unit of each kind alone, believed only where every engine refuses. A shorthand is
+ * never in it, since one value alone says nothing about another slot. A unit inside a call is the
+ * call's — `line-height: calc(1px * 2)` — and is not asked.
+ */
+export function unitOfTheWrongKind(item: Declaration, findings: Finding[]): void {
+  const property = item.property.toLowerCase();
+  for (const part of item.value) {
+    if (part.kind !== "text" || part.at === undefined || part.resolved) continue;
+    const outside = topLevel(part.text);
+    for (const found of unitsIn(part.text, part.at)) {
+      if (!outside[found.at - part.at]) continue;
+      const unit = found.unit.toLowerCase();
+      const kind = UNIT_TYPE[unit];
+      if (kind === undefined || !REFUSED_KINDS.has(`${property} ${kind}`)) continue;
+      findings.push({
+        rule: "unit-of-the-wrong-kind",
+        at: found.at,
+        length: found.length,
+        message: `\`${found.unit}\` is ${KIND_WORDS[kind] ?? kind} unit, and \`${item.property}\` takes none, so a browser drops this declaration.`,
+      });
+    }
+  }
+}
+
+/**
+ * A SHORTHAND's units, each asked of the longhand it lands in — `margin: 0x auto` puts `0x` in
+ * `margin-top`, which takes no resolution. The table is per longhand (see `unitOfTheWrongKind`), so a
+ * shorthand is read through `splitOf`, the same split the build writes. A value it does not split is
+ * left alone here. Found silent by `check-engine-sweep.mjs`.
+ */
+export function unitOfTheWrongKindInItsLonghands(item: Declaration, findings: Finding[]): void {
+  const property = item.property.toLowerCase();
+  if (SHORTHANDS[property] === undefined || item.value.some((part) => part.kind !== "text" || part.resolved)) return;
+  const [part] = item.value;
+  if (item.value.length !== 1 || part.kind !== "text" || part.at === undefined) return;
+  const split = splitOf(property, part.text);
+  if (split === undefined) return;
+
+  const outside = topLevel(part.text);
+  for (const found of unitsIn(part.text, part.at)) {
+    const offset = found.at - part.at;
+    if (!outside[offset]) continue;
+    const kind = UNIT_TYPE[found.unit.toLowerCase()];
+    if (kind === undefined) continue;
+    // The whole token the unit ends — `0x` — and every longhand that took it.
+    // Walked back by hand: a pattern anchored at the end is tried from every start, quadratic in a run
+    // of digits.
+    let start = offset;
+    while (start > 0 && /[\d.eE+-]/.test(part.text[start - 1])) start--;
+    const token = part.text.slice(start, offset + found.length);
+    const into = Object.entries(split).find(
+      ([longhand, value]) => tokensOf(value).includes(token) && REFUSED_KINDS.has(`${longhand} ${kind}`),
+    );
+    if (into === undefined) continue;
+    findings.push({
+      rule: "unit-of-the-wrong-kind",
+      at: found.at,
+      length: found.length,
+      message: `\`${found.unit}\` is ${KIND_WORDS[kind] ?? kind} unit, and \`${into[0]}\` — where \`${token}\` lands in \`${item.property}\` — takes none, so a browser drops this declaration.`,
+    });
   }
 }
 

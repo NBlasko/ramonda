@@ -178,6 +178,10 @@ export const RULE_IDS = [
   "custom-function",
   // A hex colour with the wrong number of digits. See `invalidHexColor`.
   "invalid-hex-color",
+  // `0.` — a decimal point with no digit after it. See `unknownUnit`.
+  "malformed-number",
+  // A real unit of a kind the property drops — `z-index: 2x`. See `unitOfTheWrongKind`.
+  "unit-of-the-wrong-kind",
   "unknown-selector",
   // A missing `:`, an `An+B` no engine reads, a bracket left open. See `malformedSelector`.
   "malformed-selector",

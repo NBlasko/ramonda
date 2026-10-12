@@ -19,7 +19,16 @@ import { type Finding } from "./index";
 import { declarationOutOfPlace, propertyNotAName, repeated, ruleOutOfPlace, unknownProperty } from "./properties";
 import { atRuleOutOfPlace, unknownFrame } from "./selectors";
 import { holeInHead } from "./logic";
-import { invalidHexColor, stringNotAllowed, unknownFlag, unknownFunction, unknownUnit, unknownValue } from "./values";
+import {
+  invalidHexColor,
+  stringNotAllowed,
+  unitOfTheWrongKind,
+  unitOfTheWrongKindInItsLonghands,
+  unknownFlag,
+  unknownFunction,
+  unknownUnit,
+  unknownValue,
+} from "./values";
 import { runOn } from "./text";
 
 /**
@@ -325,6 +334,8 @@ export function walk(items: readonly BlockItem[], findings: Finding[], body?: st
     unknownFlag(item, findings);
     stringNotAllowed(item, findings);
     unknownUnit(item, findings);
+    unitOfTheWrongKind(item, findings);
+    unitOfTheWrongKindInItsLonghands(item, findings);
     unknownFunction(item, findings);
     invalidHexColor(item, findings);
     repeated(item, seen, findings);
