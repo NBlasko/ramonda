@@ -212,7 +212,7 @@ A typo in one of these ids is caught too: writing `unknown-unti` in
 | `unit-of-the-wrong-kind` | a real unit of a kind the property does not take (`z-index: 2x`, `width: 2s`), so the declaration is dropped |
 | `invalid-value` | a value its property's grammar cannot read — `rgb(1x 2 3)`, `linear-gradient(redx, blue)`, `aspect-ratio: 16  9` — so the declaration is dropped |
 | `unknown-selector` | a pseudo-class or pseudo-element that is not one — the whole rule is dropped |
-| `malformed-selector` | a selector no engine reads — `&not(…)` with no colon, `:nth-child(2+1)`, a bracket left open — so the whole rule is dropped |
+| `malformed-selector` | a selector no engine reads — `&not(…)` with no colon, `:nth-child(2+1)`, a bracket left open, an attribute flag other than `i` or `s` — so the whole rule is dropped |
 | `unknown-flag` | a `!` at the end of a value that is not `!important` |
 | `unclosed-call` | a `(` in a value that no `)` closes — the value runs past the end of the block |
 | `unknown-token` | `$group.…` naming a token your `ramonda.css.ts` does not declare |

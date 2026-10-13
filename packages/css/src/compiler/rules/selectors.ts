@@ -28,7 +28,7 @@ import {
   unknownValue,
 } from "./values";
 import type { Declaration } from "../ast";
-import { valueMatchesGrammar } from "../validateValue";
+import { keywordsOf, valueMatchesGrammar } from "../validateValue";
 
 const KNOWN_CALLS = new Set(FUNCTIONS);
 
@@ -309,6 +309,16 @@ export function mediaValues(block: Block, findings: Finding[]): void {
 }
 
 /**
+ * The letters after a number — `rem` in `40rem` — or `undefined` when the value is not one.
+ *
+ * Anchored at both ends, so it is linear: `/[a-z%]+$/` alone retries from every character and is
+ * quadratic on a run of `%` — 2.5 s at 40,000, found by CodeQL.
+ */
+function unitOf(value: string): string | undefined {
+  return /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)([a-z%]+)$/i.exec(value)?.[1];
+}
+
+/**
  * A number followed by letters that are not a unit — `40remGreska`, `40remx`.
  *
  * Measured in Chromium, Firefox and WebKit: the condition is kept and never matches, and `not` in
@@ -316,7 +326,7 @@ export function mediaValues(block: Block, findings: Finding[]): void {
  * after a number as a length, so this is asked first.
  */
 function unknownUnit(table: Conditions, value: string, at: number): Finding | undefined {
-  const unit = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)([a-z%]+)$/i.exec(value)?.[1];
+  const unit = unitOf(value);
   if (unit === undefined || KNOWN_UNITS.has(unit.toLowerCase())) return undefined;
   const meant = nearest(unit.toLowerCase(), UNITS as string[]);
   return {
@@ -387,8 +397,9 @@ export function malformedMedia(block: Block, findings: Finding[]): void {
 
     for (const { open, close, inner } of innermostGroups(prelude)) {
       if (isCall(prelude, open) || inner.includes(":") || /[<>=]/.test(inner)) continue;
-      const words = inner.trim().split(/\s+/);
-      if (words.length !== 2 || !known.has(words[0].toLowerCase())) continue;
+      // The value may be more than one word — a ratio is three, `1 / 2` — found by the second sweep.
+      const [feature, ...rest] = inner.trim().split(/\s+/);
+      if (rest.length === 0 || !known.has(feature.toLowerCase())) continue;
       const group = prelude.slice(open, close + 1);
       findings.push({
         rule: table.malformed,
@@ -396,7 +407,7 @@ export function malformedMedia(block: Block, findings: Finding[]): void {
         length: group.length,
         message:
           `\`${group}\` has no \`:\` between the feature and its value, so this condition never matches and ` +
-          `a browser keeps it anyway. Write \`(${words[0]}: ${words[1]})\`.`,
+          `a browser keeps it anyway. Write \`(${feature}: ${rest.join(" ")})\`.`,
       });
     }
 
@@ -416,7 +427,10 @@ export function malformedMedia(block: Block, findings: Finding[]): void {
       const word = found[0].toLowerCase();
       const end = table.at.length + (found.index ?? 0) + found[0].length;
       const called = prelude[end] === "(";
-      const isName = first && !called && table === CONTAINER && !CONTAINER_BETWEEN.includes(word);
+      // A container's name stands before its first condition, and nowhere else: a word after a `(` …`)`
+      // is a keyword or a slip — `(a) andx (b)` — found by the second sweep.
+      const beforeAnyCondition = !prelude.slice(0, table.at.length + (found.index ?? 0)).includes("(");
+      const isName = first && beforeAnyCondition && !called && table === CONTAINER && !CONTAINER_BETWEEN.includes(word);
       first = false;
       if (allowed.includes(word) || isName || (called && table === CONTAINER && CONTAINER_CALLS.includes(word))) {
         continue;
@@ -480,6 +494,25 @@ function* rangesIn(table: Conditions, prelude: string): Generator<{ name: string
   }
 }
 
+/** The units every engine has had for years, so a `@supports` asking about one is always true. */
+const LONG_STANDING_UNITS = new Set([
+  "px",
+  "em",
+  "rem",
+  "%",
+  "vw",
+  "vh",
+  "vmin",
+  "vmax",
+  "cm",
+  "mm",
+  "in",
+  "pt",
+  "pc",
+  "ex",
+  "ch",
+]);
+
 /** Every media feature by name, unprefixed — what `@supports` is asked about by mistake. */
 const FEATURE_NAMES = new Set(MEDIA_FEATURES);
 const PROPERTY_NAMES = new Set(PROPERTIES);
@@ -503,6 +536,10 @@ export function supportsAMediaFeature(block: Block, findings: Finding[]): void {
       if (!FEATURE_NAMES.has(name.toLowerCase())) continue;
       const property = PROPERTY_NAMES.has(name.toLowerCase());
       if (property && kindOf(value) !== "length") continue;
+      // A NEWER unit is the question itself — `@supports (height: 100dvh)` is how a page asks whether
+      // `dvh` is there. Found in review: only a unit every engine has had for years makes the condition
+      // always true, and so reads like a breakpoint meant as `@media`.
+      if (property && !LONG_STANDING_UNITS.has((unitOf(value) ?? "").toLowerCase())) continue;
 
       findings.push({
         rule: "supports-a-media-feature",
@@ -520,6 +557,24 @@ export function supportsAMediaFeature(block: Block, findings: Finding[]): void {
 /** The rules whose finding in a `@supports` value is a fault whatever the browser: no near miss needed. */
 const ALWAYS_WRONG = new Set(["number-without-a-unit", "fraction-where-a-whole-number-goes", "invalid-hex-color"]);
 const SUPPORTS_CALLS = ["selector", "font-tech", "font-format"];
+
+/** What `font-format()` and `font-tech()` take, from CSS Fonts 4 — `mdn-data` has no grammar for either. */
+const FONT_CONDITIONS: Readonly<Record<string, readonly string[]>> = {
+  "font-format": ["collection", "embedded-opentype", "opentype", "svg", "truetype", "woff", "woff2"],
+  "font-tech": [
+    "features-opentype",
+    "features-aat",
+    "features-graphite",
+    "color-colrv0",
+    "color-colrv1",
+    "color-svg",
+    "color-sbix",
+    "color-cbdt",
+    "variations",
+    "palettes",
+    "incremental",
+  ],
+};
 
 /** A finding's own reason, without the part that is true of a declaration and not of a condition. */
 function reasonOf(message: string): string {
@@ -634,6 +689,37 @@ export function supportsNeverTrue(block: Block, findings: Finding[]): void {
         .replace(/([a-z-][\w-]*)\(/gi, (whole, call: string) => (KNOWN_CALLS.has(call.toLowerCase()) ? "(" : whole));
       if (!spoke && !/[a-z]/i.test(words) && valueMatchesGrammar(lowered, value) === false) {
         say(valueAt, value.length, `\`${value}\` is not a value \`${name}\` takes.`);
+        spoke = true;
+      }
+      /**
+       * A value WITH words, refused by the grammar, holding a word one letter from one this property's
+       * grammar has — `linear-gradient(redx, blue)`. A slip, not a question: the question would be a
+       * word the property does not have at all, `display: masonry`, and that is left alone. Found by
+       * the second sweep.
+       */
+      if (!spoke && valueMatchesGrammar(lowered, value) === false) {
+        const known = keywordsOf(lowered);
+        const strange = [...value.matchAll(/(?<![\w#.-])[a-z][\w-]*(?![\w(-])/gi)].filter(
+          (found) => !known.has(found[0].toLowerCase()),
+        );
+        for (const found of strange) {
+          const meant = nearest(
+            found[0].toLowerCase(),
+            [...known].filter((one) => !one.endsWith("(")),
+          );
+          if (meant === undefined) continue;
+          say(
+            valueAt + (found.index ?? 0),
+            found[0].length,
+            `\`${found[0]}\` is not a word \`${name}\` has. Did you mean \`${meant}\`?`,
+          );
+          spoke = true;
+          break;
+        }
+        // Every word one this property has, and still refused: the slip is in how they are put
+        // together — `linear-gradient(red blue)`, a comma lost — not a question about a new word.
+        if (!spoke && strange.length === 0)
+          say(valueAt, value.length, `\`${value}\` is not a value \`${name}\` takes.`);
       }
     }
 
@@ -664,6 +750,24 @@ export function supportsNeverTrue(block: Block, findings: Finding[]): void {
           unknownSelector(argument, inSelector);
           malformedSelector(argument, inSelector);
           for (const one of inSelector) say(one.at, one.length, reasonOf(one.message));
+          continue;
+        }
+        // The argument of `font-format()` / `font-tech()`, against the names CSS Fonts 4 gives them —
+        // a near miss only, as a name a browser has not shipped yet is still a question.
+        const names = FONT_CONDITIONS[word.toLowerCase()];
+        if (names !== undefined) {
+          const close = endOfCall(prelude, open);
+          const argument = prelude.slice(open + 1, close).trim();
+          const meant = names.includes(argument.toLowerCase())
+            ? undefined
+            : nearest(argument.toLowerCase(), [...names]);
+          if (meant !== undefined) {
+            say(
+              base + open + 1 + prelude.slice(open + 1).indexOf(argument),
+              argument.length,
+              `\`${argument}\` is not a ${word.toLowerCase().slice(5)} \`${word}()\` names. Did you mean \`${meant}\`?`,
+            );
+          }
           continue;
         }
         if (SUPPORTS_CALLS.includes(word.toLowerCase())) continue;
@@ -849,6 +953,44 @@ function isPseudoNameCharacter(code: number): boolean {
  * A VENDOR pseudo is a browser's own, so the prefix is checked and the name after it is not —
  * exactly as for a property and for an at-rule.
  */
+/** The pseudo-classes whose argument is a selector, or ends in one (`:nth-child(2n of .a)`). */
+const SELECTOR_ARGUMENTS = new Set([
+  ":not",
+  ":is",
+  ":where",
+  ":has",
+  ":matches",
+  ":-webkit-any",
+  ":host",
+  ":host-context",
+  "::slotted",
+  ":nth-child",
+  ":nth-last-child",
+]);
+
+/** The selector lists that forgive a selector they cannot read. */
+const FORGIVING = new Set([":is", ":where"]);
+
+/** The functional pseudo-class whose brackets hold position `at`, innermost first — or nothing. */
+function enclosingCall(text: string, at: number): string | undefined {
+  let depth = 0;
+  for (let index = at - 1; index >= 0; index--) {
+    const code = text.charCodeAt(index);
+    if (code === 41 /* ) */) depth++;
+    else if (code === 40 /* ( */) {
+      if (depth === 0) {
+        // Walked back by hand: a pattern anchored at the end is tried from every start.
+        let from = index;
+        while (from > 0 && /[\w-]/.test(text[from - 1])) from--;
+        while (from > 0 && text[from - 1] === ":") from--;
+        return text.slice(from, index).toLowerCase();
+      }
+      depth--;
+    }
+  }
+  return undefined;
+}
+
 function unknownSelector(rule: NestedRule, findings: Finding[]): void {
   if (rule.prelude.startsWith("@")) return;
 
@@ -875,20 +1017,27 @@ function unknownSelector(rule: NestedRule, findings: Finding[]): void {
 
     if (!PSEUDO_NAMES.has(name) && !(prefix !== undefined && PREFIXES.includes(prefix))) {
       const meant = nearest(name, [...PSEUDO_NAMES]);
+      // Inside `:is()` or `:where()` the list FORGIVES: measured in all three engines, the rule is kept
+      // and only this part is skipped — so it never matches, and the message says that instead.
+      const forgiving = FORGIVING.has(enclosingCall(text, start) ?? "");
       findings.push({
         rule: "unknown-selector",
         at: (rule.at ?? 0) + start,
         length: name.length,
         message:
-          `\`${name}\` is not a pseudo-class or pseudo-element CSS has, so a browser drops the whole ` +
-          `rule — every declaration inside it, not just one. ` +
+          `\`${name}\` is not a pseudo-class or pseudo-element CSS has, so ` +
+          (forgiving
+            ? `inside \`${enclosingCall(text, start)}()\` a browser skips it, and this part never matches. `
+            : "a browser drops the whole rule — every declaration inside it, not just one. ") +
           (meant === undefined ? "Check the name." : `Did you mean \`${meant}\`?`),
       });
     }
 
-    // Step over a functional one's argument, counting depth, so `:has(:hover)` reads the name and
-    // not what is inside it — see the note above about why the argument is not this rule's business.
-    if (text.charCodeAt(at) === 40 /* ( */) {
+    // Step over a functional one's argument, counting depth, so `:lang(sr)` reads the name and not
+    // what is inside it — UNLESS the argument is itself a selector: `:not(:first-chil)` drops the rule
+    // in every engine, and was silent until the second sweep (2026-10-13). Those are read on, the
+    // loop finding the `:` inside as it finds any other.
+    if (text.charCodeAt(at) === 40 /* ( */ && !SELECTOR_ARGUMENTS.has(name)) {
       let depth = 0;
       while (at < text.length) {
         const code = text.charCodeAt(at);
@@ -1017,9 +1166,24 @@ function malformedSelector(rule: NestedRule, findings: Finding[]): void {
       continue;
     }
     if (code === 91 /* [ */) open.push(index);
-    if (code === 93 /* ] */ && open.pop() === undefined) {
-      push(index, 1, `This \`]\` closes a \`[\` that never opened, ${dropped}`);
-      return;
+    if (code === 93 /* ] */) {
+      const opened = open.pop();
+      if (opened === undefined) {
+        push(index, 1, `This \`]\` closes a \`[\` that never opened, ${dropped}`);
+        return;
+      }
+      // A flag after the value is `i` or `s` and nothing else — `[a="b" ix]` drops the rule.
+      const flag = /=\s*(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s"'\]]+)\s+([^\s\]]+)\s*$/.exec(
+        text.slice(opened + 1, index),
+      );
+      if (flag !== null && !/^[is]$/i.test(flag[1])) {
+        const at = opened + 1 + flag.index + flag[0].lastIndexOf(flag[1]);
+        push(
+          at,
+          flag[1].length,
+          `\`${flag[1]}\` is not a flag an attribute selector has, ${dropped} It takes \`i\` or \`s\`.`,
+        );
+      }
     }
     if (code === 40 /* ( */) {
       const name = /[a-zA-Z][\w-]*$/.exec(text.slice(Math.max(0, index - 64), index))?.[0];

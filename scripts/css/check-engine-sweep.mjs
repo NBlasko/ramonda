@@ -127,13 +127,16 @@ async function askTheEngines(cases) {
             }
             one.remove();
           } else if (c.site === "media") {
-            const not = c.text.startsWith("(") ? `not (${c.text})` : `not ${c.text}`;
+            // `not` takes one condition, so a group is wrapped, and `only` — which `not` cannot follow —
+            // is dropped: it changes nothing in an engine that reads media queries at all.
+            const not = c.text.startsWith("(") ? `not (${c.text})` : `not ${c.text.replace(/^only\s+/i, "")}`;
             const one = sheet(`@media ${c.text} { .t { --a: 1 } } @media ${not} { .t { --b: 1 } }`);
             // At this width only; the second width is asked below, once the page is resized.
             verdict = one.sheet.cssRules.length === 0 ? "dropped" : applies().some(Boolean) ? "ok" : "unknown";
             one.remove();
           } else if (c.site === "container") {
-            const not = /^[a-z]/.test(c.text) ? c.text.replace(/^(\S+) /, "$1 not ") : `not ${c.text}`;
+            // Wrapped, for the same reason: `not (a) and (b)` is no condition at all.
+            const not = /^[a-z]/.test(c.text) ? c.text.replace(/^(\S+) (.*)$/, "$1 not ($2)") : `not (${c.text})`;
             const one = sheet(
               `.box { container-type: size; container-name: card; height: 300px }
                @container ${c.text} { .t { --a: 1 } } @container ${not} { .t { --b: 1 } }`,
@@ -162,7 +165,7 @@ async function askTheEngines(cases) {
       const narrow = await page.evaluate(
         (texts) =>
           texts.map((text) => {
-            const not = text.startsWith("(") ? `not (${text})` : `not ${text}`;
+            const not = text.startsWith("(") ? `not (${text})` : `not ${text.replace(/^only\s+/i, "")}`;
             return !matchMedia(text).matches && !matchMedia(not).matches;
           }),
         cases.map((c) => c.text),

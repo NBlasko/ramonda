@@ -1493,3 +1493,29 @@ test("a new background costs about what a new border does", async () => {
   );
   expect(Math.min(...ratios)).toBeLessThan(4);
 });
+
+/**
+ * Two the second sweep found the grammar too loose for, each measured in all three engines: an
+ * OpenType tag is exactly four ASCII characters, and a cursor's image needs its comma.
+ */
+describe("what mdn-data's grammar lets through and no engine does", () => {
+  test.each([
+    ["a feature tag of three", '  font-feature-settings: "lig" 1;'],
+    ["of five", '  font-feature-settings: "ligax" 1;'],
+    ["an axis tag of three", '  font-variation-settings: "wgh" 400;'],
+    ["a character outside ASCII", '  font-feature-settings: "liĝa" 1;'],
+    ["a cursor's comma lost", "  cursor: url(hand.cur) pointer;"],
+  ])("%s is reported", (_what, css) => {
+    expect(rules(css)).toContain("invalid-value");
+  });
+
+  test.each([
+    ["a feature tag", '  font-feature-settings: "liga" 1, "kern" 0;'],
+    ["one with a space", '  font-feature-settings: "li a" 1;'],
+    ["an axis tag", '  font-variation-settings: "wght" 400;'],
+    ["a cursor with its comma", "  cursor: url(hand.cur), pointer;"],
+    ["and its hotspot", "  cursor: url(hand.cur) 4 12, pointer;"],
+  ])("%s is silent", (_what, css) => {
+    expect(rules(css)).not.toContain("invalid-value");
+  });
+});

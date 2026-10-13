@@ -293,7 +293,7 @@ const CSS_LINES = {
   "unclosed-call": "a `(` in a value that no `)` closes — the value runs past the end of the block",
   "unknown-prefix": "a vendor prefix that is not one of the four",
   "malformed-selector":
-    "a selector no engine reads — `&not(…)` with no colon, `:nth-child(2+1)`, a bracket left open — so the whole rule is dropped",
+    "a selector no engine reads — `&not(…)` with no colon, `:nth-child(2+1)`, a bracket left open, an attribute flag other than `i` or `s` — so the whole rule is dropped",
   "unknown-at-rule": "an at-rule name CSS does not have",
   "unknown-selector": "a pseudo-class or pseudo-element that is not one — the whole rule is dropped",
   "unknown-media-feature": "a media feature that will never match",
