@@ -1,6 +1,7 @@
 import { PROPERTY_GRAMMAR, TYPE_GRAMMAR } from "./grammars.generated";
 import { UNIT_TYPE } from "./keywords.generated";
 import { matchValue } from "./matchValue";
+import { remember } from "./remember";
 import { withoutImportant } from "./rules/shared";
 import { parseValueSyntax, type Term } from "./valueSyntax";
 
@@ -474,8 +475,18 @@ function accepts(term: Term, token: string): boolean {
   }
 }
 
-/** `true` it reads, `false` it does not, `undefined` this cannot say. */
-export function valueMatchesGrammar(property: string, value: string): boolean | undefined {
+/**
+ * `true` it reads, `false` it does not, `undefined` this cannot say — remembered per property and
+ * value, because a project writes the same declaration in file after file and an editor asks again on
+ * every keystroke. Measured by `bench-css.mjs`: `background: red` costs half a millisecond, and without
+ * this a 1000-file build went from 2.3 to 16 ms a file.
+ */
+export const valueMatchesGrammar: (property: string, value: string) => boolean | undefined = remember(
+  10_000,
+  readAgainstGrammar,
+);
+
+function readAgainstGrammar(property: string, value: string): boolean | undefined {
   // `withoutImportant`, not a pattern: `\s*!\s*important\s*$` was quadratic in a run of spaces.
   const bare = withoutImportant(value).trim();
   if (bare === "" || /\b(?:var|env|attr)\(/i.test(bare)) return undefined;

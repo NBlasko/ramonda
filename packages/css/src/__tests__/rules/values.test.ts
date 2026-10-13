@@ -1429,12 +1429,19 @@ test("a long list is answered quickly, whatever the answer", () => {
   const layers = "url(a.png) no-repeat scroll 0 0 / 40px 40px padding-box border-box, ".repeat(20);
   // Once first: the grammars are read and cached on the first call, once per editor session, and
   // under a full gate's load that alone came to more than this test allows.
-  rules(`  background: ${layers}#fff;`);
-  rules(`  transition: ${"opacity 150ms ease-in 0s, ".repeat(20)}transform 1s linear;`);
-  const started = performance.now();
-  rules(`  background: ${layers}#fff;`);
-  rules(`  transition: ${"opacity 150ms ease-in 0s, ".repeat(20)}transform 1s linear;`);
-  expect(performance.now() - started).toBeLessThan(250);
+  const once = () => {
+    rules(`  background: ${layers}#fff;`);
+    rules(`  transition: ${"opacity 150ms ease-in 0s, ".repeat(20)}transform 1s linear;`);
+  };
+  once();
+  // The best of three, under a limit set from both ends, measured: ~70 ms here and 251 ms on a CI
+  // runner, which is about 3.5 times slower; the 200,000 budget this guards against took 1255 ms here.
+  const runs = [0, 1, 2].map(() => {
+    const started = performance.now();
+    once();
+    return performance.now() - started;
+  });
+  expect(Math.min(...runs)).toBeLessThan(600);
 });
 
 /**
@@ -1447,4 +1454,42 @@ test("a value of long whitespace is answered at once", () => {
   // `!important` strip, over every one of the spaces.
   rules(`  font-family: Helvetica${" ".repeat(20_000)}Neue;`);
   expect(performance.now() - started).toBeLessThan(250);
+});
+
+/**
+ * The same value asked again is answered from memory. Found by `bench-css.mjs`: `background: red`
+ * costs half a millisecond to read — `background`'s eight components in any order — and a project
+ * writes it in file after file, so a 1000-file build went from 2.3 to 16 ms a file.
+ */
+test("a value seen before is not read again", async () => {
+  const { valueMatchesGrammar } = await import("../../compiler/validateValue");
+  valueMatchesGrammar("background", "red");
+  const runs = [0, 1, 2].map(() => {
+    const started = performance.now();
+    for (let one = 0; one < 1000; one++) valueMatchesGrammar("background", "red");
+    return performance.now() - started;
+  });
+  expect(Math.min(...runs)).toBeLessThan(50);
+});
+
+/**
+ * A grammar of parts in any order does not try what cannot begin at the token. `background`'s eight
+ * components made each new value cost 0.45 ms, seven times a `border`; pruning made it under twice.
+ * Asked as a RATIO in one run, so a slower machine slows both sides alike.
+ */
+test("a new background costs about what a new border does", async () => {
+  const { valueMatchesGrammar } = await import("../../compiler/validateValue");
+  const colours = (salt: number) =>
+    Array.from({ length: 200 }, (_, one) => `#${((one + salt) * 4099).toString(16).padStart(6, "0").slice(-6)}`);
+  const time = (property: string, values: string[]) => {
+    const started = performance.now();
+    for (const value of values) valueMatchesGrammar(property, property === "border" ? `1px solid ${value}` : value);
+    return performance.now() - started;
+  };
+  valueMatchesGrammar("background", "red");
+  valueMatchesGrammar("border", "1px solid red");
+  const ratios = [1, 2, 3].map(
+    (salt) => time("background", colours(salt * 1000)) / time("border", colours(salt * 1000)),
+  );
+  expect(Math.min(...ratios)).toBeLessThan(4);
 });

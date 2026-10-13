@@ -55,7 +55,13 @@ function mayBeAbsent(term: Term): boolean {
  * everything and the rest are never built. `||` over five components is 325 orders, and `animation`
  * has eight.
  */
-function* readings(term: Term, tokens: readonly string[], at: number, accepts: Accepts): Generator<Reading> {
+function* readings(
+  term: Term,
+  tokens: readonly string[],
+  at: number,
+  accepts: Accepts,
+  starts: Starts,
+): Generator<Reading> {
   // `#?` is optional AND repeated: the `?` lets it take nothing, whatever the repeat's own minimum.
   const min = term.optional === true ? 0 : (term.repeat?.min ?? 1);
   /**
@@ -74,7 +80,11 @@ function* readings(term: Term, tokens: readonly string[], at: number, accepts: A
       return;
     }
     if (term.kind === "alt") {
-      for (const branch of term.terms ?? []) yield* readings(branch, tokens, from, accepts);
+      for (const branch of term.terms ?? []) {
+        // A branch that cannot begin with this token reads only nothing — and only if it may be absent.
+        if (!starts(branch, tokens[from]) && !mayBeAbsent(branch)) continue;
+        yield* readings(branch, tokens, from, accepts, starts);
+      }
       return;
     }
     if (term.kind === "seq") {
@@ -102,7 +112,7 @@ function* readings(term: Term, tokens: readonly string[], at: number, accepts: A
         if (previousEmpty || more.at === from || nextEmpty(rest, from)) yield more;
       return;
     }
-    for (const one of readings(head, tokens, from, accepts))
+    for (const one of readings(head, tokens, from, accepts, starts))
       for (const more of inOrder(rest, one.at, one.at === from))
         yield { at: more.at, taken: [...one.taken, ...more.taken] };
   }
@@ -128,7 +138,11 @@ function* readings(term: Term, tokens: readonly string[], at: number, accepts: A
     }
     for (const [index, head] of parts.entries()) {
       const rest = [...parts.slice(0, index), ...parts.slice(index + 1)];
-      for (const one of readings(head, tokens, from, accepts)) {
+      // Any order tries every part at every place, and most cannot begin with the token there: a part
+      // that cannot reads only nothing, which this skips below anyway. Skipping it first is what keeps
+      // `background: red` from trying eight components in every order — measured, 0.45 ms a value.
+      if (!starts(head, tokens[from])) continue;
+      for (const one of readings(head, tokens, from, accepts, starts)) {
         if (one.at === from) continue; // Took nothing, so the order would never end.
         for (const more of inAnyOrder(rest, one.at, all, true))
           yield { at: more.at, taken: [...one.taken, ...more.taken] };
@@ -167,8 +181,42 @@ function* readings(term: Term, tokens: readonly string[], at: number, accepts: A
  * A value that leaves a token over has not been understood, and understanding it is the only reason
  * to take it apart.
  */
+/** Whether a term can begin with a token: the first thing it reads could be that token. */
+type Starts = (term: Term, token: string | undefined) => boolean;
+
+/**
+ * `Starts` for one reading of one value, each answer remembered — a term is asked about the same
+ * token at many places in a search. Generous where it cannot be sure: a `,` that may be omitted, a
+ * part that may be absent, are stepped over to what follows.
+ */
+function startsFor(accepts: Accepts): Starts {
+  const known = new Map<Term, Map<string, boolean>>();
+  const starts: Starts = (term, token) => {
+    if (token === undefined) return false;
+    let answers = known.get(term);
+    if (answers === undefined) known.set(term, (answers = new Map()));
+    const hit = answers.get(token);
+    if (hit !== undefined) return hit;
+    let found: boolean;
+    if (LEAF.has(term.kind)) found = accepts(term, token);
+    else if (term.kind === "seq") {
+      found = false;
+      for (const part of term.terms ?? []) {
+        if (starts(part, token)) {
+          found = true;
+          break;
+        }
+        if (!mayBeAbsent(part) && !(part.kind === "literal" && part.name === ",")) break;
+      }
+    } else found = (term.terms ?? []).some((part) => starts(part, token));
+    answers.set(token, found);
+    return found;
+  };
+  return starts;
+}
+
 export function matchValue(term: Term, tokens: readonly string[], accepts: Accepts): Taken | undefined {
-  for (const reading of readings(term, tokens, 0, accepts)) {
+  for (const reading of readings(term, tokens, 0, accepts, startsFor(accepts))) {
     if (reading.at !== tokens.length) continue;
     const out = new Map<Term, string[]>();
     for (const [leaf, token] of reading.taken) out.set(leaf, [...(out.get(leaf) ?? []), token]);
