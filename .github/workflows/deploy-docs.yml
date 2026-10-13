@@ -69,8 +69,12 @@ jobs:
         # workspace root pnpm refuses (ERR_PNPM_ADDING_TO_ROOT) unless told the root
         # is intended. Scope that allowance to this step only — it does not affect
         # local dev or the other jobs.
+        #
+        # `pnpm_config_`, not `npm_config_`: pnpm 11 and later read only their own
+        # prefix, and after the move to pnpm 12 the old spelling was ignored and the
+        # deploy failed. `check-workflows.mjs` refuses the old one now.
         env:
-          npm_config_ignore_workspace_root_check: "true"
+          pnpm_config_ignore_workspace_root_check: "true"
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
