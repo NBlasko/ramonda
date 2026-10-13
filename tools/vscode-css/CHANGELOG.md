@@ -1,5 +1,15 @@
 # Ramonda CSS
 
+## 0.8.0
+
+- **Goes with `@ramonda/css` 0.11.0.** The colours are unchanged; the copy of the compiler this
+  extension carries, for a project that has none of its own, is the new one. It brings 0.11.0's
+  checks to such a project: a misspelt selector inside `:not()` or `:has()`, an attribute flag other
+  than `i` or `s`, an OpenType tag that is not four characters, a comma a value needs and left out
+  (`cursor: url(a.cur) pointer`), and `@supports` and `@container` conditions that never match.
+- **`@supports (height: 100dvh)` is no longer reported.** A newer unit is the question itself; only
+  a unit every engine has had for years, `@supports (min-width: 40rem)`, makes it always true.
+
 ## 0.7.0
 
 - **Goes with `@ramonda/css` 0.10.0.** The copy of the compiler this extension carries, for a
