@@ -141,7 +141,16 @@ class Story {
     }
   }
 
+  /** The list an editor shows at the caret now — the text written first, so it is asked of what is on screen. */
+  offer() {
+    write(HEAD + this.body + TAIL);
+    return completions(HEAD.length + this.body.length);
+  }
+
   hold(ms, extra = {}) {
+    // A list asked for and empty is a question asked of the wrong text, never a picture to draw.
+    if (extra.popup?.length === 0)
+      throw new Error(`[gifs] an empty completion list after ${JSON.stringify(this.body.slice(-30))}`);
     this.frame(extra, ms);
   }
 }
@@ -153,7 +162,7 @@ function writing() {
   story.hold(900);
   const from = story.body.length;
   story.typing("disp", { popupFrom: from + 1 });
-  story.hold(900, { popup: completions(HEAD.length + story.body.length) });
+  story.hold(900, { popup: story.offer() });
   story.body = story.body.slice(0, -4) + "display";
   story.hold(250);
   story.typing(`: inline-flex;\n${INDENT}gap: 8px;\n${INDENT}colr: $color.accent.main;`);
@@ -172,9 +181,9 @@ function editing() {
   story.hold(700);
   const from = story.body.length;
   story.typing("background: $color.", { popupFrom: from + 18 });
-  story.hold(1100, { popup: completions(HEAD.length + story.body.length) });
+  story.hold(1100, { popup: story.offer() });
   story.body += "surface.";
-  story.hold(900, { popup: completions(HEAD.length + story.body.length) });
+  story.hold(900, { popup: story.offer() });
   story.typing("sunken;");
   story.hold(500);
   const display = HEAD.length + story.body.indexOf("display") + 2;
@@ -255,7 +264,7 @@ const style = (theme) => `
     .map(([name, value]) => `--${name}:${value}`)
     .join(";")}}
   html,body{margin:0;background:var(--bg)}
-  #shot{width:760px;height:400px;box-sizing:border-box;font:14px/${LINE}px ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  #shot{width:var(--shot-width,760px);height:400px;box-sizing:border-box;font:14px/${LINE}px ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:10px;overflow:hidden}
   .bar{height:30px;background:var(--bar);border-bottom:1px solid var(--line);font:12px/30px -apple-system,system-ui,sans-serif;color:var(--muted);padding:0 14px}
   .body{position:relative;padding:12px 0 16px 0;display:flex}
   .gutter{width:40px;text-align:right;color:var(--gutter);padding-right:14px;white-space:pre}
@@ -266,7 +275,7 @@ const style = (theme) => `
   .popup{position:absolute;min-width:220px;background:var(--bar);border:1px solid var(--line);border-radius:6px;box-shadow:0 8px 24px var(--shadow);padding:4px 0}
   .popup div{padding:0 10px;height:22px;line-height:22px;white-space:pre}
   .popup .on{background:var(--on)}
-  .tip{position:absolute;max-width:520px;background:var(--bar);border:1px solid var(--line);border-radius:6px;box-shadow:0 8px 24px var(--shadow);padding:8px 10px;font:12.5px/18px ui-monospace,Menlo,monospace;color:var(--fg);white-space:pre-wrap}
+  .tip{position:absolute;max-width:400px;background:var(--bar);border:1px solid var(--line);border-radius:6px;box-shadow:0 8px 24px var(--shadow);padding:8px 10px;font:12.5px/18px ui-monospace,Menlo,monospace;color:var(--fg);white-space:pre-wrap}
   .page{padding:28px;background:var(--bg);font:15px -apple-system,system-ui,sans-serif}
   .page .url{font:12px -apple-system,system-ui,sans-serif;color:var(--muted);margin-bottom:18px}
 `;
@@ -294,8 +303,10 @@ function frameHtml(frame, theme) {
     );
   }
   if (frame.tooltip !== undefined) {
-    const { top, left } = at(frame.tooltip.at);
-    overlays.push(`<div class="tip" style="top:${top + LINE + 4}px;left:${left}">${escape(frame.tooltip.text)}</div>`);
+    // From the code's first column, not the caret's: placed at the caret, a hover reached 709 px and set
+    // the whole GIF's width, which on a phone shrinks the code. It wraps instead — see `.tip`.
+    const { top } = at(frame.tooltip.at);
+    overlays.push(`<div class="tip" style="top:${top + LINE + 4}px;left:0ch">${escape(frame.tooltip.text)}</div>`);
   }
   const numbers = Array.from({ length: lines }, (_, index) => index + 1).join("\n");
   return (
@@ -319,6 +330,41 @@ function pageHtml(source, theme) {
  * everything in `public/` is deployed and a stamp is no use to a reader.
  */
 const STAMPS = join(here, "editor-gifs.stamp.json");
+
+/**
+ * The frame's width: as wide as the widest thing any frame of the GIF shows, and no wider.
+ *
+ * It was a fixed 760 px, and the code filled the left half of it — so on a phone, where the GIF is
+ * scaled to the screen, the text came out at half the size it could have. A user noticed. Every frame
+ * of a GIF has one size, so all of them are measured first: the code's own text, and what floats over
+ * it — the completion list, a hover, a squiggle — which is often the widest.
+ */
+async function widthFor(tab, pages) {
+  let widest = 0;
+  for (const html of pages) {
+    await tab.setContent(html);
+    const right = await tab.evaluate(() => {
+      const shot = document.getElementById("shot");
+      shot.style.width = "2000px";
+      const left = shot.getBoundingClientRect().left;
+      let edge = 0;
+      const walker = document.createTreeWalker(shot, NodeFilter.SHOW_TEXT);
+      const range = document.createRange();
+      while (walker.nextNode()) {
+        if (walker.currentNode.textContent.trim() === "") continue;
+        range.selectNodeContents(walker.currentNode);
+        for (const rect of range.getClientRects()) edge = Math.max(edge, rect.right);
+      }
+      for (const one of shot.querySelectorAll(".popup, .tip, .squiggle, .caret")) {
+        edge = Math.max(edge, one.getBoundingClientRect().right);
+      }
+      return edge - left;
+    });
+    widest = Math.max(widest, right);
+  }
+  // A margin on the right like the gutter's on the left, and even, which the encoder wants.
+  return Math.min(760, Math.max(360, Math.ceil((widest + 28) / 2) * 2));
+}
 const stamps = existsSync(STAMPS) ? JSON.parse(readFileSync(STAMPS, "utf8")) : {};
 
 const stories = [
@@ -331,7 +377,13 @@ for (const { name: base, story, page } of stories)
   for (const theme of Object.keys(THEMES)) {
     const name = theme === "light" ? base : `${base}-${theme}`;
     const last = story.frames.at(-1).text;
-    const what = JSON.stringify({ theme, frames: story.frames, page: page ? compiled(last) : null });
+    // `layout` names how the frame is sized, so a change to it redraws every GIF — see `widthFor`.
+    const what = JSON.stringify({
+      theme,
+      frames: story.frames,
+      page: page ? compiled(last) : null,
+      layout: "fit, tip at the first column",
+    });
     const stamp = createHash("sha256").update(what).digest("hex");
     const gif = join(OUT, `${name}.gif`);
     const held = stamps[name] ?? "";
@@ -353,8 +405,11 @@ for (const { name: base, story, page } of stories)
     try {
       const tab = await browser.newPage({ viewport: { width: 800, height: 600 }, deviceScaleFactor: 1 });
       const list = [];
+      const pages = [...story.frames.map((frame) => frameHtml(frame, theme)), ...(page ? [pageHtml(last, theme)] : [])];
+      const width = await widthFor(tab, pages);
       const shoot = async (html, ms, index) => {
         await tab.setContent(html);
+        await tab.evaluate((px) => document.documentElement.style.setProperty("--shot-width", `${px}px`), width);
         const png = join(work, `${String(index).padStart(4, "0")}.png`);
         await tab.locator("#shot").screenshot({ path: png });
         list.push(`file '${png}'\nduration ${(ms / 1000).toFixed(3)}`);
