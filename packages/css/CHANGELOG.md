@@ -1,5 +1,44 @@
 # @ramonda/css
 
+## 0.10.0
+
+### Minor Changes
+
+- 3acc034: `@container` conditions are checked as `@media` ones are, against a container's own features — `width`, `height`, `inline-size`, `block-size` and `aspect-ratio`, with `min-` and `max-`, and `orientation`:
+  
+  - `unknown-container-feature`: `(min-widt: 40rem)`, and a media feature such as `(hover: hover)`, which a container never matches.
+  - `unknown-container-value`: `(min-width: 40)`, `(min-width: 40remx)`, `(orientation: protrait)`.
+  - `malformed-container-condition`: `(min-width 40rem)` with no colon, `3e0m`, a word that is not `and`, `or` or `not`.
+- 3acc034: `@container sidebar (…)` asking for a container name no element is given is reported — `container-name-not-set` in `ramonda-css`, and the build stops on it, as it does on a `var()` nothing sets. A name comes from `container-name` or `container` in any block, or from the new `externalContainerNames` config key for a stylesheet this does not compile.
+- aa5bc21: `container-without-a-type`: a container's name comes with its type, in one block. `container: card` sets `container-type` back to `normal`, so a size condition asking for `card` never matches — measured in all three engines, even where another rule had set the type. Write `container: card / inline-size`, the two longhands side by side, or `container: card / normal` for a container asked only about style.
+- 892b908: Four kinds of CSS every browser drops are reported now:
+  
+  - `invalid-hex-color`: `#abcx`, `#ab` — a hex colour needs 3, 4, 6 or 8 hex digits.
+  - `malformed-media-condition`: `(min-width 40rem)` with no colon, `(min-width: 4r0em)`, and a word between conditions that is not `and`, `or` or `not`.
+  - `unknown-media-feature` now reads the range form too: `(400px <= wdith <= 70rem)`.
+  - `malformed-selector`: `&not(.a)` with its colon missing, `:nth-child(2+1)`, and a `[` left open.
+- e11fd1f: `invalid-value`: a value its property's grammar cannot read is reported, function arguments included — `rgb(1x 2 3)`, `linear-gradient(redx, blue)`, `cubic-bezier(0.4 0, 0.2, 1)`, `transform: rotate(45)`, `aspect-ratio: 16  9`. Every browser drops each of them. It speaks only where no more precise rule did, and leaves alone a value with `var()`, a vendor's own word, and a property whose type already says what it takes.
+- 90d176c: `invalid-value` reads the arithmetic inside `calc()`, `min()`, `max()` and `clamp()` for its type — `calc(100 - 2rem)`, `min(100%, 40)`, `calc(2px * 3px)`, `calc(1px+2px)` are reported — and a family name that begins with a generic family, `font-family: system-ui sans-serif`. `supports-never-true` asks the grammar too, for a value with no word in it: `(color: rgb(1x 2 3))`.
+- efd6074: Three silent drops are reported now:
+  
+  - `@media (min-width: 40remx)`: a unit no engine has leaves the condition kept and never matching (`unknown-media-value`).
+  - `width: d(10px)`: a function CSS does not have, so the declaration is dropped (`unknown-function`).
+  - `width: --double(10px)` and `@function`: CSS custom functions, which Firefox drops (`custom-function`). `@function` was reported as an at-rule CSS does not have, which was false.
+- d65ccd1: Three more kinds of value every browser drops are reported:
+  
+  - A unit is read the way CSS reads one, digits included: `width: 1p0x` is `1` with the unit `p0x` (`unknown-unit`), and `100%x` is the unit `%x`.
+  - `malformed-number`: `opacity: 0.` — a decimal point with no digit after it.
+  - `unit-of-the-wrong-kind`: a real unit of a kind the property does not take — `z-index: 2x` (`x` is a resolution), `width: 2s`, and in a shorthand through the longhand it lands in, `margin: 0x auto`. The table is measured in Chromium, Firefox and WebKit.
+- 3aa501d: `supports-never-true`: a `@supports` condition that is false by a slip is reported — `(display: gird)`, `(displayx: grid)`, `(gap: 1)`, `(display grid)` with no colon, `selector(has(a))`, `selectorx(…)`. A word it does not know is left alone, because `@supports` exists to ask about what a browser may lack: `(display: masonry)` is a real question.
+
+### Patch Changes
+
+- 256e2a2: Hovering a shorthand's value in the editor shows the longhands it is written as — `border-left: 4px solid currentColor` is `border-left-width: 4px`, `border-left-style: solid`, `border-left-color: currentColor` — and, for a value with a `var()`, that it is kept whole and why.
+- 892b908: One block that could not be read no longer hides type errors in every other file. `ramonda-css` skipped the whole type check on any refusal, so a fault only the types see — `position: absolutex` — compiled clean anywhere beside it. Only the refused file is left out now.
+- 21ca7db: - `container-name-not-set` advises `container: <name> / inline-size`: a name alone never answers a size condition, in any engine.
+  - The editor no longer stalls on a value of long whitespace: a hover over one took a minute for 5000 spaces, and `invalid-value` grew with the square of them. A long list — twenty `background` layers — is answered in tens of milliseconds, not over half a second.
+- 8794680: A new project gets TypeScript 6, the newest the checker and the CSS compiler can read with. When TypeScript 7 is installed, both now advise `npm install -D typescript@6`.
+
 ## 0.9.1
 
 ### Patch Changes

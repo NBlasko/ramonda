@@ -1,5 +1,12 @@
 # create-ramonda
 
+## 0.14.2
+
+### Patch Changes
+
+- 586d0f5: A new project gets `@types/node` 26.6.5.
+- 8794680: A new project gets TypeScript 6, the newest the checker and the CSS compiler can read with. When TypeScript 7 is installed, both now advise `npm install -D typescript@6`.
+
 ## 0.14.1
 
 ### Patch Changes
