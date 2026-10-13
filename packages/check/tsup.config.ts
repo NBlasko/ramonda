@@ -1,4 +1,5 @@
 import { defineConfig } from "tsup";
+import { dts } from "../../tsup.dts";
 
 // A Node tool, not a runtime: one plain build, no dev/prod split, and `typescript` stays
 // external — the analyzer uses the app's own compiler so it reads the app's own syntax.
@@ -23,7 +24,7 @@ import { defineConfig } from "tsup";
 export default defineConfig({
   entry: ["src/index.ts", "src/cli.ts"],
   format: ["esm"],
-  dts: true,
+  dts,
   clean: true,
   target: "es2022",
   platform: "node",

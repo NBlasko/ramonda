@@ -639,3 +639,49 @@ describe("a code-split build", () => {
     for (const one of files.filter((each) => each.name.endsWith(".js"))) expect(one.text).not.toMatch(/\.css\b/);
   });
 });
+
+/**
+ * The two whole-build questions, asked of a REAL build — before this, only `Sheet` was asked, so
+ * nothing showed the bundler reached them. Found in review: the changeset said "the build stops on it".
+ */
+describe("a name the whole build has to know", () => {
+  test("a `@container` asking for a name nothing gives stops the build", async () => {
+    const root = project({
+      "index.tsx":
+        "export const a = <div className={@@( @container cardx (min-width: 20rem) { color: red; } )}>x</div>;\n",
+    });
+    const failed = await build(root).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(spoken(failed as esbuild.BuildFailure)).toContain("nothing in this build names a container `cardx`");
+  });
+
+  test("and one a block names builds", async () => {
+    const root = project({
+      "index.tsx":
+        "export const l = <div className={@@( container: cardx / inline-size; )}>x</div>;\n" +
+        "export const a = <div className={@@( @container cardx (min-width: 20rem) { color: red; } )}>x</div>;\n",
+    });
+    await expect(build(root)).resolves.toBeDefined();
+  });
+
+  test("a `var()` nothing sets stops the build too", async () => {
+    const root = project({ "index.tsx": "export const a = <div className={@@( color: var(--nobody); )}>x</div>;\n" });
+    const failed = await build(root).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(spoken(failed as esbuild.BuildFailure)).toContain("nothing in this build sets `--nobody`");
+  });
+});
+
+/** Found in review: the rule is a build error like every other — asked of a real build, not assumed. */
+test("a container named without its type stops the build", async () => {
+  const root = project({ "index.tsx": "export const a = <div className={@@( container: card; )}>x</div>;\n" });
+  const failed = await build(root).then(
+    () => undefined,
+    (error: unknown) => error,
+  );
+  expect(spoken(failed as esbuild.BuildFailure)).toContain("container-without-a-type");
+});

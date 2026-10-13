@@ -34,9 +34,9 @@
     "THIRD-PARTY.md"
   ],
   "scripts": {
-    "build": "tsup src/index.ts --format esm --dts --clean && ramonda-check-bundle dist",
+    "build": "tsup && ramonda-check-bundle dist",
     "check-types": "tsc --noEmit",
-    "dev": "tsup src/index.ts --format esm --watch",
+    "dev": "tsup --watch",
     "lint": "oxlint src",
     "test": "vitest run --coverage",
     "test:watch": "vitest"
@@ -45,11 +45,11 @@
     "@ramonda/check": "workspace:^",
     "@ramonda/lens": "workspace:^",
     "@ramonda/theme": "workspace:^",
-    "@types/node": "^26.6.4",
+    "@types/node": "^26.6.5",
     "esbuild": "0.28.2",
     "jsdom": "30.1.2",
     "tsup": "^8.5.1",
-    "typescript": "^5.9.3",
+    "typescript": "^6.0.3",
     "vite": "^8.3.4",
     "vitest": "^5.0.3"
   }

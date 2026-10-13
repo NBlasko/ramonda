@@ -25,6 +25,23 @@ export interface Variables {
    * as often as not, and this is the half that says the name was read at all.
    */
   readonly readsRegistered?: readonly string[];
+  /**
+   * Every container NAME this block gives its element — `container-name: card`, `container: card /
+   * inline-size` — and every one a `@container` condition asks for.
+   *
+   * The same question as `set` and `read`, about another kind of name: `@container cardx (…)` with no
+   * element named `cardx` is kept by every engine and never matches, and only the whole build knows
+   * every name. Optional because a block built by hand has neither.
+   */
+  readonly containersNamed?: readonly string[];
+  readonly containersRead?: readonly ContainerRead[];
+}
+
+/** A container name a `@container` condition asks for, and where the author wrote it. */
+export interface ContainerRead {
+  readonly name: string;
+  readonly at: number;
+  readonly length: number;
 }
 
 /**
@@ -68,21 +85,55 @@ export function variablesIn(block: Block): Variables {
   const set: string[] = [];
   const read: VariableRead[] = [];
   const readsRegistered: string[] = [];
+  const containersNamed: string[] = [];
+  const containersRead: ContainerRead[] = [];
 
   const walk = (items: readonly BlockItem[]): void => {
     for (const item of items) {
       if (item.kind !== "declaration") {
+        if (item.kind === "rule") containerAskedFor(item.prelude, item.at, containersRead);
         walk(childrenOf(item));
         continue;
       }
       if (item.property.startsWith("--")) set.push(item.property);
+      if (item.property === "container-name" || item.property === "container") {
+        containersNamed.push(...containerNamesIn(item.property, item.value));
+      }
       readsIn(item.value, read);
       registeredReadsIn(item.value, readsRegistered);
     }
   };
   walk(block.items);
 
-  return { set, read, readsRegistered };
+  return { set, read, readsRegistered, containersNamed, containersRead };
+}
+
+/** The words `@container` keeps for itself, which are never a container's name. */
+const NOT_A_NAME = new Set(["and", "or", "not", "none"]);
+
+/**
+ * The names a `container-name` or `container` declaration gives — every word of the first, and the
+ * words before the `/` of the second. A value with a hole in it names nothing this can read.
+ */
+function containerNamesIn(property: string, parts: readonly ValuePart[]): string[] {
+  if (parts.some((part) => part.kind !== "text")) return [];
+  const text = parts.map((part) => (part.kind === "text" ? part.text : "")).join("");
+  const names = property === "container" ? text.split("/")[0] : text;
+  return names
+    .trim()
+    .split(/\s+/)
+    .filter((one) => /^-?[a-zA-Z_][\w-]*$/.test(one) && !NOT_A_NAME.has(one.toLowerCase()));
+}
+
+/**
+ * The name a `@container` condition asks for: the first word after `@container`, unless it is a
+ * keyword or a query function — `style(…)`, `scroll-state(…)` — which a name is never followed by.
+ */
+function containerAskedFor(prelude: string, at: number | undefined, into: ContainerRead[]): void {
+  if (at === undefined) return;
+  const found = /^@container\s+(-?[a-zA-Z_][\w-]*)(?![\w(-])/i.exec(prelude);
+  if (found === null || NOT_A_NAME.has(found[1].toLowerCase())) return;
+  into.push({ name: found[1], at: at + found[0].length - found[1].length, length: found[1].length });
 }
 
 /**

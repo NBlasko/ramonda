@@ -47,7 +47,6 @@ function project(card: string): string {
         jsx: "preserve",
         types: [],
         skipLibCheck: true,
-        baseUrl: ".",
         paths: { "@ramonda/css/properties": [join(PACKAGE, "src", "properties.ts")] },
       },
       include: ["src"],
@@ -108,7 +107,7 @@ describe("the bin", () => {
     );
 
     expect(status).toBe(1);
-    expect(output).toContain("could not be read, so nothing was type-checked");
+    expect(output).toContain("could not be read, so the file(s) holding them were not type-checked");
     // One file, and it is the one that failed — so there is nothing else to print after it.
     expect(output).not.toContain("problem(s) in files that read");
     expect(output).toContain(`${join("src", "Card.tsx")}:3:5`);

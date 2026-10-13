@@ -58,8 +58,9 @@ describe("a bare word a property does not accept", () => {
     ["a string inside a function", `  display: nonsense("flexx");`],
   ])("%s is silent", (_what, css) => {
     // Each of these is a shape the word reader has to STEP OVER rather than judge: a string's
-    // contents and a function's arguments are their own grammars.
-    expect(rules(css)).toEqual([]);
+    // contents and a function's arguments are their own grammars. `nonsense()` itself is
+    // `unknown-function`'s to report, and it does.
+    expect(rules(css).filter((one) => one !== "unknown-function")).toEqual([]);
   });
 
   /**
@@ -1098,4 +1099,397 @@ describe("a number a browser drops", () => {
     expect(messages("  gap: 12;").join(" ")).toContain("12px");
     expect(messages("  z-index: 1.5;").join(" ")).toMatch(/`1`.*`2`/);
   });
+});
+
+/**
+ * A function name no engine has. Measured with `CSS.supports` in Chromium, Firefox and WebKit:
+ * `width: d(10px)` is refused by all three, so the declaration is dropped — and nothing said so.
+ */
+describe("a function CSS does not have", () => {
+  test.each([
+    ["one letter", "  border-left: 4px solid d(--accent);"],
+    ["a near miss of var", "  color: vra(--accent);"],
+    ["inside calc", "  width: calc(100% - mni(2rem, 4vw));"],
+  ])("%s is reported", (_what, css) => {
+    expect(rules(css)).toContain("unknown-function");
+  });
+
+  test("names the call, and the one that was meant", () => {
+    const css = "  color: vra(--accent);";
+    const [found] = check(css).filter((one) => one.rule === "unknown-function");
+    const source = `<div className={@@(\n${css}\n)}>x</div>`;
+    expect(source.slice(found.at, found.at + found.length)).toBe("vra");
+    expect(found.message).toBe(
+      "`vra()` is not a CSS function, so a browser drops this declaration. Did you mean `var()`?",
+    );
+  });
+
+  test.each([
+    ["var", "  color: var(--accent);"],
+    ["a gradient", "  background-image: linear-gradient(red, blue);"],
+    ["maths", "  width: clamp(1rem, calc(2vw + 1px), min(3rem, 10%));"],
+    ["a url", "  background-image: url(a.png);"],
+    // In no `mdn-data` grammar, and parsed by at least one engine — the measured supplement.
+    // One branch: a `;` ends a declaration in a block, so `if()` with an `else` is a different question.
+    ["if, and the condition inside it", "  width: if(media(width > 1px): 10px);"],
+    ["sibling-index", "  width: calc(sibling-index() * 1px);"],
+    ["contrast-color", "  color: contrast-color(red);"],
+    ["a vendor's own", "  background-image: -webkit-gradient(linear, left top, left bottom, from(red), to(blue));"],
+    ["a word in a string", '  content: "d(x)";'],
+  ])("%s is silent", (_what, css) => {
+    expect(rules(css)).not.toContain("unknown-function");
+  });
+});
+
+/**
+ * A CSS custom function, `@function --name(…)` and a call to it. Measured: Chromium 156 and
+ * WebKit 27.2 run it; Firefox 157 drops the `@function` and every declaration that calls one, so it
+ * is not offered — see DESIGN, "Custom functions".
+ */
+describe("a custom function", () => {
+  test("a call is refused", () => {
+    expect(rules("  width: --double(10px);")).toContain("custom-function");
+    expect(messages("  width: --double(10px);").join(" ")).toContain("Firefox");
+  });
+
+  test("and so is the rule that declares one, instead of being called an at-rule CSS lacks", () => {
+    const found = rules("  @function --double(--n <length>) returns <length> { result: calc(var(--n) * 2); }");
+    expect(found).toContain("custom-function");
+    expect(found).not.toContain("unknown-at-rule");
+  });
+
+  test("a custom property is not a call", () => {
+    expect(rules("  width: var(--double);")).not.toContain("custom-function");
+  });
+});
+
+/**
+ * A hex colour with the wrong number of digits, or a letter that is not one. All three engines drop
+ * `color: #abcx` and `color: #ab` — found by `check-engine-sweep.mjs`.
+ */
+describe("a hex colour that is not one", () => {
+  test.each([
+    ["a letter that is not hex", "  color: #abcx;"],
+    ["two digits", "  color: #ab;"],
+    ["five digits", "  color: #abcde;"],
+    ["inside a shorthand", "  border: 1px solid #12345;"],
+    ["inside a function", "  background-image: linear-gradient(#fff, #ggg);"],
+  ])("%s is reported", (_what, css) => {
+    expect(rules(css)).toContain("invalid-hex-color");
+  });
+
+  test("says what a hex colour is", () => {
+    const css = "  color: #abcx;";
+    const [found] = check(css).filter((one) => one.rule === "invalid-hex-color");
+    const source = `<div className={@@(\n${css}\n)}>x</div>`;
+    expect(source.slice(found.at, found.at + found.length)).toBe("#abcx");
+    expect(found.message).toBe(
+      "`#abcx` is not a colour: a hex colour has 3, 4, 6 or 8 hex digits, so a browser drops this declaration.",
+    );
+  });
+
+  test.each([
+    ["three", "  color: #abc;"],
+    ["four", "  color: #abcd;"],
+    ["six, upper case", "  color: #AABBCC;"],
+    ["eight", "  color: #aabbcc80;"],
+    ["a fragment in a url", "  background-image: url(sprite.svg#icon);"],
+    ["a hash in a string", '  content: "#1";'],
+  ])("%s is silent", (_what, css) => {
+    expect(rules(css)).not.toContain("invalid-hex-color");
+  });
+});
+
+/**
+ * A unit read the way CSS reads one — an identifier, digits allowed after its first letter — and a
+ * decimal point with no digit after it. Found silent by `check-engine-sweep.mjs`: all three engines
+ * drop `width: 1p0x` (a `1` with the unit `p0x`), `font: 12px1.5 …` and `opacity: 0.`.
+ */
+describe("a number CSS cannot read", () => {
+  test.each([
+    ["a digit inside the unit", "  width: 1p0x;", "unknown-unit", "p0x"],
+    ["another", "  width: 5v0w;", "unknown-unit", "v0w"],
+    ["two numbers run together", "  font: 12px1.5 sans-serif;", "unknown-unit", "px1"],
+    // Read whole after a `%` too: `%x` is one unit no engine has, not `%` and a stray letter.
+    ["a letter after a percent", "  width: calc(100%x - 2rem);", "unknown-unit", "%x"],
+    ["a point with nothing after it", "  opacity: 0.;", "malformed-number", "0."],
+    ["in a longer value", "  scale: 1.;", "malformed-number", "1."],
+  ])("%s is reported, on what was written", (_what, css, rule, text) => {
+    const found = check(css).filter((one) => one.rule === rule);
+    const source = `<div className={@@(\n${css}\n)}>x</div>`;
+    expect(found.map((one) => source.slice(one.at, one.at + one.length))).toEqual([text]);
+  });
+
+  test.each([
+    ["an exponent", "  width: 1e2px;"],
+    ["an exponent and no unit", "  line-height: 2e0;"],
+    ["a fraction", "  opacity: .5;"],
+    ["a version in a string", '  content: "1.";'],
+    ["a ratio", "  aspect-ratio: 16 / 9;"],
+    ["a span", "  grid-area: 1 / span 2;"],
+  ])("%s is silent", (_what, css) => {
+    const found = rules(css);
+    expect(found).not.toContain("unknown-unit");
+    expect(found).not.toContain("malformed-number");
+  });
+});
+
+/**
+ * A real unit of a kind the property drops — `z-index: 2x`, where `x` is a resolution. Found silent
+ * by `check-engine-sweep.mjs`: `unknown-unit` knows `x` is a unit, and nothing asked whether THIS
+ * property takes a resolution. The table is measured, `build-number-properties.mjs`.
+ */
+describe("a unit of a kind the property does not take", () => {
+  test.each([
+    ["a resolution in z-index", "  z-index: 2x;"],
+    ["in opacity", "  opacity: 0.5x;"],
+    ["in line-height", "  line-height: 1.5x;"],
+    ["in font-weight", "  font-weight: 600x;"],
+    ["a time in width", "  width: 2s;"],
+    ["an angle in a length", "  padding-left: 10deg;"],
+  ])("%s is reported", (_what, css) => {
+    expect(rules(css)).toContain("unit-of-the-wrong-kind");
+  });
+
+  test("says what the unit is", () => {
+    expect(messages("  z-index: 2x;").join(" ")).toContain("`x` is a resolution");
+  });
+
+  test.each([
+    ["a length", "  width: 10px;"],
+    ["a number", "  line-height: 1.5;"],
+    ["a length in line-height", "  line-height: 20px;"],
+    ["an angle", "  rotate: 10deg;"],
+    ["a time", "  transition-duration: 1s;"],
+    ["a percentage", "  opacity: 50%;"],
+    ["a fraction of space", "  grid-template-columns: 1fr 2fr;"],
+    ["inside calc", "  line-height: calc(1px * 2);"],
+  ])("%s is silent", (_what, css) => {
+    expect(rules(css)).not.toContain("unit-of-the-wrong-kind");
+  });
+});
+
+/**
+ * A shorthand's value checked slot by slot, through the longhands it splits into — the rules a
+ * longhand gets, given to each part. `margin: 0x auto` is `margin-top: 0x`, and `margin-top` takes
+ * no resolution: all three engines drop it. Found silent by `check-engine-sweep.mjs`.
+ */
+describe("a shorthand, read through its longhands", () => {
+  test.each([
+    ["a unit of the wrong kind", "  margin: 0x auto;", "unit-of-the-wrong-kind", "x"],
+    ["on every side", "  inset: 0x;", "unit-of-the-wrong-kind", "x"],
+    ["a number with no unit", "  padding: 4 8px;", "number-without-a-unit", "4"],
+  ])("%s is reported once, where it was written", (_what, css, rule, text) => {
+    const found = check(css).filter((one) => one.rule === rule);
+    const source = `<div className={@@(\n${css}\n)}>x</div>`;
+    expect(found.map((one) => source.slice(one.at, one.at + one.length))).toEqual([text]);
+  });
+
+  test.each([
+    ["a margin", "  margin: 0 auto;"],
+    ["a padding", "  padding: 4px 8px;"],
+    ["an inset", "  inset: 0;"],
+  ])("%s is silent", (_what, css) => {
+    const found = rules(css);
+    expect(found).not.toContain("unit-of-the-wrong-kind");
+    expect(found).not.toContain("number-without-a-unit");
+  });
+});
+
+test("a shorthand's long run of digits is answered at once", () => {
+  // The best of three, as the timing tests in `selectors.test.ts` take it: one run can stall under load.
+  const runs = [0, 1, 2].map(() => {
+    const started = performance.now();
+    rules(`  margin: ${"0".repeat(20_000)}x auto;`);
+    return performance.now() - started;
+  });
+  expect(Math.min(...runs)).toBeLessThan(250);
+});
+
+/**
+ * A value its property's grammar cannot read — a fault inside a call, or between tokens, that no
+ * single word gives away. Each one here is dropped by Chromium, Firefox and WebKit, and each was
+ * silent until `check-engine-sweep.mjs` asked. See `validateValue.ts`.
+ */
+describe("a value its grammar cannot read", () => {
+  test.each([
+    ["a colour name misspelt in a gradient", "  background-image: linear-gradient(redx, blue);"],
+    ["a comma lost in a gradient", "  background-image: linear-gradient(red blue);"],
+    ["a unit inside rgb()", "  color: rgb(1x 2 3);"],
+    ["a comma lost in cubic-bezier()", "  transition-timing-function: cubic-bezier(0.4 0, 0.2, 1);"],
+    ["an angle with no unit", "  transform: rotate(45);"],
+    ["a length with no unit in blur()", "  filter: blur(2);"],
+    ["a slash lost", "  aspect-ratio: 16  9;"],
+    ["a colour space misspelt", "  color: color-mix(in srgbx, red 40%, blue);"],
+  ])("%s is reported", (_what, css) => {
+    expect(rules(css)).toContain("invalid-value");
+  });
+
+  test("says which property, and covers the value", () => {
+    const css = "  transform: rotate(45);";
+    const [found] = check(css).filter((one) => one.rule === "invalid-value");
+    const source = `<div className={@@(\n${css}\n)}>x</div>`;
+    expect(source.slice(found.at, found.at + found.length)).toBe("rotate(45)");
+    expect(found.message).toBe("`rotate(45)` is not a value `transform` takes, so a browser drops this declaration.");
+  });
+
+  test("a fault another rule already names is said once", () => {
+    expect(check("  width: 1p0x;").map((one) => one.rule)).toEqual(["unknown-unit"]);
+  });
+
+  test.each([
+    ["a background colour", "  background: yellow;"],
+    ["a background with layers", "  background: url(a.png) no-repeat 0 0 / 40px 40px, #fff;"],
+    ["a shadow", "  box-shadow: 0 12px 28px #0003, 0 2px 4px #0000001a;"],
+    ["an inset shadow", "  box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.2);"],
+    ["the old rgb()", "  border: 1px solid rgb(77, 146, 33);"],
+    ["a circle", "  clip-path: circle(50%);"],
+    ["display list-item", "  display: list-item;"],
+    ["a colour scheme", "  color-scheme: light dark;"],
+    ["a grid area", "  grid-area: 1 / 1 / 2 / 2;"],
+    ["calc", "  width: calc(100% - 2rem);"],
+    ["a font", '  font: 14px/1.5 -apple-system, system-ui, "Segoe UI", sans-serif;'],
+    ["a variable", "  color: var(--accent);"],
+    ["important", "  color: red !important;"],
+    // Line names are `[` and `]` around words. Found by `check-render-equality.mjs`, whose page
+    // renders exactly this in every engine.
+    ["grid line names", '  grid-template: [top] "h h" 20px [mid] "s m" 30px / 40px 1fr;'],
+    ["named columns", "  grid-template-columns: [full-start] 1fr [content-start] 2fr [content-end];"],
+  ])("%s is silent", (_what, css) => {
+    expect(rules(css)).not.toContain("invalid-value");
+  });
+});
+
+/**
+ * The arithmetic inside a math function, read for its TYPE — `calc(100 - 2rem)` subtracts a length
+ * from a number, which every engine drops. Found by `check-engine-sweep.mjs` after `invalid-value`,
+ * which took a math function as any number.
+ */
+describe("a math function whose arithmetic has no type", () => {
+  test.each([
+    ["a number minus a length", "  width: calc(100 - 2rem);"],
+    ["a percentage minus a number", "  width: calc(100% - 2);"],
+    ["a comma lost in min()", "  width: min(100% 40rem);"],
+    ["a number among lengths", "  width: min(100%, 40);"],
+    ["another", "  width: min(100, 40rem);"],
+    ["two lengths multiplied", "  width: calc(2px * 3px);"],
+    ["a plus with no spaces", "  width: calc(1px+2px);"],
+    ["a length where an angle goes", "  transform: rotate(calc(10px + 1px));"],
+  ])("%s is reported", (_what, css) => {
+    expect(rules(css)).toContain("invalid-value");
+  });
+
+  test.each([
+    ["a length minus a percentage", "  width: calc(100% - 2rem);"],
+    ["a length times a number", "  width: calc(2px * 3);"],
+    ["divided by a number", "  width: calc(100% / 3);"],
+    ["nested", "  width: calc((100% - 2rem) / 2 + 1px);"],
+    ["min of mixed", "  width: min(100%, 40rem);"],
+    ["clamp", "  font-size: clamp(1rem, 2vw + 1rem, 3rem);"],
+    ["a number where a number goes", "  line-height: calc(1.2 * 1.5);"],
+    ["an angle", "  transform: rotate(calc(10deg + 5deg));"],
+    ["a constant", "  transform: rotate(calc(pi * 1rad));"],
+    ["a variable inside", "  width: calc(var(--x) * 2);"],
+    ["a length into line-height", "  line-height: calc(1em + 2px);"],
+  ])("%s is silent", (_what, css) => {
+    expect(rules(css)).not.toContain("invalid-value");
+  });
+});
+
+/**
+ * A family name that begins with a generic family — `font-family: system-ui sans-serif`, a comma
+ * lost. Measured in all three engines: a name of several words is refused exactly when its FIRST is
+ * a complete generic (`serif Neue`), and taken otherwise (`My serif`, `ui-monospace Mono`). `mdn-data`
+ * reads a family name as any words, so this is a correction in `validateValue.ts`.
+ */
+describe("a family name that begins with a generic family", () => {
+  test.each([
+    ["a comma lost", "  font-family: system-ui sans-serif;"],
+    ["another", "  font-family: serif Neue;"],
+  ])("%s is reported", (_what, css) => {
+    expect(rules(css)).toContain("invalid-value");
+  });
+
+  test.each([
+    ["a name of several words", "  font-family: Helvetica Neue, sans-serif;"],
+    ["a generic word at the end", "  font-family: My serif;"],
+    ["an incomplete generic first", "  font-family: ui-monospace Mono;"],
+    ["a generic alone", "  font-family: system-ui;"],
+  ])("%s is silent", (_what, css) => {
+    expect(rules(css)).not.toContain("invalid-value");
+  });
+});
+
+/**
+ * The grammar is asked on every keystroke in the editor. Measured in review: twenty layers of
+ * `background` took 608 ms before the reading budget came down; "cannot say" is the answer either
+ * way, so it has to be a quick one.
+ */
+test("a long list is answered quickly, whatever the answer", () => {
+  const layers = "url(a.png) no-repeat scroll 0 0 / 40px 40px padding-box border-box, ".repeat(20);
+  // Once first: the grammars are read and cached on the first call, once per editor session, and
+  // under a full gate's load that alone came to more than this test allows.
+  const once = () => {
+    rules(`  background: ${layers}#fff;`);
+    rules(`  transition: ${"opacity 150ms ease-in 0s, ".repeat(20)}transform 1s linear;`);
+  };
+  once();
+  // The best of three, under a limit set from both ends, measured: ~70 ms here and 251 ms on a CI
+  // runner, which is about 3.5 times slower; the 200,000 budget this guards against took 1255 ms here.
+  const runs = [0, 1, 2].map(() => {
+    const started = performance.now();
+    once();
+    return performance.now() - started;
+  });
+  expect(Math.min(...runs)).toBeLessThan(600);
+});
+
+/**
+ * A value of nothing but spaces, the shape a paste leaves. Found in review: the `!important` strip
+ * this rule ran was quadratic in the spaces before it.
+ */
+test("a value of long whitespace is answered at once", () => {
+  const started = performance.now();
+  // A name of two words, which no other rule speaks about — so the grammar is asked, and with it the
+  // `!important` strip, over every one of the spaces.
+  rules(`  font-family: Helvetica${" ".repeat(20_000)}Neue;`);
+  expect(performance.now() - started).toBeLessThan(250);
+});
+
+/**
+ * The same value asked again is answered from memory. Found by `bench-css.mjs`: `background: red`
+ * costs half a millisecond to read — `background`'s eight components in any order — and a project
+ * writes it in file after file, so a 1000-file build went from 2.3 to 16 ms a file.
+ */
+test("a value seen before is not read again", async () => {
+  const { valueMatchesGrammar } = await import("../../compiler/validateValue");
+  valueMatchesGrammar("background", "red");
+  const runs = [0, 1, 2].map(() => {
+    const started = performance.now();
+    for (let one = 0; one < 1000; one++) valueMatchesGrammar("background", "red");
+    return performance.now() - started;
+  });
+  expect(Math.min(...runs)).toBeLessThan(50);
+});
+
+/**
+ * A grammar of parts in any order does not try what cannot begin at the token. `background`'s eight
+ * components made each new value cost 0.45 ms, seven times a `border`; pruning made it under twice.
+ * Asked as a RATIO in one run, so a slower machine slows both sides alike.
+ */
+test("a new background costs about what a new border does", async () => {
+  const { valueMatchesGrammar } = await import("../../compiler/validateValue");
+  const colours = (salt: number) =>
+    Array.from({ length: 200 }, (_, one) => `#${((one + salt) * 4099).toString(16).padStart(6, "0").slice(-6)}`);
+  const time = (property: string, values: string[]) => {
+    const started = performance.now();
+    for (const value of values) valueMatchesGrammar(property, property === "border" ? `1px solid ${value}` : value);
+    return performance.now() - started;
+  };
+  valueMatchesGrammar("background", "red");
+  valueMatchesGrammar("border", "1px solid red");
+  const ratios = [1, 2, 3].map(
+    (salt) => time("background", colours(salt * 1000)) / time("border", colours(salt * 1000)),
+  );
+  expect(Math.min(...ratios)).toBeLessThan(4);
 });

@@ -2,11 +2,11 @@ import { dirname, resolve } from "node:path";
 import ts from "typescript";
 import { CssBlockError } from "../compiler/errors";
 import { REPLACED_CODES, SPEAKS_OVER_TYPES } from "../compiler/rules";
-import { Sheet, messageFor } from "../compiler/sheet";
+import { Sheet, containerMessageFor, messageFor } from "../compiler/sheet";
 import { type Ignored, ignoredIn, isIgnored } from "../compiler/ignore";
 import { checkedSource } from "../compiler/source";
 import { positionOf } from "../compiler/errors";
-import { knownNames, configReader, environmentOf } from "../config/config";
+import { knownOutside, configReader, environmentOf } from "../config/config";
 import { findConfig } from "../config/config";
 import { propertiesFor } from "../config/generate";
 import { readModule } from "./modules";
@@ -83,7 +83,7 @@ export interface Report {
    * was — see the return that keeps them.
    */
   readonly refusals: readonly Finding[];
-  /** A block could not be read, so nothing was type-checked. */
+  /** A block could not be read, so the file holding it was not type-checked. */
   readonly refused: boolean;
   /**
    * Every `ramonda-css-ignore` the run honoured, with the reason the author gave.
@@ -198,7 +198,7 @@ export function checkProject(tsconfig: string, options: CheckOptions = {}): Repo
             message: finding.message,
           })),
         );
-        sheet.add(fileName, [], { ...walked.variables, known: knownNames(config) });
+        sheet.add(fileName, [], { ...walked.variables, ...knownOutside(config) });
         for (const site of walked.registered) registered.push({ file: fileName, site });
         for (const name of walked.blockSets) blockSets.add(name);
         for (const name of walked.variables.readsRegistered ?? []) readsRegistered.add(name);
@@ -235,29 +235,30 @@ export function checkProject(tsconfig: string, options: CheckOptions = {}): Repo
       message: messageFor(one),
     });
   }
+  for (const one of sheet.unknownContainers()) {
+    const source = sources.get(one.file);
+    css.push({
+      file: one.file,
+      ...(source === undefined ? { line: 1, column: 1 } : positionOf(source, one.read.at)),
+      code: "container-name-not-set",
+      message: containerMessageFor(one),
+    });
+  }
 
   /**
-   * A refusal stops the TYPE check, and only the type check.
+   * A refusal stops the type check OF ITS OWN FILE, and nothing else.
    *
-   * Reporting the compiler's confusion about a file it could not read would be wrong answers — but
-   * applied to the whole project, one unreadable block in `Card.tsx` would hide `colour: red` in
-   * `Other.tsx`, a file that read perfectly, so a typo anywhere would mean fixing the repository
-   * one error per run.
+   * Reporting the compiler's confusion about a file it could not read would be wrong answers — there
+   * is no virtual file for it, so the program sees the raw block syntax. But the program still runs
+   * for every other file: one unreadable block in `Card.tsx` must not hide a fault in `Other.tsx`,
+   * or a typo anywhere would mean fixing the repository one error per run.
    *
-   * `css` holds only what files that READ produced — a file whose walk threw never reaches the push
-   * — so those findings are exactly the ones the reason does not cover. They are kept, and {@link
-   * Report.refusals} is what lets the caller print the two apart.
+   * Measured 2026-10-12: this used to return here, skipping the whole program, and the reason above
+   * was believed only because its example — `colour: red` — is a fault a RULE reports. A fault only
+   * the TYPES see, `position: absolutex`, vanished from every file beside one broken block. Found by
+   * `scripts/css/check-engine-sweep.mjs`.
    */
-  if (refusals.length > 0) {
-    return {
-      files: parsed.fileNames.length,
-      styled: overlays.size,
-      findings: [...refusals, ...css],
-      refusals,
-      refused: true,
-      exempted,
-    };
-  }
+  const refusedFiles = new Set(refusals.map((one) => one.file));
 
   /**
    * **The project's own `ramonda.css.ts` is type-checked, and a `tsconfig` will not have included
@@ -341,15 +342,16 @@ export function checkProject(tsconfig: string, options: CheckOptions = {}): Repo
     files: parsed.fileNames.length,
     styled: overlays.size,
     findings: [
+      ...refusals,
       ...setup.values(),
       ...inOrder(
         css,
-        findings.filter((one) => !unparseable.has(one.file)),
+        findings.filter((one) => !unparseable.has(one.file) && !refusedFiles.has(one.file)),
         sources,
       ),
     ],
-    refusals: [],
-    refused: false,
+    refusals,
+    refused: refusals.length > 0,
     exempted,
   };
 }

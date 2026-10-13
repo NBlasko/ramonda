@@ -45,6 +45,17 @@
         }
       },
       {
+        "scopeName": "ramonda.css-call",
+        "path": "./grammar/ramonda-css-call.tmLanguage.json",
+        "injectTo": [
+          "source.ts",
+          "source.tsx",
+          "source.js",
+          "source.js.jsx",
+          "source.css"
+        ]
+      },
+      {
         "scopeName": "ramonda.css-variable",
         "path": "./grammar/ramonda-css-variable.tmLanguage.json",
         "injectTo": [

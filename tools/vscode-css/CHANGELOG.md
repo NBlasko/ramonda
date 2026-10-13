@@ -1,5 +1,13 @@
 # Ramonda CSS
 
+## Unreleased
+
+- **A call to a function CSS does not have no longer ends the block.** `d(--accent)`, a slip for
+  `var(`, had its `)` read as the block's own, so the `(` had no partner and was painted red with no
+  message. The brackets pair now, and `@ramonda/css` names the slip: `unknown-function`.
+- **Hovering a shorthand's value shows the longhands it becomes.** It used to repeat the property's
+  grammar; a value with a `var()` says it is kept whole, and why.
+
 ## 0.6.0
 
 - **Goes with `@ramonda/css` 0.9.0.** The colours are unchanged; the copy of the compiler this

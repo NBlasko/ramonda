@@ -1,4 +1,5 @@
 import { defineConfig } from "tsup";
+import { dts } from "../../tsup.dts";
 
 // The router's own JSX compiles through the automatic runtime, so nothing is injected and no
 // factory is named: the compiler emits an import from `@ramonda/core/jsx-runtime` per file.
@@ -13,7 +14,7 @@ import { defineConfig } from "tsup";
 export default defineConfig({
   entry: ["src/index.ts", "src/server.ts", "src/server.browser.ts"],
   format: ["esm"],
-  dts: true,
+  dts,
   clean: true,
   target: "es2022",
   external: ["@ramonda/core", "@ramonda/core/testing", "@ramonda/core/jsx-runtime", "@ramonda/core/jsx-dev-runtime"],

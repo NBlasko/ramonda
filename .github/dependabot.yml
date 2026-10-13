@@ -28,9 +28,11 @@ updates:
       - /
       - /packages/*
       - /apps/*
+    # Monthly: weekly kept a version pull request open most of the time, for releases
+    # nobody here was waiting on. A vulnerability does not wait for this schedule: the
+    # alert half above reports it as soon as the advisory is published.
     schedule:
-      interval: weekly
-      day: monday
+      interval: monthly
     open-pull-requests-limit: 5
     groups:
       # Two groups, split the way the risk splits: a devDependency bump can break
@@ -56,21 +58,21 @@ updates:
       # measured; a PR that moves it is the sign it does not.)
       - dependency-name: vite-7
         update-types: ["version-update:semver-major"]
-      # TS 7 (the native rewrite) removed `baseUrl`, which every tsconfig here
-      # uses with `paths`.
+      # TS 7 (the native rewrite) has no JavaScript API, and the checker, the
+      # CSS compiler and the editor plugin all read source through it. It also
+      # removes `baseUrl`, which tsup's declaration build sets (see tsup.dts.ts).
       - dependency-name: typescript
         update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: weekly
-      day: monday
+      interval: monthly
     groups:
       actions:
         patterns: ["*"]
     # This is the reason the workflows pin exact versions where no moving major
-    # tag exists (`ossf/scorecard-action@v2.4.4`,
+    # tag exists (`ossf/scorecard-action@v2.5.0`,
     # `actions/dependency-review-action@v5.0.0`): a pin that cannot drift under
     # you, plus a bot whose job is to move it deliberately.
     ignore:

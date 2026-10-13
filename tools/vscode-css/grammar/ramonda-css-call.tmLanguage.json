@@ -1,0 +1,37 @@
+{
+  "scopeName": "ramonda.css-call",
+  "injectionSelector": "R:meta.embedded.block.css meta.property-value.css",
+  "comment": "A call to a function the CSS grammar does not know — `d(--accent)`, a slip for `var(`. The CSS grammar pairs the brackets only of the functions it knows, so the `)` closing an unknown one was the first one left, and it ended the BLOCK: the `(` had no partner, and an editor painted it red with no message. `R:` puts this AFTER the CSS grammar's own patterns, so a function it knows keeps its own colour and only an unknown one is read here. The checker says what is wrong with the name — `unknown-function`.",
+  "patterns": [
+    {
+      "include": "#call"
+    }
+  ],
+  "repository": {
+    "call": {
+      "begin": "(?<![\\w-])([a-zA-Z_][\\w-]*)(\\()",
+      "beginCaptures": {
+        "1": {
+          "name": "entity.name.function.css"
+        },
+        "2": {
+          "name": "punctuation.section.function.begin.bracket.round.css"
+        }
+      },
+      "end": "(\\))",
+      "endCaptures": {
+        "1": {
+          "name": "punctuation.section.function.end.bracket.round.css"
+        }
+      },
+      "patterns": [
+        {
+          "include": "#call"
+        },
+        {
+          "include": "source.css#property-values"
+        }
+      ]
+    }
+  }
+}

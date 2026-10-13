@@ -1,18 +1,38 @@
 /** Rules about a declaration's VALUE: a word, a unit, a flag, a string, how many values, a `url()`. */
 
 import { type PropertyRules, type UnitsByFamily } from "../../config/config";
-import { ARITY, KEYWORDS, PROPERTIES, PROPERTY_NAMED, UNITS, UNIT_TYPE } from "../keywords.generated";
+import {
+  ARITY,
+  FUNCTIONS,
+  KEYWORDS,
+  PROPERTIES,
+  PROPERTY_NAMED,
+  SHORTHANDS,
+  UNION_TYPED,
+  UNITS,
+  UNIT_TYPE,
+} from "../keywords.generated";
+import { splitOf, tokensOf } from "../split";
+import { holdsVar } from "../holdsVar";
+import { valueMatchesGrammar } from "../validateValue";
+import { ENGINE_OPEN } from "../keywords.engine.generated";
 import { canonicalValue, propertyName } from "../normalise";
 import { type Declaration, type ValuePart, textOnly, textPartsOf } from "../ast";
 import { urlsIn, withoutQuery } from "../urlsIn";
 import { wordSet } from "../wordSet";
 import { nearest } from "../nearest";
 import { NUMBERLESS } from "../numberless.generated";
-import { UNIT_REQUIRED, UNIT_REQUIRED_EVERYWHERE, WHOLE_NUMBER, WHOLE_NUMBER_EVERYWHERE } from "../numbers.generated";
+import {
+  UNIT_KIND_REFUSED,
+  UNIT_REQUIRED,
+  UNIT_REQUIRED_EVERYWHERE,
+  WHOLE_NUMBER,
+  WHOLE_NUMBER_EVERYWHERE,
+} from "../numbers.generated";
 import { GLOBAL, KNOWN, STRINGS_FIT, type Block, words, declarationsIn, withoutImportant } from "./shared";
 import { type Finding } from "./index";
 import { bareColon, endOfCall, endOfString, terminator } from "./text";
-import { onlyCase } from "./properties";
+import { PREFIXES, onlyCase } from "./properties";
 
 /**
  * More values than this project allows a property to take — `padding: 8px 12px` under `arity: 1`.
@@ -416,7 +436,13 @@ export const KNOWN_UNITS = new Set(UNITS);
  * And the unit may not be followed by a word character, which is what keeps a bare `2e3` out: with
  * the exponent optional, the engine would otherwise back off to a unit of `e` and leave the `3`.
  */
-const A_UNIT = /(?<![\w.#-])(?:\d*\.)?\d+(?:[eE][+-]?\d+)?([a-zA-Z%]+)(?![\w.])/g;
+const A_UNIT = /(?<![\w.#-])(?:\d*\.)?\d+(?:[eE][+-]?\d+)?(?![eE][+-]?\d)(%[\w-]*|[a-zA-Z_][\w-]*)/g;
+
+/**
+ * A number whose decimal point has no digit after it — `0.`, `1.`. CSS reads the point as a separate
+ * character, so the value is not one: measured, all three engines drop `opacity: 0.`.
+ */
+const A_BARE_POINT = /(?<![\w.#-])\d+\.(?![\w.])/g;
 
 /**
  * Every unit written in a value, with the two places one is not a unit stepped over.
@@ -432,7 +458,27 @@ const A_UNIT = /(?<![\w.#-])(?:\d*\.)?\d+(?:[eE][+-]?\d+)?([a-zA-Z%]+)(?![\w.])/
  * positions.
  */
 export function* unitsIn(text: string, at: number): Generator<{ unit: string; at: number; length: number }> {
-  /** The stretches that are value text — outside every string and every `url( … )`. */
+  for (const stretch of valueStretches(text)) {
+    for (const found of stretch.text.matchAll(A_UNIT)) {
+      yield {
+        unit: found[1],
+        at: at + stretch.at + found.index + found[0].length - found[1].length,
+        length: found[1].length,
+      };
+    }
+  }
+}
+
+/** Every `1.` written in a value, outside strings and `url()`, the same stretches `unitsIn` reads. */
+export function* barePointsIn(text: string, at: number): Generator<{ number: string; at: number }> {
+  for (const stretch of valueStretches(text)) {
+    for (const found of stretch.text.matchAll(A_BARE_POINT))
+      yield { number: found[0], at: at + stretch.at + found.index };
+  }
+}
+
+/** The stretches of a value that are value text — outside every string and every `url( … )`. */
+function valueStretches(text: string): { text: string; at: number }[] {
   const stretches: { text: string; at: number }[] = [];
   let from = 0;
   let index = 0;
@@ -457,16 +503,7 @@ export function* unitsIn(text: string, at: number): Generator<{ unit: string; at
     index++;
   }
   stretches.push({ text: text.slice(from), at: from });
-
-  for (const stretch of stretches) {
-    for (const found of stretch.text.matchAll(A_UNIT)) {
-      yield {
-        unit: found[1],
-        at: at + stretch.at + found.index + found[0].length - found[1].length,
-        length: found[1].length,
-      };
-    }
-  }
+  return stretches;
 }
 
 /**
@@ -538,6 +575,14 @@ export function unknownUnit(item: Declaration, findings: Finding[]): void {
   for (const part of item.value) {
     if (part.kind !== "text" || part.at === undefined) continue;
 
+    for (const found of barePointsIn(part.text, part.at)) {
+      findings.push({
+        rule: "malformed-number",
+        at: found.at,
+        length: found.number.length,
+        message: `\`${found.number}\` is not a number CSS reads: a decimal point needs a digit after it, so a browser drops this declaration. Write \`${found.number.slice(0, -1)}\`.`,
+      });
+    }
     for (const found of unitsIn(part.text, part.at)) {
       const unit = found.unit.toLowerCase();
       if (KNOWN_UNITS.has(unit)) continue;
@@ -551,6 +596,299 @@ export function unknownUnit(item: Declaration, findings: Finding[]): void {
       });
     }
   }
+}
+
+const KNOWN_FUNCTIONS = new Set(FUNCTIONS);
+
+/** Each call in a value — its name and where the name starts — skipping strings and what `url()` holds. */
+function* callsIn(text: string): Generator<{ name: string; index: number }> {
+  let index = 0;
+  while (index < text.length) {
+    const code = text.charCodeAt(index);
+    if (code === 34 || code === 39) {
+      index = endOfString(text, index) + 1;
+      continue;
+    }
+    const name = /^-{0,2}[a-zA-Z_][\w-]*/.exec(text.slice(index, index + 64))?.[0];
+    if (name === undefined || (index > 0 && /[\w-]/.test(text[index - 1]))) {
+      index++;
+      continue;
+    }
+    const open = index + name.length;
+    if (text[open] === "(") {
+      yield { name, index };
+      // What `url()` holds is a path, and what a vendor's own call holds is that vendor's grammar —
+      // `-webkit-gradient(…, from(red), to(blue))` — so neither is read for calls.
+      if (name.toLowerCase() === "url" || /^-[a-z]+-/i.test(name)) {
+        index = endOfCall(text, open) + 1;
+        continue;
+      }
+    }
+    index = open;
+  }
+}
+
+/**
+ * A call to a function CSS does not have — `d(--accent)`, `vra(--accent)`.
+ *
+ * Measured with `CSS.supports` in Chromium 156, Firefox 157 and WebKit 27.2: all three refuse
+ * `width: d(10px)`, so the declaration is dropped, and nothing in this package said so. The list is
+ * every function a `mdn-data` grammar calls plus the ones an engine parses that none names — see
+ * `FUNCTIONS`. A vendor's own (`-webkit-gradient`) is the browser's, so only its prefix is checked.
+ *
+ * And a call to a CSS CUSTOM function, `--double(10px)`, is refused outright: Firefox 157 drops every
+ * declaration that calls one. See DESIGN, "Custom functions".
+ */
+export function unknownFunction(item: Declaration, findings: Finding[]): void {
+  for (const part of item.value) {
+    if (part.kind !== "text" || part.at === undefined) continue;
+
+    for (const { name, index } of callsIn(part.text)) {
+      const lowered = name.toLowerCase();
+      if (lowered.startsWith("--")) {
+        findings.push(customFunction(part.at + index, name.length));
+        continue;
+      }
+      if (KNOWN_FUNCTIONS.has(lowered)) continue;
+      const prefix = /^(-[a-z]+-)/.exec(lowered)?.[1];
+      if (prefix !== undefined && PREFIXES.includes(prefix)) continue;
+
+      const meant = nearest(lowered, FUNCTIONS as string[]);
+      findings.push({
+        rule: "unknown-function",
+        at: part.at + index,
+        length: name.length,
+        message:
+          `\`${name}()\` is not a CSS function, so a browser drops this declaration.` +
+          (meant === undefined ? "" : ` Did you mean \`${meant}()\`?`),
+      });
+    }
+  }
+}
+
+const REFUSED_KINDS = new Set(UNIT_KIND_REFUSED);
+const KIND_WORDS: Readonly<Record<string, string>> = {
+  length: "a length",
+  angle: "an angle",
+  time: "a time",
+  frequency: "a frequency",
+  resolution: "a resolution",
+  flex: "a share of the free space",
+  percentage: "a percentage",
+};
+
+/** Whether each character of a value stands outside every call — a unit inside `calc()` is the call's. */
+function topLevel(text: string): boolean[] {
+  const outside: boolean[] = [];
+  let depth = 0;
+  for (let index = 0; index < text.length; index++) {
+    const code = text.charCodeAt(index);
+    if (code === 34 || code === 39) {
+      const end = endOfString(text, index);
+      for (let one = index; one <= end && one < text.length; one++) outside[one] = false;
+      index = end;
+      continue;
+    }
+    if (code === 40) depth++;
+    outside[index] = depth === 0;
+    if (code === 41) depth = Math.max(0, depth - 1);
+  }
+  return outside;
+}
+
+/**
+ * A real unit of a kind the property drops — `z-index: 2x`, `x` being a resolution; `width: 2s`.
+ * `unknown-unit` knows the unit exists and nothing asked whether THIS property takes its kind. Found
+ * silent by `check-engine-sweep.mjs`.
+ *
+ * The table is measured, `UNIT_KIND_REFUSED` in `numbers.generated.ts`: each LONGHAND that takes some
+ * number, asked one unit of each kind alone, believed only where every engine refuses. A shorthand is
+ * never in it, since one value alone says nothing about another slot. A unit inside a call is the
+ * call's — `line-height: calc(1px * 2)` — and is not asked.
+ */
+export function unitOfTheWrongKind(item: Declaration, findings: Finding[]): void {
+  const property = item.property.toLowerCase();
+  for (const part of item.value) {
+    if (part.kind !== "text" || part.at === undefined || part.resolved) continue;
+    const outside = topLevel(part.text);
+    for (const found of unitsIn(part.text, part.at)) {
+      if (!outside[found.at - part.at]) continue;
+      const unit = found.unit.toLowerCase();
+      const kind = UNIT_TYPE[unit];
+      if (kind === undefined || !REFUSED_KINDS.has(`${property} ${kind}`)) continue;
+      findings.push({
+        rule: "unit-of-the-wrong-kind",
+        at: found.at,
+        length: found.length,
+        message: `\`${found.unit}\` is ${KIND_WORDS[kind] ?? kind} unit, and \`${item.property}\` takes none, so a browser drops this declaration.`,
+      });
+    }
+  }
+}
+
+/**
+ * A SHORTHAND's units, each asked of the longhand it lands in — `margin: 0x auto` puts `0x` in
+ * `margin-top`, which takes no resolution. The table is per longhand (see `unitOfTheWrongKind`), so a
+ * shorthand is read through `splitOf`, the same split the build writes. A value it does not split is
+ * left alone here. Found silent by `check-engine-sweep.mjs`.
+ */
+export function unitOfTheWrongKindInItsLonghands(item: Declaration, findings: Finding[]): void {
+  const property = item.property.toLowerCase();
+  if (SHORTHANDS[property] === undefined || item.value.some((part) => part.kind !== "text" || part.resolved)) return;
+  const [part] = item.value;
+  if (item.value.length !== 1 || part.kind !== "text" || part.at === undefined) return;
+  const split = splitOf(property, part.text);
+  if (split === undefined) return;
+
+  const outside = topLevel(part.text);
+  for (const found of unitsIn(part.text, part.at)) {
+    const offset = found.at - part.at;
+    if (!outside[offset]) continue;
+    const kind = UNIT_TYPE[found.unit.toLowerCase()];
+    if (kind === undefined) continue;
+    // The whole token the unit ends — `0x` — and every longhand that took it.
+    // Walked back by hand: a pattern anchored at the end is tried from every start, quadratic in a run
+    // of digits.
+    let start = offset;
+    while (start > 0 && /[\d.eE+-]/.test(part.text[start - 1])) start--;
+    const token = part.text.slice(start, offset + found.length);
+    const into = Object.entries(split).find(
+      ([longhand, value]) => tokensOf(value).includes(token) && REFUSED_KINDS.has(`${longhand} ${kind}`),
+    );
+    if (into === undefined) continue;
+    findings.push({
+      rule: "unit-of-the-wrong-kind",
+      at: found.at,
+      length: found.length,
+      message: `\`${found.unit}\` is ${KIND_WORDS[kind] ?? kind} unit, and \`${into[0]}\` — where \`${token}\` lands in \`${item.property}\` — takes none, so a browser drops this declaration.`,
+    });
+  }
+}
+
+/**
+ * A value its property's grammar cannot read — `rgb(1x 2 3)`, `linear-gradient(redx, blue)`,
+ * `aspect-ratio: 16  9`. Asked last and only where no other rule spoke, so a fault a word gives away
+ * is named by the rule that names it. See `validateValue.ts` for what was measured, and
+ * `check-value-grammar.mjs` for the gate that keeps a valid value from being refused.
+ */
+export function invalidValue(item: Declaration, findings: Finding[]): void {
+  if (item.value.length !== 1) return;
+  const [part] = item.value;
+  if (part.kind !== "text" || part.resolved || part.at === undefined) return;
+  const property = item.property.toLowerCase();
+  // A vendor's own name or word is that vendor's vocabulary, and no grammar here has it — the same
+  // line every rule in this file draws. A property with a whole union for a type is the compiler's
+  // to answer, and it answers with a suggestion this cannot give.
+  // And a property the ENGINES take more of than its grammar says — `column-rule-style: solid, dashed`
+  // — is one this cannot judge: `ENGINE_OPEN` is the measured list.
+  if (property.startsWith("-") || UNION_TYPED.includes(property) || ENGINE_OPEN.includes(property)) return;
+  if (/(?:^|[\s,(/])-(?:webkit|moz|ms|o|apple|epub)-/i.test(part.text)) return;
+  if (valueMatchesGrammar(property, part.text) !== false) return;
+  const text = withoutImportant(part.text).trimEnd();
+  const lead = text.length - text.trimStart().length;
+  findings.push({
+    rule: "invalid-value",
+    at: part.at + lead,
+    length: text.trim().length,
+    message: `\`${text.trim()}\` is not a value \`${item.property}\` takes, so a browser drops this declaration.`,
+  });
+}
+
+/**
+ * A container's NAME written without its TYPE, in one block — `container: card`, or `container-name:
+ * card` with no `container-type` beside it.
+ *
+ * Measured in Chromium, Firefox and WebKit: `container: card` sets `container-type` back to
+ * `normal`, so a size condition asking for `card` never matches — even on an element whose type
+ * another rule had set — and a name with no type answers a style query only. CSS allows both; agreed
+ * with the user, a block says both: the shorthand carries the type, the longhands stand side by side,
+ * and a container meant for style queries writes `/ normal`. Read within one block, so it needs no
+ * guess about which blocks meet on an element.
+ */
+export function containerWithoutAType(block: Block, findings: Finding[]): void {
+  const items = declarationsIn(block);
+  const typed = items.some((one) => one.property.toLowerCase() === "container-type");
+  for (const item of items) {
+    const property = item.property.toLowerCase();
+    if (property !== "container" && property !== "container-name") continue;
+    const [part] = item.value;
+    if (item.value.length !== 1 || part.kind !== "text" || part.at === undefined) continue;
+    const text = withoutImportant(part.text).trim();
+    if (text === "" || text.toLowerCase() === "none") continue;
+    if (property === "container" && text.includes("/")) continue;
+    // A `var()` in the shorthand may hold the type as well — `--c: card / inline-size` — so it is not
+    // judged; one in `container-name` is a name and nothing more, and still wants its type.
+    if (property === "container" && holdsVar(text)) continue;
+    if (property === "container-name" && typed) continue;
+    findings.push({
+      rule: "container-without-a-type",
+      at: part.at + part.text.indexOf(text),
+      length: text.length,
+      message:
+        property === "container"
+          ? `\`container: ${text}\` sets \`container-type\` back to \`normal\`, so a size condition asking for it ` +
+            `never matches. Write \`container: ${text} / inline-size\` — or \`/ normal\` for a container asked only about style.`
+          : `\`container-name: ${text}\` has no \`container-type\` beside it, so a size condition asking for it never ` +
+            "matches. Write the type in this block too — or `container: … / normal` for a container asked only about style.",
+    });
+  }
+}
+
+/** Each `#word` in a value, skipping strings and what `url()` holds — a fragment there is a path. */
+function* hashesIn(text: string): Generator<{ hash: string; index: number }> {
+  let index = 0;
+  while (index < text.length) {
+    const code = text.charCodeAt(index);
+    if (code === 34 || code === 39) {
+      index = endOfString(text, index) + 1;
+      continue;
+    }
+    if (/^url\(/i.test(text.slice(index, index + 4)) && (index === 0 || !/[\w-]/.test(text[index - 1]))) {
+      index = endOfCall(text, index + 3) + 1;
+      continue;
+    }
+    if (code === 35) {
+      const hash = /^#[\w-]*/.exec(text.slice(index, index + 64))?.[0] ?? "#";
+      yield { hash, index };
+      index += hash.length;
+      continue;
+    }
+    index++;
+  }
+}
+
+/**
+ * A hex colour with the wrong number of digits, or a letter that is not a hex digit — `#abcx`,
+ * `#ab`, `#12345`. Measured: Chromium, Firefox and WebKit all drop the declaration. Found by
+ * `check-engine-sweep.mjs`; nothing reported it, because no type or rule reads a hex colour's shape.
+ */
+export function invalidHexColor(item: Declaration, findings: Finding[]): void {
+  for (const part of item.value) {
+    if (part.kind !== "text" || part.at === undefined) continue;
+    for (const { hash, index } of hashesIn(part.text)) {
+      if (/^#(?:[\da-f]{3,4}|[\da-f]{6}|[\da-f]{8})$/i.test(hash)) continue;
+      // Glued to the hole after it — `#$(hex)` — which is one fault, and it is the hole's.
+      if (index + hash.length === part.text.length && part !== item.value.at(-1)) continue;
+      findings.push({
+        rule: "invalid-hex-color",
+        at: part.at + index,
+        length: hash.length,
+        message: `\`${hash}\` is not a colour: a hex colour has 3, 4, 6 or 8 hex digits, so a browser drops this declaration.`,
+      });
+    }
+  }
+}
+
+/** The one sentence a custom function gets, at its call and at its `@function`. */
+export function customFunction(at: number, length: number): Finding {
+  return {
+    rule: "custom-function",
+    at,
+    length,
+    message:
+      "CSS custom functions are not offered: Firefox drops `@function` and every declaration that calls one. " +
+      "Compute the value with `calc()`, a token, or a `@@property` set from code.",
+  };
 }
 
 /**

@@ -23,9 +23,11 @@ import {
   layerInABlock,
   mediaFeatures,
   mediaValues,
+  malformedMedia,
   rootInABlock,
   stylesAnotherElement,
   supportsAMediaFeature,
+  supportsNeverTrue,
 } from "./selectors";
 import { spelling } from "./properties";
 import {
@@ -35,7 +37,7 @@ import {
   initialValueAndSyntax,
   propertyDescriptorMissing,
 } from "./namedSites";
-import { tooManyValues, unitNotAllowed, urlNotFound } from "./values";
+import { containerWithoutAType, invalidValue, tooManyValues, unitNotAllowed, urlNotFound } from "./values";
 import {
   literalNotAllowed,
   shorthandNotAllowed,
@@ -138,7 +140,17 @@ export const RULE_IDS = [
   // A value a media feature does not have, and a media feature asked of `@supports`. See
   // `mediaValues` and `supportsAMediaFeature`.
   "unknown-media-value",
+  // A missing `:`, a number nobody reads, a word between conditions. See `malformedMedia`.
+  "malformed-media-condition",
+  // The same three for `@container`, read against a container's own features. See `mediaFeatures`.
+  "unknown-container-feature",
+  "unknown-container-value",
+  "malformed-container-condition",
   "supports-a-media-feature",
+  // A `@supports` condition false by a slip: a near miss, `(gap: 1)`, a missing `:`. See `supportsNeverTrue`.
+  "supports-never-true",
+  // `container: card` with no type, which sets the type back to `normal`. See `containerWithoutAType`.
+  "container-without-a-type",
   // A number a browser drops where no type refuses it — `gap: 12`, `z-index: 1.5`. See `numberDropped`.
   "number-without-a-unit",
   "fraction-where-a-whole-number-goes",
@@ -163,7 +175,20 @@ export const RULE_IDS = [
   "ignore-without-a-reason",
   "unknown-prefix",
   "unknown-at-rule",
+  // A function no engine has, and a CSS custom function, which Firefox drops. See `unknownFunction`.
+  "unknown-function",
+  "custom-function",
+  // A hex colour with the wrong number of digits. See `invalidHexColor`.
+  "invalid-hex-color",
+  // `0.` — a decimal point with no digit after it. See `unknownUnit`.
+  "malformed-number",
+  // A real unit of a kind the property drops — `z-index: 2x`. See `unitOfTheWrongKind`.
+  "unit-of-the-wrong-kind",
+  // A value its property's grammar cannot read, function arguments included. See `validateValue.ts`.
+  "invalid-value",
   "unknown-selector",
+  // A missing `:`, an `An+B` no engine reads, a bracket left open. See `malformedSelector`.
+  "malformed-selector",
   "unknown-flag",
   "unclosed-call",
   "unknown-token",
@@ -394,7 +419,10 @@ export function checkBlock(written: AnyBlock, options: CheckOptions = {}): Findi
   holeAsAVariableName(block, findings);
   mediaFeatures(block, findings);
   mediaValues(block, findings);
+  malformedMedia(block, findings);
   supportsAMediaFeature(block, findings);
+  supportsNeverTrue(block, findings);
+  containerWithoutAType(block, findings);
   spelling(block, findings);
   layerInABlock(block, findings);
   rootInABlock(block, findings);
@@ -463,6 +491,16 @@ export function checkBlock(written: AnyBlock, options: CheckOptions = {}): Findi
   // LAST, because it stays quiet wherever another rule has already spoken — see its own note.
   unclosedCall(block, findings);
   missingSemicolon(block, findings);
+  // After EVERY other rule, and only on a declaration none of them named: the grammar knows the value
+  // is wrong, and the rule that says which word is the better report. See `invalidValue`.
+  if (at === undefined) {
+    for (const item of declarationsIn(block)) {
+      const from = item.at ?? 0;
+      const to = item.end ?? Number.POSITIVE_INFINITY;
+      if (item.at === undefined || findings.some((one) => one.at >= from && one.at <= to)) continue;
+      invalidValue(item, findings);
+    }
+  }
   const once = outermost(block, findings);
 
   const silenced = config?.rules;
@@ -547,6 +585,8 @@ function outermost(block: Block, findings: readonly Finding[]): Finding[] {
  * assignable*; `TS2561` is the compiler's own *did you mean* for a bare property name.
  */
 export const SPEAKS_OVER_TYPES: readonly RuleId[] = [
+  /** The whole value, said once: the compiler's `is not assignable` at the same place would be the second. */
+  "invalid-value",
   "hardcoded-not-allowed",
   "unit-not-allowed",
   "value-not-allowed",

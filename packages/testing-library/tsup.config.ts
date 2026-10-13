@@ -1,9 +1,10 @@
 import { defineConfig } from "tsup";
+import { dts } from "../../tsup.dts";
 
 export default defineConfig({
   entry: ["src/index.ts", "src/dont-cleanup-after-each.ts"],
   format: ["esm"],
-  dts: true,
+  dts,
   clean: true,
   target: "es2022",
   // Kept external: the framework and the query library are the consumer's, and

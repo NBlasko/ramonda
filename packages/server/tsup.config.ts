@@ -1,4 +1,5 @@
 import { defineConfig } from "tsup";
+import { dts } from "../../tsup.dts";
 
 /**
  * One build, like `@ramonda/build`: nothing here runs in a browser and nothing reads `__DEV__`.
@@ -7,7 +8,7 @@ import { defineConfig } from "tsup";
 export default defineConfig({
   entry: ["src/index.ts"],
   format: ["esm"],
-  dts: true,
+  dts,
   clean: true,
   target: "es2022",
   outDir: "dist",

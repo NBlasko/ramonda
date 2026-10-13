@@ -60,21 +60,20 @@ import { toStyle } from "@ramonda/css";
 const done = @@property( syntax: "<percentage>"; initial-value: 0%; inherits: false; );
 const meter = @@( height: 8px; width: var($(done)); );
 
-const Bar = (props: { at: number }) => (
-  <div className={meter} style={toStyle([[done, `${props.at}%`]])} />
-);
+const progress = (at: number) => <div className={meter} style={toStyle([[done, `${at}%`]])} />;
 ```
 
 ```
-toStyle([[angle, "45deg"]]);     ✓
-toStyle([[angle, "45px"]]);      ✗  a length where `<angle>` was declared
+toStyle([[done, "40%"]]);      ✓
+toStyle([[done, "40px"]]);     ✗  a length where `<percentage>` was declared
 ```
 
 It takes several at once, and it takes tokens — `$color.accent` — in the same list, so
 one call sets everything an element carries.
 
-The binding's type is `CssVar<"angle">`, read from the `syntax` you wrote. That is also what a
-function annotates when it takes *any angle property this app registered*:
+The binding's type is read from the `syntax` you wrote: `done` is a `CssVar<"percentage">`. That is
+also what a function annotates when it takes *any property of that kind this app registered* — here,
+any angle:
 
 ```tsx
 import type { CssVar } from "@ramonda/css";

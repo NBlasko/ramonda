@@ -330,6 +330,10 @@ describe("the project's config", () => {
       // A custom property begins with two dashes. `brand` is a property name, and a list of those
       // would silence a rule about names it was never given.
       ["a name in externalCustomProperties with no dashes", `{ externalCustomProperties: ["brand"] }`, /two dashes/],
+      ["externalContainerNames as a bare string", `{ externalContainerNames: "sidebar" }`, /externalContainerNames/],
+      // Two words would be two names; `none` and the query keywords are never one.
+      ["a container name of two words", `{ externalContainerNames: ["side bar"] }`, /one word/],
+      ["a keyword as a container name", `{ externalContainerNames: ["none"] }`, /one word/],
       // Tokens stopped being called "variables": each old key is refused with the new name in it.
       ["the old `variables`", `{ variables: {} }`, /`tokens`/],
       // A group written without `kind( … )` declared nothing, in silence — the kind is what makes a

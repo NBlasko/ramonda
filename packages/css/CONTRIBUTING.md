@@ -91,6 +91,8 @@ node scripts/css/build-shorthand-shapes.mjs --check  # fail if it is stale
 | `check-must-split.mjs` | a value people write that silently stopped splitting, or splits wrong |
 | `check-render-equality.mjs` | a block page whose PIXELS are not the hand-written page's — the pairs are in `scripts/css/render-pairs.mjs` |
 | `bench-css.mjs 5` | the benchmark no longer running — it times nothing here; `pnpm bench:css` is the 1000-file run, `--profile` says where the time goes |
+| `check-engine-sweep.mjs` | damaged CSS every engine drops and the checker misses — a NEW one fails; `engine-sweep.baseline.json` lists the known ones, and a closed one must come off it (`--write`) |
+| `check-value-grammar.mjs` | `invalid-value` refusing a declaration an engine takes — `value-corpus.json` is 1993 real ones, each asked of the three engines; a wrong refusal is fixed in `validateValue.ts`'s corrections |
 | `check-css-splitting.mjs` | the CSS not following its JavaScript chunk, on a real build |
 
 **The grammar table has no gate beside it, because the gate is inside the generator.** Every family
@@ -236,9 +238,9 @@ Firefox and touches nothing in Chromium or WebKit, so no single split writes the
 three. It is listed as `contested` on the shape, and the build refuses it as
 `value-differs-across-engines` — the author's own line renders two ways, so it is not an option.
 
-**Known and not fixed**: `container: card / inline-size` is refused. The positional learner never
-learned the slash form for `container` — its patterns are `1` to `4` — so every value with the `/`
-keeps its shorthand. Safe, and a gap.
+`container` was the one family the positional learner could not read with its `/` — its patterns are
+`1` to `4` — and it is split by hand now (`splitByHand.ts`): `container: card / inline-size` is
+`container-name: card` and `container-type: inline-size`.
 
 A refusal is safe wherever it happens. The declaration stays a shorthand, which is visibly the
 author's own text — where a wrong split is invisible. And a shorthand that reaches the stylesheet

@@ -518,9 +518,14 @@ describe("a condition that cannot switch", () => {
     ["a value that never ends", `  padding: 0${"00".repeat(10_000)}!;`],
     ["a length that never ends", `  margin: 1${"00".repeat(10_000)}.;`],
   ])("%s is answered at once", (_what, css) => {
-    const started = performance.now();
-    rules(css);
-    expect(performance.now() - started).toBeLessThan(250);
+    // The best of three: one run can stall twentyfold under a full gate's parallel load — measured,
+    // 254 ms for a run that takes 12 — and a quadratic reading would be seconds on every one of them.
+    const runs = [0, 1, 2].map(() => {
+      const started = performance.now();
+      rules(css);
+      return performance.now() - started;
+    });
+    expect(Math.min(...runs)).toBeLessThan(250);
   });
 
   test.each([
@@ -533,6 +538,31 @@ describe("a condition that cannot switch", () => {
     ["a range on both sides", "  @media (40rem < width <= 80) { color: red; }"],
   ])("%s is reported", (_what, css) => {
     expect(rules(css)).toContain("unknown-media-value");
+  });
+
+  /**
+   * A unit no engine has. Measured in Chromium, Firefox and WebKit: `(min-width: 40remGreska)` is
+   * kept and never matches — and `not (min-width: 40remx)` does not match either, because the
+   * condition is unknown, not false. The kind test took any letters after a number as a length.
+   */
+  test.each([
+    ["a unit that is not one", "  @media (min-width: 40remGreska) { color: red; }"],
+    ["one letter too many", "  @media (max-width: 40remx) { color: red; }"],
+    ["in the range form", "  @media (width >= 40remx) { color: red; }"],
+    ["on either side of a range", "  @media (40remx < width <= 80rem) { color: red; }"],
+  ])("%s is reported", (_what, css) => {
+    expect(rules(css)).toContain("unknown-media-value");
+  });
+
+  test("the unit is named, with the one that was meant", () => {
+    const css = "  @media (min-width: 40remGreska) { color: red; }";
+    const [found] = check(css).filter((one) => one.rule === "unknown-media-value");
+    const source = `<div className={@@(\n${css}\n)}>x</div>`;
+    expect(source.slice(found.at, found.at + found.length)).toBe("40remGreska");
+    expect(found.message).toBe(
+      "`remGreska` is not a CSS unit, so this condition never matches and a browser keeps it anyway.",
+    );
+    expect(messages("  @media (max-width: 40remx) { color: red; }").join(" ")).toContain("Did you mean `rem`?");
   });
 
   test("a range's number is reported where it is written", () => {
@@ -573,5 +603,241 @@ describe("a condition that cannot switch", () => {
     const found = rules(css);
     expect(found).not.toContain("unknown-media-value");
     expect(found).not.toContain("supports-a-media-feature");
+  });
+});
+
+/**
+ * Four shapes of a `@media` condition every engine keeps and never applies, all silent until
+ * `check-engine-sweep.mjs` asked: a missing `:`, a misspelt feature in the range form, a number no
+ * engine can read, and a word between conditions that is not `and`, `or`, `not` or a media type.
+ */
+describe("a media condition that cannot be read", () => {
+  test.each([
+    ["a missing colon", "  @media (min-width 40rem) { color: red; }", "malformed-media-condition"],
+    ["a missing colon on a word", "  @media (hover hover) { color: red; }", "malformed-media-condition"],
+    [
+      "a missing colon after an and",
+      "  @media screen and (min-width 40rem) { color: red; }",
+      "malformed-media-condition",
+    ],
+    ["a misspelt feature in a range", "  @media (400px <= wdith <= 70rem) { color: red; }", "unknown-media-feature"],
+    ["one letter more in a range", "  @media (400px <= widthx <= 70rem) { color: red; }", "unknown-media-feature"],
+    ["a number nobody reads", "  @media (min-width: 4r0em) { color: red; }", "malformed-media-condition"],
+    ["the same in a range", "  @media (width >= 4r0em) { color: red; }", "malformed-media-condition"],
+    ["a ratio with a unit", "  @media (min-aspect-ratio: 16/9x) { color: red; }", "malformed-media-condition"],
+    [
+      "a word that is not and",
+      "  @media (min-width: 40rem) an (max-width: 60rem) { color: red; }",
+      "malformed-media-condition",
+    ],
+    ["another", "  @media screen andx (min-width: 40rem) { color: red; }", "malformed-media-condition"],
+  ])("%s is reported", (_what, css, rule) => {
+    expect(rules(css)).toContain(rule);
+  });
+
+  test("the missing colon is named where it belongs", () => {
+    const css = "  @media (min-width 40rem) { color: red; }";
+    const [found] = check(css).filter((one) => one.rule === "malformed-media-condition");
+    const source = `<div className={@@(\n${css}\n)}>x</div>`;
+    expect(source.slice(found.at, found.at + found.length)).toBe("(min-width 40rem)");
+    expect(found.message).toBe(
+      "`(min-width 40rem)` has no `:` between the feature and its value, so this condition never matches and a browser keeps it anyway. Write `(min-width: 40rem)`.",
+    );
+  });
+
+  test("and the word between conditions offers the one that was meant", () => {
+    expect(messages("  @media (min-width: 40rem) an (max-width: 60rem) { color: red; }").join(" ")).toContain(
+      "Did you mean `and`?",
+    );
+  });
+
+  test.each([
+    ["a boolean feature", "  @media (hover) { color: red; }"],
+    ["not and only", "  @media only screen and (min-width: 40rem) { color: red; }"],
+    ["not in front", "  @media not print { color: red; }"],
+    ["or between conditions", "  @media (min-width: 40rem) or (orientation: landscape) { color: red; }"],
+    ["a list", "  @media print, (min-width: 40rem) { color: red; }"],
+    ["a range on both sides", "  @media (400px <= width <= 70rem) { color: red; }"],
+    ["a ratio", "  @media (min-aspect-ratio: 16/9) { color: red; }"],
+    ["a decimal", "  @media (min-resolution: 1.5dppx) { color: red; }"],
+    ["not with parentheses", "  @media not (hover: hover) { color: red; }"],
+  ])("%s is silent", (_what, css) => {
+    const found = rules(css);
+    expect(found).not.toContain("malformed-media-condition");
+    expect(found).not.toContain("unknown-media-feature");
+  });
+});
+
+/**
+ * A selector every engine drops, in the three shapes `check-engine-sweep.mjs` found silent: a
+ * functional pseudo-class with its `:` missing, an `An+B` no engine reads, and a bracket left open.
+ */
+describe("a selector that cannot be read", () => {
+  test.each([
+    ["a missing colon", "  &not(.a) { color: red; }"],
+    ["another", "  &has(> img) { color: red; }"],
+    ["nth-child with no n", "  &:nth-child(2+1) { color: red; }"],
+    ["nth-child with a letter after", "  &:nth-child(2n+1x) { color: red; }"],
+    ["nth-child with no sign", "  &:nth-child(2n1) { color: red; }"],
+    ["odd misspelt", "  &:nth-of-type(od) { color: red; }"],
+    ["a bracket left open", '  &[data-x="1" { color: red; }'],
+    ["a bracket never opened", '  &data-x="1"] { color: red; }'],
+  ])("%s is reported", (_what, css) => {
+    expect(rules(css)).toContain("malformed-selector");
+  });
+
+  test("the missing colon says what to write", () => {
+    expect(messages("  &not(.a) { color: red; }").join(" ")).toContain("Write `:not(`");
+  });
+
+  test.each([
+    ["nth-child", "  &:nth-child(2n+1) { color: red; }"],
+    ["with spaces", "  &:nth-child(2n + 1) { color: red; }"],
+    ["a number", "  &:nth-child(3) { color: red; }"],
+    ["negative n", "  &:nth-child(-n+3) { color: red; }"],
+    ["even", "  &:nth-of-type(even) { color: red; }"],
+    ["of a selector", "  &:nth-child(2n of .a) { color: red; }"],
+    ["an attribute", '  &[data-x="1"] { color: red; }'],
+    ["a bracket in a string", '  &[data-x="]"] { color: red; }'],
+    ["is", "  &:is(.a, .b) { color: red; }"],
+  ])("%s is silent", (_what, css) => {
+    expect(rules(css)).not.toContain("malformed-selector");
+  });
+});
+
+/**
+ * A `@container` condition every engine keeps and never applies — the same shapes as `@media`, read
+ * against a container's own features. Measured in Chromium, Firefox and WebKit: `width`, `height`,
+ * `inline-size`, `block-size` and `aspect-ratio`, each with `min-` and `max-`, and `orientation`; a
+ * media feature such as `hover` never matches in a container. Found by `check-engine-sweep.mjs`.
+ */
+describe("a container condition that cannot be read", () => {
+  test.each([
+    ["a misspelt feature", "  @container (min-widt: 40rem) { color: red; }", "unknown-container-feature"],
+    ["in a range", "  @container (wdith > 30em) { color: red; }", "unknown-container-feature"],
+    ["a logical one misspelt", "  @container (inline-siz >= 20rem) { color: red; }", "unknown-container-feature"],
+    ["a media feature", "  @container (hover: hover) { color: red; }", "unknown-container-feature"],
+    ["after a name", "  @container card (mni-width: 20rem) { color: red; }", "unknown-container-feature"],
+    ["a number with no unit", "  @container (min-width: 40) { color: red; }", "unknown-container-value"],
+    ["the same in a range", "  @container (width > 30) { color: red; }", "unknown-container-value"],
+    ["a unit that is not one", "  @container (min-width: 40remx) { color: red; }", "unknown-container-value"],
+    ["a word it does not take", "  @container (orientation: protrait) { color: red; }", "unknown-container-value"],
+    ["a missing colon", "  @container (min-width 40rem) { color: red; }", "malformed-container-condition"],
+    ["a number nobody reads", "  @container (width > 3e0m) { color: red; }", "malformed-container-condition"],
+    ["a comparison lost", "  @container (width  30em) { color: red; }", "malformed-container-condition"],
+  ])("%s is reported", (_what, css, rule) => {
+    expect(rules(css)).toContain(rule);
+  });
+
+  test("a media feature says where it belongs", () => {
+    expect(messages("  @container (hover: hover) { color: red; }").join(" ")).toContain("`@media`");
+  });
+
+  test.each([
+    ["a breakpoint", "  @container (min-width: 40rem) { color: red; }"],
+    ["a name", "  @container card (min-width: 20rem) { color: red; }"],
+    ["a range", "  @container (20rem <= inline-size <= 60rem) { color: red; }"],
+    ["a ratio", "  @container (aspect-ratio > 16/9) { color: red; }"],
+    ["orientation", "  @container (orientation: portrait) { color: red; }"],
+    ["a boolean feature", "  @container (width) { color: red; }"],
+    ["not and and", "  @container not (width > 30em) and (height > 10em) { color: red; }"],
+    ["a style query", "  @container style(--theme: dark) { color: red; }"],
+    ["a scroll-state query", "  @container scroll-state(stuck: top) { color: red; }"],
+  ])("%s is silent", (_what, css) => {
+    const found = rules(css);
+    for (const rule of ["unknown-container-feature", "unknown-container-value", "malformed-container-condition"])
+      expect(found).not.toContain(rule);
+  });
+});
+
+/**
+ * A `@supports` condition that is never true because of a slip, not because a browser lacks the
+ * feature — found silent by `check-engine-sweep.mjs`, all three engines answering `false` where the
+ * base answered `true`.
+ *
+ * `@supports` exists to ask about what a browser may NOT have, so a word this does not know is not a
+ * fault: `(display: masonry)` is a real question. Only a near miss of a known word, a number with no
+ * unit, a broken colour or a missing `:` is reported — each one false in every engine, by mistake.
+ */
+describe("a supports condition that is never true by mistake", () => {
+  test.each([
+    ["a misspelt property", "  @supports (displayx: grid) { color: red; }"],
+    ["a misspelt value", "  @supports (display: gird) { color: red; }"],
+    ["a missing colon", "  @supports (display grid) { color: red; }"],
+    ["a missing colon before a function", "  @supports (color rgb(1 2 3)) { color: red; }"],
+    ["a number with no unit", "  @supports (gap: 1) { color: red; }"],
+    ["a misspelt function", "  @supports (color: rgbx(1 2 3)) { color: red; }"],
+    ["a broken hex colour", "  @supports (color: #abcx) { color: red; }"],
+    ["a misspelt selector()", "  @supports selectorx(:has(a)) { color: red; }"],
+    ["a selector missing its colon", "  @supports selector(has(a)) { color: red; }"],
+    ["a misspelt pseudo-class", "  @supports selector(:hasx(a)) { color: red; }"],
+    ["a word that is not and", "  @supports (display: grid) andx (gap: 1rem) { color: red; }"],
+    // A value of numbers, units and known functions alone asks about no feature, so its grammar is
+    // asked — `rgb(1x 2 3)` is false in every engine, by a slip.
+    ["a unit inside a colour", "  @supports (color: rgb(1x 2 3)) { color: red; }"],
+    ["arithmetic with no type", "  @supports (width: calc(100 - 2rem)) { color: red; }"],
+  ])("%s is reported", (_what, css) => {
+    expect(rules(css)).toContain("supports-never-true");
+  });
+
+  test("the message says what is wrong and what it costs", () => {
+    expect(messages("  @supports (display: gird) { color: red; }").join(" ")).toBe(
+      "`@supports` is never true here: `display` does not accept `gird`. Did you mean `grid`? The rules inside never apply.",
+    );
+  });
+
+  test.each([
+    ["a real question", "  @supports (display: grid) { color: red; }"],
+    ["not", "  @supports not (display: grid) { color: red; }"],
+    ["and", "  @supports (display: grid) and (gap: 1rem) { color: red; }"],
+    ["a value this does not know", "  @supports (grid-template-rows: masonry) { color: red; }"],
+    ["a custom property", "  @supports (--x: 1) { color: red; }"],
+    ["a vendor property", "  @supports (-webkit-appearance: none) { color: red; }"],
+    ["selector()", "  @supports selector(:has(a)) { color: red; }"],
+    ["font-tech()", "  @supports font-tech(color-COLRv1) { color: red; }"],
+    ["a newer unit", "  @supports (width: 1cqw) { color: red; }"],
+    ["a sizing keyword", "  @supports (min-width: fit-content) { color: red; }"],
+    ["a new value made of known words", "  @supports (display: grid-lanes) { color: red; }"],
+    ["a new function", "  @supports (width: calc-size(auto, size)) { color: red; }"],
+  ])("%s is silent", (_what, css) => {
+    expect(rules(css)).not.toContain("supports-never-true");
+  });
+});
+
+/**
+ * A container's name always comes with its type, in one block. Measured in Chromium, Firefox and
+ * WebKit: `container: card` sets `container-type` back to `normal`, so a size condition asking for
+ * `card` never matches — even on an element whose type another rule had set; and a name with no
+ * type answers a style query only. Agreed with the user: the shorthand carries both, the longhands
+ * are written side by side, and a container meant for style queries says `/ normal`.
+ */
+describe("a container named without its type", () => {
+  test.each([
+    ["the shorthand with a name alone", "  container: card;"],
+    ["several names", "  container: card sidebar;"],
+    ["the name longhand alone", "  container-name: card;"],
+    // A `var()` in the NAME longhand is a name and nothing else, so the type is still missing.
+    ["the name longhand through a var()", "  container-name: var(--n);"],
+  ])("%s is reported", (_what, css) => {
+    expect(rules(css)).toContain("container-without-a-type");
+  });
+
+  test("the shorthand says what to write", () => {
+    expect(messages("  container: card;").join(" ")).toContain("`container: card / inline-size`");
+    expect(messages("  container: card;").join(" ")).toContain("`/ normal`");
+  });
+
+  test.each([
+    ["the shorthand with a type", "  container: card / inline-size;"],
+    ["a style container, said so", "  container: card / normal;"],
+    ["both longhands", "  container-name: card;\n  container-type: size;"],
+    ["in either order", "  container-type: size;\n  container-name: card;"],
+    ["no name at all", "  container-type: inline-size;"],
+    ["no container", "  container: none;"],
+    ["a name of none", "  container-name: none;"],
+    // Found in review: a `var()` in the SHORTHAND may hold the type too — `--c: card / inline-size`.
+    ["the shorthand through a var()", "  container: var(--c);"],
+  ])("%s is silent", (_what, css) => {
+    expect(rules(css)).not.toContain("container-without-a-type");
   });
 });

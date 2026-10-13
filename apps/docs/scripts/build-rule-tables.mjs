@@ -281,13 +281,36 @@ const CSS_LINES = {
   "unknown-property": "a property name that is nearly one CSS has",
   "unknown-value": "a word this property does not take",
   "unknown-unit": "a unit CSS does not have",
+  "unknown-function": "a function CSS does not have (`d(…)`), so the declaration is dropped",
+  "custom-function": "a CSS custom function (`--name(…)` or `@function`), which Firefox drops",
+  "invalid-value":
+    "a value its property's grammar cannot read — `rgb(1x 2 3)`, `linear-gradient(redx, blue)`, `aspect-ratio: 16  9` — so the declaration is dropped",
+  "unit-of-the-wrong-kind":
+    "a real unit of a kind the property does not take (`z-index: 2x`, `width: 2s`), so the declaration is dropped",
+  "malformed-number": "a decimal point with no digit after it (`0.`), so the declaration is dropped",
+  "invalid-hex-color": "a hex colour without 3, 4, 6 or 8 hex digits (`#abcx`), so the declaration is dropped",
   "unknown-flag": "a `!` at the end of a value that is not `!important`",
   "unclosed-call": "a `(` in a value that no `)` closes — the value runs past the end of the block",
   "unknown-prefix": "a vendor prefix that is not one of the four",
+  "malformed-selector":
+    "a selector no engine reads — `&not(…)` with no colon, `:nth-child(2+1)`, a bracket left open — so the whole rule is dropped",
   "unknown-at-rule": "an at-rule name CSS does not have",
   "unknown-selector": "a pseudo-class or pseudo-element that is not one — the whole rule is dropped",
   "unknown-media-feature": "a media feature that will never match",
-  "unknown-media-value": "a media feature's value it does not have, so the condition never matches",
+  "malformed-media-condition":
+    "a media condition no engine reads — `(min-width 40rem)` with no colon, `4r0em`, a word between conditions that is not `and` or `or` — kept and never matching",
+  "unknown-container-feature":
+    "a container feature CSS does not have, or a media feature such as `hover` in `@container`, so the condition never matches",
+  "unknown-container-value":
+    "a container feature's value it does not take (`(min-width: 40)`), so the condition never matches",
+  "malformed-container-condition":
+    "a container condition no engine reads — `(min-width 40rem)` with no colon, `3e0m`, a word that is not `and`, `or` or `not`",
+  "container-without-a-type":
+    "a container named without its type — `container: card` sets the type back to `normal`, so a size condition never matches",
+  "supports-never-true":
+    "a `@supports` condition false by a slip — `(display: gird)`, `(gap: 1)`, a missing colon — never a feature a browser may lack",
+  "unknown-media-value":
+    "a media feature's value it does not have, or a unit no engine has (`40remx`), so the condition never matches",
   "supports-a-media-feature": "a media feature asked of `@supports`, which is always true or never",
   "number-without-a-unit": "a number with no unit where a length goes — a browser drops it",
   "fraction-where-a-whole-number-goes":

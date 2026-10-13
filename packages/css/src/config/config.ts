@@ -95,6 +95,12 @@ export interface Config {
    */
   readonly externalCustomProperties?: readonly string[];
   /**
+   * Container names something this compiler cannot see gives an element — a hand-written stylesheet,
+   * a third-party one. A `@container card (…)` asking for a name no block gives with `container-name`
+   * or `container`, and that is not listed here, is reported: it never matches.
+   */
+  readonly externalContainerNames?: readonly string[];
+  /**
    * `false` refuses a custom property made up in a block or a `style` attribute — any name that is
    * not a token and not in {@link externalCustomProperties}. A value from code goes through
    * `@@property( … )` instead, which is read by its binding. Left out, any name is allowed, as in CSS.
@@ -164,6 +170,14 @@ export interface Config {
 export function knownNames(config: Config): readonly string[] {
   const declared = config.tokens === undefined ? [] : namesIn(config.tokens).map((one) => one.name);
   return [...declared, ...(config.externalCustomProperties ?? [])];
+}
+
+/**
+ * Everything a file's config says exists outside the build, in the shape `Sheet.add` takes — one
+ * function for the checker and both bundlers, so none of them can know a name the others do not.
+ */
+export function knownOutside(config: Config): { known: readonly string[]; knownContainers: readonly string[] } {
+  return { known: knownNames(config), knownContainers: config.externalContainerNames ?? [] };
 }
 
 /**
@@ -329,6 +343,7 @@ const KNOWN = new Set([
   "units",
   "tokens",
   "externalCustomProperties",
+  "externalContainerNames",
   "unknownCustomProperties",
   "styleOtherElements",
   "properties",
@@ -914,6 +929,20 @@ function validate(config: Record<string, unknown>, path: string): void {
   const unknown = config.unknownCustomProperties;
   if (unknown !== undefined && typeof unknown !== "boolean" && unknown !== "same-block") {
     refuse(`sets \`unknownCustomProperties\` to ${describe(unknown)}. It is true, false or "same-block".`);
+  }
+
+  const containers = config.externalContainerNames;
+  if (containers !== undefined) {
+    if (!Array.isArray(containers)) {
+      refuse(`sets \`externalContainerNames\` to ${describe(containers)}. It takes a list, like ["sidebar"].`);
+    }
+    for (const one of containers as unknown[]) {
+      if (typeof one !== "string" || !/^-?[a-zA-Z_][\w-]*$/.test(one) || ["and", "or", "not", "none"].includes(one)) {
+        refuse(
+          `lists ${describe(one)} in \`externalContainerNames\`. A container name is one word, like "sidebar", and not and, or, not or none.`,
+        );
+      }
+    }
   }
 
   const external = config.externalCustomProperties;

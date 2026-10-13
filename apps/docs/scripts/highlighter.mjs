@@ -60,6 +60,7 @@ export const highlighter = await createHighlighter({
       name: "ramonda-css-hole",
       injectTo: ["source.tsx", "source.ts", "source.css"],
     },
+    { ...grammar("ramonda-css-call"), name: "ramonda-css-call", injectTo: ["source.tsx", "source.ts", "source.css"] },
     /**
      * A block written OUTSIDE a tag, and a `$` path — the two the site was missing.
      *

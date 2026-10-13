@@ -550,6 +550,13 @@ export const STRING_ALLOWED: readonly string[] = ["-apple-pay-button-style","-ap
 export const UNITS: readonly string[] = ["%","cap","ch","cm","cqb","cqh","cqi","cqmax","cqmin","cqw","deg","dpcm","dpi","dppx","dvb","dvh","dvi","dvmax","dvmin","dvw","em","ex","fr","grad","hz","ic","in","khz","lh","lvb","lvh","lvi","lvmax","lvmin","lvw","mm","ms","pc","pt","px","q","rad","rcap","rch","rem","rex","ric","rlh","s","svb","svh","svi","svmax","svmin","svw","turn","vb","vh","vi","vmax","vmin","vw","x"];
 
 /**
+ * Every function CSS has, lower-cased — each one a grammar in `mdn-data` calls, plus the ones an
+ * engine parses and no grammar names (`if`, `sibling-index`, `url`). A name in neither is one
+ * every engine refuses, so the declaration is dropped. See `unknownFunction`.
+ */
+export const FUNCTIONS: readonly string[] = ["abs","acos","add","alpha","anchor","anchor-size","annotation","asin","atan","atan2","attr","blur","brightness","calc","calc-size","character-variant","circle","clamp","color","color-mix","conic-gradient","contrast","contrast-color","cos","counter","counters","cross-fade","cubic-bezier","domain","drop-shadow","dynamic-range-limit-mix","element","ellipse","env","exp","fit-content","format","grayscale","hsl","hsla","hue-rotate","hwb","hypot","if","image","image-set","inset","invert","lab","layer","lch","leader","light-dark","linear","linear-gradient","local","log","matrix","matrix3d","max","media","media-document","min","minmax","mod","oklab","oklch","opacity","ornaments","paint","palette-mix","param","path","perspective","polygon","pow","progress","radial-gradient","random","random-item","ray","rect","regexp","rem","repeat","repeating-conic-gradient","repeating-linear-gradient","repeating-radial-gradient","reversed","rgb","rgba","rotate","rotate3d","rotatex","rotatey","rotatez","round","saturate","scale","scale3d","scalex","scaley","scalez","scroll","scroll-state","selector","sepia","shape","sibling-count","sibling-index","sign","sin","skew","skewx","skewy","snapinterval","snaplist","sqrt","steps","style","styleset","stylistic","superellipse","supports","swash","symbols","tan","target-counter","target-counters","target-text","translate","translate3d","translatex","translatey","translatez","type","url","url-prefix","var","view","xywh"];
+
+/**
  * Each unit's value TYPE, so a rule can ask whether `<angle>` accepts `12px`.
  *
  * `units.json` groups by the spec that defines a unit, not by what it is — `deg`, `px` and `s` are

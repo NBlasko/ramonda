@@ -21,7 +21,7 @@ describe("TypeScript 7, which has no JavaScript API", () => {
   test("is named, with the version installed and the one to install", () => {
     expect(withoutItsApi({ version: "7.0.2" })).toBe(
       "TypeScript 7.0.2 is installed, and it has no JavaScript API to read your source with. " +
-        "Install TypeScript 5 or 6: `npm install -D typescript@5`.",
+        "Install TypeScript 5 or 6: `npm install -D typescript@6`.",
     );
     expect(withoutItsApi({ version: "5.9.3", createProgram: () => {} })).toBeUndefined();
   });

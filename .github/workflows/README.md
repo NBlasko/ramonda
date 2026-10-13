@@ -220,7 +220,7 @@ worth knowing before adding another bot:
   as `@v4.37.3`, which would mean a pull request for every CodeQL patch release
   from then on. `@v4` already excludes the only change that can break a workflow —
   a new major — so `dependabot.yml` now ignores patch and minor for that action.
-  The exact pins elsewhere (`ossf/scorecard-action@v2.4.4`,
+  The exact pins elsewhere (`ossf/scorecard-action@v2.5.0`,
   `actions/dependency-review-action@v5.0.0`) stay, because those two publish no
   moving major tag to use instead.
 
@@ -539,11 +539,13 @@ only with the fix in hand:
   Vite 8 was held back for a while, because its Oxc transform ignored the `esbuild` block every
   vitest config used and cannot lower a TC39 decorator at all. Every config now uses `ramonda()`
   from `@ramonda/build`, which lowers them itself on Vite 8.
-- **`typescript` held at `^5.9`.** TS 7 (the native rewrite) has no JavaScript
+- **`typescript` held at `^6`.** TS 7 (the native rewrite) has no JavaScript
   API: its package exports `version` and nothing else (measured on 7.0.2), and
   `@ramonda/check`, `@ramonda/css` and the editor plugin all read source through
-  that API. Their peer ranges say `<7` for the same reason. TS 7 also removed
-  `baseUrl`, which every tsconfig here uses with `paths`.
+  that API. Their peer ranges say `<7` for the same reason, and a scaffolded
+  project gets the newest major below that. TS 7 also removes `baseUrl`, which
+  tsup's declaration build sets on its own; on 6 it is only deprecated, and
+  `tsup.dts.ts` switches that one deprecation off for that one compile.
 
 ## Deliberate gaps (the "we'll add more later" list)
 
@@ -555,7 +557,7 @@ only with the fix in hand:
   now. Escalating is one uncommented block in `.github/codeql/codeql-config.yml`,
   and the time to do it is after the default suite's findings are triaged — the
   `innerHTML` writes in `packages/devtools/src/index.ts` first.
-- **SHA-pinned actions.** Workflows pin tags (`@v7`, `@v2.4.4`), not commit SHAs.
+- **SHA-pinned actions.** Workflows pin tags (`@v7`, `@v2.5.0`), not commit SHAs.
   Scorecard marks this down, and it is right that a tag can be moved under you;
   a SHA is also unreadable and drifts silently out of date. Revisit if Dependabot's
   `github-actions` updates prove reliable enough to keep SHAs current.

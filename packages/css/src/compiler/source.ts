@@ -6,7 +6,7 @@ import { readBlock } from "./read";
 import { type Finding, checkBlock, checkNamedSite, checkSite, checkTemplates, checkText } from "./rules";
 import { type Ignored, ignoredIn, isIgnored } from "./ignore";
 import { findBlocks } from "./scan";
-import { type RegisteredSite, type VariableRead, type Variables, variablesIn } from "./variables";
+import { type ContainerRead, type RegisteredSite, type VariableRead, type Variables, variablesIn } from "./variables";
 
 /**
  * Everything the CSS rules say about one FILE's blocks.
@@ -75,6 +75,8 @@ export function checkedSource(
   const blockSets: string[] = [];
   const reads: VariableRead[] = [];
   const readsRegistered: string[] = [];
+  const containersNamed: string[] = [];
+  const containersRead: ContainerRead[] = [];
   /** Every `@@property( … )` this file declares — see {@link RegisteredSite}. */
   const registered: RegisteredSite[] = [];
   // The same reader the build uses, or none — and none means a cross-module reference stays a hole,
@@ -165,6 +167,8 @@ export function checkedSource(
       blockSets.push(...found.set);
       reads.push(...found.read);
       readsRegistered.push(...(found.readsRegistered ?? []));
+      containersNamed.push(...(found.containersNamed ?? []));
+      containersRead.push(...(found.containersRead ?? []));
     } else if (site.at === "property" && site.name !== "") {
       const name = references.get(site.name);
       if (name !== undefined) {
@@ -201,7 +205,13 @@ export function checkedSource(
      * resolves — that is what `Sheet.unknownVariables` asks. It is composed here rather than pushed
      * as it is found, so `blockSets` keeps the other answer: whether anything ever assigns one.
      */
-    variables: { set: [...blockSets, ...registered.map((one) => one.name)], read: reads, readsRegistered },
+    variables: {
+      set: [...blockSets, ...registered.map((one) => one.name)],
+      read: reads,
+      readsRegistered,
+      containersNamed,
+      containersRead,
+    },
     blockSets,
     registered,
     ignored,

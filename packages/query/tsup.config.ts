@@ -1,4 +1,5 @@
 import { defineConfig } from "tsup";
+import { dts } from "../../tsup.dts";
 
 /**
  * Two builds, dev and prod, because this package has DEV-only diagnostics of its
@@ -19,7 +20,7 @@ export default defineConfig([
   {
     entry: ["src/index.ts", "src/devtools.ts"],
     format: ["esm"],
-    dts: true,
+    dts,
     clean: true,
     target: "es2022",
     external: ["@ramonda/core"],

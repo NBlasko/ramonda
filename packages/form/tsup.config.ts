@@ -1,4 +1,5 @@
 import { defineConfig } from "tsup";
+import { dts } from "../../tsup.dts";
 
 /**
  * Two builds, dev and prod, for the same reason core, lens and query are built twice: this
@@ -17,7 +18,7 @@ export default defineConfig([
     // bguard, and a form over zod must not pull a validator it does not use into the bundle.
     entry: ["src/index.ts", "src/bguard.ts", "src/devtools.ts"],
     format: ["esm"],
-    dts: true,
+    dts,
     clean: true,
     target: "es2022",
     external: ["@ramonda/core", "bguard"],

@@ -177,6 +177,18 @@ the compiler never sees — a design system you install, a theme file — list i
 externalCustomProperties: ["--brand-hue", "--brand-chroma"],
 ```
 
+### `externalContainerNames` — container names from a stylesheet this does not compile
+
+`@container sidebar (min-width: 40rem)` is checked against every container name the build gives —
+`container: sidebar / inline-size` in any block, or `container-name` and `container-type` side by side.
+A name always comes with its type, because a name alone never answers a size condition. A name no
+element is given never matches either, so it is reported. When an outside stylesheet gives the name,
+list it:
+
+```ts
+externalContainerNames: ["sidebar"],
+```
+
 ### `unknownCustomProperties` — no names made up on the spot
 
 ```ts

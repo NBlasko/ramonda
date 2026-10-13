@@ -62,7 +62,6 @@ function project(files: Record<string, string>, shape: string | null = join(PACK
         jsx: "preserve",
         types: [],
         skipLibCheck: true,
-        baseUrl: ".",
         // What `node_modules` gives a real project. Written out so the map under test is the
         // package's own rather than a fixture.
         ...(shape === null ? {} : { paths: { "@ramonda/css/properties": [shape] } }),
@@ -1244,6 +1243,71 @@ describe("a variable nothing in the project sets", () => {
   });
 });
 
+/**
+ * A `@container` naming a container nothing in the project names. Measured in Chromium, Firefox and
+ * WebKit: `@container cardx (min-width: 20rem)` is kept and never matches when no ancestor is named
+ * `cardx` — found silent by `check-engine-sweep.mjs`. The same shape as a `var()` nothing sets, and
+ * asked where that is, because only the whole project knows every name.
+ */
+describe("a container name nothing in the project names", () => {
+  const query = (name: string) =>
+    `const a = <div className={@@(\n  @container ${name} (min-width: 20rem) { color: red; }\n)}>x</div>;\nexport default a;\n`;
+
+  test("is reported, at the name and with every way to fix it", () => {
+    const report = check({ "Card.tsx": query("cardx") });
+
+    expect(report.findings.map((one) => one.code)).toEqual(["container-name-not-set"]);
+    expect(report.findings[0].line).toBe(2);
+    expect(report.findings[0].column).toBe(14);
+    expect(report.findings[0].message).toContain("nothing in this build names a container `cardx`");
+    // The advice gives the type too: a name alone never answers a size condition, in any engine.
+    expect(report.findings[0].message).toContain("container: cardx / inline-size");
+    expect(report.findings[0].message).toContain("externalContainerNames");
+  });
+
+  test.each([
+    ["by `container-name`", "  container-name: card;\n  container-type: inline-size;"],
+    ["among several", "  container-name: sidebar card;\n  container-type: inline-size;"],
+    ["by the `container` shorthand", "  container: card / inline-size;"],
+  ])("a name another file gives %s is fine", (_what, body) => {
+    const report = check({
+      "Layout.tsx": `const l = <div className={@@(\n${body}\n)}>x</div>;\nexport default l;\n`,
+      "Card.tsx": query("card"),
+    });
+
+    expect(report.findings).toEqual([]);
+  });
+
+  test("a near miss in another file is offered", () => {
+    const report = check({
+      "Layout.tsx": `const l = <div className={@@(\n  container: sidebar / inline-size;\n)}>x</div>;\nexport default l;\n`,
+      "Card.tsx": query("sidebr"),
+    });
+
+    expect(report.findings).toHaveLength(1);
+    expect(report.findings[0].message).toContain("Did you mean `sidebar`?");
+  });
+
+  test("a name the config says comes from elsewhere is fine", () => {
+    const report = check({
+      "ramonda.css.ts": `export default { externalContainerNames: ["card"] };\n`,
+      "Card.tsx": query("card"),
+    });
+
+    expect(report.findings).toEqual([]);
+  });
+
+  test.each([
+    ["no name at all", "  @container (min-width: 20rem) { color: red; }"],
+    ["a style query", "  @container style(--theme: dark) { color: red; }"],
+    ["not in front", "  @container not (width > 30em) { color: red; }"],
+  ])("%s is silent", (_what, body) => {
+    const report = check({ "Card.tsx": `const a = <div className={@@(\n${body}\n)}>x</div>;\nexport default a;\n` });
+
+    expect(report.findings).toEqual([]);
+  });
+});
+
 describe("the type a block has", () => {
   test("a binding holding a block is a block, not `never`", () => {
     const report = check({
@@ -1345,9 +1409,33 @@ describe("a refusal, and the files that read anyway", () => {
     expect(said[0].code).toBe("unknown-property");
   });
 
-  /** The compiler's own word stays out, which is what the refusal is about. */
-  test("while no TypeScript diagnostic is reported at all", () => {
-    expect(check(files).findings.filter((one) => typeof one.code === "number" && one.code !== 0)).toEqual([]);
+  /** The compiler's own word about the REFUSED file stays out, which is what the refusal is about. */
+  test("while no TypeScript diagnostic is reported about the file that was refused", () => {
+    const typed = check(files).findings.filter((one) => typeof one.code === "number" && one.code !== 0);
+    expect(typed.filter((one) => one.file.includes("Card.tsx"))).toEqual([]);
+  });
+
+  /**
+   * A fault only the TYPES see, in a file that read perfectly. Measured 2026-10-12: the whole type
+   * check was skipped on any refusal, so `position: absolutex` beside one broken block anywhere
+   * compiled clean — the docstring above promised the opposite, and its own example is a fault a
+   * RULE reports, so it never showed. Found by `check-engine-sweep.mjs`.
+   */
+  test("and a fault only the types see, in another file, is reported", () => {
+    const said = check({
+      ...files,
+      "Typed.tsx": "export const fourth = @@(\n  position: absolutex;\n);\n",
+    }).findings.filter((one) => one.file.includes("Typed.tsx"));
+    expect(said.map((one) => one.code)).toEqual([2820]);
+  });
+
+  /** A file that IMPORTS from the refused one is not blamed for what the refusal left behind. */
+  test("and a file importing from the refused one is not blamed for it", () => {
+    const said = check({
+      ...files,
+      "Uses.tsx": 'import { first } from "./Card";\nexport const both = [first, @@( position: absolute; )];\n',
+    }).findings.filter((one) => one.file.includes("Uses.tsx"));
+    expect(said).toEqual([]);
   });
 });
 
@@ -2641,7 +2729,7 @@ describe("a `$` token in a whole shorthand from another block", () => {
           "ramonda.css.ts": CONFIG,
           "Card.tsx": `const base = @@( ${base} );\nexport const card = @@( ...$(base); ${card} );\n`,
         },
-        "src/props.ts",
+        "./src/props.ts",
       ),
     ).findings;
 

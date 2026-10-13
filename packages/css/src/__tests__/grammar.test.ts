@@ -79,6 +79,8 @@ beforeAll(async () => {
       // Into `source.css` as well: the hole sits inside a CSS declaration's value, and by then the
       // CSS grammar is the one tokenising.
       { ...load("ramonda-css-hole"), name: "ramonda-css-hole", injectTo: ["source.tsx", "source.css"] },
+      // After the CSS grammar's own patterns: a call to a function it does not know. See its comment.
+      { ...load("ramonda-css-call"), name: "ramonda-css-call", injectTo: ["source.tsx", "source.css"] },
       {
         ...load("ramonda-css-variable"),
         name: "ramonda-css-variable",
@@ -864,5 +866,28 @@ describe("the other places an escape stands", () => {
     expect(scopeOf(code, "pick")).toBe("entity.name.function.tsx");
     expect(scopeOf(code, "display")).toBe("support.type.property-name.css");
     expect(scopeOf(code, "after")).toBe("variable.other.constant.tsx");
+  });
+});
+
+/**
+ * A call to a function the CSS grammar does not know — `d(--accent)`, a slip for `var(` — is still a
+ * pair of brackets. The CSS grammar colours only the functions it knows, so the `)` closing `d(` was
+ * the first one left, and it ended the BLOCK: the `(` then had no partner, and an editor painted it red
+ * with no message to explain it. A user found it typing over a working `var()`.
+ */
+describe("a function the CSS grammar does not know", () => {
+  const CODE = "const a = @@( border-left: 4px solid d(--accent); color: red; );\n";
+
+  test("its brackets are a pair, and the block ends where it ends", () => {
+    const scopes = scopesOf(CODE);
+    const ends = scopes.filter((token) => token.scope === "punctuation.section.embedded.end.ramonda");
+    expect(ends).toHaveLength(1);
+    // The declaration after it is still read as CSS — the block did not end early.
+    expect(scopes.find((token) => token.text === "color")?.scope).toBe("support.type.property-name.css");
+  });
+
+  test("and a function the CSS grammar knows keeps its own colour", () => {
+    const known = scopesOf("const a = @@( color: rgb(1 2 3); );\n");
+    expect(known.find((token) => token.text === "rgb")?.scope).toBe("support.function.misc.css");
   });
 });
