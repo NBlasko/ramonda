@@ -1,7 +1,13 @@
 # Ramonda CSS
 
-## Unreleased
+## 0.7.0
 
+- **Goes with `@ramonda/css` 0.10.0.** The copy of the compiler this extension carries, for a
+  project that has none of its own, is the new one. It brings 0.10.0's checks to such a project: a
+  value its property's grammar cannot read (`rgb(1x 2 3)`, `calc(100 - 2rem)`), a function or a unit
+  CSS does not have, a unit of the wrong kind (`z-index: 2x`), a broken hex colour, `@media`,
+  `@container` and `@supports` conditions that never match, a selector a browser drops, and a
+  container named without its type.
 - **A call to a function CSS does not have no longer ends the block.** `d(--accent)`, a slip for
   `var(`, had its `)` read as the block's own, so the `(` had no partner and was painted red with no
   message. The brackets pair now, and `@ramonda/css` names the slip: `unknown-function`.
