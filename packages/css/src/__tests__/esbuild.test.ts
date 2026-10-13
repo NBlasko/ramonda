@@ -675,3 +675,13 @@ describe("a name the whole build has to know", () => {
     expect(spoken(failed as esbuild.BuildFailure)).toContain("nothing in this build sets `--nobody`");
   });
 });
+
+/** Found in review: the rule is a build error like every other — asked of a real build, not assumed. */
+test("a container named without its type stops the build", async () => {
+  const root = project({ "index.tsx": "export const a = <div className={@@( container: card; )}>x</div>;\n" });
+  const failed = await build(root).then(
+    () => undefined,
+    (error: unknown) => error,
+  );
+  expect(spoken(failed as esbuild.BuildFailure)).toContain("container-without-a-type");
+});

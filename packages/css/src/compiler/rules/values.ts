@@ -13,6 +13,7 @@ import {
   UNIT_TYPE,
 } from "../keywords.generated";
 import { splitOf, tokensOf } from "../split";
+import { holdsVar } from "../holdsVar";
 import { valueMatchesGrammar } from "../validateValue";
 import { ENGINE_OPEN } from "../keywords.engine.generated";
 import { canonicalValue, propertyName } from "../normalise";
@@ -815,6 +816,9 @@ export function containerWithoutAType(block: Block, findings: Finding[]): void {
     const text = withoutImportant(part.text).trim();
     if (text === "" || text.toLowerCase() === "none") continue;
     if (property === "container" && text.includes("/")) continue;
+    // A `var()` in the shorthand may hold the type as well — `--c: card / inline-size` — so it is not
+    // judged; one in `container-name` is a name and nothing more, and still wants its type.
+    if (property === "container" && holdsVar(text)) continue;
     if (property === "container-name" && typed) continue;
     findings.push({
       rule: "container-without-a-type",

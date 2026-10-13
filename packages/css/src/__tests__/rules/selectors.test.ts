@@ -816,6 +816,8 @@ describe("a container named without its type", () => {
     ["the shorthand with a name alone", "  container: card;"],
     ["several names", "  container: card sidebar;"],
     ["the name longhand alone", "  container-name: card;"],
+    // A `var()` in the NAME longhand is a name and nothing else, so the type is still missing.
+    ["the name longhand through a var()", "  container-name: var(--n);"],
   ])("%s is reported", (_what, css) => {
     expect(rules(css)).toContain("container-without-a-type");
   });
@@ -833,6 +835,8 @@ describe("a container named without its type", () => {
     ["no name at all", "  container-type: inline-size;"],
     ["no container", "  container: none;"],
     ["a name of none", "  container-name: none;"],
+    // Found in review: a `var()` in the SHORTHAND may hold the type too — `--c: card / inline-size`.
+    ["the shorthand through a var()", "  container: var(--c);"],
   ])("%s is silent", (_what, css) => {
     expect(rules(css)).not.toContain("container-without-a-type");
   });
