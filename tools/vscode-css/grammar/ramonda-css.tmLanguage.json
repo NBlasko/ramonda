@@ -1,0 +1,382 @@
+{
+  "scopeName": "ramonda.css-block",
+  "injectionSelector": "L:meta.tag.tsx -meta.jsx.children -string -comment, L:meta.tag.jsx -meta.jsx.children -string -comment, L:meta.tag.ts -meta.jsx.children -string -comment, L:meta.tag.js -meta.jsx.children -string -comment",
+  "patterns": [
+    {
+      "include": "#block"
+    }
+  ],
+  "repository": {
+    "block": {
+      "begin": "(?<=\\s)([\\w:$-]+)\\s*(=)\\s*(@@)(\\()",
+      "beginCaptures": {
+        "1": {
+          "name": "entity.other.attribute-name"
+        },
+        "2": {
+          "name": "keyword.operator.assignment"
+        },
+        "3": {
+          "name": "keyword.control.ramonda"
+        },
+        "4": {
+          "name": "punctuation.section.embedded.begin.ramonda"
+        }
+      },
+      "end": "(\\))",
+      "endCaptures": {
+        "1": {
+          "name": "punctuation.section.embedded.end.ramonda"
+        }
+      },
+      "contentName": "meta.embedded.block.css",
+      "patterns": [
+        {
+          "include": "#innards"
+        }
+      ],
+      "comment": "The lookbehind mirrors the compiler's own scanner, which requires whitespace before the name. This pattern is only the BARE attribute form, where the name and the `=` are coloured too; a block in expression position is `ramonda.css-value`. The `@@` is this language's MARKER and is coloured as one wherever it appears. It opens a BLOCK and nothing else does: `when $( … )` and `...$( … )` carry no `@@`, because inside a block the language is the block's own. A user reported the two characters coming out as punctuation in one place and a keyword in another, which is a reader having to learn that the same marker means two things. The BRACKET keeps `punctuation.section.embedded.begin`, and that is not cosmetic: it is what pairs with the `contentName` an editor reads to treat the inside as CSS."
+    },
+    "innards": {
+      "comment": "Order is the whole of it. A hole is ONE brace, and so is a nested rule's body — so every pattern that can recognise a hole from its POSITION runs before `#nested`, which would otherwise read `color: ` as a selector and the hole as a rule list. Measured: it did exactly that, and the CSS grammar agreed with it, scoping `accent` as a property name.",
+      "patterns": [
+        {
+          "include": "#composition"
+        },
+        {
+          "include": "#block-match"
+        },
+        {
+          "include": "#hole-in-a-name"
+        },
+        {
+          "include": "#declaration-with-a-match"
+        },
+        {
+          "include": "#nested"
+        },
+        {
+          "include": "#group"
+        },
+        {
+          "include": "source.css#rule-list-innards"
+        }
+      ]
+    },
+    "nested": {
+      "comment": "A nested rule. The editor's CSS grammar has no pattern for one — measured, `&:hover {` comes back as a property whose value is `hover {` — so the block handles nesting itself. It runs LAST among the brace patterns: everything that can tell a hole by its position has already had the line, so a `{` reaching here opens a rule.",
+      "begin": "([^;{}]+?)(\\{)",
+      "beginCaptures": {
+        "1": {
+          "patterns": [
+            {
+              "comment": "`&` is CSS nesting's own, and the editor's CSS grammar has no pattern for it either.",
+              "match": "&",
+              "name": "entity.other.attribute-name.parent-selector.css"
+            },
+            {
+              "include": "source.css#selector-innards"
+            }
+          ]
+        },
+        "2": {
+          "name": "punctuation.section.property-list.begin.bracket.curly.css"
+        }
+      },
+      "end": "(\\})",
+      "endCaptures": {
+        "1": {
+          "name": "punctuation.section.property-list.end.bracket.curly.css"
+        }
+      },
+      "patterns": [
+        {
+          "include": "#innards"
+        }
+      ]
+    },
+    "composition": {
+      "comment": "The block's own words: `when $( … )`, `else when $( … )`, a bare `else`, and `...$( … )`. Each is a keyword and each escape is TypeScript; the `{ … }` that follows a condition is an ordinary group, read by `nested` or `group`.",
+      "patterns": [
+        {
+          "begin": "\\s*\\b(?:(else)\\s+)?(when)\\s*(\\$)(\\()",
+          "beginCaptures": {
+            "1": {
+              "name": "keyword.control.ramonda"
+            },
+            "2": {
+              "name": "keyword.control.ramonda"
+            },
+            "3": {
+              "name": "keyword.control.ramonda"
+            },
+            "4": {
+              "name": "punctuation.section.embedded.begin.ramonda"
+            }
+          },
+          "end": "(\\))",
+          "endCaptures": {
+            "1": {
+              "name": "punctuation.section.embedded.end.ramonda"
+            }
+          },
+          "contentName": "meta.embedded.expression.tsx",
+          "patterns": [
+            {
+              "include": "source.tsx"
+            }
+          ]
+        },
+        {
+          "match": "\\s*\\b(else)\\b(?=\\s*\\{)",
+          "captures": {
+            "1": {
+              "name": "keyword.control.ramonda"
+            }
+          }
+        },
+        {
+          "begin": "\\s*(\\.\\.\\.)\\s*(\\$)(\\()",
+          "beginCaptures": {
+            "1": {
+              "name": "keyword.control.ramonda"
+            },
+            "2": {
+              "name": "keyword.control.ramonda"
+            },
+            "3": {
+              "name": "punctuation.section.embedded.begin.ramonda"
+            }
+          },
+          "end": "(\\))",
+          "endCaptures": {
+            "1": {
+              "name": "punctuation.section.embedded.end.ramonda"
+            }
+          },
+          "contentName": "meta.embedded.expression.tsx",
+          "patterns": [
+            {
+              "include": "source.tsx"
+            }
+          ]
+        }
+      ]
+    },
+    "hole-in-a-name": {
+      "comment": "`$(angle): 45deg` — an escape where a property name goes, which is how a registered property is set.",
+      "begin": "\\s*(\\$)(\\()(?=[^()]*\\)\\s*:)",
+      "beginCaptures": {
+        "1": {
+          "name": "keyword.control.ramonda"
+        },
+        "2": {
+          "name": "punctuation.section.embedded.begin.ramonda"
+        }
+      },
+      "end": "(\\))",
+      "endCaptures": {
+        "1": {
+          "name": "punctuation.section.embedded.end.ramonda"
+        }
+      },
+      "contentName": "meta.embedded.expression.tsx",
+      "patterns": [
+        {
+          "include": "source.tsx"
+        }
+      ]
+    },
+    "block-match": {
+      "comment": "`match $( … ) { key => ( … ); … }` at the head of an item: the word, its subject, and the arms inside the braces.",
+      "begin": "\\s*\\b(match)(?=\\s*\\$\\()",
+      "beginCaptures": {
+        "1": {
+          "name": "keyword.control.ramonda"
+        }
+      },
+      "end": "(\\})",
+      "endCaptures": {
+        "1": {
+          "name": "punctuation.section.property-list.end.bracket.curly.css"
+        }
+      },
+      "patterns": [
+        {
+          "comment": "The subject.",
+          "begin": "(\\$)(\\()",
+          "beginCaptures": {
+            "1": {
+              "name": "keyword.control.ramonda"
+            },
+            "2": {
+              "name": "punctuation.section.embedded.begin.ramonda"
+            }
+          },
+          "end": "(\\))",
+          "endCaptures": {
+            "1": {
+              "name": "punctuation.section.embedded.end.ramonda"
+            }
+          },
+          "contentName": "meta.embedded.expression.tsx",
+          "patterns": [
+            {
+              "include": "source.tsx"
+            }
+          ]
+        },
+        {
+          "match": "(\\{)",
+          "captures": {
+            "1": {
+              "name": "punctuation.section.property-list.begin.bracket.curly.css"
+            }
+          }
+        },
+        {
+          "include": "source.css#comment-block"
+        },
+        {
+          "comment": "One arm, `key => ( … );` — the key, the arrow, and the declarations it applies, read as any group's are.",
+          "begin": "\\s*([^\\s=;{}()][^=;{}()]*?)\\s*(=>)\\s*(\\()",
+          "beginCaptures": {
+            "1": {
+              "name": "constant.other.key.ramonda"
+            },
+            "2": {
+              "name": "keyword.operator.ramonda"
+            },
+            "3": {
+              "name": "punctuation.section.arm.begin.ramonda"
+            }
+          },
+          "end": "(\\))\\s*(;)?",
+          "endCaptures": {
+            "1": {
+              "name": "punctuation.section.arm.end.ramonda"
+            },
+            "2": {
+              "name": "punctuation.terminator.rule.css"
+            }
+          },
+          "patterns": [
+            {
+              "include": "#innards"
+            }
+          ]
+        }
+      ]
+    },
+    "declaration-with-a-match": {
+      "comment": "A declaration whose value is a `match` — the one value that holds braces, so without this the CSS grammar reads `color: match $(t) {` as a nested rule's selector.",
+      "begin": "(?=\\s*(?:--)?[-\\w]+\\s*:\\s*match\\s*\\$\\()\\s*((?:--)?[-\\w]+)\\s*(:)",
+      "beginCaptures": {
+        "1": {
+          "name": "support.type.property-name.css"
+        },
+        "2": {
+          "name": "punctuation.separator.key-value.css"
+        }
+      },
+      "end": "(;)|(?=\\})",
+      "endCaptures": {
+        "1": {
+          "name": "punctuation.terminator.rule.css"
+        }
+      },
+      "patterns": [
+        {
+          "begin": "\\b(match)(?=\\s*\\$\\()",
+          "beginCaptures": {
+            "1": {
+              "name": "keyword.control.ramonda"
+            }
+          },
+          "end": "(\\})",
+          "endCaptures": {
+            "1": {
+              "name": "punctuation.section.match.end.ramonda"
+            }
+          },
+          "patterns": [
+            {
+              "comment": "The subject.",
+              "begin": "(\\$)(\\()",
+              "beginCaptures": {
+                "1": {
+                  "name": "keyword.control.ramonda"
+                },
+                "2": {
+                  "name": "punctuation.section.embedded.begin.ramonda"
+                }
+              },
+              "end": "(\\))",
+              "endCaptures": {
+                "1": {
+                  "name": "punctuation.section.embedded.end.ramonda"
+                }
+              },
+              "contentName": "meta.embedded.expression.tsx",
+              "patterns": [
+                {
+                  "include": "source.tsx"
+                }
+              ]
+            },
+            {
+              "match": "(\\{)",
+              "captures": {
+                "1": {
+                  "name": "punctuation.section.match.begin.ramonda"
+                }
+              }
+            },
+            {
+              "match": "(=>)",
+              "captures": {
+                "1": {
+                  "name": "keyword.operator.ramonda"
+                }
+              }
+            },
+            {
+              "match": "(;)",
+              "captures": {
+                "1": {
+                  "name": "punctuation.terminator.arm.ramonda"
+                }
+              }
+            },
+            {
+              "include": "ramonda.css-variable#variable"
+            },
+            {
+              "include": "source.css#property-values"
+            }
+          ]
+        }
+      ]
+    },
+    "group": {
+      "comment": "A `{ … }` with nothing in front of it on the line — the body after `when $( … )`, `else` or `} else`, written tight.",
+      "begin": "(\\{)",
+      "beginCaptures": {
+        "1": {
+          "name": "punctuation.section.property-list.begin.bracket.curly.css"
+        }
+      },
+      "end": "(\\})",
+      "endCaptures": {
+        "1": {
+          "name": "punctuation.section.property-list.end.bracket.curly.css"
+        }
+      },
+      "patterns": [
+        {
+          "include": "#innards"
+        }
+      ]
+    }
+  }
+}

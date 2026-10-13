@@ -4,7 +4,7 @@ description: Install pnpm, Node.js and workspace dependencies from the frozen lo
 # A composite action so every job sets up the toolchain identically and in one
 # place — bump the Node version or the install flags here and every workflow
 # follows. pnpm is installed BEFORE setup-node so that `cache: pnpm` can find the
-# store, and the version comes from the root `packageManager` field (pnpm@9), so
+# store, and the version comes from the root `packageManager` field, so
 # CI can never drift from what the repo pins.
 runs:
   using: composite
@@ -13,7 +13,7 @@ runs:
       uses: pnpm/action-setup@v6
 
     - name: Install Node.js
-      uses: actions/setup-node@v5
+      uses: actions/setup-node@v7
       with:
         # The one place the version is decided; release.yml's setup-node reads it
         # from `.nvmrc` rather than repeating it. Node 20 left support in April
@@ -27,3 +27,29 @@ runs:
       # silently resolving something new — CI must build the exact tree the PR
       # author committed.
       run: pnpm install --frozen-lockfile
+
+    # Turbo's own cache, carried between runs. Without it every run rebuilt and
+    # re-tested every package, including the ones a pull request never touched —
+    # measured 2026-09-14, the `test` job is 2438s of CPU work across 15 packages,
+    # and a branch that edits `packages/css` leaves about 1600s of that unchanged.
+    #
+    # Turbo keys each task by its own inputs, so a restored cache is consulted
+    # per task rather than all-or-nothing: the packages a branch did touch still
+    # run. That is why the key below does not try to be clever about contents —
+    # it only has to deliver the most recent cache, and turbo decides what of it
+    # still applies.
+    #
+    # Size is not a concern here, measured: entries average 0.1 MB and the largest
+    # is 3 MB, so one run's worth is tens of megabytes against GitHub's 10 GB.
+    #
+    # `github.sha` in the key so each run saves its own entry and nothing has to be
+    # evicted to make room; the restore-keys walk back to this job's last cache,
+    # then to any job's.
+    - name: Cache turbo
+      uses: actions/cache@v6
+      with:
+        path: .turbo/cache
+        key: turbo-${{ runner.os }}-${{ github.job }}-${{ github.sha }}
+        restore-keys: |
+          turbo-${{ runner.os }}-${{ github.job }}-
+          turbo-${{ runner.os }}-

@@ -27,6 +27,7 @@ for (const folder of [
   "check",
   "build",
   "server",
+  "css",
 ]) {
   const pkg = JSON.parse(readFileSync(new URL(`../${folder}/package.json`, import.meta.url), "utf8")) as {
     name: string;

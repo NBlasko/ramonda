@@ -1,5 +1,5 @@
 ---
-title: Setup
+title: Testing
 description: Test a Ramonda app with the DOM Testing Library plus the few pieces only Ramonda can provide.
 section: Testing
 order: 100
@@ -7,9 +7,8 @@ order: 100
 
 # Testing
 
-```
-pnpm add -D @ramonda/testing-library @testing-library/dom
-```
+A test renders a component, finds what a person would see, acts on it and checks the result — with
+the DOM Testing Library's queries, and the few pieces only Ramonda can provide:
 
 ```tsx
 import { render, screen, fireEvent } from "@ramonda/testing-library";
@@ -22,6 +21,14 @@ test("counts up", () => {
 ```
 
 No `await`, no `settle()`, no cleanup call. That is the point of the package.
+
+## Install
+
+Two packages, as development dependencies — this one, and the DOM Testing Library it builds on:
+
+```install
+-D @ramonda/testing-library @testing-library/dom
+```
 
 ## What it adds
 
@@ -42,12 +49,17 @@ A few things are Ramonda's, because only Ramonda can know them:
 
 ```ts
 // vitest.config.ts
+import { ramonda } from "@ramonda/build/vite";
+
 export default defineConfig({
   define: { __DEV__: JSON.stringify(process.env.NODE_ENV !== "production") },
-  esbuild: { jsx: "automatic", jsxImportSource: "@ramonda/core", target: "es2022" },
+  plugins: [ramonda()],
   test: { globals: true, environment: "jsdom", setupFiles: ["./test/setup.ts"] },
 });
 ```
+
+The tests go through the same transform as the app, so they get the same plugin. That
+is not only tidiness: on Vite 8 nothing else lowers the decorators.
 
 There is no setup file to write for JSX. The compiler imports Ramonda's runtime per file, so
 nothing has to be put on `globalThis` and there is no factory name to keep in step with the config.

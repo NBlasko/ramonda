@@ -127,3 +127,60 @@ framework used to do. That knowledge lives in the git history and in the source'
 which is the one job the diff-writing this repository does so much of is genuinely for.
 
 The real answer is a reader who is not us. Until there is one, these are the proxies.
+
+## OPEN, for Monday: the reader who is not us read it, and the answer was bad
+
+2026-09-11. The repository owner read `/style-blocks` as a reader and said so plainly: *"generalno
+je mnogo losa … ovo je porazavajuce"*. That is the verdict this checklist says it cannot produce,
+from the only person who can produce it, and it is the one that counts.
+
+**It is not one page.** The style-blocks pages were written and reviewed the same week and still came
+out this way, so the fault is in how pages get written here, not in a page.
+
+What is already known about the how, from that week alone:
+
+- **A split lost thirteen sections**, including the package's central semantics — the four rules that
+  decide which of two declarations wins. Found by a mechanical walk of the old outline, not by
+  reading the result. The line count made it look like tidying.
+- **Three live factual errors** sat on the published page: an extension described as *"not published
+  yet"* a week after it shipped, Prettier and biome given one instruction where they need opposite
+  ones, and a syntax led with that the project had decided against and never writes.
+- **Every one of the seven checks above passed** on those pages. So did `check-examples`, which
+  proves an example COMPILES and nothing else.
+- **A page told the reader what to do with their own machine.** It read *"Never put that line in your
+  user settings"* — about `editor.defaultFormatter`, which is theirs and not ours. The user's
+  objection was the right one: *"zasto im pas kazes nikad, zasto se uopste uplices u to"*. The page
+  says what the setting DOES now, in a table, and the reader decides. The voice rule above is about
+  TENSE and does not name this, which is the point: two voice failures in one week, one of them not
+  on the list.
+
+**The task, and it is a research task first.** Find out what actually produces good documentation
+here — a different model, a different prompt shape, a human pass, a reader-facing test, or the
+admission that a checklist written by the same hand that writes the pages cannot catch what it
+misses. Bring evidence, not a preference: take one bad page, have two or three approaches rewrite
+it, and have somebody who does not know the framework read the results cold.
+
+Do not start by rewriting pages. The pages have been rewritten twice already.
+
+## Worked strict configs, instead of a published preset
+
+`@ramonda/css` ships the mechanism for project-level strictness and **no preset** — decided
+2026-09-14, and `packages/css/DESIGN.md` has the argument. What takes a preset's place is pages: a
+few worked `ramonda.css.ts` configs, from mildest to strictest, for somebody who wants to start
+strict and does not want to derive it themselves.
+
+Two things make this worth doing here rather than as a package:
+
+- A copied config is **theirs**. No version to upgrade under them, no spread to forget — which is
+  the silent failure a preset invites and which this design refused once already.
+- A config on a page is **checked**. `check-examples.mjs` type-checks every ```ts and ```tsx fence,
+  so an example is compiled against the real `Config` type on every run: a property that does not
+  exist, an arity CSS does not give, a unit that is not one — each refused before the page ships.
+
+**And the limit of that, which the writing has to cover.** The gate proves an example compiles, not
+that it is good advice — a config forbidding something worth having would pass it. So each row needs
+its argument on the page, not just its syntax. The trap already named in `DESIGN.md` is the one to
+open with: `"*": { arity: 1 }` reads as the obvious strict default and it forbids `margin: 0 auto`.
+
+The one row with evidence behind it today is the 124 vendor-prefixed properties whose unprefixed form
+also exists — `-moz-appearance` beside `appearance` — which is derivable rather than opinionated.

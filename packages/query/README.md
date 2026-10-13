@@ -147,4 +147,4 @@ Set them on a query, or on the provider as `defaults` for the whole tree.
 
 ## License
 
-[MIT](../../LICENSE) © Nikola Blagojević
+[MIT](./LICENSE) © Nikola Blagojević

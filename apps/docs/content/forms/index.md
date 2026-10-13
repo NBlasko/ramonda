@@ -12,12 +12,6 @@ state part Ramonda already does. `@ramonda/form` is the rest of it: one hook tha
 values, runs the schema, decides when a message is ready to be seen, and hands each field
 everything an `<input>` needs.
 
-```sh
-pnpm add @ramonda/form
-```
-
-A new project can take it at scaffold time — `npm create ramonda@latest` offers it as an add-on.
-
 ## The whole thing
 
 ```tsx
@@ -92,6 +86,16 @@ could know about.
 
 ```demo:FormDemo
 ```
+
+## Install
+
+A separate package, beside `@ramonda/core`:
+
+```install
+@ramonda/form
+```
+
+A new project can take it at scaffold time — `npm create ramonda@latest` offers it as an add-on.
 
 ## `Form<typeof schema>` — why the pin
 
@@ -201,17 +205,12 @@ That comparison is the whole cost of defaults that did not move: around 2 µs on
 15 µs on a hundred-field one, per render of the owner, and no write and no render follow it.
 `values` even stays the same object.
 
-## Where to go next
-
-- [Fields](/forms/fields) — the tree, `$`, `bind`, and nested objects
-- [Validation](/forms/validation) — schemas, when messages appear, cross-field rules
-- [Array fields](/forms/arrays) — rows that survive a splice
-- [On the server](/forms/server) — what a form does during SSR, and what it does on hydration
-- [The bguard submodule](/forms/bguard) — HTML attributes from the schema, and a check for typo'd cross-field rules
-
 ## Next
 
 - [Fields](/forms/fields) — the field tree in full: property access instead of string paths, and
   what `bind` hands a control.
 - [Validation](/forms/validation) — a schema from any Standard Schema library, and when a message
   is ready to be seen.
+- [Array fields](/forms/arrays) — rows that survive a splice
+- [On the server](/forms/server) — what a form does during SSR, and what it does on hydration
+- [The bguard submodule](/forms/bguard) — HTML attributes from the schema, and a check for typo'd cross-field rules

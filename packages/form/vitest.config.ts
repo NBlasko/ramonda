@@ -2,20 +2,16 @@ import { resolve } from "node:path";
 import { defineConfig } from "vitest/config";
 import { coverage } from "../../vitest.coverage.mjs";
 import { hookTimeout, testTimeout } from "../../vitest.timeout.mjs";
+import { ramonda } from "@ramonda/build/vite";
 
 export default defineConfig({
   define: {
     __DEV__: 'process.env.NODE_ENV !== "production"',
     __TEST__: "true",
   },
-  // Both transformers are configured for the same reason the query package does it:
-  // Vite 7 uses esbuild and Vite 8 uses oxc, and with both present oxc wins and the
-  // esbuild block is ignored entirely. This package has no vite of its own.
-  esbuild: {
-    jsx: "automatic",
-    jsxImportSource: "@ramonda/core",
-    target: "es2022",
-  },
+  // The plugin an app uses. It sets the JSX runtime, and lowers the decorators on Vite 8, where
+  // Oxc cannot and an `esbuild` block here is only translated into Oxc's settings.
+  plugins: [ramonda()],
   resolve: {
     alias: {
       // The `/testing` alias must come FIRST — a string alias matches by prefix.

@@ -250,6 +250,27 @@ production throws. It is [above](#something-re-renders-forever).
 
 ---
 
+### My editor says `Token end is child end` on a file with a style block
+
+Or: the colours in a block are right and the squiggles are nonsense; *Format Document* rewrites a
+block into something else.
+
+```
+[error] [vscode.typescript-language-features] provider FAILED
+[error] Error: <syntax> TypeScript Server Error (5.9.3)
+Debug Failure. False expression: Token end is child end
+```
+
+An editor runs two TypeScript servers, and the one that owns formatting and folding never reads your
+`tsconfig.json` — so the plugin named there never reaches it, and it parses a block as plain
+TypeScript. Install the extension, which carries the plugin to both:
+
+```sh
+code --install-extension ramonda.css
+```
+
+See [style blocks](/style-blocks).
+
 ## There is a message and I do not know what it means
 
 Every message carries a code. `RMD` is the framework itself, `RMQ` is queries, `RMF` is forms,

@@ -137,7 +137,11 @@ console.log(`[docs] ${"(not found)".padEnd(24)} → dist/404.html  ${Buffer.byte
  * the redirect works for a crawler and costs no JavaScript. `301` because these are
  * permanent — the old paths are not coming back.
  */
-const redirects = [["/concepts/effects", "/concepts/subscriptions", 301]];
+const redirects = [
+  ["/concepts/effects", "/concepts/subscriptions", 301],
+  // Tokens stopped being called "variables" — the page was /style-blocks/variables.
+  ["/style-blocks/variables", "/style-blocks/tokens", 301],
+];
 
 writeFileSync(join(dist, "_redirects"), `${redirects.map(([from, to, code]) => `${from} ${to} ${code}`).join("\n")}\n`);
 console.log(`[docs] ${"(redirects)".padEnd(24)} → dist/_redirects  ${redirects.length} rule(s)`);

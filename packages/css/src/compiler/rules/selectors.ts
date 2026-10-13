@@ -1,0 +1,1099 @@
+/** Rules about a nested rule's selector or at-rule: unknown, out of place, or reaching another element. */
+
+import {
+  AT_RULE_LINKS,
+  FUNCTIONS,
+  MEDIA_FEATURES,
+  NOT_IN_A_RULE,
+  PROPERTIES,
+  SELECTORS,
+  UNITS,
+} from "../keywords.generated";
+import { MEDIA_KINDS, MEDIA_WORDS } from "../mediaValues.generated";
+import { nearest } from "../nearest";
+import { branchOf } from "../read";
+import { selectorsOf, type Block, type BlockItem, type NestedRule, rulesIn } from "./shared";
+import { type Finding } from "./index";
+import { typedInto } from "./namedSites";
+import { endOfCall, endOfString } from "./text";
+import { PREFIXES } from "./properties";
+import {
+  KNOWN_UNITS,
+  NUMBER,
+  PERCENTAGE,
+  customFunction,
+  invalidHexColor,
+  unknownFunction,
+  unknownUnit as unknownUnitIn,
+  unknownValue,
+} from "./values";
+import type { Declaration } from "../ast";
+import { valueMatchesGrammar } from "../validateValue";
+
+const KNOWN_CALLS = new Set(FUNCTIONS);
+
+/**
+ * A selector whose subject is another element, in a project that keeps a block to its own element.
+ *
+ * A parent reaching into a child (`.title { … }`, `& > img`) or a sibling (`& + .card`) makes two
+ * independently composed elements depend on each other, and neither file says so. The SUBJECT is
+ * the last compound — what follows the last combinator — and a selector is the element's own when
+ * `&` is in it: `&:hover`, `&::before`, `&.active`, `&:has(> img)` and `[data-theme="dark"] &` all
+ * style this element. A nested selector with no `&` is relative, so it means a descendant, as CSS
+ * nesting reads it. A condition and a group (`@media`, `when`) are not selectors. Inside a rule
+ * already reported, nothing more is said — the one report is the fault.
+ */
+export function stylesAnotherElement(block: Block, findings: Finding[]): void {
+  const subjectOf = (selector: string): string => {
+    let depth = 0;
+    let quote = "";
+    let last = 0;
+    for (let index = 0; index < selector.length; index++) {
+      const char = selector[index];
+      if (quote !== "") {
+        if (char === "\\") index++;
+        else if (char === quote) quote = "";
+        continue;
+      }
+      if (char === '"' || char === "'") quote = char;
+      else if (char === "(" || char === "[") depth++;
+      else if (char === ")" || char === "]") depth--;
+      else if (depth === 0 && /[\s>+~]/.test(char)) last = index + 1;
+    }
+    return selector.slice(last).trim();
+  };
+  const walkItems = (items: readonly BlockItem[]): void => {
+    for (const item of items) {
+      if (item.kind !== "rule") continue;
+      const prelude = item.prelude.trim();
+      const notASelector = prelude.startsWith("@") || /^(?:when|else|match)\b/.test(prelude);
+      const other = notASelector ? undefined : selectorsOf(prelude).find((one) => !subjectOf(one.trim()).includes("&"));
+      if (other === undefined || item.at === undefined) {
+        walkItems(item.items);
+        continue;
+      }
+      findings.push({
+        rule: "styles-another-element",
+        at: item.at,
+        length: item.prelude.length,
+        message:
+          `\`${other.trim()}\` styles another element, and \`styleOtherElements: false\` keeps a block to its own. ` +
+          "Give that element a block of its own, or pass one to it as a prop.",
+      });
+    }
+  };
+  walkItems(block.items);
+}
+
+/** A feature's name, wherever it sits inside a condition. */
+const A_FEATURE = /\(\s*([a-zA-Z][\w-]*)\s*[:)<>=]/g;
+const KNOWN_FEATURES = new Set(MEDIA_FEATURES);
+
+/**
+ * A container's own features, measured 2026-10-12 in Chromium, Firefox and WebKit: for each of these
+ * exactly one of `(f …)` and `not (f …)` applies, and for a media feature — `hover`, `resolution`,
+ * `prefers-color-scheme` — neither does, so it never matches in a container.
+ */
+const CONTAINER_SIZES = ["width", "height", "inline-size", "block-size"];
+const CONTAINER_KINDS: Readonly<Record<string, readonly string[]>> = Object.fromEntries([
+  ...CONTAINER_SIZES.flatMap((one) => ["", "min-", "max-"].map((prefix) => [`${prefix}${one}`, ["length", "zero"]])),
+  ...["", "min-", "max-"].map((prefix) => [`${prefix}aspect-ratio`, MEDIA_KINDS["aspect-ratio"]]),
+  ["orientation", []],
+]);
+const CONTAINER_WORDS: Readonly<Record<string, readonly string[]>> = Object.fromEntries(
+  Object.keys(CONTAINER_KINDS).map((one) => [one, one === "orientation" ? ["landscape", "portrait"] : []]),
+);
+
+/** What a condition is read against: its features, their values, and the rule ids that report it. */
+interface Conditions {
+  readonly at: "@media" | "@container";
+  readonly features: readonly string[];
+  readonly words: Readonly<Record<string, readonly string[]>>;
+  readonly kinds: Readonly<Record<string, readonly string[]>>;
+  readonly feature: "unknown-media-feature" | "unknown-container-feature";
+  readonly value: "unknown-media-value" | "unknown-container-value";
+  readonly malformed: "malformed-media-condition" | "malformed-container-condition";
+  readonly noun: string;
+  readonly query: string;
+}
+
+const MEDIA: Conditions = {
+  at: "@media",
+  features: MEDIA_FEATURES,
+  words: MEDIA_WORDS,
+  kinds: MEDIA_KINDS,
+  feature: "unknown-media-feature",
+  value: "unknown-media-value",
+  malformed: "malformed-media-condition",
+  noun: "media feature",
+  query: "media query",
+};
+
+const CONTAINER: Conditions = {
+  at: "@container",
+  features: Object.keys(CONTAINER_KINDS),
+  words: CONTAINER_WORDS,
+  kinds: CONTAINER_KINDS,
+  feature: "unknown-container-feature",
+  value: "unknown-container-value",
+  malformed: "malformed-container-condition",
+  noun: "container feature",
+  query: "container query",
+};
+
+function conditionsOf(prelude: string): Conditions | undefined {
+  if (prelude.startsWith("@media")) return MEDIA;
+  if (prelude.startsWith("@container")) return CONTAINER;
+  return undefined;
+}
+
+/** Whether the group opening at `open` is a function's argument — `style(…)`, `scroll-state(…)` — whose grammar is its own. */
+const isCall = (prelude: string, open: number) => open > 0 && /[\w-]/.test(prelude[open - 1]);
+
+/**
+ * A feature that is nearly one CSS has, in a `@media` or a `@container` condition.
+ *
+ * The fault it leaves is the quiet kind: measured in Chromium 151, every one of these survives a
+ * parse with its text intact, `cssRules` and all —
+ *
+ *     @media (min-widht: 40rem)                    kept
+ *     @media (prefers-reduced-mErrorotion: reduce) kept
+ *     @media (nonsense)                            kept
+ *
+ * — because an unknown feature is `<general-enclosed>` in the grammar, which is **legal CSS that
+ * never matches**. So a typo is not invalid; it is a block that silently never applies.
+ *
+ * A NEAR MISS only, for the reason every table-backed rule here says the same thing: the list is a
+ * snapshot, a feature invented after it is valid, and reporting valid CSS is how a checker earns
+ * being switched off. The one exception is a MEDIA feature in a container, which is no typo: it is
+ * real, it is in the wrong rule, and all three engines never match it there.
+ *
+ * The media table is verified against a real browser in `apps/playground-core/browser`: for a name
+ * Chromium knows, exactly one of `(f)` and `not (f)` holds; for one it does not, both are false.
+ */
+export function mediaFeatures(block: Block, findings: Finding[]): void {
+  for (const item of rulesIn(block)) {
+    const table = conditionsOf(item.prelude);
+    if (table === undefined || item.at === undefined) continue;
+    const known = new Set(table.features);
+
+    const report = (name: string, at: number) => {
+      if (name.startsWith("-") || known.has(name)) return;
+      const elsewhere = table === CONTAINER && KNOWN_FEATURES.has(name.toLowerCase());
+      const meant = elsewhere ? undefined : (nearest(name, table.features as string[]) ?? typedInto(name));
+      if (!elsewhere && meant === undefined) return;
+      findings.push({
+        rule: table.feature,
+        at,
+        length: name.length,
+        message: elsewhere
+          ? `\`${name}\` is a media feature, and a container never matches it — the rules inside never ` +
+            `apply. Write it in \`@media\`.`
+          : `\`${name}\` is not a ${table.noun}, so this condition never matches and the rules inside ` +
+            `it never apply — a browser keeps it rather than refusing it. Did you mean \`${meant}\`?`,
+      });
+    };
+
+    for (const found of item.prelude.matchAll(A_FEATURE)) {
+      if (isCall(item.prelude, found.index ?? 0)) continue;
+      report(found[1], item.at + (found.index ?? 0) + found[0].indexOf(found[1]));
+    }
+
+    // The range form, where the name is not after the `(`: `(400px <= wdith <= 70rem)`. Found silent
+    // by `check-engine-sweep.mjs`; asked only when no side of the group is a feature at all.
+    for (const { open, inner } of innermostGroups(item.prelude)) {
+      if (isCall(item.prelude, open) || inner.includes(":") || !/[<>=]/.test(inner)) continue;
+      const sides = inner.split(/<=|>=|<|>|=/).map((one) => one.trim());
+      if (sides.some((one) => known.has(one.toLowerCase()))) continue;
+      for (const side of sides) {
+        if (!/^[a-zA-Z][\w-]*$/.test(side)) continue;
+        // A name at the start of the group was already asked above, by `A_FEATURE`.
+        if (inner.trimStart().startsWith(side)) continue;
+        report(side, item.at + open + 1 + inner.indexOf(side));
+      }
+    }
+  }
+}
+
+/**
+ * A `(feature: value)` pair inside a condition. The value is taken whole and trimmed by `pairsIn`:
+ * written as a lazy match between two runs of spaces, the three traded the same characters and a
+ * pair that never closed took 65 s at 5,000 spaces.
+ */
+const A_PAIR = /\(\s*([a-zA-Z][\w-]*)\s*:([^()]*)\)/g;
+
+/** Each pair in a prelude: the whole match, the name, the value as written, and where it starts. */
+function* pairsIn(prelude: string): Generator<{ whole: string; name: string; value: string; index: number }> {
+  for (const found of prelude.matchAll(A_PAIR)) {
+    if (isCall(prelude, found.index ?? 0)) continue;
+    const [whole, name, raw] = found;
+    yield { whole, name, value: raw.trim(), index: found.index ?? 0 };
+  }
+}
+
+/** What kind of value this is, as `MEDIA_KINDS` names them — or nothing for one this cannot read. */
+function kindOf(value: string): string | undefined {
+  if (value === "0") return "zero";
+  // `\d+(?:\.\d*)?` and not `\d+\.?\d*`, whose two runs of digits share every digit: quadratic.
+  if (/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(value)) return "number";
+  if (/^\d+(?:\.\d+)?\s*\/\s*\d+(?:\.\d+)?$/.test(value)) return "ratio";
+  if (/^\d+(?:\.\d+)?(?:dppx|dpi|dpcm|x)$/i.test(value)) return "resolution";
+  if (/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)[a-z%]+$/i.test(value)) return "length";
+  return undefined;
+}
+
+const KIND_NAMES: Readonly<Record<string, string>> = {
+  length: "a length",
+  zero: "zero",
+  number: "a number",
+  ratio: "a ratio",
+  resolution: "a resolution",
+};
+
+/**
+ * A value a feature does not have — which makes the condition `unknown`, not false.
+ *
+ * Measured in Chromium, Firefox and WebKit: `@media (prefers-color-scheme: drak)` and `@media
+ * (min-width: 40)` are both kept and both never match, because a query an engine does not understand
+ * is neither true nor false — and `@container (min-width: 40)` the same. `mediaValues.generated.ts`
+ * is what each media feature's value may be, written by asking the engines; a container's are
+ * `CONTAINER_KINDS` above. A feature no engine knows is absent, so nothing is said about it.
+ */
+export function mediaValues(block: Block, findings: Finding[]): void {
+  for (const item of rulesIn(block)) {
+    const table = conditionsOf(item.prelude);
+    if (table === undefined || item.at === undefined) continue;
+
+    for (const { whole, name, value, index } of pairsIn(item.prelude)) {
+      const words = table.words[name.toLowerCase()];
+      const kinds = table.kinds[name.toLowerCase()];
+      if (words === undefined || kinds === undefined || value === "") continue;
+
+      const at = item.at + index + whole.indexOf(value, whole.indexOf(":"));
+      const notAUnit = unknownUnit(table, value, at) ?? unreadable(table, value, at);
+      if (notAUnit !== undefined) {
+        findings.push(notAUnit);
+        continue;
+      }
+      const kind = kindOf(value);
+      if (kind === undefined) {
+        if (!/^[a-zA-Z][\w-]*$/.test(value) || words.includes(value.toLowerCase())) continue;
+        const meant = nearest(value.toLowerCase(), words as string[]);
+        findings.push({
+          rule: table.value,
+          at,
+          length: value.length,
+          message:
+            `\`${value}\` is not a value of \`${name}\`, so this condition never matches and a browser ` +
+            `keeps it anyway. ${meant === undefined ? `It takes ${words.map((one) => `\`${one}\``).join(", ")}.` : `Did you mean \`${meant}\`?`}`,
+        });
+        continue;
+      }
+      if (!kinds.includes(kind)) findings.push(wrongKind(table, name, value, kind, kinds, at));
+    }
+
+    // The range form, `(width >= 40)` and `(40 < width <= 80rem)`: a value of the wrong kind on either
+    // side leaves it unknown exactly as the colon form does.
+    for (const { name, value, at } of rangesIn(table, item.prelude)) {
+      const notAUnit = unknownUnit(table, value, item.at + at) ?? unreadable(table, value, item.at + at);
+      if (notAUnit !== undefined) {
+        findings.push(notAUnit);
+        continue;
+      }
+      const kinds = table.kinds[name.toLowerCase()];
+      const kind = kindOf(value);
+      if (kinds === undefined || kind === undefined || kinds.includes(kind)) continue;
+      findings.push(wrongKind(table, name, value, kind, kinds, item.at + at));
+    }
+  }
+}
+
+/**
+ * A number followed by letters that are not a unit — `40remGreska`, `40remx`.
+ *
+ * Measured in Chromium, Firefox and WebKit: the condition is kept and never matches, and `not` in
+ * front of it does not match either, exactly as `(min-width: 40)` does. `kindOf` reads any letters
+ * after a number as a length, so this is asked first.
+ */
+function unknownUnit(table: Conditions, value: string, at: number): Finding | undefined {
+  const unit = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)([a-z%]+)$/i.exec(value)?.[1];
+  if (unit === undefined || KNOWN_UNITS.has(unit.toLowerCase())) return undefined;
+  const meant = nearest(unit.toLowerCase(), UNITS as string[]);
+  return {
+    rule: table.value,
+    at,
+    length: value.length,
+    message:
+      `\`${unit}\` is not a CSS unit, so this condition never matches and a browser keeps it anyway.` +
+      (meant === undefined ? "" : ` Did you mean \`${meant}\`?`),
+  };
+}
+
+/**
+ * A value that starts like a number and is not one any engine reads — `4r0em`, `16/9x`. Kept and
+ * never matching, measured in all three, exactly as a wrong unit is.
+ */
+function unreadable(table: Conditions, value: string, at: number): Finding | undefined {
+  if (!/^[+\-.\d]/.test(value) || kindOf(value) !== undefined) return undefined;
+  return {
+    rule: table.malformed,
+    at,
+    length: value.length,
+    message: `\`${value}\` is not a value a browser can read, so this condition never matches and a browser keeps it anyway.`,
+  };
+}
+
+/** Each innermost `( … )` in a prelude, with where it opens and closes. Read by hand: see `rangesIn`. */
+function* innermostGroups(prelude: string): Generator<{ open: number; close: number; inner: string }> {
+  let open = prelude.indexOf("(");
+  while (open !== -1) {
+    const close = prelude.indexOf(")", open + 1);
+    if (close === -1) return;
+    const inner = prelude.slice(open + 1, close);
+    const nested = inner.lastIndexOf("(");
+    if (nested !== -1) {
+      open += 1 + nested;
+      continue;
+    }
+    yield { open, close, inner };
+    open = prelude.indexOf("(", close + 1);
+  }
+}
+
+/** The words a media query may hold between its conditions: the keywords, and every media type. */
+const BETWEEN = ["and", "or", "not", "only", "all", "print", "screen"];
+const DEPRECATED_TYPES = ["tty", "tv", "projection", "handheld", "braille", "embossed", "aural", "speech"];
+/** A container query's: the keywords, a container's name first, and its two query functions. */
+const CONTAINER_BETWEEN = ["and", "or", "not"];
+const CONTAINER_CALLS = ["style", "scroll-state"];
+
+/**
+ * A condition no engine can read, in the shapes `check-engine-sweep.mjs` found silent — each one kept
+ * by Chromium, Firefox and WebKit and never applied:
+ *
+ * - `(min-width 40rem)`: no `:` between a feature and its value;
+ * - `(min-width: 40rem) an (max-width: 60rem)`: a word between conditions that is not `and`, `or`,
+ *   `not` — or, in `@media`, `only` or a media type; in `@container`, the container's name, first.
+ *
+ * A misspelt feature in the RANGE form is the feature rule's, and a number nobody reads is
+ * `unreadable`, beside the other values.
+ */
+export function malformedMedia(block: Block, findings: Finding[]): void {
+  for (const item of rulesIn(block)) {
+    const table = conditionsOf(item.prelude);
+    if (table === undefined || item.at === undefined) continue;
+    const prelude = item.prelude;
+    const known = new Set(table.features);
+
+    for (const { open, close, inner } of innermostGroups(prelude)) {
+      if (isCall(prelude, open) || inner.includes(":") || /[<>=]/.test(inner)) continue;
+      const words = inner.trim().split(/\s+/);
+      if (words.length !== 2 || !known.has(words[0].toLowerCase())) continue;
+      const group = prelude.slice(open, close + 1);
+      findings.push({
+        rule: table.malformed,
+        at: item.at + open,
+        length: group.length,
+        message:
+          `\`${group}\` has no \`:\` between the feature and its value, so this condition never matches and ` +
+          `a browser keeps it anyway. Write \`(${words[0]}: ${words[1]})\`.`,
+      });
+    }
+
+    // The words outside every group, read with each group blanked out so a position still counts.
+    let depth = 0;
+    const outside = [...prelude.slice(table.at.length)]
+      .map((one) => {
+        if (one === "(") depth++;
+        const blank = depth > 0;
+        if (one === ")") depth--;
+        return blank ? " " : one;
+      })
+      .join("");
+    const allowed = table === MEDIA ? [...BETWEEN, ...DEPRECATED_TYPES] : CONTAINER_BETWEEN;
+    let first = true;
+    for (const found of outside.matchAll(/[a-zA-Z][\w-]*/g)) {
+      const word = found[0].toLowerCase();
+      const end = table.at.length + (found.index ?? 0) + found[0].length;
+      const called = prelude[end] === "(";
+      const isName = first && !called && table === CONTAINER && !CONTAINER_BETWEEN.includes(word);
+      first = false;
+      if (allowed.includes(word) || isName || (called && table === CONTAINER && CONTAINER_CALLS.includes(word))) {
+        continue;
+      }
+      const meant = nearest(word, table === MEDIA ? BETWEEN : [...CONTAINER_BETWEEN, ...CONTAINER_CALLS]);
+      findings.push({
+        rule: table.malformed,
+        at: item.at + table.at.length + (found.index ?? 0),
+        length: found[0].length,
+        message:
+          `\`${found[0]}\` is not a word a ${table.query} has, so this condition never matches and a browser keeps ` +
+          `it anyway. ${meant === undefined ? "Between conditions write `and`, `or` or `not`." : `Did you mean \`${meant}\`?`}`,
+      });
+    }
+  }
+}
+
+/** A value of a kind the feature does not take — the one sentence both forms of a condition say. */
+function wrongKind(
+  table: Conditions,
+  name: string,
+  value: string,
+  kind: string,
+  kinds: readonly string[],
+  at: number,
+): Finding {
+  const fix = kind === "number" && kinds.includes("length") ? ` Write \`${value}px\`, or the unit you meant.` : "";
+  return {
+    rule: table.value,
+    at,
+    length: value.length,
+    message:
+      `\`${name}\` does not take ${KIND_NAMES[kind]}, so this condition never matches and a browser ` +
+      `keeps it anyway. It takes ${
+        kinds
+          .filter((one) => one !== "zero")
+          .map((one) => KIND_NAMES[one])
+          .join(" or ") || "a word"
+      }.${fix}`,
+  };
+}
+
+/**
+ * Each value compared with a feature in a range group — `(width >= 40)` gives `width` and `40` — and
+ * where the value starts in the prelude. Read by hand, a group at a time: a pattern with text on both
+ * sides of an operator is the shape that was quadratic before.
+ */
+function* rangesIn(table: Conditions, prelude: string): Generator<{ name: string; value: string; at: number }> {
+  for (const { open, inner } of innermostGroups(prelude)) {
+    if (isCall(prelude, open) || !/[<>=]/.test(inner) || inner.includes(":")) continue;
+    const parts = inner.split(/(<=|>=|<|>|=)/);
+    const names = parts.filter((one, index) => index % 2 === 0 && table.kinds[one.trim().toLowerCase()] !== undefined);
+    if (names.length !== 1) continue;
+    const name = names[0].trim();
+    let from = open + 1;
+    for (const [index, part] of parts.entries()) {
+      const value = part.trim();
+      if (index % 2 === 0 && value !== "" && value !== name) yield { name, value, at: prelude.indexOf(value, from) };
+      from += part.length;
+    }
+  }
+}
+
+/** Every media feature by name, unprefixed — what `@supports` is asked about by mistake. */
+const FEATURE_NAMES = new Set(MEDIA_FEATURES);
+const PROPERTY_NAMES = new Set(PROPERTIES);
+
+/**
+ * A media feature written into `@supports`, which asks whether a PROPERTY is supported.
+ *
+ * Measured in Chromium, Firefox and WebKit: `@supports (min-width: 40rem)` is TRUE — `min-width` is
+ * a property and `40rem` a value it takes — and `@supports (orientation: landscape)` is FALSE,
+ * because `orientation` is no property. Either way the group never switches, and each reads like the
+ * breakpoint somebody meant as `@media`.
+ *
+ * A feature that is also a property is reported only with a plain dimension: `@supports (min-width:
+ * fit-content)` is a real question about a keyword, and an engine may well say no.
+ */
+export function supportsAMediaFeature(block: Block, findings: Finding[]): void {
+  for (const item of rulesIn(block)) {
+    if (!item.prelude.startsWith("@supports") || item.at === undefined) continue;
+
+    for (const { whole, name, value, index } of pairsIn(item.prelude)) {
+      if (!FEATURE_NAMES.has(name.toLowerCase())) continue;
+      const property = PROPERTY_NAMES.has(name.toLowerCase());
+      if (property && kindOf(value) !== "length") continue;
+
+      findings.push({
+        rule: "supports-a-media-feature",
+        at: item.at + index + whole.indexOf(name),
+        length: name.length,
+        message:
+          `\`@supports\` asks whether a property is supported, and \`${name}\` here is ` +
+          (property ? "a property every browser has, so this is always true" : "no property, so this is never true") +
+          `. A media feature belongs in \`@media (${name}: ${value})\`.`,
+      });
+    }
+  }
+}
+
+/** The rules whose finding in a `@supports` value is a fault whatever the browser: no near miss needed. */
+const ALWAYS_WRONG = new Set(["number-without-a-unit", "fraction-where-a-whole-number-goes", "invalid-hex-color"]);
+const SUPPORTS_CALLS = ["selector", "font-tech", "font-format"];
+
+/** A finding's own reason, without the part that is true of a declaration and not of a condition. */
+function reasonOf(message: string): string {
+  return message
+    .replace(/,? so a browser drops this declaration\./, ".")
+    .replace(/,? so a browser drops the whole rule — every declaration inside it, not just one\.?/, ".")
+    .trim();
+}
+
+/**
+ * Each `( … )` of a `@supports` condition that is a test rather than a group of tests: its own
+ * parentheses counted, so `(color: rgb(1 2 3))` is one test and not the `(1 2 3)` inside it. A group
+ * holding other groups — `((a: b) or (c: d))` — is stepped into.
+ */
+function* conditionGroups(prelude: string): Generator<{ open: number; close: number; inner: string }> {
+  for (let open = prelude.indexOf("("); open !== -1; ) {
+    if (isCall(prelude, open)) {
+      open = prelude.indexOf("(", endOfCall(prelude, open) + 1);
+      continue;
+    }
+    const close = endOfCall(prelude, open);
+    const inner = prelude.slice(open + 1, close);
+    if (inner.trimStart().startsWith("(") || /^\s*not\b/i.test(inner)) {
+      open = prelude.indexOf("(", open + 1);
+      continue;
+    }
+    yield { open, close, inner };
+    open = prelude.indexOf("(", close + 1);
+  }
+}
+
+/**
+ * A `@supports` condition that is never true because of a slip — `(display: gird)`, `(gap: 1)`,
+ * `(display grid)`, `selector(has(a))`. Found silent by `check-engine-sweep.mjs`: every engine
+ * answers `false` where the condition meant would answer `true`, so the rules inside never apply.
+ *
+ * **A word this does not know is not a fault here.** `@supports` exists to ask about what a browser
+ * may not have, so `(display: masonry)` is a real question and must stay silent. What IS reported is
+ * what no future browser makes true: a near miss of a word that exists, a number with no unit, a
+ * broken hex colour, a missing `:`. The value is read by the same rules a declaration is, and only
+ * their near misses and their always-wrong findings are kept.
+ */
+export function supportsNeverTrue(block: Block, findings: Finding[]): void {
+  for (const item of rulesIn(block)) {
+    if (!item.prelude.startsWith("@supports") || item.at === undefined) continue;
+    const prelude = item.prelude;
+    const base = item.at;
+    const say = (at: number, length: number, reason: string) =>
+      findings.push({
+        rule: "supports-never-true",
+        at,
+        length,
+        message: `\`@supports\` is never true here: ${reason} The rules inside never apply.`,
+      });
+
+    for (const { open, close, inner } of conditionGroups(prelude)) {
+      const colon = inner.indexOf(":");
+      if (colon === -1) {
+        const [property, ...rest] = inner.trim().split(/\s+/);
+        if (rest.length > 0 && PROPERTY_NAMES.has(property.toLowerCase())) {
+          const group = prelude.slice(open, close + 1);
+          say(
+            base + open,
+            group.length,
+            `\`${group}\` has no \`:\` between the property and its value. Write \`(${property}: ${rest.join(" ")})\`.`,
+          );
+        }
+        continue;
+      }
+      const name = inner.slice(0, colon).trim();
+      const value = inner.slice(colon + 1).trim();
+      const lowered = name.toLowerCase();
+      // A custom property takes anything, and a vendor's own has a vocabulary nothing here knows.
+      if (name === "" || value === "" || lowered.startsWith("-")) continue;
+      const nameAt = base + open + 1 + inner.indexOf(name);
+
+      if (!PROPERTY_NAMES.has(lowered)) {
+        const meant = nearest(lowered, PROPERTIES as string[]);
+        if (meant !== undefined)
+          say(nameAt, name.length, `\`${name}\` is not a CSS property. Did you mean \`${meant}\`?`);
+        continue;
+      }
+
+      const valueAt =
+        base + open + 1 + colon + 1 + (inner.slice(colon + 1).length - inner.slice(colon + 1).trimStart().length);
+      const declaration: Declaration = {
+        kind: "declaration",
+        property: lowered,
+        at: nameAt,
+        valueAt,
+        value: [{ kind: "text", text: value, at: valueAt }],
+      } as Declaration;
+      const found: Finding[] = [];
+      unknownValue(declaration, found);
+      unknownUnitIn(declaration, found);
+      unknownFunction(declaration, found);
+      invalidHexColor(declaration, found);
+      let spoke = false;
+      for (const one of found) {
+        if (!ALWAYS_WRONG.has(one.rule) && !one.message.includes("Did you mean")) continue;
+        say(one.at, one.length, reasonOf(one.message));
+        spoke = true;
+      }
+      /**
+       * The grammar, asked only of a value made of numbers, units, punctuation and functions CSS has:
+       * such a value names no feature a browser may lack, so a refusal is a slip — `rgb(1x 2 3)`,
+       * `calc(100 - 2rem)`. A value with a word in it may be the very question (`display: masonry`).
+       */
+      const words = value
+        .replace(/#[\da-f]+/gi, "")
+        .replace(/(?:\d*\.)?\d+(?:[eE][+-]?\d+)?[a-z%]*/gi, "")
+        .replace(/([a-z-][\w-]*)\(/gi, (whole, call: string) => (KNOWN_CALLS.has(call.toLowerCase()) ? "(" : whole));
+      if (!spoke && !/[a-z]/i.test(words) && valueMatchesGrammar(lowered, value) === false) {
+        say(valueAt, value.length, `\`${value}\` is not a value \`${name}\` takes.`);
+      }
+    }
+
+    // What stands between the groups: `and`, `or`, `not`, and the condition functions.
+    let depth = 0;
+    const outside = [...prelude.slice("@supports".length)]
+      .map((one) => {
+        if (one === "(") depth++;
+        const blank = depth > 0;
+        if (one === ")") depth--;
+        return blank ? " " : one;
+      })
+      .join("");
+    for (const found of outside.matchAll(/[a-zA-Z][\w-]*/g)) {
+      const word = found[0];
+      const at = "@supports".length + (found.index ?? 0);
+      const open = at + word.length;
+      if (prelude[open] === "(") {
+        if (word.toLowerCase() === "selector") {
+          const close = endOfCall(prelude, open);
+          const argument: NestedRule = {
+            kind: "rule",
+            prelude: prelude.slice(open + 1, close),
+            at: base + open + 1,
+            items: [],
+          };
+          const inSelector: Finding[] = [];
+          unknownSelector(argument, inSelector);
+          malformedSelector(argument, inSelector);
+          for (const one of inSelector) say(one.at, one.length, reasonOf(one.message));
+          continue;
+        }
+        if (SUPPORTS_CALLS.includes(word.toLowerCase())) continue;
+        const meant = nearest(word.toLowerCase(), SUPPORTS_CALLS);
+        if (meant !== undefined)
+          say(
+            base + at,
+            word.length,
+            `\`${word}()\` is not a condition \`@supports\` has. Did you mean \`${meant}()\`?`,
+          );
+        continue;
+      }
+      if (["and", "or", "not"].includes(word.toLowerCase())) continue;
+      const meant = nearest(word.toLowerCase(), ["and", "or", "not"]);
+      say(
+        base + at,
+        word.length,
+        `\`${word}\` is not a word \`@supports\` has.${meant === undefined ? " Between conditions write `and`, `or` or `not`." : ` Did you mean \`${meant}\`?`}`,
+      );
+    }
+  }
+}
+
+/**
+ * A prelude spelled a way that is the same CSS and a different class.
+ *
+ * `:hover` and `:HOVER` are one rule to a browser, and two keys here — because a declaration's key
+ * is its own text, and folding it in the compiler is not available: CSS is case-insensitive about
+ * the words of the LANGUAGE and case-sensitive about an author's identifiers, so lowering a
+ * selector would merge `.a` with `.A`. Not folding at all has a measured cost: a base and a
+ * modifier one space apart keep both classes, so the modifier does not override and the winner is
+ * decided by whichever file the bundler reaches first.
+ *
+ * So the SOURCE is canonical, and this is what says so. `ramonda-css format` writes the same
+ * answer.
+ *
+ * **It reports exactly what the canonicaliser changes.** A shape `canonicalCondition` and
+ * `canonicalSelector` leave alone — `:nth-child(2n + 1)`, `@supports ((display: grid))`, both of
+ * which need real parsing to rewrite — is a shape this says nothing about. An error with no fix is
+ * worse than a spelling, and one function asked two ways cannot drift from the other consumer.
+ */
+/**
+ * `@layer` written INSIDE a block, which looks like a cascade control and cannot be one.
+ *
+ * **The stylesheet is already one layer.** Everything this compiler emits is wrapped in
+ * `@layer ramonda { … }`, which is what puts it beneath an author's own unlayered CSS whatever order
+ * the files load in.
+ *
+ * So a `@layer a` inside a block makes a SUBLAYER, `ramonda.a` — and whether that beats `ramonda.b`
+ * is decided by which of the two the sheet writes first, because CSS orders layers it was given no
+ * explicit order for by first appearance. The sheet writes per file, in each file's own source
+ * order, so the answer is a property of the BUILD. The author gets a lever whose other end is not in
+ * their hands.
+ *
+ * **Layers themselves are not refused, and the message has to say so** — this is the one refusal
+ * here that an author will read as a missing feature. `@layer` belongs in their own stylesheet,
+ * where the order can be declared, and `ramonda` can be ordered among their layers from there.
+ * Measured: `@layer app, ramonda;` at the top of an authored sheet orders both.
+ *
+ * The place this would become real is a declared order — somewhere for `@layer a, b;` to be written
+ * inside our own layer. There is nowhere in a block to write it, so it is a feature rather than a
+ * fix, and it is not pretended at here.
+ */
+export function layerInABlock(block: Block, findings: Finding[]): void {
+  for (const item of rulesIn(block)) {
+    const prelude = item.prelude.trim();
+    if (item.at === undefined || !/^@layer\b/i.test(prelude)) continue;
+
+    findings.push({
+      rule: "layer-in-a-block",
+      at: item.at,
+      length: item.prelude.length,
+      message:
+        "a style block cannot hold `@layer`. Everything compiled here is already emitted inside " +
+        "`@layer ramonda`, so a layer written in a block is a sublayer of it — and which sublayer " +
+        "wins is decided by the order the stylesheet happens to write them in, not by anything " +
+        "written here. Declare your layers in your own stylesheet, where the order can be given: " +
+        "`@layer app, ramonda;` puts this package's output wherever you want it among them.",
+    });
+  }
+}
+
+/**
+ * The ROOT written where it would have to be a descendant of the element — which it never is.
+ *
+ * Everything in a block is nested in the element's own rule, so `:root { … }` there compiles to
+ * `.r-… :root`: the root, under the element. The root is the `<html>` element and is nobody's
+ * descendant, so the rule applies nowhere — it compiles, ships, and does nothing, which is the shape
+ * a theme written into a block takes. `html` is the same element by its tag.
+ *
+ * What stays silent is every way the root is NOT a descendant: the element under it,
+ * `:root.dark & { … }`, which is how a theme reaches a block; the element being it, `&:root`, a block
+ * on `<html>`; and `:root` inside a function's argument, `&:not(:root)`. Read per selector of a list,
+ * and only after the last `&` — what comes before it is an ancestor, and an ancestor may be the root.
+ */
+export function rootInABlock(block: Block, findings: Finding[]): void {
+  for (const item of rulesIn(block)) {
+    const prelude = item.prelude.trim();
+    if (item.at === undefined || prelude.startsWith("@") || !selectorsOf(prelude).some(rootUnderTheElement)) continue;
+
+    findings.push({
+      rule: "root-in-a-block",
+      at: item.at,
+      length: item.prelude.length,
+      message:
+        `\`${prelude}\` inside a block means the root under this element, and the root is nobody's ` +
+        "descendant, so this rule applies nowhere. Set a theme's values in your own stylesheet, and " +
+        "this project's tokens in `ramonda.css.ts`.",
+    });
+  }
+}
+
+/** Whether one selector of a list puts the root BELOW the element — see {@link rootInABlock}. */
+function rootUnderTheElement(selector: string): boolean {
+  // A quoted value and an attribute's brackets hold no compound: `[data-x="a :root"]` names no root.
+  // Nor does a function's argument: `:not(:root)`, `:is(.a, :root)`.
+  let flat = selector
+    .trim()
+    .replace(/"[^"]*"|'[^']*'/g, '""')
+    // `[^[\]]`, so a bracket that never closes is not rescanned from every `[` before it.
+    .replace(/\[[^[\]]*\]/g, "[]");
+  for (let before = ""; before !== flat; ) {
+    before = flat;
+    flat = flat.replace(/\([^()]*\)/g, "()");
+  }
+  const amp = flat.lastIndexOf("&");
+  const tail = amp === -1 ? flat : flat.slice(amp + 1);
+  const compounds = tail.split(/[\s>+~]+/).filter((one) => one !== "");
+  // A compound glued to `&` is the element itself — `&:root` is a block on `<html>`.
+  if (amp !== -1 && !/^[\s>+~]/.test(tail)) compounds.shift();
+  return compounds.some((one) => /^(?::root|html)(?![\w-])/i.test(one));
+}
+
+/**
+ * Every pseudo-class and pseudo-element CSS has, lowered, without the `()` a functional one
+ * carries.
+ *
+ * **Plus the four CSS2 pseudo-elements written with ONE colon**, which `SELECTORS` holds only in
+ * their modern spelling. `:before`, `:after`, `:first-line` and `:first-letter` are valid CSS —
+ * every browser still accepts them — and reporting one as a name CSS does not have would be
+ * refusing real CSS, the one failure this package may not have.
+ *
+ * They are not silent, they belong to a different rule: `non-canonical-spelling` says to write
+ * `&::before`, which is the more useful sentence. One fault, one report.
+ */
+const PSEUDO_NAMES = new Set([
+  ...Object.keys(SELECTORS).map((one) => one.replace(/\(\)$/, "").toLowerCase()),
+  ":before",
+  ":after",
+  ":first-line",
+  ":first-letter",
+]);
+
+/** A letter, a digit or a `-`: what a pseudo's NAME is made of, after its colons. */
+function isPseudoNameCharacter(code: number): boolean {
+  return (code >= 97 && code <= 122) || (code >= 65 && code <= 90) || (code >= 48 && code <= 57) || code === 45;
+}
+
+/**
+ * **A PSEUDO-CLASS THAT DOES NOT EXIST, and it drops the whole rule.**
+ *
+ * `SELECTORS` holds 129 pseudo-classes and pseudo-elements with their groups and their MDN links; `normalise.ts` reads it to
+ * canonicalise a prelude, `plugin.ts` to hover one, and this to report one. Measured in Chromium,
+ * inserting a rule with two declarations and reading `cssRules` back: a pseudo-class the browser
+ * does not know keeps **zero rules**. Not one dropped declaration — every declaration beside it,
+ * gone, with the element left on whatever it inherited. The same cost as `unknown-at-rule`.
+ *
+ * ## Why the TABLE is the oracle here, and not the browser
+ *
+ * The other generated tables in this package ask the engines, because `mdn-data` was measured short
+ * three times. This one must not. Measured, again in Chromium: **33 of the 129 names it refuses** —
+ * `:left`, `:right` and `:first` are paged-media, `::-ms-*` and `::-moz-*` belong to other engines,
+ * `:buffering`, `:playing` and `:seeking` are media ones it has not shipped. Every one is a real
+ * selector somewhere, and a rule that asked this browser would refuse valid CSS, which is the one
+ * failure this package may not have.
+ *
+ * ## What it deliberately does not read
+ *
+ * The ARGUMENT of a functional one. `:nth-child(2n+1)`, `:not(.a)` and `:has(> img)` each have a
+ * grammar of their own, and getting one of those wrong is a different fault from misspelling the
+ * name. Only the name is checked.
+ *
+ * A VENDOR pseudo is a browser's own, so the prefix is checked and the name after it is not —
+ * exactly as for a property and for an at-rule.
+ */
+function unknownSelector(rule: NestedRule, findings: Finding[]): void {
+  if (rule.prelude.startsWith("@")) return;
+
+  const text = rule.prelude;
+
+  for (let index = 0; index < text.length; index++) {
+    if (text.charCodeAt(index) !== 58 /* : */) continue;
+
+    const start = index;
+    let at = index + 1;
+    if (text.charCodeAt(at) === 58) at++;
+
+    const nameStart = at;
+    while (at < text.length && isPseudoNameCharacter(text.charCodeAt(at))) at++;
+
+    // A lone `:` — in an attribute selector's value, say. Nothing to name.
+    if (at === nameStart) {
+      index = at - 1;
+      continue;
+    }
+
+    const name = text.slice(start, at).toLowerCase();
+    const prefix = /^::?(-[a-z]+-)/.exec(name)?.[1];
+
+    if (!PSEUDO_NAMES.has(name) && !(prefix !== undefined && PREFIXES.includes(prefix))) {
+      const meant = nearest(name, [...PSEUDO_NAMES]);
+      findings.push({
+        rule: "unknown-selector",
+        at: (rule.at ?? 0) + start,
+        length: name.length,
+        message:
+          `\`${name}\` is not a pseudo-class or pseudo-element CSS has, so a browser drops the whole ` +
+          `rule — every declaration inside it, not just one. ` +
+          (meant === undefined ? "Check the name." : `Did you mean \`${meant}\`?`),
+      });
+    }
+
+    // Step over a functional one's argument, counting depth, so `:has(:hover)` reads the name and
+    // not what is inside it — see the note above about why the argument is not this rule's business.
+    if (text.charCodeAt(at) === 40 /* ( */) {
+      let depth = 0;
+      while (at < text.length) {
+        const code = text.charCodeAt(at);
+        if (code === 40) depth++;
+        else if (code === 41 /* ) */ && --depth === 0) {
+          at++;
+          break;
+        }
+        at++;
+      }
+    }
+
+    index = at - 1;
+  }
+}
+
+/** The at-rules that name something for the whole stylesheet, so a block may not hold one. */
+const ELSEWHERE = new Set(NOT_IN_A_RULE);
+
+/**
+ * An at-rule that is not part of an element's rule.
+ *
+ * A block IS one element's rule. `@keyframes`, `@font-face` and `@property` are not that — each names
+ * something the whole stylesheet can use — and written inside a block they compile, nest inside the
+ * class rule, and do nothing at all. Measured: `@keyframes slide { … }` came out as
+ * `.r-…{@keyframes slide{…}}`, which no browser resolves and nothing else reports.
+ *
+ * The list is a deny-list, and which mistake that chooses is written down where it is generated: the
+ * at-rules that DO nest are a growing set, so an allow-list would have reported `@scope` and
+ * `@starting-style` as faults on the day they arrived.
+ */
+export function atRuleOutOfPlace(rule: NestedRule, findings: Finding[]): void {
+  if (!rule.prelude.startsWith("@")) {
+    unknownSelector(rule, findings);
+    malformedSelector(rule, findings);
+    return;
+  }
+
+  const name = `@${rule.prelude.slice(1).split(/[\s(]/, 1)[0].toLowerCase()}`;
+  if (name === "@function") {
+    findings.push(customFunction(rule.at ?? 0, name.length));
+    return;
+  }
+  if (!ELSEWHERE.has(name)) {
+    unknownAtRule(rule, name, findings);
+    return;
+  }
+
+  findings.push({
+    rule: "at-rule-out-of-place",
+    at: rule.at ?? 0,
+    length: name.length,
+    message:
+      `\`${name}\` is not part of an element's rule — it names something the whole stylesheet uses, ` +
+      `and inside a block it compiles to a rule no browser resolves. Put it in a stylesheet; a block ` +
+      `holds what applies to this element.`,
+  });
+}
+
+/** Every at-rule name CSS has, lowered. The same table `normalise.ts` reads to canonicalise one. */
+const AT_RULE_NAMES = new Set(Object.keys(AT_RULE_LINKS).map((one) => one.toLowerCase()));
+
+/**
+ * **AN AT-RULE NAME THAT DOES NOT EXIST, and it drops the whole rule.**
+ *
+ * `AT_RULE_LINKS` holds every at-rule name CSS has, and `normalise.ts` and `plugin.ts` both read
+ * it. `unknown-media-feature` checks the FEATURE inside a `@media`; this checks the word: `@medai
+ * (min-width: 40rem) { … }`.
+ *
+ * Measured in Chromium, inserting the rule and reading `cssRules` back: a name the browser does not
+ * know keeps ZERO rules. Every declaration inside it is dropped and the element keeps its inherited
+ * value — the same cost as a wrong pseudo-class and for the same reason. It is the RULE that is
+ * thrown away, not one declaration.
+ *
+ * A name with no near miss is still reported, unlike `unknown-property`: there the types have
+ * already said the name does not exist, and here nothing else in this package says a word.
+ *
+ * A VENDOR at-rule is a browser's own — `@-moz-document` was real — so the prefix is checked and
+ * the name after it is not, exactly as for a property.
+ */
+function unknownAtRule(rule: NestedRule, name: string, findings: Finding[]): void {
+  if (AT_RULE_NAMES.has(name)) return;
+  if (name.startsWith("@-")) {
+    const prefix = /^@(-[a-z]+-)/.exec(name)?.[1];
+    if (prefix !== undefined && PREFIXES.includes(prefix)) return;
+  }
+
+  const meant = nearest(name, [...AT_RULE_NAMES]);
+  findings.push({
+    rule: "unknown-at-rule",
+    at: rule.at ?? 0,
+    length: name.length,
+    message:
+      `\`${name}\` is not an at-rule CSS has, so a browser drops the whole rule — every declaration ` +
+      `inside it, not just one. ` +
+      (meant === undefined ? "Check the name." : `Did you mean \`${meant}\`?`),
+  });
+}
+
+/** `An+B`, `odd`, `even` or a whole number — what the four `nth-` pseudo-classes take — with an optional `of S`. */
+const AN_PLUS_B = /^(?:odd|even|[+-]?\d+|[+-]?\d*n(?:\s*[+-]\s*\d+)?)(?:\s+of\s+\S.*)?$/i;
+
+/**
+ * A selector every engine drops, in the shapes `check-engine-sweep.mjs` found silent — each measured
+ * refused by `insertRule` in Chromium, Firefox and WebKit, which drops the whole rule:
+ *
+ * - `&not(.a)`: a functional pseudo-class with its `:` missing. A name before `(` is only ever a
+ *   pseudo-class, so a bare one is this.
+ * - `:nth-child(2+1)`: an argument that is not `An+B`, `odd`, `even` or a number.
+ * - `&[data-x="1"`: a bracket left open, or one closed that never opened.
+ *
+ * Strings are stepped over, so `[data-x="]"]` is one attribute.
+ */
+function malformedSelector(rule: NestedRule, findings: Finding[]): void {
+  const text = rule.prelude;
+  const at = rule.at ?? 0;
+  const push = (offset: number, length: number, message: string) =>
+    findings.push({ rule: "malformed-selector", at: at + offset, length, message });
+  const dropped = "so a browser drops the whole rule — every declaration inside it, not just one.";
+
+  const open: number[] = [];
+  for (let index = 0; index < text.length; index++) {
+    const code = text.charCodeAt(index);
+    if (code === 34 || code === 39) {
+      index = endOfString(text, index);
+      continue;
+    }
+    if (code === 91 /* [ */) open.push(index);
+    if (code === 93 /* ] */ && open.pop() === undefined) {
+      push(index, 1, `This \`]\` closes a \`[\` that never opened, ${dropped}`);
+      return;
+    }
+    if (code === 40 /* ( */) {
+      const name = /[a-zA-Z][\w-]*$/.exec(text.slice(Math.max(0, index - 64), index))?.[0];
+      if (name === undefined) continue;
+      const start = index - name.length;
+      const before = text[start - 1];
+      if (before !== ":" && PSEUDO_NAMES.has(`:${name.toLowerCase()}`)) {
+        push(start, name.length + 1, `\`${name}(\` is missing its \`:\`, ${dropped} Write \`:${name}(\`.`);
+        continue;
+      }
+      if (before === ":" && /^nth-(?:last-)?(?:child|of-type)$/i.test(name)) {
+        const close = endOfCall(text, index);
+        const argument = text.slice(index + 1, close).trim();
+        if (!AN_PLUS_B.test(argument)) {
+          push(
+            index + 1,
+            close - index - 1,
+            `\`${argument}\` is not an argument \`:${name}()\` takes, ${dropped} It takes \`An+B\` — \`2n+1\`, \`-n+3\` — \`odd\`, \`even\` or a number.`,
+          );
+        }
+      }
+    }
+  }
+  if (open.length > 0) push(open[0], 1, `This \`[\` is never closed, ${dropped}`);
+}
+
+/**
+ * A word in a `@keyframes` body that is not a frame.
+ *
+ * **The types cannot ask this and it was measured before it was written.** A frame is any string to
+ * an index signature — that is what lets `50%` and `0%, 100%` through — so `form { opacity: 0 }`
+ * type-checks, compiles, ships, and animates nothing: the browser drops a frame it cannot read and
+ * the animation runs with one keyframe fewer, or with none.
+ *
+ * A frame is `from`, `to`, or a percentage, and a comma-separated list of those is one frame with
+ * several times. A bare number is called out on its own, because a missing `%` reads as correct to
+ * everyone who writes it.
+ */
+export function unknownFrame(rule: NestedRule, findings: Finding[]): void {
+  // A GUARD is not a frame and is not spelled like one. `composition-in-a-named-block` owns it, and
+  // saying `when $(on) is not a keyframe` beside that names the wrong thing as the fault.
+  if (branchOf(rule.prelude) !== undefined) return;
+
+  for (const part of rule.prelude.split(",")) {
+    const frame = part.trim().toLowerCase();
+    if (frame === "" || frame === "from" || frame === "to") continue;
+
+    const percentage = PERCENTAGE.exec(frame);
+    if (percentage !== null) {
+      const time = Number.parseFloat(percentage[1]);
+      if (time >= 0 && time <= 100) continue;
+
+      findings.push({
+        rule: "unknown-frame",
+        at: rule.at ?? 0,
+        length: rule.prelude.trimEnd().length,
+        message:
+          `\`${part.trim()}\` is not a keyframe — a frame is a time between 0% and 100%, and the ` +
+          `browser drops one outside it along with everything that frame would have set.`,
+      });
+      return;
+    }
+
+    const meant = NUMBER.test(frame) ? `${frame}%` : nearest(frame, ["from", "to"]);
+    findings.push({
+      rule: "unknown-frame",
+      at: rule.at ?? 0,
+      length: rule.prelude.trimEnd().length,
+      message:
+        `\`${part.trim()}\` is not a keyframe. ` +
+        (meant === undefined
+          ? "A frame is `from`, `to`, or a percentage, and a browser drops one it cannot read."
+          : `Did you mean \`${meant}\`?`),
+    });
+    return;
+  }
+}

@@ -2,6 +2,7 @@ import { resolve } from "node:path";
 import { defineConfig } from "vitest/config";
 import { coverage } from "../../vitest.coverage.mjs";
 import { hookTimeout, testTimeout } from "../../vitest.timeout.mjs";
+import { ramonda } from "@ramonda/build/vite";
 
 /**
  * The production test run.
@@ -29,11 +30,9 @@ export default defineConfig({
     __DEV__: 'process.env.NODE_ENV !== "production"',
     __TEST__: 'process.env.NODE_ENV === "test"',
   },
-  esbuild: {
-    jsx: "automatic",
-    jsxImportSource: "@ramonda/core",
-    target: "es2022",
-  },
+  // The plugin an app uses. It sets the JSX runtime, and lowers the decorators on Vite 8, where
+  // Oxc cannot and an `esbuild` block here is only translated into Oxc's settings.
+  plugins: [ramonda()],
   resolve: {
     alias: {
       "@ramonda/core/jsx-dev-runtime": resolve(__dirname, "../core/src/jsx-dev-runtime.ts"),

@@ -1,6 +1,6 @@
 {
   "name": "create-ramonda",
-  "version": "0.13.0",
+  "version": "0.14.2",
   "description": "Scaffold a Ramonda app — pick your packages and rendering mode, then just run it.",
   "type": "module",
   "bin": {
@@ -40,14 +40,14 @@
     "node": ">=24"
   },
   "dependencies": {
-    "@clack/prompts": "^1.7.0",
+    "@clack/prompts": "^1.8.1",
     "picocolors": "^1.1.1"
   },
   "devDependencies": {
-    "@types/node": "^26.4.1",
+    "@types/node": "^26.6.5",
     "tsup": "^8.5.0",
-    "typescript": "^5.9.3",
-    "vite": "^7.3.6",
-    "vitest": "^4.1.11"
+    "typescript": "^6.0.3",
+    "vite": "^8.3.4",
+    "vitest": "^5.0.3"
   }
 }

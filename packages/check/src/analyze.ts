@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { dirname, relative, sep } from "node:path";
+import { fileMayHoldABlock, mayHoldABlock, virtualFile } from "@ramonda/css/compiler";
 import ts from "typescript";
 import { declarationEntryOf, fingerprint, loadFragment, packageRootOf } from "./fragment";
 import type { ComponentGraph, GraphEdge, GraphNode, Where } from "./graph";
@@ -942,7 +943,8 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
       // more than one spelling of it, so the pair was half-handled. It is gone rather than
       // completed: this reads the files of a TypeScript program, which are never markup, so the
       // branch was for a case that cannot arrive.
-      return found[1].replace(/\*\/\s*\}?\s*$/, "").trim();
+      // `\s*(?:\}\s*)?` and not `\s*\}?\s*`, whose two runs of spaces shared every space: quadratic.
+      return found[1].replace(/\*\/\s*(?:\}\s*)?$/, "").trim();
     }
     return undefined;
   }
@@ -3947,6 +3949,44 @@ function packageOf(dir: string): { name: string; version: string } {
   return { name: dir.split(/[/\\]/).pop() ?? "app", version: "0.0.0" };
 }
 
+/**
+ * A compiler host that serves the virtual reading of any file holding a style block.
+ *
+ * The file NAME is unchanged, so every import resolves from where the file really is and nothing
+ * about module resolution moves. `@ramonda/check` may depend on `@ramonda/css`; the forbidden
+ * direction is the other one, and it stays forbidden.
+ */
+function overlayHost(options: ts.CompilerOptions): ts.CompilerHost {
+  const host = ts.createCompilerHost(options);
+  const readFromDisk = host.readFile.bind(host);
+  const sourceFromDisk = host.getSourceFile.bind(host);
+
+  /**
+   * Text → its virtual copy, or `undefined` when the file holds no block. One read per file.
+   *
+   * **The name is asked before the text**, and it is the same question the compiler's own consumers
+   * ask — see `fileMayHoldABlock`. Measured on `apps/docs`: this host is handed 724 files and 9.4 MB,
+   * of which 171 are declaration files worth 3.8 MB — 40% of everything read, for a syntax that
+   * cannot appear in one. Twelve files in the whole program even contain `@@`.
+   */
+  const virtual = (fileName: string): string | undefined => {
+    if (!fileMayHoldABlock(fileName)) return undefined;
+    const text = readFromDisk(fileName);
+    if (text === undefined || !mayHoldABlock(text)) return undefined;
+    return virtualFile(text, { tolerant: true })?.code;
+  };
+
+  host.readFile = (fileName) => virtual(fileName) ?? readFromDisk(fileName);
+  host.getSourceFile = (fileName, language, onError, shouldCreate) => {
+    const code = virtual(fileName);
+    return code === undefined
+      ? sourceFromDisk(fileName, language, onError, shouldCreate)
+      : ts.createSourceFile(fileName, code, language, true, ts.ScriptKind.TSX);
+  };
+
+  return host;
+}
+
 function createProgram(tsconfigPath: string): {
   program: ts.Program;
   notes: string[];
@@ -3975,6 +4015,28 @@ function createProgram(tsconfigPath: string): {
   }
   const program = ts.createProgram({
     rootNames: parsed.fileNames,
+    /**
+     * The host, with `@@( … )` style blocks turned into TSX before the compiler sees them.
+     *
+     * **Not optional, and the failure is silence.** `ramonda-check` reads the author's source, and
+     * the block's syntax is not TypeScript — so the parser gives up at it and error-recovers, and
+     * every rule that walks the tree below that point simply finds less. Measured with this CLI, the
+     * same component differing only in where the block sits among the attributes:
+     *
+     * ```
+     * block LAST  :  half-built-keyboard-path  positive-tabindex  unnamed-image
+     * block FIRST :  unnamed-image
+     * ```
+     *
+     * Two accessibility faults gone, and the run looks exactly as healthy either way. A report that
+     * is trusted and quietly incomplete is worse than none — and the certificate lands on the same
+     * requirement, because `complete` fails on a reference the parser threw away.
+     *
+     * The virtual reading is TOLERANT: a checker's job is to report what it can see, and a block
+     * half-written in an editor's buffer is not a reason to stop analysing the file it is in. Whether
+     * the block itself is well formed is `ramonda-css`'s answer, and it is the one that fails a build.
+     */
+    host: overlayHost(parsed.options),
     /**
      * The project's own options, minus the two that load declaration files this analyzer will
      * never look at.

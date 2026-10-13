@@ -1,0 +1,48 @@
+{
+  "scopeName": "ramonda.css-hole",
+  "injectionSelector": "L:meta.embedded.block.css meta.property-value.css, L:meta.embedded.block.css meta.property-name.css",
+  "patterns": [
+    {
+      "include": "#escape"
+    },
+    {
+      "include": "#choice"
+    }
+  ],
+  "repository": {
+    "escape": {
+      "comment": "`$(` opens it and the `)` that balances it closes it.",
+      "begin": "(\\$)(\\()",
+      "beginCaptures": {
+        "1": {
+          "name": "keyword.control.ramonda"
+        },
+        "2": {
+          "name": "punctuation.section.embedded.begin.ramonda"
+        }
+      },
+      "end": "(\\))",
+      "endCaptures": {
+        "1": {
+          "name": "punctuation.section.embedded.end.ramonda"
+        }
+      },
+      "contentName": "meta.embedded.expression.tsx",
+      "patterns": [
+        {
+          "include": "source.tsx"
+        }
+      ]
+    },
+    "choice": {
+      "comment": "`?` and `:` between spaces in a value are a choice's — CSS has no `?` in a value and no `:` at its top level; a `:` in `url(http://…)` has no space around it.",
+      "match": "(?<=\\s)([?:])(?=\\s)",
+      "captures": {
+        "1": {
+          "name": "keyword.operator.ternary.ramonda"
+        }
+      }
+    }
+  },
+  "comment": "`$( … )` — the one way code goes into a block, wherever it stands in a value or a property name — and the two operators of a choice, `$(c) ? a : b`. `$` is this language's marker, as it is in `$color.line`; the parens are the region's own, so the TypeScript inside them is TypeScript. The TSX grammar pairs its own parens, so a `)` inside the expression does not end the escape."
+}

@@ -4,6 +4,7 @@ import type { ContentNode } from "./content-types";
 import { demos } from "./demos";
 import { Demo } from "./Demo";
 import { CodeBlock } from "./CodeBlock";
+import { CodeTabs } from "./CodeTabs";
 import { DataTable } from "./DataTable";
 import type { Cell } from "./DataTable";
 import { ExamplesIndex } from "./ExamplesIndex";
@@ -97,7 +98,22 @@ export function toVNode(node: ContentNode): ComponentChild {
    * rather than a per-image note in the markdown.
    */
   if (node.t === "img") {
-    return __h("img", { ...node.a, loading: "lazy", decoding: "async" }) as ComponentChild;
+    const img = __h("img", { ...node.a, loading: "lazy", decoding: "async" }) as ComponentChild;
+    /**
+     * A drawn editor GIF has a dark twin, chosen by the query the whole site follows — a light
+     * editor on a dark page is a white slab. `build-editor-gifs.mjs` draws both, and a test holds
+     * every one in `/media/` to having its pair.
+     */
+    const src = node.a?.src ?? "";
+    if (src.startsWith("/media/") && src.endsWith(".gif")) {
+      return __h(
+        "picture",
+        {},
+        __h("source", { srcset: src.replace(/\.gif$/, "-dark.gif"), media: "(prefers-color-scheme: dark)" }),
+        img,
+      ) as ComponentChild;
+    }
+    return img;
   }
 
   // A Shiki code block becomes a component so it can carry a copy button. The
@@ -106,6 +122,9 @@ export function toVNode(node: ContentNode): ComponentChild {
   if (node.t === "pre" && node.a?.className?.includes("shiki")) {
     return __h(CodeBlock, { node }) as ComponentChild;
   }
+
+  // An `install` or a `compiled` fence: one piece of code seen several ways — see the build.
+  if (node.t === "tabs") return __h(CodeTabs, { node }) as ComponentChild;
 
   if (node.t === "demo") {
     const name = node.a?.name ?? "";

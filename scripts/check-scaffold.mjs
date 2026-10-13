@@ -32,13 +32,23 @@
  * Usage: node scripts/check-scaffold.mjs [spa|ssr]
  */
 import { execFileSync, spawn } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync, existsSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const mode = process.argv[2] === "spa" ? "spa" : "ssr";
+/**
+ * `css` scaffolds with the `css` add-on — what `npm create ramonda` picks by default: the page in
+ * style blocks, the strict config and its tokens — and with `biome`, whose lint and format are run
+ * because biome cannot read a block, and with `testing`, whose suite is RUN: its config
+ * once held an `esbuild` block that Vite 8 does not lower decorators with, and every project with the
+ * add-on failed its first `vitest run` while this gate, which never ran one, stayed green. Without
+ * `css` the project starts with no CSS, and this adds `@ramonda/css` the way the setup page tells an
+ * existing project to.
+ */
+const withAddon = process.argv[3] === "css";
 
 /**
  * `SELFTEST=<fault>` plants that fault in the GENERATED project and passes only if this check
@@ -54,6 +64,9 @@ const PLANTED = {
   head: { where: "index.html", expect: "the head never reached the HTML" },
   // Removes the marker the app itself lands in, so the page ships with no app.
   app: { where: "index.html", expect: "carries no rendered app" },
+  // A file that does not type-check. Vite strips types without reading them, so nothing else in the
+  // build would stop on it — and `ssr` meets it through `tsc`, `spa` through `ramonda-css`.
+  types: { where: "src/planted.ts", expect: "stopped on a type error" },
 };
 if (selftest !== undefined && PLANTED[selftest] === undefined) {
   console.error(`[scaffold] SELFTEST=${selftest} is not one of: ${Object.keys(PLANTED).join(", ")}`);
@@ -61,7 +74,118 @@ if (selftest !== undefined && PLANTED[selftest] === undefined) {
 }
 
 /** Everything a generated project resolves to this workspace rather than to npm. */
-const FIRST_PARTY = ["core", "router", "server", "check", "build"];
+const FIRST_PARTY = ["core", "router", "server", "check", "build", "css", "testing-library"];
+
+/**
+ * `@ramonda/css` is not in either template, and that is right — it is a separate package a project
+ * opts into. But the install the documentation teaches had never been RUN: the scaffolder's own
+ * tests read templates as text, and this gate packed every first-party package except that one.
+ *
+ * So both runs do what a reader does after scaffolding — add the dependency, put the plugin in the
+ * array that is already there, write a block — and build. `ssr` builds TWICE: once as scaffolded,
+ * which is the project with no CSS at all, and once with the block, because its production build is
+ * esbuild and its page is assembled by the template's own scripts. A block there once compiled, put
+ * its class on the page, wrote `client.css` beside the bundle — and the page linked nothing, so it
+ * shipped unstyled and every step exited 0.
+ *
+ * The plugin goes AFTER `ramonda()` on purpose. It declares `enforce: "pre"`, so the array's order
+ * is not supposed to matter, and the place a reader would paste it is the end.
+ */
+function addCssDependency(app, tarball) {
+  const manifest = join(app, "package.json");
+  const pkg = JSON.parse(readFileSync(manifest, "utf8"));
+  pkg.dependencies = { ...pkg.dependencies, "@ramonda/css": `file:${tarball}` };
+  writeFileSync(manifest, `${JSON.stringify(pkg, null, 2)}\n`);
+}
+
+function addStyleBlocks(app) {
+  // The production build of `ssr` is esbuild, so the reader puts the plugin there as well — with
+  // the `filter` the setup page tells them to set.
+  if (mode === "ssr") {
+    const script = join(app, "scripts", "build.mjs");
+    const before = readFileSync(script, "utf8");
+    const after = before
+      .replace(
+        'import { ramondaOptions, ramondaDefine } from "@ramonda/build/esbuild";',
+        'import { ramondaOptions, ramondaDefine } from "@ramonda/build/esbuild";\nimport { ramondaCss } from "@ramonda/css/esbuild";',
+      )
+      .replace("plugins: []", "plugins: [ramondaCss({ filter: /src\\/.*\\.tsx$/ })]");
+    if (!after.includes("ramondaCss({")) fail("could not wire `ramondaCss()` into the generated scripts/build.mjs");
+    writeFileSync(script, after);
+  }
+
+  const config = join(app, "vite.config.ts");
+  const before = readFileSync(config, "utf8");
+  const after = before
+    .replace(
+      'import { ramonda } from "@ramonda/build/vite";',
+      'import { ramonda } from "@ramonda/build/vite";\nimport { ramondaCss } from "@ramonda/css/vite";',
+    )
+    .replace("plugins: [ramonda()]", "plugins: [ramonda(), ramondaCss()]");
+  if (after === before) fail("could not wire `ramondaCss()` into the generated vite.config.ts");
+  writeFileSync(config, after);
+
+  const source = join(app, "src", "App.tsx");
+  const app_ = readFileSync(source, "utf8");
+  const styled = app_.replace(
+    '<main className="card">',
+    "<main className={@@( display: flex; gap: 8px; padding: 8px; padding-left: 40px; &:hover { gap: 12px; } )}>",
+  );
+  if (styled === app_) fail("could not put a style block in the generated App.tsx");
+  writeFileSync(source, styled);
+
+  // And the type check, which the setup page says to move the moment a file holds a block: `tsc`
+  // cannot read one, and `ramonda-css` is the same check with blocks read.
+  const manifest = join(app, "package.json");
+  const pkg = JSON.parse(readFileSync(manifest, "utf8"));
+  if (pkg.scripts?.typecheck !== "tsc --noEmit") fail("the generated project has no `typecheck` script to move");
+  pkg.scripts.typecheck = "ramonda-css";
+  writeFileSync(manifest, `${JSON.stringify(pkg, null, 2)}\n`);
+}
+
+/** The stylesheets a baked page links, read off the disk — failing on a link to nothing. */
+function sheetsLinkedBy(html) {
+  return stylesheetsOf(html).map((href) => {
+    const file = join(app, "dist", "client", href);
+    if (!href.startsWith("/assets/") || !existsSync(file))
+      fail(`the baked page links ${href}, which the build did not write`);
+    return readFileSync(file, "utf8");
+  });
+}
+
+/**
+ * The `css` add-on's page, as the build emitted it: the tokens declared, the blocks' rules reading
+ * them, and the markup naming compiled classes rather than `@@(`.
+ *
+ * Each one is a separate way to ship an unstyled page with a green build — no `tokens.css` import
+ * (every `var()` resolves to its initial value), no plugin (no rules), the plugin in only one build.
+ */
+function pageInBlocks(sheets, markup) {
+  const css = sheets.join("\n");
+  if (!/--color-page:/.test(css)) {
+    fail("no stylesheet declares the tokens — css-system/tokens.css is not imported", css.slice(0, 400));
+  }
+  // Registered in a form a browser accepts: a minifier that put a `var()` into `initial-value`
+  // unregistered every token, silently — see `lightHalf` in @ramonda/css.
+  const registration = /@property --color-page\s*\{[^}]*\}/.exec(css)?.[0];
+  if (registration === undefined || registration.includes("var(")) {
+    fail("the tokens are not registered in a form a browser accepts", registration ?? css.slice(0, 400));
+  }
+  if (!/background-color:\s*var\(--color-page\)/.test(css)) {
+    fail("no stylesheet carries the page's block rules", css.slice(0, 400));
+  }
+  if (!/\br-[a-zA-Z0-9_.:-]+/.test(markup)) fail("no compiled class reached the page");
+  if (markup.includes("@@(")) fail("`@@(` survived into the build — the plugin did not run");
+  return "a page in style blocks, with its tokens, and tests, lint and format that pass";
+}
+
+/** The `href` of every `<link rel="stylesheet">` in a page. */
+function stylesheetsOf(html) {
+  return [...html.matchAll(/<link\b[^>]*>/g)]
+    .map(([tag]) => tag)
+    .filter((tag) => /\brel="stylesheet"/.test(tag))
+    .map((tag) => /\bhref="([^"]+)"/.exec(tag)?.[1] ?? "");
+}
 
 function run(command, args, options = {}) {
   return execFileSync(command, args, { encoding: "utf8", stdio: "pipe", ...options });
@@ -128,7 +252,11 @@ async function serves(port = 5100 + Math.floor(Math.random() * 400), attempt = 0
         }
         try {
           const response = await fetch(`http://localhost:${port}${path}`);
-          return { status: response.status, body: await response.text() };
+          return {
+            status: response.status,
+            type: response.headers.get("content-type") ?? "",
+            body: await response.text(),
+          };
         } catch {
           await new Promise((r) => setTimeout(r, 150));
         }
@@ -150,6 +278,18 @@ async function serves(port = 5100 + Math.floor(Math.random() * 400), attempt = 0
       if (title.trim() === "") fail(`${path} was served with an empty <title>`, body.slice(0, 400));
       for (const marker of ["<!--ssr-->", "<!--head-->", "<!--portals-->"]) {
         if (body.includes(marker)) fail(`${path} was served still containing ${marker}`);
+      }
+    }
+
+    // The sheet the page links, from the server that serves the page: a link the server answers
+    // with a 404, or with `index.html`, styles nothing exactly as no link does.
+    const page = await get("/");
+    if (page === "retry") return "retry";
+    for (const href of stylesheetsOf(page.body)) {
+      const sheet = await get(href);
+      if (sheet === "retry") return "retry";
+      if (sheet.status !== 200 || !sheet.type.startsWith("text/css")) {
+        fail(`${href} was served as ${sheet.status} ${sheet.type}, not as a stylesheet`, log);
       }
     }
 
@@ -200,11 +340,13 @@ try {
   if (!existsSync(cli)) fail("create-ramonda is not built — run `pnpm --filter create-ramonda build` first");
   const scaffolder = `
     import { scaffold } from ${JSON.stringify(cli)};
-    scaffold({ targetDir: ${JSON.stringify(app)}, name: "scaffold-check", mode: ${JSON.stringify(mode)}, addons: [] });
+    scaffold({ targetDir: ${JSON.stringify(app)}, name: "scaffold-check", mode: ${JSON.stringify(mode)}, addons: ${withAddon ? '["css", "testing", "biome"]' : "[]"} });
   `;
   run(process.execPath, ["--input-type=module", "-e", scaffolder]);
 
-  if (selftest !== undefined) {
+  if (selftest === "types") {
+    writeFileSync(join(app, PLANTED.types.where), 'export const planted: number = "a string";\n');
+  } else if (selftest !== undefined) {
     const file = join(app, PLANTED[selftest].where);
     const source = readFileSync(file, "utf8");
     const broken = selftest === "head" ? source.replace("<!--head-->", "") : source.replace("<!--ssr-->", "");
@@ -213,6 +355,13 @@ try {
       process.exit(2);
     }
     writeFileSync(file, broken);
+  }
+
+  // A reader's next step, once they want styles: the documented install, on the project they were
+  // just given. `ssr` writes its block only after a first build without one — see `addCssDependency`.
+  if (!withAddon) {
+    addCssDependency(app, tarballs.get("@ramonda/css"));
+    if (mode === "spa") addStyleBlocks(app);
   }
 
   /* ── 3. point its first-party deps at the tarballs ────────────────────────────────────────── */
@@ -239,11 +388,38 @@ try {
     fail("`npm install` failed in the generated project", outputOf(error));
   }
 
-  let built;
-  try {
-    built = run("npm", ["run", "build"], { cwd: app });
-  } catch (error) {
-    fail("`npm run build` failed in the generated project", outputOf(error));
+  const buildProject = () => {
+    try {
+      run("npm", ["run", "build"], { cwd: app });
+    } catch (error) {
+      const output = outputOf(error);
+      // Said apart, so a planted type error is known to have stopped the build for that reason.
+      if (/\bTS\d{4}\b/.test(output)) fail("`npm run build` stopped on a type error", output);
+      fail("`npm run build` failed in the generated project", output);
+    }
+  };
+  buildProject();
+
+  if (withAddon) {
+    try {
+      run("npx", ["vitest", "run"], { cwd: app });
+    } catch (error) {
+      fail("the generated project's own tests failed", outputOf(error));
+    }
+    // And its linter and formatter: biome cannot read a block, so `src` goes through the wrapper.
+    // The format is CHECKED, both halves of the project's `format` script, so a template that is
+    // not formatted the way it tells a project to format fails here rather than in a first commit.
+    for (const [what, command, args] of [
+      ["npm run lint", "npm", ["run", "lint"]],
+      ["biome format .", "npx", ["biome", "format", "."]],
+      ["ramonda-css format --check src", "npx", ["ramonda-css", "format", "--check", "src"]],
+    ]) {
+      try {
+        run(command, args, { cwd: app });
+      } catch (error) {
+        fail(`the generated project's own \`${what}\` failed`, outputOf(error));
+      }
+    }
   }
 
   /* ── 5. what the build EMITTED, not just that it exited 0 ─────────────────────────────────── */
@@ -275,10 +451,74 @@ try {
       if (html.includes(marker)) fail(`the baked page still contains ${marker}, so nothing filled it`);
     }
     checks.push(`title "${title}"`, "a description");
+
+    if (withAddon) {
+      checks.push(pageInBlocks(sheetsLinkedBy(html), html));
+    } else {
+      // With no CSS in the project, a link would point at a file the build never wrote.
+      if (stylesheetsOf(html).length > 0) {
+        fail("the baked page of a project with no CSS links a stylesheet", stylesheetsOf(html).join("\n"));
+      }
+
+      /**
+       * **Then the block, built and baked.** Its class on the page proves only that the server bundle
+       * compiled it. The page has to LINK a sheet, and the sheet has to hold the rule — the shape that
+       * shipped was the first without the second.
+       */
+      addStyleBlocks(app);
+      buildProject();
+      const styled = readFileSync(baked, "utf8");
+      if (styled.includes("@@(")) fail("`@@(` survived into the baked page — the plugin did not run");
+      if (!/class="[^"]*\br-[a-zA-Z0-9_.:-]+/.test(styled)) fail("no compiled class reached the baked page");
+      const linked = stylesheetsOf(styled);
+      if (linked.length === 0) {
+        fail("the baked page links no stylesheet — its classes style nothing", styled.slice(0, 600));
+      }
+      const sheets = linked.map((href) => {
+        const file = join(app, "dist", "client", href);
+        if (!href.startsWith("/assets/") || !existsSync(file))
+          fail(`the baked page links ${href}, which the build did not write`);
+        return readFileSync(file, "utf8");
+      });
+      if (!sheets.some((text) => /padding-left:\s*40px/.test(text))) {
+        fail("the stylesheet the baked page links does not carry the block's rules", sheets.join("\n").slice(0, 400));
+      }
+      checks.push("a style block that compiled and is linked");
+    }
+  } else if (withAddon) {
+    if (!existsSync(join(app, "dist/index.html"))) fail("the build produced no dist/index.html");
+    const assets = join(app, "dist", "assets");
+    const emitted = existsSync(assets) ? readdirSync(assets) : [];
+    const css = emitted.filter((file) => file.endsWith(".css")).map((file) => readFileSync(join(assets, file), "utf8"));
+    const js = emitted.filter((file) => file.endsWith(".js")).map((file) => readFileSync(join(assets, file), "utf8"));
+    checks.push(pageInBlocks(css, js.join("\n")));
   } else {
     const index = join(app, "dist/index.html");
     if (!existsSync(index)) fail("the build produced no dist/index.html");
     checks.push("an index");
+
+    /**
+     * **And the block really compiled**, which "it built" does not say.
+     *
+     * A block that produced nothing leaves a perfectly green build and an unstyled page — the exact
+     * shape of the fault the plugin's own note records, where one stylesheet for the whole app
+     * shipped empty because a bundler does not wait for a transform. So the emitted CSS is read: the
+     * declarations have to be in it, the class has to be in the markup or the script, and the `@@(`
+     * has to be gone.
+     */
+    const assets = join(app, "dist", "assets");
+    const emitted = existsSync(assets) ? readdirSync(assets) : [];
+    const css = emitted.filter((file) => file.endsWith(".css")).map((file) => readFileSync(join(assets, file), "utf8"));
+    const js = emitted.filter((file) => file.endsWith(".js")).map((file) => readFileSync(join(assets, file), "utf8"));
+    const all = [...css, ...js, readFileSync(index, "utf8")].join("\n");
+
+    if (!css.some((text) => text.includes("padding-left:40px") || text.includes("padding-left: 40px"))) {
+      fail("the style block compiled to no CSS — the project built green and unstyled", css.join("\n").slice(0, 400));
+    }
+    if (!css.some((text) => text.includes(":hover"))) fail("the block's nested rule reached no stylesheet");
+    if (!/\br-[a-zA-Z0-9_.-]+/.test(all)) fail("no compiled class name reached the built output");
+    if (all.includes("@@(")) fail("`@@(` survived into the build — the plugin did not run");
+    checks.push("a style block that compiled");
   }
 
   /* ── 6. a PRODUCTION install, and a page served from it ───────────────────────────────────── */
@@ -303,7 +543,6 @@ try {
   console.log(
     `[scaffold] ${mode}: ${rewritten} workspace package(s), installed, built, and it has ${checks.join(", ")}`,
   );
-  void built;
 } finally {
   rmSync(work, { recursive: true, force: true });
 }

@@ -4,9 +4,11 @@ import { hookTimeout, testTimeout } from "../../vitest.timeout.mjs";
 import { configDefaults } from "vitest/config";
 import { resolve } from "node:path";
 import dts from "vite-plugin-dts";
+import { ramonda } from "@ramonda/build/vite";
 
 export default defineConfig({
   plugins: [
+    ramonda(),
     dts({
       insertTypesEntry: true,
       rollupTypes: true,
@@ -26,11 +28,6 @@ export default defineConfig({
       // Eksternalizuj samo ono što stvarno nije deo core-a
       external: [/^@ramonda\//],
     },
-  },
-  esbuild: {
-    jsx: "automatic",
-    jsxImportSource: "@ramonda/core",
-    target: "es2022",
   },
   // Core cannot resolve its own published name, so point it at the source.
   resolve: {

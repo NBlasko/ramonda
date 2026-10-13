@@ -21,8 +21,8 @@ validating a value:
 bguard is an **optional peer dependency**. Importing `@ramonda/form` never reaches this module, so a
 form over zod pulls in nothing from here.
 
-```sh
-pnpm add bguard
+```install
+bguard
 ```
 
 ## HTML attributes from the schema — `htmlConstraints`

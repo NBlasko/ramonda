@@ -119,9 +119,21 @@ public repositories, on the built-in `GITHUB_TOKEN`. Coverage is still not a
 *threshold* gate; nothing fails on a percentage (see *Deliberate gaps*).
 
 It was briefly a separate `coverage` task in its own job, and that was wrong twice
-over. It ran the whole suite a second time for one report — measured here, `turbo run
-test --force` takes 116.6s and the instrumented run 126.9s, so the duplicate cost a
-full extra ~2 minutes to save 10 seconds of instrumentation. And more seriously, the
+over. It ran the whole suite a second time for one report — measured at the time,
+`turbo run test --force` took 116.6s and the instrumented run 126.9s, so the duplicate
+cost a full extra ~2 minutes to save 10 seconds of instrumentation.
+
+**That 10 seconds is no longer the number, and the difference is not small.** Measured
+2026-09-11, after `@ramonda/css` was added — a package that did not exist when the line
+above was written, and which is now a third of the suite:
+
+    @ramonda/css      46.6s uninstrumented      225.3s with --coverage      4.8x
+    plugin.test.ts    42.8s                     219.1s                      5.1x
+
+The whole `test` job is ~2438s of CPU work, of which `@ramonda/css` is 836s and
+`@ramonda/core` 593s. So instrumentation is now the dominant cost of the job rather
+than a rounding error, and the reasoning that folded the two tasks together — correct
+then — is worth re-deciding on these numbers. See *Deliberate gaps*. And more seriously, the
 second task name silently **dropped tests**: 21 test tasks against 18 coverage ones,
 because `create-ramonda` (which tests the built bundle), `@ramonda/docs` and
 `@ramonda/playground-ssr` (whose test boots a server and smoke-tests it) have no
@@ -208,7 +220,7 @@ worth knowing before adding another bot:
   as `@v4.37.3`, which would mean a pull request for every CodeQL patch release
   from then on. `@v4` already excludes the only change that can break a workflow —
   a new major — so `dependabot.yml` now ignores patch and minor for that action.
-  The exact pins elsewhere (`ossf/scorecard-action@v2.4.4`,
+  The exact pins elsewhere (`ossf/scorecard-action@v2.5.0`,
   `actions/dependency-review-action@v5.0.0`) stay, because those two publish no
   moving major tag to use instead.
 
@@ -246,7 +258,8 @@ Dependabot already do here at no cost. What Snyk is remembered for — shouting
 about transitive advisories in a Next.js app — is the Dependabot half of this
 table, reading the same GitHub Advisory Database.
 
-**One override, and its receipt.** `pnpm.overrides` in the root `package.json`
+**One override, and its receipt.** `overrides` in `pnpm-workspace.yaml` (pnpm 12
+no longer reads the `pnpm` field of `package.json`, and skips it with a warning)
 forces `esbuild` to `>=0.28.1`. Before it, `pnpm audit` reported one low advisory
 ([GHSA-g7r4-m6w7-qqqr](https://github.com/advisories/GHSA-g7r4-m6w7-qqqr) —
 arbitrary file read via esbuild's dev server, on Windows) reachable through 15
@@ -477,10 +490,10 @@ it. So the sequence is: merge features → merge the Version PR (publishes) → 
 so merging to `main` published them at the versions they already carried. Every
 bump since comes from a changeset.
 
-`CHANGELOG`s link back to PRs and authors via `@changesets/changelog-github`,
-which reads `GITHUB_TOKEN` — already provided in CI. (Running `pnpm changeset
-version` locally would need a `GITHUB_TOKEN` in your env; normally you let the
-Version PR do it.)
+`CHANGELOG`s are written by `@changesets/cli/changelog` (`.changeset/config.json`):
+each entry is the changeset's own text, with no links to PRs or authors, and
+`pnpm changeset version` runs locally with no token. Normally you let the Version
+PR do it.
 
 ## What passes today (measured)
 
@@ -513,27 +526,26 @@ reports rather than letting the last one win).
 
 ## Pinned dev dependencies (do not blindly bump)
 
-Three dev/build-time deps are deliberately held back. **None of them affect the
+Two dev/build-time deps are deliberately held back. **None of them affect the
 published packages** (those ship via tsup/esbuild; consumers bring their own
 TypeScript). Each latest major breaks the setup for no shipped benefit — revisit
 only with the fix in hand:
 
-- **`vite` held at `^7`.** Vite 8 switched to the oxc transformer, which ignores
-  the `esbuild: { jsx: "automatic" }` block the vitest configs use, so JSX stops
-  compiling in tests (`SyntaxError`). To move to 8, configure oxc's JSX pragma in
-  every vitest config. (See the note in `packages/router/vitest.config.ts`.)
+- **`vite-7` held at Vite 7.** The repository is on Vite 8. `@ramonda/build` and
+  `@ramonda/css` also depend on `vite-7`, an alias of Vite 7, and run their real
+  builds and dev servers on both — an app may be on either, and the plugins answer
+  each differently. Moved to 8, that half would run Vite 8 twice and pass.
 
-  **The pin has to be written in every package that runs vitest**, and for a while it was not:
-  `@ramonda/devtools`, `@ramonda/server` and `apps/docs` declared `vitest` and no `vite`, so they
-  inherited whatever vitest brought. Bumping vitest on 2026-09-02 was enough to pull vite 8 in for
-  them, and the docs suite failed with exactly the `SyntaxError` above. A pin that only some
-  manifests carry is not a pin.
-- **`jsdom` pinned to `28.0.0`.** 28.1+/29 changed CSSOM `cssText` serialization
-  (a color keyword comes back as `rgb(...)`), which breaks the RMD007 style-
-  normalization test and a test that spies on `cssText`.
-- **`typescript` held at `^5.9`.** TS 7 (the native rewrite) removed `baseUrl`,
-  which every tsconfig uses with `paths`, and tsup's `.d.ts` generation is not
-  known to support it yet.
+  Vite 8 was held back for a while, because its Oxc transform ignored the `esbuild` block every
+  vitest config used and cannot lower a TC39 decorator at all. Every config now uses `ramonda()`
+  from `@ramonda/build`, which lowers them itself on Vite 8.
+- **`typescript` held at `^6`.** TS 7 (the native rewrite) has no JavaScript
+  API: its package exports `version` and nothing else (measured on 7.0.2), and
+  `@ramonda/check`, `@ramonda/css` and the editor plugin all read source through
+  that API. Their peer ranges say `<7` for the same reason, and a scaffolded
+  project gets the newest major below that. TS 7 also removes `baseUrl`, which
+  tsup's declaration build sets on its own; on 6 it is only deprecated, and
+  `tsup.dts.ts` switches that one deprecation off for that one compile.
 
 ## Deliberate gaps (the "we'll add more later" list)
 
@@ -545,7 +557,7 @@ only with the fix in hand:
   now. Escalating is one uncommented block in `.github/codeql/codeql-config.yml`,
   and the time to do it is after the default suite's findings are triaged — the
   `innerHTML` writes in `packages/devtools/src/index.ts` first.
-- **SHA-pinned actions.** Workflows pin tags (`@v7`, `@v2.4.4`), not commit SHAs.
+- **SHA-pinned actions.** Workflows pin tags (`@v7`, `@v2.5.0`), not commit SHAs.
   Scorecard marks this down, and it is right that a tag can be moved under you;
   a SHA is also unreadable and drifts silently out of date. Revisit if Dependabot's
   `github-actions` updates prove reliable enough to keep SHAs current.
@@ -562,6 +574,64 @@ only with the fix in hand:
 - **Turbo remote caching.** Add `TURBO_TOKEN` / `TURBO_TEAM` to share the build
   cache across runs and machines, so `test` and `build` stop rebuilding from
   scratch each job.
+- **The `test` job costs ~10 minutes.** Measured 2026-09-11: 2438s of CPU work across
+  15 packages, `@ramonda/css` 836s of it and `@ramonda/core` 593s.
+
+  **Instrumentation is NOT most of it, and the first version of this entry said it was.**
+  Measured again 2026-09-14, on an idle machine, one package at a time:
+
+      @ramonda/router    3s uninstrumented    3s with --coverage      1.0x
+      @ramonda/css      49s                 225s                      4.6x
+        of which plugin.test.ts + virtual.test.ts   174s of the 176s
+
+  **Coverage is free everywhere except one package, and inside it two files.** v8's
+  coverage is process-wide — it counts every line of JavaScript executed, and those two
+  files run the TypeScript type checker about 142 times. No other package runs `tsc` at
+  all, which is why router pays nothing.
+
+  Sharing one `ts.DocumentRegistry` across those services was tried and does not help:
+  217s to 210s, and it breaks four tests that are about per-package answers. The cost is
+  type CHECKING, which sharing parsed files does not avoid.
+
+  So the honest size of the prize is **about 3 minutes of 10**, from one package, not the
+  fivefold cut claimed here first. Three things to weigh:
+  1. **Take coverage off the PR path for `@ramonda/css` only.** Surgical rather than a
+     restructure, now that the cost is known to be one package. Read the *Coverage*
+     section first: folding the two tasks into one was deliberate and dropped three test
+     tasks when they were separate. Whatever replaces it must keep `turbo run test` as
+     the gate, and losing the 99% floor on PRs is the real cost — it caught a genuine
+     drop on 2026-09-11.
+  1b. **`@ramonda/core` spends 82% of its time building jsdom environments, and sharing
+     them is 7x — at a price this cannot pay on its own.** Measured 2026-09-14:
+     `setup 243.9s, environment 243.0s, tests 25.5s`, across 239 test files that each
+     get their own jsdom.
+
+         core, isolated (as configured)   28s   green
+         core, --no-isolate                4s   8 tests fail in 3 files
+
+     Moving tests to the `node` environment is NOT the lever: only **3 of 239** never
+     touch a DOM, which is what a UI framework's tests look like.
+
+     The 7x is real and so is the reason it is refused. Without isolation the files share
+     one `document`, and the failures are what that does — `RangesAmongSiblings` gets
+     `null` from `container.querySelector("#shell")` because another file left the DOM in
+     a state it did not expect. Making those eight pass would not make sharing safe; it
+     would leave every future test carrying an order dependency nobody declared, in a
+     repository that already has a note about global state leaking between tests.
+
+     A middle path exists and is not free either: vitest projects, one isolated and one
+     not, which buys the speed for most files at the cost of a config concept and a list
+     somebody has to keep right. **This is a decision about what a test is allowed to
+     assume, not a performance tweak, so it waits for a person.**
+
+  2. **Cache `.turbo` between runs.** Only the pnpm store and the Playwright binaries
+     are cached today, so every run re-tests every package including untouched ones —
+     a PR that edits only `apps/docs` pays for the whole suite. `test` is already
+     `cache: true` with `outputs` declared, so this is workflow YAML and nothing else.
+     It does not help a PR that changes a big package, which is the point: it fixes the
+     common case, not the worst one.
+  3. **Split the job** only if the two above are not enough. `css` alone is 836s against
+     1602s for everything else, and a second job pays checkout, install and build again.
 - **Node version matrix.** CI runs one version, from `.nvmrc`. A matrix is worth
   adding when the packages have users on other majors — which is a `1.x` concern,
   not a `0.x` one. Until then a second version costs CI minutes to prove something

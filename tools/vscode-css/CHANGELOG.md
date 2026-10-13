@@ -1,0 +1,157 @@
+# Ramonda CSS
+
+## 0.7.0
+
+- **Goes with `@ramonda/css` 0.10.0.** The copy of the compiler this extension carries, for a
+  project that has none of its own, is the new one. It brings 0.10.0's checks to such a project: a
+  value its property's grammar cannot read (`rgb(1x 2 3)`, `calc(100 - 2rem)`), a function or a unit
+  CSS does not have, a unit of the wrong kind (`z-index: 2x`), a broken hex colour, `@media`,
+  `@container` and `@supports` conditions that never match, a selector a browser drops, and a
+  container named without its type.
+- **A call to a function CSS does not have no longer ends the block.** `d(--accent)`, a slip for
+  `var(`, had its `)` read as the block's own, so the `(` had no partner and was painted red with no
+  message. The brackets pair now, and `@ramonda/css` names the slip: `unknown-function`.
+- **Hovering a shorthand's value shows the longhands it becomes.** It used to repeat the property's
+  grammar; a value with a `var()` says it is kept whole, and why.
+
+## 0.6.0
+
+- **Goes with `@ramonda/css` 0.9.0.** The colours are unchanged; the copy of the compiler this
+  extension carries, for a project that has none of its own, is the new one.
+- **A binding a block reads through `$( … )` is a use.** `const spin = @@keyframes(…)`, read only as
+  `animation: $(spin) …`, is no longer called unused, and the editor's list of references finds it.
+- **`hardcoded` is judged per value.** A percentage can be set free while lengths stay tokens, and a
+  value written out where a token already holds it names that token.
+
+## 0.5.0
+
+- **Goes with `@ramonda/css` 0.8.0.** The colours are unchanged; the copy of the compiler this
+  extension carries, for a project that has none of its own, is the new one. It brings 0.8.0's checks
+  to such a project: a number with no unit where a length goes, a fraction where a whole number goes,
+  a media value the feature does not have, a media feature written in `@supports`, and a value cast
+  to a style block.
+- **Formatting works on Windows.** The project's own `ramonda-css` is run through
+  Node, by the script its package names, instead of by the shell file in `node_modules/.bin`, which
+  Windows cannot start that way.
+
+## 0.4.0
+
+- **Goes with `@ramonda/css` 0.7.0**, whose project tokens are called tokens — `tokens` in
+  `ramonda.css.ts`, where it was `variables`. The colours are unchanged; the copy of the compiler this
+  extension carries, for a project that has none of its own, is the new one.
+- That copy brings 0.7.0's checks to such a project too: a `url( … )` pointing at no file, a token set
+  against its declaration, a token group written without `kind( … )`, a `@@font-face` binding that
+  is its family, and the rest listed in the package's changelog.
+- The marketplace page calls `$color.accent` a token.
+
+## 0.3.0
+
+- **The colours follow the new spelling of a block's logic.** This release goes with the `@ramonda/css`
+  that changed it, and colours an older block wrongly, so update the two together.
+
+  - Code goes into a block as `$( … )`, wherever it stands: `color: $(tint)`, `...$(base)`,
+    `$(angle): 45deg`. The `$` is coloured as the language's marker and the inside is TypeScript.
+  - A theme variable is `$color.primary.main` — the group right after the `$` — as one token.
+  - `when $( … ) { … } else when $( … ) { … } else { … }` colours every word as a keyword and every
+    condition as code.
+  - `match $( … ) { key => ( … ); }` in a block, and `match $( … ) { key => value; }` in a value,
+    colour the word, the subject, the keys and the arrows; the declarations in an arm are CSS.
+  - `$(c) ? a : b` colours `?` and `:` as operators and keeps the two values CSS.
+
+- **A project's own plugin that fails to start is tried again once it changes.** It used to be tried
+  once, when the TypeScript server started: a rebuild of `@ramonda/css` caught at that moment left
+  the extension's own copy answering until a restart, with whatever syntax that copy knew. The retry
+  happens on a request, at most once every few seconds, and only after the plugin's file changed —
+  one that stays broken costs nothing, and the reason is written once in the TS server log.
+
+## 0.2.0
+
+- **The `useSyntaxServer` setting is no longer needed.** An editor runs two TypeScript servers, and
+  the syntax one — which owns formatting, folding, the outline and expand-selection for as long as
+  the editor is open — never reads a `tsconfig.json`. So the plugin named there never reached it,
+  and it treated a style block as plain TypeScript: asked to format one file, it wanted 20 edits the
+  other server did not.
+
+  The extension now contributes the plugin itself, which VS Code hands to both servers. Formatting a
+  block is left alone, folding and the outline match, and the setting can come out of your settings —
+  `"typescript.tsserver.useSyntaxServer"`, or `"js/ts.tsserver.useSyntaxServer"` if your VS Code is
+  new enough to have renamed it.
+
+  A project that installs `@ramonda/css` keeps being checked by its own copy: the extension's plugin
+  steps aside wherever the project has one, so the version you pinned is still the version that
+  decides what is an error.
+
+- **An editor no longer promises what a build will refuse.** The extension answers about style
+  blocks in any project, including one with no `@ramonda/css` at all — and such a project cannot
+  compile a block: a build stops at `Expected identifier but found "@"`. So where the extension is
+  the only thing answering, it says so on the block and keeps reporting the CSS underneath, which
+  is the shape TypeScript uses for JSX in a project with no `jsx` option: the file is parsed, it is
+  checked, and one more line names what is missing.
+
+- **A project that installed the package without naming the plugin** in its `tsconfig.json` stops
+  being told nonsense. It used to get `Variable 'red' implicitly has an 'any' type` and `Cannot find
+  name 'flex'` from a block TypeScript was reading as code; it now gets what is actually wrong with
+  the CSS.
+
+## 0.1.6
+
+- **The page now shows what a block looks like.** A marketplace page is rendered by the marketplace's
+  own highlighter, which has no way to load the grammars an extension is made of — so the example
+  above was being coloured as ordinary TypeScript, which is the one thing this extension exists to
+  change. There is a picture now, generated from these grammars rather than screenshotted, and CI
+  fails if the two stop agreeing.
+
+## 0.1.5
+
+- **`$.color.primary.main` is coloured as a variable inside a block.** A declared variable is written
+  as a path in `@@( … )` and was coloured as whatever its segments looked like — a property name, a
+  keyword, plain text. It is one token now, with its own scope `ramonda.css-variable`, so a theme
+  colours the whole path as the one thing it is.
+
+  Checked against what the formatters do rather than assumed: neither biome nor prettier touches the
+  spelling, so the colour and the text agree after a format.
+
+## 0.1.4
+
+- **Corrected the formatter advice, which said the wrong thing about a global setting.** It read
+  *"safe to set for a whole language"*; `editor.defaultFormatter` decides which extension VS Code
+  asks and does not fall through, so set in user settings it makes format-on-save silently do nothing
+  in every project without `@ramonda/css`, and runs biome in a project that formats with Prettier.
+  The setting belongs in the project's own `.vscode/settings.json`, and the page now says why.
+
+## 0.1.3
+
+- Rewrote *Where the colours apply*. `@ramonda/css@0.2.0` refuses a block written as a bare
+  `css=@@( … )` attribute — a block is a TypeScript value, and a bare attribute is the one shape only
+  JSX has. Nothing in this extension changes: it still colours that spelling, because a grammar
+  colours and does not decide what compiles, and taking it out would spread the error to the end of
+  the file. The red line comes from the language-service plugin, under the attribute name.
+
+## 0.1.2
+
+- A conditional group is written `if ({ … })`. It was `@@if`, and `@@` now opens a style block and
+  nothing else — inside one, the language is the block's own and spells itself without a sigil, as
+  `{ … }` and `...{ … }` already did.
+
+## 0.1.1
+
+- Rewrote the readme. It says up front what works with nothing else installed, and what needs
+  `@ramonda/css` in the project.
+- Documented the two formatter routes separately. A project on Prettier adds
+  `@ramonda/css/prettier` to its Prettier config and leaves `editor.defaultFormatter` alone; only a
+  project on biome points the setting at this extension, and in the project's own
+  `.vscode/settings.json`.
+
+## 0.1.0
+
+First release.
+
+- **Syntax colouring** for `@@( … )` style blocks, in each position one can be written: a bare JSX
+  attribute, `css={@@( … )}`, and a plain value. CSS is coloured as CSS, a `{ … }` hole as
+  TypeScript, and `@@if ({ … })` and `...{ … }` as the block language's own.
+- **Formatting** of the CSS inside a block, through the project's own `ramonda-css`.
+- **Diagnostics** from the same rules the build runs, reported under the character rather than on
+  the whole block.
+- **Completions** for property names and values inside a block, and TypeScript's own inside a hole.
+
+Formatting, diagnostics and completions need `@ramonda/css` in the project.

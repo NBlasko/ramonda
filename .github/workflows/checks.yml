@@ -26,6 +26,27 @@ jobs:
           # with "Does `main` exist and it's synced with remote?" rather than an answer.
           fetch-depth: 0
       - uses: ./.github/actions/setup
+      # `pnpm lint` is oxlint over the monorepo AND `ramonda-css lint` over two real demo files,
+      # and the second half is a BUILT command: `ramonda-css` is `bin.mjs`, which imports
+      # `dist/cli.js`. This job builds nothing, so that half could never have run here — it failed
+      # with `ERR_MODULE_NOT_FOUND` and a stack naming node's own resolver, on a step called
+      # "Lint (oxlint)", which is about as far from the cause as a message can be.
+      #
+      # It is invisible locally, and permanently: a working tree has `dist` from the last build, so
+      # `pnpm lint` passes on every machine that has ever built. Only a fresh checkout sees it.
+      #
+      # Through turbo, not `pnpm --filter … build` — `check-workflows.mjs` is about exactly this, and
+      # `build` has a `dependsOn` that a direct filter would skip.
+      - name: Build the CLI that `pnpm lint` runs
+        run: pnpm exec turbo run build --filter=@ramonda/css
+      # The benchmark on five files, so the script cannot rot. Its timings are not a gate — they
+      # differ between machines — and `pnpm bench:css` is how somebody measures for real.
+      - name: The CSS benchmark still runs
+        run: node scripts/css/bench-css.mjs 5
+      # The editor GIFs on the style blocks pages are drawn from the plugin's own answers; this asks
+      # them again and fails when a message or a completion has moved since. No browser needed.
+      - name: The editor GIFs show what the editor says
+        run: node apps/docs/scripts/build-editor-gifs.mjs --check
       # oxlint over the whole monorepo in one pass (config: .oxlintrc.json). Hard
       # gate: the tree is clean today (0 errors).
       - name: Lint (oxlint)
@@ -41,6 +62,29 @@ jobs:
       # first, since a check nobody has seen fail proves nothing.
       - name: Check workflows
         run: SELFTEST=1 node scripts/check-workflows.mjs && node scripts/check-workflows.mjs
+
+      # The two `test` jobs must together run every test task and neither twice. Here
+      # rather than in a test job, because it must fail on the tree that broke it rather
+      # than beside the very tasks it is checking.
+      - name: Check the test jobs partition the suite
+        run: node scripts/check-test-jobs.mjs
+
+      # Every gate `pnpm check` runs must be run here too, or it protects the machine it was run on
+      # rather than `main`. Written after a measurement found TEN that were not — including the one
+      # whose own docstring records a debug probe reaching `main` through a green run, and a second
+      # leftover that reached `main` while it was missing.
+      #
+      # It compares whole invocations rather than file names, because `SELFTEST=` and `--check` are
+      # what a run means: `build-package-readmes.mjs` writes the READMEs and `--check` fails when
+      # they are stale, and a self-test that only ever runs on a laptop has not proved anything about
+      # `main`. It asks one direction only — CI doing MORE is fine, and four of these scripts read
+      # what real browser engines say, which no local gate can.
+      - name: Check CI runs every gate `pnpm check` does
+        run: |
+          SELFTEST=spelling node scripts/check-gate-parity.mjs
+          SELFTEST=missing node scripts/check-gate-parity.mjs
+          SELFTEST=present node scripts/check-gate-parity.mjs
+          node scripts/check-gate-parity.mjs
       # Every pending changeset is one the release can process AND one it can consume. This ran only
       # in `pnpm check` until now, which is how two changesets for an ignored package reached `main`
       # and left the release unable to ever take its publish branch.
@@ -58,7 +102,38 @@ jobs:
           git rev-parse --verify main >/dev/null 2>&1 || git branch main origin/main
           SELFTEST=ignored node scripts/check-changesets.mjs
           SELFTEST=floor node scripts/check-changesets.mjs
+          SELFTEST=scaffold node scripts/check-changesets.mjs
           node scripts/check-changesets.mjs
+
+      # The gates that read SOURCE and nothing else. They ran only in `pnpm check` until now, which
+      # made them a promise about the machine that happened to run it rather than about `main` — a
+      # PR could be merged with any of them broken, and the branch that added this had already
+      # merged a test holding a leftover diagnostic for exactly that reason.
+      #
+      # Each one's self-test runs first where it has one, since a check nobody has seen fail proves
+      # nothing. `preflight-node.mjs` is deliberately NOT here: it warns when the Node running the
+      # gate is not the Node CI runs, and in CI those are the same Node, so it could never speak.
+      - name: Check the source-only gates
+        run: |
+          node scripts/check-event-spelling.mjs
+          node scripts/check-tsconfigs.mjs
+          node scripts/check-decorator-duplication.mjs
+          SELFTEST=probe node scripts/check-test-probes.mjs
+          SELFTEST=string node scripts/check-test-probes.mjs
+          SELFTEST=scratch node scripts/check-test-probes.mjs
+          node scripts/check-test-probes.mjs
+          node scripts/build-package-readmes.mjs --check
+          node scripts/css/build-css-properties.mjs --check
+          node scripts/css/build-clears-table.mjs --check
+
+      # These two need `@ramonda/css` BUILT, which the step above already did for `pnpm lint`:
+      # `check-css-blocks` imports the compiler, and `check-css-system` runs `bin.mjs codegen
+      # --check`. Measured with every `dist` moved aside — the first dies in node's resolver and the
+      # second cannot run at all, so neither can pass quietly for want of a build.
+      - name: Check the generated CSS system is in step with its config
+        run: |
+          node scripts/css/check-css-blocks.mjs
+          node scripts/css/check-css-system.mjs
 
   typecheck:
     name: Type-check
@@ -89,10 +164,10 @@ jobs:
         run: echo "version=$(pnpm --filter playground-core exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
 
       - name: Restore the browser
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-chromium-headless-shell-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+          key: playwright-engines-${{ runner.os }}-${{ steps.playwright.outputs.version }}
 
       # The headless shell alone, not the full Chromium: measured at 267 MB against 656 MB, and this
       # suite runs headless, so the rest is a download nothing opens. A headed run would need
@@ -106,6 +181,70 @@ jobs:
       # Apt packages, which are the runner's and not ours to cache.
       - name: Its system libraries
         run: pnpm --filter playground-core exec playwright install-deps chromium-headless-shell
+
+      # Firefox and WebKit, for the three generators below and for nothing else.
+      #
+      # They are HERE rather than in `test` because that job is the bottleneck for how long CI takes,
+      # and this one was already built to run beside it — its own note above says so. The generators
+      # themselves take about two seconds each; what costs is the download, which the cache above
+      # holds and which no other job pays.
+      - name: The other two engines
+        run: |
+          pnpm --filter playground-core exec playwright install firefox webkit
+          pnpm --filter playground-core exec playwright install-deps firefox webkit
+
+      # What `mdn-data` says against what a browser does — three facts this package generates by
+      # ASKING, because `mdn-data` was measured wrong about each of them:
+      #
+      #   prefixed properties   it lists 99; the engines have 262 between them
+      #   shorthand leaves      it was missing 37, after two hand-patches for the same fault
+      #   union keywords        14 values Chromium accepts that the type map refused
+      #
+      # And two facts no source has at all: the numbers a property drops (`gap: 12`, `z-index: 1.5`),
+      # and the values each media feature understands (`prefers-color-scheme: drak` never matches).
+      #
+      # The last is the one that matters most: `properties.ts` states the line these protect —
+      # "rejecting valid CSS is the one failure a type map may not have" — and an `mdn-data` bump or
+      # a browser release can reopen any of them silently. `pnpm check` cannot ask, because three
+      # engines are not something a local gate should download; this job already has them.
+      - name: What the engines say
+        run: |
+          node scripts/css/build-prefixed-properties.mjs --check
+          node scripts/css/build-shorthand-leaves.mjs --check
+          node scripts/css/build-engine-keywords.mjs --check
+          node scripts/css/build-numberless-properties.mjs --check
+          node scripts/css/build-number-properties.mjs --check
+          node scripts/css/build-media-values.mjs --check
+
+      # The splitter's tables and the gates over it. Each one launches Chromium, Firefox and WebKit,
+      # so they cannot run in `lint`, which has none — they sat there on this branch and CI had never
+      # run them, and one named a script the branch had already deleted. Sources only, so they need
+      # no build and run before the one below.
+      - name: What the splitter is checked against
+        run: |
+          node scripts/css/build-shorthand-shapes.mjs --check
+          node scripts/css/build-initial-values.mjs --check
+          node scripts/css/build-grammar-shapes.mjs --check
+          SELFTEST=order node scripts/css/check-layer-skew.mjs
+          node scripts/css/check-layer-skew.mjs
+          SELFTEST=slot node scripts/css/check-shorthand-split.mjs
+          SELFTEST=half node scripts/css/check-shorthand-split.mjs
+          node scripts/css/check-shorthand-split.mjs
+          SELFTEST=change node scripts/css/check-render-equality.mjs
+          SELFTEST=joined node scripts/css/check-render-equality.mjs
+          node scripts/css/check-render-equality.mjs
+          SELFTEST=refuse node scripts/css/check-must-split.mjs
+          node scripts/css/check-must-split.mjs
+          SELFTEST=flex node scripts/css/check-hand-splits.mjs
+          SELFTEST=forget node scripts/css/check-hand-splits.mjs
+          node scripts/css/check-hand-splits.mjs
+          SELFTEST=hole node scripts/css/check-engine-sweep.mjs
+          SELFTEST=fixed node scripts/css/check-engine-sweep.mjs
+          SELFTEST=blind node scripts/css/check-engine-sweep.mjs
+          node scripts/css/check-engine-sweep.mjs
+          SELFTEST=refuse node scripts/css/check-value-grammar.mjs
+          SELFTEST=blind node scripts/css/check-value-grammar.mjs
+          node scripts/css/check-value-grammar.mjs
 
       - name: Build the playground
         run: pnpm exec turbo run build --filter=playground-core
@@ -122,16 +261,81 @@ jobs:
 
       # A trace and a screenshot per failure. This suite exists for differences that appear only in
       # a browser, so a red run here is the one place where re-reading the source is least likely to
-      # explain it.
+      # explain it. `check-render-equality.mjs` writes its three pictures — hand-written, blocks, and
+      # every differing pixel marked — under the same `test-results/`, so they are kept here too.
       - name: Keep what the failure left behind
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: browser-failure
           path: |
             apps/playground-core/test-results/
             apps/playground-core/playwright-report/
           retention-days: 7
+
+  # The test suite, split across two runners.
+  #
+  # Measured 2026-09-14: 2438s of CPU work, and as one job it finishes in ~600s — which
+  # is 4.06x parallelism on a 4-core runner, so it is already saturating the machine. The
+  # only thing left that shortens it is more cores, and a second job is how you get them.
+  #
+  # `@ramonda/css` alone is 836s of that 2438s, so it is the half. The other 18 tasks are
+  # the rest. `check-test-jobs.mjs` asserts the two filters partition the set, because the
+  # last split in this repository dropped three tasks without a word — see `Coverage`
+  # below, and the script's own header.
+  #
+  # Both halves are still `turbo run test`, which keeps the gate exactly what it was: each
+  # package's own `test` script, instrumented, exiting non-zero on a failure.
+  test-css:
+    name: Test (css)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+
+      - name: Test with coverage
+        run: pnpm exec turbo run test --filter=@ramonda/css
+
+      - name: Merge into one report
+        run: SELFTEST=1 node scripts/merge-lcov.mjs && node scripts/merge-lcov.mjs
+
+      # `parallel: true` tells Coveralls this is one of several uploads for one build; the
+      # `coverage` job below closes it. Without the pair, whichever half uploaded last
+      # would replace the other's numbers rather than adding to them.
+      - name: Upload to Coveralls
+        uses: coverallsapp/github-action@v2
+        with:
+          file: coverage/lcov.info
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          flag-name: css
+          parallel: true
+          allow-empty: true
+        continue-on-error: true
+
+  # The one place anything here runs on Windows. Not the whole suite: the files that start another
+  # program — `ramonda-css format`/`lint` running biome and oxlint, and the editor extension running
+  # `ramonda-css` — because that is where an operating system decides whether a command runs at all.
+  # They looked for the `.bin` shims, and on Windows those are a shell script and a `.cmd`, neither
+  # of which `execFileSync` can start without a shell. They run each package's own bin script with
+  # Node now, and this is what says so.
+  windows:
+    name: Windows (the commands that start a program)
+    runs-on: windows-latest
+    steps:
+      # Checked out as committed. The runner's git turns every line ending into CRLF otherwise, and a
+      # test that compares formatted text would be measuring the checkout rather than the code.
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+      - run: pnpm exec turbo run build --filter=@ramonda/css
+      - name: Test the commands that start a program
+        working-directory: packages/css
+        run: >-
+          pnpm exec vitest run
+          src/__tests__/toolingRun.test.ts
+          src/__tests__/toolingCli.test.ts
+          src/__tests__/cli.test.ts
+          src/__tests__/extension.test.ts
 
   test:
     name: Test
@@ -152,13 +356,13 @@ jobs:
       # silently NOT RUN — 21 test tasks against 18. A second name is a name that can be
       # forgotten; there is now only one.
       #
+      # The filter is the ONLY thing that differs from `test-css`, and the two are checked
+      # against each other rather than trusted.
+      #
       # Coverage is still not a THRESHOLD gate: nothing fails on a percentage. A failing
       # test fails; a lower number is reported and left to a human.
-      #
-      # No filters — every package that has a `test` script runs it, and turbo skips the
-      # ones that do not.
       - name: Test with coverage
-        run: pnpm exec turbo run test
+        run: pnpm exec turbo run test --filter=!@ramonda/css
 
       # Six packages each write paths relative to themselves, so six `src/index.ts`
       # records would collide into one file in the report. This rewrites them to be
@@ -179,9 +383,28 @@ jobs:
           # A fork's pull request gets a read-only token, so the upload would 403 and
           # fail a check the contributor cannot fix. The numbers are still produced
           # and printed by the steps above.
+          flag-name: rest
+          parallel: true
           allow-empty: true
         # Reporting must never fail the gate: the tests above already passed by the
         # time this runs, and a Coveralls outage is not a fact about this code.
+        continue-on-error: true
+
+  # Tells Coveralls both halves have arrived, so it adds them into one number instead of
+  # showing whichever landed last. It reports only — `if: always()` so a red test job
+  # still closes the build rather than leaving it open, and it is not a gate.
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+    needs: [test, test-css]
+    if: always()
+    steps:
+      - name: Tell Coveralls the build is complete
+        uses: coverallsapp/github-action@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          parallel-finished: true
+          carryforward: css,rest
         continue-on-error: true
 
   build:
@@ -200,7 +423,10 @@ jobs:
       # which is exactly what a fresh checkout gives — so running it earlier, or in a
       # job of its own, would report the missing build rather than the examples.
       - name: Type-check the documentation examples
-        run: node scripts/check-examples.mjs
+        run: |
+          SELFTEST=block node scripts/check-examples.mjs
+          SELFTEST=system node scripts/check-examples.mjs
+          node scripts/check-examples.mjs
 
       # Here for the same reason, and it needs the build even more directly: it asks a bundler what
       # survives importing each package's EMITTED entry. `@ramonda/devtools` once declared
@@ -254,6 +480,20 @@ jobs:
           SELFTEST=escape node scripts/check-manifest-text.mjs
           node scripts/check-manifest-text.mjs
 
+      # The two gates that need the BUILT tree, which is why they are in this job and not beside the
+      # source-only ones in `lint`.
+      #
+      # `check-third-party` looks for each vendored work's fingerprint in what a package actually
+      # SHIPS, so it reads `dist`; measured with every `dist` moved aside, it reports a problem
+      # rather than passing on an empty corpus, which is the shape this repository has had to fix in
+      # five other gates. `check-css-splitting` reads the playground's own
+      # `dist/.vite/manifest.json` to ask that each chunk loads the rules it names, so it needs the
+      # app built above and not merely the packages.
+      - name: Check what the built packages carry, and how the CSS splits
+        run: |
+          node scripts/check-third-party.mjs
+          node scripts/css/check-css-splitting.mjs
+
       # In this job because it packs the built packages and installs them into a generated
       # project — the tarballs a publish would push, not what npm already has.
       #
@@ -263,11 +503,20 @@ jobs:
       # not start. The gate could not see any of them — it runs `ramonda-check` over `apps/docs`
       # only, and the scaffolder's tests read templates as TEXT.
       #
-      # Both self-tests first, each planting a fault the check must report, so a check that has
-      # gone quiet fails here rather than passing.
+      # The self-tests first, each planting a fault the check must report, so a check that has
+      # gone quiet fails here rather than passing. `types` runs twice because a project meets it
+      # through two commands: `tsc` before it has a block, and `ramonda-css` — which reads blocks —
+      # in a project made with the `css` add-on.
+      #
+      # Then three projects: `ssr` with no add-on, given `@ramonda/css` the way the setup page
+      # tells an existing project to; and both modes with the `css` add-on, which `npm create
+      # ramonda` picks by default.
       - name: Scaffold a project and build it
         run: |
           SELFTEST=head node scripts/check-scaffold.mjs ssr
           SELFTEST=app node scripts/check-scaffold.mjs ssr
+          SELFTEST=types node scripts/check-scaffold.mjs ssr
+          SELFTEST=types node scripts/check-scaffold.mjs spa css
           node scripts/check-scaffold.mjs ssr
-          node scripts/check-scaffold.mjs spa
+          node scripts/check-scaffold.mjs spa css
+          node scripts/check-scaffold.mjs ssr css

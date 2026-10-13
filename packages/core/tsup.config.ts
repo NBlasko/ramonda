@@ -1,10 +1,11 @@
 import { defineConfig } from "tsup";
+import { dts } from "../../tsup.dts";
 
 export default defineConfig([
   {
     entry: ["src/index.ts", "src/testing.ts", "src/jsx-runtime.ts", "src/jsx-dev-runtime.ts"],
     format: ["esm"], // SAMO ESM
-    dts: true,
+    dts,
     clean: true,
     target: "es2022",
     define: {

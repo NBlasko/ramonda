@@ -71,6 +71,9 @@ describe("check-bundle", () => {
     expect(code).toBe(1);
     expect(output).toContain("do not parse");
     expect(output).toContain("chunk.js");
+    // And what to do: on Vite 8 no setting lowers a decorator, so the one fix is the plugin.
+    expect(output).toContain("ramonda()");
+    expect(output).toContain("@ramonda/build");
   });
 
   test("does NOT flag decorator text inside a string — why it parses instead of grepping", async () => {

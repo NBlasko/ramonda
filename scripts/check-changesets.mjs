@@ -175,6 +175,11 @@ const plan = releasePlan();
 if (selftest("floor")) plan.changesets = plan.changesets.slice(1);
 
 if (plan.changesets.length !== files.length) {
+  // A selftest that caught its break says so in one line: its details would read as a failure.
+  if (selftest("floor")) {
+    console.log("[changesets] SELFTEST floor: the plan losing a changeset was reported, as it must be");
+    process.exit(0);
+  }
   // The floor under the check below: it can only speak about changesets the plan actually returned.
   // If those two numbers disagree, the plan is not describing this `.changeset/` directory and every
   // verdict drawn from it is about some other tree.
@@ -182,10 +187,6 @@ if (plan.changesets.length !== files.length) {
     `\n[changesets] the plan describes ${plan.changesets.length} changeset(s) but ${files.length} are\n` +
       `  pending on disk. Nothing below can be trusted until those agree.\n`,
   );
-  if (selftest("floor")) {
-    console.log("[changesets] SELFTEST floor: the plan losing a changeset was reported, as it must be");
-    process.exit(0);
-  }
   process.exit(1);
 }
 
@@ -224,6 +225,11 @@ const stuck = nothingWillConsume(
 );
 
 if (stuck.length > 0) {
+  // A selftest that caught its break says so in one line: its details would read as a failure.
+  if (selftest("ignored")) {
+    console.log("[changesets] SELFTEST ignored: the planted changeset was reported, as it must be");
+    process.exit(0);
+  }
   console.error(`\n[changesets] ${stuck.length} changeset(s) the release can never consume:\n`);
   for (const changeset of stuck) {
     console.error(`  .changeset/${changeset.id}.md — names only ${changeset.releases.map((r) => r.name).join(", ")}`);
@@ -235,15 +241,83 @@ if (stuck.length > 0) {
       `  Delete the file. If the change deserves a note, it belongs in the changeset of a package that\n` +
       `  IS released, or in the site's own pages.\n`,
   );
-  if (selftest("ignored")) {
-    console.log("[changesets] SELFTEST ignored: the planted changeset was reported, as it must be");
-    process.exit(0);
-  }
   process.exit(1);
 }
 
 if (selftest("ignored")) {
   console.error("[changesets] SELFTEST ignored: the planted changeset was NOT reported — this check is asleep");
+  process.exit(1);
+}
+
+/**
+ * **`create-ramonda` BAKES IN the versions of the packages it scaffolds, and nothing links the two.**
+ *
+ * Its `tsup.config.ts` reads each first-party package's version out of the workspace at BUILD time
+ * and writes the ranges into the CLI. They only reach npm when `create-ramonda` is itself published,
+ * and `changeset publish` publishes only what has been bumped — so a release that bumps `core` and
+ * forgets the scaffolder ships `npm create ramonda` still pinning the release before it.
+ *
+ * **It has happened twice.** Once before `0.13.1`, whose changeset says so in its own words, and
+ * again in the release that made a style block a string. The package has no `@ramonda/*` dependency
+ * of its own, so `changesets` has nothing to link it by: `updateInternalDependencies` never reaches
+ * it and neither does `linked`. A rule nobody can see is a rule that gets forgotten, so it is here.
+ *
+ * The list of packages is read from `tsup.config.ts` rather than repeated, because two lists is how
+ * this would go quietly wrong the day somebody adds a package to one of them.
+ */
+function scaffoldedPackages() {
+  const config = readFileSync(join(root, "packages", "create-ramonda", "tsup.config.ts"), "utf8");
+  const list = /const ranges: Record<string, string> = \{\};\s*for \(const folder of \[([\s\S]*?)\]\)/.exec(config);
+  if (list === null) {
+    console.error(`\n[changesets] the folder list in create-ramonda/tsup.config.ts could not be read\n`);
+    process.exit(1);
+  }
+
+  const folders = [...list[1].matchAll(/"([^"]+)"/g)].map((one) => one[1]);
+  // The floor: a regex that stopped matching would leave this list empty and the check below silent.
+  if (folders.length < 5) {
+    console.error(`\n[changesets] only ${folders.length} scaffolded package(s) found — the list moved\n`);
+    process.exit(1);
+  }
+
+  return folders.map((folder) => {
+    const pkg = JSON.parse(readFileSync(join(root, "packages", folder, "package.json"), "utf8"));
+    return pkg.name;
+  });
+}
+
+const released = new Set(plan.releases.filter((release) => release.type !== "none").map((one) => one.name));
+/**
+ * The selftest plants BOTH halves of the fault: a scaffolded package released, and the scaffolder
+ * not. Planting only the second half made it depend on what happened to be pending — right after a
+ * release the plan bumped `@ramonda/css` alone, nothing scaffolded was being released, and the
+ * selftest reported the check asleep when the check was fine.
+ */
+if (selftest("scaffold")) {
+  released.add(scaffoldedPackages()[0]);
+  released.delete("create-ramonda");
+}
+const scaffolded = scaffoldedPackages().filter((name) => released.has(name));
+
+if (scaffolded.length > 0 && !released.has("create-ramonda")) {
+  // A selftest that caught its break says so in one line: its details would read as a failure.
+  if (selftest("scaffold")) {
+    console.log("[changesets] SELFTEST scaffold: the missing scaffolder bump was reported, as it must be");
+    process.exit(0);
+  }
+  console.error(
+    `\n[changesets] ${scaffolded.join(", ")} ${scaffolded.length === 1 ? "is" : "are"} being released and ` +
+      `\`create-ramonda\` is not.\n\n` +
+      `  The scaffolder writes their version ranges into itself when it is BUILT, so they only reach\n` +
+      `  npm when it is published — and \`changeset publish\` publishes only what was bumped. Without a\n` +
+      `  changeset for it, \`npm create ramonda\` keeps pinning the release before this one.\n\n` +
+      `  Add \`.changeset/…\`: \`"create-ramonda": patch\`, saying the pins now match what ships.\n`,
+  );
+  process.exit(1);
+}
+
+if (selftest("scaffold")) {
+  console.error("[changesets] SELFTEST scaffold: the missing scaffolder bump was NOT reported — this check is asleep");
   process.exit(1);
 }
 

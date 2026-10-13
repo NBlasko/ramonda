@@ -1,5 +1,94 @@
 # create-ramonda
 
+## 0.14.2
+
+### Patch Changes
+
+- 586d0f5: A new project gets `@types/node` 26.6.5.
+- 8794680: A new project gets TypeScript 6, the newest the checker and the CSS compiler can read with. When TypeScript 7 is installed, both now advise `npm install -D typescript@6`.
+
+## 0.14.1
+
+### Patch Changes
+
+- 1c770ad: **A project made with the testing add-on gets jsdom 30**, the version the framework's own tests now
+  run on.
+
+## 0.14.0
+
+### Minor Changes
+
+- 9913371: **`@ramonda/css` is an add-on, and on by default.** A new project's page is written in style
+  blocks, under a `ramonda.css.ts` that starts strict: every colour and every length but a percentage
+  comes from a token it declares — light and dark from one `light-dark()` pair each — no custom property is made up
+  on the spot, and a block styles only its own element. Shorthands are allowed: the compiler keeps
+  CSS's order through them, measured with tokens in both directions. The type check runs
+  `ramonda-css`, which reads blocks.
+
+  A value written out that a token already holds is reported with that token's name, so the fix is
+  one word.
+
+- bcbeaae: **A new project's build checks the types.** Vite and esbuild strip types without reading them, so
+  the build of a scaffolded project shipped a type error in silence — measured: `export const x:
+number = "a string"` built green in both templates. `npm run build` now runs `npm run typecheck`
+  second, after `ramonda-check`. It is `ramonda-css` in a project with the `css` add-on, which reads
+  style blocks, and `tsc --noEmit` without it — and the style-blocks setup page says to make it
+  `ramonda-css` once a file holds a block, because `tsc` cannot read one.
+- 7fc5826: A new project is on Vite 8.
+
+### Patch Changes
+
+- 8a06152: **The `testing` add-on's tests run on Vite 8.** Its `vitest.config.ts` carried an `esbuild` block,
+  which Vite 8 only translates into Oxc's settings — and Oxc cannot lower a decorator, so a new
+  project's first `vitest run` died with `SyntaxError: Invalid or unexpected token`. It takes the app's
+  own plugin now, `ramonda()`, and `ramondaCss()` beside it when the project has style blocks. With the
+  Biome add-on and style blocks, `npm run lint` and `npm run format` hand `src` to `ramonda-css`, since
+  biome cannot read a block.
+
+## 0.13.3
+
+### Patch Changes
+
+- fb80994: Updated `@clack/prompts` to 1.8.
+- fc9c7b4: **The server-rendered template links the stylesheet its build writes.** With `@ramonda/css` added, a
+  block compiled, its class reached the page and esbuild wrote `client.css` beside the bundle — and the
+  page linked nothing, so it shipped unstyled. `scripts/build.mjs` now writes the page shell once, with
+  the built script and, when there is one, the stylesheet; `server.mjs` and `scripts/prerender.mjs`
+  read that file. Its `shared` options also have an empty `plugins` array, where a bundler plugin goes.
+
+## 0.13.2
+
+### Patch Changes
+
+- e98151a: Rebuilt so a scaffolded project pins the versions this release publishes.
+
+  The `@ramonda/*` ranges are not written in the source — `tsup.config.ts` reads them out of the
+  workspace when the CLI is built. So they only reach npm when this package is itself published, and
+  `changeset publish` publishes only what has been bumped. Without this, `@ramonda/core` would go out
+  while `npm create ramonda` kept pinning the release before it — and this release is the one where
+  the `css` prop goes, so a fresh project would scaffold against a core that still has it.
+
+  Nothing about the CLI's own behaviour changes.
+
+  **And `check-changesets` now refuses the release that forgets it.** This is the second time: the
+  package has no `@ramonda/*` dependency of its own, so nothing in `changesets` links it to the
+  packages whose versions it bakes in — `updateInternalDependencies` never reaches it and neither does
+  `linked`. A rule nobody can see is a rule that gets forgotten, so it is a check now, with a selftest
+  that plants the fault.
+
+## 0.13.1
+
+### Patch Changes
+
+- 4c746fb: Rebuilt so a scaffolded project pins the versions this release publishes.
+
+  The `@ramonda/*` ranges are not written in the source — `tsup.config.ts` reads them out of the
+  workspace when the CLI is built. So they only reach npm when this package is itself published, and
+  `changeset publish` publishes only what has been bumped. Without this, `@ramonda/core` and
+  `@ramonda/check` would go out while `npm create ramonda` kept pinning the release before them.
+
+  Nothing about the CLI's own behaviour changes.
+
 ## 0.13.0
 
 ### Minor Changes

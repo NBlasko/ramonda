@@ -5,9 +5,10 @@ A [Ramonda](https://ramonda.dev) single-page app, built with Vite.
 ## Develop
 
 ```bash
-npm run dev      # start the dev server on http://localhost:3000
-npm run build    # build for production into dist/
-npm run preview  # preview the production build
+npm run dev        # start the dev server on http://localhost:3000
+npm run typecheck  # check the types — the build runs it too, because Vite does not
+npm run build      # build for production into dist/
+npm run preview    # preview the production build
 ```
 
 ## Where things are

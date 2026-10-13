@@ -140,4 +140,4 @@ because a form's values are plain fields rather than `@state` — see "What re-r
 
 ## License
 
-[MIT](../../LICENSE) © Nikola Blagojević
+[MIT](./LICENSE) © Nikola Blagojević

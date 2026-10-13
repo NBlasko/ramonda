@@ -367,6 +367,10 @@ export const logoGround = {
  * From **Phosphor Icons** (regular weight), MIT, Copyright (c) 2023 Phosphor Icons.
  * https://phosphoricons.com — to change one, take the `d` of its `<path>` from
  * `@phosphor-icons/core/assets/regular/<name>.svg`.
+ *
+ * The MIT permission notice their licence asks to travel with these is in `THIRD-PARTY.md` at the
+ * root of this repository. Naming the holder in a comment is half of what that licence wants; the
+ * other half is the notice itself, and it had nowhere to live until that file existed.
  */
 const ICON_PATHS = {
   /** pick a component from the page — phosphor `cursor-click` */

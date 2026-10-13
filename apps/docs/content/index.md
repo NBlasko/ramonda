@@ -25,6 +25,12 @@ That button is a live Ramonda component. It remembers a number, and each click a
 one. Notice what you did *not* have to do: there is no code that finds the button
 and rewrites its text. You change the number, and the screen follows.
 
+Press *show source* under it and the whole of it is three parts: a field marked `@state`, which is what
+the component remembers; an ordinary method that adds one; and a `render()` that draws a
+button showing the field. There is no constructor and no setter — assigning to the field is
+the update — and `increment` goes straight onto `onclick`, because Ramonda binds a
+component's methods for you.
+
 ## The ideas, in a minute
 
 You will meet these properly over the next few pages. Here is the shape of them, so

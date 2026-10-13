@@ -1,0 +1,905 @@
+import { describe, expect, test } from "vitest";
+import ts from "typescript";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import type { Config } from "../config/config";
+import { configReader, environmentOf, findConfig, readConfig } from "../config/config";
+import { readBlock } from "../compiler/read";
+import { checkBlock } from "../compiler/rules";
+
+const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
+
+/**
+ * The project's own settings, read from a `ramonda.css.ts`.
+ *
+ * ## Why a file at all, when the plugin already takes options
+ *
+ * `vite.config.ts` receives the mode, in TypeScript, for free — a project that wants hashed names in
+ * production writes it there and needs nothing else. What plugin options cannot reach is
+ * `ramonda-css lint`, `ramonda-css format`, and the editor: none of them reads a bundler's config.
+ * So the file holds what those three must agree about, and the build keeps its own options.
+ *
+ * ## Why it is TypeScript rather than JSON, and how that is affordable
+ *
+ * The user asked for it and gave the reason: a setting may depend on the environment. A config that
+ * is a FUNCTION of the environment cannot be JSON.
+ *
+ * Loading a `.ts` file inside `tsserver` — CommonJS, no `ts-node` — looked like the blocker. It is
+ * not: **tsserver hands the plugin the `typescript` object**, so the plugin transpiles the config
+ * itself, on whatever Node the editor happens to run. Measured against the two alternatives, both of
+ * which work on Node 24 and tie the config to a Node version the editor picked rather than the
+ * project: `require(".ts")` (type stripping) and `import(".ts")`.
+ */
+describe("the project's config", () => {
+  const project = (files: Record<string, string>) => {
+    const dir = mkdtempSync(join(tmpdir(), "ramonda-config-"));
+    for (const [name, text] of Object.entries(files)) writeFileSync(join(dir, name), text);
+    return dir;
+  };
+
+  test("a plain object", () => {
+    const dir = project({ "ramonda.css.ts": `export default { units: { length: ["px", "rem"] } };\n` });
+
+    expect(readConfig(findConfig(dir), ts)).toEqual({ units: { length: ["px", "rem"] } });
+  });
+
+  test("a function of the environment, which is why it is not JSON", () => {
+    const dir = project({
+      "ramonda.css.ts": `export default (env: { production: boolean }) => ({\n  units: { length: env.production ? ["px"] : ["px", "rem"] },\n});\n`,
+    });
+
+    expect(readConfig(findConfig(dir), ts, { production: true })).toEqual({ units: { length: ["px"] } });
+    expect(readConfig(findConfig(dir), ts, { production: false })).toEqual({ units: { length: ["px", "rem"] } });
+  });
+
+  /**
+   * And the WIRING, which is a different claim from the one above and had no test at all.
+   *
+   * A review found `environment` never supplied: all four consumers passed two arguments, so
+   * `env.production` was always `undefined` and every such config silently took its development
+   * branch — in production builds included. The test above passed throughout, because it calls
+   * `readConfig` itself. **One rule, four consumers, and nothing watching the join.**
+   */
+  test("`environmentOf` answers from NODE_ENV when nobody knows better", () => {
+    const before = process.env.NODE_ENV;
+    try {
+      process.env.NODE_ENV = "production";
+      expect(environmentOf()).toEqual({ production: true });
+      process.env.NODE_ENV = "development";
+      expect(environmentOf()).toEqual({ production: false });
+    } finally {
+      if (before === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = before;
+    }
+  });
+
+  test("and a consumer that KNOWS is believed over it", () => {
+    const before = process.env.NODE_ENV;
+    try {
+      // A bundler is told which build this is; `NODE_ENV` is the fallback, not the authority.
+      process.env.NODE_ENV = "development";
+      expect(environmentOf(true)).toEqual({ production: true });
+      process.env.NODE_ENV = "production";
+      // An editor session is a development session, whatever the shell says.
+      expect(environmentOf(false)).toEqual({ production: false });
+    } finally {
+      if (before === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = before;
+    }
+  });
+
+  test("TypeScript that is not erasable, which type stripping would refuse", () => {
+    const dir = project({
+      "ramonda.css.ts": `enum Unit { px = "px" }\nexport default { units: { length: [Unit.px] } };\n`,
+    });
+
+    expect(readConfig(findConfig(dir), ts)).toEqual({ units: { length: ["px"] } });
+  });
+
+  test("found by walking up, the way a tool run from a subdirectory needs", () => {
+    const dir = project({ "ramonda.css.ts": `export default { units: { length: ["px"] } };\n` });
+
+    expect(findConfig(join(dir, "src", "deep"))).toBe(join(dir, "ramonda.css.ts"));
+  });
+
+  /**
+   * Where the walk STOPS, which it did not: only at the filesystem root.
+   *
+   * Reading a stray file would be one thing. This one is EXECUTED — transpiled and run through
+   * `new Function`, inside `tsserver`, on merely opening a folder, with nothing shown to say which
+   * file was loaded. So a `ramonda.css.ts` left in a home directory from an experiment, or unzipped
+   * beside a downloaded project, silently became every project's settings.
+   *
+   * The repository root is the outermost thing that is still "the project", so the walk checks the
+   * directory holding `.git` and stops there. A project that is not a repository still stops before
+   * the home directory, which is the case this exists for.
+   */
+  describe("how far up it looks", () => {
+    test("stops at the repository root, and does not read what is above it", () => {
+      const outer = project({ "ramonda.css.ts": `export default { units: { length: ["cm"] } };\n` });
+      const repo = join(outer, "repo");
+      mkdirSync(join(repo, ".git"), { recursive: true });
+      mkdirSync(join(repo, "src"), { recursive: true });
+
+      expect(findConfig(join(repo, "src"))).toBeUndefined();
+    });
+
+    test("but the root's OWN config is the one a monorepo shares", () => {
+      const outer = project({});
+      const repo = join(outer, "repo");
+      mkdirSync(join(repo, ".git"), { recursive: true });
+      mkdirSync(join(repo, "packages", "web"), { recursive: true });
+      writeFileSync(join(repo, "ramonda.css.ts"), `export default { units: { length: ["px"] } };\n`);
+
+      expect(findConfig(join(repo, "packages", "web"))).toBe(join(repo, "ramonda.css.ts"));
+    });
+
+    test("and a package's own config still wins over the root's", () => {
+      const repo = project({ "ramonda.css.ts": `export default { units: { length: ["px"] } };\n` });
+      mkdirSync(join(repo, ".git"), { recursive: true });
+      const inner = join(repo, "packages", "web");
+      mkdirSync(inner, { recursive: true });
+      writeFileSync(join(inner, "ramonda.css.ts"), `export default { units: { length: ["rem"] } };\n`);
+
+      expect(findConfig(inner)).toBe(join(inner, "ramonda.css.ts"));
+    });
+
+    /** A dependency's own file is not this project's settings, whatever it holds. */
+    test("a config inside node_modules is not a project's settings", () => {
+      const repo = project({});
+      mkdirSync(join(repo, ".git"), { recursive: true });
+      const dep = join(repo, "node_modules", "some-package");
+      mkdirSync(dep, { recursive: true });
+      writeFileSync(join(dep, "ramonda.css.ts"), `export default { units: { length: ["cm"] } };\n`);
+
+      expect(findConfig(dep)).toBeUndefined();
+    });
+  });
+
+  describe("what it does when there is nothing to read", () => {
+    test("no config at all is the empty config, not an error", () => {
+      expect(findConfig(project({}))).toBeUndefined();
+      expect(readConfig(undefined, ts)).toEqual({});
+    });
+
+    /**
+     * A config that throws is REPORTED, not swallowed. A tool that quietly ran with default settings
+     * because somebody's config had a typo would be the worst of both: the settings are not applied
+     * and nothing says so.
+     */
+    test("one that throws says which file and why", () => {
+      const dir = project({ "ramonda.css.ts": `throw new Error("nope");\n` });
+
+      expect(() => readConfig(findConfig(dir), ts)).toThrow(/ramonda\.css\.ts/);
+      expect(() => readConfig(findConfig(dir), ts)).toThrow(/nope/);
+    });
+
+    test("one that exports nothing", () => {
+      const dir = project({ "ramonda.css.ts": `const unused = 1;\n` });
+
+      expect(() => readConfig(findConfig(dir), ts)).toThrow(/default/);
+    });
+
+    test("one whose default is not an object", () => {
+      const dir = project({ "ramonda.css.ts": `export default 42;\n` });
+
+      expect(() => readConfig(findConfig(dir), ts)).toThrow(/object/);
+    });
+  });
+
+  describe("what it refuses to hold", () => {
+    /**
+     * The `r-` prefix and anything that changes `normalise`. Both are identity: two packages emitting
+     * different names for one block break deduplication with no registry to repair it, and that is
+     * the property the whole design rests on. See CONTRACT.md §3.
+     */
+    test.each(["prefix", "hash", "normalise"])("`%s` is refused, with the reason", (key) => {
+      const dir = project({ "ramonda.css.ts": `export default { ${key}: "x" };\n` });
+
+      expect(() => readConfig(findConfig(dir), ts)).toThrow(/identity/i);
+    });
+
+    test("and an unknown key is refused too, because a typo is silent otherwise", () => {
+      const dir = project({ "ramonda.css.ts": `export default { untis: ["px"] };\n` });
+
+      expect(() => readConfig(findConfig(dir), ts)).toThrow(/untis/);
+    });
+  });
+
+  /**
+   * A key with the right NAME and the wrong VALUE, which was a cast and nothing else.
+   *
+   * `readConfig` validated key names and returned `config as Config`. A review traced where an
+   * unchecked value lands, and it is not a diagnostic — it is a `TypeError` deep in `rules.ts`,
+   * thrown from inside the editor's `getScriptSnapshot`. tsserver asks for a snapshot of every file
+   * in the program, so **one wrong value in one config takes down completion, hover and every
+   * squiggle in the whole project**, and does it again on every retry because the cache is written
+   * after the throw. The build dies with a stack naming neither the file nor the key.
+   *
+   * Nothing types this file — the documented example is a bare object literal — so a wrong value is
+   * not exotic. `units: "px"` is the obvious thing to write when the list has one entry.
+   */
+  /**
+   * A config that does not PARSE, which loaded as an empty one and said nothing.
+   *
+   * TypeScript's error recovery is the trap. `transpileModule` does not report a syntax error
+   * unless it is asked to, and it emits whatever it managed to build — measured,
+   *
+   *     export default { tokens: {{{ };     →     exports.default = { tokens: {} };
+   *
+   * so the config LOADED, valid and empty. Nothing threw, nothing was undefined, and every consumer
+   * that does not type-check `ramonda.css.ts` ran with no settings at all. Measured through a real
+   * Vite build, which exited 0 and emitted `.r-pl-2rem` and `.r-c-\#ff0000` — the unit and the
+   * hardcoded colour that very config forbids.
+   *
+   * `readConfig`'s own note names this exact failure and refuses it: *a tool that quietly ran with
+   * defaults because somebody's config had a typo would be the worst of both — the settings are not
+   * applied, and nothing says so.*
+   */
+  /**
+   * A refusal raised while the config RUNS — `kind()` checking a declaration it was handed.
+   *
+   * Those carry a careful sentence and no file, because nothing down there knows the path. Wrapping
+   * the whole thing gave the tag twice and a claim that is untrue:
+   *
+   *     [ramonda-css] …/ramonda.css.ts could not be read: [ramonda-css] `b` has an empty `range`…
+   *
+   * It read perfectly well; a value in it is wrong, which is a different thing to be told.
+   */
+  describe("a declaration the config itself refuses", () => {
+    const refused = (body: string) => {
+      const dir = project({ "ramonda.css.ts": body });
+      return () => readConfig(findConfig(dir), ts);
+    };
+
+    /**
+     * The tagged throw `kind()` raises, written out — this is about the WRAPPER that presents it.
+     * `cli.test.ts` runs the real `kind` through the real binary for the other half.
+     */
+    const declaring = (says: string) =>
+      `export default (() => { throw new Error(${JSON.stringify(`[ramonda-css] ${says}`)}); })();\n`;
+
+    test("says what is wrong ONCE, with the file and without the tag twice", () => {
+      let message = "";
+      try {
+        refused(declaring("`b` has an empty `range`, which permits no value at all."))();
+      } catch (error) {
+        message = (error as Error).message;
+      }
+
+      expect(message).toContain("ramonda.css.ts");
+      expect(message).toContain("empty `range`");
+      // The two faults the wrapper used to add: its own tag a second time, and an untrue sentence.
+      expect(message).not.toContain("[ramonda-css]");
+      expect(message).not.toContain("could not be read");
+    });
+
+    test("and a failure that is NOT ours still says it could not be read", () => {
+      expect(refused(`export default (() => { throw new Error("boom"); })();\n`)).toThrow(/could not be read: boom/);
+    });
+  });
+
+  describe("a config that does not parse", () => {
+    const refused = (body: string) => {
+      const dir = project({ "ramonda.css.ts": body });
+      return () => readConfig(findConfig(dir), ts);
+    };
+
+    test.each([
+      ["a brace that never opens an object", `export default { tokens: {{{ };\n`],
+      ["a string that is never closed", `export default { outDir: "css-system };\n`],
+      ["a bracket left open", `export default { properties: { "z-index": { values: [1, 2 } };\n`],
+    ])("%s is refused, not loaded as an empty config", (_what, body) => {
+      expect(refused(body)).toThrow(/does not parse|TS\d/);
+    });
+
+    test("and the message says WHERE, because a parse error is a place", () => {
+      expect(refused(`export default {\n  tokens: {{{ };\n`)).toThrow(/ramonda\.css\.ts/);
+    });
+  });
+
+  describe("a key whose value is the wrong shape", () => {
+    const refused = (body: string) => {
+      const dir = project({ "ramonda.css.ts": `export default ${body};\n` });
+      return () => readConfig(findConfig(dir), ts);
+    };
+
+    test.each([
+      ["units as a bare string", `{ units: "px" }`, /units/],
+      ["units as null", `{ units: null }`, /units/],
+      ["units holding a number", `{ units: { length: [1] } }`, /units\.length/],
+      ["a family that is not one", `{ units: { lenght: ["px"] } }`, /lenght/],
+      ["a family whose value is not a list", `{ units: { length: "px" } }`, /units\.length/],
+      ["rules as null", `{ rules: null }`, /rules/],
+      ["rules as an array", `{ rules: ["unknown-unit"] }`, /rules/],
+      ["a rule set to a boolean", `{ rules: { "unknown-unit": false } }`, /unknown-unit/],
+      ["a rule set to a word that is not a severity", `{ rules: { "unknown-unit": "quiet" } }`, /quiet/],
+      ["variables as a bare string", `{ variables: "--brand" }`, /variables/],
+      // The old spelling of this key, which is now `externalCustomProperties` — the message says where the list goes
+      // rather than only that an object was wanted, because a project carrying the old form needs to
+      // be told the destination, not the shape.
+      ["variables as the list it used to be", `{ variables: ["--brand"] }`, /externalCustomProperties/],
+      [
+        "externalCustomProperties as a bare string",
+        `{ externalCustomProperties: "--brand" }`,
+        /externalCustomProperties/,
+      ],
+      ["externalCustomProperties holding a number", `{ externalCustomProperties: [1] }`, /externalCustomProperties/],
+      // A custom property begins with two dashes. `brand` is a property name, and a list of those
+      // would silence a rule about names it was never given.
+      ["a name in externalCustomProperties with no dashes", `{ externalCustomProperties: ["brand"] }`, /two dashes/],
+      ["externalContainerNames as a bare string", `{ externalContainerNames: "sidebar" }`, /externalContainerNames/],
+      // Two words would be two names; `none` and the query keywords are never one.
+      ["a container name of two words", `{ externalContainerNames: ["side bar"] }`, /one word/],
+      ["a keyword as a container name", `{ externalContainerNames: ["none"] }`, /one word/],
+      // Tokens stopped being called "variables": each old key is refused with the new name in it.
+      ["the old `variables`", `{ variables: {} }`, /`tokens`/],
+      // A group written without `kind( … )` declared nothing, in silence — the kind is what makes a
+      // value a token, so a plain object is refused and the message names the group.
+      [
+        "a token group without `kind`",
+        `{ tokens: { $color: { accent: "#10b981" } } }`,
+        /declares `tokens\.\$color` without `kind\( … \)`/,
+      ],
+      [
+        "the long form without `kind`",
+        `{ tokens: { $color: { accent: { value: "#10b981", range: "any" } } } }`,
+        /declares `tokens\.\$color` without `kind/,
+      ],
+      ["unknownCustomProperties as a word", `{ unknownCustomProperties: "local" }`, /true, false or "same-block"/],
+      ["styleOtherElements as a word", `{ styleOtherElements: "no" }`, /styleOtherElements.*true or false/],
+      ["the old `alsoSets`", `{ alsoSets: ["--brand"] }`, /`externalCustomProperties`/],
+      ["a rule by its old name", `{ rules: { "literal-not-allowed": "off" } }`, /`hardcoded-not-allowed`/],
+      ["another rule by its old name", `{ rules: { "unknown-variable": "off" } }`, /`unknown-token`/],
+      // A group is declared the way a block reads it, so the message writes the `$` in.
+      ["a group without its `$`", `{ tokens: { color: {} } }`, /\$color/],
+    ])("%s is refused, naming what is wrong", (_what, body, says) => {
+      expect(refused(body)).toThrow(says);
+    });
+
+    /**
+     * The old flat spelling, refused rather than reinterpreted.
+     *
+     * `units: ["px", "rem"]` meant every unit in CSS and nothing else; keyed by family the same
+     * words mean lengths only. Reading the list as `{ length: [...] }` would be a project's rules
+     * quietly getting weaker on an upgrade — `200ms` and `45deg` stop being reported and nothing
+     * says so. A config that stops loading is a minute's work; a check that stops checking is found
+     * in production.
+     */
+    test("the old flat list is refused, and the message writes out the family form", () => {
+      const thrown = refused(`{ units: ["px", "rem"] }`);
+
+      expect(thrown).toThrow(/keyed by FAMILY/);
+      expect(thrown).toThrow(/units: \{ length: \["px","rem"\] \}/);
+      expect(thrown).toThrow(/200ms/);
+    });
+
+    /** A rule id that does not exist is a typo, and a typo that is ignored is invisible. */
+    test("a misspelled rule id is refused, with the nearest real one", () => {
+      expect(refused(`{ rules: { "unkown-unit": "off" } }`)).toThrow(/unknown-unit/);
+    });
+
+    test("and a misspelled unit family is too", () => {
+      expect(refused(`{ units: { lenght: ["px"] } }`)).toThrow(/Did you mean/);
+    });
+
+    /**
+     * The old top-level `variablesOnly`, refused with its replacement written out.
+     *
+     * It was a list of kinds at the top of the config — the one setting keyed by kind while every
+     * other was keyed by property. It is a selector inside `properties` now: same reach, one key
+     * fewer, and a property may exempt itself from it, which the list could not express.
+     */
+    test("the old top-level `variablesOnly` is refused, and the message writes the selector", () => {
+      const thrown = refused(`{ variablesOnly: ["color", "length"] }`);
+
+      expect(thrown).toThrow(/selector inside/);
+      expect(thrown).toThrow(/"<color>": \{ hardcoded: false \}/);
+      expect(thrown).toThrow(/"<length>": \{ hardcoded: false \}/);
+    });
+
+    /** A closed list for all 935 properties is not a thing anybody means, and it did nothing. */
+    test("a closed list on the sweep is refused, naming the two places it belongs", () => {
+      const thrown = refused(`{ properties: { "*": { values: ["red"] } } }`);
+
+      expect(thrown).toThrow(/cannot mean anything/);
+      expect(thrown).toThrow(/"z-index": \{ values/);
+      expect(thrown).toThrow(/"<time>": \{ values/);
+    });
+
+    /**
+     * Silencing a rule the project's OWN config turned on — refused, naming the real switch.
+     *
+     * Measured, and it is worse than it looks. Three settings reach both a rule and a type, and
+     * `rules: "off"` can only silence the rule:
+     *
+     *     "*": { arity: 1 }                   too-many-values OFF  ->  accepted
+     *     "<length>": { hardcoded: false } hardcoded-not-allowed OFF -> TS2322, still refused
+     *     "<length>": { units: ["px"] }       unit-not-allowed OFF ->  TS2322, still refused
+     *
+     * So an author who turns the rule off to ship is not unblocked: the error stays and the message
+     * gets WORSE, because ours named the project and `Narrowed<never, Token<…>>` names nothing. And
+     * `arity`, the one setting with no type behind it, silences completely — so the same gesture
+     * means two different things depending on which setting it lands on.
+     *
+     * `rules` is for a report the project did not ask for. Undoing what the project DID ask for is
+     * an edit to that setting, and the message says which.
+     */
+    test.each([
+      [
+        "`hardcoded-not-allowed`, against `hardcoded`",
+        `{ properties: { "<length>": { hardcoded: false } }, rules: { "hardcoded-not-allowed": "off" } }`,
+        /hardcoded/,
+      ],
+      [
+        "`unit-not-allowed`, against a property's `units`",
+        `{ properties: { "<length>": { units: ["px"] } }, rules: { "unit-not-allowed": "off" } }`,
+        /units/,
+      ],
+      [
+        "`unit-not-allowed`, against the project-wide `units`",
+        `{ units: { length: ["px"] }, rules: { "unit-not-allowed": "off" } }`,
+        /units/,
+      ],
+      [
+        "`too-many-values`, against `arity`",
+        `{ properties: { "*": { arity: 1 } }, rules: { "too-many-values": "off" } }`,
+        /arity/,
+      ],
+    ])("%s is refused", (_what, body, says) => {
+      const thrown = refused(body);
+
+      expect(thrown).toThrow(says);
+      expect(thrown).toThrow(/turned on/);
+    });
+
+    test.each([
+      ["one nothing in this config turned on", `{ rules: { "hardcoded-not-allowed": "off" } }`],
+      ["`too-many-values` where no `arity` is set", `{ rules: { "too-many-values": "off" } }`],
+      [
+        "a rule that reads no config at all",
+        `{ properties: { "<length>": { hardcoded: false } }, rules: { "unknown-unit": "off" } }`,
+      ],
+      ["the setting on its own", `{ properties: { "<length>": { hardcoded: false } } }`],
+      [
+        "the rule set to error, which changes nothing",
+        `{ properties: { "*": { arity: 1 } }, rules: { "too-many-values": "error" } }`,
+      ],
+    ])("%s is accepted", (_what, body) => {
+      expect(refused(body)).not.toThrow();
+    });
+
+    test.each([
+      ["a string", `{ properties: "padding" }`],
+      ["a list", `{ properties: ["padding"] }`],
+      ["null", `{ properties: null }`],
+    ])("`properties` as %s is refused, naming the shape it takes", (_what, body) => {
+      expect(refused(body)).toThrow(/takes a map keyed by property/);
+    });
+
+    test("a `properties` key wrapped in angle brackets that is not a kind is refused", () => {
+      expect(refused(`{ properties: { "<lenght>": { hardcoded: false } } }`)).toThrow(/Did you mean `<length>`/);
+    });
+
+    /**
+     * INSIDE an entry, which the validation stopped at the key.
+     *
+     * The note above `validate` traced where an unchecked value lands and refused to leave it: a
+     * `TypeError` out of `getScriptSnapshot` takes down completion, hover and every squiggle in the
+     * whole project. That reasoning was applied to the top-level keys and not one level down, and
+     * measured, the same two keys land in the same place — `properties: { "<length>": { units: {
+     * length: ["px"] } } }` threw `units.map is not a function` out of codegen, with a stack naming
+     * neither the file nor the key.
+     *
+     * `units` is the sharp one, because the top-level key was CHANGED to be keyed by family and
+     * says so when a list arrives. Per property it is still a list — one property, one set of
+     * units, no family to disambiguate — so an author who learns the top-level lesson and applies
+     * it here got a crash for it.
+     */
+    test.each([
+      [
+        "units by family, which is the TOP-LEVEL shape",
+        `{ properties: { "<length>": { units: { length: ["px"] } } } }`,
+        /units/,
+      ],
+      ["units as a bare string", `{ properties: { "padding-left": { units: "px" } } }`, /units/],
+      ["units holding a number", `{ properties: { "padding-left": { units: [1] } } }`, /units/],
+      ["values as a bare string", `{ properties: { "z-index": { values: "1" } } }`, /values/],
+      /**
+       * A QUOTED number where CSS measures the property in numbers.
+       *
+       * The type refuses it — `values` is `readonly number[]` for the twenty-one properties CSS
+       * gives a `<number>` or an `<integer>` — and nothing type-checks a config in the BUILD, so it
+       * went in. Then every use site refused it, because a quoted value is `string-not-allowed`: a
+       * setting that permits what the checker will not take.
+       */
+      ["a quoted number on a numeric property", `{ properties: { "z-index": { values: ["1", "10"] } } }`, /z-index/],
+      ["the same on `flex-grow`", `{ properties: { "flex-grow": { values: [1, "2"] } } }`, /flex-grow/],
+      ["values as an object", `{ properties: { "z-index": { values: { a: 1 } } } }`, /values/],
+      ["values holding something that is neither", `{ properties: { "z-index": { values: [1, true] } } }`, /values/],
+      ["shorthand as a word", `{ properties: { "padding": { shorthand: "no" } } }`, /shorthand/],
+      ["hardcoded as a word", `{ properties: { "<color>": { hardcoded: "yes" } } }`, /hardcoded/],
+      // The old name, refused with the new one and its value turned over.
+      ["the old `hardcoded: false`", `{ properties: { "<color>": { variablesOnly: true } } }`, /`hardcoded: false`/],
+      ["arity as a string", `{ properties: { "padding": { arity: "2" } } }`, /arity/],
+      ["a setting that is not one", `{ properties: { "padding": { unknownKey: true } } }`, /unknownKey/],
+      ["an entry that is not an object", `{ properties: { "padding": true } }`, /padding/],
+    ])("inside an entry, %s is refused", (_what, body, says) => {
+      expect(refused(body)).toThrow(says);
+    });
+
+    /**
+     * A misspelled PROPERTY NAME, which was silent — the rule simply never applied.
+     *
+     * A misspelled KIND is caught, so the two halves of one key disagreed: `"<lenght>"` is refused
+     * and `"padding-lft"` is accepted and does nothing. That is the failure `readConfig`'s own note
+     * names, a tool quietly running with defaults because somebody's config had a typo.
+     */
+    test.each([
+      ["a near miss", `{ properties: { "padding-lft": { shorthand: false } } }`, /padding-left/],
+      ["a word that is not a property at all", `{ properties: { nonsense: { shorthand: false } } }`, /nonsense/],
+    ])("a `properties` key that is not a property is refused (%s)", (_what, body, says) => {
+      expect(refused(body)).toThrow(says);
+    });
+
+    test.each([
+      ["a kind selector", `{ properties: { "<color>": { hardcoded: false } } }`],
+      [
+        "one beside a property exempting itself",
+        `{ properties: { "<length>": { hardcoded: false }, "border-radius": { hardcoded: true } } }`,
+      ],
+      [
+        "the sweep, a kind and a property at once",
+        `{ properties: { "*": { shorthand: false }, "<length>": { arity: 1 }, "z-index": { values: [1] } } }`,
+      ],
+    ])("%s is accepted", (_what, body) => {
+      expect(refused(body)).not.toThrow();
+    });
+
+    /**
+     * `format: { indent }` was accepted, validated and documented in its own type, and NOTHING read
+     * it: a person could set it, be told nothing, and get two spaces. A review found it.
+     *
+     * It is refused rather than wired up, because the formatter now reads the step off the file it
+     * has just laid out — the project has already told biome or prettier how wide a level is, and a
+     * second place to say it can only disagree with the first. The refusal says that, since
+     * somebody who wrote it needs to know where the answer comes from instead.
+     */
+    test("`format` is refused, and the message says who decides indentation now", () => {
+      expect(refused(`{ format: { indent: 4 } }`)).toThrow(/formatter/);
+    });
+
+    test.each([
+      ["one unit", `{ units: { length: ["px"] } }`],
+      ["a name this compiler cannot see", `{ externalCustomProperties: ["--brand"] }`],
+      ["several families", `{ units: { length: ["px", "rem"], time: ["ms"] } }`],
+      ["a family banned outright", `{ units: { flex: [] } }`],
+      ["a rule silenced", `{ rules: { "unknown-unit": "off" } }`],
+      ["a rule set to error, which is the default", `{ rules: { "unknown-unit": "error" } }`],
+      ["an empty object", `{}`],
+      ["a group declared with its `$`", `{ tokens: { $color: {} } }`],
+      // Loaded from a real file, which is the one way the rule tests never ask: they hand the config
+      // in. Measured, the key was missing from the list and a real config was refused.
+      ["a block kept to its own element", `{ styleOtherElements: false }`],
+      ["made-up custom properties kept local", `{ unknownCustomProperties: "same-block" }`],
+    ])("%s is accepted", (_what, body) => {
+      expect(refused(body)).not.toThrow();
+    });
+  });
+});
+
+/**
+ * The config reaching the rules, which is the only thing that makes it worth having.
+ *
+ * Two settings, and they are different in kind: `units` ADDS a report that CSS itself would not
+ * make, and `rules` takes one away. Both are project decisions, and neither can change what a class
+ * is called — see the identity guard above.
+ */
+describe("what the config does to the rules", () => {
+  const of = (declaration: string, config: Config) =>
+    checkBlock(readBlock(`@@(\n  ${declaration};\n)`, 2, "C.tsx").block, { config }).map((one) => one.rule);
+
+  test("a unit the project does not allow", () => {
+    expect(of("padding: 1em", { units: { length: ["px", "rem"] } })).toEqual(["unit-not-allowed"]);
+  });
+
+  test("and one it does", () => {
+    expect(of("padding: 1rem", { units: { length: ["px", "rem"] } })).toEqual([]);
+  });
+
+  test("with no `units` at all, every unit CSS has is fine", () => {
+    expect(of("padding: 1em", {})).toEqual([]);
+  });
+
+  /**
+   * A unit that is not a unit is a typo wherever it is written, and `unknown-unit` names it. Reading
+   * both on one declaration would be two faults where there is one.
+   */
+  test("a unit CSS does not have is left to the rule that names it", () => {
+    expect(of("padding: 10pxx", { units: { length: ["px"] } })).toEqual(["unknown-unit"]);
+  });
+
+  test("the message says what the project allows", () => {
+    const [only] = checkBlock(readBlock(`@@(\n  padding: 1em;\n)`, 2, "C.tsx").block, {
+      config: { units: { length: ["px", "rem"] } },
+    });
+
+    expect(only.message).toContain("px, rem");
+  });
+
+  test("a rule turned off says nothing", () => {
+    expect(of("padding: 10pxx", { rules: { "unknown-unit": "off" } })).toEqual([]);
+  });
+
+  test("and turning one off leaves the others alone", () => {
+    const rules = of("padding-lft: 10pxx", { rules: { "unknown-unit": "off" } });
+
+    expect(rules).not.toContain("unknown-unit");
+    expect(rules).toContain("unknown-property");
+  });
+});
+
+/**
+ * WHICH config governs a file — the question three consumers answered three different ways.
+ *
+ * A review found one setting read from three roots: `check.ts` walked up from the tsconfig's
+ * directory, `vite.ts` and `esbuild.ts` from `process.cwd()`, and the editor from
+ * `host.getCurrentDirectory()`. In a monorepo those are three different answers for one file, and
+ * the one the author sees squiggled in the editor is not the one the build enforces.
+ *
+ * The file being compiled is the only anchor that cannot depend on where a command was typed, so it
+ * is the anchor. The ninth occurrence of the repository's recurring fault: one rule, many consumers.
+ *
+ * The cache is keyed on the config's own TEXT rather than on a timestamp or on nothing at all.
+ * That is what makes the second half of the review's finding go away by construction: a dev server
+ * that read the file once at startup kept compiling yesterday's settings while the editor had
+ * already moved on, and there is no hook to forget here because there is nothing stale to forget.
+ */
+describe("which config governs a file", () => {
+  const monorepo = () => {
+    const repo = mkdtempSync(join(tmpdir(), "ramonda-reader-"));
+    mkdirSync(join(repo, ".git"), { recursive: true });
+    for (const name of ["web", "admin"]) mkdirSync(join(repo, "packages", name), { recursive: true });
+    writeFileSync(join(repo, "packages", "web", "ramonda.css.ts"), `export default { units: { length: ["px"] } };\n`);
+    writeFileSync(
+      join(repo, "packages", "admin", "ramonda.css.ts"),
+      `export default { units: { length: ["rem"] } };\n`,
+    );
+    return repo;
+  };
+
+  const inside = <T>(dir: string, run: () => T): T => {
+    const before = process.cwd();
+    process.chdir(dir);
+    try {
+      return run();
+    } finally {
+      process.chdir(before);
+    }
+  };
+
+  test("the file's own package, not the one a command was typed in", () => {
+    const repo = monorepo();
+    const read = configReader(ts);
+
+    inside(join(repo, "packages", "web"), () => {
+      expect(read(join(repo, "packages", "web", "Card.tsx"))).toEqual({ units: { length: ["px"] } });
+      expect(read(join(repo, "packages", "admin", "Card.tsx"))).toEqual({ units: { length: ["rem"] } });
+    });
+  });
+
+  test("and the same two answers from the other package's directory", () => {
+    const repo = monorepo();
+    const read = configReader(ts);
+
+    inside(join(repo, "packages", "admin"), () => {
+      expect(read(join(repo, "packages", "web", "Card.tsx"))).toEqual({ units: { length: ["px"] } });
+      expect(read(join(repo, "packages", "admin", "Card.tsx"))).toEqual({ units: { length: ["rem"] } });
+    });
+  });
+
+  test("a file with no config above it is the empty config", () => {
+    const repo = monorepo();
+    mkdirSync(join(repo, "packages", "bare"), { recursive: true });
+
+    expect(configReader(ts)(join(repo, "packages", "bare", "Card.tsx"))).toEqual({});
+  });
+
+  /**
+   * The half a long-running process gets wrong: read once at startup, never again. A dev server
+   * kept the settings it booted with while the author edited the file the editor was already
+   * reading fresh — two tools, one file, two answers.
+   */
+  test("a config edited while the process runs is read again", () => {
+    const repo = monorepo();
+    const file = join(repo, "packages", "web", "Card.tsx");
+    const read = configReader(ts);
+
+    expect(read(file)).toEqual({ units: { length: ["px"] } });
+    writeFileSync(join(repo, "packages", "web", "ramonda.css.ts"), `export default { units: { length: ["ch"] } };\n`);
+
+    expect(read(file)).toEqual({ units: { length: ["ch"] } });
+  });
+
+  test("and a config WRITTEN while it runs is found", () => {
+    const repo = monorepo();
+    mkdirSync(join(repo, "packages", "late"), { recursive: true });
+    const file = join(repo, "packages", "late", "Card.tsx");
+    const read = configReader(ts);
+
+    expect(read(file)).toEqual({});
+    writeFileSync(join(repo, "packages", "late", "ramonda.css.ts"), `export default { units: { length: ["vh"] } };\n`);
+
+    expect(read(file)).toEqual({ units: { length: ["vh"] } });
+  });
+
+  /**
+   * Reading fresh is only affordable because what it re-reads is a file measured in tens of lines.
+   * The transpile and the `new Function` are what cost, and they happen once per thing the file
+   * says — not once per file compiled against it.
+   */
+  test("one config, transpiled once however many files ask", () => {
+    const repo = monorepo();
+    const counting = join(repo, "packages", "web", "ramonda.css.ts");
+    writeFileSync(
+      counting,
+      `(globalThis as unknown as { runs: number }).runs++;\nexport default { units: { length: ["px"] } };\n`,
+    );
+    (globalThis as unknown as { runs: number }).runs = 0;
+    const read = configReader(ts);
+
+    for (let i = 0; i < 50; i++) read(join(repo, "packages", "web", `Card${i}.tsx`));
+
+    expect((globalThis as unknown as { runs: number }).runs).toBe(1);
+  });
+
+  test("and once more after it changes, not once per file after it", () => {
+    const repo = monorepo();
+    const counting = join(repo, "packages", "web", "ramonda.css.ts");
+    const body = (unit: string) =>
+      `(globalThis as unknown as { runs: number }).runs++;\nexport default { units: { length: ["${unit}"] } };\n`;
+    writeFileSync(counting, body("px"));
+    (globalThis as unknown as { runs: number }).runs = 0;
+    const read = configReader(ts);
+
+    for (let i = 0; i < 10; i++) read(join(repo, "packages", "web", `Card${i}.tsx`));
+    writeFileSync(counting, body("ch"));
+    for (let i = 0; i < 10; i++) read(join(repo, "packages", "web", `Card${i}.tsx`));
+
+    expect((globalThis as unknown as { runs: number }).runs).toBe(2);
+  });
+
+  /**
+   * The environment arrives LATER than the reader does. Vite constructs a plugin before any hook
+   * runs and only tells it which build this is in `config`, so a reader that captured the answer at
+   * construction would capture the one nobody had yet.
+   */
+  test("the environment is asked for when a config is read, not when the reader is made", () => {
+    const repo = monorepo();
+    writeFileSync(
+      join(repo, "packages", "web", "ramonda.css.ts"),
+      `export default (env: { production: boolean }) => ({ units: { length: env.production ? ["px"] : ["px", "em"] } });\n`,
+    );
+    let production: boolean | undefined;
+    const read = configReader(ts, () => environmentOf(production));
+    const file = join(repo, "packages", "web", "Card.tsx");
+
+    production = true;
+    expect(read(file)).toEqual({ units: { length: ["px"] } });
+    production = false;
+    expect(read(file)).toEqual({ units: { length: ["px", "em"] } });
+  });
+
+  test("a config that throws is reported, and reported again on the next file", () => {
+    const repo = monorepo();
+    writeFileSync(join(repo, "packages", "web", "ramonda.css.ts"), `export default { units: "px" };\n`);
+    const read = configReader(ts);
+
+    expect(() => read(join(repo, "packages", "web", "A.tsx"))).toThrow(/It takes families/);
+    expect(() => read(join(repo, "packages", "web", "B.tsx"))).toThrow(/It takes families/);
+  });
+});
+
+/**
+ * What a config may WRITE in it, which is a smaller set than "TypeScript" until it is said out loud.
+ *
+ * The file is transpiled to CommonJS and run through `new Function`, so two ordinary things a
+ * `.ts` file does were broken here and nowhere else — a review found both, and each failed as
+ * *could not be read* with a message about the symptom rather than the cause.
+ */
+describe("what a config is allowed to use", () => {
+  const project = (body: string) => {
+    const dir = mkdtempSync(join(tmpdir(), "ramonda-config-uses-"));
+    writeFileSync(join(dir, "ramonda.css.ts"), body);
+    return dir;
+  };
+
+  /**
+   * `import path from "node:path"` is how a default import is written and how every editor
+   * completes it. Without `esModuleInterop` the transpiler emits `path_1.default`, which a CommonJS
+   * module does not have, so the config died on `Cannot read properties of undefined`.
+   */
+  test("a default import of a CommonJS module", () => {
+    const dir = project(
+      `import path from "node:path";\nexport default { units: { length: [path.sep === "/" ? "px" : "rem"] } };\n`,
+    );
+
+    expect(readConfig(findConfig(dir), ts)).toEqual({ units: { length: ["px"] } });
+  });
+
+  test("and a named import, which always worked", () => {
+    const dir = project(
+      `import { sep } from "node:path";\nexport default { units: { length: [sep === "/" ? "px" : "rem"] } };\n`,
+    );
+
+    expect(readConfig(findConfig(dir), ts)).toEqual({ units: { length: ["px"] } });
+  });
+
+  /**
+   * `__dirname` is what a CommonJS file resolves a path with, and this one IS CommonJS by the time
+   * it runs — but `new Function` supplies only what it is handed, so it was not defined at all.
+   * A config that read a token list from beside itself threw `__dirname is not defined`.
+   */
+  test("`__dirname`, which is the config's own directory", () => {
+    const dir = project(
+      `export default { units: { length: [__dirname.split("/").pop()!.startsWith("ramonda") ? "px" : "rem"] } };\n`,
+    );
+
+    expect(readConfig(findConfig(dir), ts)).toEqual({ units: { length: ["px"] } });
+  });
+
+  /**
+   * **AN `async` CONFIG WAS SILENTLY IGNORED**, and `async` is what somebody writes the moment the
+   * config reads anything — a token list beside it, which is a shape this file's own notes mention.
+   *
+   * A Promise is an object, so the shape check let it through, `Object.keys` of it is empty, every
+   * validation passed over nothing, and what came back was `{}`. Measured: `export default async ()
+   * => ({ units: { length: ["px"] } })` gave the empty config, so the units were not enforced and nothing said
+   * so — the exact failure this file exists to refuse, since "a tool that quietly ran with defaults
+   * because somebody's config had a typo would be the worst of both".
+   *
+   * It cannot be awaited: the editor asks for a config inside `getScriptSnapshot`, which is
+   * synchronous, and a reader that returned a promise there would have to be a second reader. So it
+   * is refused, with the reason.
+   */
+  test.each([
+    ["an async function", `export default async () => ({ units: { length: ["px"] } });\n`],
+    ["a function returning a promise", `export default () => Promise.resolve({ units: { length: ["px"] } });\n`],
+    ["a promise directly", `export default Promise.resolve({ units: { length: ["px"] } });\n`],
+  ])("%s is refused rather than silently ignored", (_what, body) => {
+    const dir = project(body);
+
+    expect(() => readConfig(findConfig(dir), ts)).toThrow(/cannot be async|await/i);
+  });
+
+  test("and `__filename`, which is the config itself", () => {
+    const dir = project(
+      `export default { units: { length: [__filename.endsWith("ramonda.css.ts") ? "px" : "rem"] } };\n`,
+    );
+
+    expect(readConfig(findConfig(dir), ts)).toEqual({ units: { length: ["px"] } });
+  });
+});
+
+/** A group made with `kind( … )` beside one that was not: the message names the one that was not. */
+test("a mixed config names the group written without `kind`", () => {
+  const dir = mkdtempSync(join(tmpdir(), "ramonda-kindless-"));
+  writeFileSync(
+    join(dir, "ramonda.css.ts"),
+    `import { kind } from ${JSON.stringify(join(PACKAGE_ROOT, "dist", "config.js"))};\n` +
+      `export default { tokens: { $color: kind("color", { a: "#000" }), $space: { gutter: "16px" } } };\n`,
+  );
+
+  expect(() => readConfig(findConfig(dir), ts)).toThrow(/declares `tokens\.\$space` without `kind\( … \)`/);
+});
+
+/** Review round 4: a group without `kind` is not told to make it a colour group. */
+test("a group without `kind` is not told which kind to use", () => {
+  const dir = mkdtempSync(join(tmpdir(), "ramonda-kindless-space-"));
+  writeFileSync(join(dir, "ramonda.css.ts"), `export default { tokens: { $space: { gutter: "16px" } } };\n`);
+
+  expect(() => readConfig(findConfig(dir), ts)).toThrow(/`\$space: kind\("…", \{ … \}\)`/);
+  expect(() => readConfig(findConfig(dir), ts)).not.toThrow(/kind\("color"/);
+});

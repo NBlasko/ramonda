@@ -28,9 +28,11 @@ updates:
       - /
       - /packages/*
       - /apps/*
+    # Monthly: weekly kept a version pull request open most of the time, for releases
+    # nobody here was waiting on. A vulnerability does not wait for this schedule: the
+    # alert half above reports it as soon as the advisory is published.
     schedule:
-      interval: weekly
-      day: monday
+      interval: monthly
     open-pull-requests-limit: 5
     groups:
       # Two groups, split the way the risk splits: a devDependency bump can break
@@ -49,29 +51,28 @@ updates:
     # only exists in one of these majors will not arrive as a pull request. The
     # alert still fires — that is the part that must not be silenced.
     ignore:
-      # Vite 8 switched to the oxc transformer, which ignores the `esbuild:
-      # { jsxFactory: "h" }` block every vitest config here relies on.
-      - dependency-name: vite
+      # `vite-7` is an alias of Vite 7 kept on purpose: `@ramonda/build` and
+      # `@ramonda/css` run their real builds on it beside Vite 8, because an app
+      # may be on either. Bumped to 8, that half would test Vite 8 twice and say
+      # nothing. (Whether Dependabot matches an alias by this name is not
+      # measured; a PR that moves it is the sign it does not.)
+      - dependency-name: vite-7
         update-types: ["version-update:semver-major"]
-      # Pinned exactly: 28.1+ changed CSSOM `cssText` serialization, which breaks
-      # the RMD007 style-normalization test.
-      - dependency-name: jsdom
-        update-types: ["version-update:semver-minor", "version-update:semver-major"]
-      # TS 7 (the native rewrite) removed `baseUrl`, which every tsconfig here
-      # uses with `paths`.
+      # TS 7 (the native rewrite) has no JavaScript API, and the checker, the
+      # CSS compiler and the editor plugin all read source through it. It also
+      # removes `baseUrl`, which tsup's declaration build sets (see tsup.dts.ts).
       - dependency-name: typescript
         update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: weekly
-      day: monday
+      interval: monthly
     groups:
       actions:
         patterns: ["*"]
     # This is the reason the workflows pin exact versions where no moving major
-    # tag exists (`ossf/scorecard-action@v2.4.4`,
+    # tag exists (`ossf/scorecard-action@v2.5.0`,
     # `actions/dependency-review-action@v5.0.0`): a pin that cannot drift under
     # you, plus a bot whose job is to move it deliberately.
     ignore:

@@ -1,0 +1,251 @@
+import prettier from "prettier";
+import { describe, expect, test } from "vitest";
+import plugin from "../adapters/prettier";
+import { formatText } from "../adapters/tooling";
+
+/**
+ * Prettier, measured rather than described.
+ *
+ * ## The fault this exists for
+ *
+ * Prettier is the third tool that cannot parse a file holding a block, and the one an editor is most
+ * likely to reach for on save. Measured on a real file before this existed:
+ * *"SyntaxError: ')' expected."* — it refuses. Nothing is mangled and nothing is lost, which is the
+ * safe half, but the one gesture every editor offers stops working, and a person whose default
+ * formatter is Prettier has no way round it.
+ *
+ * Everything below runs the real formatter.
+ */
+
+const format = (source: string) => prettier.format(source, { parser: "typescript", plugins: [plugin] });
+
+describe("without the plugin", () => {
+  test("Prettier refuses a file holding a block, which is why this package ships one", async () => {
+    await expect(
+      prettier.format(`const a = <div className={@@( display: flex; )}>y</div>;\n`, { parser: "typescript" }),
+    ).rejects.toThrow(/expected/);
+  });
+});
+
+describe("with it", () => {
+  test("a block written as a value keeps its line, and its CSS", async () => {
+    const out = await format(`const panel   =   @@(\n  display: flex;\n  gap: 8px;\n);\n`);
+
+    expect(out).toBe(`const panel = @@(\n  display: flex;\n  gap: 8px;\n);\n`);
+  });
+
+  test("a braced attribute is laid out where the printer put it", async () => {
+    const out = await format(`const a = <div id="x" className={@@(\n  display: flex;\n)}>y</div>;\n`);
+
+    expect(out).toContain("className={@@(");
+    expect(out).toContain("    display: flex;");
+    expect(out).toContain(")}");
+  });
+
+  /**
+   * The one thing Prettier changes, and it is a deliberate cost rather than a bug. A bare attribute
+   * cannot hold a placeholder Prettier will ask about — it prints a quoted attribute value itself and
+   * never calls `embed` on it — so the placeholder is braced, and the block comes back braced. The
+   * two compile to the same class, and the braced spelling is the one to reach for anyway.
+   */
+  test("a bare attribute comes back braced, and nothing else about it moves", async () => {
+    const out = await format(`const a = <div className={@@(\n  display: flex;\n)}>y</div>;\n`);
+
+    expect(out).toContain("className={@@(");
+    expect(out).not.toContain("css=@@(");
+    expect(out).toContain("display: flex;");
+  });
+
+  test("the CSS inside is laid out, and an expression is kept as written", async () => {
+    const source = `const panel = @@(\n  border-left: $(\`\${w}px\`) solid #ff0055;\n  &:hover { color: red; }\n);\n`;
+    const out = await format(source);
+
+    expect(out).toContain("border-left: $(`${w}px`) solid #ff0055;");
+    expect(out).toMatch(/( +)&:hover \{\n\1  color: red;\n\1\}/);
+  });
+
+  /** A formatter that does not settle is worse than one that refuses: it rewrites the file forever. */
+  test("formatting twice changes nothing the second time", async () => {
+    for (const source of [
+      `const panel = @@(\n  display: flex;\n);\n`,
+      `const a = <div id="x" className={@@(\n  display: flex;\n)}>y</div>;\n`,
+      `const a = <div className={@@(\n  display: flex;\n)}>y</div>;\n`,
+    ]) {
+      const once = await format(source);
+      expect(await format(once)).toBe(once);
+    }
+  });
+
+  test("a file with no block is exactly what Prettier alone makes of it", async () => {
+    const source = `const a  =  1;\nexport   default a;\n`;
+
+    expect(await format(source)).toBe(await prettier.format(source, { parser: "typescript" }));
+  });
+
+  /**
+   * THE AUTHOR'S OWN TEXT is not a placeholder, however much it looks like one.
+   *
+   * This plugin supplies its own `stands`, and it used a CONSTANT — while `markerFor`, which exists
+   * to make a marker the file does not already contain, covered only the default. Measured: a file
+   * with a block in it and `` `@ramonda-css-block:0` `` anywhere else came back with that string
+   * REPLACED by a copy of the block. The author's text, gone, from a formatter run.
+   */
+  test("a template literal that looks like the placeholder is left alone", async () => {
+    const source = "const a = <div className={@@( color: red; )}>x</div>;\nconst note = `@ramonda-css-block:0`;\n";
+
+    expect(await format(source)).toContain("`@ramonda-css-block:0`");
+  });
+
+  test("and the block beside it is still formatted", async () => {
+    const source = "const a = <div className={@@(\ncolor: red;\n)}>x</div>;\nconst note = `@ramonda-css-block:0`;\n";
+    const out = await format(source);
+
+    expect(out).toContain("  color: red;");
+    expect(out).toContain("`@ramonda-css-block:0`");
+  });
+
+  /**
+   * **A NESTED RULE KEPT ITS STEP, AND IT DID NOT.**
+   *
+   * `laid` trimmed every line of the block and re-indented all of them by one, so `&:hover { … }`
+   * came back with its body at the same level as its own brace — the plugin's doc says "the block's
+   * own relative shape is kept", and `line.trim()` is exactly what destroys it. Two levels deep,
+   * everything landed on one.
+   *
+   * A formatter that damages source is the one thing a formatter must not be, and this damage
+   * STICKS: format again and the flattened text is what the author has.
+   *
+   * Measured against `ramonda-css format` on the same file, which keeps the nesting perfectly — so
+   * the two formatters this package ships answered differently about one file, which is this
+   * repository's recurring fault with a source rewrite on the end of it.
+   */
+  test("a nested rule keeps its own step", async () => {
+    const source = "const a = <div className={@@(\n  color: red;\n  &:hover {\n    color: blue;\n  }\n)}>x</div>;\n";
+    const out = await format(source);
+    const inside = out.split("\n").filter((line) => line.includes("color: blue"))[0];
+    const hover = out.split("\n").filter((line) => line.includes("&:hover"))[0];
+
+    expect(inside.length - inside.trimStart().length).toBeGreaterThan(hover.length - hover.trimStart().length);
+  });
+
+  test("and two levels stay two levels", async () => {
+    const source =
+      "const a = <div className={@@(\n  &:hover {\n    @media print {\n      color: blue;\n    }\n  }\n)}>x</div>;\n";
+    const out = await format(source);
+    const width = (needle: string) => {
+      const line = out.split("\n").filter((one) => one.includes(needle))[0];
+      return line.length - line.trimStart().length;
+    };
+
+    expect(width("@media print")).toBeGreaterThan(width("&:hover"));
+    expect(width("color: blue")).toBeGreaterThan(width("@media print"));
+  });
+
+  /** And formatting what it produced changes nothing more, which is what makes it safe to run. */
+  test("formatting twice is formatting once", async () => {
+    const source = "const a = <div className={@@(\n  color: red;\n  &:hover {\n    color: blue;\n  }\n)}>x</div>;\n";
+    const once = await format(source);
+
+    expect(await format(once)).toBe(once);
+  });
+
+  /** Two of them, so the grown marker has to clear the file rather than the first occurrence. */
+  test("several of them are all left alone", async () => {
+    const source =
+      "const a = <div className={@@( color: red; )}>x</div>;\n" +
+      "const one = `@ramonda-css-block:0`;\nconst two = `@ramonda-css-block:1`;\n";
+    const out = await format(source);
+
+    expect(out).toContain("`@ramonda-css-block:0`");
+    expect(out).toContain("`@ramonda-css-block:1`");
+  });
+});
+
+/**
+ * A token through Prettier, which is the OTHER way a block reaches a formatter.
+ *
+ * Two paths exist and both have to leave a path alone: `ramonda-css format`, which runs the
+ * project's own tool around the block, and this plugin, which is what a Prettier project uses. A
+ * rewritten path would compile to a `var()` into the wrong name, so the claim is asserted on both
+ * rather than on the one that happened to be checked.
+ */
+describe("a token", () => {
+  test("survives, written tightly or loosely", async () => {
+    const source = `const a = <div className={@@( color: $color.primary.main; padding:$space.inline.2xl; )}>x</div>;\n`;
+    const out = await format(source);
+
+    expect(out).toContain("$color.primary.main");
+    expect(out).toContain("$space.inline.2xl");
+  });
+
+  test("and inside a call, where the arithmetic could invite a rewrite", async () => {
+    const source = `const b = <div className={@@( width: calc($size.control.md * 2); )}>x</div>;\n`;
+
+    expect(await format(source)).toContain("calc($size.control.md * 2)");
+  });
+});
+
+/**
+ * The CSS inside a block, laid out the way `ramonda-css format` lays it out.
+ *
+ * The plugin used to hand a block's inside back as written, leaving the CSS to `ramonda-css format`
+ * — which a project on Prettier has no road to. So a Prettier project never got `} else {`, the arms
+ * of a match lined up, a chain of choices as a table, or the parens taken off a branch, while the
+ * tooling page says formatting works everywhere with the plugin. One layout, two formatters, and
+ * now both give the same text.
+ */
+describe("the inside of a block", () => {
+  const WRITTEN = `export const a = (on: boolean, t: "a" | "b", w: boolean) => @@(
+  display:flex;   gap:8px;
+  &:hover {color:red;}
+  when $( on ) { color: red; }
+  else { color: blue; }
+  border: $(on) ? (2px solid red) : 1px solid #ccc;
+  color: $(on) ? red : $(w) ? orange : gray;
+  background: match $(t) { a => red; _ => blue; };
+  match $(t) {
+  a =>( padding: 1px;);
+      _ => ( padding: 2px; );
+  }
+);
+`;
+
+  /** The block's lines alone, between its parens — the JavaScript around it is each tool's own. */
+  const inside = (text: string) => {
+    const lines = text.split("\n");
+    const open = lines.findIndex((line) => line.includes("@@("));
+    const close = lines.findIndex((line, index) => index > open && line.trim().startsWith(")"));
+    const body = lines.slice(open + 1, close);
+    // Each tool places the block at its own depth; the shape inside is the question.
+    const base = Math.min(
+      ...body.filter((line) => line.trim() !== "").map((line) => line.length - line.trimStart().length),
+    );
+    return body.map((line) => line.slice(base)).join("\n");
+  };
+
+  test("is what `ramonda-css format` writes", async () => {
+    expect(inside(await format(WRITTEN))).toBe(inside(formatText(WRITTEN, "a.tsx", (text) => text)));
+  });
+
+  test.each([
+    ["`} else {` on one line", "} else {"],
+    ["the arms of a match lined up", "a => ( padding: 1px; );"],
+    ["a chain of choices as a table", "     : $(w)  ? orange"],
+    ["the parens off a branch", "border: $(on) ? 2px solid red : 1px solid #ccc;"],
+    ["a declaration on its own line", "display:flex;\n"],
+  ])("%s", async (_what, line) => {
+    expect(await format(WRITTEN)).toContain(line);
+  });
+
+  test("and settles", async () => {
+    const once = await format(WRITTEN);
+
+    expect(await format(once)).toBe(once);
+  });
+
+  test("with tabs, the step is a tab", async () => {
+    const out = await prettier.format(WRITTEN, { parser: "typescript", plugins: [plugin], useTabs: true });
+
+    expect(out).toMatch(/(\t+)&:hover \{\n\1\tcolor:red;\n\1\}/);
+  });
+});

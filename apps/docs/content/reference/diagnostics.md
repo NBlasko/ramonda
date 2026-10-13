@@ -1892,3 +1892,4 @@ A callback belongs on a field too — `createRef<T>((node) => this.arrived(node)
 
 `ramonda-check` reports the same call before it ships, as
 [`ref-built-where-it-cannot-be-kept`](/reference/check).
+

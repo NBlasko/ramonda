@@ -83,8 +83,9 @@ Walk through it:
 - **`increment()`** — a method that adds one. `this.count` is how a class refers to
   its own field.
 - **`onclick={this.increment}`** — run `increment` when the button is clicked. The
-  prop is `onclick`, camelCase — a JSX spelling, not HTML's lowercase `onclick`
-  ([more on that](/concepts/events)).
+  prop is `on` plus the event's own name, lowercase, exactly as the browser spells it
+  ([more on that](/concepts/events)). Ramonda binds the method for you, so it goes on as
+  it is.
 - **`{this.count}`** — inside JSX, curly braces drop a value into the text, so the
   button always shows the current number.
 

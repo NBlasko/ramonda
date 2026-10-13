@@ -1,0 +1,501 @@
+#!/usr/bin/env node
+import { existsSync, readFileSync, statSync, writeSync } from "node:fs";
+import { join, relative, resolve } from "node:path";
+import ts from "typescript";
+import { checkProject } from "./check";
+import { withoutItsApi } from "./typescriptApi";
+import { NARROW, explain } from "../config/codegen";
+import { PRIMITIVE } from "../compiler/keywords.generated";
+import { nearest } from "../compiler/nearest";
+import { writeGenerated } from "../config/generate";
+import { ConfigError, environmentOf, findConfig, readConfig } from "../config/config";
+import { filesUnder, formatFile, formatText, lintFile, toolIn } from "./tooling";
+import { ToolFailed, biomeFormatter, biomeLinter, oxlintLinter } from "./tools";
+
+/**
+ * `ramonda-css [tsconfig.json]`
+ *
+ * Type-checks a project whose source TypeScript cannot parse — every `@@( … )` block turned into a
+ * virtual file, handed to `tsc`, and every diagnostic mapped back to the character the author typed.
+ *
+ * **A project using this syntax cannot run plain `tsc`**, which refuses the file at the parse step.
+ * So this is that project's `tsc`: it reports ordinary type errors too, and a report that dropped
+ * them would look like a passing check on a program nothing checked.
+ *
+ * Meant to sit in a `build` script beside the bundler. A check nobody runs is a check that does not
+ * exist, and until this runs somewhere that fails, the type safety is a claim about editors.
+ *
+ * ## `format` and `lint`, for the tools that cannot read the file either
+ *
+ * ```
+ * ramonda-css format <paths…>   # --check to report instead of writing
+ * ramonda-css lint <paths…>
+ * ```
+ *
+ * Neither is a reimplementation: the project's own biome and oxlint do the work, with their own
+ * configuration, and this only decides what text they are shown. A suppression comment cannot do
+ * the same job — it is read BY the parser, which has already failed.
+ */
+
+const TAG = "[ramonda-css]";
+
+const USAGE = `ramonda-css — the tools for a project whose source TypeScript cannot parse
+
+  ramonda-css [tsconfig.json]      type-check the project, mapping every diagnostic home
+  ramonda-css format <paths…>      format through the project's own biome (--check to report)
+  ramonda-css lint <paths…>        lint through the project's own oxlint, or its biome
+  ramonda-css codegen              write the tokens this project declares, and their types
+                                   (--check reports a stale css-system instead of writing)
+  ramonda-css explain <property>   what your config does to one property, and which line decided it
+
+The check takes a PROJECT — a tsconfig, or the directory holding one — because a program is what
+is type-checked. \`format\` and \`lint\` take paths, because a file is what they rewrite and read.`;
+const argv = process.argv.slice(2);
+
+/** Relative to where the command was run, which is how a person reads their own tree. */
+const where = (file: string) => relative(process.cwd(), file) || file;
+
+/**
+ * Help first, before anything is dispatched — because asking for help must never do work.
+ *
+ * `runTool` filters every `-` argument out of its paths, so `--help` leaves none, and "no paths"
+ * means the whole directory. Dispatched before this, `ramonda-css format --help` rewrote a file and
+ * exited 0, having been asked what the command does.
+ */
+if (argv.includes("--help") || argv.includes("-h")) {
+  console.log(USAGE);
+  process.exit(0);
+}
+
+/** Before any command, since each of them reads source through TypeScript's API. */
+const noApi = withoutItsApi(ts);
+if (noApi !== undefined) {
+  console.error(`\n${TAG} ${noApi}\n`);
+  process.exit(1);
+}
+
+/**
+ * A config this cannot use is the AUTHOR's file, so it is said the way every other fault is.
+ *
+ * Thrown, every way `ramonda.css.ts` can be wrong reached a person as a Node crash — a caret and a
+ * stack — around a careful sentence, while a mistake in a block printed the tag, the file, the line
+ * and the sentence. Same tool, same person, two shapes.
+ *
+ * Wrapped around the WHOLE dispatch rather than around each caller, because the config is read from
+ * three of them — `checkProject`, the formatter and the linter — and the next one would forget.
+ * That is the reason `transform.ts` gives for holding the CSS check itself, one layer down.
+ */
+function said<T>(run: () => T): T {
+  try {
+    return run();
+  } catch (error) {
+    if (!(error instanceof ConfigError)) throw error;
+    console.error(`\n${TAG} ${error.message}\n`);
+    process.exit(1);
+  }
+}
+
+if (argv[0] === "format" || argv[0] === "lint") {
+  said(() => runTool(argv[0] as "format" | "lint", argv.slice(1)));
+}
+
+if (argv[0] === "codegen") {
+  said(() => runCodegen(argv.includes("--check")));
+}
+
+if (argv[0] === "explain") {
+  said(() => runExplain(argv[1]));
+}
+
+/**
+ * The project to check — a tsconfig, or the directory holding one, which is what `tsc -p` takes
+ * too.
+ *
+ * **`format` and `lint` take PATHS and this takes a project**, so `ramonda-css src/App.tsx` is the
+ * mistake the command itself invites. Unchecked, the path goes to TypeScript's JSON reader, which
+ * answers `'{' expected.` at line 1 column 1 of the author's own component — a message that says
+ * the source is broken when the source is fine.
+ */
+/**
+ * Codegen runs BEFORE the check, always, and that is not a convenience.
+ *
+ * The check reads the project's own property map when one is on disk and the shipped map when it is
+ * not — so a generated module that is missing or stale means a weaker check with nothing said. A
+ * config edited since the last codegen has an old one, and would pass while checking against
+ * something the project no longer says.
+ *
+ * It is cheap — it writes only when the content differs — and it means `ramonda-css tsconfig.json`
+ * is one command rather than two that must be run in the right order.
+ */
+said(() => writeGenerated(process.cwd(), ts));
+
+const given = argv.find((argument) => !argument.startsWith("-")) ?? "tsconfig.json";
+const tsconfig = statSync(given, { throwIfNoEntry: false })?.isDirectory() ? join(given, "tsconfig.json") : given;
+
+if (!tsconfig.endsWith(".json")) {
+  console.error(
+    `\n${TAG} \`${given}\` is not a project. This checks a whole program, so it takes a tsconfig — ` +
+      `or the directory holding one — and defaults to \`tsconfig.json\` here.\n\n` +
+      `  It is \`format\` and \`lint\` that take paths:\n\n` +
+      `    ramonda-css format ${given}\n` +
+      `    ramonda-css lint ${given}\n`,
+  );
+  process.exit(1);
+}
+
+const report = said(() => checkProject(tsconfig));
+
+/**
+ * Every exemption, on every run, whether or not anything failed.
+ *
+ * A `ramonda-css-ignore` is a decision, and a decision nobody can see is a silence — which is the
+ * thing this package refuses to be. Printed here so a reason that has stopped being true is one
+ * somebody meets rather than one they would have to go looking for.
+ */
+if (report.exempted.length > 0) {
+  console.log(`\n${TAG} ${report.exempted.length} \`ramonda-css-ignore\`, honoured:\n`);
+  for (const one of report.exempted) console.log(`  ${where(one.file)}:${one.line}  ${one.reason}`);
+  console.log("");
+}
+
+if (report.findings.length === 0) {
+  console.log(`${TAG} ${report.files} file(s) type-check, ${report.styled} of them carrying a style block`);
+  process.exit(0);
+}
+
+/**
+ * A refusal is a syntax error and it is printed first: its file was not TYPE-checked, and saying
+ * "3 errors" when two of them are the compiler's confusion about a file it could not read would be
+ * three wrong answers instead of one right one.
+ *
+ * **What that reason does not cover is printed after it** — every other file, the CSS rules and the
+ * type check both. Dropping them, one unreadable block in one file would hide every other file's
+ * findings, and a typo anywhere would mean fixing a repository one error per run.
+ */
+if (report.refused) {
+  console.error(
+    `\n${TAG} ${report.refusals.length} block(s) could not be read, so the file(s) holding them were not type-checked:\n`,
+  );
+  for (const finding of report.refusals) {
+    console.error(`  ${where(finding.file)}:${finding.line}:${finding.column}`);
+    console.error(`    ${finding.message.replace(/^.*?:\d+:\d+\s+/, "")}`);
+    console.error("");
+  }
+
+  const rest = report.findings.filter((one) => !report.refusals.includes(one));
+  if (rest.length > 0) {
+    console.error(`${TAG} and ${rest.length} problem(s) in files that read:\n`);
+    for (const finding of rest) {
+      console.error(`  ${where(finding.file)}:${finding.line}:${finding.column}`);
+      console.error(`    ${typeof finding.code === "number" ? `TS${finding.code}` : finding.code}: ${finding.message}`);
+      console.error("");
+    }
+  }
+  process.exit(1);
+}
+
+console.error(`\n${TAG} ${report.findings.length} problem(s) in ${report.files} file(s):\n`);
+for (const finding of report.findings) {
+  console.error(`  ${where(finding.file)}:${finding.line}:${finding.column}`);
+  // A number is TypeScript's; a name is one of our own CSS rules. Prefixing both the same way would
+  // claim the compiler said something it did not.
+  console.error(`    ${typeof finding.code === "number" ? `TS${finding.code}` : finding.code}: ${finding.message}`);
+  console.error("");
+}
+/**
+ * Only when a block is involved, because that is the whole of what it explains.
+ *
+ * It answers *why can I trust a position inside a block* — the block is checked through a virtual
+ * file and every diagnostic is mapped home. A run whose faults are all outside one has nothing to
+ * explain: measured, a project whose only fault was a style prop nobody uses printed *0 of those
+ * file(s) carry a style block* and then explained how a block is checked.
+ */
+if (report.styled > 0) {
+  console.error(
+    `  ${report.styled} of those file(s) carry a style block. A position inside one is the author's own —\n` +
+      `  the block is checked through a virtual file, and every diagnostic is mapped back to it.\n`,
+  );
+}
+process.exit(1);
+
+/* ── format and lint ───────────────────────────────────────────────────────────────────────── */
+
+/**
+ * The formatter or the linter, over the paths given, with a style block handled where one is found.
+ *
+ * Every path is expanded here rather than handed to the tool, because the two halves need different
+ * things from a file and only this knows which is which. A file with no block still goes through the
+ * same call: one command over a whole tree beats two the caller has to keep in step.
+ */
+function runTool(which: "format" | "lint", args: readonly string[]): never {
+  const check = args.includes("--check");
+  const stdin = args.find((argument) => argument.startsWith("--stdin-file-path"));
+  const paths = args.filter((argument) => !argument.startsWith("-"));
+  const cwd = process.cwd();
+
+  /**
+   * The ARGUMENTS first, because a path that is not there is answerable without any tool — and
+   * `filesUnder` reaches it through `statSync`, which throws `ENOENT`. Measured, the output was a
+   * raw stack starting `node:fs:1739`. A typo in a CI script deserves a sentence.
+   */
+  for (const path of paths) {
+    if (!existsSync(resolve(cwd, path))) {
+      console.error(`\n${TAG} \`${path}\` is not there, so there is nothing to ${which}.\n`);
+      process.exit(1);
+    }
+  }
+
+  const name = which === "format" ? "biome" : linterOf(cwd);
+  const binary = toolIn(cwd, name === "biome" ? "@biomejs/biome" : "oxlint", name);
+  if (binary === undefined) {
+    const missing = which === "lint" ? "Neither `oxlint` nor `biome` is" : `\`${name}\` is not`;
+    console.error(`\n${TAG} ${missing} installed here, so there is nothing to run.\n`);
+    process.exit(1);
+  }
+
+  /**
+   * One buffer in, the formatted text out, and nothing written — what an EDITOR needs.
+   *
+   * An editor asks a formatter about the buffer rather than the file: a provider that pointed this
+   * at a path would format what was last saved and hand back edits computed against text the author
+   * has since changed. The flag is spelled the way biome spells its own, because that is what the
+   * caller is really reaching for and this is a wrapper over it.
+   */
+  if (stdin !== undefined) {
+    if (which !== "format") {
+      console.error(`\n${TAG} \`--stdin-file-path\` is for \`format\`; \`lint\` reports positions in a file.\n`);
+      process.exit(1);
+    }
+
+    const named = stdin.includes("=") ? stdin.slice(stdin.indexOf("=") + 1) : (paths[0] ?? "stdin.tsx");
+    const source = readFileSync(0, "utf8");
+    let formatted: string;
+    try {
+      formatted = formatText(source, resolve(cwd, named), biomeFormatter(binary, cwd));
+    } catch (error) {
+      if (!(error instanceof ToolFailed)) throw error;
+      console.error(`\n${TAG} \`${name}\` refused:\n\n${error.message}\n`);
+      process.exit(1);
+    }
+
+    /**
+     * **Written SYNCHRONOUSLY**, because a write to a pipe is asynchronous and `process.exit` does
+     * not drain one.
+     *
+     * A pipe holds 64KB, so everything past that is lost: measured on a 132,780-byte file,
+     * `process.stdout.write` then exit handed back 65,536 bytes, cut mid-line, with no error
+     * anywhere. The editor extension replaces the WHOLE DOCUMENT with what comes back, so that
+     * would delete the rest of any file over 64KB on every save.
+     *
+     * `writeSync` in a loop, because a pipe accepts what it has room for and answers with how much
+     * it took. The loop is what makes the write finish before the exit.
+     */
+    const bytes = Buffer.from(formatted, "utf8");
+    for (let written = 0; written < bytes.length; ) {
+      written += writeSync(1, bytes, written, bytes.length - written);
+    }
+    process.exit(0);
+  }
+
+  const files = filesUnder(paths.length === 0 ? ["."] : paths, cwd);
+
+  if (which === "format") {
+    const format = biomeFormatter(binary, cwd);
+    const changed: string[] = [];
+    try {
+      for (const file of files) {
+        if (formatFile(file, format, { write: !check }).changed) changed.push(file);
+      }
+    } catch (error) {
+      // The tool's own words. A wrapper that answered with its call stack would have hidden the
+      // only useful sentence — a config it cannot read, a version that is not there.
+      if (!(error instanceof ToolFailed)) throw error;
+      console.error(`\n${TAG} \`${name}\` refused:\n\n${error.message}\n`);
+      process.exit(1);
+    }
+
+    if (changed.length === 0) {
+      // The two modes did different things and must not claim the same one: `--check` wrote to
+      // nothing by design, and a write run with nothing to change wrote to nothing in fact.
+      const said = check ? `${files.length} file(s) already formatted` : `${files.length} file(s), nothing to rewrite`;
+      console.log(`${TAG} ${said}`);
+      process.exit(0);
+    }
+    if (!check) {
+      console.log(`${TAG} ${files.length} file(s), ${changed.length} rewritten`);
+      process.exit(0);
+    }
+
+    console.error(`\n${TAG} ${changed.length} file(s) are not formatted:\n`);
+    for (const file of changed) console.error(`  ${where(file)}`);
+    console.error("");
+    process.exit(1);
+  }
+
+  const lint = name === "biome" ? biomeLinter(binary, cwd) : oxlintLinter(binary, cwd);
+  let found: ReturnType<typeof lintFile>;
+  try {
+    found = files.flatMap((file) => lintFile(file, lint));
+  } catch (error) {
+    /**
+     * The tool's own words, the same as the formatter's above. A failing linter must not come back
+     * as no findings: `ramonda-css lint` would print *N file(s) lint clean* and exit 0 for a linter
+     * that had crashed. See `oxlintLinter`.
+     */
+    if (!(error instanceof ToolFailed)) throw error;
+    console.error(`\n${TAG} \`${name}\` refused:\n\n${error.message}\n`);
+    process.exit(1);
+  }
+
+  if (found.length === 0) {
+    console.log(`${TAG} ${files.length} file(s) lint clean`);
+    process.exit(0);
+  }
+
+  console.error(`\n${TAG} ${found.length} lint problem(s) in ${files.length} file(s):\n`);
+  for (const finding of found) {
+    console.error(`  ${where(finding.file)}:${finding.line}:${finding.column}`);
+    console.error(`    ${finding.code}: ${finding.message}`);
+    console.error("");
+  }
+  process.exit(1);
+}
+
+/**
+ * The project's own linter: oxlint where the project configured it, or where biome is not installed;
+ * biome otherwise.
+ *
+ * Asked of the CONFIG first, because a project may have both installed — this repository does — and
+ * the one it wrote a config for is the one it means. A project from `create-ramonda` with the Biome
+ * add-on has `biome.json` and no oxlint at all.
+ */
+function linterOf(cwd: string): "oxlint" | "biome" {
+  const oxlint = toolIn(cwd, "oxlint", "oxlint") !== undefined;
+  const configured = existsSync(resolve(cwd, ".oxlintrc.json"));
+  if (oxlint && (configured || toolIn(cwd, "@biomejs/biome", "biome") === undefined)) return "oxlint";
+  return toolIn(cwd, "@biomejs/biome", "biome") === undefined ? "oxlint" : "biome";
+}
+
+/**
+ * `ramonda-css codegen`
+ *
+ * Writes the stylesheet that sets this project's declared tokens, and the module that reaches them.
+ * Both bundler plugins run it on their own, so this is for the builds that use neither, and for CI.
+ *
+ * **A project with no config is not a failure.** Blocks work perfectly well without declaring a
+ * token, and exiting non-zero would break a build for a step it never asked for. It says so and
+ * stops.
+ */
+function runCodegen(only: boolean): never {
+  const result = writeGenerated(process.cwd(), ts, { write: !only });
+
+  if (result.config === undefined) {
+    console.log(`${TAG} no \`ramonda.css.ts\` in this project, so there are no tokens to write.`);
+    process.exit(0);
+  }
+
+  if (result.declared === 0) {
+    console.log(`${TAG} ${where(result.config)} declares no tokens, so nothing was written.`);
+    process.exit(0);
+  }
+
+  const changed = result.files.filter((one) => one.changed);
+
+  /**
+   * `--check` writes NOTHING and exits non-zero when the pair is stale.
+   *
+   * The generated files are committed, so something has to say when they stop matching the config
+   * beside them — and the repository already answers that question this way for
+   * `keywords.generated.ts`. A gate that re-derived it — reading both files and running codegen
+   * over the author's tree — would leave the working copy modified on a red run, and need its own
+   * copy of the `outDir` regex.
+   *
+   * Asking codegen is the same answer with none of that. It knows what it would write and whether
+   * that differs, because `put` compares before writing for an unrelated reason.
+   */
+  if (only) {
+    if (changed.length === 0) {
+      console.log(`${TAG} ${where(result.config)} and its generated files agree`);
+      process.exit(0);
+    }
+
+    console.error(
+      `\n${TAG} ${changed.length} generated file(s) no longer match ${where(result.config)}:\n\n` +
+        `${changed.map((one) => `  - ${where(one.path)}`).join("\n")}\n\n` +
+        "        Run `ramonda-css codegen` here and commit the result. Nothing was written.\n",
+    );
+    process.exit(1);
+  }
+
+  const said = changed.length === 0 ? "already up to date" : changed.map((one) => where(one.path)).join(", ");
+
+  console.log(
+    `${TAG} ${result.declared} token${result.declared === 1 ? "" : "s"} from ${where(result.config)} — ${said}`,
+  );
+  process.exit(0);
+}
+
+/**
+ * What this project's config does to ONE property, and which selector decided each part.
+ *
+ * ```
+ * $ ramonda-css explain border-radius
+ *
+ *   border-radius        a length or a percentage
+ *
+ *     shorthand      false        "*"
+ *     units          px, rem      "<length>"
+ *     hardcoded      true         "border-radius"   overriding "<length>"
+ * ```
+ *
+ * `properties` is keyed by the sweep, by a kind, and by a name, and each binds more tightly than
+ * the one before — so knowing what applies to one property means reading three entries and holding
+ * CSS's own classification in your head. This prints the answer.
+ *
+ * It reads {@link explain}, which walks the same selectors as `ruleFor` in the same order — see its
+ * note for why an explanation that agreed by accident would be worse than none.
+ */
+function runExplain(property: string | undefined): never {
+  if (property === undefined || property.startsWith("--") || property === "-h") {
+    console.error(`\n${TAG} \`explain\` takes a property — \`ramonda-css explain padding-left\`.\n`);
+    process.exit(1);
+  }
+
+  const path = findConfig(process.cwd());
+  const config = readConfig(path, ts, environmentOf());
+  const said = explain(config.properties, property);
+
+  if (!said.known) {
+    const meant = nearest(property, Object.keys(PRIMITIVE));
+    console.error(
+      `\n${TAG} CSS has no \`${property}\`.` + (meant === undefined ? "" : ` Did you mean \`${meant}\`?`) + "\n",
+    );
+    process.exit(1);
+  }
+
+  const lines: string[] = [
+    "",
+    `  ${property}${said.kind === undefined ? "" : `   ${NARROW[said.kind]?.said ?? said.kind}`}`,
+    "",
+  ];
+
+  if (path === undefined) {
+    lines.push("  no `ramonda.css.ts` in this project, so nothing is narrowed.", "");
+  } else if (said.settings.length === 0) {
+    lines.push(`  ${where(path)} says nothing about it, so it takes whatever CSS allows.`, "");
+  } else {
+    // A setting asked of one kind of value says which: `hardcoded, a length` beside `…, a percentage`.
+    const label = (one: (typeof said.settings)[number]) =>
+      one.of === undefined ? one.name : `${one.name}, ${NARROW[one.of]?.said ?? one.of}`;
+    const width = Math.max(...said.settings.map((one) => label(one).length));
+    for (const one of said.settings) {
+      const value = Array.isArray(one.value) ? one.value.join(", ") : String(one.value);
+      const overriding = one.overriding === undefined ? "" : `   overriding ${JSON.stringify(one.overriding)}`;
+      lines.push(`    ${label(one).padEnd(width)}  ${value.padEnd(12)} ${JSON.stringify(one.from)}${overriding}`);
+    }
+    lines.push("", `  from ${where(path)}`, "");
+  }
+
+  console.log(lines.join("\n"));
+  process.exit(0);
+}

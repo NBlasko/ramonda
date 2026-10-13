@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { build as viteBuild } from "vite";
+import { build as vite7Build } from "vite-7";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { tmpdir } from "node:os";
@@ -159,6 +160,72 @@ describe("what the plugin puts in the config", () => {
 });
 
 /**
+ * Vite 8, which transforms with Oxc. The hook reads which Vite it is from `this.meta.viteVersion`,
+ * so these call it the way Vite 8 does.
+ */
+describe("on Vite 8", () => {
+  const VITE_8 = { meta: { viteVersion: "8.3.4" } };
+  const env = { command: "build", mode: "production" };
+  const on8 = () => {
+    const plugin = ramonda();
+    const { config, configResolved } = hooks(plugin);
+    return { config: config.bind(VITE_8), configResolved, plugin };
+  };
+
+  test("the JSX settings go to Oxc, and nothing goes to the esbuild block Vite 8 only translates", () => {
+    const returned = on8().config({}, env) as Record<string, unknown>;
+    expect(returned.oxc).toEqual({ jsx: { runtime: "automatic", importSource: "@ramonda/core" } });
+    expect(returned).not.toHaveProperty("esbuild");
+    expect(returned.envPrefix).toBe(PUBLIC_ENV_PREFIX);
+  });
+
+  test("an app's own Oxc JSX that agrees is left as its own line", () => {
+    const own = { oxc: { jsx: { runtime: "automatic", importSource: "@ramonda/core" } } };
+    expect(on8().config(own, env)).not.toHaveProperty("oxc");
+  });
+
+  test("Oxc switched off, or told another JSX, is refused as esbuild is", () => {
+    const { config } = on8();
+    expect(() => config({ oxc: false }, env)).toThrow(/Remove that line/);
+    expect(() => config({ oxc: { jsx: { runtime: "automatic", importSource: "preact" } } }, env)).toThrow(
+      /jsxImportSource/,
+    );
+    expect(() => config({ oxc: { jsx: "preserve" } }, env)).toThrow(/`jsx`/);
+  });
+
+  test("the resolved config is checked for Oxc, and no esbuild target is asked for", () => {
+    const { config, configResolved } = on8();
+    config({}, env);
+    // No `esbuild` at all: on Vite 8 the decorators are this plugin's own transform.
+    expect(() => configResolved({ envPrefix: PUBLIC_ENV_PREFIX })).not.toThrow();
+    expect(() => configResolved({ envPrefix: PUBLIC_ENV_PREFIX, oxc: false })).toThrow(/Remove that line/);
+  });
+
+  test("the transform lowers a decorator on Vite 8, and leaves the module alone on Vite 7", async () => {
+    const source = `function Host(t) { return (v) => v; }\n@Host("div") export class A {}\n`;
+
+    const eight = on8();
+    eight.config({}, env);
+    const lowered = await eight.plugin.transform.handler.call({}, source, "/app/src/A.tsx");
+    expect(lowered?.code).not.toContain("@Host");
+
+    const seven = ramonda();
+    hooks(seven).config.call({ meta: { viteVersion: "7.3.6" } }, {}, env);
+    expect(await seven.transform.handler.call({}, source, "/app/src/A.tsx")).toBeNull();
+  });
+
+  test("a dependency, a virtual module and a file with no decorator are not touched", async () => {
+    const { config, plugin } = on8();
+    config({}, env);
+    const source = `@Host("div") export class A {}\n`;
+    expect(await plugin.transform.handler.call({}, source, "/app/node_modules/x/index.js")).toBeNull();
+    expect(await plugin.transform.handler.call({}, source, "\0virtual:x")).toBeNull();
+    expect(await plugin.transform.handler.call({}, source, "/app/src/a.css")).toBeNull();
+    expect(await plugin.transform.handler.call({}, "export const a = 1;\n", "/app/src/a.ts")).toBeNull();
+  });
+});
+
+/**
  * A real `vite build`, twice: once without the plugin, so the fault is on the record, and once with
  * it. The first half is not decoration — a test that only ever runs the fixed arrangement cannot
  * tell you the fix is what fixed it.
@@ -173,19 +240,61 @@ describe("what the plugin puts in the config", () => {
  * over the output — and either pass will lower the decorators, so leaving `build.target` at its
  * default hides the fault the same way.
  */
-async function bundle(plugins: NonNullable<Parameters<typeof viteBuild>[0]>["plugins"], root: string) {
-  const result = (await viteBuild({
+async function bundle(
+  build: typeof viteBuild,
+  plugins: NonNullable<Parameters<typeof viteBuild>[0]>["plugins"],
+  root: string,
+  ssr = false,
+) {
+  const warnings: string[] = [];
+  const result = (await build({
     root,
-    logLevel: "silent",
     configFile: false,
+    customLogger: quiet(warnings),
     plugins,
-    build: { target: "esnext", write: false, minify: false, lib: { entry: join(root, "entry.ts"), formats: ["es"] } },
-  })) as { output: { code?: string }[] }[];
-  return result[0].output.map((chunk) => chunk.code ?? "").join("\n");
+    build: {
+      target: "esnext",
+      write: false,
+      minify: false,
+      // A server build takes its own path through Vite, and it is the one that left the decorators in
+      // before this package existed — so it is asked separately rather than assumed from the client's.
+      ...(ssr ? { ssr: join(root, "entry.ts") } : { lib: { entry: join(root, "entry.ts"), formats: ["es" as const] } }),
+    },
+  })) as { output: { code?: string }[] }[] | { output: { code?: string }[] };
+  // Vite 8 hands back one result for a library build where Vite 7 handed back a list.
+  const output = Array.isArray(result) ? result[0].output : result.output;
+  return { code: output.map((chunk) => chunk.code ?? "").join("\n"), warnings };
 }
 
-describe("what comes out of a real build", () => {
-  test("without the plugin the decorator reaches the bundle; with it, it does not", async () => {
+/** A logger that keeps the warnings, so a test can ask whether Vite had anything to say. */
+function quiet(warnings: string[]) {
+  const ignore = () => {};
+  return {
+    info: ignore,
+    warn: (message: string) => warnings.push(message),
+    warnOnce: (message: string) => warnings.push(message),
+    error: ignore,
+    clearScreen: ignore,
+    hasErrorLogged: () => false,
+    hasWarned: false,
+  };
+}
+
+/**
+ * Both majors, because an app is on one or the other and the plugin answers each differently: Vite 7
+ * transforms with esbuild, which lowers decorators when told a target, and Vite 8 with Oxc, which
+ * cannot lower them at all.
+ */
+const VITES = [
+  ["Vite 8", viteBuild],
+  ["Vite 7", vite7Build as unknown as typeof viteBuild],
+] as const;
+
+describe.each(VITES)("what comes out of a real build, on %s", (_name, build) => {
+  test.each([
+    ["client", false],
+    ["server", true],
+  ])("without the plugin the decorator reaches the %s bundle; with it, it does not", async (_which, ssr) => {
     const dir = await mkdtemp(join(tmpdir(), "ramonda-build-vite-"));
     try {
       await writeFile(
@@ -207,13 +316,17 @@ describe("what comes out of a real build", () => {
        */
       const emitted = join(dir, "out.mjs");
 
-      await writeFile(emitted, await bundle([], dir));
+      await writeFile(emitted, (await bundle(build, [], dir, ssr)).code);
       await expect(parses(emitted), "the fault should reproduce without the plugin").resolves.toBe(false);
 
-      const fixed = await bundle([ramonda()], dir);
-      await writeFile(emitted, fixed);
+      const fixed = await bundle(build, [ramonda()], dir, ssr);
+      await writeFile(emitted, fixed.code);
       await expect(parses(emitted)).resolves.toBe(true);
-      expect(fixed).not.toContain("@Host");
+      expect(fixed.code).not.toContain("@Host");
+
+      // Nothing the plugin hands Vite is an option Vite has stopped reading. On Vite 8 `esbuild` is
+      // translated with a warning, and translated into a transform that cannot lower decorators.
+      expect(fixed.warnings.filter((one) => /deprecated/i.test(one))).toEqual([]);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

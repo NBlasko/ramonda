@@ -15,10 +15,6 @@ hand.
 
 `@ramonda/query` is that, once, for the whole tree.
 
-```sh
-pnpm add @ramonda/query
-```
-
 ```tsx
 import { Component } from "@ramonda/core";
 import { Query, QueryClientProvider } from "@ramonda/query";
@@ -59,7 +55,7 @@ Nothing declares the data's type — `TData` comes from `fetch`, so `this.user.d
 Switch between people and watch the request counter: the second visit to someone you
 already viewed makes no request, and showing two cards of the same person makes one.
 
-## What it gives you
+## What you get
 
 - **One request per key.** Three components asking for `["user", 7]` in one render
   make one request and cannot disagree about the answer.
@@ -74,6 +70,14 @@ already viewed makes no request, and showing two cards of the same person makes 
   over newer data.
 - **[Mutations](/query/mutations)** with optimistic updates whose rollback is
   the function you return.
+
+## Install
+
+A separate package, beside `@ramonda/core`:
+
+```install
+@ramonda/query
+```
 
 ## The cache belongs to the tree
 

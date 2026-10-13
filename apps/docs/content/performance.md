@@ -42,7 +42,7 @@ always the next section.
 is a *changed* prop every time — and a changed prop recomputes every `@compute` reading it, fires
 every `@watchProp` on it, and reconnects a subscription whose `connect` read it.
 
-```tsx expect-report:fresh-object-in-props
+```tsx
 <Row item={item} tags={[...item.tags]} />   {/* a new array every render */}
 ```
 

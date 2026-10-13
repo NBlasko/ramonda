@@ -1,5 +1,205 @@
 # @ramonda/core
 
+## 0.26.0
+
+### Minor Changes
+
+- e98151a: **A block is a string.** `CssBlock` is the classes it compiled to, branded so a plain `string` cannot
+  stand in for one — and `mergeClassNames` composes strings rather than maps.
+
+  ```tsx
+  const panel = @@( display: flex; gap: 8px; );
+
+  <div className={panel} />                        // the classes it compiled to
+  <div className={mergeClassNames("lead", panel)} />  // beside a class of your own
+  ```
+
+  **This is what `RMD020` was about.** A block used to be `{ <what it sets>: <the class> }`, because
+  that was where _the thing set_ was written down — and a map is an object, so a block written in the
+  markup was a new object on every render and a child receiving it re-rendered for nothing. The key is
+  in the class name now, so two merges with the same contents are the same value, compared the way
+  every other prop is compared. The one-slot cache that existed to paper over it is gone, and so is
+  the question.
+
+  What went with it:
+
+  - **`compose`** — it was the primitive `mergeClassNames` was the boundary of, and with strings they
+    are one thing.
+  - **`block()` and `toStyleObject`** — a descriptor a call filled with a hole's values, and the
+    `{ className, style }` a renderer with no `css` prop of its own spread. `className={panel}` is
+    what that is now.
+  - **`StyleMap`, `StyleEntry`, `StyleBlock`, `HoleValues`, `StyleVarValue`** — the shapes of a value
+    that carried values.
+  - In `@ramonda/core`: `applyCssBlock` and everything it did with custom properties, and the three
+    runtime diagnostics about them — **`RMD062`**, **`RMD063`** and **`RMD064`**. A block is a string
+    on `className` now, so there is nothing left for any of them to be about.
+
+  **Two things a class string cannot carry, and each module registers what its own blocks need.** A
+  table of all 98 shorthand families is 23 KB, 3.7 KB gzipped — larger than this whole runtime, and a
+  page writing three shorthands would pay for ninety-five it does not. So a module registers the
+  shorthands it writes, which is what a `padding` needs to clear a caller's `padding-left`. It also
+  registers the conditions and property names the development order-warning reads, inside a
+  `process.env.NODE_ENV` guard a production bundler drops.
+
+  **The `;` rule moved with its hazard.** A value holding a `;` becomes a second declaration when a
+  server-rendered `style` attribute is parsed back out of HTML — measured, `red; position: fixed;
+width: 100vw` came out applied. That was `toStyleObject`'s and the framework's; a block sets nothing
+  on an element now, and `toStyle` is how a value reaches one, so it is `toStyle` that refuses it.
+
+  **A class this compiler did not write keys on itself**, which matters because
+  `mergeClassNames("lead", @@( … ))` is how a block sits beside a class of your own. `keyIn` reads a
+  key out of OUR spelling, and on a name that is not ours it reads letters — measured, `lead` and
+  `head` both come to `ad`, so one would have displaced the other, and a class literally named `pl`
+  was cleared by a `padding` beside it. A foreign class is keyed behind a space, which no key of ours
+  can hold.
+
+  `scripts/check-css-contract.mjs` is gone with the shape it compared: both packages say `string`.
+
+- e98151a: **The `css` prop is gone.** A block compiles to its classes, so `className` takes one.
+
+  ```tsx
+  const panel = @@( display: flex; gap: 8px; );
+
+  <div className={panel} />
+  <div className={@@( display: flex; )} />
+  <div className={mergeClassNames("lead", @@( display: flex; ))} />  // beside a class of your own
+  ```
+
+  There is nothing a second prop could do that the first cannot. It was an object carrying custom
+  property names and this render's values for them — which `className` could not have held — and it
+  has not been one since a runtime value in a declaration was refused.
+
+  **It is declared as a message rather than deleted**, because deleting it would be silent: the
+  element attribute type ends in `[val: Lowercase<string>]: any`, so a removed `css` would be `any`,
+  the block would compile, the class string would be written onto the element as a `css` attribute,
+  and nothing would say so. What a reader gets instead is the sentence, printed by TypeScript as the
+  expected type.
+
+  **`block-in-a-template` is new, and it is the gap this opened.** Joining a block with a class of your
+  own is an ordinary thing to want now, and a template literal is the first thing anybody reaches for
+  — and a template literal is TEXT to the compiler, so `` `lead ${@@( color: red; )}` `` used to find
+  no block at all: the file was handed on untouched, `@@(` survived into the bundler, and the author
+  got a syntax error somewhere else entirely. Measured across every position a block can be written in
+  — attribute, assignment, call argument, object value, array element, `return`, arrow body, ternary —
+  a template substitution is the only one that finds nothing, so it is reported, with
+  `mergeClassNames` named as the answer.
+
+  Gone with it: `applyCssBlock`, `CssBlockValue`, `RMD064`, and the `css` case in `formatAttributes`.
+  A component's own prop may still be CALLED `css` — `Card({ css?: CssBlock<CardStyle> })` — and that
+  is where an allow-list still narrows.
+
+### Patch Changes
+
+- 44e2552: **`RMD020` sees a prop named `css` again.** The render-stability check exempted it by name, so the
+  one prop most likely to carry a block was the one never compared.
+
+  The exemption was right once: the framework had a `css` prop of its own, a block was a MAP, and the
+  value was generated per element, applied, and dropped — a fresh identity for it meant nothing to
+  anybody. None of that holds now. A block is a string, so it is not a fresh object at all, and `css`
+  is what a COMPONENT calls its own prop for the styles it accepts.
+
+  Measured with the identical value under two names:
+
+  | a fresh object on  | before   |
+  | ------------------ | -------- |
+  | a prop named `sx`  | `RMD020` |
+  | a prop named `css` | silent   |
+
+  It was the last `"css"` special case left in `@ramonda/core`. Its comment pointed at
+  `core/cssBlock.ts`, a file this release deletes, which is how it was found — and a docstring in
+  `helpers/constants.ts` describing a constant that went with that file is gone too.
+
+## 0.25.0
+
+### Minor Changes
+
+- 74e24a3: The `css` prop: an element takes a compiled style block
+
+  A style block is written in real CSS beside the markup and compiled, before the build, into a class
+  that already exists in a stylesheet plus one CSS custom property per carried expression. This is the
+  framework's half — by the time a value reaches an element there is nothing left to parse:
+
+  ```tsx
+  <div className="lead" css={_s0(isOnline ? "4px solid #10b981" : "4px solid #64748b")}>
+  ```
+
+  The generated class joins whatever `className` the element already has, and each hole is written with
+  `setProperty`. Both work on an SVG element too, where `className` is a read-only `SVGAnimatedString`
+  and the class has to go through the attribute — the block's class travels the ordinary `className`
+  path, so that is true without a second rule for it.
+
+  **A block is exempt from the double-render check.** A `css` value with holes is a fresh object on
+  every render because a per-element value IS one, so `RMD020` would be right about every element
+  carrying a block and useless on all of them. It joins `children` and the props a component declared
+  with `@StableProps`: the value is generated, and a fresh identity for it means nothing.
+
+  **A hole's value that would become a second declaration is refused.** A hole carries whatever the
+  author's expression evaluated to, and an expression can read a record — so "the author wrote it" is
+  not a defence. `setProperty` writes one declaration whatever it is handed, which closes it on the
+  client; it does not close it on the server, and that took a measurement to find. A server render is
+  serialized to HTML and the browser parses the style attribute back, and the parse applies the CSS
+  grammar to whatever the serializer wrote:
+
+  ```
+  red; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 9999
+  ```
+
+  came back through `renderToString` and `innerHTML` as `position: fixed`, `width: 100vw` and
+  `z-index: 9999` — real, applied declarations, a full-viewport overlay out of a colour that came from
+  a database. A value carrying a `;` is now dropped rather than written: the element is left unstyled
+  in that one respect, which is the right way round.
+
+  **Across the hydration boundary**, measured through a real server render and hydrate: the same value
+  on both sides is silent and correct; a value that differs is silent and the client's wins; a block on
+  only one side is put on or taken off, and the class disagreement is reported as it already was for
+  any other class.
+
+  `css` is declared explicitly on `RamondaArgs` and `SVGArgs` rather than left to the
+  `[val: Lowercase<string>]: any` index signature those types carry — an undeclared lowercase prop is
+  silently `any`, and nothing about the value would be checked. **This can break a `css` attribute
+  written for something else**, a custom element's own for instance: it now has to be a compiled block.
+
+- 93ceb21: Three diagnostics for a style block the runtime cannot use.
+
+  The framework owns a `css` prop whose meaning comes from a compiler, and the honest half of that
+  bargain is that a value the two disagree about is said out loud rather than silently absorbed. All
+  three were measured before they existed:
+
+  - **`RMD062`** — a compiled block with holes is a function, and reading it without calling it applies
+    the class with **no** custom properties, so every declaration reading one falls back. Silent.
+  - **`RMD063`** — a hole's value holding a `;` would become a second declaration, so it is refused and
+    the declaration is dropped. Silent, and the reason it is refused is a server round trip that turned
+    one into real, applied declarations.
+  - **`RMD064`** — a value that is not a compiled block at all. This one did not do nothing: it **threw**
+    `Cannot read properties of undefined (reading 'length')`, taking the render down and naming nothing
+    about `css`. It is ignored now, class included, and the element renders unstyled.
+
+### Patch Changes
+
+- 5c71153: The devtools panel the entry wires up is under test, and a comment stops naming a file that does not exist
+
+  `index.ts` does three things for the panel at module load, inside `if (__DEV__)`: it appends
+  `<ramonda-devtools>` once the element is defined, it turns Alt+D into a `ramonda:toggle-devtools`
+  event, and it attempts an optional import of `@ramonda/devtools`. Nothing tested any of them. The
+  file's own comment records what that cost once — the append and the shortcut used to live inside that
+  import's `.then()`, so an app that imported the panel itself got the logs and no badge.
+
+  Four tests now hold it: exactly one panel and in the body, Alt+D and only Alt+D, no second panel when
+  the entry is loaded again, and the shape of the block itself.
+
+  The last one reads the source, and that is not laziness. Measured: `vi.doMock("@ramonda/devtools")`
+  never runs, because the specifier is held in a variable — deliberately, since a literal one breaks
+  `vite build` for every app that has not installed the panel. `@ramonda/devtools` is also a
+  devDependency of core, so in a test run that import RESOLVES and the panel appears whether or not the
+  mount depends on it. Planting the historical bug back proves the point exactly: with the mount and
+  the shortcut moved into the import's callback, the three runtime tests still pass and only the shape
+  test fails.
+
+  The comment that pointed at `NodeEnvironment.test.ts` for the no-DOM guarantee now points at what
+  actually holds it: `scripts/check-bare-import.mjs`, which imports every published entry in its own
+  Node process with no DOM, and lists `@ramonda/devtools` as browser-only while `@ramonda/core` is not.
+  That file has never existed anywhere in the repository.
+
 ## 0.24.0
 
 ### Minor Changes
@@ -31,7 +231,7 @@
   ```tsx
   const [ConfProvider, ConfConsumer] = createContext(
     { conf: { dense: false }, tick: 0 },
-    { stableProps: ["conf"] }
+    { stableProps: ["conf"] },
   );
   ```
 
@@ -4579,7 +4779,7 @@ can not be found in the parent`, thrown out of the reconcile, with the children 
   ```tsx
   const [ParamsProvider, ParamsConsumer] = createContext(
     { params: {} },
-    { label: "RouteParams", optional: true }
+    { label: "RouteParams", optional: true },
   );
   ```
 

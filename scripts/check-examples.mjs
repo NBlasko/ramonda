@@ -25,7 +25,9 @@
  *   node scripts/check-examples.mjs query     # only paths containing "query"
  */
 import { analyzeProgram } from "@ramonda/check";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync, globSync } from "node:fs";
+import { checkSource, mayHoldABlock, virtualFile } from "@ramonda/css/compiler";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync, existsSync, globSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -82,13 +84,41 @@ function blocksIn(file) {
   for (const match of text.matchAll(pattern)) {
     const [, lang, attrs, code] = match;
     if (!CHECKED.has(lang)) continue;
-    if (code.trim().split("\n").length < 2) continue;
+    /**
+     * A ONE-LINE fence is a fragment, not a program — and it is kept rather than dropped.
+     *
+     * It used to be a bare `continue`, the only skip in this file with no reason written beside it,
+     * and it took the fence out of BOTH halves. Two of them carry an `expect-report`, which says a
+     * rule fires on them; nothing ever asked. Worse, the stale-marker check at the foot of this file
+     * walks `units`, so a marker on a dropped fence was invisible in both directions — never
+     * verified, and never reported as silencing nothing. A check with a hole of exactly the shape it
+     * exists to close.
+     *
+     * So a fragment is a unit that the TYPE half leaves out. `<Row item={item} />` cannot be a
+     * program — `Row` and `item` are nobody's — which is what the skip was really about. The CSS
+     * rules need no program, so a one-liner holding a block is checked like any other, and a marker
+     * that silences nothing is reported by the check that already exists for it.
+     */
+    const fragment = code.trim().split("\n").length < 2;
     // ```ts expect-error — a block that shows what a MISTAKE looks like. The bguard page teaches
     // that `ctx.sibling((row) => row.kynd)` does not compile; reporting it would be reporting the
     // lesson. markdown-it hands the language and the attributes separately, so the marker costs no
     // highlighting.
     // ```tsx alternatives — two ways of writing the same thing, shown side by side. As one file
     // they collide, and the collision is the point rather than a fault.
+    /**
+     * ```tsx module:./theme — this block IS that module for the rest of the page.
+     *
+     * A page that teaches a two-file shape had no way to be checked: the theme example on
+     * `style-blocks.md` was marked `alternatives` and therefore checked by nothing, which is the
+     * "docs can lie and pass" fault this gate exists for, sitting on the gate's own flagship page.
+     *
+     * The block is still checked itself. It is also written into the work directory under the name
+     * the specifier asks for, so `import { accent } from "./theme"` resolves for `tsc`, and handed
+     * to the CSS rules as text so a `@@property` in it resolves for them too.
+     */
+    const provides = /(?:^|\s)module:(\S+)/.exec(attrs)?.[1];
+
     if (attrs.includes("expect-error") || attrs.includes("alternatives")) {
       expected.push({ file, line: text.slice(0, match.index).split("\n").length + 1 });
       continue;
@@ -105,7 +135,7 @@ function blocksIn(file) {
     // later, so the first example is reported and is not wrong. Naming the rule keeps every OTHER
     // rule live on the block, which is the difference between a gate and a gate people switch off.
     // Several rules are separated by `+`.
-    out.push({ code, line, expectReport: reportsAllowedBy(attrs) });
+    out.push({ code, line, provides, fragment, expectReport: reportsAllowedBy(attrs) });
   }
   return out;
 }
@@ -308,6 +338,29 @@ function ramondaGlobals(except = new Set()) {
   return lines.join("\n");
 }
 
+/** A documented example misusing a variable it imports from `../css-system`. See `SELFTEST=system`. */
+const PLANTED_SYSTEM = `import { $color } from "../css-system";
+
+export const planted: number = $color.accent;
+`;
+
+/**
+ * A documented example with a style block whose property does not exist. See `SELFTEST=block`.
+ *
+ * `packages/_preamble.d.ts` is what gives it `Component`, the same as any README block.
+ */
+const PLANTED = `export class Planted extends Component {
+  render() {
+    return (
+      <div css=@@(
+        display: flex;
+        dsiplay: flex;
+      )>x</div>
+    );
+  }
+}
+`;
+
 /**
  * The smallest wrapper that makes a block parse.
  *
@@ -319,8 +372,49 @@ function ramondaGlobals(except = new Set()) {
  *
  * `export {}` makes the file a module, which is what a fragment with a top-level `await` needs and
  * what stops a `const` in one block colliding with the same name in another.
+ *
+ * ## A `@@( … )` style block is read first, and that is not a convenience
+ *
+ * The syntax is not TypeScript, so no wrapper makes it parse and every attempt returns `null` — the
+ * block is filed under "not standalone code and skipped" and the run exits 0. **Measured by planting
+ * a wrong example into a real README: `dsiplay: flex` was skipped in silence**, in a repository that
+ * has already shipped three wrong examples exactly that way.
+ *
+ * So a block holding one is turned into its virtual reading before anything tries to wrap it, and
+ * the reading is line for line — which is what lets an error still name the author's own line, since
+ * this reports by line and has no source map to consult.
  */
 function shape(code) {
+  /**
+   * The shape is decided from the AUTHOR's code, kept before the virtual reading replaces it.
+   *
+   * The heuristics below ask whether a block uses `this.`, whether it already IS a class, and
+   * whether it opens with a `const` — and the virtual file answers all three wrongly. Its preamble
+   * is one long line that the author's first line continues, so `/^\s*class /m` finds nothing in a
+   * block that is a class declaration: measured, `class A extends Component<…>` holding a block was
+   * wrapped in a class BODY and reported `TS1184: Modifiers cannot appear here` six times, about a
+   * wrapper its author never wrote.
+   */
+  const written = code;
+
+  /**
+   * The virtual reading, when there is one. Strict: a documented example of a syntax IS the place a
+   * malformed block must be caught, and the tolerant reading would quietly accept `disp`.
+   */
+  if (mayHoldABlock(code)) {
+    /**
+     * The project's OWN property map when there is one, and the shipped one when there is not.
+     *
+     * It was pinned to the shipped map, and that is what a project WITHOUT a config is checked
+     * against — so `$color.accent` on a page about declaring variables came back
+     * `Property 'color' does not exist on type '"Declare your variables in ramonda.css.ts…"'`. The
+     * examples were being checked as a project that had never run codegen, which is not the project
+     * any page here describes.
+     */
+    const virtual = virtualFile(code, { properties: generated ?? "@ramonda/css/properties" });
+    if (virtual !== undefined) code = virtual.code;
+  }
+
   // The filler `render` is only added when the fragment has none of its own. Plenty of blocks ARE a
   // `render` — `render() { return <p/>; }` is how the JSX page opens — and adding a second one made
   // every such block report a duplicate implementation.
@@ -387,12 +481,12 @@ export {};
   // is legal and means nothing — and then every property on it is reported as possibly undefined,
   // about something the example never wrote. It belongs in a class.
   const needsClass =
-    (/\bthis\./.test(code) || /^\s*return\s/m.test(code)) &&
-    !/^\s*(?:@|class |export class |abstract class )/m.test(code);
+    (/\bthis\./.test(written) || /^\s*return\s/m.test(written)) &&
+    !/^\s*(?:@|class |export class |abstract class )/m.test(written);
 
   // A block with a top-level `const` cannot be a class BODY — it has to be inside a method. Both
   // shapes parse, so the choice has to be made here rather than left to the first that does.
-  const needsMethod = /^\s*(?:const|let|var)\s/m.test(code);
+  const needsMethod = /^\s*(?:const|let|var)\s/m.test(written);
 
   for (const [index, attempt] of attempts.entries()) {
     if (index === 0 && needsClass) continue;
@@ -453,6 +547,34 @@ const files = [
 const work = mkdtempSync(join(tmpdir(), "ramonda-examples-"));
 
 /**
+ * The docs' own `ramonda.css.ts`, carried into the work directory and generated from.
+ *
+ * Every block is checked here rather than where the page lives, so a config beside the page is
+ * nowhere the checker would walk up to. Without it `$color.accent` is
+ * `Property 'color' does not exist on type '"Declare your variables in ramonda.css.ts…"'` — the
+ * message this package shows a project that has not declared anything, shown to a page ABOUT
+ * declaring things.
+ *
+ * Copied rather than reinvented, so the examples are checked against a config a reader could
+ * actually write, and a variable a page uses without declaring is still the page being wrong.
+ */
+/** The generated property map every block on this site is checked against — see `shape`. */
+let generated;
+
+const cssConfig = join(repo, "apps", "docs", "ramonda.css.ts");
+if (existsSync(cssConfig)) {
+  writeFileSync(join(work, "ramonda.css.ts"), readFileSync(cssConfig, "utf8"));
+  // The config is RUN, not read, so its `import { kind } from "@ramonda/css/config"` has to
+  // resolve — and a fresh temp directory has nothing to resolve it from.
+  symlinkSync(join(repo, "node_modules"), join(work, "node_modules"));
+  execFileSync(process.execPath, [join(repo, "packages", "css", "bin.mjs"), "codegen"], {
+    cwd: work,
+    stdio: "ignore",
+  });
+  if (existsSync(join(work, "css-system", "index.ts"))) generated = join(work, "css-system", "index.ts");
+}
+
+/**
  * `./routes` — the module every routed app has, so an example can import from it and be checked.
  *
  * `Link` and `Navigator` are reachable only through `createRouter`, so there is no import from the
@@ -485,10 +607,45 @@ const units = [];
 
 const unparseable = [];
 
+/**
+ * `SELFTEST=block` plants a documented example whose style block is wrong.
+ *
+ * The fault this guards is the one measured before the virtual reading existed: the block never
+ * parses, so every wrapper `shape` tries returns `null`, the block is filed under "not standalone
+ * code and skipped", and **the run exits 0**. Silence, in a repository that has already shipped three
+ * wrong examples exactly that way.
+ *
+ * So the floor is asserted rather than assumed: with this set, a run that does NOT report the planted
+ * block is a run that has gone blind again.
+ */
+/**
+ * `SELFTEST=system` plants an example that reads a variable through the project's generated module,
+ * the way the variables page teaches — `import { $color } from "../css-system"` — and misuses it.
+ *
+ * Measured before this existed: the work directory is flat, so `../css-system` resolved to nothing,
+ * `TS2307` is in `IGNORED` for the sake of third-party imports, and the import fell to `any` — every
+ * example importing a group or `Var` was checked against nothing, and one taught a call the types
+ * refuse.
+ */
+const selftestKind =
+  process.env.SELFTEST === "block" || process.env.SELFTEST === "system" ? process.env.SELFTEST : undefined;
+const selftest = selftestKind !== undefined;
+if (selftest) {
+  files.push("SELFTEST");
+}
+
+/** Specifier -> the page that provided it, so two pages cannot claim one. */
+const claimed = new Map();
+
 for (const file of files) {
-  const blocks = blocksIn(file);
+  const blocks =
+    file === "SELFTEST"
+      ? [{ code: selftestKind === "system" ? PLANTED_SYSTEM : PLANTED, line: 1, expectReport: undefined }]
+      : blocksIn(file);
   if (blocks.length === 0) continue;
   const ambient = preamblesFor(file);
+  /** Specifier -> the block's text, for the CSS rules. `tsc` reads the copy written beside them. */
+  const provided = new Map();
 
   blocks.forEach((block, index) => {
     const shaped = shape(block.code);
@@ -496,18 +653,68 @@ for (const file of files) {
       unparseable.push({ file, index, line: block.line });
       return;
     }
-    const name = `${file.replace(/[^\w]/g, "_")}__${index}.tsx`;
-    const path = join(work, name);
+    const path = join(work, `${file.replace(/[^\w]/g, "_")}__${index}.tsx`);
+    shaped.text = towardsTheSystem(shaped.text);
     writeFileSync(path, shaped.text);
+
+    /**
+     * A block that IS a module gets a second copy under the name the specifier asks for, beside the
+     * blocks that import it — so `./theme` resolves for `tsc` exactly as it would in a project.
+     *
+     * The work directory is FLAT, so a specifier belongs to whichever page claimed it. Two pages
+     * teaching a `./theme` would silently share one, and this refuses instead.
+     *
+     * **A directory per page was tried first and it broke seven routing examples** — `TS2339` on
+     * `BaseHook<undefined>`, a wrong TYPE rather than a missing name, from moving the units without
+     * moving anything else. The cause was not established, and routing around it without saying so
+     * is how a gate stops being trusted. Recorded in the TODO.
+     */
+    if (block.provides !== undefined) {
+      const already = claimed.get(block.provides);
+      if (already !== undefined && already !== file) {
+        console.error(
+          `\n[examples] two pages both provide \`${block.provides}\`:\n\n    ${already}\n    ${file}\n\n` +
+            "The examples share one work directory, so one would quietly overwrite the other. Give\n" +
+            "one of them a different specifier.\n",
+        );
+        process.exit(1);
+      }
+      claimed.set(block.provides, file);
+      writeFileSync(join(work, `${block.provides.replace(/^\.\//, "")}.tsx`), shaped.text);
+      provided.set(block.provides, block.code);
+    }
+
     units.push({
       path,
       file,
       index,
       line: block.line,
+      /** The example as WRITTEN, for the CSS rules — they answer in the author's coordinates. */
+      code: block.code,
       offset: shaped.offset,
       ambient,
+      /** What this page's `module:` fences declared, so the CSS rules can resolve an import. */
+      provided,
+      /** A one-liner: the CSS rules read it, the type check cannot — see `blocksIn`. */
+      fragment: block.fragment,
       expectReport: block.expectReport,
     });
+  });
+}
+
+/**
+ * `../css-system`, however many levels up, as the generated module in the work directory.
+ *
+ * A page imports the project's generated module from where a component would sit —
+ * `import { $color } from "../css-system"` — and the work directory is flat, so that path pointed
+ * nowhere; `TS2307` is ignored for third-party imports, and the import fell to `any`. Rewritten to
+ * `./css-system`, which IS the module codegen wrote here, padded so every column after it stays put.
+ * See `SELFTEST=system`.
+ */
+function towardsTheSystem(text) {
+  return text.replace(/(["'])((?:\.\.\/)+)css-system\1/g, (whole, quote) => {
+    const local = `${quote}./css-system${quote}`;
+    return local + " ".repeat(whole.length - local.length);
   });
 }
 
@@ -549,6 +756,11 @@ const options = {
     "@ramonda/form/bguard": [`${repo}/packages/form/src/bguard.ts`],
     "@ramonda/form": [`${repo}/packages/form/src/index.ts`],
     "@ramonda/lens": [`${repo}/packages/lens/src/index.ts`],
+    // Two entries, and the order matters the same way the router's does — the longer specifier has
+    // to be tried first or `@ramonda/css` swallows it.
+    "@ramonda/css/properties": [`${repo}/packages/css/src/properties.ts`],
+    "@ramonda/css/compiler": [`${repo}/packages/css/src/compiler/index.ts`],
+    "@ramonda/css": [`${repo}/packages/css/src/index.ts`],
     "@ramonda/devtools": [`${repo}/packages/devtools/src/index.ts`],
     "@ramonda/testing-library": [`${repo}/packages/testing-library/src/index.ts`],
     // A real dependency of `@ramonda/form`, and the form examples build their schema with it. Left
@@ -609,7 +821,77 @@ for (const group of groups.values()) {
   const globalsFile = join(work, `__globals-${groupIndex++}.d.ts`);
   writeFileSync(globalsFile, ramondaGlobals(declaredHere));
 
-  const program = ts.createProgram([globalsFile, ...ambientFiles, ...group.units.map((u) => u.path)], options);
+  /**
+   * The CSS rules, which the type check cannot stand in for.
+   *
+   * Measured by planting one: `display: flexx` in a documented example passed this gate in silence.
+   * `display` has an open grammar, so there is no union for TypeScript to refuse it against — which
+   * is the exact case `unknown-value` exists for. A page can teach a value that does not exist, and
+   * this repository has shipped three wrong examples that way already.
+   *
+   * Read from the example's own text rather than from the virtual copy: the rules answer in the
+   * author's coordinates, which is what a line number here has to be.
+   *
+   * **`checkSource` rather than the sequence written out here, and that was a real divergence.** This
+   * used to call `readBlock` with no `resolve` and `checkBlock` with no `references`, while
+   * `ramonda-check` passed both — so a reference to a named site read here as a HOLE rather than as
+   * the name it compiles to, and `custom-property-set-by-another-name` could never fire on a documented
+   * example. Three callers of one sequence, and this was the one that had drifted.
+   *
+   * A refused block loses the other blocks in its file rather than only itself, which the per-site
+   * loop did not. That is the right trade: the refusal is already reported above and the file fails
+   * either way, so what is lost is CSS findings on a file that is not going to pass.
+   */
+  for (const unit of group.units) {
+    if (!mayHoldABlock(unit.code)) continue;
+    let found;
+    try {
+      // No reader: a documented example is one fenced block, so it imports nothing this could
+      // resolve — and a reader pointed at the repository would resolve a path the reader of
+      // the page never has.
+      found = checkSource(unit.code, unit.file, { read: (specifier) => unit.provided.get(specifier) });
+    } catch {
+      // A block the parser refuses is already reported as a refusal, above.
+      continue;
+    }
+    if (found.length === 0) continue;
+    const list = byUnit.get(unit) ?? [];
+    for (const finding of found) {
+      /**
+       * `expect-report` silences a CSS rule exactly as it silences a framework one, and it did not.
+       * The marker was honoured only in the `analyzeProgram` loop, so a page that teaches a CSS
+       * mistake had no way to say so — measured on this page's own `var(--ackcent)` example, which
+       * failed the gate while carrying the marker for the very rule that reported it. `usedRules` is
+       * fed too, so a marker for a rule that has stopped firing is still caught as stale.
+       */
+      const allowed = unit.expectReport;
+      if (allowed === true) {
+        used.add(unit);
+        continue;
+      }
+      if (allowed !== undefined && allowed.has(finding.rule)) {
+        used.add(unit);
+        usedRules.add(`${unit.file}\u0000${finding.rule}`);
+        continue;
+      }
+
+      const before = unit.code.slice(0, finding.at);
+      const line = before.split("\n").length - 1;
+      list.push({
+        where: `${unit.file}:${unit.line + line}`,
+        column: finding.at - (before.lastIndexOf("\n") + 1) + 1,
+        message: `${finding.rule}: ${finding.message}`,
+        code: 0,
+      });
+    }
+    if (list.length === 0) continue;
+    byUnit.set(unit, list);
+  }
+
+  const program = ts.createProgram(
+    [globalsFile, ...ambientFiles, ...group.units.filter((unit) => !unit.fragment).map((u) => u.path)],
+    options,
+  );
   for (const diagnostic of ts.getPreEmitDiagnostics(program)) {
     const source = diagnostic.file;
     if (!source) continue;
@@ -620,6 +902,11 @@ for (const group of groups.values()) {
     // A name the DOM owns too — see `domGlobals`. The reader's import settles it; a fragment
     // showing no imports cannot.
     if ([...shadowed].some((name) => message.includes(`'${name}'`))) continue;
+    // A Node built-in the block imports. TypeScript 5 said so with 2307, which is ignored above;
+    // 6 says it with 2591, the code it also uses for a missing `process` or `__dirname` — and
+    // those must stay reported, because a page that uses them without importing anything is
+    // telling a browser reader something false.
+    if (diagnostic.code === 2591 && message.startsWith("Cannot find name 'node:")) continue;
     const { line, character } = source.getLineAndCharacterOfPosition(diagnostic.start ?? 0);
     const list = byUnit.get(unit) ?? [];
     list.push({
@@ -685,11 +972,26 @@ rmSync(work, { recursive: true, force: true });
 
 /* ── report ────────────────────────────────────────────────────────────────────────────────── */
 
+if (selftest) {
+  const caught = [...byUnit].some(([unit]) => unit.file === "SELFTEST");
+  const what = selftestKind === "system" ? "a variable misused through `../css-system`" : "the planted style block";
+  console[caught ? "log" : "error"](
+    caught
+      ? `[examples] SELFTEST ${selftestKind}: ${what} was reported, as it must be`
+      : `[examples] SELFTEST ${selftestKind}: ${what} was NOT reported — the gate is blind to it again`,
+  );
+  process.exit(caught ? 0 : 1);
+}
+
 const total = [...byUnit.values()].reduce((n, list) => n + list.length, 0);
 
+const fragments = units.filter((unit) => unit.fragment).length;
 const skipped =
   (unparseable.length === 0 ? "" : `, ${unparseable.length} not standalone code and skipped`) +
-  (expected.length === 0 ? "" : `, ${expected.length} marked as not one program`);
+  (expected.length === 0 ? "" : `, ${expected.length} marked as not one program`) +
+  // Said out loud rather than left to be inferred: a one-liner is read by the CSS rules and not by
+  // the type check, and a summary that counted it with the rest would claim more than it did.
+  (fragments === 0 ? "" : `, ${fragments} one-liners read by the CSS rules only`);
 
 const stale = units.filter(
   (unit) =>
@@ -738,7 +1040,10 @@ if (total === 0 && reported.length === 0 && stale.length === 0) {
 if (total > 0) console.error(`\n[examples] ${total} problem(s) in ${byUnit.size} of ${units.length} code blocks:\n`);
 for (const [unit, list] of byUnit) {
   console.error(`  ${unit.file}  (block ${unit.index + 1})`);
-  for (const problem of list) console.error(`    ${problem.where}  TS${problem.code}: ${problem.message}`);
+  // A CSS rule has no TypeScript code and says its own name in the message — see the block above.
+  for (const problem of list) {
+    console.error(`    ${problem.where}  ${problem.code === 0 ? "" : `TS${problem.code}: `}${problem.message}`);
+  }
   console.error("");
 }
 if (total > 0)

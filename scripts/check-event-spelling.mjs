@@ -164,8 +164,11 @@ function at(source, index) {
 }
 
 const found = [];
+/** How many files were really read — see the refusal below. */
+let read = 0;
 for (const directory of ["packages", "apps", "scripts"]) {
   for (const file of filesUnder(join(root, directory))) {
+    read++;
     const source = readFileSync(file, "utf8");
     const seen = new Set();
     for (const match of source.matchAll(WRITTEN)) {
@@ -182,6 +185,19 @@ for (const directory of ["packages", "apps", "scripts"]) {
       found.push({ ...at(source, match.index), file: relative(root, file), tag: undefined, name: match[1] });
     }
   }
+}
+
+/**
+ * Something has to have been READ, or a clean result is a result about nothing.
+ *
+ * The conclusion here is an empty list, and an empty list is what a walk over no files produces
+ * too — measured by making `filesUnder` yield nothing: it printed *every host element uses the
+ * DOM's own name* and exited 0. A directory renamed, a filter that stops matching, and the gate
+ * goes on saying the thing it was written to prove.
+ */
+if (read === 0) {
+  console.error(`\nNo source files were read, so this proves nothing about event handler spellings.\n`);
+  process.exit(1);
 }
 
 if (found.length > 0) {

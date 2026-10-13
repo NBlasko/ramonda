@@ -46,7 +46,7 @@ function judge(spec: AriaValue, value: string): string | undefined {
     case "number":
       // The forms a browser's own number parser takes, and no more: this rejects a value, so
       // anything it is unsure about has to pass.
-      return /^-?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i.test(value) ? undefined : "a number";
+      return /^-?(\d+(?:\.\d*)?|\.\d+)(e[+-]?\d+)?$/i.test(value) ? undefined : "a number";
     case "token": {
       const tokens = spec.tokens;
       if (tokens === undefined || tokens.has(value)) return undefined;

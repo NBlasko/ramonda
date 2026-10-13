@@ -52,7 +52,6 @@ export const SLOT_SYM = Symbol("slot");
 export const REF_SYM = Symbol("ref");
 /** The style string last written to an element, for the attribute diff to compare against. */
 export const STYLE_SYM = Symbol("style");
-
 /** The component whose render() built this vnode / this DOM node. See core/origin.ts. */
 export const ORIGIN_SYM = Symbol("origin");
 /** Brands the opaque object a built list is. See types/vdom.ts → ListNode. */

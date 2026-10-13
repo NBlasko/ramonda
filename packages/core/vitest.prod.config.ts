@@ -2,6 +2,7 @@ import { defineConfig } from "vitest/config";
 import { resolve } from "node:path";
 import { coverage } from "../../vitest.coverage.mjs";
 import { hookTimeout, testTimeout } from "../../vitest.timeout.mjs";
+import { ramonda } from "@ramonda/build/vite";
 
 /**
  * The production test run. Some safety code only exists in a production build —
@@ -16,16 +17,14 @@ import { hookTimeout, testTimeout } from "../../vitest.timeout.mjs";
  * false here, and this config includes only the `*.prod.test.*` files (which the
  * default run excludes for the same reason).
  *
- * The `test`/`define`/`esbuild` blocks mirror `vite.config.ts` on purpose — this
+ * The `test`/`define` blocks and the plugin mirror `vite.config.ts` on purpose — this
  * run does not build a bundle, so it does not want that file's dts plugin or lib
  * settings, only the test environment.
  */
 export default defineConfig({
-  esbuild: {
-    jsx: "automatic",
-    jsxImportSource: "@ramonda/core",
-    target: "es2022",
-  },
+  // The plugin an app uses. It sets the JSX runtime, and lowers the decorators on Vite 8, where
+  // Oxc cannot and an `esbuild` block here is only translated into Oxc's settings.
+  plugins: [ramonda()],
   // Core cannot resolve its own published name, so point it at the source.
   resolve: {
     alias: {

@@ -84,23 +84,18 @@ function runtimePackages() {
 }
 
 /**
- * The peers a reader has to install themselves, alongside the package.
+ * A peer is NOT named in the install command, and the two it affected are the argument.
  *
- * `peerDependenciesMeta.optional` is the whole of the decision and it is already declared:
- * `@ramonda/form` names `bguard` as an optional peer, because only the `@ramonda/form/bguard`
- * entry point needs it, and `@ramonda/check` names `typescript` as a required one. Putting an
- * optional peer in the install line tells most readers to install something they will never use.
+ * `@ramonda/css` and `@ramonda/check` each require `typescript`, and the line read
+ * `npm install @ramonda/css typescript`. The user's words: *"brate niko ne pise peer dependencies u
+ * objasnjenju za instalaciju"* — and they are right twice over. It is not the convention anybody
+ * reading a README expects, and npm installs a missing required peer itself.
  *
- * `@ramonda/core` is dropped from every list: it is the framework, and somebody installing the
- * router into their app already has it. Naming it in nine install lines is noise, and core's own
- * README is where installing core belongs.
+ * It was also telling the reader something they already know: both of those packages exist to check
+ * TypeScript, so nobody arrives at either without it. Where a peer needs saying, the prose says it —
+ * `@ramonda/css`'s install section explains that the checking IS your compiler's, which is the fact
+ * the extra word was standing in for.
  */
-function requiredPeers(json) {
-  const optional = json.peerDependenciesMeta ?? {};
-  return Object.keys(json.peerDependencies ?? {}).filter(
-    (name) => name !== "@ramonda/core" && optional[name]?.optional !== true,
-  );
-}
 
 /**
  * The install command.
@@ -113,7 +108,7 @@ function installCommand(json, runtime) {
   const { name } = json;
   if (name === "create-ramonda") return "npm create ramonda@latest my-app";
   const flag = runtime.has(name) ? "" : "-D ";
-  return `npm install ${flag}${[name, ...requiredPeers(json)].join(" ")}`;
+  return `npm install ${flag}${name}`;
 }
 
 /** `@ramonda/core` → `%40ramonda%2Fcore`, which is what shields.io needs and what gets typed wrong. */
@@ -208,6 +203,17 @@ const missing = [];
 
 const packages = published();
 
+/**
+ * There have to BE packages, or `--check` reports every README up to date without reading one.
+ *
+ * Measured by pointing the glob at a folder that does not exist: *up to date — 0 published
+ * packages*, exit 0. A rename or a move leaves this green and idle.
+ */
+if (packages.length === 0) {
+  console.error(`\n[readmes] found no published packages — the glob matches nothing.\n`);
+  process.exit(1);
+}
+
 for (const { dir, json } of packages) {
   const file = join(repo, dir, "README.md");
   if (!existsSync(file)) {
@@ -258,6 +264,18 @@ for (const { dir, json } of packages) {
     missing.push(`${dir}/README.md — no \`## License\` section`);
     continue;
   }
+  /**
+   * And it points at the licence this package SHIPS.
+   *
+   * Every one of them said `](../../LICENSE)`, which is the repo root — a path a published tarball
+   * does not have. npm's rendered page resolves it against the repository and so looked right, and
+   * a person who unpacked the tarball followed it nowhere. Now that each package carries its own,
+   * `./LICENSE` is correct in both places.
+   */
+  if (!text.includes("](./LICENSE)")) {
+    missing.push(`${dir}/README.md — its \`## License\` link is not \`./LICENSE\``);
+    continue;
+  }
 
   const updated = text.slice(0, from) + region(json, runtime) + text.slice(to + END.length);
   if (updated === text) continue;
@@ -267,6 +285,35 @@ for (const { dir, json } of packages) {
   }
   writeFileSync(file, updated);
   console.log(`[readmes] ${dir}/README.md`);
+}
+
+/**
+ * **AND THE LICENCE, because a published package shipped none.**
+ *
+ * Measured on a real `npm pack` of `@ramonda/css`: 33 files, `"license": "MIT"` in the manifest, and
+ * **no licence text at all**. Every one of the eleven published packages was the same — npm includes
+ * a `LICENSE` from the package directory whether or not `files` names it, and there was none to
+ * include.
+ *
+ * A manifest field is a label; the licence is the text it labels, and a person who downloads the
+ * tarball is entitled to read the terms they were granted. The extension already ships one, because
+ * `vsce` copies the repo's own and warns when it cannot — which is what made the npm side visible.
+ *
+ * Copied rather than linked or symlinked: a tarball holds files, a symlink to `../../LICENSE` does
+ * not survive packing, and a README line pointing at GitHub is a promise about a server rather than
+ * the terms themselves. One source — the repo's own `LICENSE` — and this keeps every copy equal to
+ * it, the same way the README region is kept.
+ */
+const licence = readFileSync(join(repo, "LICENSE"), "utf8");
+for (const { dir } of packages) {
+  const file = join(repo, dir, "LICENSE");
+  if (existsSync(file) && readFileSync(file, "utf8") === licence) continue;
+  if (check) {
+    stale.push(`${dir}/LICENSE`);
+    continue;
+  }
+  writeFileSync(file, licence);
+  console.log(`[readmes] ${dir}/LICENSE`);
 }
 
 if (missing.length > 0) {

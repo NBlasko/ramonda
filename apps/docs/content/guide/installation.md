@@ -11,13 +11,15 @@ order: 10
 
 The scaffolder sets up a runnable project for you, with the build already configured:
 
-```
-npm create ramonda@latest my-app
+```install
+create ramonda@latest my-app
 ```
 
 It asks a couple of questions — a client-side app or a server-rendered one, and which
-packages and tooling to add ([router](/routing), [lens](/lens), [testing](/testing),
-[devtools](/devtools), and Biome for lint + format) — then:
+packages and tooling to add ([style blocks](/style-blocks), [router](/routing), [lens](/lens),
+[testing](/testing), [devtools](/devtools), and Biome for lint + format) — then, in the folder it made, install (unless
+you let it) and start the dev server. With another package manager, it is the same two commands in
+its own spelling:
 
 ```
 cd my-app
@@ -25,17 +27,16 @@ npm install   # unless you let it install for you
 npm run dev
 ```
 
-Open the address it prints and you have a working Ramonda app. (`pnpm create ramonda`
-and `yarn create ramonda` work too.)
+Open the address it prints and you have a working Ramonda app.
 
 If you're starting fresh, stop here — the rest of this page is for adding Ramonda to a
 project you already have.
 
 ## Adding Ramonda to an existing project
 
-```
-npm install @ramonda/core
-npm install -D @ramonda/build
+```install
+@ramonda/core
+-D @ramonda/build
 ```
 
 Ramonda has no runtime dependencies. It needs three settings from your bundler, and
@@ -80,9 +81,11 @@ writes one import per file; nothing is injected into your module scope. The sect
 below says why that matters.
 
 **Decorators have to be compiled away.** `@state`, `@compute` and the rest are TC39
-stage-3, and no engine parses them — so the build has to lower them, and whether it
-does comes down to `target`. esbuild lowers for every target except `esnext`, and
-`esnext` is also esbuild's **default**.
+stage-3, and no engine parses them — so the build has to lower them. Under esbuild,
+and so under Vite 7, whether it does comes down to `target`: esbuild lowers for every
+target except `esnext`, and `esnext` is also esbuild's **default**. Vite 8 transforms
+with Oxc, which does not lower them for any target, so there the plugin lowers them
+itself.
 
 So a build that says nothing about a target has already chosen the one value that
 breaks, and nothing tells you: it succeeds, prints no warning, and emits a file that
@@ -95,21 +98,22 @@ paragraph asking you to copy three lines correctly, in every bundler config, for
 
 ### By hand, if you must
 
-For a bundler `@ramonda/build` does not cover, the three settings are:
+For a bundler `@ramonda/build` does not cover, the three settings are, in esbuild's
+words:
 
 ```js
-// vite.config.ts — the long way
-import { defineConfig } from "vite";
-
-export default defineConfig({
-  esbuild: {
-    jsx: "automatic",
-    jsxImportSource: "@ramonda/core",
-    // Anything except `esnext`. This is the one that decides whether the app runs.
-    target: "es2022",
-  },
-});
+// esbuild options — the long way
+const options = {
+  jsx: "automatic",
+  jsxImportSource: "@ramonda/core",
+  // Anything except `esnext`. This is the one that decides whether the app runs.
+  target: "es2022",
+};
 ```
+
+There is no long way on Vite 8. Its transform cannot lower a decorator, and an
+`esbuild` block in its config is only translated into Oxc's settings — so the target
+reaches nothing, and the build is green with the decorators still in it. Use the plugin.
 
 `ramonda-check-bundle`, from [`@ramonda/check`](/reference/check), parses what your
 build emitted and fails if any of it is unparseable — which is the second line of

@@ -1,0 +1,269 @@
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { basename, dirname, join, resolve } from "node:path";
+import { placehold } from "../compiler/tooling";
+import { positionOf } from "../compiler/errors";
+import { mayHoldABlock } from "../compiler/scan";
+import { virtualFile } from "../compiler/virtual";
+
+/**
+ * Running the formatter and the linter over a file whose syntax neither can parse.
+ *
+ * Two different answers, because the two tools want different things — see `compiler/tooling.ts` for
+ * the reasoning. What is here is the part that has to know about real tools: how to invoke one, and
+ * how to read what it says.
+ *
+ * ## Both find their configuration from the working directory, which is what makes this possible
+ *
+ * Measured, because a wrapper that quietly lost a project's rules would be worse than no wrapper.
+ * `oxlint` given a file OUTSIDE the repository, run with the repository as its cwd, applied the same
+ * **93 rules** and reported the same findings as for a file inside it. `biome` takes the text on
+ * stdin with `--stdin-file-path` and answers with the repository's own `lineWidth` and indentation.
+ *
+ * So neither half has to touch the author's file to get the project's own settings — the formatter
+ * never writes a temp file at all, and the linter's temp file is read with the project's rules.
+ */
+
+/** One thing a tool said, in the author's own coordinates. */
+export interface ToolFinding {
+  readonly file: string;
+  readonly line: number;
+  readonly column: number;
+  /** The tool's own rule name, so a reader can search for it where the tool documents it. */
+  readonly code: string;
+  readonly message: string;
+}
+
+/** A command to run: this Node, and the script a tool's package names as its bin. */
+export interface Tool {
+  readonly command: string;
+  readonly args: readonly string[];
+}
+
+/**
+ * Where a tool lives, or `undefined` when it is not installed.
+ *
+ * **Walked upwards, the way Node resolves a module.** A workspace hoists its tools to the ROOT's
+ * `node_modules`, so looking only beside the package being worked on finds nothing at all — and a
+ * monorepo is the ordinary case, not the exotic one.
+ *
+ * **The package's own bin script, run by `process.execPath` — never the shim in `.bin`.** The shim is
+ * a different file on every system: on Windows npm and pnpm write `biome`, `biome.cmd` and
+ * `biome.ps1`, the extensionless one a shell script for Git Bash. `execFileSync` uses no shell, so it
+ * cannot run that one, and since Node 20.12 it refuses a `.cmd` too (`EINVAL`) unless given a shell
+ * — which would then have to quote every path. This looked for those spellings, plain one first, and
+ * so returned the shell script on exactly the system the spellings were for. Both tools ship their
+ * bin as one Node script that picks the native binary itself.
+ */
+export function toolIn(directory: string, pkg: string, bin: string): Tool | undefined {
+  let at = resolve(directory);
+
+  for (;;) {
+    const dir = join(at, "node_modules", ...pkg.split("/"));
+    const manifest = join(dir, "package.json");
+    if (existsSync(manifest)) {
+      const declared = (JSON.parse(readFileSync(manifest, "utf8")) as { bin?: string | Record<string, string> }).bin;
+      const script = typeof declared === "string" ? declared : declared?.[bin];
+      return script === undefined ? undefined : { command: process.execPath, args: [join(dir, script)] };
+    }
+
+    const up = dirname(at);
+    if (up === at) return undefined;
+    at = up;
+  }
+}
+
+/**
+ * Every source file under the paths given.
+ *
+ * A directory is walked rather than handed on, because the two halves need different things from a
+ * file and only this knows which is which — and `ramonda-css lint src` handed `src` itself would
+ * throw, because a directory is not a file.
+ */
+export function filesUnder(paths: readonly string[], cwd: string): string[] {
+  const out: string[] = [];
+
+  const walk = (at: string): void => {
+    for (const entry of readdirSync(at, { withFileTypes: true })) {
+      if (entry.name === "node_modules" || entry.name.startsWith(".")) continue;
+      const path = join(at, entry.name);
+      if (entry.isDirectory()) walk(path);
+      else if (SOURCE.test(entry.name)) out.push(path);
+    }
+  };
+
+  for (const path of paths) {
+    const at = resolve(cwd, path);
+    if (statSync(at).isDirectory()) walk(at);
+    else out.push(at);
+  }
+
+  return out;
+}
+
+/** What either tool is asked about. Anything else is not source and is not theirs to read. */
+const SOURCE = /\.[cm]?[jt]sx?$/;
+
+/**
+ * Formats one file, blocks and all.
+ *
+ * The formatter is given text and hands text back — no file of ours on disk, and none of the
+ * author's touched until the result is known good.
+ */
+export function formatFile(
+  file: string,
+  format: (text: string, path: string) => string,
+  options: { write: boolean },
+): { changed: boolean; text: string } {
+  const source = readFileSync(file, "utf8");
+  const text = formatText(source, file, format);
+  const changed = text !== source;
+
+  if (changed && options.write) writeFileSync(file, text);
+  return { changed, text };
+}
+
+/**
+ * The same thing for text that is not on disk yet, which is what an editor has.
+ *
+ * An editor asks a formatter about the buffer, not the file — a provider that read the file would
+ * format what was last saved and hand the author edits computed against text they have since
+ * changed. Everything else is shared with `formatFile`, so the two cannot drift.
+ */
+export function formatText(source: string, file: string, format: (text: string, path: string) => string): string {
+  /**
+   * A hole's expression is handed to the SAME formatter, one at a time — see `tightened`.
+   *
+   * The file is not formatted twice: the expression is wrapped as a statement and formatted alone.
+   * The path it is formatted AS is the author's own, so a project whose `.tsx` and `.ts` rules
+   * differ gets the one that applies to the file the hole is in.
+   */
+  const held = placehold(source, { expression: (text) => format(text, file) });
+  if (held === undefined) return format(source, file);
+
+  /**
+   * The formatter runs OUTSIDE the guard, and that is the whole point of the two statements.
+   *
+   * A `ToolFailed` is the tool's own sentence, and the caller knows it by its type — the CLI
+   * catches that class and prints the message on its own. Wrapped as a plain `Error`, the CLI would
+   * not recognise it and would answer a broken `biome.json` with our call stack, which is the one
+   * thing `toolingCli.test.ts` says it may not do.
+   */
+  const formatted = format(held.text, file);
+
+  try {
+    return held.restore(formatted);
+  } catch (error) {
+    // The file's name, because a refusal with no file is a refusal nobody can act on — and the one
+    // thing `restore` refuses is a formatter it does not recognise. See its own note.
+    throw new Error(`${file}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+/**
+ * One diagnostic as a linter reports it — the shape `oxlint --format=json` produces.
+ *
+ * `filename` is oxlint's and is read by nothing here: the linter is pointed at one file at a time,
+ * so the name is already known and the one it reports is the TEMPORARY probe's rather than the
+ * author's. Kept because this describes the shape that arrives, not the fields that are used —
+ * dropping it would make the type a claim about oxlint that is false.
+ */
+export interface Reported {
+  message: string;
+  code?: string;
+  filename?: string;
+  labels?: { span?: { offset: number } }[];
+}
+
+/**
+ * Lints one file through its virtual reading, with every position mapped home.
+ *
+ * The virtual file is the same one `tsc` is given, so the linter and the type checker are looking at
+ * one file rather than two readings of it. A diagnostic that maps nowhere is dropped: it belongs to
+ * the scaffolding the virtual file added, not to anything the author wrote.
+ */
+export function lintFile(file: string, lint: (path: string) => Reported[]): ToolFinding[] {
+  const source = readFileSync(file, "utf8");
+  const virtual = mayHoldABlock(source) ? virtualFile(source, { tolerant: true }) : undefined;
+
+  /**
+   * No block, so the file is linted as it is and every position is already the author's.
+   *
+   * **Linted rather than skipped**, and that is what the two conditions are for. `mayHoldABlock` is
+   * allowed to say maybe — a string or a comment can hold the syntax — so a file can reach here
+   * having answered yes to the cheap question and no to the real one. Returning nothing for such a
+   * file would make it lint CLEAN, silently.
+   */
+  if (virtual === undefined) {
+    return lint(file).map((diagnostic) => ({
+      file,
+      ...positionOf(source, diagnostic.labels?.[0]?.span?.offset ?? 0),
+      code: diagnostic.code ?? "lint",
+      message: diagnostic.message,
+    }));
+  }
+
+  /**
+   * The virtual text in a directory of its own, under the file's own basename.
+   *
+   * The name is kept so a rule that reads one — a test file, a declaration file — sees what it would
+   * have seen. The directory is temporary because the file is not the author's and must never be
+   * mistaken for it; the project's own rules still apply, because the linter reads them from the
+   * working directory rather than from the path. Measured.
+   */
+  const directory = mkdtempSync(join(tmpdir(), "ramonda-css-lint-"));
+  const probe = join(directory, basename(file));
+
+  try {
+    writeFileSync(probe, virtual.code);
+
+    const findings: ToolFinding[] = [];
+    for (const diagnostic of lint(probe)) {
+      const offset = diagnostic.labels?.[0]?.span?.offset;
+
+      /**
+       * A complaint about the FILE is reported at its top, and it arrives spelled two ways.
+       *
+       * With no position at all — a linter's own setup — and with a position of ZERO, which is what
+       * a rule about the file's own NAME carries: `unicorn/filename-case` labels its diagnostic at
+       * the first character. Offset zero is inside the preamble in a styled file, so `homeOf`
+       * answers nothing for it, and a styled file would go quiet where a plain one reports.
+       * `check.ts` keeps a preamble diagnostic and reports it at 1:1 the same way.
+       */
+      const aboutTheFile = offset === undefined || offset < virtual.preamble;
+      const home = aboutTheFile ? 0 : virtual.homeOf(offset);
+      // Mapped nowhere is a different case: the punctuation between declarations, the braces this
+      // file added — scaffolding, which belongs to nothing the author wrote.
+      if (home === undefined) continue;
+
+      findings.push({
+        file,
+        ...positionOf(source, home),
+        code: diagnostic.code ?? "lint",
+        message: diagnostic.message,
+      });
+    }
+    return findings;
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+}
+
+/**
+ * The diagnostics out of whatever a linter printed.
+ *
+ * It may print other things first — a warning about its own configuration — so the object is found
+ * rather than assumed to start at the beginning. And a run that answered with something not JSON at
+ * all gives nothing: it has already said what it could, and inventing a parse error here would be a
+ * second wrong answer on top of the first.
+ */
+export function readReport(text: string): Reported[] {
+  const start = text.indexOf("{");
+  if (start === -1) return [];
+
+  try {
+    return (JSON.parse(text.slice(start)) as { diagnostics?: Reported[] }).diagnostics ?? [];
+  } catch {
+    return [];
+  }
+}

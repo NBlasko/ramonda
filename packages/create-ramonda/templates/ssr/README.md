@@ -17,8 +17,9 @@ the server picks up the new code on the next request — no restart.
 ## Production
 
 ```bash
-npm run build   # bundle client + server into dist/ with esbuild
-npm start       # serve the built output on http://localhost:5173
+npm run typecheck  # check the types — the build runs it too, because esbuild does not
+npm run build      # bundle client + server into dist/ with esbuild
+npm start          # serve the built output on http://localhost:5173
 ```
 
 ## How rendering modes work

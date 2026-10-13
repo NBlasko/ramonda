@@ -1,6 +1,7 @@
 import { Component, Head, AsyncLoad } from "@ramonda/core";
 import type { AsyncLoadFailure, RamondaNode } from "@ramonda/core";
 import { Link } from "./routes";
+import { EDIT_BASE, neighbours } from "./navigation";
 import type { PageMeta } from "./content-types";
 import { pageLoaders } from "./generated/page-loaders";
 import { pagePreloads } from "./generated/preloads";
@@ -79,7 +80,8 @@ export class DocPage extends Component<DocPageProps> {
       );
     }
 
-    const path = this.props.meta.path;
+    const { path, source } = this.props.meta;
+    const { previous, next } = neighbours(path);
     return (
       <article>
         <AsyncLoad
@@ -90,6 +92,34 @@ export class DocPage extends Component<DocPageProps> {
           onLoading={<div className="page-loading" />}
           errorFallback={this.loadFailed}
         />
+        {/*
+          The way on, and the way to fix the page. Kept out of the search index: every page has
+          one, so a search for a page's title would also find the two pages beside it.
+        */}
+        <footer className="page-footer" data-pagefind-ignore>
+          {/* `role` rather than `<nav>`: the stylesheet styles a bare `nav` as the sidebar. */}
+          <div className="pager" role="navigation" aria-label="Previous and next page">
+            {previous === undefined ? (
+              <span />
+            ) : (
+              <Link href={previous.path} className="pager-link pager-previous">
+                <span className="pager-label">Previous</span>
+                {previous.title}
+              </Link>
+            )}
+            {next === undefined ? null : (
+              <Link href={next.path} className="pager-link pager-next">
+                <span className="pager-label">Next</span>
+                {next.title}
+              </Link>
+            )}
+          </div>
+          {source === undefined ? null : (
+            <a className="edit-page" href={`${EDIT_BASE}${source}`}>
+              Edit this page
+            </a>
+          )}
+        </footer>
       </article>
     );
   }

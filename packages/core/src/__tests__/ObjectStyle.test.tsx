@@ -41,7 +41,10 @@ const styled = (c: Element) => c.querySelector("[style]") as HTMLElement;
 /** Counts writes to style.cssText on one element. */
 function countStyleWrites(el: HTMLElement) {
   let writes = 0;
-  const descriptor = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el.style), "cssText")!;
+  // Up the chain, not one step: jsdom 30 declares `cssText` on a prototype further up than 28 did.
+  let proto = Object.getPrototypeOf(el.style);
+  while (!Object.getOwnPropertyDescriptor(proto, "cssText")) proto = Object.getPrototypeOf(proto);
+  const descriptor = Object.getOwnPropertyDescriptor(proto, "cssText")!;
   Object.defineProperty(el.style, "cssText", {
     get: descriptor.get!.bind(el.style),
     set: (value: string) => {
