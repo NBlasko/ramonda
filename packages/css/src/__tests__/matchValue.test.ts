@@ -202,3 +202,16 @@ describe("what checking a value needs", () => {
     expect(taken("<custom-ident>#? <length>", "4px")).toEqual(["length=4px"]);
   });
 });
+
+/**
+ * A `,` is omitted only when EVERY part before it, or every part after it, took nothing — CSS Values 4
+ * §2.6. Reading only the part just before it let `cursor: url(a.cur) pointer` through, which all three
+ * engines refuse; found by the second sweep.
+ */
+test("a comma after a part that took something is not omitted", () => {
+  const grammar = "[ <custom-ident> [ <length> <length> ]? , ]* <custom-ident>";
+  expect(taken(grammar, "a b")).toBeUndefined();
+  // Two leaves of one name — the repeated one and the last — so two entries.
+  expect(taken(grammar, "a , b")).toEqual(["custom-ident=a", "custom-ident=b"]);
+  expect(taken(grammar, "a 1px 2px , b")).toEqual(["custom-ident=a", "custom-ident=b", "length=1px", "length=2px"]);
+});

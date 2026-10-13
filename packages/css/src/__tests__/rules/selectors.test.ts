@@ -393,7 +393,6 @@ describe("a pseudo-class that does not exist", () => {
     ["two lone colons", "&::"],
     ["a selector list, both halves real", "a:hover, b:focus"],
     ["a name inside a functional one", "&:has(:hover)"],
-    ["a TYPO inside a functional one, which is the argument's business", "&:is(:hovr)"],
   ])("%s says nothing", (_what, prelude) => {
     expect(found(prelude)).toEqual([]);
   });
@@ -725,6 +724,22 @@ describe("a container condition that cannot be read", () => {
     ["a missing colon", "  @container (min-width 40rem) { color: red; }", "malformed-container-condition"],
     ["a number nobody reads", "  @container (width > 3e0m) { color: red; }", "malformed-container-condition"],
     ["a comparison lost", "  @container (width  30em) { color: red; }", "malformed-container-condition"],
+    // Found by the second sweep: a word after the first condition is no name, and a ratio has three words.
+    [
+      "a word that is not and, after a condition",
+      "  @container (min-height: 10rem) andx (orientation: landscape) { color: red; }",
+      "malformed-container-condition",
+    ],
+    [
+      "or misspelt",
+      "  @container (width > 10rem) orx (height > 10rem) { color: red; }",
+      "malformed-container-condition",
+    ],
+    [
+      "a ratio with its comparison lost",
+      "  @container (aspect-ratio  1 / 2) { color: red; }",
+      "malformed-container-condition",
+    ],
   ])("%s is reported", (_what, css, rule) => {
     expect(rules(css)).toContain(rule);
   });
@@ -776,6 +791,13 @@ describe("a supports condition that is never true by mistake", () => {
     // asked — `rgb(1x 2 3)` is false in every engine, by a slip.
     ["a unit inside a colour", "  @supports (color: rgb(1x 2 3)) { color: red; }"],
     ["arithmetic with no type", "  @supports (width: calc(100 - 2rem)) { color: red; }"],
+    // The second sweep: a format misspelt, and a word inside a value one letter from the property's own.
+    ["a font format misspelt", "  @supports font-format(wfof2) { color: red; }"],
+    ["another", "  @supports font-format(woff2x) { color: red; }"],
+    ["a colour misspelt inside a function", "  @supports (background: linear-gradient(redx, blue)) { color: red; }"],
+    ["another", "  @supports (background: linear-gradient(red, bule)) { color: red; }"],
+    // Every word the property's own, and the grammar still refuses it: an arrangement slip, not a question.
+    ["a comma lost between words it has", "  @supports (background: linear-gradient(red blue)) { color: red; }"],
   ])("%s is reported", (_what, css) => {
     expect(rules(css)).toContain("supports-never-true");
   });
@@ -799,6 +821,10 @@ describe("a supports condition that is never true by mistake", () => {
     ["a sizing keyword", "  @supports (min-width: fit-content) { color: red; }"],
     ["a new value made of known words", "  @supports (display: grid-lanes) { color: red; }"],
     ["a new function", "  @supports (width: calc-size(auto, size)) { color: red; }"],
+    ["a format", "  @supports font-format(woff2) { color: red; }"],
+    ["a technology", "  @supports font-tech(color-COLRv1) { color: red; }"],
+    ["a gradient", "  @supports (background: linear-gradient(red, blue)) { color: red; }"],
+    ["a word from another property", "  @supports (display: masonry) { color: red; }"],
   ])("%s is silent", (_what, css) => {
     expect(rules(css)).not.toContain("supports-never-true");
   });
@@ -839,5 +865,48 @@ describe("a container named without its type", () => {
     ["the shorthand through a var()", "  container: var(--c);"],
   ])("%s is silent", (_what, css) => {
     expect(rules(css)).not.toContain("container-without-a-type");
+  });
+});
+
+/**
+ * A selector inside a selector, and a flag after an attribute's value — both refused by every engine,
+ * both silent until the second sweep (2026-10-13) put `:not(…)` and `[… i]` in front of a damage.
+ */
+describe("a selector's own selectors and flags", () => {
+  test.each([
+    ["a misspelt pseudo-class inside :not()", "  &:not(:first-chil) { color: red; }"],
+    ["inside :is()", "  &:is(:hover, :focus-visibel) { color: red; }"],
+    ["inside :has()", "  &:has(> img:hovr) { color: red; }"],
+    ["in the of-clause of :nth-child()", "  &:nth-child(2n of .a:hovr) { color: red; }"],
+  ])("%s is reported", (_what, css) => {
+    expect(rules(css)).toContain("unknown-selector");
+  });
+
+  /** Measured: `:is()` and `:where()` keep the rule and skip only the part they cannot read. */
+  test("inside a forgiving list, it says the part never matches — not that the rule is dropped", () => {
+    const said = messages("  &:is(:hover, :focus-visibel) { color: red; }").join(" ");
+    expect(said).toContain("inside `:is()` a browser skips it");
+    expect(said).not.toContain("drops the whole rule");
+    expect(messages("  &:not(:first-chil) { color: red; }").join(" ")).toContain("drops the whole rule");
+  });
+
+  test.each([
+    ["a flag that is not i or s", '  &[data-state="open" ix] { color: red; }'],
+    ["after an unquoted value", "  &[data-state=open x] { color: red; }"],
+  ])("%s is reported", (_what, css) => {
+    expect(rules(css)).toContain("malformed-selector");
+  });
+
+  test.each([
+    ["a pseudo-class inside :not()", "  &:not(:first-child):not(:last-child) { color: red; }"],
+    ["the i flag", '  &[data-state="open" i] { color: red; }'],
+    ["the s flag", "  &[data-state=open s] { color: red; }"],
+    ["a language", "  &:lang(sr) { color: red; }"],
+    ["a part", "  &::part(label) { color: red; }"],
+    ["no flag", '  &[href^="https"] { color: red; }'],
+  ])("%s is silent", (_what, css) => {
+    const found = rules(css);
+    expect(found).not.toContain("unknown-selector");
+    expect(found).not.toContain("malformed-selector");
   });
 });

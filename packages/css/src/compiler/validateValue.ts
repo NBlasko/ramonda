@@ -48,12 +48,21 @@ const CORRECTIONS: Readonly<Record<string, string>> = {
   // is refused when its FIRST is a complete generic family — `system-ui sans-serif`, `serif Neue` —
   // and taken when a generic word comes later (`My serif`) or is an incomplete one (`ui-monospace Mono`).
   "family-name": "<string> | <family-name-start> <custom-ident>*",
+  // `mdn-data`: `<string>`. Measured in all three engines: an OpenType tag is exactly four ASCII
+  // characters — `"lig"`, `"ligax"` and `"liĝa"` are refused, `"li a"` is taken.
+  "feature-tag-value": "<opentype-tag> [ <integer> | on | off ]?",
+};
+
+/** A property whose own grammar `mdn-data` writes wrong, with the same measurements as above. */
+const PROPERTY_CORRECTIONS: Readonly<Record<string, string>> = {
+  "font-variation-settings": "normal | [ <opentype-tag> <number> ]#",
 };
 
 /** The complete generic families, which may not begin a family name of several words. */
 const GENERIC_COMPLETE = new Set(["serif", "sans-serif", "system-ui", "cursive", "fantasy", "math", "monospace"]);
 
 const GRAMMAR = (name: string): string | undefined => CORRECTIONS[name] ?? TYPE_GRAMMAR[name];
+const propertyGrammar = (name: string): string | undefined => PROPERTY_CORRECTIONS[name] ?? PROPERTY_GRAMMAR[name];
 
 const parsed = new Map<string, Term | null>();
 function grammar(source: string): Term | null {
@@ -387,6 +396,8 @@ function primitive(name: string, token: string): boolean | undefined {
       return A_DIMENSION.test(token);
     case "string":
       return /^(?:"[^]*"|'[^]*')$/.test(token);
+    case "opentype-tag":
+      return /^(["'])[\x20-\x7e]{4}\1$/.test(token);
     case "family-name-start":
       // A CSS-wide word is taken here by all three (`inherit Arial`), so it is not refused.
       return /^-{0,2}[a-zA-Z_][\w-]*$/.test(token) && !GENERIC_COMPLETE.has(token.toLowerCase());
@@ -413,7 +424,7 @@ function primitive(name: string, token: string): boolean | undefined {
 function expand(term: Term, depth = 0): Term {
   if (term.kind === "data" || term.kind === "property") {
     if (term.kind === "data" && primitive(term.name ?? "", "") !== undefined) return term;
-    const source = term.kind === "property" ? PROPERTY_GRAMMAR[term.name ?? ""] : GRAMMAR(term.name ?? "");
+    const source = term.kind === "property" ? propertyGrammar(term.name ?? "") : GRAMMAR(term.name ?? "");
     const inner = source === undefined || depth > 12 ? null : grammar(source);
     // A type with no grammar is not refused: reading it as anything is the answer that cannot be wrong.
     if (inner === null) return { ...term, kind: "data", name: "any-value" };
@@ -490,7 +501,7 @@ function readAgainstGrammar(property: string, value: string): boolean | undefine
   // `withoutImportant`, not a pattern: `\s*!\s*important\s*$` was quadratic in a run of spaces.
   const bare = withoutImportant(value).trim();
   if (bare === "" || /\b(?:var|env|attr)\(/i.test(bare)) return undefined;
-  const source = PROPERTY_GRAMMAR[property.toLowerCase()];
+  const source = propertyGrammar(property.toLowerCase());
   if (source === undefined) return undefined;
   if (WIDE.has(bare.toLowerCase())) return true;
   // An unbalanced bracket or quote is `unclosed-call`'s to name; read wrong here, it would be said twice.
@@ -506,3 +517,28 @@ function readAgainstGrammar(property: string, value: string): boolean | undefine
     throw error;
   }
 }
+
+/**
+ * Every keyword a property's grammar reaches, function arguments included — `background` reaches
+ * `red` through `<color>` and `repeat-x` through `<repeat-style>`. Asked by `supports-never-true`,
+ * which reports a word one letter from one of these and lets any other word be the question.
+ */
+export const keywordsOf: (property: string) => ReadonlySet<string> = remember(2_000, (property: string) => {
+  const found = new Set<string>();
+  const seen = new Set<Term>();
+  const walk = (term: Term): void => {
+    if (seen.has(term)) return;
+    seen.add(term);
+    if (term.kind === "keyword" && term.name !== undefined) found.add(term.name.toLowerCase());
+    if (term.kind === "function") {
+      found.add(`${(term.name ?? "").toLowerCase()}(`);
+      if ((term.terms ?? []).length > 0) walk(expand({ kind: "seq", terms: term.terms ?? [] }));
+      return;
+    }
+    for (const one of term.terms ?? []) walk(one);
+  };
+  const source = propertyGrammar(property.toLowerCase());
+  const top = source === undefined ? null : grammar(source);
+  if (top !== null) walk(expanded(top));
+  return found;
+});

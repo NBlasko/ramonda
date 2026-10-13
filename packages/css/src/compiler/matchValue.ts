@@ -96,31 +96,41 @@ function* readings(
   }
 
   /**
-   * Each term after the one before it, which is what juxtaposition means — and a `,` beside a part
-   * that took nothing is omitted, CSS Values 4 §2.6: `<bg-layer>#? , <final-bg-layer>` reads `yellow`.
+   * Each term after the one before it, which is what juxtaposition means — and a `,` omitted where
+   * CSS Values 4 §2.6 omits it: when every part BEFORE it in this sequence took nothing, when every
+   * part after it takes nothing, or when the comma before it was the last thing taken (two commas
+   * would be adjacent). `<bg-layer>#? , <final-bg-layer>` reads `yellow`.
+   *
+   * EVERY part before, not the one just before: reading only that one let `cursor: url(a.cur)
+   * pointer` through, where an optional hotspot sat between the URL and the comma — all three
+   * engines refuse it. Found by the second sweep.
    */
-  function* inOrder(parts: readonly Term[], from: number, previousEmpty = true): Generator<Reading> {
+  function* inOrder(
+    parts: readonly Term[],
+    from: number,
+    consumed = false,
+    afterComma = false,
+    before = false,
+  ): Generator<Reading> {
     const [head, ...rest] = parts;
     if (head === undefined) {
       yield { at: from, taken: [] };
       return;
     }
     if (head.kind === "literal" && head.name === ",") {
-      if (tokens[from] === ",") for (const more of inOrder(rest, from + 1, false)) yield more;
-      // Omitted: the part before took nothing, or the part after takes nothing.
-      for (const more of inOrder(rest, from, true))
-        if (previousEmpty || more.at === from || nextEmpty(rest, from)) yield more;
+      if (tokens[from] === ",") for (const more of inOrder(rest, from + 1, consumed, true, before)) yield more;
+      // "Every part" means parts that are THERE: a comma ending a group — `[ … , ]*` — has none after
+      // it, and that is no reason to leave it out.
+      const after = rest.some((part) => !(part.kind === "literal" && part.name === ","));
+      for (const more of inOrder(rest, from, consumed, afterComma, before))
+        if ((before && !consumed) || afterComma || (after && more.at === from)) yield more;
       return;
     }
-    for (const one of readings(head, tokens, from, accepts, starts))
-      for (const more of inOrder(rest, one.at, one.at === from))
+    for (const one of readings(head, tokens, from, accepts, starts)) {
+      const took = one.at > from;
+      for (const more of inOrder(rest, one.at, consumed || took, took ? false : afterComma, true))
         yield { at: more.at, taken: [...one.taken, ...more.taken] };
-  }
-
-  /** Whether the next part can stand at `from` having taken nothing. */
-  function nextEmpty(rest: readonly Term[], from: number): boolean {
-    const next = rest[0];
-    return next !== undefined && mayBeAbsent(next) && from === tokens.length;
+    }
   }
 
   /**
