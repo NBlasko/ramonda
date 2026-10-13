@@ -144,3 +144,44 @@ describe("a GIF of the editor", () => {
     expect(alone).toEqual([]);
   });
 });
+
+/**
+ * A drawn GIF is shown at the size it was drawn, never stretched to another one.
+ *
+ * `build-editor-gifs.mjs` sizes each GIF to its content, so the size changes when the content does.
+ * It was fixed at 760 × 400 in `site.css` — a width and an aspect ratio — and when the GIFs became
+ * 506 and 550 wide the page stretched them to 760, which nothing caught: the files were right and
+ * the page was wrong. So the size is the file's own, read from its header into the `<img>`, and the
+ * stylesheet holds none.
+ */
+describe("a GIF of the editor, on the page", () => {
+  const media = join(content, "..", "public", "media");
+  /** A GIF's logical screen size: two little-endian 16-bit numbers after the six-byte signature. */
+  const sizeOf = (name: string) => {
+    const bytes = readFileSync(join(media, name));
+    return { width: String(bytes.readUInt16LE(6)), height: String(bytes.readUInt16LE(8)) };
+  };
+  const generated = join(here, "..", "generated", "pages");
+  const shown = readdirSync(generated).flatMap((file) =>
+    [...readFileSync(join(generated, file), "utf8").matchAll(/\{"t":"img","a":(\{[^{}]*\})\}/g)]
+      .map((match) => JSON.parse(match[1]))
+      .filter((a) => a.src.startsWith("/media/")),
+  );
+
+  it("carries the file's own width and height", () => {
+    expect(shown.length).toBeGreaterThan(1);
+    for (const a of shown) {
+      const name = a.src.slice("/media/".length);
+      expect({ src: a.src, width: a.width, height: a.height }).toEqual({ src: a.src, ...sizeOf(name) });
+      // The dark twin is swapped in by a `<source>` and takes the same box.
+      expect(sizeOf(name.replace(/\.gif$/, "-dark.gif"))).toEqual(sizeOf(name));
+    }
+  });
+
+  it("is given no size by the stylesheet", () => {
+    const css = readFileSync(join(content, "..", "public", "assets", "site.css"), "utf8");
+    const rules = [...css.matchAll(/article img\[src\^="\/media\/"\]\s*\{([^}]*)\}/g)].map((match) => match[1]);
+    expect(rules.length).toBe(1);
+    expect(rules.join("").match(/^\s*(?:width|height|aspect-ratio)\s*:.*$/gm) ?? []).toEqual([]);
+  });
+});
