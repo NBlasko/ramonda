@@ -1,5 +1,11 @@
 # @ramonda/check
 
+## 0.15.5
+
+### Patch Changes
+
+- 8794680: A new project gets TypeScript 6, the newest the checker and the CSS compiler can read with. When TypeScript 7 is installed, both now advise `npm install -D typescript@6`.
+
 ## 0.15.4
 
 ### Patch Changes
