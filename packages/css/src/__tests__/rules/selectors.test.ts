@@ -598,6 +598,10 @@ describe("a condition that cannot switch", () => {
     ["a resolution", "  @media (min-resolution: 2dppx) { color: red; }"],
     ["a real @supports", "  @supports (display: grid) { color: red; }"],
     ["a sizing keyword in @supports, which is a real question", "  @supports (min-width: fit-content) { color: red; }"],
+    // Found in review: a NEWER unit is the question — `100dvh` asks whether `dvh` is there, and is the
+    // idiom for it. Only a unit every engine has had for years makes the condition always true.
+    ["a newer unit in @supports", "  @supports (height: 100dvh) { color: red; }"],
+    ["a container unit", "  @supports (width: 1cqi) { color: red; }"],
   ])("%s is silent", (_what, css) => {
     const found = rules(css);
     expect(found).not.toContain("unknown-media-value");

@@ -484,6 +484,25 @@ function* rangesIn(table: Conditions, prelude: string): Generator<{ name: string
   }
 }
 
+/** The units every engine has had for years, so a `@supports` asking about one is always true. */
+const LONG_STANDING_UNITS = new Set([
+  "px",
+  "em",
+  "rem",
+  "%",
+  "vw",
+  "vh",
+  "vmin",
+  "vmax",
+  "cm",
+  "mm",
+  "in",
+  "pt",
+  "pc",
+  "ex",
+  "ch",
+]);
+
 /** Every media feature by name, unprefixed — what `@supports` is asked about by mistake. */
 const FEATURE_NAMES = new Set(MEDIA_FEATURES);
 const PROPERTY_NAMES = new Set(PROPERTIES);
@@ -507,6 +526,10 @@ export function supportsAMediaFeature(block: Block, findings: Finding[]): void {
       if (!FEATURE_NAMES.has(name.toLowerCase())) continue;
       const property = PROPERTY_NAMES.has(name.toLowerCase());
       if (property && kindOf(value) !== "length") continue;
+      // A NEWER unit is the question itself — `@supports (height: 100dvh)` is how a page asks whether
+      // `dvh` is there. Found in review: only a unit every engine has had for years makes the condition
+      // always true, and so reads like a breakpoint meant as `@media`.
+      if (property && !LONG_STANDING_UNITS.has((/[a-z%]+$/i.exec(value)?.[0] ?? "").toLowerCase())) continue;
 
       findings.push({
         rule: "supports-a-media-feature",
