@@ -572,13 +572,12 @@ article img[src$=".gif"] {
 
 /**
  * The editor GIFs are a whole editor window, drawn by `scripts/build-editor-gifs.mjs` with its own
- * frame — so full width, no second border, and the space held before they arrive so the prose does
- * not jump. 760 × 400 is the size the script draws at.
+ * frame — so no second border. No size here: the script sizes each to what it shows, and the page
+ * carries that size as `width` and `height` (`build-content.mjs`), which also holds the space before
+ * it arrives. A size in this rule stretched them once.
  */
 article img[src^="/media/"] {
-  width: 760px;
   max-width: 100%;
-  aspect-ratio: 760 / 400;
   border: none;
   box-shadow: none;
 }

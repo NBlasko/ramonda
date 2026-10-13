@@ -221,6 +221,15 @@ function toTree(node) {
     attributes[ATTRIBUTE_ALIASES[name] ?? name] = value;
   }
 
+  // A drawn GIF is shown at the size it was drawn: the file's own, read from its header — the logical
+  // screen size, two little-endian 16-bit numbers after the six-byte signature. The size changes with
+  // what the GIF shows, so a number in the stylesheet goes stale and stretches it.
+  if (tag === "img" && /^\/media\/[^/]+\.gif$/.test(attributes.src ?? "")) {
+    const bytes = readFileSync(join(root, "public", attributes.src));
+    attributes.width = String(bytes.readUInt16LE(6));
+    attributes.height = String(bytes.readUInt16LE(8));
+  }
+
   const children = [];
   for (const child of Array.from(node.childNodes)) {
     const built = toTree(child);
