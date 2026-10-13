@@ -512,6 +512,10 @@ describe("a condition that cannot switch", () => {
     ["a number that never ends", `  @media (min-width: 0${"00".repeat(10_000)}!) { color: red; }`],
     ["a range of nothing but comparisons", `  @media (${"<".repeat(20_000)}) { color: red; }`],
     ["a range with a long run of spaces", `  @media (width${" ".repeat(20_000)}>= 40) { color: red; }`],
+    // The unit `supports-a-media-feature` reads — CodeQL's find: the pattern alone is quadratic on a run
+    // of `%` (2.5 s at 40,000), so it must be one that cannot be, not one `kindOf` happens to guard.
+    ["a run of percent signs in @supports", `  @supports (min-width: 1${"%".repeat(40_000)}!) { color: red; }`],
+    ["a run of percent signs that is a length", `  @supports (min-width: 1${"%".repeat(40_000)}) { color: red; }`],
     // The same digits as a declaration's value: the splitter and the value rules read numbers with the
     // same pattern, and it was in twelve places.
     ["a value that never ends", `  padding: 0${"00".repeat(10_000)}!;`],

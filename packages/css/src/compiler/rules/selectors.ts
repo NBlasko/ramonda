@@ -309,6 +309,16 @@ export function mediaValues(block: Block, findings: Finding[]): void {
 }
 
 /**
+ * The letters after a number — `rem` in `40rem` — or `undefined` when the value is not one.
+ *
+ * Anchored at both ends, so it is linear: `/[a-z%]+$/` alone retries from every character and is
+ * quadratic on a run of `%` — 2.5 s at 40,000, found by CodeQL.
+ */
+function unitOf(value: string): string | undefined {
+  return /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)([a-z%]+)$/i.exec(value)?.[1];
+}
+
+/**
  * A number followed by letters that are not a unit — `40remGreska`, `40remx`.
  *
  * Measured in Chromium, Firefox and WebKit: the condition is kept and never matches, and `not` in
@@ -316,7 +326,7 @@ export function mediaValues(block: Block, findings: Finding[]): void {
  * after a number as a length, so this is asked first.
  */
 function unknownUnit(table: Conditions, value: string, at: number): Finding | undefined {
-  const unit = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)([a-z%]+)$/i.exec(value)?.[1];
+  const unit = unitOf(value);
   if (unit === undefined || KNOWN_UNITS.has(unit.toLowerCase())) return undefined;
   const meant = nearest(unit.toLowerCase(), UNITS as string[]);
   return {
@@ -529,7 +539,7 @@ export function supportsAMediaFeature(block: Block, findings: Finding[]): void {
       // A NEWER unit is the question itself — `@supports (height: 100dvh)` is how a page asks whether
       // `dvh` is there. Found in review: only a unit every engine has had for years makes the condition
       // always true, and so reads like a breakpoint meant as `@media`.
-      if (property && !LONG_STANDING_UNITS.has((/[a-z%]+$/i.exec(value)?.[0] ?? "").toLowerCase())) continue;
+      if (property && !LONG_STANDING_UNITS.has((unitOf(value) ?? "").toLowerCase())) continue;
 
       findings.push({
         rule: "supports-a-media-feature",
