@@ -344,7 +344,7 @@ export function scaffold(options: ScaffoldOptions): { replaced: string[]; kept: 
   try {
     writeProject({ ...options, targetDir: stage });
     const files = filesUnder(stage);
-    const blocked = inTheWay(options.targetDir, files);
+    const blocked = inTheWay(options.targetDir, files, readFileSync(join(stage, "README.md")));
     if (blocked.length > 0) {
       throw new Error(
         `In the way in ${options.targetDir}: ${blocked.join(", ")}. A link, a folder where a file goes, or a ` +
@@ -390,10 +390,12 @@ const stat = (path: string) => {
 };
 
 /** The project paths something in `target` stands in the way of. Reads nothing but their metadata. */
-function inTheWay(target: string, files: readonly string[]): string[] {
+function inTheWay(target: string, files: readonly string[], readme: Buffer): string[] {
   const blocked = new Set<string>();
   const wants = [...files];
-  if (stat(join(target, "README.md"))?.isFile()) wants.push("README.ramonda.md");
+  // Written only beside a README of the reader's own — not beside one identical to the project's.
+  const theirs = join(target, "README.md");
+  if (stat(theirs)?.isFile() && !readFileSync(theirs).equals(readme)) wants.push("README.ramonda.md");
   for (const file of wants) {
     const parts = file.split("/");
     let underBlocked = false;

@@ -47,6 +47,14 @@ const running = new Set();
 process.on("exit", () => {
   for (const child of running) child.kill("SIGKILL");
 });
+// A cancelled CI job or a timeout ends this with a signal, and "exit" does not fire on one by itself.
+for (const [signal, code] of [
+  ["SIGINT", 130],
+  ["SIGTERM", 143],
+  ["SIGHUP", 129],
+]) {
+  process.on(signal, () => process.exit(code));
+}
 function spawn(...args) {
   const child = spawnChild(...args);
   running.add(child);
@@ -478,6 +486,8 @@ async function servesSomewhere() {
 }
 
 const work = mkdtempSync(join(tmpdir(), "ramonda-scaffold-check-"));
+// On every exit, not in a `finally`: `fail()` exits at once, and each failing run left ~80 MB behind.
+process.on("exit", () => rmSync(work, { recursive: true, force: true }));
 const packed = join(work, "packed");
 const app = join(work, "app");
 

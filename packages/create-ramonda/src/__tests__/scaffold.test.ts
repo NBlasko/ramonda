@@ -913,6 +913,15 @@ describe("a folder that already has files", () => {
     expect(result.kept).toEqual([]);
   });
 
+  test("README.ramonda.md is in the way only when it would be written", () => {
+    const template = into({}).read("README.md");
+    const dir = mkdtempSync(join(tmpdir(), "ramonda-scaffold-into-"));
+    dirs.push(dir);
+    writeFileSync(join(dir, "README.md"), template);
+    mkdirSync(join(dir, "README.ramonda.md"));
+    expect(() => scaffold({ targetDir: dir, name: "into", mode: "spa", addons: ["css"] })).not.toThrow();
+  });
+
   test("an empty .gitignore does not start with blank lines", () => {
     expect(into({ ".gitignore": "" }).read(".gitignore").startsWith("\n")).toBe(false);
   });

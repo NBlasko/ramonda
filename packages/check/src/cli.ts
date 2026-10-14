@@ -116,8 +116,10 @@ const wantsSplit = argv.includes("--split");
 const wantsFix = argv.includes("--fix");
 const wantsCertify = argv.includes("--certify");
 const dryRun = argv.includes("--dry-run");
-const values = new Set([graphAt, graphHtmlAt, diffAgainst].filter((v): v is string => v !== undefined));
-const positionals = argv.filter((a) => !a.startsWith("-") && !values.has(a));
+// By POSITION: a word is a path unless the word before it is a flag that takes one. Matched by text,
+// `--graph out.json out.json` dropped the second as "the value" and checked ./tsconfig.json instead.
+const takesFile = new Set(OPTIONS.filter(([, takes]) => takes !== "").map(([flag]) => flag));
+const positionals = argv.filter((a, at) => !a.startsWith("-") && !takesFile.has(argv[at - 1] ?? ""));
 // One project per run: a second path was read by nobody, and the run said nothing about it.
 if (positionals.length > 1) {
   console.error(`${TAG} one tsconfig per run, not ${positionals.length}: ${positionals.join(" ")}`);
@@ -129,6 +131,23 @@ if (dryRun && !wantsFix) {
 }
 const arg = positionals[0];
 const tsconfig = resolve(arg ?? "tsconfig.json");
+for (const [flag, value, example] of [
+  ["--graph", graphAt, "--graph graph.json"],
+  ["--graph-html", graphHtmlAt, "--graph-html graph.html"],
+  ["--diff", diffAgainst, "--diff graph.json"],
+] as const) {
+  if (argv.includes(flag) && (value === undefined || value.startsWith("-"))) {
+    console.error(`${TAG} ${flag} wants a file: ramonda-check <tsconfig> ${example}`);
+    process.exit(2);
+  }
+}
+// The graph goes to a file of its own — `--graph tsconfig.json` wrote it over the project being read.
+for (const written of [graphAt, graphHtmlAt]) {
+  if (written !== undefined && resolve(written) === tsconfig) {
+    console.error(`${TAG} not writing the graph over ${written}, the tsconfig this run reads. Name another file.`);
+    process.exit(2);
+  }
+}
 
 /**
  * The line that opens a rule's section, with the rule's ID in it.
@@ -150,16 +169,6 @@ function sectionHeading(rule: AnyRule, found: readonly unknown[]): string {
 if (!existsSync(tsconfig)) {
   console.error(`${TAG} no tsconfig at ${tsconfig}. Pass one: ramonda-check <path>`);
   process.exit(2);
-}
-for (const [flag, value, example] of [
-  ["--graph", graphAt, "--graph graph.json"],
-  ["--graph-html", graphHtmlAt, "--graph-html graph.html"],
-  ["--diff", diffAgainst, "--diff graph.json"],
-] as const) {
-  if (argv.includes(flag) && (value === undefined || value.startsWith("-"))) {
-    console.error(`${TAG} ${flag} wants a file: ramonda-check <tsconfig> ${example}`);
-    process.exit(2);
-  }
 }
 if (diffAgainst && !existsSync(resolve(diffAgainst))) {
   console.error(`${TAG} nothing to compare against at ${resolve(diffAgainst)}`);

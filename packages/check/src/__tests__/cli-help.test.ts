@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -16,10 +16,15 @@ const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, "..", "..");
 const version = (JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as { version: string }).version;
 
-const run = (bin: string, ...args: string[]) => {
-  const result = spawnSync(process.execPath, [join(root, bin), ...args], { cwd: root, encoding: "utf8" });
-  return { status: result.status, out: `${result.stdout}${result.stderr}` };
-};
+/**
+ * Each run in a scratch folder of its own, never the package's: `--graph -x`, run before its guard
+ * existed, wrote a graph to a file named `-x` in the package — and that file was committed.
+ */
+const run = (bin: string, ...args: string[]) => runIn(mkdtempSync(join(tmpdir(), "check-cli-")), bin, ...args);
+function runIn(cwd: string, bin: string, ...args: string[]) {
+  const result = spawnSync(process.execPath, [join(root, bin), ...args], { cwd, encoding: "utf8" });
+  return { status: result.status, out: `${result.stdout}${result.stderr}`, cwd };
+}
 
 describe("ramonda-check", () => {
   it("--help names every option and the exit codes, and checks nothing", () => {
@@ -79,6 +84,24 @@ describe("ramonda-check", () => {
     const { status, out } = run("bin.mjs", "--graph", "-x");
     expect(status).toBe(2);
     expect(out).toContain("--graph wants a file");
+  });
+
+  it("never writes the graph over the tsconfig it reads", () => {
+    const dir = mkdtempSync(join(tmpdir(), "check-cli-"));
+    writeFileSync(join(dir, "tsconfig.json"), "{}\n");
+    const { status, out } = runIn(dir, "bin.mjs", "tsconfig.json", "--graph", "tsconfig.json");
+    expect(status).toBe(2);
+    expect(out).toContain("tsconfig.json");
+    expect(readFileSync(join(dir, "tsconfig.json"), "utf8")).toBe("{}\n");
+  });
+
+  it("a word after a flag's value is a path of its own, not a second copy of the value", () => {
+    // With a project there, so the only thing that can stop it is the second path.
+    const dir = mkdtempSync(join(tmpdir(), "check-cli-"));
+    writeFileSync(join(dir, "tsconfig.json"), "{}\n");
+    const { status, out } = runIn(dir, "bin.mjs", "--graph", "out.json", "out.json");
+    expect(status, out).toBe(2);
+    expect(existsSync(join(dir, "out.json"))).toBe(false);
   });
 
   it("an option it does not have is refused, with the one meant", () => {
