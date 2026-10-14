@@ -884,7 +884,7 @@ export function isRegion(entry: RecordEntry): entry is ListRegion | ComponentReg
   return (entry as ListRegion).owner !== undefined;
 }
 
-/** Which kind. A component region carries the instance; a list does not. */
+/** Which kind. A component region carries the instance; a list carries its `source`. */
 export function isComponentRegion(entry: ListRegion | ComponentRegion): entry is ComponentRegion {
   return (entry as ComponentRegion).instance !== undefined;
 }
@@ -1072,16 +1072,6 @@ export function reconcileEntries(
         // narrowing never actually discards a region — it is what tells the two kinds apart in types.
         const before = found !== undefined && !isComponentRegion(found) ? found : undefined;
 
-        /**
-         * Every row is walked, even when the engine handed back last pass's node unchanged. The walk
-         * touches no DOM and renders no row — measured at 1000 rows: zero mutations — and a clean row
-         * is claimed without being opened.
-         *
-         * What decides whether a row is opened is its `clean` flag, and a row is clean only when no
-         * list INSIDE it changed either — see `markRowsAbove` in `helpers/listEngine.ts`.
-         * `AListInsideARow.test.tsx` and `ListCallbackIdentity.test.tsx` ("BOTH stable") are the cases.
-         */
-
         // A `list()` descriptor has not run its mapper yet. This is the moment to:
         // the previous region is in hand, and with it the engine holding the
         // minted ids, the per-item scopes and the whole-list skip.
@@ -1096,6 +1086,26 @@ export function reconcileEntries(
           );
           listNode = materialized.node as typeof rawVchild;
           engine = materialized.engine;
+        }
+
+        /**
+         * The engine handed back last pass's node: nothing in this list changed, so the region is kept
+         * whole, without looking at a row. Unrelated state over 10 000 rows walks none of them.
+         *
+         * Safe because "nothing changed" includes what is INSIDE the rows. A list in a row marks every
+         * row above it when one of its own rows is invalidated, and that makes the outer engine build
+         * a new node instead of handing this one back — see `markRowsAbove` in `helpers/listEngine.ts`.
+         * Without it this skip left a list inside a row stale; `AListInsideARow.test.tsx` and
+         * `ListCallbackIdentity.test.tsx` ("BOTH stable") are the cases.
+         *
+         * Only for a node an ENGINE built. An array of children is a list too, built once by `h` and
+         * kept in the vnode around it, so a row reused from last pass hands back the same array node
+         * while a list inside the array has changed: `<li>{[<b />, list(…)]}</li>` kept its old prices.
+         */
+        if (engine !== undefined && before !== undefined && before.source === listNode) {
+          entries.push(before);
+          if (previous[entries.length - 1] !== before) changed = true;
+          continue;
         }
 
         const inner = reconcileEntries(
@@ -1129,6 +1139,7 @@ export function reconcileEntries(
         const region: ListRegion = {
           owner: listNode.owner,
           entries: inner.entries,
+          source: listNode,
           engine,
         };
 

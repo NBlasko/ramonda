@@ -89,6 +89,12 @@ export interface ListRegion {
    * the same rules at every depth.
    */
   entries: RecordEntry[];
+  /**
+   * The BUILT `ListNode` these entries came from. The engine hands back this very object only when
+   * nothing in the list changed — not a row, and not a list inside one — so the same object again
+   * means the region can be kept without looking at a row.
+   */
+  source: ListNode;
 }
 
 /**

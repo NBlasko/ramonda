@@ -1,6 +1,8 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { getDOM } from "../test/setup";
 import { Component, list, state } from "../index";
+import { CHILD_RECORD } from "../helpers/constants";
+import type { ListRegion } from "../types/vdom";
 
 /**
  * The whole-list skip: when `each` is the same array reference and no item's
@@ -105,5 +107,34 @@ describe("whole-list skip", () => {
     expect(app.container.querySelector("li")).toBe(firstLi);
     expect(dump(app.container)).toBe("a,b,c");
     expect(app.container.querySelector("ul")!.getAttribute("data-tick")).toBe("5");
+  });
+
+  /**
+   * And the diff does not walk the rows either: the region is kept whole when the engine hands back
+   * last pass's node. Counted rather than timed — every read of a row from that node is one row the
+   * diff looked at.
+   */
+  test("an unrelated re-render does not look at a single row", async () => {
+    const app = await getDOM<App>(<App />);
+    await app.settle();
+    app.instance.rows = Array.from({ length: 1000 }, (_, i) => ({ t: String(i) }));
+    await app.settle();
+
+    const ul = app.container.querySelector("ul") as unknown as { [CHILD_RECORD]: ListRegion[] };
+    const source = ul[CHILD_RECORD][0].source as { vnodes: unknown[] };
+    let rowsRead = 0;
+    source.vnodes = new Proxy(source.vnodes, {
+      get(target, property, receiver) {
+        if (typeof property === "string" && /^\d+$/.test(property)) rowsRead++;
+        return Reflect.get(target, property, receiver);
+      },
+    });
+
+    app.instance.tick = 1;
+    await app.settle();
+
+    expect(app.container.querySelectorAll("li")).toHaveLength(1000);
+    expect(app.container.querySelector("ul")!.getAttribute("data-tick")).toBe("1");
+    expect(rowsRead).toBe(0);
   });
 });

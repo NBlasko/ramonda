@@ -792,6 +792,7 @@ function hydrateLevelEntries(
       entries.push({
         owner: listNode.owner,
         entries: inner.entries,
+        source: listNode,
         engine,
       });
       hasRegion = true;
