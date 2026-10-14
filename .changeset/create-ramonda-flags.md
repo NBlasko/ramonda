@@ -10,3 +10,4 @@ A generated project:
 - `npm run check` runs everything the project has — lint, tests, build.
 - The SSR entry guards the devtools panel with `import.meta.env.DEV`, as the docs do, instead of `__DEV__`.
 - SSR no longer offers Router as an option: it always includes it.
+- Its README names each package you chose, with the page to start from, and says what `typecheck` runs when it is `ramonda-css`.

@@ -109,6 +109,27 @@ function publicTypesOf(pkg, atLeast, fileName = "PublicSurface.test.ts") {
   return names;
 }
 
+/**
+ * One named list from a surface test written as several — `@ramonda/css` keeps `RUNTIME` and
+ * `TYPES` apart, each with comments inside it, so the `EXPECTED`-to-next-comment slice above cannot
+ * read it. Sliced to the list's own `];`, with its comments taken out first.
+ */
+function listOf(pkg, list, atLeast) {
+  const surface = readFileSync(join(packages, pkg, "src", "__tests__", "PublicSurface.test.ts"), "utf8");
+  const start = surface.indexOf(`const ${list} = [`);
+  const end = surface.indexOf("];", start);
+  if (start === -1 || end === -1) throw new Error(`[docs] ${pkg}'s PublicSurface.test.ts has no \`const ${list} = [\``);
+  const body = surface
+    .slice(start, end)
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/\/\/.*$/gm, "");
+  const names = readNames(body, `${pkg}'s ${list}`);
+  if (names.length < atLeast) {
+    throw new Error(`[docs] Read ${names.length} name(s) from ${pkg}'s ${list}, expected at least ${atLeast}.`);
+  }
+  return names;
+}
+
 const expected = [
   ...publicSurfaceOf("core", 20),
   // Core's TYPES, which `publicSurfaceOf` cannot see: types are erased, so the surface test reads them
@@ -159,6 +180,10 @@ const expected = [
   // API, documented on the reference by pointing at that library rather than by copying its index.
   ...publicSurfaceOf("testing-library", 5),
   ...publicTypesOf("testing-library", 5),
+  // `@ramonda/css`'s page entry. Its subpaths — the compiler, the config, the plugins — are build
+  // tools with pages of their own, and are named on the reference as entry points, not as exports.
+  ...listOf("css", "RUNTIME", 8),
+  ...listOf("css", "TYPES", 15),
 ];
 
 const reference = readFileSync(join(root, "content", "reference", "api.md"), "utf8");

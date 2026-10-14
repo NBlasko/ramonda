@@ -13,7 +13,16 @@ import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import * as p from "@clack/prompts";
 import pc from "picocolors";
-import { type AddOn, type Mode, DEFAULT_ADD_ONS, DEFAULT_TARGET, HELP, readArgs, unanswered } from "./args";
+import {
+  type AddOn,
+  type Mode,
+  ADD_ON_PAGES,
+  DEFAULT_ADD_ONS,
+  DEFAULT_TARGET,
+  HELP,
+  readArgs,
+  unanswered,
+} from "./args";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const templatesDir = resolve(here, "..", "templates");
@@ -417,6 +426,7 @@ export function scaffold({ targetDir, name, mode, addons }: ScaffoldOptions): vo
     .join(" && ");
   pkg.scripts = { ...(pkg.scripts as object), ...extraScripts };
   writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
+  writeReadme(targetDir, addons);
 }
 
 /**
@@ -645,6 +655,31 @@ function writeBiomeConfig(targetDir: string, blocks: boolean): void {
         .join(" ")}]`,
   );
   writeFileSync(join(targetDir, "biome.json"), text + "\n");
+}
+
+/**
+ * What the README adds to the template's: where to begin with each package chosen, and what
+ * `typecheck` is when it is not `tsc`. A package chosen at the start was installed and then never
+ * mentioned again, so the first step with each started from a blank page.
+ */
+function writeReadme(targetDir: string, addons: readonly AddOn[]): void {
+  const path = join(targetDir, "README.md");
+  const parts = [readFileSync(path, "utf8").trimEnd()];
+  if (addons.includes("css")) {
+    parts.push(
+      "## Type checking",
+      "`typecheck` runs `ramonda-css`, not `tsc`: the same check, reading style blocks too, which `tsc` cannot parse.",
+    );
+  }
+  if (addons.length > 0) {
+    parts.push(
+      "## The packages you chose",
+      addons
+        .map((one) => `- ${ADD_ON_PAGES[one].what}. Start at https://ramonda.dev/${ADD_ON_PAGES[one].page}`)
+        .join("\n"),
+    );
+  }
+  writeFileSync(path, `${parts.join("\n\n")}\n`);
 }
 
 function sortKeys(obj: Record<string, string>): Record<string, string> {

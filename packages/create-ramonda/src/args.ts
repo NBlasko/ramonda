@@ -6,6 +6,18 @@ export type AddOn = "css" | "router" | "query" | "form" | "lens" | "testing" | "
 export const MODES: readonly Mode[] = ["spa", "ssr"];
 export const ADD_ONS: readonly AddOn[] = ["css", "router", "query", "form", "lens", "testing", "devtools", "biome"];
 
+/** Each add-on's first page, for the generated README: where to begin with what was chosen. */
+export const ADD_ON_PAGES: Readonly<Record<AddOn, { what: string; page: string }>> = {
+  css: { what: "`@ramonda/css` — style blocks; the page in `src/App.tsx` is written in them", page: "style-blocks" },
+  router: { what: "`@ramonda/router` — routes and links", page: "routing" },
+  query: { what: "`@ramonda/query` — cached, race-free async data", page: "query" },
+  form: { what: "`@ramonda/form` — typed fields and schema validation", page: "forms" },
+  lens: { what: "`@ramonda/lens` — immutable updates to nested state", page: "lens" },
+  testing: { what: "`@ramonda/testing-library` — `src/App.test.tsx` is the first test", page: "testing" },
+  devtools: { what: "`@ramonda/devtools` — press Alt+D in development", page: "devtools" },
+  biome: { what: "Biome — `npm run lint` and `npm run format`", page: "reference/create-ramonda" },
+};
+
 /** What the multi-select starts with, and what `--yes` takes. */
 export const DEFAULT_ADD_ONS: readonly AddOn[] = ["css", "devtools"];
 export const DEFAULT_TARGET = "ramonda-app";

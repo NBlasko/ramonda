@@ -822,3 +822,26 @@ describe("the generated project, read by a newcomer", () => {
     expect(make("spa", []).read("pnpm-workspace.yaml")).toMatch(/npm and yarn ignore this file/);
   });
 });
+
+describe("the generated README", () => {
+  /**
+   * A package chosen at the start was installed and then never mentioned: no code used it and no
+   * file said where to begin with it, so the first step with each started from a blank page.
+   */
+  test("names each package chosen, with the page to start from, and no other", () => {
+    const readme = make("spa", ["query", "form", "css"]).read("README.md");
+    expect(readme).toContain("## The packages you chose");
+    expect(readme).toContain("https://ramonda.dev/query");
+    expect(readme).toContain("https://ramonda.dev/forms");
+    expect(readme).toContain("https://ramonda.dev/style-blocks");
+    expect(readme).not.toContain("https://ramonda.dev/lens");
+  });
+
+  test("with nothing chosen, the section is not there", () => {
+    expect(make("spa", []).read("README.md")).not.toContain("## The packages you chose");
+  });
+
+  test("says what `typecheck` is when it is not `tsc`", () => {
+    expect(make("spa", ["css"]).read("README.md")).toMatch(/`typecheck`[^\n]*`ramonda-css`/);
+  });
+});
