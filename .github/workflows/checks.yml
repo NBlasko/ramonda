@@ -522,6 +522,7 @@ jobs:
           SELFTEST=types node scripts/check-scaffold.mjs ssr
           SELFTEST=types node scripts/check-scaffold.mjs spa css
           SELFTEST=devtools node scripts/check-scaffold.mjs ssr css
+          SELFTEST=dev node scripts/check-scaffold.mjs ssr
           node scripts/check-scaffold.mjs ssr
           node scripts/check-scaffold.mjs spa css
           node scripts/check-scaffold.mjs ssr css

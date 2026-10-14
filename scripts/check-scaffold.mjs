@@ -67,6 +67,8 @@ const PLANTED = {
   // A file that does not type-check. Vite strips types without reading them, so nothing else in the
   // build would stop on it — and `ssr` meets it through `tsc`, `spa` through `ramonda-css`.
   types: { where: "src/planted.ts", expect: "stopped on a type error" },
+  // An import of a package that is not installed, in the code the dev server serves first.
+  dev: { where: mode === "spa" ? "src/main.tsx" : "src/entry-client.tsx", expect: "the dev server could not resolve" },
   // The devtools import behind a guard no build can fold — true in every browser, so the panel ships.
   devtools: { where: mode === "spa" ? "src/main.tsx" : "src/entry-client.tsx", expect: "ships the devtools panel" },
 };
@@ -323,6 +325,46 @@ async function serves(port = 5100 + Math.floor(Math.random() * 400), attempt = 0
   return "served";
 }
 
+/**
+ * Starts the project's dev server, asks for the page and every script it loads — which is what
+ * makes Vite transform the app and pre-bundle its dependencies — and reads the server's log for an
+ * import it could not resolve.
+ */
+async function devIsQuiet() {
+  const port = 5600 + Math.floor(Math.random() * 300);
+  const args =
+    mode === "spa"
+      ? [join(app, "node_modules", "vite", "bin", "vite.js"), "--port", String(port), "--strictPort"]
+      : ["server.mjs"];
+  const server = spawn(process.execPath, args, {
+    cwd: app,
+    env: { ...process.env, PORT: String(port) },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  let log = "";
+  server.stdout.on("data", (d) => (log += d));
+  server.stderr.on("data", (d) => (log += d));
+  try {
+    let page;
+    for (let tries = 0; tries < 200 && page === undefined; tries++) {
+      if (server.exitCode !== null) fail(`the dev server exited with ${server.exitCode} before answering`, log);
+      try {
+        page = await (await fetch(`http://localhost:${port}/`)).text();
+      } catch {
+        await new Promise((r) => setTimeout(r, 150));
+      }
+    }
+    if (page === undefined) fail("the dev server never answered", log);
+    for (const [, src] of page.matchAll(/<script[^>]*\ssrc="([^"]+)"/g)) await fetch(`http://localhost:${port}${src}`);
+    // Pre-bundling and its transforms finish after the response; give them a moment to log.
+    await new Promise((r) => setTimeout(r, 3000));
+    const unresolved = log.split("\n").find((line) => /Failed to resolve import/.test(line));
+    if (unresolved !== undefined) fail(`the dev server could not resolve an import: ${unresolved.trim()}`, log);
+  } finally {
+    server.kill("SIGTERM");
+  }
+}
+
 /** Retries once on a port this machine was already using; anything else is the project's fault. */
 async function servesSomewhere() {
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -363,6 +405,12 @@ try {
 
   if (selftest === "types") {
     writeFileSync(join(app, PLANTED.types.where), 'export const planted: number = "a string";\n');
+  } else if (selftest === "dev") {
+    const file = join(app, PLANTED.dev.where);
+    writeFileSync(
+      file,
+      `${readFileSync(file, "utf8")}\n// @ts-expect-error — planted: not installed\nvoid import("@ramonda/not-installed").catch(() => {});\n`,
+    );
   } else if (selftest === "devtools") {
     const file = join(app, PLANTED.devtools.where);
     const source = readFileSync(file, "utf8");
@@ -417,6 +465,15 @@ try {
     fail("`npm install` failed in the generated project", outputOf(error));
   }
 
+  // The dev server, before the build: `npm run dev` is what a newcomer runs first. A project without
+  // devtools printed `Failed to resolve import "@ramonda/devtools"` there on every start — the page
+  // worked, and the first thing a reader saw was a red error. Nothing ran a dev server until this.
+  const checks = [];
+  if (!withAddon) {
+    await devIsQuiet();
+    checks.push("a dev server that starts with no unresolved import");
+  }
+
   const buildProject = () => {
     try {
       run("npm", ["run", "build"], { cwd: app });
@@ -454,7 +511,6 @@ try {
   /* ── 5. what the build EMITTED, not just that it exited 0 ─────────────────────────────────── */
   // Three of the faults above left the build perfectly green. A page with no title is not an
   // error anywhere — it is a page nobody can find.
-  const checks = [];
 
   // The devtools panel is development-only: the entry imports it behind a guard the production build
   // folds to false. A guard the build does NOT fold — a name it never defines — leaves the import in,
