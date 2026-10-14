@@ -467,7 +467,11 @@ export function mergeIgnore(mine: string, template: string): string {
     .split(/\r?\n/)
     .filter((line) => line.trim() !== "" && !line.trim().startsWith("#") && !have.has(bare(line)));
   if (missing.length === 0) return mine;
-  const before = mine.replace(/(\r?\n)+$/, "");
+  // Trailing line endings cut by a scan from the end: `(\r?\n)+$` retried from every character and was
+  // quadratic — 4.3 s on 50,000, found by CodeQL. Not `trimEnd()`, which would take an escaped `\ `.
+  let end = mine.length;
+  while (end > 0 && (mine[end - 1] === "\n" || mine[end - 1] === "\r")) end--;
+  const before = mine.slice(0, end);
   return `${before === "" ? "" : `${before}${eol}${eol}`}# Added by create-ramonda${eol}${missing.join(eol)}${eol}`;
 }
 

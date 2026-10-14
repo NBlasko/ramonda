@@ -922,6 +922,21 @@ describe("a folder that already has files", () => {
     expect(() => scaffold({ targetDir: dir, name: "into", mode: "spa", addons: ["css"] })).not.toThrow();
   });
 
+  test("a .gitignore ending in many blank lines is merged at once", () => {
+    // CodeQL's find: the trailing line endings were cut with `(\r?\n)+$`, which retries from every
+    // character — 4.3 s on 50,000 of them. The best of three, for a loaded runner.
+    const times = [0, 1, 2].map(() => {
+      const started = performance.now();
+      into({ ".gitignore": `secret.env${"\n".repeat(50_000)}x` });
+      return performance.now() - started;
+    });
+    expect(Math.min(...times)).toBeLessThan(1000);
+  });
+
+  test("a .gitignore's escaped trailing space is kept", () => {
+    expect(into({ ".gitignore": "foo\\ \n" }).read(".gitignore")).toContain("foo\\ \n");
+  });
+
   test("an empty .gitignore does not start with blank lines", () => {
     expect(into({ ".gitignore": "" }).read(".gitignore").startsWith("\n")).toBe(false);
   });
