@@ -131,8 +131,9 @@ const schema = object({
 });
 ```
 
-`addIssue` takes what was **expected**, what was **received**, and a message key — the key is what
-a translation maps, and it is what to branch on rather than the message.
+`addIssue` takes what was **expected**, what was **received**, and a message key. For a key with no
+message of its own, bguard uses the key as the message — which is what [translating the
+messages](#translating-the-messages) builds on.
 
 **There is a string form, and it is for one case.** `ctx.ref("home.city")` takes a dotted path,
 splits it on the dots and indexes plainly — so it reaches into arrays too, `ctx.ref("contacts.0.kind")`.
@@ -155,6 +156,34 @@ hundredth of a 60fps frame.
 
 A field-local pass could not do better anyway: a rule that reads another field is invisible to it,
 so narrowing would trade a correct message for microseconds.
+
+## Translating the messages
+
+A field's `errors` are the messages, one sentence each in the validator's language. Its `issues`
+are the same failures with everything the schema put on them — the `message`, and anything beside
+it: a validator's key for the failure, what it expected. A translation maps the key, and the app
+renders its own sentence:
+
+```tsx
+import type { FieldIssue } from "@ramonda/form";
+
+const SR: Record<string, string> = {
+  "u:mismatch": "Lozinke se ne poklapaju",
+  "u:required": "Obavezno polje",
+};
+
+// The key if the schema sent one, else the message — which is the key for a rule's own message.
+export const inSerbian = (issue: FieldIssue): string =>
+  SR[typeof issue.code === "string" ? issue.code : issue.message] ?? issue.message;
+```
+
+Then `form.fields.confirm.$.issues.map(inSerbian)` in place of `errors`.
+
+**What reaches `issues` depends on the validator.** A field gets an issue as the schema hands it
+over through Standard Schema. bguard 0.10.0 hands over the `message` and the `path` only, and its
+messages in its default language — so a built-in assertion such as `minLength` arrives as an English
+sentence with no key. Write the rules whose messages you translate with `addIssue` and a key of your
+own, as above: bguard uses that key as the message, and it is what `inSerbian` looks up.
 
 ## A schema that changes
 
@@ -296,6 +325,7 @@ rather than a runtime package.
 | `StandardSchemaV1<In, Out>` | the contract a schema implements. bguard, zod, valibot and arktype all do, so none of them needs an adapter |
 | `StandardResult<Out>` | what a validation returns: a `value`, or `issues` |
 | `StandardIssue` | one problem — a `message`, and a `path` of keys, with numbers for array positions. No path means the root |
+| `FieldIssue` | one problem as a field holds it: the `message`, and whatever else the schema put on it. A field's `issues` — [translating the messages](#translating-the-messages) |
 | `FormProps<S>` | the `Form` hook's options: `schema`, `defaultValues`, `onSubmit`, and `validateOn` |
 | `ValidateOn` | `"change"`, `"blur"` or `"submit"` — [when a message appears](#when-a-message-appears) |
 

@@ -2,7 +2,7 @@ import { created, destroyed, Hook, INSPECT, state, watchProp } from "@ramonda/co
 
 import { ASPECT, FIELD_TARGET, type FieldHandle, type Watcher } from "./fieldTree";
 import type { Path } from "./path";
-import type { Bind, FieldApi, FieldNode, Row } from "./types";
+import type { Bind, FieldApi, FieldIssue, FieldNode, Row } from "./types";
 
 /** What a component hands to `Field`: any field node, whatever kind it is. Every one has a `$`. */
 export interface FieldTarget<T> {
@@ -239,6 +239,11 @@ export class Field<T> extends Hook<{ of: FieldTarget<T> }> implements Watcher {
   get errors(): readonly string[] {
     this.reads |= ASPECT.messages | ASPECT.marks;
     return this.live.errors;
+  }
+
+  get issues(): readonly FieldIssue[] {
+    this.reads |= ASPECT.messages | ASPECT.marks;
+    return this.live.issues;
   }
 
   get touched(): boolean {

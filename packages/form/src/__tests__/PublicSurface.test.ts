@@ -1,4 +1,7 @@
 import { describe, expect, test } from "vitest";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { publishedTypes } from "../../../../scripts/surface/published-types";
 import * as api from "../index";
 
 /**
@@ -34,6 +37,7 @@ const EXPECTED_TYPES = [
   "CommonBind",
   "DateBind",
   "FieldApi",
+  "FieldIssue",
   "FieldNode",
   "FieldTarget",
   "FormProps",
@@ -78,11 +82,10 @@ describe("public API surface", () => {
   });
 
   test("every published type is named in EXPECTED_TYPES", () => {
-    // The compiler proves the types EXIST — see the import below, which fails to check if one
-    // is gone. This proves the LIST is the same length, so a type added to `index.ts` without
-    // being added here is caught rather than quietly undocumented.
-    const exported = new Set(EXPECTED_TYPES);
-    expect(exported.size).toBe(EXPECTED_TYPES.length);
+    // Read from a real program — a type exported from `index.ts` and missing here fails. This test
+    // used to check only that the list was sorted, and passed with one missing.
+    const src = join(dirname(fileURLToPath(import.meta.url)), "..");
+    expect(publishedTypes(join(src, "index.ts"), Object.keys(api), src)).toEqual([...EXPECTED_TYPES].sort());
     expect(EXPECTED_TYPES).toEqual([...EXPECTED_TYPES].sort());
   });
 });
@@ -97,6 +100,7 @@ import type {
   CommonBind,
   DateBind,
   FieldApi,
+  FieldIssue,
   FieldNode,
   FieldTarget,
   FormProps,
@@ -123,6 +127,7 @@ type _Surface = [
   CommonBind,
   DateBind,
   FieldApi<string>,
+  FieldIssue,
   FieldNode<string>,
   FieldTarget<string>,
   FormProps<StandardSchemaV1>,

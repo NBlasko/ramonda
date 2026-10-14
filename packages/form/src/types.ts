@@ -37,6 +37,16 @@ export type StandardResult<Output> =
   | { readonly value: Output; readonly issues?: undefined }
   | { readonly issues: ReadonlyArray<StandardIssue> };
 
+/**
+ * One issue on a field, as the schema sent it: the message, and whatever else the validator put on
+ * it — bguard's `code` (`s:minLength`), what it expected — which is what an app translates by or
+ * branches on, where the message is one language's sentence.
+ */
+export interface FieldIssue {
+  readonly message: string;
+  readonly [key: string]: unknown;
+}
+
 export interface StandardIssue {
   readonly message: string;
   /** Keys, with numbers for array and tuple positions. Absent means the root. */
@@ -115,6 +125,8 @@ export interface FieldApi<T> {
   /** The first message, which is what a field renders. */
   readonly error: string | undefined;
   readonly errors: readonly string[];
+  /** The issues behind `errors`, one each and in the same order, with everything the schema put on them. */
+  readonly issues: readonly FieldIssue[];
   readonly touched: boolean;
   readonly dirty: boolean;
   /** The path as the schema sees it, e.g. `address.street` or `contacts[2].value`. */

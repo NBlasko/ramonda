@@ -1,5 +1,5 @@
 import { type Path, pathKey } from "./path";
-import type { StandardIssue, StandardResult, StandardSchemaV1 } from "./types";
+import type { FieldIssue, StandardIssue, StandardResult, StandardSchemaV1 } from "./types";
 
 /** Messages by field, keyed with `pathKey` so two different paths cannot collide. */
 export type Issues = ReadonlyMap<string, readonly string[]>;
@@ -23,6 +23,29 @@ export interface Validation<Out> {
  * container per read is an allocation on the hot path for a value nobody can change.
  */
 export const NO_ISSUES: Issues = new Map();
+
+/**
+ * The issues behind a field's messages, kept BESIDE the messages rather than in their place.
+ *
+ * Everything that compares, holds back or drops a field's errors works on the message array and
+ * hands the same array on — so the issues ride along with it, looked up by that array, and none of
+ * that changes. Each array is made in one of two places, `collect` and `withIssue`, and both file
+ * its issues here.
+ */
+const ISSUES = new WeakMap<readonly string[], readonly FieldIssue[]>();
+
+/** The issues behind a field's messages — see `ISSUES`. */
+export function issuesOf(messages: readonly string[]): readonly FieldIssue[] {
+  return ISSUES.get(messages) ?? NO_FIELD_ISSUES;
+}
+
+const NO_FIELD_ISSUES: readonly FieldIssue[] = Object.freeze([]);
+
+/** The issue a field shows, without the path that only placed it. */
+function fieldIssue(issue: StandardIssue): FieldIssue {
+  const { path: _path, ...rest } = issue as StandardIssue & Record<string, unknown>;
+  return rest as FieldIssue;
+}
 
 /**
  * One shared empty list, for every field that has nothing to say — which is most of them, most of the
@@ -64,15 +87,19 @@ function collect(result: StandardResult<unknown>): Validation<unknown> {
   if (result.issues === undefined) return { issues: NO_ISSUES, value: result.value };
 
   const issues = new Map<string, string[]>();
+  const details = new Map<string, FieldIssue[]>();
   for (const issue of result.issues) {
     const key = pathKey(issuePath(issue));
     const existing = issues.get(key);
     if (existing) {
       existing.push(issue.message);
+      details.get(key)?.push(fieldIssue(issue));
     } else {
       issues.set(key, [issue.message]);
+      details.set(key, [fieldIssue(issue)]);
     }
   }
+  for (const [key, messages] of issues) ISSUES.set(messages, details.get(key) ?? NO_FIELD_ISSUES);
 
   return { issues, value: undefined };
 }
@@ -99,6 +126,9 @@ export function issuePath(issue: StandardIssue): Path {
 export function withIssue(issues: Issues, path: Path, message: string): Issues {
   const next = new Map(issues);
   const key = pathKey(path);
-  next.set(key, [...(next.get(key) ?? []), message]);
+  const before = next.get(key) ?? [];
+  const messages = [...before, message];
+  ISSUES.set(messages, [...issuesOf(before), { message }]);
+  next.set(key, messages);
   return next;
 }

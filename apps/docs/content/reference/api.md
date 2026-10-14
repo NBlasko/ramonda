@@ -160,7 +160,8 @@ All 32, grouped by what they belong to. The server and per-request ones are expl
 **Markup** — `VNode` · `RamondaNode` · `ComponentChild` · `ComponentClassKind`
 
 **Hooks and options** — `HookMeta` · `HeadOptions` · `MetaTag` · `LinkTag` · `PortalProps` · `PortalTarget` · `Each` · `ItemRender` · `ItemComponent` · `Identity` ·
-`AsyncLoadProps` · `AsyncLoadFailure` · `Lazy` · `ContextOptions` · `ErrorBoundaryFallbackProps` · `SelectProps` · `TextAreaProps`
+`AsyncLoadProps` · `AsyncLoadFailure` · `Lazy` · `ContextOptions` · `ErrorBoundaryFallbackProps` · `SelectProps` · `TextAreaProps` ·
+`ListenerProps` · `ScheduledProps`
 
 **Refs and subscriptions** — `RefCallback` · `RefTarget` · `SubscriptionOwner` · `Disconnect`
 
@@ -258,7 +259,8 @@ Every field is reached by property access and its API sits behind `$`:
 
 | | |
 |---|---|
-| `FieldApi` | What every field has: `value` · `error` · `errors` · `touched` · `dirty` · `path` · `name` · `set(next)` · `reset()` · `at(key)`. |
+| `FieldApi` | What every field has: `value` · `error` · `errors` · `issues` · `touched` · `dirty` · `path` · `name` · `set(next)` · `reset()` · `at(key)`. |
+| `FieldIssue` | One of `issues`: the `message`, and whatever else the schema put on it — bguard's `code`, which is what a translation maps. [Translating messages](/forms/validation#translating-the-messages) |
 | `LeafApi` | A field holding a single value. Adds `bind`. [Binding an input](/forms/fields) |
 | `ArrayApi` | A field holding a list. Adds `length` · `rows` · `append(item)` · `insert(at, item)` · `remove(at)` · `move(from, to)`. [Array fields](/forms/arrays) |
 | `Row` | One member of `rows`: `id` · `index` · `field`. The `id` is what keeps a row stable as it moves. |

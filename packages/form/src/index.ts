@@ -11,6 +11,7 @@ export type {
   CommonBind,
   DateBind,
   FieldApi,
+  FieldIssue,
   FieldNode,
   FormProps,
   InferIn,
