@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { ADD_ONS, HELP } from "../../../../packages/create-ramonda/src/args";
+import { OPTIONS } from "../../../../packages/check/src/cliOptions";
 
 /**
  * The pages that list packages, held to the packages and to the scaffolder that adds them.
@@ -63,5 +64,16 @@ describe("the scaffolder's page", () => {
 
   it("is where the Installation page sends a reader for the choices", () => {
     expect(page("guide/installation.md")).toContain("](/reference/create-ramonda)");
+  });
+});
+
+describe("the check page", () => {
+  it("has a row for every option ramonda-check takes, from the command's own list", () => {
+    expect(OPTIONS.length).toBeGreaterThan(6);
+    const check = page("reference/check.md");
+    expect(check).toContain("## The command line");
+    // A ROW, at the start of a line: `--graph` is inside `--graph-html`, and several options are named in
+    // the page's prose, so a search of the whole page found them with their rows deleted.
+    for (const [flag] of OPTIONS) expect(check, flag).toMatch(new RegExp(`^\\| \`${flag}[ \`,]`, "m"));
   });
 });

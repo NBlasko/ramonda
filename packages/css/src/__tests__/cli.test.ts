@@ -1,5 +1,14 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -82,6 +91,9 @@ describe("the bin", () => {
     expect(status).toBe(0);
     expect(output).toContain("[ramonda-css]");
     expect(output).toContain("1 of them carrying a style block");
+    // Which files it counted, so a count beside `lint`'s is not a puzzle: it reads the whole program
+    // the tsconfig includes, `lint` reads only the paths it is given. Found by the trial.
+    expect(output).toContain("in tsconfig.json type-check");
   });
 
   test("names the fault at the author's own line, and exits 1", () => {
@@ -316,6 +328,15 @@ describe("an argument that is not a project", () => {
     expect(output).not.toContain("'{' expected");
   });
 
+  test("names the tsconfig it read, whichever it was given", () => {
+    const root = project(`const a = 1;\n`);
+    copyFileSync(join(root, "tsconfig.json"), join(root, "tsconfig.app.json"));
+    const { output, status } = runWith(root, ["tsconfig.app.json"]);
+
+    expect(status).toBe(0);
+    expect(output).toContain("in tsconfig.app.json type-check");
+  });
+
   test("a file that is not there says so, rather than reporting a parse", () => {
     const { output, status } = runWith(project(`const a = 1;\n`), ["nope.json"]);
 
@@ -330,7 +351,8 @@ describe("an argument that is not a project", () => {
     expect(output).toContain("ramonda-css");
     expect(output).toContain("format");
     expect(output).toContain("lint");
-    expect(output).not.toContain("file(s) type-check");
+    // The success line, whatever it names the files by — the old needle stopped matching it.
+    expect(output).not.toContain("carrying a style block");
   });
 
   /**

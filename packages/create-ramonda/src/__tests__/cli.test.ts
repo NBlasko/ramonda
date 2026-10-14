@@ -1,5 +1,14 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -149,6 +158,20 @@ test("a file on the way to the folder is refused the same way", () => {
   expect(out).not.toContain("    at ");
 });
 
+test("a temporary folder that cannot be made is not a reason to fail", () => {
+  // A sandbox or a container with TMPDIR pointing nowhere: the project is staged before it is written.
+  const env: NodeJS.ProcessEnv = { ...process.env, TMPDIR: join(cwd, "nowhere") };
+  delete env.npm_config_user_agent;
+  const result = spawnSync(process.execPath, [dist, "app", "--yes", "--no-install", "--no-git"], {
+    cwd,
+    env,
+    encoding: "utf8",
+    input: "",
+  });
+  expect(result.status, `${result.stdout}${result.stderr}`).toBe(0);
+  expect(existsSync(join(cwd, "app", "package.json"))).toBe(true);
+});
+
 describe("a folder that is not empty", () => {
   beforeEach(() => {
     mkdirSync(join(cwd, "app"));
@@ -160,6 +183,37 @@ describe("a folder that is not empty", () => {
     expect(status).toBe(1);
     expect(out).toContain("--overwrite");
     expect(readdirSync(join(cwd, "app"))).toEqual(["keep.txt"]);
+  });
+
+  test("--overwrite names each file it replaced, and keeps the folder's README and .gitignore", () => {
+    mkdirSync(join(cwd, "app", "src"));
+    writeFileSync(join(cwd, "app", "src", "App.tsx"), "mine");
+    writeFileSync(join(cwd, "app", ".gitignore"), "secret.env\n");
+    writeFileSync(join(cwd, "app", "README.md"), "MY README\n");
+    const { status, out } = run("app", "--yes", "--overwrite", "--no-install", "--no-git");
+    expect(status, out).toBe(0);
+    expect(out).toContain("src/App.tsx");
+    expect(out).toContain("README.ramonda.md");
+    expect(out).toContain("Kept your .gitignore");
+    expect(readFileSync(join(cwd, "app", ".gitignore"), "utf8")).toContain("secret.env");
+    expect(readFileSync(join(cwd, "app", "README.md"), "utf8")).toBe("MY README\n");
+  });
+
+  test("a link in the way is refused with a sentence, and nothing is written", () => {
+    writeFileSync(join(cwd, "outside.txt"), "theirs");
+    symlinkSync(join(cwd, "outside.txt"), join(cwd, "app", "index.html"));
+    const { status, out } = run("app", "--yes", "--overwrite", "--no-install", "--no-git");
+    expect(status).toBe(1);
+    expect(out).toContain("index.html");
+    expect(out).not.toContain("    at ");
+    expect(readFileSync(join(cwd, "outside.txt"), "utf8")).toBe("theirs");
+    expect(existsSync(join(cwd, "app", "package.json"))).toBe(false);
+  });
+
+  test("a folder that is already a repository is not said to be initialised", () => {
+    mkdirSync(join(cwd, "app", ".git"));
+    const { out } = run("app", "--yes", "--overwrite", "--no-install", "--git");
+    expect(out).not.toContain("Initialised a git repository");
   });
 
   test("--overwrite writes into it", () => {

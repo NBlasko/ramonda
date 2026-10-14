@@ -1,4 +1,14 @@
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -11,7 +21,7 @@ import type { ScaffoldOptions } from "../index";
  * would get. Testing dist checks the artifact that ships, including that the injection
  * happened.
  */
-let scaffold: (options: ScaffoldOptions) => void;
+let scaffold: (options: ScaffoldOptions) => { replaced: string[]; kept: string[] };
 let nodeIsOldEnough: (version: string) => boolean;
 let MIN_NODE: number;
 
@@ -841,11 +851,159 @@ describe("the generated README", () => {
     for (const mode of ["spa", "ssr"] as const) expect(make(mode, []).read("README.md")).toContain("`npm run check`");
   });
 
+  test("an SSR project says how to run it on another port", () => {
+    expect(make("ssr", []).read("README.md")).toContain("PORT=");
+  });
+
   test("with nothing chosen, the section is not there", () => {
     expect(make("spa", []).read("README.md")).not.toContain("## The packages you chose");
   });
 
   test("says what `typecheck` is when it is not `tsc`", () => {
     expect(make("spa", ["css"]).read("README.md")).toMatch(/`typecheck`[^\n]*`ramonda-css`/);
+  });
+});
+
+/**
+ * Writing into a folder that already holds files — `--overwrite`, and the common start: `git init`, a
+ * README, a `.gitignore`, then the app. Found by the trial: its `.gitignore` listed `secret.env` and was
+ * replaced without a word, so the next `git add -A` would have committed the secret.
+ */
+describe("a folder that already has files", () => {
+  function into(files: Record<string, string>) {
+    const dir = mkdtempSync(join(tmpdir(), "ramonda-scaffold-into-"));
+    dirs.push(dir);
+    for (const [file, text] of Object.entries(files)) {
+      mkdirSync(dirname(join(dir, file)), { recursive: true });
+      writeFileSync(join(dir, file), text);
+    }
+    const result = scaffold({ targetDir: dir, name: "into", mode: "spa", addons: ["css"] });
+    return { dir, result, read: (file: string) => readFileSync(join(dir, file), "utf8") };
+  }
+
+  test("keeps every line of its .gitignore, and adds the template's", () => {
+    const { read } = into({ ".gitignore": "secret.env\n" });
+    const ignore = read(".gitignore");
+    expect(ignore).toContain("secret.env");
+    expect(ignore).toContain("node_modules");
+  });
+
+  test("keeps its README, and writes the project's beside it", () => {
+    const { read } = into({ "README.md": "MY README\n" });
+    expect(read("README.md")).toBe("MY README\n");
+    expect(read("README.ramonda.md")).toContain("## Before a commit");
+  });
+
+  test("names every other file it replaced, and only those", () => {
+    const { result } = into({ "src/App.tsx": "mine\n", "notes.txt": "untouched\n", "README.md": "MY README\n" });
+    expect(result.replaced).toEqual(["src/App.tsx"]);
+  });
+
+  test("a .gitignore that already has every line is kept as it was, and not said to have gained any", () => {
+    const template = into({}).read(".gitignore");
+    const { result, read } = into({ ".gitignore": template });
+    expect(read(".gitignore")).toBe(template);
+    expect(result.kept).toEqual([]);
+  });
+
+  test("a README identical to the project's is not written a second time", () => {
+    const template = into({}).read("README.md");
+    const { dir, result } = into({ "README.md": template });
+    expect(existsSync(join(dir, "README.ramonda.md"))).toBe(false);
+    expect(result.kept).toEqual([]);
+  });
+
+  test("README.ramonda.md is in the way only when it would be written", () => {
+    const template = into({}).read("README.md");
+    const dir = mkdtempSync(join(tmpdir(), "ramonda-scaffold-into-"));
+    dirs.push(dir);
+    writeFileSync(join(dir, "README.md"), template);
+    mkdirSync(join(dir, "README.ramonda.md"));
+    expect(() => scaffold({ targetDir: dir, name: "into", mode: "spa", addons: ["css"] })).not.toThrow();
+  });
+
+  test("a .gitignore ending in many blank lines is merged at once", () => {
+    // CodeQL's find: the trailing line endings were cut with `(\r?\n)+$`, which retries from every
+    // character — 4.3 s on 50,000 of them. The best of three, for a loaded runner.
+    const times = [0, 1, 2].map(() => {
+      const started = performance.now();
+      into({ ".gitignore": `secret.env${"\n".repeat(50_000)}x` });
+      return performance.now() - started;
+    });
+    expect(Math.min(...times)).toBeLessThan(1000);
+  });
+
+  test("a .gitignore's escaped trailing space is kept", () => {
+    expect(into({ ".gitignore": "foo\\ \n" }).read(".gitignore")).toContain("foo\\ \n");
+  });
+
+  test("an empty .gitignore does not start with blank lines", () => {
+    expect(into({ ".gitignore": "" }).read(".gitignore").startsWith("\n")).toBe(false);
+  });
+
+  test("an empty folder replaces nothing", () => {
+    expect(into({}).result.replaced).toEqual([]);
+  });
+
+  // Found in review of the first version, each measured on the built scaffolder.
+  test("names a package.json it replaced — the file most often already there", () => {
+    const { result } = into({ "package.json": '{ "name": "mine" }\n', "src/App.tsx": "mine\n" });
+    expect(result.replaced).toEqual(["package.json", "src/App.tsx"]);
+  });
+
+  test("adds only the lines the .gitignore lacks, once", () => {
+    const lines = into({ ".gitignore": "node_modules\nsecret.env\n" }).read(".gitignore").split("\n");
+    expect(lines.filter((line) => line === "node_modules")).toHaveLength(1);
+    expect(lines).toContain("dist");
+  });
+
+  test("does not undo a line the .gitignore negates", () => {
+    const lines = into({ ".gitignore": "!dist\n" }).read(".gitignore").split("\n");
+    expect(lines).not.toContain("dist");
+    expect(lines).toContain("node_modules");
+  });
+
+  test("keeps the .gitignore's own line endings", () => {
+    const text = into({ ".gitignore": "secret.env\r\n" }).read(".gitignore");
+    expect(text).toContain("node_modules\r\n");
+    expect(text.replaceAll("\r\n", "")).not.toContain("\n");
+  });
+
+  test("does not read a file the template does not write", () => {
+    // Unreadable stands in for a 2 GB video: the scaffolder used to read the whole folder first.
+    const dir = mkdtempSync(join(tmpdir(), "ramonda-scaffold-unread-"));
+    dirs.push(dir);
+    writeFileSync(join(dir, "huge.bin"), "x");
+    chmodSync(join(dir, "huge.bin"), 0o000);
+    expect(() => scaffold({ targetDir: dir, name: "x", mode: "spa", addons: [] })).not.toThrow();
+  });
+
+  describe("a path in the way is refused before anything is written", () => {
+    function blocked(arrange: (dir: string, outside: string) => void, named: string) {
+      const dir = mkdtempSync(join(tmpdir(), "ramonda-scaffold-way-"));
+      const outside = mkdtempSync(join(tmpdir(), "ramonda-scaffold-outside-"));
+      dirs.push(dir, outside);
+      writeFileSync(join(outside, "theirs.txt"), "theirs\n");
+      arrange(dir, outside);
+      // The sentence, naming the path — an errno mentioning it passed this once (`ENOTDIR … src/App.tsx`).
+      expect(() => scaffold({ targetDir: dir, name: "x", mode: "spa", addons: [] })).toThrow(
+        new RegExp(`^In the way in .*: ${named.replace(".", "\\.")}(,|\\.)`),
+      );
+      expect(existsSync(join(dir, "package.json"))).toBe(false);
+      expect(readFileSync(join(outside, "theirs.txt"), "utf8")).toBe("theirs\n");
+    }
+
+    test("a link where the template writes — never followed out of the folder", () => {
+      blocked((dir, outside) => symlinkSync(join(outside, "theirs.txt"), join(dir, "index.html")), "index.html");
+      blocked((dir, outside) => symlinkSync(join(outside, "theirs.txt"), join(dir, ".gitignore")), ".gitignore");
+    });
+
+    test("a folder where the template writes a file", () => {
+      blocked((dir) => mkdirSync(join(dir, "index.html")), "index.html");
+    });
+
+    test("a file where the template needs a folder", () => {
+      blocked((dir) => writeFileSync(join(dir, "src"), "x"), "src");
+    });
   });
 });

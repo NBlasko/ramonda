@@ -159,7 +159,11 @@ if (report.exempted.length > 0) {
 }
 
 if (report.findings.length === 0) {
-  console.log(`${TAG} ${report.files} file(s) type-check, ${report.styled} of them carrying a style block`);
+  // Says WHICH files: every one the tsconfig includes — where `lint` reads only the paths it is given,
+  // so the two counts differ, and a count with no source looked like a file lost.
+  console.log(
+    `${TAG} ${report.files} file(s) in ${where(tsconfig)} type-check, ${report.styled} of them carrying a style block`,
+  );
   process.exit(0);
 }
 
@@ -348,7 +352,7 @@ function runTool(which: "format" | "lint", args: readonly string[]): never {
   }
 
   if (found.length === 0) {
-    console.log(`${TAG} ${files.length} file(s) lint clean`);
+    console.log(`${TAG} ${files.length} file(s) under ${paths.length === 0 ? "." : paths.join(", ")} lint clean`);
     process.exit(0);
   }
 

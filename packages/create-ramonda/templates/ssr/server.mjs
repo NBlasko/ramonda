@@ -35,6 +35,13 @@ let isr;
 const STATIC = resolve(here, "dist/static");
 const origin = `http://localhost:${PORT}`;
 
+// Made before Vite, which takes it for hot reload. `vite` is set below, before the first request.
+const server = createServer((req, res) => {
+  if (isProd) return void renderProd(req, res);
+  // Let Vite serve its own routes (client modules, HMR, /@vite/*); fall through to SSR.
+  vite.middlewares(req, res, () => renderDev(req, res));
+});
+
 if (isProd) {
   const bundle = resolve(here, "dist/server/entry-server.js");
   if (!existsSync(bundle)) {
@@ -66,7 +73,9 @@ if (isProd) {
   vite = await createViteServer({
     root: here,
     appType: "custom",
-    server: { middlewareMode: true },
+    // Hot reload over this server's own port, so two apps side by side do not both reach for Vite's
+    // default HMR port — the second one's hot reload silently never connected.
+    server: { middlewareMode: true, hmr: { server } },
   });
 }
 
@@ -171,10 +180,12 @@ async function renderProd(req, res) {
   }
 }
 
-const server = createServer((req, res) => {
-  if (isProd) return void renderProd(req, res);
-  // Let Vite serve its own routes (client modules, HMR, /@vite/*); fall through to SSR.
-  vite.middlewares(req, res, () => renderDev(req, res));
+server.on("error", (error) => {
+  if (error.code !== "EADDRINUSE") throw error;
+  console.error(
+    `Port ${PORT} is in use — another server is running there. Start this one on another port: PORT=${PORT + 1} npm run ${isProd ? "start" : "dev"}`,
+  );
+  process.exit(1);
 });
 
 server.listen(PORT, () => {

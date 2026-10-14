@@ -11,6 +11,9 @@ mode** — static, ISR, or per request.
 npm run dev     # Vite dev server on http://localhost:5173 — hot reload, no build step
 ```
 
+Another app already on 5173? Pick the port: `PORT=5174 npm run dev` — and `PORT=5174 npm start` for the
+production server.
+
 Edit a component and the change is live: the browser hot-updates the client, and
 the server picks up the new code on the next request — no restart.
 

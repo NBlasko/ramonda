@@ -87,3 +87,7 @@ describe("a flag that says nothing is refused", () => {
     );
   });
 });
+
+test("--help says what --overwrite does to a file that is there", () => {
+  expect(HELP).toMatch(/--overwrite[\s\S]*\.gitignore[\s\S]*README/);
+});

@@ -31,11 +31,48 @@
  *
  * Usage: node scripts/check-scaffold.mjs [spa|ssr]
  */
-import { execFileSync, spawn } from "node:child_process";
+import { execFileSync, spawn as spawnChild } from "node:child_process";
+import { createServer as createNetServer } from "node:net";
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+
+/**
+ * Every server this starts, stopped when this process ends — however it ends. `fail()` exits at
+ * once, so a `finally` never ran on a failing check, and each one left its servers running: eighteen
+ * piled up across runs, and one sat on the port a later run picked, failing it for nothing.
+ */
+const running = new Set();
+process.on("exit", () => {
+  for (const child of running) child.kill("SIGKILL");
+});
+// A cancelled CI job or a timeout ends this with a signal, and "exit" does not fire on one by itself.
+for (const [signal, code] of [
+  ["SIGINT", 130],
+  ["SIGTERM", 143],
+  ["SIGHUP", 129],
+]) {
+  process.on(signal, () => process.exit(code));
+}
+function spawn(...args) {
+  const child = spawnChild(...args);
+  running.add(child);
+  child.on("exit", () => running.delete(child));
+  return child;
+}
+
+/** A port nothing on this machine is listening on, from the system rather than a guess. */
+function freePort() {
+  return new Promise((done, failed) => {
+    const probe = createNetServer();
+    probe.once("error", failed);
+    probe.listen(0, () => {
+      const { port } = probe.address();
+      probe.close(() => done(port));
+    });
+  });
+}
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const mode = process.argv[2] === "spa" ? "spa" : "ssr";
@@ -240,7 +277,8 @@ function fail(what, detail) {
  * read versus a live render — and only the second one needs the DOM, the router and everything a
  * production install might have dropped.
  */
-async function serves(port = 5100 + Math.floor(Math.random() * 400), attempt = 0) {
+async function serves(port, attempt = 0) {
+  port ??= await freePort();
   const server = spawn(process.execPath, ["server.mjs", "--prod"], {
     cwd: app,
     env: { ...process.env, PORT: String(port) },
@@ -331,7 +369,7 @@ async function serves(port = 5100 + Math.floor(Math.random() * 400), attempt = 0
  * import it could not resolve.
  */
 async function devIsQuiet() {
-  const port = 5600 + Math.floor(Math.random() * 300);
+  const port = await freePort();
   const args =
     mode === "spa"
       ? [join(app, "node_modules", "vite", "bin", "vite.js"), "--port", String(port), "--strictPort"]
@@ -360,8 +398,82 @@ async function devIsQuiet() {
     await new Promise((r) => setTimeout(r, 3000));
     const unresolved = log.split("\n").find((line) => /Failed to resolve import/.test(line));
     if (unresolved !== undefined) fail(`the dev server could not resolve an import: ${unresolved.trim()}`, log);
+    if (mode === "ssr") await besideAnother(port);
   } finally {
     server.kill("SIGTERM");
+  }
+}
+
+/**
+ * A second SSR dev server while one runs — two projects, or one that did not exit. On another port it
+ * must start with hot reload of its own: both used to reach for Vite's one default HMR port, and the
+ * second's reload silently never connected. On the SAME port it must say so and exit 1, not die with
+ * an unhandled `EADDRINUSE` and a stack.
+ */
+async function besideAnother(taken) {
+  const start = (port) => {
+    const child = spawn(process.execPath, ["server.mjs"], {
+      cwd: app,
+      env: { ...process.env, PORT: String(port) },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const out = { child, log: "" };
+    child.stdout.on("data", (d) => (out.log += d));
+    child.stderr.on("data", (d) => (out.log += d));
+    return out;
+  };
+
+  const other = await freePort();
+  const second = start(other);
+  try {
+    for (let tries = 0; tries < 200 && !/Ramonda SSR on/.test(second.log); tries++) {
+      if (second.child.exitCode !== null) break;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    if (!/Ramonda SSR on/.test(second.log)) fail("a second dev server, on another port, did not start", second.log);
+    await (await fetch(`http://localhost:${other}/`)).text();
+    await new Promise((r) => setTimeout(r, 1500));
+    if (/already in use|EADDRINUSE/.test(second.log)) {
+      fail("a second dev server, on another port, clashed with the first", second.log);
+    }
+    // Hot reload that ANSWERS, on the second server's own port — a log with no clash line is not that:
+    // with the socket switched off, or the browser sent to another port, it was just as quiet. So the
+    // client the page loads must not name another port, and a socket there must say it is connected.
+    const client = await (await fetch(`http://localhost:${other}/@vite/client`)).text();
+    const hmrPort = /const hmrPort = ([^;]+);/.exec(client)?.[1];
+    if (hmrPort !== "null" && hmrPort !== String(other)) {
+      fail(`a second dev server sends the browser's hot reload to port ${hmrPort}, not its own`, second.log);
+    }
+    // As a BROWSER connects: with an Origin and the token the client carries. Vite lets a socket with no
+    // Origin in without the token, so a probe without one passed while a browser would be refused.
+    const token = /const wsToken = "([^"]*)"/.exec(client)?.[1];
+    if (token === undefined)
+      fail("the dev server's client carries no hot-reload token to connect with", client.slice(0, 400));
+    const connected = await new Promise((done) => {
+      const socket = new WebSocket(`ws://localhost:${other}/?token=${token}`, {
+        protocols: "vite-hmr",
+        headers: { origin: `http://localhost:${other}` },
+      });
+      const timer = setTimeout(() => done(false), 5000);
+      socket.onmessage = (message) => {
+        clearTimeout(timer);
+        socket.close();
+        done(String(message.data).includes('"connected"'));
+      };
+      socket.onerror = () => {
+        clearTimeout(timer);
+        done(false);
+      };
+    });
+    if (!connected) fail("a second dev server's hot reload did not answer on its own port", second.log);
+  } finally {
+    second.child.kill("SIGTERM");
+  }
+
+  const third = start(taken);
+  const code = await new Promise((done) => third.child.on("exit", done));
+  if (code !== 1 || !third.log.includes(`Port ${taken} is in use`) || /\n\s+at /.test(third.log)) {
+    fail(`a dev server on a port in use did not say so plainly (exit ${code})`, third.log);
   }
 }
 
@@ -374,6 +486,8 @@ async function servesSomewhere() {
 }
 
 const work = mkdtempSync(join(tmpdir(), "ramonda-scaffold-check-"));
+// On every exit, not in a `finally`: `fail()` exits at once, and each failing run left ~80 MB behind.
+process.on("exit", () => rmSync(work, { recursive: true, force: true }));
 const packed = join(work, "packed");
 const app = join(work, "app");
 

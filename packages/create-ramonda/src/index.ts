@@ -8,7 +8,11 @@ import {
   renameSync,
   realpathSync,
   statSync,
+  lstatSync,
+  mkdtempSync,
+  rmSync,
 } from "node:fs";
+import { tmpdir } from "node:os";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
@@ -251,11 +255,24 @@ async function main(): Promise<void> {
   const s = p.spinner();
   s.start("Scaffolding");
 
-  scaffold({ targetDir, name, mode, addons });
+  let placed: { replaced: string[]; kept: string[] };
+  try {
+    placed = scaffold({ targetDir, name, mode, addons });
+  } catch (error) {
+    s.stop("Nothing was written");
+    refuse((error as Error).message);
+  }
+  const { replaced, kept } = placed;
 
   s.stop(SAY.scaffolded(pc.green(relative(process.cwd(), targetDir) || ".")));
+  if (replaced.length > 0) p.log.warn(SAY.replaced(replaced));
+  if (kept.includes("README.md")) p.log.info(SAY.keptReadme);
+  if (kept.includes(".gitignore")) p.log.info(SAY.keptIgnore);
 
-  if (doGit) {
+  // A folder that is already a repository is left as it is: `git init` there only reinitialises.
+  if (doGit && existsSync(join(targetDir, ".git"))) {
+    p.log.step(SAY.alreadyGit);
+  } else if (doGit) {
     const git = spawnSync("git", ["init", "-q"], { cwd: targetDir, stdio: "ignore" });
     if (git.status === 0) p.log.step(SAY.initialised);
   }
@@ -308,7 +325,157 @@ function firstUsefulLine(output: string): string | undefined {
   return lines.find((line) => /err|error|fail/i.test(line)) ?? lines[lines.length - 1];
 }
 
-export function scaffold({ targetDir, name, mode, addons }: ScaffoldOptions): void {
+/**
+ * Writes the project into `targetDir`, keeping what of the reader's is there.
+ *
+ * The project is written to a scratch folder first, so the paths it will take are KNOWN — about
+ * twenty — and only those are looked at in the target: never the rest of the folder, which may be a
+ * repository or hold a file too large to read. Then, before anything is written:
+ *
+ * - a link where the project writes a file is refused, and never followed out of the folder;
+ * - so is a folder where it writes a file, and a file where it needs a folder.
+ *
+ * And while writing: an existing `.gitignore` is kept and gains only the lines it lacks — one
+ * replaced without a word lost `secret.env` once — an existing `README.md` stays, with the project's
+ * beside it as `README.ramonda.md`, and every other file it replaced is returned, to be named.
+ */
+export function scaffold(options: ScaffoldOptions): { replaced: string[]; kept: string[] } {
+  const stage = stageFor(options.targetDir);
+  try {
+    writeProject({ ...options, targetDir: stage });
+    const files = filesUnder(stage);
+    const blocked = inTheWay(options.targetDir, files, readFileSync(join(stage, "README.md")));
+    if (blocked.length > 0) {
+      throw new Error(
+        `In the way in ${options.targetDir}: ${blocked.join(", ")}. A link, a folder where a file goes, or a ` +
+          `file where a folder goes is never written over — move it, or choose another folder.`,
+      );
+    }
+    return place(stage, options.targetDir, files);
+  } finally {
+    rmSync(stage, { recursive: true, force: true });
+  }
+}
+
+/**
+ * A scratch folder: the system's, or — where that cannot be made, as in a sandbox whose `TMPDIR`
+ * points nowhere — one beside the target, in the nearest folder that exists.
+ */
+function stageFor(target: string): string {
+  try {
+    return mkdtempSync(join(tmpdir(), "create-ramonda-"));
+  } catch {
+    let at = resolve(target);
+    while (!existsSync(at) && dirname(at) !== at) at = dirname(at);
+    return mkdtempSync(join(at, ".create-ramonda-"));
+  }
+}
+
+/** Every file under `dir`, relative, with `/` between its parts. */
+function filesUnder(dir: string): string[] {
+  return readdirSync(dir, { recursive: true, withFileTypes: true })
+    .filter((entry) => entry.isFile())
+    .map((entry) => relative(dir, join(entry.parentPath, entry.name)).split("\\").join("/"))
+    .sort();
+}
+
+/** Metadata, or `undefined` for a path that is not there — including under a FILE (`ENOTDIR`). */
+const stat = (path: string) => {
+  try {
+    return lstatSync(path, { throwIfNoEntry: false });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOTDIR") return undefined;
+    throw error;
+  }
+};
+
+/** The project paths something in `target` stands in the way of. Reads their metadata, and the reader's README only when it is the same size as the project's. */
+function inTheWay(target: string, files: readonly string[], readme: Buffer): string[] {
+  const blocked = new Set<string>();
+  const wants = [...files];
+  // Written only beside a README of the reader's own — not beside one identical to the project's.
+  const theirs = join(target, "README.md");
+  const found = stat(theirs);
+  if (found?.isFile() && (found.size !== readme.length || !readFileSync(theirs).equals(readme))) {
+    wants.push("README.ramonda.md");
+  }
+  for (const file of wants) {
+    const parts = file.split("/");
+    let underBlocked = false;
+    for (let depth = 1; depth < parts.length && !underBlocked; depth++) {
+      const folder = parts.slice(0, depth).join("/");
+      const found = stat(join(target, folder));
+      if (found !== undefined && (!found.isDirectory() || found.isSymbolicLink())) {
+        blocked.add(folder);
+        underBlocked = true;
+      }
+    }
+    if (underBlocked) continue;
+    const found = stat(join(target, file));
+    if (found !== undefined && !found.isFile()) blocked.add(file);
+  }
+  return [...blocked].sort();
+}
+
+/** Copies the staged project into `target` — see `scaffold` for what is kept and what is named. */
+function place(stage: string, target: string, files: readonly string[]): { replaced: string[]; kept: string[] } {
+  const replaced: string[] = [];
+  const kept: string[] = [];
+  for (const file of files) {
+    const to = join(target, file);
+    const content = readFileSync(join(stage, file));
+    const theirs = stat(to)?.isFile() ? readFileSync(to) : undefined;
+    mkdirSync(dirname(to), { recursive: true });
+    if (theirs !== undefined && file === ".gitignore") {
+      const mine = theirs.toString("utf8");
+      const merged = mergeIgnore(mine, content.toString("utf8"));
+      // Named only when it gained lines — one that already had them is simply left as it was.
+      if (merged !== mine) {
+        writeFileSync(to, merged);
+        kept.push(file);
+      }
+    } else if (theirs !== undefined && file === "README.md" && theirs.equals(content)) {
+      // The project's own README, from an earlier run: nothing to keep apart.
+    } else if (theirs !== undefined && file === "README.md") {
+      const beside = join(target, "README.ramonda.md");
+      if (stat(beside)?.isFile() && !readFileSync(beside).equals(content)) replaced.push("README.ramonda.md");
+      writeFileSync(beside, content);
+      kept.push(file);
+    } else {
+      if (theirs !== undefined && !theirs.equals(content)) replaced.push(file);
+      writeFileSync(to, content);
+    }
+  }
+  return { replaced: replaced.sort(), kept };
+}
+
+/**
+ * The reader's `.gitignore`, with the project's lines it lacks added at the end — in its own line
+ * endings, and never a line it negates: `!dist` is a decision, and a `dist` after it would undo it.
+ * `/dist/` and `dist` are one line for this.
+ */
+export function mergeIgnore(mine: string, template: string): string {
+  const eol = mine.includes("\r\n") ? "\r\n" : "\n";
+  const bare = (line: string) => line.trim().replace(/^!/, "").replace(/^\//, "").replace(/\/$/, "");
+  const have = new Set(
+    mine
+      .split(/\r?\n/)
+      .filter((line) => line.trim() !== "")
+      .map(bare),
+  );
+  const missing = template
+    .split(/\r?\n/)
+    .filter((line) => line.trim() !== "" && !line.trim().startsWith("#") && !have.has(bare(line)));
+  if (missing.length === 0) return mine;
+  // Trailing line endings cut by a scan from the end: `(\r?\n)+$` retried from every character and was
+  // quadratic — 4.3 s on 50,000, found by CodeQL. Not `trimEnd()`, which would take an escaped `\ `.
+  let end = mine.length;
+  while (end > 0 && (mine[end - 1] === "\n" || mine[end - 1] === "\r")) end--;
+  const before = mine.slice(0, end);
+  return `${before === "" ? "" : `${before}${eol}${eol}`}# Added by create-ramonda${eol}${missing.join(eol)}${eol}`;
+}
+
+function writeProject({ targetDir, name, mode, addons }: ScaffoldOptions): void {
   mkdirSync(targetDir, { recursive: true });
 
   // Copy the base template for the chosen mode.
