@@ -71,22 +71,25 @@ describe("list scope cleanup", () => {
     >;
     const signal = provider[HOOK_RUNTIME].propsSignals.get("theme");
 
-    // Three items plus the consuming component itself.
-    expect(listenerCount(signal)).toBe(4);
+    // Three items, the consuming component, and `App` itself — the provider runs in its owner's
+    // runtime, so `App` listens to the signal it provides. This said 4 while row ids came from a
+    // sequence of their own: row "b" drew App's number and replaced it. See `RowListenerIds.test.tsx`.
+    expect(listenerCount(signal)).toBe(5);
 
     const consumer = findOne<Consumer>(app.container, "Consumer");
 
     // Items that leave the list let go — this part already worked.
     consumer.rows = [{ t: "a" }];
     await app.settle();
-    expect(listenerCount(signal)).toBe(2);
+    expect(listenerCount(signal)).toBe(3);
 
     // And the list leaving the page lets go of the rest. `For` released these
     // from its own `@destroyed`; a `list()` region has no hook to hang that on, so
     // the region's own teardown has to do it.
     app.instance.show = false;
     await app.settle();
-    expect(listenerCount(signal)).toBe(0);
+    // `App` is still on the page, and still the provider.
+    expect(listenerCount(signal)).toBe(1);
     expect(app.container.textContent).toBe("");
   });
 });

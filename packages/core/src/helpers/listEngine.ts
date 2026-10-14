@@ -9,9 +9,6 @@ import { identityOf, stampIdentity, carryIdentity } from "./itemIdentity";
 import { createId } from "./createId";
 import type { Each, ItemRender } from "../base/list";
 
-/** Listener ids must be unique across every signal, not just within one list. */
-let scopeSequence = 0;
-
 /**
  * DEV-only: builds the row a SECOND time and reports what came out different — RMD020, for the one
  * position its double render cannot reach.
@@ -448,7 +445,9 @@ export class ListEngine<T> {
     host: ListHost,
   ): VNode | null | undefined {
     const scope: ItemScope<T> = existing ?? {
-      listenerId: ++scopeSequence,
+      // From `createId()`, the counter every other listener draws from: a `State` keys its listeners
+      // by id, so a number of this row's own would replace whichever compute or effect held it.
+      listenerId: createId(),
       item,
       index,
       vnode: undefined as unknown as VNode,
