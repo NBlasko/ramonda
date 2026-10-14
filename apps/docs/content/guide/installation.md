@@ -24,7 +24,8 @@ to add — CSS and Devtools are ticked already, Query and Testing are added — 
 to install, and ends with the commands to run: npm run dev, and npm run check before a
 commit.](/media/create-ramonda.gif)
 
-With another package manager, it is the same two commands in its own spelling:
+Then, in the folder it made — shown with npm; another package manager spells the same two commands
+its own way:
 
 ```
 cd my-app

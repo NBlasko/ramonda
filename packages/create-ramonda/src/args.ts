@@ -165,10 +165,6 @@ Examples:
 `;
 
 /**
- * Reads the command line. Pure: no prompt, no exit, no file — so every refusal is testable, and
- * nothing is written before the whole line has been read.
- */
-/**
  * Every option the command line takes. `FLAGS` — what a slip is matched against — is made from this,
  * and a test holds `--help` to naming each, so the three cannot list different flags.
  */
@@ -191,6 +187,10 @@ export const FLAGS: readonly string[] = [
   ...NEGATABLE.map((name) => `--no-${name}`),
 ];
 
+/**
+ * Reads the command line. Pure: no prompt, no exit, no file — so every refusal is testable, and
+ * nothing is written before the whole line has been read.
+ */
 export function readArgs(argv: readonly string[]): Parsed {
   let values;
   let positionals: string[];

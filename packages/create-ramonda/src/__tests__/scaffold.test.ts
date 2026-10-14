@@ -837,6 +837,10 @@ describe("the generated README", () => {
     expect(readme).not.toContain("https://ramonda.dev/lens");
   });
 
+  test("names the command to run before a commit, in every project", () => {
+    for (const mode of ["spa", "ssr"] as const) expect(make(mode, []).read("README.md")).toContain("`npm run check`");
+  });
+
   test("with nothing chosen, the section is not there", () => {
     expect(make("spa", []).read("README.md")).not.toContain("## The packages you chose");
   });

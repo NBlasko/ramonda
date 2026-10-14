@@ -52,7 +52,7 @@ which never reaches the client bundle). The other files:
 - `server.mjs` — dispatches each request to the right mode (static file / ISR / dynamic).
 - `scripts/prerender.mjs` — the build step that bakes the static routes.
 
-`npm run dev` runs Ramonda in **development** mode (diagnostics + dev inspector, everything
+`npm run dev` runs Ramonda in **development** mode (the framework's diagnostics, everything
 rendered fresh with hot reload). `npm run build` uses the **production** build and bakes the
 static routes.
 

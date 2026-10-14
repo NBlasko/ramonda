@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import { listBody } from "./list-body.mjs";
 
 /**
  * Fails the build if a public export is missing from the API reference.
@@ -91,19 +92,6 @@ function publicSurfaceOf(pkg, atLeast, fileName = "PublicSurface.test.ts") {
  * A published type is API all the same — someone writes it in an annotation — so the reference
  * has to name it or the build fails, exactly as for a value.
  */
-/**
- * A list's text from its `const NAME = [` to its own `];`, with comments taken out FIRST — a `];`
- * inside a comment (`kinds[0];`) would end the list there, and every name after it would be dropped
- * with the build green.
- */
-function listBody(surface, start) {
-  const rest = surface
-    .slice(start)
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/\/\/.*$/gm, "");
-  return rest.slice(0, rest.indexOf("];"));
-}
-
 function publicTypesOf(pkg, atLeast, fileName = "PublicSurface.test.ts") {
   const file = join(packages, pkg, "src", "__tests__", fileName);
   const surface = readFileSync(file, "utf8");

@@ -100,6 +100,14 @@ function toPackageName(dir: string): string {
   return collapsed.slice(start, end) || "ramonda-app";
 }
 
+/** The first path from `dir` up that exists and is not a folder, if there is one. */
+function fileOnTheWay(dir: string): string | undefined {
+  for (let at = dir; ; at = dirname(at)) {
+    if (existsSync(at)) return statSync(at).isDirectory() ? undefined : at;
+    if (dirname(at) === at) return undefined;
+  }
+}
+
 function isEmpty(dir: string): boolean {
   if (!existsSync(dir)) return true;
   const files = readdirSync(dir);
@@ -196,8 +204,12 @@ async function main(): Promise<void> {
   const targetDir = resolve(process.cwd(), target);
   const name = toPackageName(targetDir);
 
-  if (existsSync(targetDir) && !statSync(targetDir).isDirectory()) {
-    refuse(`${relative(process.cwd(), targetDir)} is a file, not a folder. Name a folder to write the app into.`);
+  // The target, or any folder on the way to it, may be a file — `afile/app` too.
+  const blocking = fileOnTheWay(targetDir);
+  if (blocking !== undefined) {
+    refuse(
+      `${relative(process.cwd(), blocking) || blocking} is a file, not a folder. Name a folder to write the app into.`,
+    );
   }
 
   if (!isEmpty(targetDir) && !answers.overwrite) {
@@ -656,6 +668,10 @@ function writeReadme(targetDir: string, addons: readonly AddOn[]): void {
       "`typecheck` runs `ramonda-css`, not `tsc`: the same check, reading style blocks too, which `tsc` cannot parse.",
     );
   }
+  parts.push(
+    "## Before a commit",
+    "`npm run check` runs lint and the tests, where the project has them, then the build — which type-checks and runs `ramonda-check`.",
+  );
   if (addons.length > 0) {
     parts.push("## The packages you chose", addons.map(readmeLine).join("\n"));
   }

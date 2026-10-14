@@ -302,6 +302,14 @@ async function serves(port = 5100 + Math.floor(Math.random() * 400), attempt = 0
       }
     }
 
+    // A page that does not exist is a 404 with the app's own Not found page in it. Served as 200 it
+    // reads, to a crawler, as a real page at every mistyped URL — found by an end-to-end run.
+    const missing = await get("/no-such-page");
+    if (missing === "retry") return "retry";
+    if (missing.status !== 404) fail(`a page that does not exist was served as ${missing.status}, not 404`, log);
+    if (!/<!--c\d+/.test(missing.body))
+      fail("the 404 was served without the app's page in it", missing.body.slice(0, 400));
+
     // And the dynamic route's title is ITS OWN, not the layout's — which is what says the head a
     // per-request render produced actually travelled.
     const greeting = await get("/hello/world");

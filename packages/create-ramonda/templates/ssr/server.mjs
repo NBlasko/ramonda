@@ -78,10 +78,10 @@ async function renderDev(req, res) {
     const template = await vite.transformIndexHtml(url, rawHtml);
     const { render } = await vite.ssrLoadModule("/src/entry-server.tsx");
 
-    const { html, title, head, portals, redirect } = await render();
+    const { html, title, head, portals, redirect, status } = await render();
     if (redirect) return sendRedirect(res, redirect);
 
-    res.statusCode = 200;
+    res.statusCode = status ?? 200;
     res.setHeader("Content-Type", "text/html");
     res.end(fillDocument({ template, html, title, head, portals }));
   } catch (error) {
@@ -101,8 +101,8 @@ async function renderDev(req, res) {
  * what would silently go stale: page A's cached entry served with whatever title the last render
  * happened to leave.
  */
-function sendHtml(res, html, mode) {
-  res.statusCode = 200;
+function sendHtml(res, html, mode, status = 200) {
+  res.statusCode = status;
   res.setHeader("Content-Type", "text/html");
   res.setHeader("X-Ramonda-Mode", mode);
   res.end(html);
@@ -158,12 +158,12 @@ async function renderProd(req, res) {
 
     // 3. DYNAMIC — render per request (url + cookies for requestContext).
     installDom(`${origin}${url}`);
-    const { html, title, head, portals, redirect } = await prodRender({
+    const { html, title, head, portals, redirect, status } = await prodRender({
       url: new URL(url, origin),
       cookies: parseCookies(req.headers.cookie),
     });
     if (redirect) return sendRedirect(res, redirect);
-    sendHtml(res, fillDocument({ template: prodTemplate, html, title, head, portals }), "dynamic");
+    sendHtml(res, fillDocument({ template: prodTemplate, html, title, head, portals }), "dynamic", status);
   } catch (error) {
     res.statusCode = 500;
     res.end(`<pre>${escapeHtml(error?.stack ?? error)}</pre>`);

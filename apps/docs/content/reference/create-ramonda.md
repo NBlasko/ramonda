@@ -82,7 +82,7 @@ lists them all.
 | Script | What it runs | There when |
 |---|---|---|
 | `dev` | The development server, with hot reload | always |
-| `build` | `ramonda-check`, then `typecheck`, then the production build, then `ramonda-check-bundle` over what it emitted | always |
+| `build` | `ramonda-check`, then `typecheck`, then the production build — and with `ssr` the pages baked at build time — then `ramonda-check-bundle` over what it emitted | always |
 | `build:bundles` | The production build alone, which `build` runs in the middle | `ssr` |
 | `typecheck` | `tsc --noEmit` — or, with `css`, `ramonda-css`, which is the same check reading style blocks too | always |
 | `check` | `lint` and `test`, where the project has them, then `build` — the one to run before a commit | always |

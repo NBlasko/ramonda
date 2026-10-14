@@ -141,6 +141,14 @@ test("a file where the folder should be is refused with a sentence, not a stack 
   expect(out).not.toContain("    at ");
 });
 
+test("a file on the way to the folder is refused the same way", () => {
+  writeFileSync(join(cwd, "afile"), "hi");
+  const { status, out } = run("afile/app", "--yes", "--no-install", "--no-git");
+  expect(status).toBe(1);
+  expect(out).toContain("afile is a file");
+  expect(out).not.toContain("    at ");
+});
+
 describe("a folder that is not empty", () => {
   beforeEach(() => {
     mkdirSync(join(cwd, "app"));
