@@ -54,11 +54,17 @@ export interface ListNode {
   readonly owner: unknown;
   readonly vnodes: VNode[];
   /**
-   * Per item: true when its vnode is the very object from last render and none
-   * of the signals it read have changed. The diff may then keep the existing DOM
-   * node and skip walking into it — the subtree cannot have gone stale.
+   * Per item: true when its vnode is the very object from last render, none of
+   * the signals it read have changed, and no list inside it has a row that did.
+   * The diff may then keep the existing DOM node and skip walking into it — the
+   * subtree cannot have gone stale.
    */
   readonly clean: boolean[];
+  /**
+   * Per item: the row's scope, so the diff can say which row a list it meets
+   * inside sits in. Opaque here; see `enclosingRow` in `helpers/listEngine.ts`.
+   */
+  readonly rows?: readonly unknown[];
 }
 
 /**

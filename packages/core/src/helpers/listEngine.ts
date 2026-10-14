@@ -84,8 +84,27 @@ interface ItemScope<T> {
   vnode: VNode;
   deps: Set<State<unknown>>;
   dirty: boolean;
+  /**
+   * Something INSIDE this row changed while the row itself did not: a list in it has a row that is
+   * dirty. The callback need not run again — its vnode is still right — but the diff must open the
+   * row, because opening it is the only way to reach the list that changed. See `markRowsAbove`.
+   */
+  dirtyBelow: boolean;
+  /** The engine this row belongs to, so a list inside it can climb from row to row. */
+  engine: ListEngine<unknown>;
   addDep(state: State<unknown>): void;
 }
+
+export type RowScope = ItemScope<unknown>;
+
+/**
+ * The list row the diff is inside right now, or `undefined` outside every list and inside a component.
+ *
+ * Set by `reconcileEntries` and `hydrateLevel` while they walk a list's rows, and read by `build`: a
+ * list built there is INSIDE that row, and is told so. A component resets it, because a component's
+ * lists report to the component, which re-renders itself — nothing above it has to be opened.
+ */
+export const enclosingRow: { current: RowScope | undefined } = { current: undefined };
 
 /** What the engine needs from whoever owns the list. */
 export interface ListHost {
@@ -122,6 +141,13 @@ export class ListEngine<T> {
   private ids = new Map<T, string[]>();
   /** key → the scope that produced its vnode last render. */
   private scopes = new Map<string, ItemScope<T>>();
+  /**
+   * The row of an outer list this list sits in, or `undefined` when it sits in a render of its own.
+   *
+   * Taken from `enclosingRow` on every build, so it follows the list if the diff ever builds it from
+   * somewhere else.
+   */
+  parent: RowScope | undefined;
 
   /** The array and the result of the last full pass, for the whole-list skip. */
   private lastEach: readonly T[] | undefined;
@@ -176,6 +202,7 @@ export class ListEngine<T> {
   build(descriptor: ListDescriptor<T>, host: ListHost, owner: unknown): ListNode {
     const each = descriptor.each;
     const render = descriptor.builder;
+    this.parent = enclosingRow.current;
 
     /**
      * No array at all — `undefined` while data is loading, or a conditional that has gone away.
@@ -199,10 +226,10 @@ export class ListEngine<T> {
 
     // Whole-list skip. The array is replaced on every change (mutating it in
     // place is reported as RMD005), so the SAME reference plus no invalidated
-    // scope means nothing about this list can differ from last render — not one
-    // item, not the order, not the length. Handing back the identical ListNode
-    // runs no callback and rebuilds no row. The diff still walks the rows, and it
-    // has to: that walk is what reaches a list inside a row (see `reconcileChildren`).
+    // scope — its own rows', or those of a list inside one (see `markRowsAbove`) —
+    // means nothing about this list can differ from last render: not one item, not
+    // the order, not the length. Handing back the identical ListNode runs no
+    // callback and rebuilds no row.
     //
     // Measured 30ms → 0.06ms on 10000 items.
     //
@@ -254,6 +281,7 @@ export class ListEngine<T> {
     const next = new Map<T, string[]>();
     const out: VNode[] = [];
     const clean: boolean[] = [];
+    const rowScopes: RowScope[] = [];
     const nextScopes = new Map<string, ItemScope<T>>();
 
     for (let i = 0; i < each.length; i++) {
@@ -318,7 +346,11 @@ export class ListEngine<T> {
         rows++;
         if (existing.vnode.attributes?.key != null) keyedRows++;
         out.push(existing.vnode);
-        clean.push(true);
+        // Clean only when nothing inside it changed either: a row whose own callback read nothing new
+        // can still hold a list that did, and claiming it unopened leaves that list as it was.
+        clean.push(!existing.dirtyBelow);
+        existing.dirtyBelow = false;
+        rowScopes.push(existing as RowScope);
         this.claimScope(nextScopes, scopeKey, existing);
         continue;
       }
@@ -388,6 +420,8 @@ export class ListEngine<T> {
 
       out.push(vnode);
       clean.push(false);
+      this.lastScope!.dirtyBelow = false;
+      rowScopes.push(this.lastScope! as RowScope);
       this.claimScope(nextScopes, scopeKey, this.lastScope!);
     }
 
@@ -403,7 +437,7 @@ export class ListEngine<T> {
     }
     this.scopes = nextScopes;
 
-    return this.wrap(owner, out, clean);
+    return this.wrap(owner, out, clean, rowScopes);
   }
 
   /**
@@ -453,6 +487,8 @@ export class ListEngine<T> {
       vnode: undefined as unknown as VNode,
       deps: new Set(),
       dirty: false,
+      dirtyBelow: false,
+      engine: this as ListEngine<unknown>,
       addDep(state: State<unknown>) {
         this.deps.add(state);
       },
@@ -483,6 +519,7 @@ export class ListEngine<T> {
         onChange: () => {
           scope.dirty = true;
           this.anyDirty = true;
+          this.markRowsAbove();
           host.reBuild();
         },
       });
@@ -497,10 +534,29 @@ export class ListEngine<T> {
     return vnode;
   }
 
-  private wrap(owner: unknown, vnodes: VNode[], clean: boolean[] = []): ListNode {
-    const node: ListNode = { [IS_LIST]: true, owner, vnodes, clean };
+  private wrap(owner: unknown, vnodes: VNode[], clean: boolean[] = [], rows: RowScope[] = []): ListNode {
+    const node: ListNode = { [IS_LIST]: true, owner, vnodes, clean, rows };
     this.lastNode = node;
     return node;
+  }
+
+  /**
+   * Tells every row above this list that something inside it changed.
+   *
+   * A row's own scope only hears the signals ITS callback read, and a list inside the row is built
+   * later, by the diff, under scopes of its own. So when one of those changes, the outer row is still
+   * clean by everything it knows, and the diff claims it without opening it: categories listing
+   * products priced in `this.currency`, the categories array copied once, and a change of currency
+   * left every price as it was. Marking the rows above makes the outer engine run its per-row pass and
+   * hand those rows to the diff as not clean — opened, not rebuilt.
+   *
+   * Stops at the first row already marked: everything above it was marked by whoever marked it.
+   */
+  private markRowsAbove(): void {
+    for (let row = this.parent; row !== undefined && !row.dirtyBelow; row = row.engine.parent) {
+      row.dirtyBelow = true;
+      row.engine.anyDirty = true;
+    }
   }
 
   /**

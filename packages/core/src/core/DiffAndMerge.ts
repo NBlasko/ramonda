@@ -49,7 +49,15 @@ import { COMPONENT_RUNTIME, GLOBAL_RUNTIME } from "./runtime";
 import { runComponentEffects } from "../reactivity/effect";
 import { getRenderEnv } from "./renderEnv";
 import { getServerWorkCollector } from "./serverWork";
-import { ListEngine, isLazyList, buildLazyList, type LazyListNode, type ListHost } from "../helpers/listEngine";
+import {
+  ListEngine,
+  isLazyList,
+  buildLazyList,
+  enclosingRow,
+  type LazyListNode,
+  type ListHost,
+  type RowScope,
+} from "../helpers/listEngine";
 import { snapshotOwnProps, lintUnpersistedState } from "../hydration/lint";
 import { lintChildKeys } from "../debug/lintChildren";
 import { timerOwner } from "../debug/timerGuard";
@@ -964,6 +972,11 @@ export function reconcileEntries(
    * supplies a host that refreshes the region itself.
    */
   listHost?: ListHost,
+  /**
+   * Per child, the list row it is — present when `children` are a list's rows. While a row is being
+   * reconciled it is `enclosingRow.current`, so a list met anywhere inside it knows which row it is in.
+   */
+  rows?: readonly unknown[],
 ): { entries: RecordEntry[]; changed: boolean; born?: (ListRegion | ComponentRegion)[] } {
   const cloneChildren: (EnhancedChildNode | DONE)[] = [];
   // Looked up by owner, never by position: a region keeps its nodes even when it
@@ -1027,6 +1040,7 @@ export function reconcileEntries(
   let changed = false;
   let plainIndex = 0;
 
+  const outerRow = enclosingRow.current;
   try {
     reconcileChildren();
   } catch (e) {
@@ -1042,11 +1056,14 @@ export function reconcileEntries(
       disposeRegions(born);
     }
     throw e;
+  } finally {
+    enclosingRow.current = outerRow;
   }
 
   function reconcileChildren(): void {
     for (let i = 0; i < children.length; i++) {
       const rawVchild = children[i];
+      if (rows !== undefined) enclosingRow.current = rows[i] as RowScope | undefined;
 
       if (isListNode(rawVchild)) {
         const found = previousRegions.get(rawVchild.owner);
@@ -1056,14 +1073,13 @@ export function reconcileEntries(
         const before = found !== undefined && !isComponentRegion(found) ? found : undefined;
 
         /**
-         * Every row is walked, even when the engine handed back last pass's node unchanged.
+         * Every row is walked, even when the engine handed back last pass's node unchanged. The walk
+         * touches no DOM and renders no row — measured at 1000 rows: zero mutations — and a clean row
+         * is claimed without being opened.
          *
-         * The walk touches no DOM and renders no row — measured at 1000 rows: zero mutations — and it
-         * is what reaches a list INSIDE a row. Skipping the region when the outer node is the same
-         * object leaves that inner list stale: categories whose rows each list products priced in
-         * `this.currency`, and a change of currency keeps the outer array and callback, so the outer
-         * engine has nothing to rebuild, and every price kept the old currency.
-         * `ListCallbackIdentity.test.tsx` ("BOTH stable") is that case.
+         * What decides whether a row is opened is its `clean` flag, and a row is clean only when no
+         * list INSIDE it changed either — see `markRowsAbove` in `helpers/listEngine.ts`.
+         * `AListInsideARow.test.tsx` and `ListCallbackIdentity.test.tsx` ("BOTH stable") are the cases.
          */
 
         // A `list()` descriptor has not run its mapper yet. This is the moment to:
@@ -1090,6 +1106,7 @@ export function reconcileEntries(
           parent,
           unclaimed,
           listHost,
+          listNode.rows,
         );
 
         /**
@@ -1141,6 +1158,10 @@ export function reconcileEntries(
           before.parent = parent;
           region = before;
         } else {
+          // A component's lists report to the component, which re-renders itself: no row above it has
+          // to be opened for them. See `enclosingRow`.
+          const row = enclosingRow.current;
+          enclosingRow.current = undefined;
           try {
             region = reconcileComponentEntry(rawVchild, owner, before, placeholderComponent, parent, unclaimed);
           } catch (e) {
@@ -1163,6 +1184,8 @@ export function reconcileEntries(
             }
             errorHandler(e, placeholderComponent);
             continue;
+          } finally {
+            enclosingRow.current = row;
           }
         }
 

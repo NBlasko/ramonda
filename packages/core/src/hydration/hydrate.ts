@@ -19,7 +19,15 @@ import { isComponentClose, isComponentOpen, markerBlob } from "../core/component
 import { errorHandler } from "../core/errorHandler";
 import { lifecycleCleanupManagement } from "../helpers/lifecycleMenagement";
 import { isListNode, isVNode } from "../vdom/guards";
-import { buildLazyList, isLazyList, type ListEngine, type LazyListNode, type ListHost } from "../helpers/listEngine";
+import {
+  buildLazyList,
+  isLazyList,
+  enclosingRow,
+  type ListEngine,
+  type LazyListNode,
+  type ListHost,
+  type RowScope,
+} from "../helpers/listEngine";
 import { restoreComponentTree } from "./restore";
 import { queuePostCommit, flushPostCommit } from "../core/commit";
 import { addTaskToQueue } from "../core/Task";
@@ -734,12 +742,31 @@ export function hydrateLevel(
   walk: HydrationWalk,
   /** See `reconcileEntries` — a region's items report to the region, not a render. */
   listHost?: ListHost,
+  /** See `reconcileEntries` — per child, the list row it is, when `children` are a list's rows. */
+  rows?: readonly unknown[],
+): { entries: RecordEntry[]; hasRegion: boolean } {
+  const outerRow = enclosingRow.current;
+  try {
+    return hydrateLevelEntries(children, placeholder, parent, walk, listHost, rows);
+  } finally {
+    enclosingRow.current = outerRow;
+  }
+}
+
+function hydrateLevelEntries(
+  children: unknown[],
+  placeholder: MaybeComponent,
+  parent: Node,
+  walk: HydrationWalk,
+  listHost: ListHost | undefined,
+  rows: readonly unknown[] | undefined,
 ): { entries: RecordEntry[]; hasRegion: boolean } {
   const entries: RecordEntry[] = [];
   let hasRegion = false;
 
   for (let i = 0; i < children.length; i++) {
     const rawVchild = children[i];
+    if (rows !== undefined) enclosingRow.current = rows[i] as RowScope | undefined;
 
     if (isListNode(rawVchild)) {
       // A `list()` descriptor has no `vnodes` yet — building them is what the
@@ -761,7 +788,7 @@ export function hydrateLevel(
         engine = materialized.engine;
       }
 
-      const inner = hydrateLevel(listNode.vnodes, placeholder, parent, walk, listHost);
+      const inner = hydrateLevel(listNode.vnodes, placeholder, parent, walk, listHost, listNode.rows);
       entries.push({
         owner: listNode.owner,
         entries: inner.entries,
@@ -779,6 +806,9 @@ export function hydrateLevel(
     if (isVNode(rawVchild) && rawVchild.type === COMPONENT_TYPE) {
       skipUnclaimableRemainder(walk);
       let region: ComponentRegion | undefined;
+      // A component's lists report to the component — see `enclosingRow`.
+      const row = enclosingRow.current;
+      enclosingRow.current = undefined;
       try {
         region = hydrateComponentRegion(rawVchild, placeholder, parent, walk, componentRegionOwner(rawVchild, i));
       } catch (e) {
@@ -791,6 +821,8 @@ export function hydrateLevel(
          */
         const handler = errorHandler(e, placeholder);
         if (handler !== undefined) queuePostCommit(handler, () => addTaskToQueue(handler));
+      } finally {
+        enclosingRow.current = row;
       }
       if (region !== undefined) {
         entries.push(region);
