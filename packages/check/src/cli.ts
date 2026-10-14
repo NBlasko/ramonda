@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { applyFixes } from "./fix";
 import { analyzeProject } from "./analyze";
 import { graphHtml } from "./graph-html";
@@ -129,8 +129,28 @@ if (dryRun && !wantsFix) {
   console.error(`${TAG} --dry-run goes with --fix: ramonda-check --fix --dry-run`);
   process.exit(2);
 }
+// Each option once: `--graph a.json --graph b.json` read the first and dropped the second unsaid.
+for (const [flag] of OPTIONS) {
+  if (argv.filter((a) => a === flag).length > 1) {
+    console.error(`${TAG} ${flag} is given twice; give it once.`);
+    process.exit(2);
+  }
+}
 const arg = positionals[0];
-const tsconfig = resolve(arg ?? "tsconfig.json");
+const given = resolve(arg ?? "tsconfig.json");
+// A folder is read as the tsconfig inside it, as `tsc -p` and `ramonda-css` read one.
+const tsconfig = statSync(given, { throwIfNoEntry: false })?.isDirectory() ? join(given, "tsconfig.json") : given;
+
+/**
+ * Whether two paths are one file — by what it IS: a different case on a case-insensitive disk, or a
+ * link, names the same file in another spelling, and a string comparison let the graph over both.
+ */
+function sameFile(a: string, b: string): boolean {
+  if (resolve(a) === resolve(b)) return true;
+  const one = statSync(a, { throwIfNoEntry: false });
+  const two = statSync(b, { throwIfNoEntry: false });
+  return one !== undefined && two !== undefined && one.dev === two.dev && one.ino === two.ino;
+}
 for (const [flag, value, example] of [
   ["--graph", graphAt, "--graph graph.json"],
   ["--graph-html", graphHtmlAt, "--graph-html graph.html"],
@@ -143,10 +163,24 @@ for (const [flag, value, example] of [
 }
 // The graph goes to a file of its own — `--graph tsconfig.json` wrote it over the project being read.
 for (const written of [graphAt, graphHtmlAt]) {
-  if (written !== undefined && resolve(written) === tsconfig) {
+  if (written === undefined) continue;
+  if (sameFile(written, tsconfig)) {
     console.error(`${TAG} not writing the graph over ${written}, the tsconfig this run reads. Name another file.`);
     process.exit(2);
   }
+  // The baseline is read AFTER the graph is written, so one file for both compared the graph with itself.
+  if (diffAgainst !== undefined && sameFile(written, diffAgainst)) {
+    console.error(
+      `${TAG} not writing the graph over ${written}, the graph --diff compares against. Name another file.`,
+    );
+    process.exit(2);
+  }
+}
+if (graphAt !== undefined && graphHtmlAt !== undefined && sameFile(graphAt, graphHtmlAt)) {
+  console.error(
+    `${TAG} --graph and --graph-html both name ${graphAt}; the page would replace the graph. Name two files.`,
+  );
+  process.exit(2);
 }
 
 /**

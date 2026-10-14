@@ -115,7 +115,9 @@ is the only one that sees a tree assembled at runtime.
 | `--version`, `-v` | Prints the version and exits. |
 
 An option's file follows it after a space — `--graph g.json`, not `--graph=g.json`. One tsconfig per
-run, and `--dry-run` goes only with `--fix`; anything else on the line is refused rather than ignored.
+run — or the folder holding it — each option once, and `--dry-run` only with `--fix`; anything else on
+the line is refused rather than ignored. The graph is never written over the tsconfig, over the graph
+`--diff` reads, or over the page `--graph-html` writes, however the file is named.
 
 It exits with **0** when there is nothing to report — `--split` and `--diff` describe and never fail
 a run — **1** when a rule found something, and **2** when the command line or the project cannot be

@@ -389,13 +389,16 @@ const stat = (path: string) => {
   }
 };
 
-/** The project paths something in `target` stands in the way of. Reads nothing but their metadata. */
+/** The project paths something in `target` stands in the way of. Reads their metadata, and the reader's README only when it is the same size as the project's. */
 function inTheWay(target: string, files: readonly string[], readme: Buffer): string[] {
   const blocked = new Set<string>();
   const wants = [...files];
   // Written only beside a README of the reader's own — not beside one identical to the project's.
   const theirs = join(target, "README.md");
-  if (stat(theirs)?.isFile() && !readFileSync(theirs).equals(readme)) wants.push("README.ramonda.md");
+  const found = stat(theirs);
+  if (found?.isFile() && (found.size !== readme.length || !readFileSync(theirs).equals(readme))) {
+    wants.push("README.ramonda.md");
+  }
   for (const file of wants) {
     const parts = file.split("/");
     let underBlocked = false;
