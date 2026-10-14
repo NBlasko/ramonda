@@ -31,8 +31,8 @@ Everything every package exports. Each entry links to the page that explains it.
 | `@ramonda/devtools` | The development panel. [Devtools](/devtools) | `devtools`, on by default |
 | `create-ramonda` | The scaffolder that starts a project. [create-ramonda](/reference/create-ramonda) | — you run it |
 
-The last column is the word [`--add`](/reference/create-ramonda) takes. A package not added at the
-start is installed like any other, later.
+Where the last column has a word, it is the one [`--add`](/reference/create-ramonda) takes. A
+package not added at the start is installed like any other, later.
 
 ---
 
@@ -339,7 +339,7 @@ only the compiled values; the compiler, the config and the tools are separate en
 | | |
 |---|---|
 | `mergeClassNames(...names)` | Joins a block with a class of your own, or with another block. [Writing](/style-blocks/writing) |
-| `toStyle(settings)` | Sets registered properties and tokens from code, checking each value against its declared kind. [Dynamic values](/style-blocks/dynamic) |
+| `toStyle(settings)` | Builds a `style` object that sets registered properties and tokens from code, checking each value against its declared kind. [Dynamic values](/style-blocks/dynamic) |
 | `read(token, element)` | The value a token has on an element right now. [Tokens](/style-blocks/tokens) |
 
 **Types**, for code that makes or passes a value outside a block
@@ -352,7 +352,7 @@ only the compiled values; the compiler, the config and the tools are separate en
 | `ValueByKind` | The TypeScript type each `Kind` takes, which is how `toStyle` refuses a length for a colour. |
 | `Fixed` | A token declared without a `range`: it never changes, and `toStyle` refuses to set it. |
 | `Setting` | One `[token, value]` pair `toStyle` takes. |
-| `StyleValue` | What a block compiles to, and what `className` and a `css` prop accept. Never written by hand. |
+| `StyleValue` | What a block compiles to, and what `className` accepts. Never written by hand. |
 | `CssDimension` | A number with a unit, such as `CssDimension<"px">`. |
 | `CssUnit` | Every unit CSS has. `CssLengthUnit`, `CssAngleUnit`, `CssTimeUnit`, `CssFrequencyUnit` and `CssResolutionUnit` are one family each. |
 | `CssColor` | A colour value. `CssColorKeyword` is its named colours. |
@@ -376,6 +376,7 @@ only the compiled values; the compiler, the config and the tools are separate en
 | `@ramonda/css/esbuild` | `ramondaCss()`, the esbuild plugin. [Setup](/style-blocks/setup) |
 | `@ramonda/css/plugin` | The TypeScript plugin that gives an editor completions and errors inside a block. [Setup](/style-blocks/setup) |
 | `@ramonda/css/prettier` | The Prettier plugin that formats a file with blocks. [Tooling](/style-blocks/tooling) |
+| `@ramonda/css/compiler` | The compiler the plugins run — for a build tool of your own. |
 | `@ramonda/css/properties` | `CssBlock` and the property types, for a prop that takes a block. [A block as a prop](/style-blocks/prop) |
 
 **The command, `ramonda-css`** — [Tooling](/style-blocks/tooling)

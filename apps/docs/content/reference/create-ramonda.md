@@ -24,7 +24,7 @@ Every question has a flag. A question a flag answers is not asked.
 |---|---|---|
 | Where should the app go? | the folder, as the first argument | `ramonda-app` |
 | How should it render? | `--mode spa` or `--mode ssr` | `spa` |
-| Which packages and tooling to add? | `--add <list>`, comma-separated, or `--add none` | `css,devtools` |
+| Add packages and tooling? | `--add <list>`, comma-separated, or `--add none` | `css,devtools` |
 | Initialise a git repository? | `--git` or `--no-git` | yes |
 | Install dependencies? | `--install` or `--no-install` | yes, with the package manager that ran it |
 | The folder is not empty — write into it? | `--overwrite` | no |
@@ -66,7 +66,7 @@ The word in the first column is what `--add` takes.
 | `query` | `@ramonda/query` | [Async data](/query), cached and race-free |
 | `form` | `@ramonda/form` | [Forms](/forms) with typed fields and schema validation |
 | `lens` | `@ramonda/lens` | [Immutable updates](/lens) to nested state |
-| `testing` | vitest and `@ramonda/testing-library` | [Testing](/testing), with one test to start from |
+| `testing` | vitest, `@ramonda/testing-library` and jsdom | [Testing](/testing), with one test to start from |
 | `devtools` | `@ramonda/devtools` | [The panel](/devtools), in development only. A tab for each of `query` and `form` you also chose |
 | `biome` | `@biomejs/biome` | Lint and format |
 
@@ -83,19 +83,20 @@ lists them all.
 |---|---|---|
 | `dev` | The development server, with hot reload | always |
 | `build` | `ramonda-check`, then `typecheck`, then the production build, then `ramonda-check-bundle` over what it emitted | always |
+| `build:bundles` | The production build alone, which `build` runs in the middle | `ssr` |
 | `typecheck` | `tsc --noEmit` — or, with `css`, `ramonda-css`, which is the same check reading style blocks too | always |
-| `check` | Everything below that the project has, then `build` — the one to run before a commit | always |
+| `check` | `lint` and `test`, where the project has them, then `build` — the one to run before a commit | always |
 | `test` | The tests, once | `testing` |
 | `test:watch` | The tests, again on every change | `testing` |
 | `lint`, `format` | biome — and with `css`, `ramonda-css lint src` and `ramonda-css format src` for the files biome cannot read | `biome` |
 | `preview` | The production build, served locally | `spa` |
 | `start` | The production server | `ssr` |
 
-`typecheck` counts every file the `tsconfig.json` includes — `global.d.ts` too, in an `ssr` project
-— while `ramonda-css lint` counts only `src`. So the two report different numbers of files.
-
 [`ramonda-check`](/reference/check) proves what a running page cannot, such as a context consumer
-with no provider above it. `ramonda-css` is described in [Tooling](/style-blocks/tooling).
+with no provider above it, from the source. [`ramonda-check-bundle`](/reference/check#the-bundle-that-did-not-parse)
+reads what the build emitted, and fails on code a browser could not parse — decorators a bundler
+left untransformed. `ramonda-css` is described in
+[Tooling](/style-blocks/tooling).
 
 ## The files
 
@@ -108,7 +109,8 @@ Both modes:
 | `tsconfig.json`, `index.html`, `README.md`, `.gitignore` | What they are anywhere |
 | `pnpm-workspace.yaml` | For pnpm only: it lets esbuild run its install script. npm and yarn ignore it, and it does not make the project a workspace |
 
-`spa` adds `src/main.tsx`, which mounts the app. `ssr` adds:
+`spa` adds `src/main.tsx`, which mounts the app, `src/style.css`, and `src/vite-env.d.ts` for
+Vite's types. `ssr` adds:
 
 | File | What it is |
 |---|---|

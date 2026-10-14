@@ -18,6 +18,7 @@ create ramonda@latest my-app
 
 It asks a few questions — a client-side app or a server-rendered one, and which packages and
 tooling to add — then, in the folder it made, install (unless you let it) and start the dev server.
+
 ![create-ramonda in a terminal: it asks how the app should render and picks SPA, then which packages
 to add — CSS and Devtools are ticked already, Query and Testing are added — then to initialise git and
 to install, and ends with the commands to run: npm run dev, and npm run check before a

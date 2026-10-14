@@ -7,6 +7,7 @@ import {
   mkdirSync,
   renameSync,
   realpathSync,
+  statSync,
 } from "node:fs";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -194,6 +195,10 @@ async function main(): Promise<void> {
   );
   const targetDir = resolve(process.cwd(), target);
   const name = toPackageName(targetDir);
+
+  if (existsSync(targetDir) && !statSync(targetDir).isDirectory()) {
+    refuse(`${relative(process.cwd(), targetDir)} is a file, not a folder. Name a folder to write the app into.`);
+  }
 
   if (!isEmpty(targetDir) && !answers.overwrite) {
     const where = relative(process.cwd(), targetDir) || ".";

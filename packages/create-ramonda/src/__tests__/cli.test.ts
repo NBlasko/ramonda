@@ -47,7 +47,10 @@ describe("asking for help", () => {
   });
 
   test("-h is --help", () => {
-    expect(run("-h").out).toContain("--mode");
+    const { status, out } = run("-h");
+    expect(status).toBe(0);
+    expect(out).toContain("Usage: create-ramonda");
+    expect(made()).toEqual([]);
   });
 
   test("--version prints the version, and makes nothing", () => {
@@ -118,8 +121,7 @@ describe("a wrong flag", () => {
   test("an unknown add-on names the ones there are", () => {
     const { status, out } = run("app", "--yes", "--add", "css,quey");
     expect(status).toBe(1);
-    expect(out).toContain("quey");
-    expect(out).toContain("query");
+    expect(out).toContain('Did you mean "query"?');
     expect(made()).toEqual([]);
   });
 
@@ -129,6 +131,14 @@ describe("a wrong flag", () => {
     expect(out).toContain("spa");
     expect(out).toContain("ssr");
   });
+});
+
+test("a file where the folder should be is refused with a sentence, not a stack trace", () => {
+  writeFileSync(join(cwd, "afile"), "hi");
+  const { status, out } = run("afile", "--yes", "--overwrite", "--no-install", "--no-git");
+  expect(status).toBe(1);
+  expect(out).toContain("afile is a file");
+  expect(out).not.toContain("    at ");
 });
 
 describe("a folder that is not empty", () => {

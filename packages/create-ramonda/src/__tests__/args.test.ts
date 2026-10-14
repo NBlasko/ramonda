@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { ADD_ON_INFO, ADD_ONS, HELP, addOnOptions, readArgs } from "../args";
+import { ADD_ON_INFO, ADD_ONS, FLAGS, HELP, addOnOptions, readArgs } from "../args";
 
 /**
  * Each add-on is described once, and every place that names one reads that description.
@@ -42,5 +42,48 @@ describe("a near miss is named", () => {
   test("and nothing is suggested for a word near nothing", () => {
     expect(message("--add", "kubernetes")).not.toContain("Did you mean");
     expect(message("--frobnicate")).not.toContain("Did you mean");
+  });
+});
+
+/** Found in review of this branch — each a flag that did something other than it said, silently. */
+describe("a flag that says nothing is refused", () => {
+  const parse = (...argv: string[]) => readArgs(argv);
+  const message = (...argv: string[]) => {
+    const parsed = parse(...argv);
+    return parsed.kind === "error" ? parsed.message : "";
+  };
+
+  test("case does not matter, for --mode as for --add", () => {
+    const parsed = parse("--mode", "SSR", "--add", "CSS");
+    expect(parsed.kind === "answers" && parsed.answers.mode).toBe("ssr");
+    expect(parsed.kind === "answers" && parsed.answers.addons).toEqual(["css"]);
+    expect(message("--Mode")).toContain("Did you mean --mode?");
+  });
+
+  test("an empty --add is not none", () => {
+    expect(message("--add", "")).toContain("--add");
+    expect(message("--add", ",")).toContain("--add");
+  });
+
+  test("none beside an add-on is a contradiction", () => {
+    expect(message("--add", "none,css")).toContain("none");
+  });
+
+  test("an add-on named twice is chosen once", () => {
+    const parsed = parse("--add", "css,css,query");
+    expect(parsed.kind === "answers" && parsed.answers.addons).toEqual(["css", "query"]);
+  });
+
+  test("only git and install have a --no- form", () => {
+    for (const flag of ["--no-help", "--no-yes", "--no-overwrite", "--no-version"])
+      expect(message(flag), flag).toContain(flag);
+    expect(parse("--no-git", "--no-install").kind).toBe("answers");
+  });
+
+  test("every option the parser takes is in --help, and is a suggestion", () => {
+    for (const flag of FLAGS) expect(HELP).toContain(flag);
+    expect(FLAGS).toEqual(
+      expect.arrayContaining(["--mode", "--add", "--git", "--no-git", "--install", "--no-install"]),
+    );
   });
 });

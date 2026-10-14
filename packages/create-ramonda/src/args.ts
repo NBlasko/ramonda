@@ -168,6 +168,29 @@ Examples:
  * Reads the command line. Pure: no prompt, no exit, no file — so every refusal is testable, and
  * nothing is written before the whole line has been read.
  */
+/**
+ * Every option the command line takes. `FLAGS` — what a slip is matched against — is made from this,
+ * and a test holds `--help` to naming each, so the three cannot list different flags.
+ */
+const OPTIONS = {
+  mode: { type: "string" },
+  add: { type: "string" },
+  git: { type: "boolean" },
+  install: { type: "boolean" },
+  overwrite: { type: "boolean" },
+  yes: { type: "boolean", short: "y" },
+  help: { type: "boolean", short: "h" },
+  version: { type: "boolean", short: "v" },
+} as const;
+
+/** The two questions that are yes or no; only these have a `--no-` form. */
+const NEGATABLE = ["git", "install"] as const;
+
+export const FLAGS: readonly string[] = [
+  ...Object.keys(OPTIONS).map((name) => `--${name}`),
+  ...NEGATABLE.map((name) => `--no-${name}`),
+];
+
 export function readArgs(argv: readonly string[]): Parsed {
   let values;
   let positionals: string[];
@@ -177,16 +200,7 @@ export function readArgs(argv: readonly string[]): Parsed {
       allowPositionals: true,
       allowNegative: true,
       strict: true,
-      options: {
-        mode: { type: "string" },
-        add: { type: "string" },
-        git: { type: "boolean" },
-        install: { type: "boolean" },
-        overwrite: { type: "boolean" },
-        yes: { type: "boolean", short: "y" },
-        help: { type: "boolean", short: "h" },
-        version: { type: "boolean", short: "v" },
-      },
+      options: OPTIONS,
     }));
   } catch (error) {
     // Node's own message names the flag: `Unknown option '--sssr'`.
@@ -201,13 +215,22 @@ export function readArgs(argv: readonly string[]): Parsed {
     };
   }
 
+  // `allowNegative` gives every boolean a `--no-` form, and `--no-help` or `--no-yes` would be read
+  // as false and do nothing. Only the two yes-or-no questions have one.
+  const negated = Object.entries(values).find(
+    ([name, value]) => value === false && !(NEGATABLE as readonly string[]).includes(name),
+  );
+  if (negated !== undefined) {
+    return { kind: "error", message: `Unknown option '--no-${negated[0]}'. See --help for the options.` };
+  }
+
   if (values.help) return { kind: "help" };
   if (values.version) return { kind: "version" };
   if (positionals.length > 1) {
     return { kind: "error", message: `One folder, not ${positionals.length}: ${positionals.join(" ")}.` };
   }
 
-  const mode = values.mode;
+  const mode = values.mode?.toLowerCase();
   if (mode !== undefined && !MODES.includes(mode as Mode)) {
     const meant = nearest(mode, MODES);
     return {
@@ -222,6 +245,16 @@ export function readArgs(argv: readonly string[]): Parsed {
       .split(",")
       .map((one) => one.trim().toLowerCase())
       .filter(Boolean);
+    // An empty list is most often an empty variable in a script, not a choice of nothing.
+    if (names.length === 0) {
+      return { kind: "error", message: `--add needs a list — ${ADD_ONS.join(", ")} — or none for nothing.` };
+    }
+    if (names.includes("none") && names.length > 1) {
+      return {
+        kind: "error",
+        message: `--add none means nothing else; it cannot be listed beside ${names.filter((one) => one !== "none").join(", ")}.`,
+      };
+    }
     const unknown = names.filter((one) => one !== "none" && !ADD_ONS.includes(one as AddOn));
     if (unknown.length > 0) {
       return {
@@ -236,7 +269,7 @@ export function readArgs(argv: readonly string[]): Parsed {
           ` It takes: ${ADD_ONS.join(", ")}, or none.`,
       };
     }
-    addons = names.filter((one): one is AddOn => one !== "none");
+    addons = [...new Set(names.filter((one): one is AddOn => one !== "none"))];
   }
 
   return {
@@ -264,19 +297,6 @@ export function unanswered(answers: Answers): string[] {
   return missing;
 }
 
-const FLAGS = [
-  "--mode",
-  "--add",
-  "--git",
-  "--no-git",
-  "--install",
-  "--no-install",
-  "--overwrite",
-  "--yes",
-  "--help",
-  "--version",
-];
-
 /**
  * The closest of `among` to `word`, if one is close enough to be a slip: at most two edits, and
  * fewer than half the word — so `quey` finds `query`, and `kubernetes` finds nothing.
@@ -285,8 +305,10 @@ export function nearest(word: string, among: readonly string[]): string | undefi
   let best: string | undefined;
   let bestDistance = Math.min(2, Math.floor(word.length / 2));
   for (const candidate of among) {
+    if (word === candidate) continue;
+    // Case alone is a slip too: `--Mode` is `--mode`.
     const distance = editDistance(word.toLowerCase(), candidate);
-    if (distance <= bestDistance && distance > 0) {
+    if (distance <= bestDistance) {
       best = candidate;
       bestDistance = distance;
     }

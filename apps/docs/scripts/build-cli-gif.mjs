@@ -43,6 +43,14 @@ const { SAY, MODE_OPTIONS, addOnOptions, DEFAULT_ADD_ONS, nextSteps } = await im
  */
 const bar = ["│  ", "dim"];
 const asking = (message, extra = []) => [["◆  ", "cyan"], [message, "fg"], ...extra];
+/**
+ * The prompt library's own lines — not the CLI's, so not from its exports. Copied from a real run, and
+ * the library's version is in the stamp: a new version is a redraw to look at, not a silent drift.
+ */
+const KEYS_SELECT = "↑/↓ to navigate • Enter: confirm";
+const KEYS_MULTI = "↑/↓ to navigate • Space: select • Enter: confirm";
+const CLACK = JSON.parse(readFileSync(createRequire(cli).resolve("@clack/prompts/package.json"), "utf8")).version;
+
 const answered = (message, answer) => [
   [
     ["◇  ", "green"],
@@ -102,7 +110,7 @@ function story() {
     [["│", "dim"]],
   ];
   frames.push({
-    lines: [...head, asking(SAY.mode), ...select(MODE_OPTIONS, 0), [["└", "dim"]]],
+    lines: [...head, asking(SAY.mode), ...select(MODE_OPTIONS, 0), [bar, [KEYS_SELECT, "dim"]], [["└", "dim"]]],
     ms: 1600,
   });
 
@@ -115,6 +123,7 @@ function story() {
         ...afterMode,
         asking(SAY.addons, [[` ${SAY.addonsKeys}`, "dim"]]),
         ...multiselect(options, chosen, cursor),
+        [bar, [KEYS_MULTI, "dim"]],
         [["└", "dim"]],
       ],
       ms,
@@ -130,7 +139,8 @@ function story() {
   }
   const picked = options.filter((option) => chosen.includes(option.value)).map((option) => option.label);
 
-  const afterAddons = [...afterMode, ...answered(SAY.addons, picked.join(", "))];
+  // The answered line keeps the keys hint, as the library leaves it.
+  const afterAddons = [...afterMode, ...answered(`${SAY.addons} ${SAY.addonsKeys}`, picked.join(", "))];
   frames.push({ lines: [...afterAddons, asking(SAY.git), confirm(true), [["└", "dim"]]], ms: 1000 });
   const afterGit = [...afterAddons, ...answered(SAY.git, "Yes")];
   frames.push({ lines: [...afterGit, asking(SAY.install("npm")), confirm(true), [["└", "dim"]]], ms: 1000 });
@@ -180,6 +190,7 @@ function story() {
       ["├", "dim"],
       [`${"─".repeat(inner + 2)}╯`, "dim"],
     ],
+    [["│", "dim"]],
     [
       ["●  ", "cyan"],
       [SAY.explained, "fg"],
@@ -255,7 +266,7 @@ let stale = false;
 for (const theme of Object.keys(THEMES)) {
   const name = theme === "light" ? "create-ramonda" : "create-ramonda-dark";
   const stamp = createHash("sha256")
-    .update(JSON.stringify({ theme, frames, colours: THEMES[theme], rows, columns }))
+    .update(JSON.stringify({ theme, frames, colours: THEMES[theme], rows, columns, clack: CLACK }))
     .digest("hex");
   const gif = join(OUT, `${name}.gif`);
   if (stamps[name] === stamp && existsSync(gif)) {

@@ -91,14 +91,26 @@ function publicSurfaceOf(pkg, atLeast, fileName = "PublicSurface.test.ts") {
  * A published type is API all the same — someone writes it in an annotation — so the reference
  * has to name it or the build fails, exactly as for a value.
  */
+/**
+ * A list's text from its `const NAME = [` to its own `];`, with comments taken out FIRST — a `];`
+ * inside a comment (`kinds[0];`) would end the list there, and every name after it would be dropped
+ * with the build green.
+ */
+function listBody(surface, start) {
+  const rest = surface
+    .slice(start)
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/\/\/.*$/gm, "");
+  return rest.slice(0, rest.indexOf("];"));
+}
+
 function publicTypesOf(pkg, atLeast, fileName = "PublicSurface.test.ts") {
   const file = join(packages, pkg, "src", "__tests__", fileName);
   const surface = readFileSync(file, "utf8");
   const start = surface.indexOf("const EXPECTED_TYPES");
   if (start === -1) throw new Error(`[docs] ${pkg} declares no EXPECTED_TYPES list.`);
-  const end = surface.indexOf("];", start);
 
-  const names = readNames(surface.slice(start, end), `${pkg}'s EXPECTED_TYPES in ${fileName}`);
+  const names = readNames(listBody(surface, start), `${pkg}'s EXPECTED_TYPES in ${fileName}`);
 
   if (names.length < atLeast) {
     throw new Error(
@@ -117,18 +129,17 @@ function publicTypesOf(pkg, atLeast, fileName = "PublicSurface.test.ts") {
 function listOf(pkg, list, atLeast) {
   const surface = readFileSync(join(packages, pkg, "src", "__tests__", "PublicSurface.test.ts"), "utf8");
   const start = surface.indexOf(`const ${list} = [`);
-  const end = surface.indexOf("];", start);
-  if (start === -1 || end === -1) throw new Error(`[docs] ${pkg}'s PublicSurface.test.ts has no \`const ${list} = [\``);
-  const body = surface
-    .slice(start, end)
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/\/\/.*$/gm, "");
-  const names = readNames(body, `${pkg}'s ${list}`);
+  if (start === -1) throw new Error(`[docs] ${pkg}'s PublicSurface.test.ts has no \`const ${list} = [\``);
+  const names = readNames(listBody(surface, start), `${pkg}'s ${list}`);
   if (names.length < atLeast) {
     throw new Error(`[docs] Read ${names.length} name(s) from ${pkg}'s ${list}, expected at least ${atLeast}.`);
   }
   return names;
 }
+
+// `@ramonda/css`'s page entry. Its subpaths — the compiler, the config, the plugins — are build tools
+// with pages of their own, and are named on the reference as entry points, not as exports.
+const cssNames = [...listOf("css", "RUNTIME", 8), ...listOf("css", "TYPES", 15)];
 
 const expected = [
   ...publicSurfaceOf("core", 20),
@@ -180,10 +191,7 @@ const expected = [
   // API, documented on the reference by pointing at that library rather than by copying its index.
   ...publicSurfaceOf("testing-library", 5),
   ...publicTypesOf("testing-library", 5),
-  // `@ramonda/css`'s page entry. Its subpaths — the compiler, the config, the plugins — are build
-  // tools with pages of their own, and are named on the reference as entry points, not as exports.
-  ...listOf("css", "RUNTIME", 8),
-  ...listOf("css", "TYPES", 15),
+  ...cssNames,
 ];
 
 const reference = readFileSync(join(root, "content", "reference", "api.md"), "utf8");
@@ -262,6 +270,20 @@ const missing = expected.filter((name) => {
   const pattern = new RegExp(`(^|[^A-Za-z0-9_@])@?${name}([^A-Za-z0-9_]|$)`);
   return !pattern.test(reference);
 });
+
+/**
+ * A css name must be in the `@ramonda/css` section, not merely on the page. `read` and `pick` are
+ * ordinary words: with the whole css section deleted, `read` was still found — in another package's.
+ */
+const cssStart = reference.indexOf("## `@ramonda/css`");
+const cssSection = cssStart === -1 ? "" : reference.slice(cssStart, reference.indexOf("\n## ", cssStart + 1));
+const cssMissing = cssNames.filter((name) => !new RegExp(`\`${name}[\`(<]`).test(cssSection));
+if (cssMissing.length > 0) {
+  throw new Error(
+    `[docs] The @ramonda/css section of the API reference does not name ${cssMissing.length} of its exports:\n` +
+      cssMissing.map((name) => `        ${name}`).join("\n"),
+  );
+}
 
 if (missing.length > 0) {
   throw new Error(
