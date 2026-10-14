@@ -6,17 +6,111 @@ export type AddOn = "css" | "router" | "query" | "form" | "lens" | "testing" | "
 export const MODES: readonly Mode[] = ["spa", "ssr"];
 export const ADD_ONS: readonly AddOn[] = ["css", "router", "query", "form", "lens", "testing", "devtools", "biome"];
 
-/** Each add-on's first page, for the generated README: where to begin with what was chosen. */
-export const ADD_ON_PAGES: Readonly<Record<AddOn, { what: string; page: string }>> = {
-  css: { what: "`@ramonda/css` — style blocks; the page in `src/App.tsx` is written in them", page: "style-blocks" },
-  router: { what: "`@ramonda/router` — routes and links", page: "routing" },
-  query: { what: "`@ramonda/query` — cached, race-free async data", page: "query" },
-  form: { what: "`@ramonda/form` — typed fields and schema validation", page: "forms" },
-  lens: { what: "`@ramonda/lens` — immutable updates to nested state", page: "lens" },
-  testing: { what: "`@ramonda/testing-library` — `src/App.test.tsx` is the first test", page: "testing" },
-  devtools: { what: "`@ramonda/devtools` — press Alt+D in development", page: "devtools" },
-  biome: { what: "Biome — `npm run lint` and `npm run format`", page: "reference/create-ramonda" },
+/**
+ * Each add-on, described once. `--help`, the multi-select and the generated README all read this, so
+ * they cannot say different things about the same choice.
+ *
+ * - `label` is the multi-select's.
+ * - `adds` and `hint` make the line `--help` prints and the multi-select shows: what is installed,
+ *   and what it is for.
+ * - `start` is the README's: where a newcomer begins with it in this project, if anywhere.
+ * - `page` is its first page on ramonda.dev.
+ */
+export const ADD_ON_INFO: Readonly<
+  Record<AddOn, { label: string; adds: string; hint: string; start?: string; page: string }>
+> = {
+  css: {
+    label: "CSS",
+    adds: "@ramonda/css",
+    hint: "style blocks, tokens, and a strict config to start from",
+    start: "The page in `src/App.tsx` is written in them.",
+    page: "style-blocks",
+  },
+  router: { label: "Router", adds: "@ramonda/router", hint: "routes and links", page: "routing" },
+  query: { label: "Query", adds: "@ramonda/query", hint: "cached, race-free async data", page: "query" },
+  form: { label: "Form", adds: "@ramonda/form", hint: "typed fields and schema validation", page: "forms" },
+  lens: { label: "Lens", adds: "@ramonda/lens", hint: "immutable updates to nested state", page: "lens" },
+  testing: {
+    label: "Testing",
+    adds: "vitest + @ramonda/testing-library",
+    hint: "render and query components in tests",
+    start: "`src/App.test.tsx` is the first test; `npm test` runs it.",
+    page: "testing",
+  },
+  devtools: {
+    label: "Devtools",
+    adds: "@ramonda/devtools",
+    hint: "the dev inspector, with a tab per package you picked",
+    start: "Press Alt+D in development.",
+    page: "devtools",
+  },
+  biome: {
+    label: "Biome",
+    adds: "@biomejs/biome",
+    hint: "lint and format in one tool",
+    start: "`npm run lint` and `npm run format`.",
+    page: "reference/create-ramonda",
+  },
 };
+
+const describe = (addon: AddOn) => `${ADD_ON_INFO[addon].adds} — ${ADD_ON_INFO[addon].hint}`;
+
+/**
+ * The multi-select's options. With `ssr` there is no Router to tick: it is always added, and a box
+ * left unticked there changed nothing.
+ */
+export function addOnOptions(mode: Mode): { value: AddOn; label: string; hint: string }[] {
+  return ADD_ONS.filter((addon) => !(mode === "ssr" && addon === "router")).map((addon) => ({
+    value: addon,
+    label: ADD_ON_INFO[addon].label,
+    hint: describe(addon),
+  }));
+}
+
+/** The README's line for a chosen add-on. */
+export function readmeLine(addon: AddOn): string {
+  const { start, page } = ADD_ON_INFO[addon];
+  return `- ${describe(addon)}.${start === undefined ? "" : ` ${start}`} Start at https://ramonda.dev/${page}`;
+}
+
+/**
+ * What the CLI says, word for word — read by the prompts and by the docs' GIF of them, which is drawn
+ * from these rather than recorded, so a question reworded here is a stale picture the docs gate stops.
+ */
+export const SAY = {
+  intro: "🌸 create-ramonda",
+  target: "Where should the app go?",
+  mode: "How should it render?",
+  addons: "Add packages and tooling?",
+  addonsKeys: "(space to toggle, enter to confirm)",
+  git: "Initialise a git repository?",
+  install: (pm: string) => `Install dependencies with ${pm}?`,
+  scaffolded: (where: string) => `Scaffolded ${where}`,
+  initialised: "Initialised a git repository",
+  installed: "Installed dependencies",
+  nextSteps: "Next steps",
+  beforeCommit: "Before a commit — lint, tests and build, whichever the project has:",
+  explained: "Every script and file is explained at https://ramonda.dev/reference/create-ramonda",
+  outro: "Ramonda is ready. Docs: https://ramonda.dev",
+} as const;
+
+export const MODE_OPTIONS: readonly { value: Mode; label: string; hint: string }[] = [
+  { value: "spa", label: "SPA", hint: "client-side, Vite — the simplest start" },
+  { value: "ssr", label: "SSR", hint: "server-rendered + hydrated, Node server — includes the router" },
+];
+
+/** The commands the last note lists — `""` is the blank line before the commit one. */
+export function nextSteps(cd: string, installed: boolean, pm: string): string[] {
+  const run = pm === "npm" ? "npm run" : pm;
+  return [
+    ...(cd ? [`$ cd ${cd}`] : []),
+    ...(installed ? [] : [`$ ${pm} install`]),
+    `$ ${run} dev`,
+    "",
+    SAY.beforeCommit,
+    `$ ${run} check`,
+  ];
+}
 
 /** What the multi-select starts with, and what `--yes` takes. */
 export const DEFAULT_ADD_ONS: readonly AddOn[] = ["css", "devtools"];
@@ -52,14 +146,7 @@ Options:
   --mode <spa|ssr>      How it renders. spa: client-side, Vite. ssr: server-rendered and
                         hydrated, on a Node server — always includes the router.
   --add <list>          Packages and tooling, comma-separated, or "none":
-                          css       @ramonda/css — style blocks, tokens, a strict config
-                          router    @ramonda/router — routes and links
-                          query     @ramonda/query — cached, race-free async data
-                          form      @ramonda/form — typed fields and schema validation
-                          lens      @ramonda/lens — immutable state updates
-                          testing   vitest + @ramonda/testing-library
-                          devtools  @ramonda/devtools — the dev inspector
-                          biome     @biomejs/biome — lint and format
+${ADD_ONS.map((addon) => `                          ${addon.padEnd(9)} ${describe(addon)}`).join("\n")}
                         Default: ${DEFAULT_ADD_ONS.join(",")}.
                         Always added: @ramonda/core, @ramonda/build, @ramonda/check; with ssr,
                         also @ramonda/server and @ramonda/router.
@@ -103,7 +190,15 @@ export function readArgs(argv: readonly string[]): Parsed {
     }));
   } catch (error) {
     // Node's own message names the flag: `Unknown option '--sssr'`.
-    return { kind: "error", message: `${(error as Error).message}. See --help for the options.` };
+    // Only its first sentence: the rest is advice about positionals starting with `-`, which is
+    // not what anyone who mistyped a flag needs.
+    const message = (error as Error).message.split(". ")[0].replace(/\.$/, "");
+    const given = /'(--[^']+)'/.exec(message)?.[1];
+    const meant = given === undefined ? undefined : nearest(given, FLAGS);
+    return {
+      kind: "error",
+      message: `${message}.${meant === undefined ? "" : ` Did you mean ${meant}?`} See --help for the options.`,
+    };
   }
 
   if (values.help) return { kind: "help" };
@@ -114,7 +209,11 @@ export function readArgs(argv: readonly string[]): Parsed {
 
   const mode = values.mode;
   if (mode !== undefined && !MODES.includes(mode as Mode)) {
-    return { kind: "error", message: `--mode is spa or ssr, not "${mode}".` };
+    const meant = nearest(mode, MODES);
+    return {
+      kind: "error",
+      message: `--mode is spa or ssr, not "${mode}".${meant === undefined ? "" : ` Did you mean "${meant}"?`}`,
+    };
   }
 
   let addons: AddOn[] | undefined;
@@ -127,7 +226,14 @@ export function readArgs(argv: readonly string[]): Parsed {
     if (unknown.length > 0) {
       return {
         kind: "error",
-        message: `--add does not know ${unknown.map((one) => `"${one}"`).join(", ")}. It takes: ${ADD_ONS.join(", ")}, or none.`,
+        message:
+          `--add does not know ${unknown.map((one) => `"${one}"`).join(", ")}.` +
+          unknown
+            .map((one) => nearest(one, ADD_ONS))
+            .filter((meant) => meant !== undefined)
+            .map((meant) => ` Did you mean "${meant}"?`)
+            .join("") +
+          ` It takes: ${ADD_ONS.join(", ")}, or none.`,
       };
     }
     addons = names.filter((one): one is AddOn => one !== "none");
@@ -156,4 +262,47 @@ export function unanswered(answers: Answers): string[] {
   if (answers.git === undefined) missing.push("--git or --no-git");
   if (answers.install === undefined) missing.push("--install or --no-install");
   return missing;
+}
+
+const FLAGS = [
+  "--mode",
+  "--add",
+  "--git",
+  "--no-git",
+  "--install",
+  "--no-install",
+  "--overwrite",
+  "--yes",
+  "--help",
+  "--version",
+];
+
+/**
+ * The closest of `among` to `word`, if one is close enough to be a slip: at most two edits, and
+ * fewer than half the word — so `quey` finds `query`, and `kubernetes` finds nothing.
+ */
+export function nearest(word: string, among: readonly string[]): string | undefined {
+  let best: string | undefined;
+  let bestDistance = Math.min(2, Math.floor(word.length / 2));
+  for (const candidate of among) {
+    const distance = editDistance(word.toLowerCase(), candidate);
+    if (distance <= bestDistance && distance > 0) {
+      best = candidate;
+      bestDistance = distance;
+    }
+  }
+  return best;
+}
+
+/** Levenshtein distance — insertions, deletions and substitutions, one row at a time. */
+function editDistance(a: string, b: string): number {
+  let previous = Array.from({ length: b.length + 1 }, (_, index) => index);
+  for (let i = 1; i <= a.length; i++) {
+    const row = [i];
+    for (let j = 1; j <= b.length; j++) {
+      row[j] = Math.min(previous[j] + 1, row[j - 1] + 1, previous[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    previous = row;
+  }
+  return previous[b.length];
 }

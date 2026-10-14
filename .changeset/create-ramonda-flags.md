@@ -4,6 +4,8 @@
 
 Every question has a flag now, so the scaffolder runs from a script, CI or an agent: `--mode spa|ssr`, `--add css,query,…|none`, `--git` / `--no-git`, `--install` / `--no-install`, `--overwrite`, and `--yes` for the defaults. `--help` and `--version` print and exit. With no terminal, a question nothing answers stops the run with exit 1 and names the flags — it used to draw the prompt and exit 0 having made nothing. `--yes` never writes into a folder that is not empty; that takes `--overwrite`.
 
+A flag, a mode or an add-on one slip away from a real one is named: `--mood` → `--mode`, `quey` → `query`. The closing note adds `npm run check`, the command to run before a commit, and links the page that explains every script.
+
 A generated project:
 
 - `npm test` runs once and exits (`vitest run`); `test:watch` watches.

@@ -16,13 +16,20 @@ import pc from "picocolors";
 import {
   type AddOn,
   type Mode,
-  ADD_ON_PAGES,
+  addOnOptions,
   DEFAULT_ADD_ONS,
   DEFAULT_TARGET,
   HELP,
   readArgs,
+  readmeLine,
+  MODE_OPTIONS,
+  nextSteps,
+  SAY,
   unanswered,
 } from "./args";
+
+// What the docs' GIF of the scaffolder is drawn from — see `apps/docs/scripts/build-cli-gif.mjs`.
+export { ADD_ON_INFO, addOnOptions, DEFAULT_ADD_ONS, MODE_OPTIONS, nextSteps, SAY } from "./args";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const templatesDir = resolve(here, "..", "templates");
@@ -159,7 +166,7 @@ async function main(): Promise<void> {
   }
 
   console.log();
-  p.intro(pc.magenta(pc.bold("🌸 create-ramonda")));
+  p.intro(pc.magenta(pc.bold(SAY.intro)));
   if (parsed.kind === "error") refuse(parsed.message);
   const answers = parsed.answers;
 
@@ -183,7 +190,7 @@ async function main(): Promise<void> {
   }
 
   const target = await ask(answers.target, DEFAULT_TARGET, () =>
-    p.text({ message: "Where should the app go?", placeholder: DEFAULT_TARGET, defaultValue: DEFAULT_TARGET }),
+    p.text({ message: SAY.target, placeholder: DEFAULT_TARGET, defaultValue: DEFAULT_TARGET }),
   );
   const targetDir = resolve(process.cwd(), target);
   const name = toPackageName(targetDir);
@@ -203,52 +210,25 @@ async function main(): Promise<void> {
 
   const mode = await ask<Mode>(answers.mode, "spa", () =>
     p.select({
-      message: "How should it render?",
-      options: [
-        { value: "spa" as Mode, label: "SPA", hint: "client-side, Vite — the simplest start" },
-        { value: "ssr" as Mode, label: "SSR", hint: "server-rendered + hydrated, Node server — includes the router" },
-      ],
+      message: SAY.mode,
+      options: [...MODE_OPTIONS],
       initialValue: "spa" as Mode,
     }),
   );
 
   const addons = await ask<AddOn[]>(answers.addons, [...DEFAULT_ADD_ONS], () =>
     p.multiselect({
-      message: "Add packages and tooling? " + pc.dim("(space to toggle, enter to confirm)"),
+      message: `${SAY.addons} ${pc.dim(SAY.addonsKeys)}`,
       required: false,
-      options: [
-        {
-          value: "css" as AddOn,
-          label: "CSS",
-          hint: "@ramonda/css — style blocks, tokens, and a strict config to start from",
-        },
-        // Not offered with SSR, which always includes it: a box left unticked there changed nothing.
-        ...(mode === "ssr"
-          ? []
-          : [{ value: "router" as AddOn, label: "Router", hint: "@ramonda/router — routes and links" }]),
-        { value: "query" as AddOn, label: "Query", hint: "@ramonda/query — cached, race-free async data" },
-        { value: "form" as AddOn, label: "Form", hint: "@ramonda/form — typed fields and schema validation" },
-        { value: "lens" as AddOn, label: "Lens", hint: "@ramonda/lens — immutable state updates" },
-        { value: "testing" as AddOn, label: "Testing", hint: "vitest + @ramonda/testing-library" },
-        {
-          value: "devtools" as AddOn,
-          label: "Devtools",
-          // Worth saying, because it is not obvious that the panel grows with the other choices:
-          // a package that has something to show registers its own tab when it is used.
-          hint: "@ramonda/devtools — dev inspector, with a tab per package you picked",
-        },
-        { value: "biome" as AddOn, label: "Biome", hint: "@biomejs/biome — lint + format in one tool" },
-      ],
+      options: addOnOptions(mode),
       initialValues: [...DEFAULT_ADD_ONS],
     }),
   );
 
-  const doGit = await ask(answers.git, true, () =>
-    p.confirm({ message: "Initialise a git repository?", initialValue: true }),
-  );
+  const doGit = await ask(answers.git, true, () => p.confirm({ message: SAY.git, initialValue: true }));
   const pm = detectPackageManager();
   const doInstall = await ask(answers.install, true, () =>
-    p.confirm({ message: `Install dependencies with ${pc.cyan(pm)}?`, initialValue: true }),
+    p.confirm({ message: SAY.install(pc.cyan(pm)), initialValue: true }),
   );
 
   const s = p.spinner();
@@ -256,11 +236,11 @@ async function main(): Promise<void> {
 
   scaffold({ targetDir, name, mode, addons });
 
-  s.stop("Scaffolded " + pc.green(relative(process.cwd(), targetDir) || "."));
+  s.stop(SAY.scaffolded(pc.green(relative(process.cwd(), targetDir) || ".")));
 
   if (doGit) {
     const git = spawnSync("git", ["init", "-q"], { cwd: targetDir, stdio: "ignore" });
-    if (git.status === 0) p.log.step("Initialised a git repository");
+    if (git.status === 0) p.log.step(SAY.initialised);
   }
 
   if (doInstall) {
@@ -271,7 +251,7 @@ async function main(): Promise<void> {
     // hand. The reason is the useful part of a failure.
     const res = spawnSync(pm, ["install"], { cwd: targetDir, encoding: "utf8" });
     if (res.status === 0) {
-      inst.stop("Installed dependencies");
+      inst.stop(SAY.installed);
     } else {
       inst.stop(pc.yellow(`\`${pm} install\` failed — run it yourself in the project.`));
       const reason = firstUsefulLine(`${res.stderr ?? ""}\n${res.stdout ?? ""}`);
@@ -279,16 +259,16 @@ async function main(): Promise<void> {
     }
   }
 
-  const run = pm === "npm" ? "npm run" : pm;
   const cd = relative(process.cwd(), targetDir);
   p.note(
-    [cd ? pc.dim("$ ") + `cd ${cd}` : "", doInstall ? "" : pc.dim("$ ") + `${pm} install`, pc.dim("$ ") + `${run} dev`]
-      .filter(Boolean)
+    nextSteps(cd, doInstall, pm)
+      .map((line) => (line.startsWith("$ ") ? pc.dim("$ ") + line.slice(2) : pc.dim(line)))
       .join("\n"),
-    "Next steps",
+    SAY.nextSteps,
   );
+  p.log.info(SAY.explained);
 
-  p.outro(`${pc.magenta("Ramonda")} is ready. Docs: ${pc.underline("https://ramonda.dev")}`);
+  p.outro(SAY.outro);
 }
 
 export interface ScaffoldOptions {
@@ -672,12 +652,7 @@ function writeReadme(targetDir: string, addons: readonly AddOn[]): void {
     );
   }
   if (addons.length > 0) {
-    parts.push(
-      "## The packages you chose",
-      addons
-        .map((one) => `- ${ADD_ON_PAGES[one].what}. Start at https://ramonda.dev/${ADD_ON_PAGES[one].page}`)
-        .join("\n"),
-    );
+    parts.push("## The packages you chose", addons.map(readmeLine).join("\n"));
   }
   writeFileSync(path, `${parts.join("\n\n")}\n`);
 }

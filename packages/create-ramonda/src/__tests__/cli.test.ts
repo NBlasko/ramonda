@@ -77,6 +77,13 @@ describe("with no terminal", () => {
     expect(existsSync(join(cwd, "app", ".git"))).toBe(false);
   });
 
+  test("the last word names the command to run before a commit, and where the scripts are explained", () => {
+    const { out } = run("app", "--yes", "--no-install", "--no-git");
+    expect(out).toContain("npm run dev");
+    expect(out).toContain("npm run check");
+    expect(out).toContain("https://ramonda.dev/reference/create-ramonda");
+  });
+
   test("every question answered by a flag needs no --yes", () => {
     const { status, out } = run("app", "--mode", "ssr", "--add", "query,testing", "--no-git", "--no-install");
     expect(status, out).toBe(0);
