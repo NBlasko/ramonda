@@ -204,7 +204,8 @@ export class ListEngine<T> {
     // place is reported as RMD005), so the SAME reference plus no invalidated
     // scope means nothing about this list can differ from last render — not one
     // item, not the order, not the length. Handing back the identical ListNode
-    // object tells the diff the same thing, and it leaves the region untouched.
+    // runs no callback and rebuilds no row. The diff still walks the rows, and it
+    // has to: that walk is what reaches a list inside a row (see `reconcileChildren`).
     //
     // Measured 30ms → 0.06ms on 10000 items.
     //

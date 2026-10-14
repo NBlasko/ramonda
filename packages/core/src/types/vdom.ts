@@ -83,12 +83,6 @@ export interface ListRegion {
    * the same rules at every depth.
    */
   entries: RecordEntry[];
-  /**
-   * The `ListNode` that produced these nodes. The engine hands back the very
-   * same object when nothing about the list changed, so identity here is the
-   * signal that the whole region can be left alone without looking at an item.
-   */
-  source: ListNode;
 }
 
 /**

@@ -876,7 +876,7 @@ export function isRegion(entry: RecordEntry): entry is ListRegion | ComponentReg
   return (entry as ListRegion).owner !== undefined;
 }
 
-/** Which kind. A component region carries the instance; a list carries its `source`. */
+/** Which kind. A component region carries the instance; a list does not. */
 export function isComponentRegion(entry: ListRegion | ComponentRegion): entry is ComponentRegion {
   return (entry as ComponentRegion).instance !== undefined;
 }
@@ -1055,14 +1055,16 @@ export function reconcileEntries(
         // narrowing never actually discards a region — it is what tells the two kinds apart in types.
         const before = found !== undefined && !isComponentRegion(found) ? found : undefined;
 
-        // The engine hands back the identical ListNode when nothing about the
-        // list changed. Same object -> same items, same order, same length: the
-        // region is left exactly as it is, without touching one of its nodes.
-        if (before !== undefined && before.source === rawVchild) {
-          entries.push(before);
-          if (previous[entries.length - 1] !== before) changed = true;
-          continue;
-        }
+        /**
+         * Every row is walked, even when the engine handed back last pass's node unchanged.
+         *
+         * The walk touches no DOM and renders no row — measured at 1000 rows: zero mutations — and it
+         * is what reaches a list INSIDE a row. Skipping the region when the outer node is the same
+         * object leaves that inner list stale: categories whose rows each list products priced in
+         * `this.currency`, and a change of currency keeps the outer array and callback, so the outer
+         * engine has nothing to rebuild, and every price kept the old currency.
+         * `ListCallbackIdentity.test.tsx` ("BOTH stable") is that case.
+         */
 
         // A `list()` descriptor has not run its mapper yet. This is the moment to:
         // the previous region is in hand, and with it the engine holding the
@@ -1110,10 +1112,6 @@ export function reconcileEntries(
         const region: ListRegion = {
           owner: listNode.owner,
           entries: inner.entries,
-          // The BUILT node, not the descriptor: the whole-list skip below compares
-          // this by identity, and the engine hands back the very same object when
-          // nothing about the list changed.
-          source: listNode,
           engine,
         };
 

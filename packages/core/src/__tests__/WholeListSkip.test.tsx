@@ -4,11 +4,13 @@ import { Component, list, state } from "../index";
 
 /**
  * The whole-list skip: when `each` is the same array reference and no item's
- * scope was invalidated, the engine hands back the IDENTICAL `ListNode` and the
- * diff leaves the region alone — it does not look at a single item.
+ * scope was invalidated, the engine hands back the IDENTICAL `ListNode`: no
+ * callback runs and no row is rebuilt. The diff still walks the rows, touching no
+ * DOM, because that walk is what reaches a list inside a row — see
+ * `reconcileChildren` in `DiffAndMerge.ts`.
  *
  * Measured on 10000 items, a re-render triggered by unrelated state went 30ms ->
- * 1.5ms, with zero iterations of the item loop.
+ * 1.5ms, with zero calls to the callback.
  *
  * The assertion is the mapper call count plus DOM node identity, not the
  * ListNode's. `For` exposed a `.nodes` getter so the object could be compared
