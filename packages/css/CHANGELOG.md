@@ -1,5 +1,11 @@
 # @ramonda/css
 
+## 0.11.1
+
+### Patch Changes
+
+- 8d6d363: `ramonda-css` says which files it counted: the check reports the files in the tsconfig it read, and `lint` the paths it was given, so the two numbers no longer look like a file went missing.
+
 ## 0.11.0
 
 ### Minor Changes
