@@ -63,6 +63,24 @@ describe("ramonda-check", () => {
     expect(out).toContain("--graph g.json");
   });
 
+  it("a second tsconfig is refused, not quietly ignored", () => {
+    const { status, out } = run("bin.mjs", "tsconfig.json", "other.json");
+    expect(status).toBe(2);
+    expect(out).toContain("other.json");
+  });
+
+  it("--dry-run without --fix is refused, not quietly ignored", () => {
+    const { status, out } = run("bin.mjs", "--dry-run");
+    expect(status).toBe(2);
+    expect(out).toContain("--fix");
+  });
+
+  it("an option after one that takes a file is not taken for the file", () => {
+    const { status, out } = run("bin.mjs", "--graph", "-x");
+    expect(status).toBe(2);
+    expect(out).toContain("--graph wants a file");
+  });
+
   it("an option it does not have is refused, with the one meant", () => {
     const { status, out } = run("bin.mjs", "--grahp", "g.json");
     expect(status).toBe(2);

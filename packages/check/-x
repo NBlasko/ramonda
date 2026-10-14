@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "scope": "library",
+  "package": {
+    "name": "@ramonda/check",
+    "version": "0.15.6"
+  },
+  "hash": "sha256:16ab66b855bb57382f663a731cb99cbc08b820ac76c3074b3e3e5c02008e79b0",
+  "describes": {
+    "file": "dist/index.d.ts",
+    "hash": "sha256:f7aaeae9cfeb6f75c3b441d6b74573a8ff754051bc263eeb6a9db14b30736435"
+  },
+  "nodes": [],
+  "edges": []
+}

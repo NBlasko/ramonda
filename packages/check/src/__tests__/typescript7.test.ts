@@ -12,7 +12,7 @@ const PACKAGE = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
  * any of its own code could say anything. So the bin asks first.
  */
 describe("TypeScript 7, which has no JavaScript API", () => {
-  test("the bin says it and exits 1, instead of crashing while it loads", () => {
+  test("the bin says it and exits 2, instead of crashing while it loads", () => {
     let output = "";
     let status = 0;
     try {
@@ -26,7 +26,7 @@ describe("TypeScript 7, which has no JavaScript API", () => {
       output = `${failed.stdout ?? ""}${failed.stderr ?? ""}`;
       status = failed.status ?? -1;
     }
-    expect(status).toBe(1);
+    expect(status).toBe(2); // the project cannot be read — not a finding, which is 1
     expect(output).toContain(
       "[ramonda-check] TypeScript 7.0.2 is installed, and it has no JavaScript API to read your source with. " +
         "Install TypeScript 5 or 6: `npm install -D typescript@6`.",

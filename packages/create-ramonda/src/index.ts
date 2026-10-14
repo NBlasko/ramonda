@@ -340,7 +340,7 @@ function firstUsefulLine(output: string): string | undefined {
  * beside it as `README.ramonda.md`, and every other file it replaced is returned, to be named.
  */
 export function scaffold(options: ScaffoldOptions): { replaced: string[]; kept: string[] } {
-  const stage = mkdtempSync(join(tmpdir(), "create-ramonda-"));
+  const stage = stageFor(options.targetDir);
   try {
     writeProject({ ...options, targetDir: stage });
     const files = filesUnder(stage);
@@ -357,6 +357,20 @@ export function scaffold(options: ScaffoldOptions): { replaced: string[]; kept: 
   }
 }
 
+/**
+ * A scratch folder: the system's, or — where that cannot be made, as in a sandbox whose `TMPDIR`
+ * points nowhere — one beside the target, in the nearest folder that exists.
+ */
+function stageFor(target: string): string {
+  try {
+    return mkdtempSync(join(tmpdir(), "create-ramonda-"));
+  } catch {
+    let at = resolve(target);
+    while (!existsSync(at) && dirname(at) !== at) at = dirname(at);
+    return mkdtempSync(join(at, ".create-ramonda-"));
+  }
+}
+
 /** Every file under `dir`, relative, with `/` between its parts. */
 function filesUnder(dir: string): string[] {
   return readdirSync(dir, { recursive: true, withFileTypes: true })
@@ -365,7 +379,15 @@ function filesUnder(dir: string): string[] {
     .sort();
 }
 
-const stat = (path: string) => lstatSync(path, { throwIfNoEntry: false });
+/** Metadata, or `undefined` for a path that is not there — including under a FILE (`ENOTDIR`). */
+const stat = (path: string) => {
+  try {
+    return lstatSync(path, { throwIfNoEntry: false });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOTDIR") return undefined;
+    throw error;
+  }
+};
 
 /** The project paths something in `target` stands in the way of. Reads nothing but their metadata. */
 function inTheWay(target: string, files: readonly string[]): string[] {
@@ -374,11 +396,16 @@ function inTheWay(target: string, files: readonly string[]): string[] {
   if (stat(join(target, "README.md"))?.isFile()) wants.push("README.ramonda.md");
   for (const file of wants) {
     const parts = file.split("/");
-    for (let depth = 1; depth < parts.length; depth++) {
+    let underBlocked = false;
+    for (let depth = 1; depth < parts.length && !underBlocked; depth++) {
       const folder = parts.slice(0, depth).join("/");
       const found = stat(join(target, folder));
-      if (found !== undefined && (!found.isDirectory() || found.isSymbolicLink())) blocked.add(folder);
+      if (found !== undefined && (!found.isDirectory() || found.isSymbolicLink())) {
+        blocked.add(folder);
+        underBlocked = true;
+      }
     }
+    if (underBlocked) continue;
     const found = stat(join(target, file));
     if (found !== undefined && !found.isFile()) blocked.add(file);
   }
@@ -395,8 +422,15 @@ function place(stage: string, target: string, files: readonly string[]): { repla
     const theirs = stat(to)?.isFile() ? readFileSync(to) : undefined;
     mkdirSync(dirname(to), { recursive: true });
     if (theirs !== undefined && file === ".gitignore") {
-      writeFileSync(to, mergeIgnore(theirs.toString("utf8"), content.toString("utf8")));
-      kept.push(file);
+      const mine = theirs.toString("utf8");
+      const merged = mergeIgnore(mine, content.toString("utf8"));
+      // Named only when it gained lines — one that already had them is simply left as it was.
+      if (merged !== mine) {
+        writeFileSync(to, merged);
+        kept.push(file);
+      }
+    } else if (theirs !== undefined && file === "README.md" && theirs.equals(content)) {
+      // The project's own README, from an earlier run: nothing to keep apart.
     } else if (theirs !== undefined && file === "README.md") {
       const beside = join(target, "README.ramonda.md");
       if (stat(beside)?.isFile() && !readFileSync(beside).equals(content)) replaced.push("README.ramonda.md");
@@ -428,7 +462,8 @@ export function mergeIgnore(mine: string, template: string): string {
     .split(/\r?\n/)
     .filter((line) => line.trim() !== "" && !line.trim().startsWith("#") && !have.has(bare(line)));
   if (missing.length === 0) return mine;
-  return `${mine.replace(/(\r?\n)+$/, "")}${eol}${eol}# Added by create-ramonda${eol}${missing.join(eol)}${eol}`;
+  const before = mine.replace(/(\r?\n)+$/, "");
+  return `${before === "" ? "" : `${before}${eol}${eol}`}# Added by create-ramonda${eol}${missing.join(eol)}${eol}`;
 }
 
 function writeProject({ targetDir, name, mode, addons }: ScaffoldOptions): void {

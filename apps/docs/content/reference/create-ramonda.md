@@ -54,11 +54,13 @@ A folder holding only `.git` counts as empty. Into any other, the scaffolder wri
 - your `.gitignore` is kept, and the lines the project needs that it lacks are added at the end;
 - your `README.md` is kept, and the project's own is written beside it as `README.ramonda.md`;
 - any other file of yours that the template also writes — `package.json`, `src/App.tsx` — is replaced,
-  and the scaffolder names each one it replaced;
-- every other file is left alone, and is not read.
+  and the scaffolder names each one it replaced; one already identical to the project's is not named;
+- every other file is left alone, and is not read. A file of yours under `src` is part of the project
+  from then on, and is type-checked with it.
 
 A link, a folder where the project writes a file, or a file where it needs a folder stops it before
-anything is written, and names the path.
+anything is written, and names the path. The folder you name may itself be a link: the project is
+written into the folder it points to.
 
 ## How it renders
 

@@ -117,7 +117,17 @@ const wantsFix = argv.includes("--fix");
 const wantsCertify = argv.includes("--certify");
 const dryRun = argv.includes("--dry-run");
 const values = new Set([graphAt, graphHtmlAt, diffAgainst].filter((v): v is string => v !== undefined));
-const arg = argv.find((a) => !a.startsWith("--") && !values.has(a));
+const positionals = argv.filter((a) => !a.startsWith("-") && !values.has(a));
+// One project per run: a second path was read by nobody, and the run said nothing about it.
+if (positionals.length > 1) {
+  console.error(`${TAG} one tsconfig per run, not ${positionals.length}: ${positionals.join(" ")}`);
+  process.exit(2);
+}
+if (dryRun && !wantsFix) {
+  console.error(`${TAG} --dry-run goes with --fix: ramonda-check --fix --dry-run`);
+  process.exit(2);
+}
+const arg = positionals[0];
 const tsconfig = resolve(arg ?? "tsconfig.json");
 
 /**
@@ -146,7 +156,7 @@ for (const [flag, value, example] of [
   ["--graph-html", graphHtmlAt, "--graph-html graph.html"],
   ["--diff", diffAgainst, "--diff graph.json"],
 ] as const) {
-  if (argv.includes(flag) && (value === undefined || value.startsWith("--"))) {
+  if (argv.includes(flag) && (value === undefined || value.startsWith("-"))) {
     console.error(`${TAG} ${flag} wants a file: ramonda-check <tsconfig> ${example}`);
     process.exit(2);
   }

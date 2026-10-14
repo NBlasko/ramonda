@@ -158,6 +158,20 @@ test("a file on the way to the folder is refused the same way", () => {
   expect(out).not.toContain("    at ");
 });
 
+test("a temporary folder that cannot be made is not a reason to fail", () => {
+  // A sandbox or a container with TMPDIR pointing nowhere: the project is staged before it is written.
+  const env: NodeJS.ProcessEnv = { ...process.env, TMPDIR: join(cwd, "nowhere") };
+  delete env.npm_config_user_agent;
+  const result = spawnSync(process.execPath, [dist, "app", "--yes", "--no-install", "--no-git"], {
+    cwd,
+    env,
+    encoding: "utf8",
+    input: "",
+  });
+  expect(result.status, `${result.stdout}${result.stderr}`).toBe(0);
+  expect(existsSync(join(cwd, "app", "package.json"))).toBe(true);
+});
+
 describe("a folder that is not empty", () => {
   beforeEach(() => {
     mkdirSync(join(cwd, "app"));

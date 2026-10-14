@@ -114,9 +114,12 @@ is the only one that sees a tree assembled at runtime.
 | `--help`, `-h` | Prints the options and exits. |
 | `--version`, `-v` | Prints the version and exits. |
 
+An option's file follows it after a space — `--graph g.json`, not `--graph=g.json`. One tsconfig per
+run, and `--dry-run` goes only with `--fix`; anything else on the line is refused rather than ignored.
+
 It exits with **0** when there is nothing to report — `--split` and `--diff` describe and never fail
 a run — **1** when a rule found something, and **2** when the command line or the project cannot be
-read.
+read — TypeScript 7 among them, which has no API to read it with.
 
 `ramonda-check-bundle <dir-or-file> [...]` parses every `.js`, `.mjs` and `.cjs` file under the paths
 given, and exits with **1** if one does not parse — see [the bundle that did not

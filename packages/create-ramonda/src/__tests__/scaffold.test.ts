@@ -899,6 +899,24 @@ describe("a folder that already has files", () => {
     expect(result.replaced).toEqual(["src/App.tsx"]);
   });
 
+  test("a .gitignore that already has every line is kept as it was, and not said to have gained any", () => {
+    const template = into({}).read(".gitignore");
+    const { result, read } = into({ ".gitignore": template });
+    expect(read(".gitignore")).toBe(template);
+    expect(result.kept).toEqual([]);
+  });
+
+  test("a README identical to the project's is not written a second time", () => {
+    const template = into({}).read("README.md");
+    const { dir, result } = into({ "README.md": template });
+    expect(existsSync(join(dir, "README.ramonda.md"))).toBe(false);
+    expect(result.kept).toEqual([]);
+  });
+
+  test("an empty .gitignore does not start with blank lines", () => {
+    expect(into({ ".gitignore": "" }).read(".gitignore").startsWith("\n")).toBe(false);
+  });
+
   test("an empty folder replaces nothing", () => {
     expect(into({}).result.replaced).toEqual([]);
   });
@@ -943,7 +961,10 @@ describe("a folder that already has files", () => {
       dirs.push(dir, outside);
       writeFileSync(join(outside, "theirs.txt"), "theirs\n");
       arrange(dir, outside);
-      expect(() => scaffold({ targetDir: dir, name: "x", mode: "spa", addons: [] })).toThrow(named);
+      // The sentence, naming the path — an errno mentioning it passed this once (`ENOTDIR … src/App.tsx`).
+      expect(() => scaffold({ targetDir: dir, name: "x", mode: "spa", addons: [] })).toThrow(
+        new RegExp(`^In the way in .*: ${named.replace(".", "\\.")}(,|\\.)`),
+      );
       expect(existsSync(join(dir, "package.json"))).toBe(false);
       expect(readFileSync(join(outside, "theirs.txt"), "utf8")).toBe("theirs\n");
     }
