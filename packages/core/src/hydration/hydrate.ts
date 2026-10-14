@@ -23,6 +23,7 @@ import {
   buildLazyList,
   isLazyList,
   enclosingRow,
+  enclosingHost,
   type ListEngine,
   type LazyListNode,
   type ListHost,
@@ -746,10 +747,13 @@ export function hydrateLevel(
   rows?: readonly unknown[],
 ): { entries: RecordEntry[]; hasRegion: boolean } {
   const outerRow = enclosingRow.current;
+  const outerHost = enclosingHost.current;
+  if (listHost !== undefined) enclosingHost.current = listHost;
   try {
     return hydrateLevelEntries(children, placeholder, parent, walk, listHost, rows);
   } finally {
     enclosingRow.current = outerRow;
+    enclosingHost.current = outerHost;
   }
 }
 
@@ -782,7 +786,7 @@ function hydrateLevelEntries(
         const materialized = buildLazyList(
           rawVchild as unknown as LazyListNode,
           undefined,
-          listHost ?? listHostFor(placeholder),
+          enclosingHost.current ?? listHostFor(placeholder),
         );
         listNode = materialized.node as typeof rawVchild;
         engine = materialized.engine;
@@ -809,7 +813,9 @@ function hydrateLevelEntries(
       let region: ComponentRegion | undefined;
       // A component's lists report to the component — see `enclosingRow`.
       const row = enclosingRow.current;
+      const host = enclosingHost.current;
       enclosingRow.current = undefined;
+      enclosingHost.current = undefined;
       try {
         region = hydrateComponentRegion(rawVchild, placeholder, parent, walk, componentRegionOwner(rawVchild, i));
       } catch (e) {
@@ -824,6 +830,7 @@ function hydrateLevelEntries(
         if (handler !== undefined) queuePostCommit(handler, () => addTaskToQueue(handler));
       } finally {
         enclosingRow.current = row;
+        enclosingHost.current = host;
       }
       if (region !== undefined) {
         entries.push(region);

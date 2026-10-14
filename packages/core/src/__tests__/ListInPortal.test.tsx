@@ -229,6 +229,89 @@ describe("list() inside a hook's children", () => {
     expect(rows[1]).toBe(rowB);
   });
 
+  /**
+   * The same, with the list one element down — `children: <ul>{list(…)}</ul>`, the shape the first
+   * test in this file writes. The region hands its own host to the lists it reconciles, and a list
+   * met inside an element was given the owner's instead: the owner re-rendered, the factory's cache
+   * was still clean, nothing reconciled the region, and the row kept its old text.
+   */
+  test.each([
+    ["one element down", (rows: unknown) => <ul>{rows as never}</ul>],
+    [
+      "two elements down",
+      (rows: unknown) => (
+        <div>
+          <ul>{rows as never}</ul>
+        </div>
+      ),
+    ],
+  ])("a signal only the MAPPER reads still updates its row, %s", async (_where, wrap) => {
+    class Page extends Component {
+      @state rows: Row[] = [{ t: "a" }, { t: "b" }];
+      @state highlight = "";
+      portal = this.use(Portal, () => ({
+        children: wrap(list(this.rows, (r: Row) => <li>{r.t === "b" ? this.highlight : r.t}</li>)),
+        target,
+      }));
+      render() {
+        return <p>owner</p>;
+      }
+    }
+
+    const app = await getDOM<Page>(<Page />);
+    await app.settle();
+
+    app.instance.highlight = "on";
+    await app.settle();
+
+    expect(rowsIn(target)).toBe("a,on");
+    app.unmount();
+  });
+
+  /**
+   * And a component inside the portal keeps its OWN lists reporting to itself. The region's host is
+   * carried down through elements, not through a component: `Card`'s list was built by `Card`'s
+   * render, so a row of it re-renders `Card` — refreshing the region instead would reconcile the
+   * same `<Card />` vnode and leave its list as it was.
+   */
+  test("a component inside the portal still updates its own list", async () => {
+    class Card extends Component<{ page: { highlight: string }; rows: Row[] }> {
+      render() {
+        return (
+          <ul>
+            {list(this.props.rows, (r: Row) => (
+              <li>{r.t === "b" ? this.props.page.highlight : r.t}</li>
+            ))}
+          </ul>
+        );
+      }
+    }
+    class Page extends Component {
+      @state rows: Row[] = [{ t: "a" }, { t: "b" }];
+      @state highlight = "";
+      portal = this.use(Portal, () => ({
+        children: (
+          <div>
+            <Card page={this} rows={this.rows} />
+          </div>
+        ),
+        target,
+      }));
+      render() {
+        return <p>owner</p>;
+      }
+    }
+
+    const app = await getDOM<Page>(<Page />);
+    await app.settle();
+
+    app.instance.highlight = "on";
+    await app.settle();
+
+    expect(rowsIn(target)).toBe("a,on");
+    app.unmount();
+  });
+
   test("two portals into one target keep their own rows", async () => {
     // Each portal owns a block. Neither may claim the other's nodes — the
     // property the hand-rolled reconcile had to be careful about, and which the

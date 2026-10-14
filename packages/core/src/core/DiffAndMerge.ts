@@ -54,6 +54,7 @@ import {
   isLazyList,
   buildLazyList,
   enclosingRow,
+  enclosingHost,
   type LazyListNode,
   type ListHost,
   type RowScope,
@@ -1041,6 +1042,8 @@ export function reconcileEntries(
   let plainIndex = 0;
 
   const outerRow = enclosingRow.current;
+  const outerHost = enclosingHost.current;
+  if (listHost !== undefined) enclosingHost.current = listHost;
   try {
     reconcileChildren();
   } catch (e) {
@@ -1058,6 +1061,7 @@ export function reconcileEntries(
     throw e;
   } finally {
     enclosingRow.current = outerRow;
+    enclosingHost.current = outerHost;
   }
 
   function reconcileChildren(): void {
@@ -1082,7 +1086,7 @@ export function reconcileEntries(
           const materialized = buildLazyList(
             rawVchild as unknown as LazyListNode,
             engine as ListEngine<unknown> | undefined,
-            listHost ?? listHostFor(placeholderComponent),
+            enclosingHost.current ?? listHostFor(placeholderComponent),
           );
           listNode = materialized.node as typeof rawVchild;
           engine = materialized.engine;
@@ -1172,7 +1176,9 @@ export function reconcileEntries(
           // A component's lists report to the component, which re-renders itself: no row above it has
           // to be opened for them. See `enclosingRow`.
           const row = enclosingRow.current;
+          const host = enclosingHost.current;
           enclosingRow.current = undefined;
+          enclosingHost.current = undefined;
           try {
             region = reconcileComponentEntry(rawVchild, owner, before, placeholderComponent, parent, unclaimed);
           } catch (e) {
@@ -1197,6 +1203,7 @@ export function reconcileEntries(
             continue;
           } finally {
             enclosingRow.current = row;
+            enclosingHost.current = host;
           }
         }
 

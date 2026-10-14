@@ -2,11 +2,13 @@ import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { Component } from "../../base/Component";
 import { state, created } from "../../base/decorators";
 import { Portal } from "../../base/Portal";
+import { list } from "../../base/list";
 import { portalTarget, PORTAL_TARGET_ATTR } from "../../base/portalTarget";
 import { renderPage, renderDocument, renderStatic } from "../../index";
 import { portalTargetContainers } from "../../base/portalTarget";
 import { hydrateRoot } from "../../hydration/hydrate";
 import { unmountChildrenNodes } from "../../core/DiffAndMerge";
+import { instanceOf } from "../../test/setup";
 
 /**
  * A portal into a target that is NOT `document.head`, across the server→client
@@ -114,6 +116,49 @@ describe("a portal into a named target", () => {
 
     unmountChildrenNodes([container as unknown as never]);
     expect(document.querySelectorAll(".modal")).toHaveLength(0);
+    container.remove();
+  });
+
+  /**
+   * A list one element down in an adopted block, and a signal only its row callback reads. The block
+   * hands the list its own host on this path too — hydration builds the list, not the diff — so the
+   * row's change reconciles the block rather than only re-rendering the owner, whose factory cache
+   * is clean. See `enclosingHost`.
+   */
+  test("a list inside an element in an adopted block still updates its row", async () => {
+    class Page extends Component {
+      @state rows = ["a", "b"];
+      @state highlight = "";
+      portal = this.use(Portal, () => ({
+        children: (
+          <ul class="modal">
+            {list(this.rows, (r: string) => (
+              <li>{r === "b" ? this.highlight : r}</li>
+            ))}
+          </ul>
+        ),
+        target: modals,
+      }));
+      render() {
+        return <p>page</p>;
+      }
+    }
+
+    const page = await renderPage(<Page />);
+    document.body.insertAdjacentHTML("beforeend", `<div ${PORTAL_TARGET_ATTR}="modals">${page.portals.modals}</div>`);
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    container.innerHTML = page.body;
+
+    hydrateRoot(<Page />, container);
+    await Promise.resolve();
+    const app = instanceOf<Page>(container.querySelector("p"));
+
+    app.highlight = "on";
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect([...document.querySelectorAll(".modal li")].map((li) => li.textContent)).toEqual(["a", "on"]);
+    unmountChildrenNodes([container as unknown as never]);
     container.remove();
   });
 

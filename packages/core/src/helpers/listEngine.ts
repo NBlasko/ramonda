@@ -106,6 +106,18 @@ export type RowScope = ItemScope<unknown>;
  */
 export const enclosingRow: { current: RowScope | undefined } = { current: undefined };
 
+/**
+ * Where a list reports when the level that holds it was given a host of its own — a `ChildrenRegion`'s,
+ * whose children came from a hook's props factory rather than a render.
+ *
+ * `reconcileEntries` and `hydrateLevel` take that host as a parameter, and an element's children are
+ * reconciled by a call that is not handed it: `children: <ul>{list(…)}</ul>` gave the list the
+ * owner's host, the owner re-rendered with the factory's cache still clean, and nothing reconciled the
+ * region. This carries it down through elements; a component resets it, because a component's lists
+ * report to the component.
+ */
+export const enclosingHost: { current: ListHost | undefined } = { current: undefined };
+
 /** What the engine needs from whoever owns the list. */
 export interface ListHost {
   /**
