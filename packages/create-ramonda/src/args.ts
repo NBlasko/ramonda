@@ -87,6 +87,10 @@ export const SAY = {
   install: (pm: string) => `Install dependencies with ${pm}?`,
   scaffolded: (where: string) => `Scaffolded ${where}`,
   initialised: "Initialised a git repository",
+  replaced: (files: readonly string[]) =>
+    `Replaced ${files.length} file(s) the folder already had: ${files.join(", ")}`,
+  keptReadme: "Kept your README.md; the project's own is README.ramonda.md.",
+  keptIgnore: "Kept your .gitignore, and added the lines it lacked.",
   installed: "Installed dependencies",
   nextSteps: "Next steps",
   beforeCommit: "Before a commit — lint, tests and build, whichever the project has:",

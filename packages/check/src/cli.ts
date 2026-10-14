@@ -46,6 +46,70 @@ import { filesOf, splitOf } from "./split";
  * Both are reports: they describe, they never fail a build.
  */
 const argv = process.argv.slice(2);
+const TAG = "[ramonda-check]";
+
+/** Every option, with what `--help` says about it — one list, so help and the parser cannot differ. */
+const OPTIONS: readonly (readonly [flag: string, takes: string, what: string])[] = [
+  ["--graph", "<file>", "also write the composition graph the checks are computed from, as JSON"],
+  ["--graph-html", "<file>", "the same graph as one self-contained page"],
+  ["--diff", "<graph.json>", "compare this run against a graph written earlier"],
+  ["--split", "", "say what the browser loads first and what each lazy piece brings"],
+  ["--fix", "", "write the fixes that have exactly one answer; everything else is still reported"],
+  ["--dry-run", "", "with --fix: say what it would write, and write nothing"],
+  ["--certify", "", "print what this package can and cannot claim about the graph it ships"],
+  ["--help", "", "print this and exit (also -h)"],
+  ["--version", "", "print the version and exit (also -v)"],
+];
+
+const HELP = `Usage: ramonda-check [tsconfig.json] [options]
+
+Proves what a running page cannot, from the source: a context consumer with no provider above it,
+and every rule on https://ramonda.dev/rules. The project is the tsconfig given, or ./tsconfig.json.
+
+Options:
+${OPTIONS.map(([flag, takes, what]) => `  ${`${flag} ${takes}`.padEnd(22)} ${what}`).join("\n")}
+
+Exit codes:
+  0  nothing to report (reports such as --split and --diff never fail a run)
+  1  a rule found something; each finding is printed with what to do
+  2  the command line or the project could not be read
+
+https://ramonda.dev/reference/check
+`;
+
+if (argv.includes("--help") || argv.includes("-h")) {
+  process.stdout.write(HELP);
+  process.exit(0);
+}
+if (argv.includes("--version") || argv.includes("-v")) {
+  const own = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string };
+  console.log(own.version);
+  process.exit(0);
+}
+{
+  const flags = OPTIONS.map(([flag]) => flag);
+  const takesValue = new Set(OPTIONS.filter(([, takes]) => takes !== "").map(([flag]) => flag));
+  for (const [at, word] of argv.entries()) {
+    if (!word.startsWith("--") || flags.includes(word) || takesValue.has(argv[at - 1] ?? "")) continue;
+    const meant = flags.find((flag) => editDistance(word, flag) <= 2);
+    console.error(`${TAG} unknown option ${word}.${meant === undefined ? "" : ` Did you mean ${meant}?`} See --help.`);
+    process.exit(2);
+  }
+}
+
+/** Levenshtein distance — enough to name the option a slip was meant to be. */
+function editDistance(a: string, b: string): number {
+  let previous = Array.from({ length: b.length + 1 }, (_, index) => index);
+  for (let i = 1; i <= a.length; i++) {
+    const row = [i];
+    for (let j = 1; j <= b.length; j++) {
+      row[j] = Math.min(previous[j] + 1, row[j - 1] + 1, previous[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    previous = row;
+  }
+  return previous[b.length];
+}
+
 /** The value after a flag, so it is never mistaken for the tsconfig argument. */
 const valueOf = (flag: string): string | undefined => {
   const at = argv.indexOf(flag);
@@ -61,7 +125,6 @@ const dryRun = argv.includes("--dry-run");
 const values = new Set([graphAt, graphHtmlAt, diffAgainst].filter((v): v is string => v !== undefined));
 const arg = argv.find((a) => !a.startsWith("--") && !values.has(a));
 const tsconfig = resolve(arg ?? "tsconfig.json");
-const TAG = "[ramonda-check]";
 
 /**
  * The line that opens a rule's section, with the rule's ID in it.

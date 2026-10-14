@@ -360,8 +360,51 @@ async function devIsQuiet() {
     await new Promise((r) => setTimeout(r, 3000));
     const unresolved = log.split("\n").find((line) => /Failed to resolve import/.test(line));
     if (unresolved !== undefined) fail(`the dev server could not resolve an import: ${unresolved.trim()}`, log);
+    if (mode === "ssr") await besideAnother(port);
   } finally {
     server.kill("SIGTERM");
+  }
+}
+
+/**
+ * A second SSR dev server while one runs — two projects, or one that did not exit. On another port it
+ * must start with hot reload of its own: both used to reach for Vite's one default HMR port, and the
+ * second's reload silently never connected. On the SAME port it must say so and exit 1, not die with
+ * an unhandled `EADDRINUSE` and a stack.
+ */
+async function besideAnother(taken) {
+  const start = (port) => {
+    const child = spawn(process.execPath, ["server.mjs"], {
+      cwd: app,
+      env: { ...process.env, PORT: String(port) },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const out = { child, log: "" };
+    child.stdout.on("data", (d) => (out.log += d));
+    child.stderr.on("data", (d) => (out.log += d));
+    return out;
+  };
+
+  const second = start(taken + 1);
+  try {
+    for (let tries = 0; tries < 200 && !/Ramonda SSR on/.test(second.log); tries++) {
+      if (second.child.exitCode !== null) break;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    if (!/Ramonda SSR on/.test(second.log)) fail("a second dev server, on another port, did not start", second.log);
+    await (await fetch(`http://localhost:${taken + 1}/`)).text();
+    await new Promise((r) => setTimeout(r, 1500));
+    if (/already in use|EADDRINUSE/.test(second.log)) {
+      fail("a second dev server, on another port, clashed with the first", second.log);
+    }
+  } finally {
+    second.child.kill("SIGTERM");
+  }
+
+  const third = start(taken);
+  const code = await new Promise((done) => third.child.on("exit", done));
+  if (code !== 1 || !third.log.includes(`Port ${taken} is in use`) || /\n\s+at /.test(third.log)) {
+    fail(`a dev server on a port in use did not say so plainly (exit ${code})`, third.log);
   }
 }
 

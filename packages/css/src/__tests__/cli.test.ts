@@ -82,6 +82,9 @@ describe("the bin", () => {
     expect(status).toBe(0);
     expect(output).toContain("[ramonda-css]");
     expect(output).toContain("1 of them carrying a style block");
+    // Which files it counted, so a count beside `lint`'s is not a puzzle: it reads the whole program
+    // the tsconfig includes, `lint` reads only the paths it is given. Found by the trial.
+    expect(output).toContain("in tsconfig.json type-check");
   });
 
   test("names the fault at the author's own line, and exits 1", () => {

@@ -162,6 +162,20 @@ describe("a folder that is not empty", () => {
     expect(readdirSync(join(cwd, "app"))).toEqual(["keep.txt"]);
   });
 
+  test("--overwrite names each file it replaced, and keeps the folder's README and .gitignore", () => {
+    mkdirSync(join(cwd, "app", "src"));
+    writeFileSync(join(cwd, "app", "src", "App.tsx"), "mine");
+    writeFileSync(join(cwd, "app", ".gitignore"), "secret.env\n");
+    writeFileSync(join(cwd, "app", "README.md"), "MY README\n");
+    const { status, out } = run("app", "--yes", "--overwrite", "--no-install", "--no-git");
+    expect(status, out).toBe(0);
+    expect(out).toContain("src/App.tsx");
+    expect(out).toContain("README.ramonda.md");
+    expect(out).toContain("Kept your .gitignore");
+    expect(readFileSync(join(cwd, "app", ".gitignore"), "utf8")).toContain("secret.env");
+    expect(readFileSync(join(cwd, "app", "README.md"), "utf8")).toBe("MY README\n");
+  });
+
   test("--overwrite writes into it", () => {
     const { status, out } = run("app", "--yes", "--overwrite", "--no-install", "--no-git");
     expect(status, out).toBe(0);

@@ -251,9 +251,12 @@ async function main(): Promise<void> {
   const s = p.spinner();
   s.start("Scaffolding");
 
-  scaffold({ targetDir, name, mode, addons });
+  const { replaced, kept } = scaffold({ targetDir, name, mode, addons });
 
   s.stop(SAY.scaffolded(pc.green(relative(process.cwd(), targetDir) || ".")));
+  if (replaced.length > 0) p.log.warn(SAY.replaced(replaced));
+  if (kept.includes("README.md")) p.log.info(SAY.keptReadme);
+  if (kept.includes(".gitignore")) p.log.info(SAY.keptIgnore);
 
   if (doGit) {
     const git = spawnSync("git", ["init", "-q"], { cwd: targetDir, stdio: "ignore" });
@@ -308,7 +311,9 @@ function firstUsefulLine(output: string): string | undefined {
   return lines.find((line) => /err|error|fail/i.test(line)) ?? lines[lines.length - 1];
 }
 
-export function scaffold({ targetDir, name, mode, addons }: ScaffoldOptions): void {
+export function scaffold({ targetDir, name, mode, addons }: ScaffoldOptions): { replaced: string[]; kept: string[] } {
+  // What the folder held before, so nothing of the reader's is replaced without a word — see below.
+  const before = filesIn(targetDir);
   mkdirSync(targetDir, { recursive: true });
 
   // Copy the base template for the chosen mode.
@@ -424,6 +429,57 @@ export function scaffold({ targetDir, name, mode, addons }: ScaffoldOptions): vo
   pkg.scripts = { ...(pkg.scripts as object), ...extraScripts };
   writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
   writeReadme(targetDir, addons);
+  return {
+    replaced: keepWhatWasThere(targetDir, before),
+    kept: [".gitignore", "README.md"].filter((file) => before.has(file)),
+  };
+}
+
+/** Every file under `dir` and its content, skipping `.git` and `node_modules`. Empty if there is none. */
+function filesIn(dir: string): Map<string, Buffer> {
+  const found = new Map<string, Buffer>();
+  if (!existsSync(dir)) return found;
+  for (const entry of readdirSync(dir, { recursive: true, withFileTypes: true })) {
+    if (!entry.isFile()) continue;
+    const path = relative(dir, join(entry.parentPath, entry.name));
+    if (/^(?:\.git|node_modules)(?:[\\/]|$)/.test(path)) continue;
+    found.set(path.split("\\").join("/"), readFileSync(join(dir, path)));
+  }
+  return found;
+}
+
+/**
+ * Writing into a folder that already has files. Two are the reader's own and are kept: `.gitignore`
+ * gains only the template's lines it lacked — one replaced there once lost `secret.env`, and the next
+ * `git add -A` would have committed it — and an existing `README.md` stays, with the project's written
+ * beside it as `README.ramonda.md`. Every other file the template replaced is returned, to be named.
+ */
+function keepWhatWasThere(targetDir: string, before: Map<string, Buffer>): string[] {
+  const ignore = before.get(".gitignore");
+  if (ignore !== undefined) {
+    const mine = ignore.toString("utf8");
+    const have = new Set(mine.split("\n").map((line) => line.trim()));
+    const missing = readFileSync(join(targetDir, ".gitignore"), "utf8")
+      .split("\n")
+      .filter((line) => line.trim() !== "" && !have.has(line.trim()));
+    writeFileSync(
+      join(targetDir, ".gitignore"),
+      missing.length === 0 ? mine : `${mine.trimEnd()}\n\n# Added by create-ramonda\n${missing.join("\n")}\n`,
+    );
+  }
+  const readme = before.get("README.md");
+  if (readme !== undefined) {
+    renameSync(join(targetDir, "README.md"), join(targetDir, "README.ramonda.md"));
+    writeFileSync(join(targetDir, "README.md"), readme);
+  }
+  return [...before]
+    .filter(([path, content]) => {
+      if (path === ".gitignore" || path === "README.md") return false;
+      const now = join(targetDir, path);
+      return existsSync(now) && !readFileSync(now).equals(content);
+    })
+    .map(([path]) => path)
+    .sort();
 }
 
 /**

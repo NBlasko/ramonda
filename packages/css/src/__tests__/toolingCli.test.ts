@@ -308,7 +308,7 @@ describe("lint", () => {
     const { status, output } = run(root, ["lint", "src/Card.tsx"]);
 
     expect(status).toBe(0);
-    expect(output).toContain("lint clean");
+    expect(output).toContain("1 file(s) under src/Card.tsx lint clean");
   });
 
   test("a file with no block is linted as it is", () => {

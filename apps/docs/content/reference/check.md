@@ -97,6 +97,32 @@ They are not alternatives — each catches what the other cannot.
 The static one is the only one that can speak about a branch nobody has opened yet. The runtime one
 is the only one that sees a tree assembled at runtime.
 
+## The command line
+
+`ramonda-check [tsconfig.json] [options]` checks the project the tsconfig describes, or
+`./tsconfig.json`. A project from `create-ramonda` runs it first in `build`.
+
+| Option | |
+|---|---|
+| `--graph <file>` | Also writes the composition graph the checks are computed from, as JSON. [Seeing the graph](#seeing-the-graph) |
+| `--graph-html <file>` | The same graph as one self-contained page. |
+| `--diff <graph.json>` | Compares this run against a graph written earlier. [What a change moved](#what-loads-when-and-what-a-change-moved) |
+| `--split` | Says what the browser loads first, and what each lazily loaded piece brings. [What loads when](#what-loads-when) |
+| `--fix` | Writes the fixes that have exactly one answer. Everything that needs a person is still reported. |
+| `--dry-run` | With `--fix`: says what it would write, and writes nothing. |
+| `--certify` | Prints what a package can and cannot claim about the graph it ships. |
+| `--help`, `-h` | Prints the options and exits. |
+| `--version`, `-v` | Prints the version and exits. |
+
+It exits with **0** when there is nothing to report — `--split` and `--diff` describe and never fail
+a run — **1** when a rule found something, and **2** when the command line or the project cannot be
+read.
+
+`ramonda-check-bundle <dir-or-file> [...]` parses every `.js`, `.mjs` and `.cjs` file under the paths
+given, and exits with **1** if one does not parse — see [the bundle that did not
+parse](#the-bundle-that-did-not-parse). It exits with **2** when there is nothing to check: no path,
+one that cannot be read, or no JavaScript in it. It takes `--help` and `--version` too.
+
 ## Everything it reports
 
 The provider check is what the tool exists for, but it is not the only thing the walk can see —

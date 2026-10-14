@@ -46,6 +46,17 @@ A script, a CI job or an agent has no terminal to answer a question in. There, e
 be answered by a flag or by `--yes`. If one is not, the scaffolder writes nothing, names the flags
 that are missing, and exits with code 1.
 
+### Writing into a folder that has files
+
+A folder holding only `.git` counts as empty. Into any other, the scaffolder writes only with
+`--overwrite`, or after you confirm. Then:
+
+- your `.gitignore` is kept, and the lines the project needs that it lacks are added at the end;
+- your `README.md` is kept, and the project's own is written beside it as `README.ramonda.md`;
+- any other file of yours that the template also writes — `package.json`, `src/App.tsx` — is replaced,
+  and the scaffolder names each one it replaced;
+- every other file is left alone.
+
 ## How it renders
 
 **`spa`** — the app runs in the browser. Vite serves it in development and builds it for production.
@@ -91,6 +102,9 @@ lists them all.
 | `lint`, `format` | biome — and with `css`, `ramonda-css lint src` and `ramonda-css format src` for the files biome cannot read | `biome` |
 | `preview` | The production build, served locally | `spa` |
 | `start` | The production server | `ssr` |
+
+An `ssr` project's `dev` and `start` listen on port 5173; `PORT=5174 npm run dev` picks another. If the
+port is taken, the server says so and stops.
 
 [`ramonda-check`](/reference/check) proves what a running page cannot, such as a context consumer
 with no provider above it, from the source. [`ramonda-check-bundle`](/reference/check#the-bundle-that-did-not-parse)

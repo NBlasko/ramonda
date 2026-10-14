@@ -65,3 +65,14 @@ describe("the scaffolder's page", () => {
     expect(page("guide/installation.md")).toContain("](/reference/create-ramonda)");
   });
 });
+
+describe("the check page", () => {
+  it("names every option ramonda-check takes, from the command's own list", () => {
+    const source = readFileSync(join(repo, "packages", "check", "src", "cli.ts"), "utf8");
+    const options = [...source.matchAll(/^\s+\["(--[a-z-]+)",/gm)].map((m) => m[1]);
+    expect(options.length).toBeGreaterThan(6);
+    const check = page("reference/check.md");
+    for (const option of options) expect(check, option).toContain(`\`${option}`);
+    expect(check).toContain("## The command line");
+  });
+});

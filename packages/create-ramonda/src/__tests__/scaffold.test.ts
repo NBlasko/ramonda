@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -11,7 +11,7 @@ import type { ScaffoldOptions } from "../index";
  * would get. Testing dist checks the artifact that ships, including that the injection
  * happened.
  */
-let scaffold: (options: ScaffoldOptions) => void;
+let scaffold: (options: ScaffoldOptions) => { replaced: string[]; kept: string[] };
 let nodeIsOldEnough: (version: string) => boolean;
 let MIN_NODE: number;
 
@@ -841,11 +841,55 @@ describe("the generated README", () => {
     for (const mode of ["spa", "ssr"] as const) expect(make(mode, []).read("README.md")).toContain("`npm run check`");
   });
 
+  test("an SSR project says how to run it on another port", () => {
+    expect(make("ssr", []).read("README.md")).toContain("PORT=");
+  });
+
   test("with nothing chosen, the section is not there", () => {
     expect(make("spa", []).read("README.md")).not.toContain("## The packages you chose");
   });
 
   test("says what `typecheck` is when it is not `tsc`", () => {
     expect(make("spa", ["css"]).read("README.md")).toMatch(/`typecheck`[^\n]*`ramonda-css`/);
+  });
+});
+
+/**
+ * Writing into a folder that already holds files — `--overwrite`, and the common start: `git init`, a
+ * README, a `.gitignore`, then the app. Found by the trial: its `.gitignore` listed `secret.env` and was
+ * replaced without a word, so the next `git add -A` would have committed the secret.
+ */
+describe("a folder that already has files", () => {
+  function into(files: Record<string, string>) {
+    const dir = mkdtempSync(join(tmpdir(), "ramonda-scaffold-into-"));
+    dirs.push(dir);
+    for (const [file, text] of Object.entries(files)) {
+      mkdirSync(dirname(join(dir, file)), { recursive: true });
+      writeFileSync(join(dir, file), text);
+    }
+    const result = scaffold({ targetDir: dir, name: "into", mode: "spa", addons: ["css"] });
+    return { dir, result, read: (file: string) => readFileSync(join(dir, file), "utf8") };
+  }
+
+  test("keeps every line of its .gitignore, and adds the template's", () => {
+    const { read } = into({ ".gitignore": "secret.env\n" });
+    const ignore = read(".gitignore");
+    expect(ignore).toContain("secret.env");
+    expect(ignore).toContain("node_modules");
+  });
+
+  test("keeps its README, and writes the project's beside it", () => {
+    const { read } = into({ "README.md": "MY README\n" });
+    expect(read("README.md")).toBe("MY README\n");
+    expect(read("README.ramonda.md")).toContain("## Before a commit");
+  });
+
+  test("names every other file it replaced, and only those", () => {
+    const { result } = into({ "src/App.tsx": "mine\n", "notes.txt": "untouched\n", "README.md": "MY README\n" });
+    expect(result.replaced).toEqual(["src/App.tsx"]);
+  });
+
+  test("an empty folder replaces nothing", () => {
+    expect(into({}).result.replaced).toEqual([]);
   });
 });
