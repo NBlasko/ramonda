@@ -67,6 +67,8 @@ const PLANTED = {
   // A file that does not type-check. Vite strips types without reading them, so nothing else in the
   // build would stop on it — and `ssr` meets it through `tsc`, `spa` through `ramonda-css`.
   types: { where: "src/planted.ts", expect: "stopped on a type error" },
+  // The devtools import behind a guard no build can fold — true in every browser, so the panel ships.
+  devtools: { where: mode === "spa" ? "src/main.tsx" : "src/entry-client.tsx", expect: "ships the devtools panel" },
 };
 if (selftest !== undefined && PLANTED[selftest] === undefined) {
   console.error(`[scaffold] SELFTEST=${selftest} is not one of: ${Object.keys(PLANTED).join(", ")}`);
@@ -74,7 +76,7 @@ if (selftest !== undefined && PLANTED[selftest] === undefined) {
 }
 
 /** Everything a generated project resolves to this workspace rather than to npm. */
-const FIRST_PARTY = ["core", "router", "server", "check", "build", "css", "testing-library"];
+const FIRST_PARTY = ["core", "router", "server", "check", "build", "css", "testing-library", "devtools"];
 
 /**
  * `@ramonda/css` is not in either template, and that is right — it is a separate package a project
@@ -185,6 +187,13 @@ function stylesheetsOf(html) {
     .map(([tag]) => tag)
     .filter((tag) => /\brel="stylesheet"/.test(tag))
     .map((tag) => /\bhref="([^"]+)"/.exec(tag)?.[1] ?? "");
+}
+
+/** Every file under `dir`, at any depth. */
+function filesUnder(dir) {
+  return readdirSync(dir, { recursive: true, withFileTypes: true })
+    .filter((entry) => entry.isFile())
+    .map((entry) => join(entry.parentPath, entry.name));
 }
 
 function run(command, args, options = {}) {
@@ -340,12 +349,24 @@ try {
   if (!existsSync(cli)) fail("create-ramonda is not built — run `pnpm --filter create-ramonda build` first");
   const scaffolder = `
     import { scaffold } from ${JSON.stringify(cli)};
-    scaffold({ targetDir: ${JSON.stringify(app)}, name: "scaffold-check", mode: ${JSON.stringify(mode)}, addons: ${withAddon ? '["css", "testing", "biome"]' : "[]"} });
+    scaffold({ targetDir: ${JSON.stringify(app)}, name: "scaffold-check", mode: ${JSON.stringify(mode)}, addons: ${withAddon ? '["css", "testing", "biome", "devtools"]' : "[]"} });
   `;
   run(process.execPath, ["--input-type=module", "-e", scaffolder]);
 
   if (selftest === "types") {
     writeFileSync(join(app, PLANTED.types.where), 'export const planted: number = "a string";\n');
+  } else if (selftest === "devtools") {
+    const file = join(app, PLANTED.devtools.where);
+    const source = readFileSync(file, "utf8");
+    const broken = source.replace(
+      /if \((?:import\.meta\.env\.DEV|__DEV__)\) \{/,
+      `if (typeof window !== "undefined") {`,
+    );
+    if (broken === source) {
+      console.error(`[scaffold] SELFTEST=devtools: no development-only guard in ${PLANTED.devtools.where}`);
+      process.exit(2);
+    }
+    writeFileSync(file, broken);
   } else if (selftest !== undefined) {
     const file = join(app, PLANTED[selftest].where);
     const source = readFileSync(file, "utf8");
@@ -426,6 +447,17 @@ try {
   // Three of the faults above left the build perfectly green. A page with no title is not an
   // error anywhere — it is a page nobody can find.
   const checks = [];
+
+  // The devtools panel is development-only: the entry imports it behind a guard the production build
+  // folds to false. A guard the build does NOT fold — a name it never defines — leaves the import in,
+  // and every page ships the panel with no error anywhere. So the emitted files are read for it.
+  if (withAddon) {
+    const shipped = filesUnder(join(app, "dist")).filter(
+      (file) => /\.(?:m?js|html)$/.test(file) && readFileSync(file, "utf8").includes("ramonda-devtools"),
+    );
+    if (shipped.length > 0) fail("the production build ships the devtools panel", shipped.join("\n"));
+    checks.push("no devtools panel in the production build");
+  }
   if (mode === "ssr") {
     const baked = join(app, "dist/static/index.html");
     if (!existsSync(baked)) fail("the build produced no dist/static/index.html");

@@ -13,6 +13,7 @@ import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import * as p from "@clack/prompts";
 import pc from "picocolors";
+import { type AddOn, type Mode, DEFAULT_ADD_ONS, DEFAULT_TARGET, HELP, readArgs, unanswered } from "./args";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const templatesDir = resolve(here, "..", "templates");
@@ -48,9 +49,6 @@ function tool(name: string): string {
   if (!range) throw new Error(`[create-ramonda] no version known for ${name} — see tsup.config.ts`);
   return range;
 }
-
-type Mode = "spa" | "ssr";
-type AddOn = "css" | "router" | "query" | "form" | "lens" | "testing" | "devtools" | "biome";
 
 interface Deps {
   dependencies: Record<string, string>;
@@ -131,30 +129,62 @@ function requireNode(): void {
   process.exit(1);
 }
 
+/** A refusal before anything is written: the reason, and exit 1 so a script sees it failed. */
+function refuse(message: string): never {
+  p.cancel(message);
+  process.exit(1);
+}
+
 async function main(): Promise<void> {
-  console.log();
-  p.intro(pc.magenta(pc.bold("🌸 create-ramonda")));
   requireNode();
 
-  // Target directory — from argv or a prompt.
-  const argTarget = process.argv[2];
-  const target = guard(
-    argTarget ??
-      (await p.text({
-        message: "Where should the app go?",
-        placeholder: "ramonda-app",
-        defaultValue: "ramonda-app",
-      })),
+  const parsed = readArgs(process.argv.slice(2));
+  if (parsed.kind === "help") {
+    process.stdout.write(HELP);
+    return;
+  }
+  if (parsed.kind === "version") {
+    const own = JSON.parse(readFileSync(resolve(here, "..", "package.json"), "utf8")) as { version: string };
+    console.log(own.version);
+    return;
+  }
+
+  console.log();
+  p.intro(pc.magenta(pc.bold("🌸 create-ramonda")));
+  if (parsed.kind === "error") refuse(parsed.message);
+  const answers = parsed.answers;
+
+  // With no terminal a prompt cannot be answered: it used to draw the first question and exit 0,
+  // having made nothing, so a script read success. Every question is answered up front instead —
+  // by a flag, or by `--yes` — or the run stops here and names what is missing.
+  const interactive = Boolean(process.stdin.isTTY);
+  const missing = unanswered(answers);
+  if (!interactive && !answers.yes && missing.length > 0) {
+    refuse(
+      `No terminal to ask in, and nothing answers: ${missing.join(", ")}.\n` +
+        `  Pass them, or --yes for the defaults. See --help.`,
+    );
+  }
+
+  /** A flag's answer, else the default under `--yes`, else the question. */
+  async function ask<T>(given: T | undefined, fallback: T, question: () => Promise<NoInfer<T> | symbol>): Promise<T> {
+    if (given !== undefined) return given;
+    if (answers.yes) return fallback;
+    return guard(await question()) as T;
+  }
+
+  const target = await ask(answers.target, DEFAULT_TARGET, () =>
+    p.text({ message: "Where should the app go?", placeholder: DEFAULT_TARGET, defaultValue: DEFAULT_TARGET }),
   );
   const targetDir = resolve(process.cwd(), target);
   const name = toPackageName(targetDir);
 
-  if (!isEmpty(targetDir)) {
+  if (!isEmpty(targetDir) && !answers.overwrite) {
+    const where = relative(process.cwd(), targetDir) || ".";
+    // Never a default: `--yes` takes what is safe to assume, and writing over someone's files is not.
+    if (answers.yes || !interactive) refuse(`${where} is not empty. Pass --overwrite to write into it anyway.`);
     const overwrite = guard(
-      await p.confirm({
-        message: `${pc.yellow(relative(process.cwd(), targetDir) || ".")} is not empty. Continue and overwrite?`,
-        initialValue: false,
-      }),
+      await p.confirm({ message: `${pc.yellow(where)} is not empty. Continue and overwrite?`, initialValue: false }),
     );
     if (!overwrite) {
       p.cancel("Left the directory untouched.");
@@ -162,19 +192,19 @@ async function main(): Promise<void> {
     }
   }
 
-  const mode = guard(
-    await p.select({
+  const mode = await ask<Mode>(answers.mode, "spa", () =>
+    p.select({
       message: "How should it render?",
       options: [
         { value: "spa" as Mode, label: "SPA", hint: "client-side, Vite — the simplest start" },
-        { value: "ssr" as Mode, label: "SSR", hint: "server-rendered + hydrated, Node server" },
+        { value: "ssr" as Mode, label: "SSR", hint: "server-rendered + hydrated, Node server — includes the router" },
       ],
       initialValue: "spa" as Mode,
     }),
   );
 
-  const addons = guard(
-    await p.multiselect({
+  const addons = await ask<AddOn[]>(answers.addons, [...DEFAULT_ADD_ONS], () =>
+    p.multiselect({
       message: "Add packages and tooling? " + pc.dim("(space to toggle, enter to confirm)"),
       required: false,
       options: [
@@ -183,7 +213,10 @@ async function main(): Promise<void> {
           label: "CSS",
           hint: "@ramonda/css — style blocks, tokens, and a strict config to start from",
         },
-        { value: "router" as AddOn, label: "Router", hint: "@ramonda/router — routes and links" },
+        // Not offered with SSR, which always includes it: a box left unticked there changed nothing.
+        ...(mode === "ssr"
+          ? []
+          : [{ value: "router" as AddOn, label: "Router", hint: "@ramonda/router — routes and links" }]),
         { value: "query" as AddOn, label: "Query", hint: "@ramonda/query — cached, race-free async data" },
         { value: "form" as AddOn, label: "Form", hint: "@ramonda/form — typed fields and schema validation" },
         { value: "lens" as AddOn, label: "Lens", hint: "@ramonda/lens — immutable state updates" },
@@ -197,14 +230,16 @@ async function main(): Promise<void> {
         },
         { value: "biome" as AddOn, label: "Biome", hint: "@biomejs/biome — lint + format in one tool" },
       ],
-      initialValues: ["css" as AddOn, "devtools" as AddOn],
+      initialValues: [...DEFAULT_ADD_ONS],
     }),
   );
 
-  const doGit = guard(await p.confirm({ message: "Initialise a git repository?", initialValue: true }));
+  const doGit = await ask(answers.git, true, () =>
+    p.confirm({ message: "Initialise a git repository?", initialValue: true }),
+  );
   const pm = detectPackageManager();
-  const doInstall = guard(
-    await p.confirm({ message: `Install dependencies with ${pc.cyan(pm)}?`, initialValue: true }),
+  const doInstall = await ask(answers.install, true, () =>
+    p.confirm({ message: `Install dependencies with ${pc.cyan(pm)}?`, initialValue: true }),
   );
 
   const s = p.spinner();
@@ -356,7 +391,11 @@ export function scaffold({ targetDir, name, mode, addons }: ScaffoldOptions): vo
   pkg.dependencies = sortKeys({ ...(pkg.dependencies as object), ...deps.dependencies });
   pkg.devDependencies = sortKeys({ ...(pkg.devDependencies as object), ...deps.devDependencies });
   const extraScripts: Record<string, string> = {};
-  if (addons.includes("testing")) extraScripts.test = "vitest";
+  // `vitest` alone WATCHES, so `npm test` in a pre-commit step or CI never returned.
+  if (addons.includes("testing")) {
+    extraScripts.test = "vitest run";
+    extraScripts["test:watch"] = "vitest";
+  }
   if (addons.includes("biome")) {
     // Biome cannot read a style block, so with blocks `src` goes through `ramonda-css`, which runs
     // this project's own biome over what it can parse and maps every position home. Biome's own run
@@ -367,9 +406,16 @@ export function scaffold({ targetDir, name, mode, addons }: ScaffoldOptions): vo
   }
   // `tsc` cannot read a style block; `ramonda-css` is the same check with blocks read.
   if (addons.includes("css")) extraScripts.typecheck = "ramonda-css";
-  if (Object.keys(extraScripts).length > 0) {
-    pkg.scripts = { ...(pkg.scripts as object), ...extraScripts };
-  }
+  // One command for "is this project fine", which is what to run before a commit. `build` already
+  // runs `ramonda-check` and the type check, so it is the last step and the only one always there.
+  extraScripts.check = [
+    addons.includes("biome") ? "npm run lint" : "",
+    addons.includes("testing") ? "npm test" : "",
+    "npm run build",
+  ]
+    .filter(Boolean)
+    .join(" && ");
+  pkg.scripts = { ...(pkg.scripts as object), ...extraScripts };
   writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
 }
 
@@ -446,14 +492,17 @@ function edit(file: string, changes: readonly (readonly [string, string])[]): vo
  * One line in the entry fixes it, and it belongs there rather than in core: the app is what
  * knows the panel was installed.
  *
- * Guarded so a production build drops it — `import.meta.env.DEV` for vite, `__DEV__` for the
- * esbuild templates, which now define it per build.
+ * Guarded so a production build drops it, with `import.meta.env.DEV` in both modes: the guard the
+ * docs teach, and one `@ramonda/build` defines for Vite and for the SSR template's esbuild build
+ * alike. The SSR entry used `__DEV__` once, while its own `global.d.ts` told a reader to use the
+ * other. `check-scaffold.mjs` reads the production build for the panel, so a guard the build does
+ * not fold is a failing gate, not a panel shipped quietly.
  */
 function importDevtools(targetDir: string, mode: Mode, addons: readonly AddOn[]): void {
   const entry = mode === "spa" ? join(targetDir, "src", "main.tsx") : join(targetDir, "src", "entry-client.tsx");
   if (!existsSync(entry)) return;
 
-  const guard = mode === "spa" ? "import.meta.env.DEV" : "__DEV__";
+  const guard = "import.meta.env.DEV";
 
   /**
    * A tab per package that has one, and each is its own import.
@@ -514,7 +563,8 @@ ${body}
 function writePnpmSettings(targetDir: string): void {
   writeFileSync(
     join(targetDir, "pnpm-workspace.yaml"),
-    `# esbuild needs its install script to put the platform binary in place. pnpm 11+ reads
+    `# For pnpm only — npm and yarn ignore this file, and it does not make this project a workspace.
+# esbuild needs its install script to put the platform binary in place. pnpm 11+ reads
 # \`allowBuilds\`, pnpm 10 reads \`onlyBuiltDependencies\`; both are here so either works.
 allowBuilds:
   esbuild: true
