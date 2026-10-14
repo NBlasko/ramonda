@@ -212,14 +212,11 @@ describe("two slot trees side by side", () => {
     await app.settle();
 
     /**
-     * The left tree leaves, child first. `R` also gets an `@updated`, and that is not the left tree
-     * disturbing it: `Pair` re-rendered, so `R`'s `children` prop is a NEW vnode object, and a
-     * changed prop is a changed prop whether or not it renders the same. That is the standing cost
-     * of children being props — `@StableProps` is what declines it.
-     *
-     * `R1` gets none: it is inside `R`'s output, and its own props (`tag`) really are unchanged.
+     * The left tree leaves, child first, and nothing else happens. `Pair` re-rendered, so `R`'s
+     * `children` is a new vnode object — but it says the same as before, so `R` keeps the old one and
+     * is not rendered again (`helpers/settleMarkup.ts`). `R1` is inside `R`'s output and untouched.
      */
-    expect(log).toEqual(["destroyed:L1", "destroyed:L", "updated:R"]);
+    expect(log).toEqual(["destroyed:L1", "destroyed:L"]);
     expect(app.container.querySelector("#R1")).not.toBeNull();
   });
 });

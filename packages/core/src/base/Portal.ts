@@ -73,10 +73,8 @@ export interface PortalProps {
  * second copy. That is also how "inline" is done: there is no `disabled` flag,
  * because a hook has no position of its own to fall back to, so instead you aim
  * `target` at an element in your own render. A `target` absent at mount and
- * supplied later is placed then, not lost. (A target change is noticed through the
- * same `children` signal, which a props factory rebuilds each run; a factory
- * returning a genuinely STABLE `children` while only `target` moves would not
- * re-reconcile — the uncommon case, worth knowing.)
+ * supplied later is placed then, not lost. A target change is watched on its own,
+ * so it moves the nodes whether or not `children` changed with it.
  *
  * ## Events follow the DOM, not the logical tree
  *
@@ -188,6 +186,17 @@ export class Portal extends Hook<PortalProps> {
 
   @watchProp((props: PortalProps) => props.children)
   replace(): void {
+    this.reconcile();
+  }
+
+  /**
+   * A new `target` with the same `children`. Markup that says the same keeps its old object
+   * (`helpers/settleMarkup.ts`), so the `children` watch above stays quiet, and a target change has
+   * to be noticed here: an inline portal aimed at an element the owner's first render produced,
+   * and a modal moving to `document.body`, both change nothing but `target`.
+   */
+  @watchProp((props: PortalProps) => props.target)
+  retarget(): void {
     this.reconcile();
   }
 

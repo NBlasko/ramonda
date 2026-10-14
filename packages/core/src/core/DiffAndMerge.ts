@@ -1,4 +1,5 @@
 import { resolveStable } from "../helpers/common";
+import { settleMarkup } from "../helpers/settleMarkup";
 import { applyChangesOnAttributes } from "./Attribute";
 import type {
   BaseComponent,
@@ -1633,7 +1634,14 @@ function updateComponentRegion(region: ComponentRegion, vnode: VNodeComponent): 
    */
   const componentRuntime = component[COMPONENT_RUNTIME];
   const declaredStable = (component.constructor as { [STABLE_PROPS]?: readonly string[] })[STABLE_PROPS];
-  const nextProps = resolveStable(vnode.attributes ?? {}, componentRuntime.rawProps, declaredStable);
+  // Then markup — `children`, a slot, a node handed down — that says the same as last time keeps last
+  // time's object, so a parent's render does not re-render a child whose markup did not change. See
+  // `helpers/settleMarkup.ts`.
+  const nextProps = settleMarkup(
+    resolveStable(vnode.attributes ?? {}, componentRuntime.rawProps, declaredStable),
+    componentRuntime.rawProps,
+    true,
+  );
 
   // Read off the CLASS, so a subclass inherits its base's rule through the static
   // chain and shadows it by declaring its own. See @ShouldUpdateOnPropsChange.

@@ -70,6 +70,7 @@ describe("a prop rebuilt on every render", () => {
       "perRow @ `perRow`",
       "{ dense: true }",
       "{ dense: true }",
+      "{ header: <b>h</b>, more: { d…",
       '["new", "hot"]',
       "this.dense ? { dense: true } …",
       "this.dense ? { dense: true } …",
@@ -211,9 +212,23 @@ describe("a prop rebuilt on every render", () => {
    * Planted when main made both forms readable: a `@compute` method now installs a function that
    * returns the cached value, so `conf={this.settings()}` is a supported way to write it — and a
    * walk that followed the call would find the literal inside the getter and report the cache
-   * itself. Proved by removing the decorator, which takes the fixture from seventeen findings to
-   * eighteen: the guard is what does the work here, not a resolve that quietly failed.
+   * itself. Proved by removing the decorator, which takes the fixture from eighteen findings to
+   * nineteen: the guard is what does the work here, not a resolve that quietly failed.
    */
+  /**
+   * The runtime compares markup by content (core's `helpers/settleMarkup.ts`), so a literal holding
+   * only markup and primitives is equal across renders and is not reported. One holding data beside
+   * the markup is — data is compared by reference, and `{ dense: true }` is fresh every render.
+   */
+  test("a literal of markup is silent, and markup beside data is not", () => {
+    const found = run().findings["fresh-object-in-props"];
+    const on = (label: string) => found.filter((issue) => issue.line === lineOf(label));
+
+    expect(on('label="slots-object"')).toEqual([]);
+    expect(on('label="slots-array"')).toEqual([]);
+    expect(on('label="slots-with-data"').map((issue) => issue.prop)).toEqual(["conf"]);
+  });
+
   test("a @compute method called in a prop is silent", () => {
     const written = run().findings["fresh-object-in-props"].map((issue) => issue.written);
     expect(written).not.toContain("this.settings()");
@@ -259,7 +274,7 @@ describe("a prop rebuilt on every render", () => {
 
   test("a stable object, a @compute and a spread are all silent", () => {
     const found = run().findings["fresh-object-in-props"];
-    // Thirty-three elements in the fixture and seventeen reported, so a leak shows as a count.
-    expect(found).toHaveLength(17);
+    // Thirty-six elements in the fixture and eighteen reported, so a leak shows as a count.
+    expect(found).toHaveLength(18);
   });
 });

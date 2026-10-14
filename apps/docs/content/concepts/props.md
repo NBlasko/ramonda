@@ -122,22 +122,22 @@ rendering when it should. The worst a wrong name here can do is fail to type-che
 comparison that is safe to make, so a listed function prop is left exactly as it came. Pass a bound
 method — `onPick={this.pick}` — or `@memoized` when it has to be built per row.
 
-**Children are a prop, and they can be declared too.** A rendered node is built during the render,
-so anything a parent writes between the tags is a fresh value every time — a component given
-children re-renders whenever its parent does, even when the children are a piece of static text.
-The same goes for a node handed over as a prop, `header={<Header />}`. Both are named like any
-other prop:
+**Markup handed down is compared by what it says.** Children — anything between the tags — and a
+node handed over as a prop, `header={<Header />}`, are built afresh by every render of the parent.
+The framework compares them by content, so a child whose markup says the same as last time is not
+rendered again, and none of it needs declaring. It holds through nesting, a slots object
+`slots={{ header: <Header /> }}`, an array of nodes, and a `list()` among the children.
 
-```tsx
-@StableProps("children", "header")
-export class Panel extends Component<{ header?: unknown; children?: unknown }> {}
-```
+Only markup is opened. Data — a row, a `filter` object, an array of records — is compared by
+reference wherever it appears, including as an attribute inside the markup, because an object
+changed in place would compare equal to the copy made from it and the change would never be shown.
+Data that should compare by content is what `@StableProps` is for.
 
-A slot that takes the component CLASS rather than a rendered node — `view={Header}` — costs nothing
-to begin with, because a class is the same reference for the life of the module.
+A slot that takes the component CLASS rather than a rendered node — `view={Header}` — is the same
+reference for the life of the module, and there is nothing to compare.
 
-**Contents are compared to a bounded depth**, so a deeply nested literal gets a fresh reference
-rather than a wrong one, which is the safe direction: it re-renders, exactly as it does today.
+**Both comparisons are bounded**, so very large markup or a deeply nested literal is called
+different rather than compared to the end — the safe direction: the child renders.
 
 ## Reacting to a specific prop changing
 

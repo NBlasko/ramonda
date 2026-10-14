@@ -48,6 +48,10 @@ import type { ElementRule, ElementContext } from "./rule";
  *
  * **`key` and `ref`**, which the framework reads itself rather than passing on.
  *
+ * **A literal of markup** — `slots={{ header: <Header /> }}`, `items={[<A />, <B />]}`, with nothing
+ * but JSX and primitives in it. The runtime compares markup by content, so it is equal across renders
+ * however fresh the literal is. See `holdsMarkup` below.
+ *
  * **A prop the component DECLARED with `@StableProps`.** That declaration is the answer to this
  * report, not a workaround for it: the framework then compares the prop by CONTENT and hands the
  * child back the identity it already had, so the literal at the call site costs nothing. Reporting
@@ -185,6 +189,55 @@ function stablePropsFromCreateContext(binding: ts.Declaration, resolve: ElementC
  * Bounded at four hops and cycle-guarded, the same as everywhere else this package follows a
  * heritage chain.
  */
+/**
+ * A literal the runtime settles by itself: markup, and containers of it.
+ *
+ * Core compares markup handed down as a prop by what it says (`helpers/settleMarkup.ts`), so
+ * `slots={{ header: <Header />, size: 1 }}` and `items={[<A />, "b"]}` are equal across renders
+ * however fresh the literal is — reporting them would make this rule stricter than the runtime it
+ * describes. Only what is PROVABLY that from the source counts: JSX, a primitive literal, or another
+ * literal of the same kind, and at least one JSX somewhere. A literal holding data — `{ dense: true }`,
+ * a variable, a call — is data, and core compares data by reference.
+ */
+function holdsMarkup(expression: ts.Expression): "markup" | "plain" | undefined {
+  if (ts.isParenthesizedExpression(expression)) return holdsMarkup(expression.expression);
+  if (ts.isJsxElement(expression) || ts.isJsxSelfClosingElement(expression) || ts.isJsxFragment(expression)) {
+    return "markup";
+  }
+  if (
+    ts.isStringLiteral(expression) ||
+    ts.isNumericLiteral(expression) ||
+    ts.isNoSubstitutionTemplateLiteral(expression) ||
+    expression.kind === ts.SyntaxKind.TrueKeyword ||
+    expression.kind === ts.SyntaxKind.FalseKeyword ||
+    expression.kind === ts.SyntaxKind.NullKeyword
+  ) {
+    return "plain";
+  }
+
+  let members: readonly ts.Expression[];
+  if (ts.isArrayLiteralExpression(expression)) {
+    members = expression.elements;
+  } else if (ts.isObjectLiteralExpression(expression)) {
+    const values: ts.Expression[] = [];
+    for (const property of expression.properties) {
+      if (!ts.isPropertyAssignment(property)) return undefined;
+      values.push(property.initializer);
+    }
+    members = values;
+  } else {
+    return undefined;
+  }
+
+  let markup = false;
+  for (const member of members) {
+    const kind = holdsMarkup(member);
+    if (kind === undefined) return undefined;
+    if (kind === "markup") markup = true;
+  }
+  return markup ? "markup" : undefined;
+}
+
 export function stablePropsOf(tagName: ts.Node, resolve: ElementContext["resolve"]): ReadonlySet<string> {
   const found = new Set<string>();
   const seen = new Set<ts.Node>();
@@ -227,7 +280,8 @@ export const freshObjectInProps = {
     reportedWhen:
       "a component is handed an object or array built during the render, so it is a new value every " +
       "time and comparison can never match — lift it to a field or a `@compute`, or declare it on the " +
-      "child with `@StableProps`",
+      "child with `@StableProps`. A literal holding only markup and primitives is not one: markup is " +
+      "compared by content",
     heading: (found) => `${found.length} prop(s) rebuilt on every render:`,
     lines: (issue) => [
       `  ${issue.file}:${issue.line}:${issue.column}`,
@@ -302,6 +356,7 @@ export const freshObjectInProps = {
 
       const built = freshnessOf(value.expression, resolve, 0);
       if (built === undefined) continue;
+      if (holdsMarkup(value.expression) === "markup") continue;
 
       found.push({
         component,
