@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -25,6 +26,8 @@ describe("ramonda-check", () => {
     const { status, out } = run("bin.mjs", "--help");
     expect(status).toBe(0);
     expect(out).toContain("Usage: ramonda-check");
+    // Each at the start of its own line of the options list: `--graph` is inside `--graph-html`, and
+    // `--fix` and `--split` are named in other lines' prose, so a plain search found them anyway.
     for (const flag of [
       "--graph",
       "--graph-html",
@@ -36,7 +39,7 @@ describe("ramonda-check", () => {
       "--help",
       "--version",
     ])
-      expect(out, flag).toContain(flag);
+      expect(out, flag).toMatch(new RegExp(`^  ${flag}(?= |$)`, "m"));
     expect(out).toContain("Exit codes");
     expect(out).not.toContain("components,");
   });
@@ -46,6 +49,18 @@ describe("ramonda-check", () => {
     const { status, out } = run("bin.mjs", "--version");
     expect(status).toBe(0);
     expect(out.trim()).toBe(version);
+  });
+
+  it("a short option it does not have is refused, not read as a tsconfig", () => {
+    const { status, out } = run("bin.mjs", "-x");
+    expect(status).toBe(2);
+    expect(out).toContain("unknown option -x");
+  });
+
+  it("an option written with = is named for what it is", () => {
+    const { status, out } = run("bin.mjs", "--graph=g.json");
+    expect(status).toBe(2);
+    expect(out).toContain("--graph g.json");
   });
 
   it("an option it does not have is refused, with the one meant", () => {
@@ -69,6 +84,19 @@ describe("ramonda-check-bundle", () => {
     const { status, out } = run("check-bundle.mjs", "--version");
     expect(status).toBe(0);
     expect(out.trim()).toBe(version);
+  });
+
+  it("a path that starts with a dash is checked as a path", () => {
+    const dir = mkdtempSync(join(tmpdir(), "check-bundle-dash-"));
+    mkdirSync(join(dir, "-out"));
+    writeFileSync(join(dir, "-out", "a.js"), "export const a = 1;\n");
+    const result = spawnSync(process.execPath, [join(root, "check-bundle.mjs"), "./-out"], {
+      cwd: dir,
+      encoding: "utf8",
+    });
+    rmSync(dir, { recursive: true, force: true });
+    expect(`${result.stdout}${result.stderr}`).toContain("1 emitted file(s) parse");
+    expect(result.status).toBe(0);
   });
 
   it("an option it does not have is refused, not read as a path", () => {

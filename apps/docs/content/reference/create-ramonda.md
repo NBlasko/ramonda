@@ -55,7 +55,10 @@ A folder holding only `.git` counts as empty. Into any other, the scaffolder wri
 - your `README.md` is kept, and the project's own is written beside it as `README.ramonda.md`;
 - any other file of yours that the template also writes — `package.json`, `src/App.tsx` — is replaced,
   and the scaffolder names each one it replaced;
-- every other file is left alone.
+- every other file is left alone, and is not read.
+
+A link, a folder where the project writes a file, or a file where it needs a folder stops it before
+anything is written, and names the path.
 
 ## How it renders
 

@@ -87,6 +87,7 @@ export const SAY = {
   install: (pm: string) => `Install dependencies with ${pm}?`,
   scaffolded: (where: string) => `Scaffolded ${where}`,
   initialised: "Initialised a git repository",
+  alreadyGit: "Already a git repository — left as it is",
   replaced: (files: readonly string[]) =>
     `Replaced ${files.length} file(s) the folder already had: ${files.join(", ")}`,
   keptReadme: "Kept your README.md; the project's own is README.ramonda.md.",
@@ -158,6 +159,10 @@ ${ADD_ONS.map((addon) => `                          ${addon.padEnd(9)} ${describ
   --install, --no-install
                         Install dependencies with the package manager that ran this. Default: yes.
   --overwrite           Write into a folder that is not empty. Never assumed, not even by --yes.
+                        Its .gitignore is kept and gains the lines it lacks; its README.md is
+                        kept, the project's written as README.ramonda.md; any other file the
+                        project writes is replaced, and named. A link or a folder in the way
+                        stops it before anything is written.
   -y, --yes             Take the default for every question no flag answers.
   -h, --help            Print this and exit.
   -v, --version         Print the version and exit.

@@ -36,7 +36,7 @@
  */
 import { execFile } from "node:child_process";
 import { readFile, readdir, stat } from "node:fs/promises";
-import { join, relative } from "node:path";
+import { join, relative, resolve } from "node:path";
 
 const JS = /\.(m?js|cjs)$/;
 
@@ -102,7 +102,8 @@ function parses(args, source) {
  * no failure is downgraded: a decorator is unparseable both ways.
  */
 async function check(file) {
-  const asScript = await parses(["--check", file]);
+  // Absolute, so a file under a folder named `-out` is never read by node as an option.
+  const asScript = await parses(["--check", resolve(file)]);
   if (asScript.ok) return undefined;
   if (!PARSED_AS_SCRIPT.some((m) => asScript.message.includes(m))) {
     return { file, message: asScript.message };

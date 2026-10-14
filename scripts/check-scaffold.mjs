@@ -397,6 +397,28 @@ async function besideAnother(taken) {
     if (/already in use|EADDRINUSE/.test(second.log)) {
       fail("a second dev server, on another port, clashed with the first", second.log);
     }
+    // Hot reload that ANSWERS, on the second server's own port — a log with no clash line is not that:
+    // with the socket switched off, or the browser sent to another port, it was just as quiet. So the
+    // client the page loads must not name another port, and a socket there must say it is connected.
+    const client = await (await fetch(`http://localhost:${taken + 1}/@vite/client`)).text();
+    const hmrPort = /const hmrPort = ([^;]+);/.exec(client)?.[1];
+    if (hmrPort !== "null" && hmrPort !== String(taken + 1)) {
+      fail(`a second dev server sends the browser's hot reload to port ${hmrPort}, not its own`, second.log);
+    }
+    const connected = await new Promise((done) => {
+      const socket = new WebSocket(`ws://localhost:${taken + 1}/`, "vite-hmr");
+      const timer = setTimeout(() => done(false), 5000);
+      socket.onmessage = (message) => {
+        clearTimeout(timer);
+        socket.close();
+        done(String(message.data).includes('"connected"'));
+      };
+      socket.onerror = () => {
+        clearTimeout(timer);
+        done(false);
+      };
+    });
+    if (!connected) fail("a second dev server's hot reload did not answer on its own port", second.log);
   } finally {
     second.child.kill("SIGTERM");
   }

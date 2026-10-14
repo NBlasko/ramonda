@@ -9,6 +9,7 @@ import type { ComponentGraph } from "./graph";
 import { certify, packageRootOf, renderCertificate } from "./certify";
 import { type AnyRule, failingRules, RULES } from "./rules";
 import { filesOf, splitOf } from "./split";
+import { OPTIONS } from "./cliOptions";
 
 /**
  * `ramonda-check [tsconfig]`
@@ -48,19 +49,6 @@ import { filesOf, splitOf } from "./split";
 const argv = process.argv.slice(2);
 const TAG = "[ramonda-check]";
 
-/** Every option, with what `--help` says about it — one list, so help and the parser cannot differ. */
-const OPTIONS: readonly (readonly [flag: string, takes: string, what: string])[] = [
-  ["--graph", "<file>", "also write the composition graph the checks are computed from, as JSON"],
-  ["--graph-html", "<file>", "the same graph as one self-contained page"],
-  ["--diff", "<graph.json>", "compare this run against a graph written earlier"],
-  ["--split", "", "say what the browser loads first and what each lazy piece brings"],
-  ["--fix", "", "write the fixes that have exactly one answer; everything else is still reported"],
-  ["--dry-run", "", "with --fix: say what it would write, and write nothing"],
-  ["--certify", "", "print what this package can and cannot claim about the graph it ships"],
-  ["--help", "", "print this and exit (also -h)"],
-  ["--version", "", "print the version and exit (also -v)"],
-];
-
 const HELP = `Usage: ramonda-check [tsconfig.json] [options]
 
 Proves what a running page cannot, from the source: a context consumer with no provider above it,
@@ -90,8 +78,14 @@ if (argv.includes("--version") || argv.includes("-v")) {
   const flags = OPTIONS.map(([flag]) => flag);
   const takesValue = new Set(OPTIONS.filter(([, takes]) => takes !== "").map(([flag]) => flag));
   for (const [at, word] of argv.entries()) {
-    if (!word.startsWith("--") || flags.includes(word) || takesValue.has(argv[at - 1] ?? "")) continue;
-    const meant = flags.find((flag) => editDistance(word, flag) <= 2);
+    // A single dash too: `-x` was read as a tsconfig path, and reported missing as one.
+    if (!word.startsWith("-") || flags.includes(word) || takesValue.has(argv[at - 1] ?? "")) continue;
+    const [flag, value] = word.split("=", 2);
+    if (value !== undefined && takesValue.has(flag)) {
+      console.error(`${TAG} write ${flag} ${value}, with a space — ${flag}=… is not read. See --help.`);
+      process.exit(2);
+    }
+    const meant = flags.find((one) => editDistance(word, one) <= 2);
     console.error(`${TAG} unknown option ${word}.${meant === undefined ? "" : ` Did you mean ${meant}?`} See --help.`);
     process.exit(2);
   }

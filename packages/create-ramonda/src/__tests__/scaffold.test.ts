@@ -1,4 +1,14 @@
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -891,5 +901,64 @@ describe("a folder that already has files", () => {
 
   test("an empty folder replaces nothing", () => {
     expect(into({}).result.replaced).toEqual([]);
+  });
+
+  // Found in review of the first version, each measured on the built scaffolder.
+  test("names a package.json it replaced — the file most often already there", () => {
+    const { result } = into({ "package.json": '{ "name": "mine" }\n', "src/App.tsx": "mine\n" });
+    expect(result.replaced).toEqual(["package.json", "src/App.tsx"]);
+  });
+
+  test("adds only the lines the .gitignore lacks, once", () => {
+    const lines = into({ ".gitignore": "node_modules\nsecret.env\n" }).read(".gitignore").split("\n");
+    expect(lines.filter((line) => line === "node_modules")).toHaveLength(1);
+    expect(lines).toContain("dist");
+  });
+
+  test("does not undo a line the .gitignore negates", () => {
+    const lines = into({ ".gitignore": "!dist\n" }).read(".gitignore").split("\n");
+    expect(lines).not.toContain("dist");
+    expect(lines).toContain("node_modules");
+  });
+
+  test("keeps the .gitignore's own line endings", () => {
+    const text = into({ ".gitignore": "secret.env\r\n" }).read(".gitignore");
+    expect(text).toContain("node_modules\r\n");
+    expect(text.replaceAll("\r\n", "")).not.toContain("\n");
+  });
+
+  test("does not read a file the template does not write", () => {
+    // Unreadable stands in for a 2 GB video: the scaffolder used to read the whole folder first.
+    const dir = mkdtempSync(join(tmpdir(), "ramonda-scaffold-unread-"));
+    dirs.push(dir);
+    writeFileSync(join(dir, "huge.bin"), "x");
+    chmodSync(join(dir, "huge.bin"), 0o000);
+    expect(() => scaffold({ targetDir: dir, name: "x", mode: "spa", addons: [] })).not.toThrow();
+  });
+
+  describe("a path in the way is refused before anything is written", () => {
+    function blocked(arrange: (dir: string, outside: string) => void, named: string) {
+      const dir = mkdtempSync(join(tmpdir(), "ramonda-scaffold-way-"));
+      const outside = mkdtempSync(join(tmpdir(), "ramonda-scaffold-outside-"));
+      dirs.push(dir, outside);
+      writeFileSync(join(outside, "theirs.txt"), "theirs\n");
+      arrange(dir, outside);
+      expect(() => scaffold({ targetDir: dir, name: "x", mode: "spa", addons: [] })).toThrow(named);
+      expect(existsSync(join(dir, "package.json"))).toBe(false);
+      expect(readFileSync(join(outside, "theirs.txt"), "utf8")).toBe("theirs\n");
+    }
+
+    test("a link where the template writes — never followed out of the folder", () => {
+      blocked((dir, outside) => symlinkSync(join(outside, "theirs.txt"), join(dir, "index.html")), "index.html");
+      blocked((dir, outside) => symlinkSync(join(outside, "theirs.txt"), join(dir, ".gitignore")), ".gitignore");
+    });
+
+    test("a folder where the template writes a file", () => {
+      blocked((dir) => mkdirSync(join(dir, "index.html")), "index.html");
+    });
+
+    test("a file where the template needs a folder", () => {
+      blocked((dir) => writeFileSync(join(dir, "src"), "x"), "src");
+    });
   });
 });
