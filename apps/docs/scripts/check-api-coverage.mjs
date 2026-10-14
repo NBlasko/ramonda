@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import { listBody } from "./list-body.mjs";
 
 /**
  * Fails the build if a public export is missing from the API reference.
@@ -96,9 +97,8 @@ function publicTypesOf(pkg, atLeast, fileName = "PublicSurface.test.ts") {
   const surface = readFileSync(file, "utf8");
   const start = surface.indexOf("const EXPECTED_TYPES");
   if (start === -1) throw new Error(`[docs] ${pkg} declares no EXPECTED_TYPES list.`);
-  const end = surface.indexOf("];", start);
 
-  const names = readNames(surface.slice(start, end), `${pkg}'s EXPECTED_TYPES in ${fileName}`);
+  const names = readNames(listBody(surface, start), `${pkg}'s EXPECTED_TYPES in ${fileName}`);
 
   if (names.length < atLeast) {
     throw new Error(
@@ -108,6 +108,26 @@ function publicTypesOf(pkg, atLeast, fileName = "PublicSurface.test.ts") {
   }
   return names;
 }
+
+/**
+ * One named list from a surface test written as several — `@ramonda/css` keeps `RUNTIME` and
+ * `TYPES` apart, each with comments inside it, so the `EXPECTED`-to-next-comment slice above cannot
+ * read it. Sliced to the list's own `];`, with its comments taken out first.
+ */
+function listOf(pkg, list, atLeast) {
+  const surface = readFileSync(join(packages, pkg, "src", "__tests__", "PublicSurface.test.ts"), "utf8");
+  const start = surface.indexOf(`const ${list} = [`);
+  if (start === -1) throw new Error(`[docs] ${pkg}'s PublicSurface.test.ts has no \`const ${list} = [\``);
+  const names = readNames(listBody(surface, start), `${pkg}'s ${list}`);
+  if (names.length < atLeast) {
+    throw new Error(`[docs] Read ${names.length} name(s) from ${pkg}'s ${list}, expected at least ${atLeast}.`);
+  }
+  return names;
+}
+
+// `@ramonda/css`'s page entry. Its subpaths — the compiler, the config, the plugins — are build tools
+// with pages of their own, and are named on the reference as entry points, not as exports.
+const cssNames = [...listOf("css", "RUNTIME", 8), ...listOf("css", "TYPES", 15)];
 
 const expected = [
   ...publicSurfaceOf("core", 20),
@@ -159,6 +179,7 @@ const expected = [
   // API, documented on the reference by pointing at that library rather than by copying its index.
   ...publicSurfaceOf("testing-library", 5),
   ...publicTypesOf("testing-library", 5),
+  ...cssNames,
 ];
 
 const reference = readFileSync(join(root, "content", "reference", "api.md"), "utf8");
@@ -237,6 +258,20 @@ const missing = expected.filter((name) => {
   const pattern = new RegExp(`(^|[^A-Za-z0-9_@])@?${name}([^A-Za-z0-9_]|$)`);
   return !pattern.test(reference);
 });
+
+/**
+ * A css name must be in the `@ramonda/css` section, not merely on the page. `read` and `pick` are
+ * ordinary words: with the whole css section deleted, `read` was still found — in another package's.
+ */
+const cssStart = reference.indexOf("## `@ramonda/css`");
+const cssSection = cssStart === -1 ? "" : reference.slice(cssStart, reference.indexOf("\n## ", cssStart + 1));
+const cssMissing = cssNames.filter((name) => !new RegExp(`\`${name}[\`(<]`).test(cssSection));
+if (cssMissing.length > 0) {
+  throw new Error(
+    `[docs] The @ramonda/css section of the API reference does not name ${cssMissing.length} of its exports:\n` +
+      cssMissing.map((name) => `        ${name}`).join("\n"),
+  );
+}
 
 if (missing.length > 0) {
   throw new Error(

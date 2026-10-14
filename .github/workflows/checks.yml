@@ -38,7 +38,7 @@ jobs:
       # Through turbo, not `pnpm --filter … build` — `check-workflows.mjs` is about exactly this, and
       # `build` has a `dependsOn` that a direct filter would skip.
       - name: Build the CLI that `pnpm lint` runs
-        run: pnpm exec turbo run build --filter=@ramonda/css
+        run: pnpm exec turbo run build --filter=@ramonda/css --filter=create-ramonda
       # The benchmark on five files, so the script cannot rot. Its timings are not a gate — they
       # differ between machines — and `pnpm bench:css` is how somebody measures for real.
       - name: The CSS benchmark still runs
@@ -47,6 +47,10 @@ jobs:
       # them again and fails when a message or a completion has moved since. No browser needed.
       - name: The editor GIFs show what the editor says
         run: node apps/docs/scripts/build-editor-gifs.mjs --check
+      # The scaffolder's GIF on the Installation page is drawn from the words the built CLI exports;
+      # this fails when a question, a hint or the closing note has changed since it was drawn.
+      - name: The scaffolder's GIF shows what the scaffolder says
+        run: node apps/docs/scripts/build-cli-gif.mjs --check
       # oxlint over the whole monorepo in one pass (config: .oxlintrc.json). Hard
       # gate: the tree is clean today (0 errors).
       - name: Lint (oxlint)
@@ -517,6 +521,8 @@ jobs:
           SELFTEST=app node scripts/check-scaffold.mjs ssr
           SELFTEST=types node scripts/check-scaffold.mjs ssr
           SELFTEST=types node scripts/check-scaffold.mjs spa css
+          SELFTEST=devtools node scripts/check-scaffold.mjs ssr css
+          SELFTEST=dev node scripts/check-scaffold.mjs ssr
           node scripts/check-scaffold.mjs ssr
           node scripts/check-scaffold.mjs spa css
           node scripts/check-scaffold.mjs ssr css

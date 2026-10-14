@@ -51,6 +51,26 @@ router, because server rendering is built on it.
 | [`@ramonda/devtools`](https://ramonda.dev/devtools) | the panel, which grows with the choices above |
 | Biome | lint and format in one tool — with `@ramonda/css`, `src` goes through `ramonda-css`, which runs the same biome over files it cannot parse |
 
+Always added, whatever you pick: `@ramonda/core`, [`@ramonda/build`](https://ramonda.dev/reference/build)
+and [`@ramonda/check`](https://ramonda.dev/reference/check); with SSR, also `@ramonda/server` and
+`@ramonda/router`.
+
+**Then whether to initialise git, and whether to install** with the package manager that ran it.
+
+## Without prompts
+
+Every question has a flag, and a question a flag answers is not asked. `--yes` takes the default for
+the rest. With no terminal — a script, CI, an agent — every question must be answered one of those
+two ways, or it stops and names the flags that are missing.
+
+```sh
+npm create ramonda@latest my-app -- --yes
+npm create ramonda@latest my-app -- --mode ssr --add css,query,testing --no-git
+```
+
+`--help` lists them all: `--mode`, `--add`, `--git`, `--install`, `--overwrite` and `--yes`. It needs
+Node 24 or newer.
+
 With `@ramonda/css`, `ramonda.css.ts` starts strict: every colour and every length but a percentage
 comes from a token it declares, a custom property cannot be made up on the spot, and a block styles only its own
 element. A page that cannot drift off the scale is easier to keep — and easier for anyone, or any

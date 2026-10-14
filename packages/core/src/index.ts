@@ -185,7 +185,12 @@ if (__DEV__) {
      * import("@ramonda/devtools")` — and why that line cannot move into `bootstrap`: only the app
      * knows the package is there, and only the app's bundler can resolve it.
      */
-    const devtoolsSpecifier = "@ramonda/devtools";
+    //
+    // And not a literal held in a variable: Vite 8's dependency pre-bundling folds the constant back
+    // into `import("@ramonda/devtools")`, and the dev server then logs `Failed to resolve import` on
+    // every start of an app without the panel — 2 lines on a scaffolded project, 0 with the join.
+    // `check-scaffold.mjs` starts a dev server and fails on that line.
+    const devtoolsSpecifier = ["@ramonda", "devtools"].join("/");
     import(/* @vite-ignore */ devtoolsSpecifier).catch(() => {
       // Not installed, or not resolvable from the browser. An app that imports it explicitly
       // has already covered this; either way the page is fine without a panel.

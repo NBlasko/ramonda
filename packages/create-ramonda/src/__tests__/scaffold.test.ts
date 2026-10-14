@@ -265,7 +265,7 @@ describe("pnpm can run the build scripts it needs", () => {
 });
 
 describe("the devtools panel", () => {
-  test("is imported from the entry, behind the right guard per template", () => {
+  test("is imported from the entry, behind the development-only guard", () => {
     /**
      * Core loads the panel through a dynamic import whose specifier is a variable marked
      * `@vite-ignore`, so a bundler leaves it, the browser cannot fetch it, and core's `.catch()`
@@ -273,7 +273,7 @@ describe("the devtools panel", () => {
      * ever appeared.
      */
     const ssr = make("ssr", ["devtools"]);
-    expect(ssr.read("src/entry-client.tsx")).toContain("if (__DEV__) {");
+    expect(ssr.read("src/entry-client.tsx")).toContain("if (import.meta.env.DEV) {");
     expect(ssr.read("src/entry-client.tsx")).toContain('void import("@ramonda/devtools")');
 
     const spa = make("spa", ["devtools"]);
@@ -765,5 +765,87 @@ describe("the biome add-on with the css add-on", () => {
     const scripts = (make("spa", ["biome"]).pkg as unknown as { scripts: Record<string, string> }).scripts;
     expect(scripts.lint).toBe("biome lint .");
     expect(scripts.format).toBe("biome format --write .");
+  });
+});
+
+/**
+ * What a newcomer met in the files the scaffolder writes — found by an agent building an app from
+ * the docs alone, each a minute lost or a wrong turn.
+ */
+describe("the generated project, read by a newcomer", () => {
+  test("`test` runs once and exits; watching is its own script", () => {
+    // `vitest` alone watches, so a pre-commit or CI step that ran `npm test` never returned.
+    for (const mode of ["spa", "ssr"] as const) {
+      const scripts = (make(mode, ["testing"]).pkg as unknown as { scripts: Record<string, string> }).scripts;
+      expect(scripts.test).toBe("vitest run");
+      expect(scripts["test:watch"]).toBe("vitest");
+    }
+  });
+
+  test("`check` runs everything the project has, and only that", () => {
+    const scriptsOf = (mode: "spa" | "ssr", addons: ScaffoldOptions["addons"]) =>
+      (make(mode, addons).pkg as unknown as { scripts: Record<string, string> }).scripts;
+
+    expect(scriptsOf("ssr", ["testing", "biome"]).check).toBe("npm run lint && npm test && npm run build");
+    expect(scriptsOf("spa", ["testing"]).check).toBe("npm test && npm run build");
+    // `build` already runs the type check and `ramonda-check`, so nothing else is needed for a bare one.
+    expect(scriptsOf("spa", []).check).toBe("npm run build");
+    expect(scriptsOf("spa", []).build).toContain("typecheck");
+  });
+
+  test("no comment names a file the project does not have", () => {
+    for (const addons of [[], ["css"]] as ScaffoldOptions["addons"][]) {
+      const { dir, read } = make("ssr", addons);
+      const app = read("src/App.tsx");
+      for (const named of app.matchAll(/`([\w-]+\.(?:tsx?|mjs))`/g)) {
+        const file = named[1];
+        const there =
+          readdirSync(join(dir, "src")).includes(file) ||
+          readdirSync(dir).includes(file) ||
+          readdirSync(join(dir, "scripts")).includes(file);
+        expect(there, `src/App.tsx names \`${file}\``).toBe(true);
+      }
+    }
+  });
+
+  test("the devtools guard is the one the docs teach, in both modes", () => {
+    // The SSR entry used `__DEV__` while its own `global.d.ts` said a reader's code should use
+    // `import.meta.env.DEV`; a newcomer copying the entry learned the other one.
+    expect(make("spa", ["devtools"]).read("src/main.tsx")).toContain("if (import.meta.env.DEV) {");
+    const ssr = make("ssr", ["devtools"]).read("src/entry-client.tsx");
+    expect(ssr).toContain("if (import.meta.env.DEV) {");
+    expect(ssr).not.toContain("__DEV__");
+  });
+
+  test("the pnpm settings file says npm and yarn ignore it", () => {
+    // An npm project with a `pnpm-workspace.yaml` looks like a pnpm monorepo until this is said.
+    expect(make("spa", []).read("pnpm-workspace.yaml")).toMatch(/npm and yarn ignore this file/);
+  });
+});
+
+describe("the generated README", () => {
+  /**
+   * A package chosen at the start was installed and then never mentioned: no code used it and no
+   * file said where to begin with it, so the first step with each started from a blank page.
+   */
+  test("names each package chosen, with the page to start from, and no other", () => {
+    const readme = make("spa", ["query", "form", "css"]).read("README.md");
+    expect(readme).toContain("## The packages you chose");
+    expect(readme).toContain("https://ramonda.dev/query");
+    expect(readme).toContain("https://ramonda.dev/forms");
+    expect(readme).toContain("https://ramonda.dev/style-blocks");
+    expect(readme).not.toContain("https://ramonda.dev/lens");
+  });
+
+  test("names the command to run before a commit, in every project", () => {
+    for (const mode of ["spa", "ssr"] as const) expect(make(mode, []).read("README.md")).toContain("`npm run check`");
+  });
+
+  test("with nothing chosen, the section is not there", () => {
+    expect(make("spa", []).read("README.md")).not.toContain("## The packages you chose");
+  });
+
+  test("says what `typecheck` is when it is not `tsc`", () => {
+    expect(make("spa", ["css"]).read("README.md")).toMatch(/`typecheck`[^\n]*`ramonda-css`/);
   });
 });
