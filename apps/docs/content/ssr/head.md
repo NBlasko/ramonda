@@ -30,7 +30,7 @@ When you render on the server, `renderPage` returns them next to the body:
 
 ```ts
 const page = await renderPage(<App />);
-// { body, title, head }
+// { body, title, head, lang, dir }
 ```
 
 ## Why a hook
@@ -53,6 +53,8 @@ one `<head>` the way many [portals](/composition/portal) share one target.
 | `description` | `<meta name="description">` — the snippet under the title in a result |
 | `meta` | anything else: Open Graph, Twitter cards, robots, viewport |
 | `link` | canonical URLs, alternates, icons, preloads |
+| `lang` | `<html lang>` — the language the page is in |
+| `dir` | `<html dir>` — `"ltr"`, `"rtl"` or `"auto"`; any string compiles, so `cond ? "rtl" : "ltr"` needs no annotation |
 
 `meta` takes `MetaTag`s and `link` takes `LinkTag`s — a `<link>` is identified by its `rel` plus its
 `href`, and carries `type`, `sizes`, `crossOrigin` and `hreflang` where they apply.
@@ -73,6 +75,39 @@ The callback form follows a value:
 ```tsx
 head = this.use(Head, (self: Page) => ({ title: `${self.section} — Ramonda` }));
 ```
+
+## The page's language — `lang` and `dir`
+
+A screen reader picks its pronunciation from `<html lang>`, and a browser its hyphenation and
+spell-check. Set it where the language is decided, usually the app root, from the reader's choice:
+
+```tsx
+import { Component, Head, state } from "@ramonda/core";
+
+export class App extends Component {
+  @state locale = "sr";
+
+  head = this.use(Head, (self: App) => ({
+    lang: self.locale,
+    dir: self.locale === "ar" ? "rtl" : "ltr",
+  }));
+
+  english() {
+    this.locale = "en";
+  }
+
+  render() {
+    return <button onclick={this.english}>English</button>;
+  }
+}
+```
+
+It follows the rules the title does. The deeper `Head` wins, so a page in another language can say
+so. When the page goes away, `<html>` gets back what it had, unless something else changed it since.
+
+On the server, `renderPage` returns `lang` and `dir`, and [`fillDocument`](/ssr/server) writes them
+over the shell's `<html lang="en">`. Pass them through, as you pass `title`. A page that set neither
+leaves the shell's value standing.
 
 ## Each `<meta>` needs an identifier — `MetaTag`
 

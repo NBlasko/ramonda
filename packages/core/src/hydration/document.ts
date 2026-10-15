@@ -4,7 +4,7 @@ import { escapeAttribute, escapeText } from "./escape";
 
 export interface DocumentOptions {
   /**
-   * `<html lang>`. Defaults to `"en"`.
+   * `<html lang>` when no `Head` in the page set one — a page's own `lang` wins. Defaults to `"en"`.
    *
    * Not optional in practice: screen readers pick pronunciation from it, and
    * search engines use it to decide which audience a page is for. The default is
@@ -57,7 +57,7 @@ export interface DocumentOptions {
  * after the title.
  */
 export function renderDocument(page: RenderedPage, options: DocumentOptions = {}): string {
-  const { lang = "en", scripts = [], styles = [], headExtra = "", bodyClass, rootId = "app" } = options;
+  const { lang: fallbackLang = "en", scripts = [], styles = [], headExtra = "", bodyClass, rootId = "app" } = options;
 
   const styleTags = styles.map((href) => `<link rel="stylesheet" href="${escapeAttribute(href)}">`).join("");
 
@@ -65,7 +65,7 @@ export function renderDocument(page: RenderedPage, options: DocumentOptions = {}
 
   return (
     "<!doctype html>" +
-    `<html lang="${escapeAttribute(lang)}">` +
+    `<html lang="${escapeAttribute(page.lang ?? fallbackLang)}"${page.dir ? ` dir="${escapeAttribute(page.dir)}"` : ""}>` +
     "<head>" +
     '<meta charset="utf-8">' +
     '<meta name="viewport" content="width=device-width, initial-scale=1">' +

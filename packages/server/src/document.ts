@@ -39,6 +39,13 @@ export interface Document {
   /** Head elements as `outerHTML`, already escaped by having been serialised from real nodes. */
   head?: string;
   /**
+   * `<html lang>` — `renderPage()`'s `lang`, set by a `Head` in the page. Written over the shell's, and
+   * absent leaves the shell's standing.
+   */
+  lang?: string;
+  /** `<html dir>`, by the same rule. */
+  dir?: string;
+  /**
    * What each named portal target collected — `renderPage()`'s `portals`.
    *
    * A portal aimed at a name rather than an element is the only kind that can exist on the server:
@@ -70,8 +77,10 @@ export interface Document {
  * the two. `<!--portals-->` is the exception and throws — see below for why that one cannot be
  * quiet.
  */
-export function fillDocument({ template, html, title, head, portals }: Document): string {
+export function fillDocument({ template, html, title, head, lang, dir, portals }: Document): string {
   let out = template.replace("<!--ssr-->", () => html ?? "");
+  out = setRootAttribute(out, "lang", lang);
+  out = setRootAttribute(out, "dir", dir);
   // An EMPTY title is a report that nothing set one — `renderPage` returns `""` when no `Head` in
   // the tree spoke — and not a title of "". Writing it emptied the shell's own `<title>`, which a
   // scaffolded project with no `Head` shipped as `<title></title>`.
@@ -98,6 +107,24 @@ export function fillDocument({ template, html, title, head, portals }: Document)
 }
 
 const PORTALS_MARKER = "<!--portals-->";
+
+/**
+ * One attribute on the shell's `<html>` element, replaced if it is there and added if not. Only that
+ * element: the first `<html` tag, which `<!doctype html>` is not, and an attribute that starts after
+ * whitespace — so `data-lang` is not `lang`. Nothing to write leaves the shell exactly as it was.
+ */
+function setRootAttribute(shell: string, name: "lang" | "dir", value: string | undefined): string {
+  if (value === undefined) return shell;
+  const written = `${name}="${escapeAttribute(value)}"`;
+  const existing = new RegExp(`(\\s)${name}\\s*=\\s*(?:"[^"]*"|'[^']*'|[^\\s>]+)`, "i");
+  return shell.replace(/<html(\s[^>]*)?>/i, (_tag, attributes: string | undefined) => {
+    const before = attributes ?? "";
+    const after = existing.test(before)
+      ? before.replace(existing, (_m, space: string) => `${space}${written}`)
+      : `${before} ${written}`;
+    return `<html${after}>`;
+  });
+}
 
 /**
  * A container per named target, in the order the render collected them.

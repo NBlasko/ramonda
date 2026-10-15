@@ -74,7 +74,7 @@ package not added at the start is installed like any other, later.
 | | |
 |---|---|
 | `renderToString(vnode, opts?)` | An app → HTML, awaiting async lifecycle. `opts.request` makes it a per-request render so `requestContext()` returns real values. [Details](/ssr/render) |
-| `renderPage(vnode)` | The same, plus `{ title, head }`. [Head](/ssr/head) |
+| `renderPage(vnode)` | The same, plus `{ title, head, lang, dir }`. [Head](/ssr/head) |
 | `renderStatic(vnode, url)` | A build-time render with the request context poisoned — returns `{ html }` to bake or `{ blockedBy }` if the route read per-request data. |
 | `renderDocument(page, options?)` | Wraps a rendered page in a complete document. [Static builds](/ssr/static) |
 | `hydrateRoot(vnode, element)` | Adopts the server's DOM instead of rebuilding it. |
@@ -402,7 +402,7 @@ those are `@ramonda/router/server`. [Server rendering](/ssr/server)
 | `installDom(url)` | Installs a DOM and the globals a render reads, and hands back a `DomHandle`. [The whole loop](/ssr/server#installdom-url-and-the-domhandle-it-returns) |
 | `installWindow(dom, options?)` | The globals only, for a DOM you brought yourself — a jsdom, or one document reused across a prerender. `navigation: "dom"` takes that DOM's own `location` and `history` instead of building them from `url`. |
 | `DomHandle` | What `installDom` hands back: a `close()` that shuts the render down without the caller knowing what built it. |
-| `fillDocument(document)` | Puts the rendered html, title, head and portal targets into the shell. [Filling the shell](/ssr/server#filldocument-document-the-document-it-takes) |
+| `fillDocument(document)` | Puts the rendered html, title, head, `lang`/`dir` and portal targets into the shell. [Filling the shell](/ssr/server#filldocument-document-the-document-it-takes) |
 | `Document` | The shape `fillDocument` takes — the shell with `<!--ssr-->` where the app goes, and optionally `<!--head-->` and `<!--portals-->`. |
 | `escapeHtml(value)` | Escapes a value for markup. What keeps an app's own title out of the parser. |
 | `PORTAL_TARGET_ATTR` | The attribute a shell puts on a portal container, so a target exists on the server too. [Portal](/composition/portal) |

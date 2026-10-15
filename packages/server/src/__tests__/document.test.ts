@@ -67,6 +67,44 @@ describe("fillDocument escapes the title", () => {
   });
 });
 
+/**
+ * `<html lang>` and `<html dir>` from the page's `Head`, written over the shell's — the way the title
+ * is. A shell is one file for every page, and a bilingual app's pages are not all in one language.
+ */
+describe("fillDocument writes the page's lang and dir on <html>", () => {
+  const SCAFFOLDED = `<!doctype html>\n<html lang="en">\n  <head><title>App</title><!--head--></head><body><!--ssr--></body></html>`;
+
+  test("replaces the shell's lang, and adds a dir it did not have", () => {
+    const out = fillDocument({ template: SCAFFOLDED, html: "", lang: "ar", dir: "rtl" });
+    expect(out).toContain('<html lang="ar" dir="rtl">');
+    expect(out).not.toContain('lang="en"');
+  });
+
+  test("adds a lang to a shell that has none, and keeps its other attributes", () => {
+    const shell = `<!doctype html><html class="no-js" data-x="1"><head></head><body><!--ssr--></body></html>`;
+    expect(fillDocument({ template: shell, html: "", lang: "sr" })).toContain(
+      '<html class="no-js" data-x="1" lang="sr">',
+    );
+  });
+
+  test("a page that set neither leaves the shell exactly as it was", () => {
+    expect(fillDocument({ template: SCAFFOLDED, html: "" })).toContain('<html lang="en">');
+  });
+
+  test("a value cannot break out of the attribute, and `$` survives", () => {
+    const out = fillDocument({ template: SCAFFOLDED, html: "", lang: 'x" onload="alert(1)' });
+    expect(out).toContain('<html lang="x&quot; onload=&quot;alert(1)">');
+    expect(fillDocument({ template: SCAFFOLDED, html: "", lang: "$&" })).toContain('<html lang="$&amp;">');
+  });
+
+  test("only the <html> element, not a lang written further down the shell", () => {
+    const shell = `<!doctype html><html lang="en"><head></head><body><p lang="en">x</p><!--ssr--></body></html>`;
+    const out = fillDocument({ template: shell, html: "", lang: "sr" });
+    expect(out).toContain('<html lang="sr">');
+    expect(out).toContain('<p lang="en">');
+  });
+});
+
 describe("fillDocument on a shell that is missing its markers", () => {
   test("returns the shell rather than throwing", () => {
     // A shell with no `<!--ssr-->` is a mistake, but a server that throws on it answers 500 for

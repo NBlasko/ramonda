@@ -73,17 +73,26 @@ A dialog, a toast, a tooltip that must escape an `overflow: hidden` ancestor.
 [`Portal`](/composition/portal) renders it into a container outside your root while keeping it in
 your component tree — so context still reaches it and it is destroyed with its owner.
 
-## An arbitrary value on `<html>` or `<body>` → no answer yet
+## The page's language on `<html>` → `Head`
 
-`data-theme="dark"`, `lang="sr"`, `style="--accent: #c33"`.
+`lang="sr"` and `dir="rtl"` are set by [`Head`](/ssr/head#the-pages-language-lang-and-dir), the same
+way as the title, on the server and the client:
+
+```tsx
+this.use(Head, (self: App) => ({ lang: self.locale }));
+```
+
+## Any other value on `<html>` or `<body>` → no answer yet
+
+`data-theme="dark"`, `style="--accent: #c33"`.
 
 `:has()` selects on a class but cannot carry a value, so the first answer does not stretch to cover
-this. [`renderDocument`](/reference/api) takes `lang` and `bodyClass`, but it is static and
-server-only — one value for the whole build, not one a component can change.
+this. [`renderDocument`](/reference/api) takes `bodyClass`, but it is static and server-only — one
+value for the whole build, not one a component can change.
 
 So this case has no declarative answer today, and rather than leave that implied: **nothing in the
-Ramonda repository sets an attribute on `<html>` or `<body>` from a component.** It is a hole in the
-design, not one anybody has fallen into.
+Ramonda repository sets any other attribute on `<html>` or `<body>` from a component.** It is a hole
+in the design, not one anybody has fallen into.
 
 If you need it now, an imperative write in `@mounted` with its undo in `@destroyed` is what there
 is. [`ramonda-check`](/reference/check) reports it as
@@ -99,9 +108,8 @@ recorded rather than hidden:
 }
 ```
 
-If it is ever built it will not be called `Body`: `lang` belongs on `<html>`, so one hook has to
-cover both, shaped like `Head` — last mount wins, restored on `@destroyed`, one path for the server
-and the client.
+If it is ever built, it will follow the rules `lang` already follows in `Head`: the last mount wins,
+the value is restored on `@destroyed`, and the server and the client share one path.
 
 Not code you can write today — a sketch, deliberately unhighlighted so it cannot be mistaken for
 something to copy:
