@@ -376,6 +376,28 @@ describe("what the server sends for a select", () => {
     expect(html).toContain('<option value="b" selected=""');
     expect((host.querySelector("select") as HTMLSelectElement).value).toBe("b");
   });
+
+  test("a defaultValue is carried the same way", async () => {
+    class Starting extends Component {
+      render() {
+        return (
+          <Select defaultValue="c">
+            {["a", "b", "c"].map((v) => (
+              <option key={v} value={v}>
+                {v}
+              </option>
+            ))}
+          </Select>
+        );
+      }
+    }
+    const html = (await renderToString(<Starting />)).replace(/<!--[^>]*-->/g, "");
+    const host = document.createElement("div");
+    host.innerHTML = html;
+
+    expect(html).toContain('<option value="c" selected=""');
+    expect((host.querySelector("select") as HTMLSelectElement).value).toBe("c");
+  });
 });
 
 describe("a served select, hydrated", () => {

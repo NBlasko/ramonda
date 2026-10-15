@@ -42,6 +42,12 @@ describe("what the server sends for a textarea", () => {
     expect(served(html).value).toBe("hello");
   });
 
+  test("a defaultValue is inside the element the same way", async () => {
+    const html = (await renderToString(<TextArea id="t" defaultValue="start" />)).replace(/<!--[^>]*-->/g, "");
+    expect(html).toBe('<textarea id="t">start</textarea>');
+    expect(served(html).value).toBe("start");
+  });
+
   /**
    * The value is content now, so it is escaped like content. Written as an attribute it was escaped
    * for a different context entirely, and a value carrying markup is the shape that turns a rendered
