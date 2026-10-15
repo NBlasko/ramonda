@@ -102,7 +102,11 @@ const queued = new WeakSet<object>();
 export function answer(component: Component<any> & { settle(): void }, event: Event): void {
   const theirs = component[COMPONENT_RUNTIME].rawProps[`on${event.type}`];
   try {
+    // Either form a listener takes: a function, or an object with `handleEvent`.
     if (typeof theirs === "function") theirs.call(event.currentTarget, event);
+    else if (typeof (theirs as EventListenerObject | null)?.handleEvent === "function") {
+      (theirs as EventListenerObject).handleEvent(event);
+    }
   } finally {
     if (!(event as InputEvent).isComposing && !queued.has(component)) {
       queued.add(component);

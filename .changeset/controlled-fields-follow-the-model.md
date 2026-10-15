@@ -11,8 +11,9 @@ showing the user's input until the page rendered again for another reason: a `Se
 by its parent's next render, which handed it new children every time, and a `TextArea` never was.
 
 With `defaultValue`, the field shows it first and then belongs to the user — for a form whose fields
-are read when it is sent. A later `defaultValue` does not reach a field the user has changed, and on a
-served page the field shows it before any script runs.
+are read when it is sent. A `TextArea`'s text follows `defaultValue` until the user edits it, so one
+that arrives from a load fills a field nobody has typed in; on a served page the field shows it before
+any script runs. A handler may be a function or a listener object, as for any element.
 
 The settle waits for the whole event, so an `onchange` reads the user's pick and a listener on an
 ancestor reads what was typed — or moves the model itself; it leaves an input method's composition

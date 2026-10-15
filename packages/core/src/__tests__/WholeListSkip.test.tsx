@@ -138,4 +138,45 @@ describe("whole-list skip", () => {
     expect(app.container.querySelector("ul")!.getAttribute("data-tick")).toBe("1");
     expect(rowsRead).toBe(0);
   });
+
+  /**
+   * The skip trusts a node only from the engine that built it. A `list()` and the group that replaces
+   * it in the same slot share an owner, and a group that took the list's engine had its node — the
+   * same object every time it came back through `{this.props.children}` — taken for unchanged.
+   */
+  test("a group that replaces a list in its slot is never skipped for it", async () => {
+    class Panel extends Component<{ children?: unknown }> {
+      render() {
+        return <ul>{this.props.children as never}</ul>;
+      }
+    }
+    const first = ["x"];
+    const prices = ["p"];
+    class Page extends Component {
+      @state open = true;
+      @state currency = "RSD";
+      rowA(r: string) {
+        return <li>{r}</li>;
+      }
+      price(p: string) {
+        return <li class="price">{`${p} ${this.currency}`}</li>;
+      }
+      render() {
+        return (
+          <div>
+            <Panel>{this.open ? list(first, this.rowA) : [<li>head</li>, list(prices, this.price)]}</Panel>
+          </div>
+        );
+      }
+    }
+    const app = await getDOM<Page>(<Page />);
+    await app.settle();
+    app.instance.open = false;
+    await app.settle();
+
+    app.instance.currency = "EUR";
+    await app.settle();
+
+    expect(app.container.querySelector(".price")?.textContent).toBe("p EUR");
+  });
 });

@@ -404,6 +404,22 @@ describe("a controlled textarea follows the model after the event the app handle
     expect(field.value).toBe("typed");
   });
 
+  /** A `defaultValue` that arrives after the first render — from a load — reaches a field nobody typed in. */
+  test("a defaultValue that arrives later fills an untouched field", async () => {
+    class Loading extends Component {
+      @state saved: string | undefined = undefined;
+      render() {
+        return <TextArea id="t" defaultValue={this.saved} />;
+      }
+    }
+    const app = await getDOM<Loading>(<Loading />);
+    await app.settle();
+    app.instance.saved = "loaded";
+    await app.settle();
+
+    expect((app.container.querySelector("#t") as HTMLTextAreaElement).value).toBe("loaded");
+  });
+
   /** A `value` with only `onchange`: the model does not move while typing, so each keystroke is undone. */
   test("a value with only onchange is held between keystrokes", async () => {
     class Held extends Component {

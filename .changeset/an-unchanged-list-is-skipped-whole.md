@@ -14,6 +14,7 @@ pass's `list()` descriptor, a fresh object on every render. It compares the buil
 safe only because a list inside a row now marks the rows above it when it changes, so "the same node"
 includes everything inside the rows (see the changeset for a list inside a row).
 
-Only a node an engine built is skipped. An array of children is a list as well, built once and kept
-in the vnode around it, so a reused row hands back the same array node while a list inside the array
-has changed.
+Only a node an engine built is skipped, and only by the engine that built it. An array of children is
+a list as well, built once and kept in the vnode around it, so a reused row hands back the same array
+node while a list inside the array has changed; and a group that replaces a `list()` in the same slot
+shares its owner, so it does not take the list's engine — the list's engine is released instead.

@@ -209,15 +209,6 @@ describe("a prop rebuilt on every render", () => {
   });
 
   /**
-   * A `@compute` reached through a CALL.
-   *
-   * Planted when main made both forms readable: a `@compute` method now installs a function that
-   * returns the cached value, so `conf={this.settings()}` is a supported way to write it — and a
-   * walk that followed the call would find the literal inside the getter and report the cache
-   * itself. Proved by removing the decorator, which takes the fixture from nineteen findings to
-   * twenty: the guard is what does the work here, not a resolve that quietly failed.
-   */
-  /**
    * Children and a single node as a prop are compared by content at runtime; an object or an array
    * holding nodes is the app's, which it may change in place, so it is compared by reference and
    * reported like any literal — with `@StableProps` on the child as the way to declare it.
@@ -231,6 +222,15 @@ describe("a prop rebuilt on every render", () => {
     expect(freshObjectInProps.report.advice).toContain('`@StableProps("slots")`');
   });
 
+  /**
+   * A `@compute` reached through a CALL.
+   *
+   * Planted when main made both forms readable: a `@compute` method now installs a function that
+   * returns the cached value, so `conf={this.settings()}` is a supported way to write it — and a
+   * walk that followed the call would find the literal inside the getter and report the cache
+   * itself. Proved by removing the decorator, which takes the fixture from nineteen findings to
+   * twenty: the guard is what does the work here, not a resolve that quietly failed.
+   */
   test("a @compute method called in a prop is silent", () => {
     const written = run().findings["fresh-object-in-props"].map((issue) => issue.written);
     expect(written).not.toContain("this.settings()");

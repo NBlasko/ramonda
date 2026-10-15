@@ -3,6 +3,8 @@ import { Component, Select, TextArea } from "@ramonda/core";
 declare const value: string;
 declare const bind: Record<string, unknown>;
 declare const viewing: boolean;
+const LOCKED = true;
+declare const Card: (props: { onchange?: unknown; children?: unknown }) => unknown;
 
 class App extends Component<{ text: string }> {
   pick(_event: Event) {}
@@ -52,6 +54,15 @@ class App extends Component<{ text: string }> {
         </fieldset>
         {/* ✗ no-handler: readOnly that may be off */}
         <TextArea value={value} readOnly={viewing} aria-label="maybe read only" />
+        {/* ✓ read-only spelled as a string, and through a const */}
+        <TextArea value={value} readonly="true" aria-label="read only string" />
+        <TextArea value={value} disabled={LOCKED} aria-label="locked const" />
+        {/* ✗ no-handler: a component's onchange is a prop, not a listener */}
+        <Card onchange={this.pick}>
+          <Select value={value} aria-label="inside a card">
+            <option value="a">a</option>
+          </Select>
+        </Card>
       </form>
     );
   }

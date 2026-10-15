@@ -1,7 +1,7 @@
 import ts from "typescript";
 import { positionOf } from "../syntax";
 import { coreElementTag } from "./coreElements";
-import { openingOf } from "./element";
+import { openingOf, tagOf } from "./element";
 import { eventTypeOf } from "./events";
 import { enclosingElement } from "./html";
 import type { ElementRule, JsxElementLike } from "./rule";
@@ -37,23 +37,12 @@ function eventsOf(element: JsxElementLike): Set<string | undefined> {
  */
 function heardAbove(element: JsxElementLike, events: readonly string[]): boolean {
   for (let at = enclosingElement(element); at !== undefined; at = enclosingElement(at)) {
+    // Only an ELEMENT listens: on a component, `onchange` is a prop it may do anything with.
+    if (tagOf(at) === undefined) continue;
     const heard = eventsOf(at);
     if (events.some((event) => heard.has(event))) return true;
   }
   return false;
-}
-
-/**
- * Whether an attribute is ON as written: bare (`readonly`), or `={true}`. `readOnly={this.viewing}` may
- * be off, and a field that may take input is asked like any other.
- */
-function switchedOn(element: JsxElementLike, names: readonly string[]): boolean {
-  return openingOf(element).attributes.properties.some((attribute) => {
-    if (!ts.isJsxAttribute(attribute) || !names.includes(attribute.name.getText())) return false;
-    const value = attribute.initializer;
-    if (value === undefined) return true;
-    return ts.isJsxExpression(value) && value.expression?.kind === ts.SyntaxKind.TrueKeyword;
-  });
 }
 
 /**
@@ -89,10 +78,11 @@ function fromProps(element: JsxElementLike): boolean {
  * whose text is read when the form is sent.
  *
  * Not reported: an element with a spread — `{...bind}` from `@ramonda/form` carries the handler, and
- * a rule that cannot see it would report every bound field; a field written `readonly` or `disabled`
- * (bare or `={true}`), which takes no input to undo; a field with a handler on an element around it,
- * `<form oninput>`, which core waits for before it settles; and a field whose `value` comes from
- * `props`, whose handler may sit in the parent's render.
+ * a rule that cannot see it would report every bound field; a field that is `readonly` or `disabled`
+ * as written (`truth`: bare, `{true}`, `"true"`, or a name holding it), which takes no input to undo;
+ * a field with a handler on an ELEMENT around it, `<form oninput>`, which core waits for before it
+ * settles — a component's `onchange` is only a prop; and a field whose `value` comes from `props`,
+ * whose handler may sit in the parent's render.
  */
 export const fieldTheUserCannotChange = {
   id: "field-the-user-cannot-change",
@@ -127,7 +117,7 @@ export const fieldTheUserCannotChange = {
       "`value` every keystroke before it is undone.\n\n",
   },
 
-  read(element, { resolve }) {
+  read(element, { resolve, truth }) {
     const opening = openingOf(element);
     const tag = coreElementTag(opening.tagName, resolve);
     if (tag !== "select" && tag !== "textarea") return [];
@@ -141,7 +131,7 @@ export const fieldTheUserCannotChange = {
 
     const moving: readonly string[] = tag === "textarea" ? ["input"] : ["input", "change"];
     if (
-      switchedOn(element, ["readonly", "readOnly", "disabled"]) ||
+      ["readonly", "readOnly", "disabled"].some((name) => truth(name) === true) ||
       heardAbove(element, moving) ||
       fromProps(element)
     ) {

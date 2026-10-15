@@ -60,9 +60,6 @@ export class TextArea extends Component<TextAreaProps> {
    */
   private e = createRef<HTMLTextAreaElement>((node) => this.g(node));
 
-  /** `t` — the text `defaultValue` gave the field at its first render. */
-  private t: string | undefined;
-
   /** `h` — the caller's ref as of the last HAND-OVER, so a swapped one can be let go of. */
   private h: RefTarget<HTMLTextAreaElement> | undefined;
 
@@ -113,10 +110,11 @@ export class TextArea extends Component<TextAreaProps> {
      * there is nothing to suppress: the refusal keeps meaning exactly what it says at every call
      * site that writes the tag, and this one does not write it.
      */
-    // `value` every render; `defaultValue` as it was at the FIRST — the text child is where a
-    // textarea's default lives, and a later one must not reach a field the user has typed in.
-    this.t ??= String(this.props.defaultValue ?? "");
-    const text = this.props.value == null ? this.t : String(this.props.value);
+    // `value`, or else `defaultValue` — the text child is where a textarea's default lives. A later
+    // `defaultValue` reaches a field nobody has typed in, and stops at one somebody has: the browser
+    // keeps an edited field's own value and no longer reads its text, which is the whole of what a
+    // default is.
+    const text = this.props.value == null ? String(this.props.defaultValue ?? "") : String(this.props.value);
 
     /**
      * An EMPTY value is no child at all, not a child that is the empty string.

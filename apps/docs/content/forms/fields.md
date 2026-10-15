@@ -138,7 +138,8 @@ before any script runs.
 `value` shows what the model holds after every input, once the event is over: a handler that takes
 the input leaves the field as the user made it, and one that does not — or no handler at all — puts
 the model's value back. An input method's composition is left alone; the next ordinary input is
-answered. A field whose text
+answered. A handler that skips composing input (`if (event.isComposing) return`) should take the
+composed text on `oncompositionend`, or the model never receives it. A field whose text
 is read when the form is sent, rather than held in state, takes `defaultValue` instead: it shows that
 first and then belongs to the user, and a later `defaultValue` does not reach it.
 

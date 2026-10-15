@@ -135,6 +135,32 @@ describe("a controlled select shows what the model says", () => {
     expect(shown(app.container)).toEqual(expected);
   });
 
+  /** A handler may be a listener object, as for any element: it is called, and the pick is answered. */
+  test("an onchange given as a listener object is called", async () => {
+    class Picked extends Component {
+      @state choice = "a";
+      listener = { handleEvent: (event: Event) => (this.choice = (event.target as HTMLSelectElement).value) };
+      render() {
+        return (
+          <Select id="s" value={this.choice} onchange={this.listener as never}>
+            {["a", "b", "c"].map((v) => (
+              <option key={v} value={v}>
+                {v}
+              </option>
+            ))}
+          </Select>
+        );
+      }
+    }
+    const app = await getDOM<Picked>(<Picked />);
+    await app.settle();
+    await pickAsABrowserDoes(app.container.querySelector("#s") as HTMLSelectElement, "c");
+    await app.settle();
+
+    expect(app.instance.choice).toBe("c");
+    expect(shown(app.container)).toEqual({ value: "c", index: 2 });
+  });
+
   /** A `value` with no handler is held by a model that never moves: the pick is undone. */
   test("a select with a value and no handler cannot be changed from the page", async () => {
     class Held extends Component {
