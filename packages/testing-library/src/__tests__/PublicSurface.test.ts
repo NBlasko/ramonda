@@ -18,7 +18,7 @@ const SURFACE_SRC = decodeURIComponent(new URL("..", HERE).pathname);
  * The docs' `check-api-coverage.mjs` reads this list too, so a new export has to be acknowledged
  * twice — once as API, once as documentation.
  */
-const EXPECTED = ["act", "cleanup", "fireEvent", "render", "renderHook"];
+const EXPECTED = ["act", "allowDiagnostics", "cleanup", "fireEvent", "render", "renderHook"];
 
 /**
  * The TYPES the build publishes, which `Object.keys` cannot see.

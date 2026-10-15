@@ -12,7 +12,7 @@
  * (`__tests__/TestingSeam.test.ts`). The same shape as `react-dom/test-utils` —
  * available to whoever needs it, not in the way of anyone who does not.
  *
- * **Three things, and no more.** Everything else `@ramonda/testing-library`
+ * **A short list, and no more.** Everything else `@ramonda/testing-library`
  * needs — `bootstrap`, `unmount`, `h`, `hydrateRoot`, `renderToString` — is
  * already public, and should stay the way a harness reaches it. If something new
  * belongs here, the test in `TestingSeam.test.ts` has to be updated on purpose,
@@ -20,6 +20,7 @@
  */
 
 import { drainSync } from "./core/Task";
+import { resetDiagnostics as forgetReported } from "./debug/diagnostics";
 import { componentAt, componentsIn, rerenderRoot as reconcileRoot } from "./core/DiffAndMerge";
 import type { BaseComponent, ComponentChild } from "./types/vdom";
 
@@ -83,4 +84,17 @@ export function getComponentInstance(node: Node | null | undefined): BaseCompone
  */
 export function getComponentsIn(node: Node): BaseComponent<never>[] {
   return componentsIn(node) as unknown as BaseComponent<never>[];
+}
+
+/**
+ * Forgets which diagnostics were already reported, so the next test that makes the same mistake is
+ * told about it.
+ *
+ * A diagnostic is said once per process, which is right in a page and wrong across tests: the test
+ * that hit it first takes the only report, and every later test with the same fault passes in
+ * silence. `@ramonda/testing-library` calls this before each test, when it fails a test on a
+ * development diagnostic.
+ */
+export function resetDiagnostics(): void {
+  forgetReported();
 }

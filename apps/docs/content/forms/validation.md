@@ -254,7 +254,20 @@ switchToBusiness(): void {
 ```
 
 If a toggle really has to show its effect immediately, put the validation after the commit with
-[`@updated`](/concepts/lifecycle), which runs once the render has landed.
+[`@updated`](/concepts/lifecycle), which runs once the render has landed. Run it once per schema:
+`submit()` writes state, so an `@updated` that submits on every update starts another update, and
+never settles ([RMD009](/reference/diagnostics/rmd009)).
+
+```tsx
+private validatedFor: unknown;
+
+@updated
+applySchema(): void {
+  if (this.validatedFor === this.schema) return;
+  this.validatedFor = this.schema;
+  if (this.accountType === "business") this.form.submit();
+}
+```
 
 ## Async schemas
 

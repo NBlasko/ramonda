@@ -1,6 +1,6 @@
 import { Component, renderToString } from "@ramonda/core";
 import type { RamondaNode } from "@ramonda/core";
-import { act, render, waitFor } from "@ramonda/testing-library";
+import { act, allowDiagnostics, render, waitFor } from "@ramonda/testing-library";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { ServerQueryError } from "../errors";
 import { Query } from "../Query";
@@ -250,6 +250,7 @@ describe("server rendering", () => {
   });
 
   test("a query whose key moved between the two renders ignores the stale snapshot", async () => {
+    allowDiagnostics("RMD007"); // the test exists to show it
     // The server rendered user 1; the document is hydrated showing user 2 (a client
     // that navigated, or a CDN serving one document for many paths). The server's
     // answer to the old question must not be presented as the answer to the new one.

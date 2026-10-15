@@ -1,7 +1,7 @@
 import { beforeEach, describe, test, expect } from "vitest";
 import { Component, created } from "@ramonda/core";
 import type { RamondaNode } from "@ramonda/core";
-import { render, act, fireEvent } from "@ramonda/testing-library";
+import { act, allowDiagnostics, fireEvent, render } from "@ramonda/testing-library";
 import { Router, RouteOutlet, Navigator } from "../Router";
 import { Link } from "../Link";
 import { createRoutes } from "../match";
@@ -367,6 +367,7 @@ describe("Link", () => {
   });
 
   test("a Link with no Router refuses to navigate rather than failing quietly", () => {
+    allowDiagnostics("RMD003"); // the test exists to show it
     const { container } = render(<Link href="/players/9">Go</Link>);
     const a = container.querySelector("a")!;
 

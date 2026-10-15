@@ -1,5 +1,5 @@
 import { Component, configureDev, type RamondaNode, state } from "@ramonda/core";
-import { act, render } from "@ramonda/testing-library";
+import { act, allowDiagnostics, render } from "@ramonda/testing-library";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { Form } from "../Form";
 import type { StandardResult, StandardSchemaV1, ValidateOn } from "../types";
@@ -86,6 +86,7 @@ describe("a form under the strict render", () => {
   });
 
   test("a literal built in the callback is what gets reported", () => {
+    allowDiagnostics("RMD022"); // the test exists to show it
     // The shape the docs warn about, kept here so the warning is about something real. If this ever
     // stops reporting, the paragraph in the docs is describing a diagnostic that no longer fires.
     let page!: Rebuilds;

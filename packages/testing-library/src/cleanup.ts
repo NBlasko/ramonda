@@ -58,9 +58,13 @@ export function disableAutoCleanup(): void {
   autoCleanupDisabled = true;
 }
 
+/** Whether trees are unmounted after each test — off when a project opted out. */
+export function autoCleanupOn(): boolean {
+  return !autoCleanupDisabled && !readEnvFlag("RAMONDA_TL_SKIP_AUTO_CLEANUP");
+}
+
 export function registerAutoCleanup(): void {
-  if (autoCleanupDisabled) return;
-  if (readEnvFlag("RAMONDA_TL_SKIP_AUTO_CLEANUP")) return;
+  if (!autoCleanupOn()) return;
 
   // Not imported from vitest or jest: this package must not pick a test runner
   // for its users. Whichever one is running has already put `afterEach` on the

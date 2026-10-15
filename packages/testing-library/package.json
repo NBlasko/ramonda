@@ -27,6 +27,9 @@
     },
     "./dont-cleanup-after-each": {
       "import": "./dist/dont-cleanup-after-each.js"
+    },
+    "./dont-fail-on-diagnostics": {
+      "import": "./dist/dont-fail-on-diagnostics.js"
     }
   },
   "main": "./dist/index.js",

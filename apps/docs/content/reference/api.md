@@ -544,6 +544,7 @@ panel. [Devtools](/devtools)
 | `act(callback?)` | Commits everything the callback caused. [act](/testing/act) |
 | `fireEvent` | The DOM library's, wrapped so the render is committed. |
 | `cleanup()` | Unmounts everything. Registered automatically. |
+| `allowDiagnostics(...codes)` | Lets this test cause these development diagnostics; any other one still fails it. [A diagnostic fails the test](/testing#a-diagnostic-fails-the-test) |
 | `RenderResult` | What `render` hands back: the container, the bound queries, and `unmount`. |
 | `RenderOptions` | `render`'s second argument — where to mount, and a `wrapper` to put around the tree. |
 | `WrapperComponent` | The shape of that wrapper: a component taking `children`, for a provider a test needs above the subject. |
@@ -552,6 +553,9 @@ panel. [Devtools](/devtools)
 
 Everything from `@testing-library/dom` is re-exported — `screen`, `waitFor`, `within`,
 `prettyDOM`, every query.
+
+Two entries are imported for what they do, and export nothing: `/dont-cleanup-after-each` and
+`/dont-fail-on-diagnostics`.
 
 ---
 

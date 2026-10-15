@@ -1,7 +1,7 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { Component, renderToString } from "@ramonda/core";
 import type { RamondaNode } from "@ramonda/core";
-import { render } from "@ramonda/testing-library";
+import { allowDiagnostics, render } from "@ramonda/testing-library";
 import { Router, RouteOutlet, Navigator } from "../Router";
 import { scanComponentTree } from "../../../core/src/debug/inspector";
 import { createRoutes } from "../match";
@@ -109,6 +109,7 @@ describe("Router hydration", () => {
   });
 
   test("the client's URL wins over the route restored from the server", async () => {
+    allowDiagnostics("RMD007"); // the test exists to show it
     // Server renders /players.
     setUrl("/players");
     const html = await renderToString(<App />);

@@ -44,6 +44,7 @@ A few things are Ramonda's, because only Ramonda can know them:
 | [`render`](/testing/rendering) / [`renderHook`](/testing/hooks) | mounting a Ramonda tree, and diffing a re-render into it |
 | `fireEvent` | the DOM library's, wrapped so the render an event causes is committed before it returns |
 | `cleanup` | runs itself after every test |
+| `allowDiagnostics` | lets one test cause a development diagnostic on purpose — see [below](#a-diagnostic-fails-the-test) |
 
 ## Config
 
@@ -64,7 +65,8 @@ is not only tidiness: on Vite 8 nothing else lowers the decorators.
 There is no setup file to write for JSX. The compiler imports Ramonda's runtime per file, so
 nothing has to be put on `globalThis` and there is no factory name to keep in step with the config.
 
-`globals: true` is what lets cleanup register its own `afterEach`.
+`globals: true` is what lets cleanup, and the diagnostics check below, register their own
+`afterEach`.
 
 ## Cleanup runs after every test
 
@@ -72,6 +74,38 @@ Automatically — and it isn't just tidiness. A leaked container keeps a *live* 
 (its `@interval`s keep firing, its listeners stay attached) into the next test, and
 duplicate ids across containers make a scoped query return a node from an earlier
 test. Both make tests that pass alone fail together, pointing at the wrong file.
+
+## A diagnostic fails the test
+
+A development diagnostic — [RMD020](/reference/diagnostics/rmd020), a hydration mismatch, a
+consumer with no provider — is printed, not thrown, because the page still works. The test runner
+hides a passing test's console, so a test could cause one on every run and say nothing.
+
+So a test that causes one fails, after it has run and its tree is unmounted:
+
+```
+1 Ramonda diagnostic(s) during this test:
+  [RMD020] render() produced a different value the second time: <Board /> builds a new object …
+```
+
+Fix what it reports. A test that exists to show a diagnostic says so, and names the code, so a
+different mistake in the same test still fails it:
+
+```tsx
+import { allowDiagnostics, render } from "@ramonda/testing-library";
+
+test("a query with no provider says what is missing", () => {
+  allowDiagnostics("RMD003");
+  render(<Orphan />);
+});
+```
+
+What one test allows, the next does not. Each test also starts with every diagnostic able to be
+reported again, so the second test making a mistake is told as the first was.
+
+To turn it off for a whole run, import `@ramonda/testing-library/dont-fail-on-diagnostics` before
+the library, from a setup file, or set `RAMONDA_TL_ALLOW_DIAGNOSTICS`. It is rarely what you want:
+it is how a fault ships unseen.
 
 ## Next
 
