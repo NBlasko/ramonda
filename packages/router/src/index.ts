@@ -27,7 +27,7 @@ export {
   type PathOf,
 } from "./match";
 /**
- * `Router` and `RouteOutlet` only. `Navigator` and `Link` are reached through `createRouter`, and
+ * `Router`, `RouteOutlet` and `HashLevel` only. `Navigator` and `Link` are reached through `createRouter`, and
  * nowhere else.
  *
  * Those two exist in two versions — the kit casts them so `push`, `replace` and `href` accept only
@@ -40,9 +40,10 @@ export {
  * would have meant five separate arguments about vocabulary. One door needs none.
  *
  * `Router` and `RouteOutlet` stay because they have exactly ONE version — the kit hands them back
- * unchanged, `typeof Router` — so there is nothing here to pick wrongly.
+ * unchanged, `typeof Router` — so there is nothing here to pick wrongly. `HashLevel` has one version
+ * too, and is not in the kit: a page wrapped in it may come from a package with no route table.
  */
-export { Router, RouteOutlet, type RouteOutletProps } from "./Router";
+export { Router, RouteOutlet, HashLevel, type HashLevelProps, type RouteOutletProps } from "./Router";
 export {
   createRouter,
   type Href,

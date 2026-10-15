@@ -1,5 +1,13 @@
 import { describe, test, expect } from "vitest";
-import { parseUrl, parseUrlString, buildUrl, sanitizeHref, normalizePathname } from "../urlUtils";
+import {
+  parseUrl,
+  parseUrlString,
+  buildUrl,
+  sanitizeHref,
+  normalizePathname,
+  ownedBy,
+  withHashScopes,
+} from "../urlUtils";
 
 describe("urlUtils", () => {
   test("parseUrlString: pathname + query + hash → structured state", () => {
@@ -30,14 +38,37 @@ describe("urlUtils", () => {
     const url = buildUrl({
       baseUrl: "/players/123",
       queryParams: { a: "1", b: "2" },
-      hashParams: { tab: "film", play: "5" },
+      ...withHashScopes({ "": { tab: "film", play: "5" } }),
     });
     expect(url).toBe("/players/123?a=1&b=2#tab=film&play=5");
   });
 
   test("buildUrl: a section stays a bare name, and a hash value is encoded", () => {
-    expect(buildUrl({ baseUrl: "/x", queryParams: {}, hashParams: { install: "" } })).toBe("/x#install");
-    expect(buildUrl({ baseUrl: "/x", queryParams: {}, hashParams: { q: "a b&c" } })).toBe("/x#q=a%20b%26c");
+    expect(buildUrl({ baseUrl: "/x", queryParams: {}, ...withHashScopes({ "": { install: "" } }) })).toBe("/x#install");
+    expect(buildUrl({ baseUrl: "/x", queryParams: {}, ...withHashScopes({ "": { q: "a b&c" } }) })).toBe(
+      "/x#q=a%20b%26c",
+    );
+  });
+
+  /**
+   * One `#` segment per owner, the first always the top. The browser hands the fragment over as
+   * written, and every key and value is percent-encoded, so a `#`, `:` or `.` in one stays a value.
+   */
+  test("the hash by owner: a segment per owner, and structure never mistaken for a value", () => {
+    const s = parseUrlString("/v#nav=video#nav:tab=comments&sort=new");
+    expect(s.hashScopes).toEqual({ "": { nav: "video" }, nav: { tab: "comments", sort: "new" } });
+    expect(s.hashParams).toEqual({ nav: "video", tab: "comments", sort: "new" });
+    expect(buildUrl(s)).toBe("/v#nav=video#nav:tab=comments&sort=new");
+
+    const odd = buildUrl({ baseUrl: "/v", queryParams: {}, ...withHashScopes({ "": { "a:b": "c#d" } }) });
+    expect(odd).toBe("/v#a%3Ab=c%23d");
+    expect(parseUrlString(odd).hashScopes).toEqual({ "": { "a:b": "c#d" } });
+
+    expect(ownedBy("", "a.b")).toBe("a%2Eb");
+    expect(ownedBy("nav", "tab")).toBe("nav.tab");
+
+    expect(parseUrlString("/v##nav:tab=comments").hashScopes).toEqual({ "": {}, nav: { tab: "comments" } });
+    expect(buildUrl({ baseUrl: "/v", queryParams: {}, ...withHashScopes({ "": { a: "1" }, nav: {} }) })).toBe("/v#a=1");
   });
 
   test("round-trip: a hash with several pairs comes back whole", () => {
@@ -54,7 +85,7 @@ describe("urlUtils", () => {
     const url = buildUrl({
       baseUrl: "/s",
       queryParams: { q: "a b&c" },
-      hashParams: {},
+      ...withHashScopes({}),
     });
     expect(url).toBe("/s?q=a%20b%26c");
   });

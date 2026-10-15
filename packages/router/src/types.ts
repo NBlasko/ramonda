@@ -9,9 +9,16 @@ export interface RouterState {
   /** Flat ?a=1&b=2 → { a: "1", b: "2" } (single value per key, by design). */
   queryParams: Record<string, string>;
   /**
-   * #tab=film&play=5 → { tab: "film", play: "5" } — read exactly as the query is. A bare `#install`
-   * is `{ install: "" }`: the name of a section, which is how a link to one is written.
+   * The hash, one record per OWNER — the key a `<HashLevel of>` put the writer under, `""` for the top.
+   * `#nav=video#nav:tab=comments&sort=new` is `{ "": { nav: "video" }, nav: { tab: "comments", sort:
+   * "new" } }`. A deeper owner is a path, `nav.tab`. Each segment is read as the query is; a bare
+   * `#install` is `{ "": { install: "" } }`, the name of a section.
+   *
+   * A change to a key clears what that key owns, at every depth, and nothing else. The owners are in
+   * the URL, so a reload and back/forward keep them.
    */
+  hashScopes: Record<string, Record<string, string>>;
+  /** Every owner's keys in one record, for reading: `{ nav: "video", tab: "comments", sort: "new" }`. */
   hashParams: Record<string, string>;
 }
 

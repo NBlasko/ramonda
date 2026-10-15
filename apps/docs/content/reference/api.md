@@ -186,6 +186,7 @@ what it passes into one. One field today, `label`, which devtools adds to the ho
 |---|---|
 | `Router` | A **hook** on the app root; owns the store, adds no element. Also exposes the `Navigator` surface (minus `params()`). [Setup](/routing) |
 | `RouteOutlet` | Renders the matched route. |
+| `HashLevel` | `<HashLevel of="nav">`: what is written to the hash inside it belongs to `nav`, and a change to `nav` clears it. [A hash in levels](/routing/params#a-hash-in-levels) |
 | `Navigator` | `pathname` · `params<T>()` · `searchParams` · `hashParams` · `push` · `replace` · `updateSearchParams` · `updateHashParams` · `back` · `forward`. [Reading the URL](/routing/params) |
 | `Link` | A real `<a href>` that intercepts a plain left click. [Links](/routing/links) |
 | `createRoutes(map)` | Compiles a route table once, capturing its paths in the type. Call it at module scope. |
@@ -198,7 +199,7 @@ what it passes into one. One field today, `label`, which devtools adds to the ho
 Types: `RouteConfig` · `PathOf` · `Href` · `TypedRouterKit` · `TypedLinkProps` · `TypedNavigator` ·
 `RouteParams` · `RoutePaths` · `RouterState` · `RouterNavigator` · `NavigateOptions` ·
 `PartialNavigateOptions` · `SearchParamsUpdater` · `HashParamsUpdater` · `StateUpdater` ·
-`RouteOutletProps` · `LinkProps`
+`RouteOutletProps` · `HashLevelProps` · `LinkProps`
 
 ### `@ramonda/router/server`
 

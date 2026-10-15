@@ -48,6 +48,7 @@ describe("navigator: race-free updateState", () => {
     nav.updateState(() => ({
       baseUrl: "/players/7",
       queryParams: { x: "1" },
+      hashScopes: {},
       hashParams: {},
     }));
 
@@ -64,6 +65,7 @@ describe("navigator: race-free updateState", () => {
     a.nav.updateState(() => ({
       baseUrl: "/a",
       queryParams: {},
+      hashScopes: {},
       hashParams: {},
     }));
 

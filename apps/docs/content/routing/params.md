@@ -43,7 +43,7 @@ What it gives you:
 | `params(pattern)` | the `:params` of that pattern, typed from it |
 | `params<T>()` | the same values, typed by what you assert — the untyped door |
 | `searchParams` | `?a=1&b=2` → `{ a: "1", b: "2" }` |
-| `hashParams` | `#a=1&b=2` → `{ a: "1", b: "2" }`, read as the query is. A bare `#install` is `{ install: "" }` — the name of a section |
+| `hashParams` | `#a=1&b=2` → `{ a: "1", b: "2" }`, read as the query is. A bare `#install` is `{ install: "" }` — the name of a section. With [levels](#a-hash-in-levels), every key in one record |
 
 ## You react to the part you read
 
@@ -202,6 +202,72 @@ each change is a new history entry, so Back steps through them; pass `{ replace:
 The same `updateHashParams` exists for the hash, with the same options and the same two forms. A
 key with an empty value is written bare — `{ install: "" }` is `#install` — which is how a link names
 a section.
+
+## A hash in levels
+
+Some UI state belongs to other UI state. A video page keeps its open tab in the hash, `#tab=comments`.
+Put that page inside a workspace whose own navbar switches between `video` and `analytics`, and the
+tab means nothing once the workspace shows analytics. It should go.
+
+The page cannot know who its parent is. The parent knows its child, so it says so where it puts it:
+
+```tsx
+import { Component } from "@ramonda/core";
+import { HashLevel } from "@ramonda/router";
+import { Navigator } from "./routes";
+
+class VideoPage extends Component {
+  route = this.use(Navigator);
+
+  open(tab: string) {
+    this.route.updateHashParams((prev) => ({ ...prev, tab }));
+  }
+
+  render() {
+    return <p>{this.route.hashParams.tab ?? "comments"}</p>;
+  }
+}
+
+export class Workspace extends Component {
+  route = this.use(Navigator);
+
+  show(nav: string) {
+    this.route.updateHashParams((prev) => ({ ...prev, nav }));
+  }
+
+  render() {
+    return (
+      <main>
+        {this.route.hashParams.nav === "video" && (
+          <HashLevel of="nav">
+            <VideoPage />
+          </HashLevel>
+        )}
+      </main>
+    );
+  }
+}
+```
+
+Everything the video page writes now belongs to the workspace's `nav` key:
+`#nav=video#nav:tab=comments`. When `show("analytics")` runs, what `nav` owns is cleared, and the URL
+is `#nav=analytics`.
+
+- **The page does not know its parent.** On its own it writes `#tab=comments`. It belongs to `nav`
+  only because the workspace put it inside `<HashLevel of="nav">`, so a refactor inside the page
+  cannot move it.
+- **A key clears only what it owns.** Put a filter panel beside it in `<HashLevel of="panel">`, and
+  switching `nav` leaves the panel's keys alone.
+- **Only a change clears.** Writing the value a key already has keeps what it owns.
+- **An updater gets its own keys.** `prev` in the video page holds `tab`, not `nav`, so spreading it
+  does not copy the parent's key down.
+- **Reading is flat.** `hashParams` holds every key in one record, so the page can read `nav` too. If
+  two owners use the same key, the deeper one wins, so give each its own keys.
+- **The owners are in the URL.** Each `#` segment after the first names its owner before a `:`, and
+  `&` separates its keys. A reload, a shared link and Back keep who owns what. Nothing depends on what
+  is mounted.
+- **It nests.** A `<HashLevel of="tab">` inside the video page puts its child under `nav.tab`, and
+  switching `nav` clears that too.
 
 ## Next
 

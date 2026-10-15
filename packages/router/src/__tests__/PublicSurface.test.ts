@@ -23,6 +23,7 @@ const EXPECTED = [
   "buildUrl",
   "createRouter",
   "createRoutes",
+  "HashLevel",
   "matchCompiled",
   "matchParams",
   "parseUrlString",
@@ -41,6 +42,7 @@ const EXPECTED = [
  * a caller who can no longer write down what they were given.
  */
 const EXPECTED_TYPES = [
+  "HashLevelProps",
   "HashParamsUpdater",
   "Href",
   "NavigateOptions",
@@ -97,6 +99,7 @@ describe("public API surface", () => {
 
 // Every published type, named once, so `check-types` fails if one is renamed or removed.
 import type {
+  HashLevelProps,
   HashParamsUpdater,
   Href,
   NavigateOptions,
@@ -116,6 +119,7 @@ import type {
 } from "../index";
 
 type _Surface = [
+  HashLevelProps,
   HashParamsUpdater,
   Href,
   NavigateOptions,

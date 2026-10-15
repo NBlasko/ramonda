@@ -9,8 +9,9 @@ import {
   onWindow,
   captureServerRedirect,
 } from "@ramonda/core";
+import type { RamondaNode } from "@ramonda/core";
 import { createNavigator, detachedNavigator, type RouterNavigator } from "./store";
-import { keepUnchanged, parseUrl } from "./urlUtils";
+import { keepUnchanged, ownedBy, parseUrl } from "./urlUtils";
 import { assertPattern, matchCompiled, type ParamsOf, type RouteConfig, type RouteParams } from "./match";
 import type { HashParamsUpdater, PartialNavigateOptions, RouterState, SearchParamsUpdater } from "./types";
 
@@ -47,6 +48,7 @@ interface ParamsContextValue {
 const EMPTY_STATE: RouterState = {
   baseUrl: "/",
   queryParams: {},
+  hashScopes: {},
   hashParams: {},
 };
 
@@ -307,6 +309,7 @@ export class RouteOutlet extends Component<RouteOutletProps> {
 export class Navigator extends Hook {
   private ctx = this.use(RouteConsumer);
   private paramsCtx = this.use(ParamsConsumer);
+  private hashOwner = this.use(HashLevelConsumer);
 
   get pathname(): string {
     return this.ctx.baseUrl;
@@ -366,13 +369,58 @@ export class Navigator extends Hook {
   updateSearchParams(next: SearchParamsUpdater, opts?: PartialNavigateOptions): void {
     this.ctx.nav.updateSearchParams(next, opts);
   }
+  /**
+   * Change this component's keys in the hash: the updater is handed the keys written where this
+   * component stands, and a key that changes clears what it owns. That is the top, unless a
+   * `<HashLevel of>` above put it under a key.
+   */
   updateHashParams(next: HashParamsUpdater, opts?: PartialNavigateOptions): void {
-    this.ctx.nav.updateHashParams(next, opts);
+    this.ctx.nav.updateHashParams(next, opts, this.hashOwner.owner);
   }
   back(): void {
     this.ctx.nav.back();
   }
   forward(): void {
     this.ctx.nav.forward();
+  }
+}
+
+/**
+ * Who owns what a component writes to the hash: `""`, the top, unless a `<HashLevel of>` says otherwise.
+ * `optional`: with no `<HashLevel>` above, the top is the real answer, not a stand-in.
+ */
+const [HashLevelProvider, HashLevelConsumer] = createContext<{ owner: string }>(
+  { owner: "" },
+  { label: "HashLevel", optional: true },
+);
+
+/** Publishes an owner it is handed. Apart from `HashLevel` so no component consumes and provides one context. */
+class HashLevelScope extends Component<{ owner: string; children?: RamondaNode }> {
+  private provider = this.use(HashLevelProvider, () => ({ owner: this.props.owner }));
+  render() {
+    return this.props.children;
+  }
+}
+
+export interface HashLevelProps {
+  /** The key, written where this `<HashLevel>` stands, that owns what is written inside it. */
+  of: string;
+  children?: RamondaNode;
+}
+
+/**
+ * Everything written to the hash inside it belongs to the key `of`, and a change to that key clears it.
+ *
+ *   <HashLevel of="nav"><VideoPage /></HashLevel>     the page writes `#nav=video#nav:tab=comments`
+ *
+ * Switching `nav` to `analytics` takes `tab` with it, and nothing another key owns. The page's code
+ * does not change for this and does not know its parent: on its own it writes `#tab=comments`. The
+ * PARENT knows its child, and says so where it puts it, so a refactor inside the page cannot move it.
+ * Nothing here depends on what is mounted — who owns what is in the state and in the URL.
+ */
+export class HashLevel extends Component<HashLevelProps> {
+  private above = this.use(HashLevelConsumer);
+  render() {
+    return <HashLevelScope owner={ownedBy(this.above.owner, this.props.of)}>{this.props.children}</HashLevelScope>;
   }
 }

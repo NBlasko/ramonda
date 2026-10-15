@@ -37,7 +37,7 @@ export class Toolbar extends Component {
 | `push(href, opts?)` | go to a URL, adding a history entry |
 | `replace(href, opts?)` | go there without adding one |
 | `updateSearchParams(next, opts?)` | change only the query — see [keeping state in the URL](/routing/params#keep-ui-state-in-the-url) |
-| `updateHashParams(next, opts?)` | change only the hash |
+| `updateHashParams(next, opts?)` | change only the hash — this component's own keys in it, [by owner](/routing/params#a-hash-in-levels) |
 | `back()` / `forward()` | move through history |
 
 ## The types — `NavigateOptions` and the updaters
@@ -50,15 +50,15 @@ updaters take `PartialNavigateOptions` instead — the same two fields with a di
 | | |
 |---|---|
 | `SearchParamsUpdater` | what `updateSearchParams` takes: an object of the new query, or a function of the current one |
-| `HashParamsUpdater` | the same for the hash — a record of pairs, or a function of the current ones |
+| `HashParamsUpdater` | the same for the hash — a record of pairs, or a function of the caller's own keys — see [a hash in levels](/routing/params#a-hash-in-levels) |
 | `StateUpdater` | a whole `RouterState` from the previous one, for the rare change that touches several parts at once |
 
 **The function forms exist to be race-free.** An object says what the query should BE; a function
 says what it should be *given what it is now*, which is the form that survives two updates in the
 same tick.
 
-`RouterState` is the whole URL structured — `baseUrl`, `queryParams` as a flat record, and
-`hashParams` as a flat record too, read the same way. It is the source of truth at
+`RouterState` is the whole URL structured — `baseUrl`, `queryParams` as a flat record, the hash
+as `hashScopes`, one record per owner, and `hashParams`, every key in one record for reading. It is the source of truth at
 runtime: the URL is rebuilt from it, and read back only at startup and on back/forward.
 
 ## Scrolling is your choice, per call
