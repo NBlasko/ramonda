@@ -184,19 +184,19 @@ export class Portal extends Hook<PortalProps> {
     this.region.hydrate(this.props.children, target, open);
   }
 
-  @watchProp((props: PortalProps) => props.children)
-  replace(): void {
-    this.reconcile();
-  }
-
   /**
-   * A new `target` with the same `children`. Markup that says the same keeps its old object
-   * (`helpers/settleMarkup.ts`), so the `children` watch above stays quiet, and a target change has
-   * to be noticed here: an inline portal aimed at an element the owner's first render produced,
-   * and a modal moving to `document.body`, both change nothing but `target`.
+   * A new `children` or a new `target`, watched together so a change to both reconciles once.
+   *
+   * The target needs its own selector: markup that says the same keeps its old object
+   * (`helpers/settleMarkup.ts`), so `children` alone would stay quiet when only the target moved —
+   * an inline portal aimed at an element the owner's first render produced, or a modal moving to
+   * `document.body`.
    */
-  @watchProp((props: PortalProps) => props.target)
-  retarget(): void {
+  @watchProp(
+    (props: PortalProps) => props.children,
+    (props: PortalProps) => props.target,
+  )
+  replace(): void {
     this.reconcile();
   }
 

@@ -6,12 +6,13 @@ import type { ListRegion } from "../types/vdom";
 
 /**
  * The whole-list skip: when `each` is the same array reference and no item's
- * scope was invalidated, the engine hands back the IDENTICAL `ListNode`: no
- * callback runs and no row is rebuilt. The diff still walks the rows, claiming
- * each one without opening it and touching no DOM.
+ * scope was invalidated — its own rows', or those of a list inside one — the
+ * engine hands back the IDENTICAL `ListNode`: no callback runs and no row is
+ * rebuilt. The diff then keeps the whole region without reading a row; the last
+ * test counts the rows it reads, and it is none of a thousand.
  *
- * Measured on 10000 items, a re-render triggered by unrelated state went 30ms ->
- * 1.5ms, with zero calls to the callback.
+ * Measured in a production build in Chromium, 100 lists of 100 cards under a
+ * re-render triggered by unrelated state: 0.1 ms per change.
  *
  * The assertion is the mapper call count plus DOM node identity, not the
  * ListNode's. `For` exposed a `.nodes` getter so the object could be compared

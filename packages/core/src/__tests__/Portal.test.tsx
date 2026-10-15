@@ -2,6 +2,7 @@ import { describe, test, expect, beforeEach } from "vitest";
 import { Component } from "../base/Component";
 import { state, created, mounted, destroyed } from "../base/decorators";
 import { Portal } from "../base/Portal";
+import { ChildrenRegion } from "../core/childrenRegion";
 import { getDOM, findAll } from "../test/setup";
 import { resetDiagnostics } from "../debug/diagnostics";
 import type { RamondaNode } from "../types/vdom";
@@ -516,5 +517,53 @@ describe("Portal is a full lifecycle boundary", () => {
     expect(target.querySelector("#inner")).toBeNull();
 
     target.remove();
+  });
+});
+
+describe("Portal follows its props", () => {
+  /**
+   * `children` and `target` are watched together, so one update that changes both moves and
+   * re-renders the block in a single reconcile rather than two.
+   */
+  test("a change to children and target together reconciles once", async () => {
+    const first = document.createElement("div");
+    const second = document.createElement("div");
+    document.body.append(first, second);
+
+    class Page extends Component {
+      @state there = false;
+      portal = this.use(Portal, (self: Page) => ({
+        children: <b>{self.there ? "second" : "first"}</b>,
+        target: self.there ? second : first,
+      }));
+      render() {
+        return <p>page</p>;
+      }
+    }
+
+    // Counted where the portal's block is reconciled.
+    const proto = ChildrenRegion.prototype as unknown as { reconcile(...args: unknown[]): void };
+    const original = proto.reconcile;
+    let reconciles = 0;
+    proto.reconcile = function (this: unknown, ...args: unknown[]) {
+      reconciles++;
+      original.apply(this, args);
+    };
+    const app = await getDOM<Page>(<Page />);
+    try {
+      await app.settle();
+      reconciles = 0;
+      app.instance.there = true;
+      await app.settle();
+    } finally {
+      proto.reconcile = original;
+    }
+
+    expect(reconciles).toBe(1);
+    expect(second.textContent).toBe("second");
+    expect(first.textContent).toBe("");
+    app.unmount();
+    first.remove();
+    second.remove();
   });
 });

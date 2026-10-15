@@ -289,6 +289,36 @@ describe("a hook's markup settles key by key", () => {
 });
 
 describe("data is compared by reference, even inside markup", () => {
+  /**
+   * A vnode is recognised by the origin every vnode carries, not by its `type` alone: a record with a
+   * numeric `type` of 6 or 7 is data, and comparing it as markup ignored every field but `name`.
+   */
+  test("data shaped like a vnode is still data", async () => {
+    class Show extends Component<{ item: { type: number; name: string; qty: number } }> {
+      render() {
+        return <em>{`${this.props.item.name}:${this.props.item.qty}`}</em>;
+      }
+    }
+    class Holder extends Component {
+      @state item = { type: 7, name: "Bolt", qty: 1 };
+      render() {
+        return (
+          <ul>
+            <Show item={this.item} />
+          </ul>
+        );
+      }
+    }
+    const dom = await getDOM<Holder>(<Holder />);
+    await dom.settle();
+
+    dom.instance.item = { ...dom.instance.item, qty: 2 };
+    await dom.settle();
+
+    expect(dom.container.querySelector("em")?.textContent).toBe("Bolt:2");
+    dom.unmount();
+  });
+
   test("a fresh object that holds no markup renders the child again", async () => {
     expect(await childRendersOver(owner(() => <Slotted view={Header} data={{ a: 1 }} />))).toBe(4);
   });

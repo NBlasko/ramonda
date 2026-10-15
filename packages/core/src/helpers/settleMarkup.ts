@@ -65,8 +65,14 @@ function isPlain(value: unknown): value is Bag {
   return proto === Object.prototype || proto === null;
 }
 
+/**
+ * A vnode, known by the origin `createRamonda` stamps on every one it makes — a symbol no record of
+ * the app's carries. `type` alone is not enough: `{ type: 7, name: "Bolt", qty }` is data, and
+ * comparing it as markup looked at its `name` and nothing else.
+ */
 function isMarkupNode(value: unknown): value is MarkupNode {
-  const type = (value as { type?: unknown } | null)?.type;
+  if (typeof value !== "object" || value === null || !Object.hasOwn(value, ORIGIN_SYM)) return false;
+  const type = (value as { type?: unknown }).type;
   return type === TEXT_TYPE || type === COMPONENT_TYPE;
 }
 

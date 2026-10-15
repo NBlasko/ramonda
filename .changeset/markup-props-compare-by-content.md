@@ -20,9 +20,9 @@ the way to compare data by content. Markup built by a different component, a `li
 changed, and markup past a budget of 500 values are all called different — the child renders, as it
 did before.
 
-`Portal` now watches its `target` on its own. It used to notice a new target through `children`,
-which a props factory rebuilt on every run; with markup settled, a target change with the same
-children would otherwise not move the block.
+`Portal` now watches its `target` together with its `children`, and reconciles once when both
+change. It used to notice a new target through `children`, which a props factory rebuilt on every
+run; with markup settled, a target change with the same children would otherwise not move the block.
 
 `@ramonda/check`: `fresh-object-in-props` no longer reports a literal holding only markup and
 primitives — `slots={{ header: <Header /> }}` — since the runtime settles it. One holding data beside
