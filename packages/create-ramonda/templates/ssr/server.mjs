@@ -1,8 +1,8 @@
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, resolve, sep } from "node:path";
 import { createIsrCache, fileStore } from "@ramonda/router/server";
 import { escapeHtml, fillDocument, installDom, mimeFor, parseCookies } from "@ramonda/server";
 
@@ -129,22 +129,44 @@ async function bakeShared(path) {
   }
 }
 
+/** What the build wrote for the browser: the bundle under `assets/`, and everything from `public/`. */
+const CLIENT = resolve(here, "dist", "client");
+
+/**
+ * The file a URL names under `dist/client`, or `undefined`.
+ *
+ * Only a FILE, only inside `dist/client` — `resolve` takes the `..` out, and anything that lands
+ * outside is refused — and never the shell, `index.html`, which still holds `<!--ssr-->`: the pages
+ * are rendered below.
+ */
+function clientFile(path) {
+  let decoded;
+  try {
+    decoded = decodeURIComponent(path);
+  } catch {
+    return undefined;
+  }
+  const file = resolve(CLIENT, `.${decoded}`);
+  if (!file.startsWith(CLIENT + sep) || file === join(CLIENT, "index.html")) return undefined;
+  return existsSync(file) && statSync(file).isFile() ? file : undefined;
+}
+
 async function renderProd(req, res) {
   const url = req.url ?? "/";
+  const path = url.split("?")[0];
 
-  if (url.startsWith("/assets/")) {
-    const file = join(here, "dist", "client", "assets", url.slice("/assets/".length));
-    if (existsSync(file)) {
-      res.setHeader("Content-Type", mimeFor(file));
-      res.end(readFileSync(file));
-      return;
-    }
+  const file = clientFile(path);
+  if (file !== undefined) {
+    res.setHeader("Content-Type", mimeFor(file));
+    res.end(readFileSync(file));
+    return;
+  }
+  // A missing bundle file is a 404, not a page: a browser asking for a script must not get HTML.
+  if (path.startsWith("/assets/")) {
     res.statusCode = 404;
     res.end("Not found");
     return;
   }
-
-  const path = url.split("?")[0];
 
   try {
     // 1. STATIC — serve the file the build baked (fall through to a live render if it is missing).

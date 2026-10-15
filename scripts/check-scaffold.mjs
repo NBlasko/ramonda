@@ -277,6 +277,9 @@ function fail(what, detail) {
  * read versus a live render — and only the second one needs the DOM, the router and everything a
  * production install might have dropped.
  */
+/** What the check puts in `public/robots.txt`, and expects back. */
+const ROBOTS = "User-agent: *\nAllow: /\n";
+
 async function serves(port, attempt = 0) {
   port ??= await freePort();
   const server = spawn(process.execPath, ["server.mjs", "--prod"], {
@@ -340,6 +343,31 @@ async function serves(port, attempt = 0) {
       if (sheet.status !== 200 || !sheet.type.startsWith("text/css")) {
         fail(`${href} was served as ${sheet.status} ${sheet.type}, not as a stylesheet`, log);
       }
+    }
+
+    // A file from `public/`, served as itself; nothing outside `dist/client`; and never the raw shell.
+    if (mode === "ssr") {
+      const robots = await get("/robots.txt");
+      if (robots === "retry") return "retry";
+      if (robots.status !== 200 || robots.body !== ROBOTS || !robots.type.startsWith("text/plain")) {
+        fail(`/robots.txt from public/ was served as ${robots.status} ${robots.type}`, robots.body.slice(0, 200));
+      }
+      // Two levels up is the project root, where `server.mjs` and `package.json` are. Encoded, because
+      // `fetch` takes a plain `..` out of the URL before it is sent.
+      for (const escape of [
+        "/..%2F..%2Fserver.mjs",
+        "/%2e%2e/%2e%2e/package.json",
+        "/assets/..%2F..%2F..%2Fserver.mjs",
+      ]) {
+        const answer = await get(escape);
+        if (answer === "retry") return "retry";
+        if (answer.body.includes("createServer") || answer.body.includes('"dependencies"')) {
+          fail(`${escape} served a file from outside dist/client`, answer.body.slice(0, 200));
+        }
+      }
+      const shell = await get("/index.html");
+      if (shell === "retry") return "retry";
+      if (shell.body.includes("<!--ssr-->")) fail("/index.html served the raw shell, markers and all");
     }
 
     // A page that does not exist is a 404 with the app's own Not found page in it. Served as 200 it
@@ -547,6 +575,12 @@ try {
     }
     writeFileSync(file, broken);
   }
+
+  // A file in `public/`, where Vite serves static files from in dev. The SSR production build never
+  // copied it and its server answered only `/assets/*`, so the same URL was a 404 after
+  // `npm run build && npm start` — found by an agent publishing a JSON file with its site.
+  mkdirSync(join(app, "public"), { recursive: true });
+  writeFileSync(join(app, "public", "robots.txt"), ROBOTS);
 
   // A block in a `.ts` file with no markup, which the docs say works like one in a `.tsx`. Dev, the
   // tests and the type check took it; the SSR production build did not — its plugin filter named only

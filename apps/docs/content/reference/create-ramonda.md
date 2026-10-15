@@ -140,6 +140,11 @@ Vite's types. `ssr` adds:
 | `scripts/build.mjs`, `scripts/prerender.mjs` | The production build, and the pages baked at build time |
 | `global.d.ts` | Types for `import.meta.env` |
 
+**Static files go in `public/`** in both modes — a favicon, `robots.txt`, images, a JSON file the
+site fetches. You create the folder. `public/robots.txt` is served at `/robots.txt`, by the dev server
+and in production alike: `spa` through Vite's build, `ssr` because `scripts/build.mjs` copies the
+folder into `dist/client` and `server.mjs` serves any file there.
+
 And per add-on: `ramonda.css.ts` and `css-system/` with `css`; `vitest.config.ts` and
 `src/App.test.tsx` with `testing`; `biome.json` with `biome`. With `devtools`, the entry imports the
 panel inside `if (import.meta.env.DEV)`, so a production build leaves it out.

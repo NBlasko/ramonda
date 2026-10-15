@@ -25,6 +25,9 @@ npm run build      # bundle client + server into dist/ with esbuild
 npm start          # serve the built output on http://localhost:5173
 ```
 
+Static files — a favicon, `robots.txt`, images — go in `public/`, which you create. `public/robots.txt`
+is `/robots.txt` in dev and in production: the build copies the folder into `dist/client`.
+
 ## How rendering modes work
 
 `src/App.tsx` is a routed app (`createRoutes` + `createRouter`, so `<Link href>` is

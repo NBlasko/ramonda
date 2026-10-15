@@ -11,7 +11,7 @@
  * Everything below the spread is this project's own business: what to build, for which platform, and
  * where to put it.
  */
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { build } from "esbuild";
 import { ramondaOptions, ramondaDefine } from "@ramonda/build/esbuild";
 
@@ -28,6 +28,11 @@ const shared = {
   // Where a bundler plugin goes, in both builds at once — `@ramonda/css`'s, for instance.
   plugins: [],
 };
+
+// `public/` — a favicon, `robots.txt`, images, a JSON file the site fetches — is copied as it is, and
+// the production server answers it at the same URL the dev server does. FIRST, so a file in it can
+// never overwrite what the build writes below.
+if (existsSync("public")) cpSync("public", "dist/client", { recursive: true });
 
 const client = await build({
   ...shared,
