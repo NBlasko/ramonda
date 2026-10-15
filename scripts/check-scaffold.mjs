@@ -548,6 +548,16 @@ try {
     writeFileSync(file, broken);
   }
 
+  // A block in a `.ts` file with no markup, which the docs say works like one in a `.tsx`. Dev, the
+  // tests and the type check took it; the SSR production build did not — its plugin filter named only
+  // `.tsx`, and esbuild stopped at the `@`. Imported for its side, so it is in the build and nothing
+  // has to read it.
+  if (withAddon) {
+    writeFileSync(join(app, "src", "shared-block.ts"), "export const row = @@(\n  display: flex;\n);\n");
+    const entry = join(app, "src", "App.tsx");
+    writeFileSync(entry, `import "./shared-block";\n${readFileSync(entry, "utf8")}`);
+  }
+
   // A reader's next step, once they want styles: the documented install, on the project they were
   // just given. `ssr` writes its block only after a first build without one — see `addCssDependency`.
   if (!withAddon) {
@@ -601,8 +611,10 @@ try {
   buildProject();
 
   if (withAddon) {
+    // The project's own scripts, as a reader runs them: `test` runs once, and `format:check` is what
+    // `check` uses to refuse unformatted code.
     try {
-      run("npx", ["vitest", "run"], { cwd: app });
+      run("npm", ["test"], { cwd: app });
     } catch (error) {
       fail("the generated project's own tests failed", outputOf(error));
     }
@@ -611,8 +623,7 @@ try {
     // not formatted the way it tells a project to format fails here rather than in a first commit.
     for (const [what, command, args] of [
       ["npm run lint", "npm", ["run", "lint"]],
-      ["biome format .", "npx", ["biome", "format", "."]],
-      ["ramonda-css format --check src", "npx", ["ramonda-css", "format", "--check", "src"]],
+      ["npm run format:check", "npm", ["run", "format:check"]],
     ]) {
       try {
         run(command, args, { cwd: app });

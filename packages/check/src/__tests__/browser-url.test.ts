@@ -21,8 +21,9 @@ describe("a component reading the browser's URL", () => {
       "window.location.pathname -> pathname",
       "location.hash -> hashTags",
       "window.location.search -> searchParams",
-      // Nothing on the router answers `origin`, and none is invented for it.
-      "window.location.origin -> —",
+      // `window.location.origin` is NOT here: nothing on the router answers it, so reading it from the
+      // browser is not two sources of one fact. It was reported once, with no way out, and stopped a
+      // build that needed the origin for a share link.
       // The three spellings beside `window.` — see the test below for what each is.
       "self.location.pathname -> pathname",
       "{ pathname } = window.location -> pathname",
@@ -73,10 +74,10 @@ describe("a component reading the browser's URL", () => {
     const found = run("browser-url").findings["browser-url"].filter((i) => i.component === "OtherSpellings");
 
     expect(found.map((i) => `${i.line}:${i.read}`)).toEqual([
-      "33:self.location.pathname",
+      "36:self.location.pathname",
       // Quoted as the reader sees it, not rewritten into a dotted form that is not on the line.
-      "34:{ pathname } = window.location",
-      '35:window.location["hash"]',
+      "37:{ pathname } = window.location",
+      '38:window.location["hash"]',
     ]);
     expect(found.map((i) => i.instead)).toEqual(["pathname", "pathname", "hashTags"]);
   });

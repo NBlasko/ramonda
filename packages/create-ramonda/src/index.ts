@@ -494,7 +494,12 @@ function writeProject({ targetDir, name, mode, addons }: ScaffoldOptions): void 
   // is built on the router — so SSR always includes it, add-on chosen or not.
   if (addons.includes("router") || mode === "ssr") deps.dependencies["@ramonda/router"] = ramonda("@ramonda/router");
   if (addons.includes("query")) deps.dependencies["@ramonda/query"] = ramonda("@ramonda/query");
-  if (addons.includes("form")) deps.dependencies["@ramonda/form"] = ramonda("@ramonda/form");
+  if (addons.includes("form")) {
+    deps.dependencies["@ramonda/form"] = ramonda("@ramonda/form");
+    // An optional peer of the form package, and what every example on the Forms pages imports — a
+    // project without it failed on the first one copied.
+    deps.dependencies["bguard"] = tool("bguard");
+  }
   if (addons.includes("lens")) deps.dependencies["@ramonda/lens"] = ramonda("@ramonda/lens");
   // A dependency, not a tool: a compiled block imports its runtime from the package.
   if (addons.includes("css")) {
@@ -576,6 +581,8 @@ function writeProject({ targetDir, name, mode, addons }: ScaffoldOptions): void 
     const blocks = addons.includes("css");
     extraScripts.lint = blocks ? "biome lint . && ramonda-css lint src" : "biome lint .";
     extraScripts.format = blocks ? "biome format --write . && ramonda-css format src" : "biome format --write .";
+    // The same, without writing — what `check` runs, so unformatted code fails it instead of passing.
+    extraScripts["format:check"] = blocks ? "biome format . && ramonda-css format --check src" : "biome format .";
   }
   // `tsc` cannot read a style block; `ramonda-css` is the same check with blocks read.
   if (addons.includes("css")) extraScripts.typecheck = "ramonda-css";
@@ -583,6 +590,7 @@ function writeProject({ targetDir, name, mode, addons }: ScaffoldOptions): void 
   // runs `ramonda-check` and the type check, so it is the last step and the only one always there.
   extraScripts.check = [
     addons.includes("biome") ? "npm run lint" : "",
+    addons.includes("biome") ? "npm run format:check" : "",
     addons.includes("testing") ? "npm test" : "",
     "npm run build",
   ]
@@ -628,7 +636,7 @@ function useStyleBlocks(targetDir: string, mode: Mode): void {
       "  // Where a bundler plugin goes, in both builds at once — `@ramonda/css`'s, for instance.\n  plugins: [],",
       "  // The style blocks, in both builds at once. `filter` names the files that may hold one,\n" +
         "  // because esbuild hands a plugin a path rather than the code.\n" +
-        "  plugins: [ramondaCss({ filter: /src\\/.*\\.tsx$/ })],",
+        "  plugins: [ramondaCss({ filter: /src\\/.*\\.tsx?$/ })],",
     ],
   ]);
 
@@ -764,6 +772,9 @@ export default defineConfig({
   plugins: [ramonda()${css ? ", ramondaCss()" : ""}],
   test: {
     environment: "jsdom",
+    // What lets @ramonda/testing-library register its cleanup: without it each test's tree stays
+    // mounted, and the second test to mount the app found the first one's Router still live.
+    globals: true,
   },
 });
 `,
@@ -803,7 +814,17 @@ function writeBiomeConfig(targetDir: string, blocks: boolean): void {
       ...(blocks ? { includes: ["**", "!src", "!dist", "!css-system"] } : {}),
     },
     formatter: { enabled: true, indentStyle: "space", indentWidth: 2, lineWidth: 120 },
-    linter: { enabled: true, rules: { preset: "recommended" } },
+    linter: {
+      enabled: true,
+      rules: {
+        preset: "recommended",
+        // A label around a <Select> or <TextArea> names a control — biome knows only the tags, which
+        // Ramonda refuses in their favour, and reported every such label.
+        a11y: {
+          noLabelWithoutControl: { level: "error", options: { inputComponents: ["Select", "TextArea"] } },
+        },
+      },
+    },
     javascript: { formatter: { quoteStyle: "double" } },
   };
   // A list of short strings on one line, which is how biome itself writes one — so the project's

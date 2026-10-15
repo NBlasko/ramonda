@@ -57,6 +57,11 @@ one `<head>` the way many [portals](/composition/portal) share one target.
 `meta` takes `MetaTag`s and `link` takes `LinkTag`s — a `<link>` is identified by its `rel` plus its
 `href`, and carries `type`, `sizes`, `crossOrigin` and `hreflang` where they apply.
 
+There is no `robots` or `canonical` key — those are a `meta` and a `link`. A key `Head` does not take
+compiles and is ignored, because the options come back from a callback; write the callback as
+`(): HeadOptions => ({ … })` and it is refused where it is written. See [a misspelt option is not a
+type error](/hooks#a-misspelt-option-is-not-a-type-error).
+
 `title` and `description` come first because they are the two that decide clicks.
 **Set them on every page** — a site whose pages all share one title competes with
 itself.

@@ -796,7 +796,9 @@ describe("the generated project, read by a newcomer", () => {
     const scriptsOf = (mode: "spa" | "ssr", addons: ScaffoldOptions["addons"]) =>
       (make(mode, addons).pkg as unknown as { scripts: Record<string, string> }).scripts;
 
-    expect(scriptsOf("ssr", ["testing", "biome"]).check).toBe("npm run lint && npm test && npm run build");
+    expect(scriptsOf("ssr", ["testing", "biome"]).check).toBe(
+      "npm run lint && npm run format:check && npm test && npm run build",
+    );
     expect(scriptsOf("spa", ["testing"]).check).toBe("npm test && npm run build");
     // `build` already runs the type check and `ramonda-check`, so nothing else is needed for a bare one.
     expect(scriptsOf("spa", []).check).toBe("npm run build");
@@ -1005,5 +1007,37 @@ describe("a folder that already has files", () => {
     test("a file where the template needs a folder", () => {
       blocked((dir) => writeFileSync(join(dir, "src"), "x"), "src");
     });
+  });
+});
+
+/** Found by the agent building an app from the docs alone, on its first real use of each add-on. */
+describe("the add-ons, as a first real use meets them", () => {
+  const scriptsOf = (mode: "spa" | "ssr", addons: ScaffoldOptions["addons"]) =>
+    (make(mode, addons).pkg as unknown as { scripts: Record<string, string> }).scripts;
+
+  test("`check` checks the formatting too, without writing — unformatted code passed it", () => {
+    expect(scriptsOf("spa", ["biome", "css"])["format:check"]).toBe("biome format . && ramonda-css format --check src");
+    expect(scriptsOf("spa", ["biome"])["format:check"]).toBe("biome format .");
+    expect(scriptsOf("spa", ["biome"]).check).toContain("npm run format:check");
+  });
+
+  test("`form` installs bguard, which every example on the Forms pages imports", () => {
+    const { pkg } = make("spa", ["form"]);
+    expect(pkg.dependencies.bguard).toMatch(/^\^?\d/);
+    expect(make("spa", []).pkg.dependencies.bguard).toBeUndefined();
+  });
+
+  test("the test config registers the cleanup that unmounts each test's tree", () => {
+    // Without `globals: true` the second test that mounted the app found the first one's Router live.
+    expect(make("spa", ["testing"]).read("vitest.config.ts")).toContain("globals: true");
+  });
+
+  test("the SSR build compiles a style block in a `.ts` file, as dev and the tests do", () => {
+    expect(make("ssr", ["css"]).read("scripts/build.mjs")).toContain("filter: /src\\/.*\\.tsx?$/");
+  });
+
+  test("biome counts <Select> and <TextArea> as the controls a label names", () => {
+    const biome = JSON.parse(make("spa", ["biome"]).read("biome.json"));
+    expect(biome.linter.rules.a11y.noLabelWithoutControl.options.inputComponents).toEqual(["Select", "TextArea"]);
   });
 });

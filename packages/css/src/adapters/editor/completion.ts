@@ -14,6 +14,7 @@ import {
   VALUE_WORDS,
 } from "../../compiler/keywords.generated";
 import { type Regions } from "./regions";
+import { COLOUR_REFERENCES } from "../../config/colourReferences";
 import { tokensOnlyKinds } from "../../config/codegen";
 import type ts from "typescript";
 
@@ -149,7 +150,9 @@ export function valueWords(property: string, config: Config): readonly string[] 
   const kinds = tokensOnlyKinds(config.properties);
   const primitive = PRIMITIVE[property];
   const literal =
-    primitive !== undefined && kinds.includes(primitive) ? (word: string) => word === "currentcolor" : () => true;
+    primitive !== undefined && kinds.includes(primitive)
+      ? (word: string) => COLOUR_REFERENCES.includes(word)
+      : () => true;
 
   return [
     ...(own === undefined ? [] : own.split(" ").filter(Boolean).filter(literal)),

@@ -31,6 +31,27 @@ matters:
 A plain left click is caught and routed through the router (instant); anything else is
 left to the browser.
 
+## A query and a hash
+
+A path may carry a query and a hash. `push` takes the same:
+
+```tsx
+import { Link } from "./routes";
+
+const sortedBy = (key: string) => <Link href={`/players?sort=${encodeURIComponent(key)}#top`}>By {key}</Link>;
+```
+
+The path before the `?` is checked against your route table, to the letter; what follows it is
+not. A query needs at least one `key=value`. A value from data goes through `encodeURIComponent`,
+so a space, an `&` or a `#` in it stays part of the value.
+
+**A path and a query, or a `:param`?** A `:param` route — `/players/:id` — is one page per id, and
+each can be [baked at build time](/routing/server) when the ids are known then. When they are not —
+an id the reader created, stored only in their browser — a fixed path with the id in the query,
+`/player?id=…`, is one page, baked once. The baked page has no query, so what it shows for the id
+comes after the page loads: a [`clientOnly` query](/query/server#data-only-the-browser-has) keyed by
+the id renders pending on the server and on the client's first render alike.
+
 ## Props
 
 - `replace` — replace the history entry instead of adding one.

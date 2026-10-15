@@ -105,12 +105,15 @@ export const browserUrl = {
       (ts.isIdentifier(node) && node.text === "location" && resolve(node) === undefined);
 
     const report = (member: string, read: string, at: ts.Node): void => {
-      found.push({
-        component: self.name,
-        read,
-        ...(ROUTER_ANSWER[member] ? { instead: ROUTER_ANSWER[member] } : {}),
-        ...positionOf(at),
-      });
+      /**
+       * Only what the router answers. `origin`, `host`, `protocol` and `href` were reported too, with
+       * no replacement to name — and nothing on the router holds them, so a component reading them is
+       * not reading one fact from two places. Found by an agent building a share link from the docs
+       * alone: the build stopped on `location.origin` and offered no way out but an ignore comment.
+       */
+      const instead = ROUTER_ANSWER[member];
+      if (instead === undefined) return;
+      found.push({ component: self.name, read, instead, ...positionOf(at) });
     };
 
     ts.forEachChild(cls, function look(node) {
