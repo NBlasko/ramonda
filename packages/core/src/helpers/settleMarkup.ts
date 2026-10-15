@@ -1,4 +1,4 @@
-import { IS_LIST, JSX_CHILDREN, ORIGIN_SYM } from "./constants";
+import { IS_LIST, ORIGIN_SYM, OWN_CHILDREN } from "./constants";
 import { isListNode, isVNode } from "../vdom/guards";
 
 type Bag = Record<string, unknown>;
@@ -64,18 +64,14 @@ function isMarkupNode(value: unknown): value is MarkupNode {
   return isVNode(value) && Object.hasOwn(value, ORIGIN_SYM);
 }
 
-function isList(value: unknown): value is ListLike {
-  return isListNode(value);
-}
-
 /** The children array JSX handed a component, as opposed to an array the app passed as `children={…}`. */
 function isJsxChildren(value: unknown): value is unknown[] {
-  return Array.isArray(value) && (value as { [JSX_CHILDREN]?: true })[JSX_CHILDREN] === true;
+  return Array.isArray(value) && (value as { [OWN_CHILDREN]?: boolean })[OWN_CHILDREN] === true;
 }
 
 /** Something this comparison may open: what the framework built. */
 function isOpenable(value: unknown): boolean {
-  return isMarkupNode(value) || isList(value) || isJsxChildren(value);
+  return isMarkupNode(value) || isListNode(value) || isJsxChildren(value);
 }
 
 function same(a: unknown, b: unknown, walk: Walk): boolean {
@@ -94,19 +90,21 @@ function same(a: unknown, b: unknown, walk: Walk): boolean {
     );
   }
 
-  if (isList(a)) {
-    if (!isList(b)) return false;
+  if (isListNode(a)) {
+    if (!isListNode(b)) return false;
+    const x = a as unknown as ListLike;
+    const y = b as unknown as ListLike;
     // A `list()` descriptor is the same list for the same array and callback — its rows are the
     // engine's business, and an equal pair is what its own whole-list skip already trusts.
-    if (a.builder !== undefined || b.builder !== undefined) {
-      if (a.each !== b.each || a.builder !== b.builder) return false;
+    if (x.builder !== undefined || y.builder !== undefined) {
+      if (x.each !== y.each || x.builder !== y.builder) return false;
       // Its `owner` is written by whoever renders it, ONTO the descriptor: one handed down as a prop
       // and rendered by the child carries the child's stamp, and its successor arrives unstamped.
       // Keeping the stamped one keeps the very region it already names.
-      return a.owner === b.owner || a.owner === undefined;
+      return x.owner === y.owner || x.owner === undefined;
     }
     // A GROUP — an array among the children, built by `h` — has no callback, only its vnodes.
-    return a.owner === b.owner && sameMembers(a.vnodes ?? [], b.vnodes ?? [], walk);
+    return x.owner === y.owner && sameMembers(x.vnodes ?? [], y.vnodes ?? [], walk);
   }
 
   if (isJsxChildren(a)) return isJsxChildren(b) && sameMembers(a, b, walk);

@@ -813,12 +813,10 @@ function hydrateLevelEntries(
       skipUnclaimableRemainder(walk);
       let region: ComponentRegion | undefined;
       // A component's lists report to the component — see `enclosingRow`.
-      const row = enclosingRow.current;
-      const host = enclosingHost.current;
-      enclosingRow.current = undefined;
-      enclosingHost.current = undefined;
       try {
-        region = hydrateComponentRegion(rawVchild, placeholder, parent, walk, componentRegionOwner(rawVchild, i));
+        region = atTopLevel(() =>
+          hydrateComponentRegion(rawVchild, placeholder, parent, walk, componentRegionOwner(rawVchild, i)),
+        );
       } catch (e) {
         /**
          * The BUILD path inside `hydrateComponentRegion` — the branch it takes when the server
@@ -829,9 +827,6 @@ function hydrateLevelEntries(
          */
         const handler = errorHandler(e, placeholder);
         if (handler !== undefined) queuePostCommit(handler, () => addTaskToQueue(handler));
-      } finally {
-        enclosingRow.current = row;
-        enclosingHost.current = host;
       }
       if (region !== undefined) {
         entries.push(region);
@@ -969,7 +964,7 @@ function resumeHydration(component: BaseComponent): void {
 
   try {
     const children = generateRenderOutput(component);
-    const inner = hydrateLevel(children, component, block.parent, walk);
+    const inner = atTopLevel(() => hydrateLevel(children, component, block.parent, walk));
     region.entries = inner.entries;
 
     closeBlock(block.open, walk, component);

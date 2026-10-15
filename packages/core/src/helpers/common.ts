@@ -147,6 +147,15 @@ export function resolveStable(next: Bag, prev: Bag | undefined, declared: readon
 }
 
 /**
+ * The props a component or hook takes this render: values it declared with `@StableProps` settled by
+ * content, then markup settled by what it says (`helpers/settleMarkup.ts`). One step, so no path that
+ * hands props over can take one half without the other.
+ */
+export function settleProps(next: Bag, prev: Bag | undefined, declared: readonly string[] | undefined): Bag {
+  return settleMarkup(resolveStable(next, prev, declared), prev);
+}
+
+/**
  * Deeper than the diagnostic's default, because `@StableProps` is a declaration: the hook said
  * this prop is a value, and the payload is its own — a query key, a filter object. Past the
  * bound a fresh reference is handed back, which is correct but not optimal.
@@ -291,10 +300,7 @@ export function useCommon<T extends BaseHook<unknown>, P>(
   const readProps = (prevProps: Bag | undefined): Bag => {
     // Each prop is a signal of its own, so markup is settled key by key — see `helpers/settleMarkup.ts`.
     if (!cache)
-      return settleMarkup(
-        resolveStable(buildProps(that, className(hook), hookProps, declaredStable), prevProps, declaredStable),
-        prevProps,
-      );
+      return settleProps(buildProps(that, className(hook), hookProps, declaredStable), prevProps, declaredStable);
 
     if (cache.isDirty) {
       // Detach first, then re-track: a callback with a branch in it reads a DIFFERENT set of
@@ -315,7 +321,7 @@ export function useCommon<T extends BaseHook<unknown>, P>(
 
       for (const dep of cache.deps) dep[attach]({ id: cacheId, onChange: invalidate });
 
-      cache.bag = settleMarkup(resolveStable(raw, prevProps, declaredStable), prevProps);
+      cache.bag = settleProps(raw, prevProps, declaredStable);
       cache.isDirty = false;
     } else if (__DEV__ && isStrictRender()) {
       // RMD027: the cache claims nothing moved. Call the callback anyway and compare — a

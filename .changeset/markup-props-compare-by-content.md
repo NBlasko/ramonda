@@ -22,9 +22,12 @@ whose callback changed, and markup past a budget of 500 values are all called di
 renders, as it did before.
 
 `Portal` now watches its `target` together with its `children`, and reconciles once when both
-change; a named target (`portalTarget("modal")`) is watched by its name, since every call makes a new
-token. It used to notice a new target through `children`, which a props factory rebuilt on every
+change. It used to notice a new target through `children`, which a props factory rebuilt on every
 run; with markup settled, a target change with the same children would otherwise not move the block.
+
+A `@watchProp` on `children`, or a `@compute` reading it, now runs only when the children say
+something different. A hook that noticed some other prop through `children` being new on every run —
+as `Portal` did with its target — should watch that prop itself.
 
 `RMD022` no longer reports a hook's markup that the runtime settles; markup holding a handler built
 in place is still reported.

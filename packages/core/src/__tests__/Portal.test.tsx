@@ -3,11 +3,11 @@ import { Component } from "../base/Component";
 import { state, created, mounted, destroyed } from "../base/decorators";
 import { Portal } from "../base/Portal";
 import { ChildrenRegion } from "../core/childrenRegion";
-import { portalTarget } from "../base/portalTarget";
+import { portalTarget, PORTAL_TARGET_ATTR } from "../base/portalTarget";
 import { list } from "../base/list";
 import { getDOM, findAll } from "../test/setup";
 import { resetDiagnostics } from "../debug/diagnostics";
-import type { RamondaNode, VNode } from "../types/vdom";
+import type { RamondaNode } from "../types/vdom";
 
 /**
  * `Portal` — renders a subtree into a DOM target elsewhere (its whole reason to
@@ -570,28 +570,11 @@ describe("Portal follows its props", () => {
   });
 
   /**
-   * What a factory run leaves the same does not reconcile the block again: a named target by its
-   * name (`portalTarget` makes a new token every call), and a `list()` of the same array and callback
-   * (its descriptor is stamped by the block, and the next one arrives unstamped).
+   * A `list()` of the same array and callback, as a portal's children, does not reconcile the block
+   * again on a factory run that changed nothing it shows: its descriptor is stamped by the block, and
+   * the next one arrives unstamped.
    */
-  test.each([
-    [
-      "a named target",
-      (self: { tick: number; row: (r: string) => VNode }) => ({
-        children: <b>x</b>,
-        target: portalTarget("modal"),
-        n: self.tick,
-      }),
-    ],
-    [
-      "a list() as children",
-      (self: { tick: number; row: (r: string) => VNode }) => ({
-        children: list(ROWS, self.row),
-        target: document.body,
-        n: self.tick,
-      }),
-    ],
-  ])("%s does not reconcile again on an unrelated factory run", async (_what, factory) => {
+  test("a list() as children does not reconcile again on an unrelated factory run", async () => {
     const proto = ChildrenRegion.prototype as unknown as { reconcile(...args: unknown[]): void };
     const original = proto.reconcile;
     let reconciles = 0;
@@ -604,7 +587,11 @@ describe("Portal follows its props", () => {
       row(r: string) {
         return <i>{r}</i>;
       }
-      portal = this.use(Portal, factory as never);
+      portal = this.use(Portal, (self: Page) => ({
+        children: list(ROWS, self.row),
+        target: document.body,
+        n: self.tick,
+      }));
       render() {
         return <p>{this.tick}</p>;
       }
@@ -621,6 +608,42 @@ describe("Portal follows its props", () => {
 
     expect(reconciles).toBe(0);
     app.unmount();
+  });
+
+  /**
+   * A named target is looked up again on every factory run that hands over a token, so a container
+   * replaced under it — a layout that renders it, unmounted and mounted again — is the one the block
+   * moves to. `portalTarget` makes a new token every call, and the watch compares it by identity.
+   */
+  test("a named target's container replaced under it is followed", async () => {
+    const first = document.createElement("div");
+    first.setAttribute(PORTAL_TARGET_ATTR, "swap");
+    document.body.append(first);
+    class Page extends Component {
+      @state tick = 0;
+      portal = this.use(Portal, (self: Page) => ({
+        children: <b>moved</b>,
+        target: portalTarget("swap"),
+        n: self.tick,
+      }));
+      render() {
+        return <p>{this.tick}</p>;
+      }
+    }
+    const app = await getDOM<Page>(<Page />);
+    await app.settle();
+    expect(first.textContent).toBe("moved");
+
+    first.remove();
+    const second = document.createElement("div");
+    second.setAttribute(PORTAL_TARGET_ATTR, "swap");
+    document.body.append(second);
+    app.instance.tick = 1;
+    await app.settle();
+
+    expect(second.textContent).toBe("moved");
+    app.unmount();
+    second.remove();
   });
 });
 

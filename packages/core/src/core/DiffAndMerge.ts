@@ -1,5 +1,4 @@
-import { resolveStable } from "../helpers/common";
-import { settleMarkup } from "../helpers/settleMarkup";
+import { settleProps } from "../helpers/common";
 import { applyChangesOnAttributes } from "./Attribute";
 import type {
   BaseComponent,
@@ -1177,12 +1176,10 @@ export function reconcileEntries(
         } else {
           // A component's lists report to the component, which re-renders itself: no row above it has
           // to be opened for them. See `enclosingRow`.
-          const row = enclosingRow.current;
-          const host = enclosingHost.current;
-          enclosingRow.current = undefined;
-          enclosingHost.current = undefined;
           try {
-            region = reconcileComponentEntry(rawVchild, owner, before, placeholderComponent, parent, unclaimed);
+            region = atTopLevel(() =>
+              reconcileComponentEntry(rawVchild, owner, before, placeholderComponent, parent, unclaimed),
+            );
           } catch (e) {
             /**
              * The same door a plain child's build goes through, and it has to be here now.
@@ -1203,9 +1200,6 @@ export function reconcileEntries(
             }
             errorHandler(e, placeholderComponent);
             continue;
-          } finally {
-            enclosingRow.current = row;
-            enclosingHost.current = host;
           }
         }
 
@@ -1638,10 +1632,7 @@ function updateComponentRegion(region: ComponentRegion, vnode: VNodeComponent): 
   // Then markup — `children`, a slot, a node handed down — that says the same as last time keeps last
   // time's object, so a parent's render does not re-render a child whose markup did not change. See
   // `helpers/settleMarkup.ts`.
-  const nextProps = settleMarkup(
-    resolveStable(vnode.attributes ?? {}, componentRuntime.rawProps, declaredStable),
-    componentRuntime.rawProps,
-  );
+  const nextProps = settleProps(vnode.attributes ?? {}, componentRuntime.rawProps, declaredStable);
 
   // Read off the CLASS, so a subclass inherits its base's rule through the static
   // chain and shadows it by declaring its own. See @ShouldUpdateOnPropsChange.
