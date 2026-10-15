@@ -125,9 +125,10 @@ method — `onPick={this.pick}` — or `@memoized` when it has to be built per r
 **Markup handed down is compared by what it says.** Children — anything between the tags — and a
 single node handed over as a prop, `header={<Header />}`, are built afresh by every render of the
 parent. The framework compares them by content, so a child whose markup says the same as last time
-is not rendered again, and none of it needs declaring. It holds through nesting and through a
-`list()` among the children, as long as the list's callback is a method or a module-level function —
-one written inline is a new function every render, and its rows are built again.
+is not rendered again, and none of it needs declaring. It holds through nesting and for a `list()`
+among the children or handed down as a prop of its own, as long as the list's callback is a method
+or a module-level function — one written inline is a new function every render, and its rows are
+built again.
 
 Everything the app builds is compared by reference: a row, a `filter` object, an array of records,
 and also an object or an array that holds nodes, `slots={{ header: <Header /> }}`. The app may change

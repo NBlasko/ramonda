@@ -120,7 +120,8 @@ export class Portal extends Hook<PortalProps> {
     if (!target) return undefined;
     if (!isPortalTarget(target)) return target;
 
-    if (this.resolvedFrom === target && this.resolvedTo !== undefined) return this.resolvedTo;
+    // By name, as the watch below compares it: `portalTarget("modal")` is a new token every call.
+    if (this.resolvedFrom?.name === target.name && this.resolvedTo !== undefined) return this.resolvedTo;
 
     // The side this render is for. `ownerRuntime` holds the reason it is read off the OWNER rather
     // than off a module flag, and there is no missing-owner case to decide: the field is required.
@@ -194,7 +195,9 @@ export class Portal extends Hook<PortalProps> {
    */
   @watchProp(
     (props: PortalProps) => props.children,
-    (props: PortalProps) => props.target,
+    // A named target by its name: `portalTarget("modal")` is a new token every time it is called,
+    // and the same name is the same place.
+    (props: PortalProps) => (isPortalTarget(props.target) ? props.target.name : props.target),
   )
   replace(): void {
     this.reconcile();

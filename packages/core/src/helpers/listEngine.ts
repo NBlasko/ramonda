@@ -118,6 +118,28 @@ export const enclosingRow: { current: RowScope | undefined } = { current: undefi
  */
 export const enclosingHost: { current: ListHost | undefined } = { current: undefined };
 
+/**
+ * Runs a reconcile or a hydration that starts a level of its own — a root, a component's own render,
+ * a hook's block — outside any row and any region's host, and puts both back after.
+ *
+ * Every one of these entries runs from a drain today, where both are already empty; this makes that
+ * a property of the entry rather than of the order things happen to run in. A root mounted, or a
+ * component re-rendered, synchronously inside a row walk would otherwise give its lists that row as
+ * their parent and that region's host.
+ */
+export function atTopLevel<T>(run: () => T): T {
+  const row = enclosingRow.current;
+  const host = enclosingHost.current;
+  enclosingRow.current = undefined;
+  enclosingHost.current = undefined;
+  try {
+    return run();
+  } finally {
+    enclosingRow.current = row;
+    enclosingHost.current = host;
+  }
+}
+
 /** What the engine needs from whoever owns the list. */
 export interface ListHost {
   /**
@@ -562,10 +584,16 @@ export class ListEngine<T> {
    * left every price as it was. Marking the rows above makes the outer engine run its per-row pass and
    * hand those rows to the diff as not clean — opened, not rebuilt.
    *
-   * Stops at the first row already marked: everything above it was marked by whoever marked it.
+   * Stops at the first row already marked whose engine already knows: everything above it was marked
+   * by whoever marked it. A mark alone is not enough to stop at — a pass that threw part-way through
+   * its rows has cleared the engine's flag and left later rows' marks standing.
    */
   private markRowsAbove(): void {
-    for (let row = this.parent; row !== undefined && !row.dirtyBelow; row = row.engine.parent) {
+    for (
+      let row = this.parent;
+      row !== undefined && !(row.dirtyBelow && row.engine.anyDirty);
+      row = row.engine.parent
+    ) {
       row.dirtyBelow = true;
       row.engine.anyDirty = true;
     }
@@ -585,6 +613,8 @@ export class ListEngine<T> {
     this.scopes.clear();
     // The cached result would otherwise keep the last vnode tree alive too.
     this.lastNode = undefined;
+    // And the row above: through it, the outer engine and its whole tree.
+    this.parent = undefined;
     this.lastEach = undefined;
     this.lastBuilder = undefined;
   }

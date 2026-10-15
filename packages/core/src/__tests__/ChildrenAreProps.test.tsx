@@ -245,6 +245,88 @@ describe("markup handed down settles when it says the same", () => {
     container.remove();
   });
 
+  /**
+   * Settled even when another prop changed and the child renders anyway: each prop is a signal, and a
+   * watch on `children` must not fire because the `count` beside it moved.
+   */
+  test("a watch on children stays quiet when only another prop changes", async () => {
+    let fired = 0;
+    class Counted extends Component<{ count: number; children?: unknown }> {
+      @watchProp((props: { children?: unknown }) => props.children)
+      seen() {
+        fired++;
+      }
+      render() {
+        return (
+          <li>
+            {this.props.count}
+            {this.props.children as never}
+          </li>
+        );
+      }
+    }
+    class Owner extends Component {
+      @state n = 0;
+      render() {
+        return (
+          <ul>
+            <Counted count={this.n}>
+              <b>x</b>
+            </Counted>
+          </ul>
+        );
+      }
+    }
+    const dom = await getDOM<Owner>(<Owner />);
+    await dom.settle();
+    fired = 0;
+
+    dom.instance.n = 1;
+    await dom.settle();
+
+    expect(fired).toBe(0);
+    expect(dom.container.querySelector("li")?.textContent).toBe("1x");
+    dom.unmount();
+  });
+
+  /**
+   * A `list()` handed down as a prop of its own is stamped by the child that renders it, and its
+   * successor arrives unstamped — the same array and callback are still the same list.
+   */
+  test("a list() handed down as a prop of its own is not rendered again", async () => {
+    const rows = ["a"];
+    class Card extends Component<{ footer: unknown }> {
+      render() {
+        renders++;
+        return <li>{this.props.footer as never}</li>;
+      }
+    }
+    class Owner extends Component {
+      @state n = 0;
+      row(r: string) {
+        return <i>{r}</i>;
+      }
+      render() {
+        return (
+          <ul>
+            <p>{this.n}</p>
+            <Card footer={list(rows, this.row)} />
+          </ul>
+        );
+      }
+    }
+    const dom = await getDOM<Owner>(<Owner />);
+    await dom.settle();
+    renders = 0;
+
+    dom.instance.n = 1;
+    await dom.settle();
+
+    expect(renders).toBe(0);
+    expect(dom.container.querySelector("i")?.textContent).toBe("a");
+    dom.unmount();
+  });
+
   /** One budget per bag; past it the answer is "different", which renders — never a stale page. */
   test("markup larger than the comparison's budget renders as before", async () => {
     const many = Array.from({ length: 600 }, (_, i) => i);

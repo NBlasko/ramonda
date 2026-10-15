@@ -3,9 +3,11 @@ import { Component } from "../base/Component";
 import { state, created, mounted, destroyed } from "../base/decorators";
 import { Portal } from "../base/Portal";
 import { ChildrenRegion } from "../core/childrenRegion";
+import { portalTarget } from "../base/portalTarget";
+import { list } from "../base/list";
 import { getDOM, findAll } from "../test/setup";
 import { resetDiagnostics } from "../debug/diagnostics";
-import type { RamondaNode } from "../types/vdom";
+import type { RamondaNode, VNode } from "../types/vdom";
 
 /**
  * `Portal` — renders a subtree into a DOM target elsewhere (its whole reason to
@@ -566,4 +568,60 @@ describe("Portal follows its props", () => {
     first.remove();
     second.remove();
   });
+
+  /**
+   * What a factory run leaves the same does not reconcile the block again: a named target by its
+   * name (`portalTarget` makes a new token every call), and a `list()` of the same array and callback
+   * (its descriptor is stamped by the block, and the next one arrives unstamped).
+   */
+  test.each([
+    [
+      "a named target",
+      (self: { tick: number; row: (r: string) => VNode }) => ({
+        children: <b>x</b>,
+        target: portalTarget("modal"),
+        n: self.tick,
+      }),
+    ],
+    [
+      "a list() as children",
+      (self: { tick: number; row: (r: string) => VNode }) => ({
+        children: list(ROWS, self.row),
+        target: document.body,
+        n: self.tick,
+      }),
+    ],
+  ])("%s does not reconcile again on an unrelated factory run", async (_what, factory) => {
+    const proto = ChildrenRegion.prototype as unknown as { reconcile(...args: unknown[]): void };
+    const original = proto.reconcile;
+    let reconciles = 0;
+    proto.reconcile = function (this: unknown, ...args: unknown[]) {
+      reconciles++;
+      original.apply(this, args);
+    };
+    class Page extends Component {
+      @state tick = 0;
+      row(r: string) {
+        return <i>{r}</i>;
+      }
+      portal = this.use(Portal, factory as never);
+      render() {
+        return <p>{this.tick}</p>;
+      }
+    }
+    const app = await getDOM<Page>(<Page />);
+    try {
+      await app.settle();
+      reconciles = 0;
+      app.instance.tick = 1;
+      await app.settle();
+    } finally {
+      proto.reconcile = original;
+    }
+
+    expect(reconciles).toBe(0);
+    app.unmount();
+  });
 });
+
+const ROWS = ["r"];

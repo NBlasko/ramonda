@@ -56,6 +56,7 @@ import {
   buildLazyList,
   enclosingRow,
   enclosingHost,
+  atTopLevel,
   type LazyListNode,
   type ListHost,
   type RowScope,
@@ -111,7 +112,7 @@ export function diffAndMerge(
  */
 export function mountRoot(vnode: ComponentChild, container: ChildNode): void {
   const unclaimed: (EnhancedChildNode | DONE)[] = [];
-  const result = reconcileEntries([vnode], [], undefined, undefined, container, unclaimed);
+  const result = atTopLevel(() => reconcileEntries([vnode], [], undefined, undefined, container, unclaimed));
   (container as EnhancedChildNode)[CHILD_RECORD] = result.entries;
 
   /**
@@ -253,7 +254,7 @@ export function rerenderRoot(vnode: ComponentChild, container: ChildNode): void 
   const node = container as EnhancedChildNode;
   const previous = node[CHILD_RECORD] ?? [];
   const unclaimed: (EnhancedChildNode | DONE)[] = [];
-  const result = reconcileEntries([vnode], previous, undefined, undefined, container, unclaimed);
+  const result = atTopLevel(() => reconcileEntries([vnode], previous, undefined, undefined, container, unclaimed));
   node[CHILD_RECORD] = result.entries;
 
   unmountChildrenNodes(unclaimed, false);
@@ -300,7 +301,7 @@ export function refreshComponentRegion(component: BaseComponent): void {
 
   const children = generateRenderOutput(component);
   const unclaimed: (EnhancedChildNode | DONE)[] = [];
-  const result = reconcileEntries(children, region.entries, undefined, component, parent, unclaimed);
+  const result = atTopLevel(() => reconcileEntries(children, region.entries, undefined, component, parent, unclaimed));
   region.entries = result.entries;
 
   // Before the reorder, for the reason the element path has: stale nodes still in the DOM make
@@ -1640,7 +1641,6 @@ function updateComponentRegion(region: ComponentRegion, vnode: VNodeComponent): 
   const nextProps = settleMarkup(
     resolveStable(vnode.attributes ?? {}, componentRuntime.rawProps, declaredStable),
     componentRuntime.rawProps,
-    true,
   );
 
   // Read off the CLASS, so a subclass inherits its base's rule through the static

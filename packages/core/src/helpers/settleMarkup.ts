@@ -1,4 +1,5 @@
-import { COMPONENT_TYPE, IS_LIST, JSX_CHILDREN, ORIGIN_SYM, TEXT_TYPE } from "./constants";
+import { IS_LIST, JSX_CHILDREN, ORIGIN_SYM } from "./constants";
+import { isListNode, isVNode } from "../vdom/guards";
 
 type Bag = Record<string, unknown>;
 
@@ -56,17 +57,15 @@ interface ListLike {
 
 /**
  * A vnode, known by the origin `createRamonda` stamps on every one it makes — a symbol no record of
- * the app's carries. `type` alone is not enough: `{ type: 7, name: "Bolt", qty }` is data, and
- * comparing it as markup looked at its `name` and nothing else.
+ * the app's carries. The shape alone (`isVNode`) is not enough: `{ type: 7, name: "Bolt", qty }` is
+ * data, and comparing it as markup looked at its `name` and nothing else.
  */
 function isMarkupNode(value: unknown): value is MarkupNode {
-  if (typeof value !== "object" || value === null || !Object.hasOwn(value, ORIGIN_SYM)) return false;
-  const type = (value as { type?: unknown }).type;
-  return type === TEXT_TYPE || type === COMPONENT_TYPE;
+  return isVNode(value) && Object.hasOwn(value, ORIGIN_SYM);
 }
 
 function isList(value: unknown): value is ListLike {
-  return (value as Partial<ListLike> | null)?.[IS_LIST] === true;
+  return isListNode(value);
 }
 
 /** The children array JSX handed a component, as opposed to an array the app passed as `children={…}`. */
@@ -96,12 +95,18 @@ function same(a: unknown, b: unknown, walk: Walk): boolean {
   }
 
   if (isList(a)) {
-    if (!isList(b) || a.owner !== b.owner) return false;
+    if (!isList(b)) return false;
     // A `list()` descriptor is the same list for the same array and callback — its rows are the
     // engine's business, and an equal pair is what its own whole-list skip already trusts.
-    if (a.builder !== undefined || b.builder !== undefined) return a.each === b.each && a.builder === b.builder;
+    if (a.builder !== undefined || b.builder !== undefined) {
+      if (a.each !== b.each || a.builder !== b.builder) return false;
+      // Its `owner` is written by whoever renders it, ONTO the descriptor: one handed down as a prop
+      // and rendered by the child carries the child's stamp, and its successor arrives unstamped.
+      // Keeping the stamped one keeps the very region it already names.
+      return a.owner === b.owner || a.owner === undefined;
+    }
     // A GROUP — an array among the children, built by `h` — has no callback, only its vnodes.
-    return sameMembers(a.vnodes ?? [], b.vnodes ?? [], walk);
+    return a.owner === b.owner && sameMembers(a.vnodes ?? [], b.vnodes ?? [], walk);
   }
 
   if (isJsxChildren(a)) return isJsxChildren(b) && sameMembers(a, b, walk);
@@ -130,37 +135,30 @@ export function isSameMarkup(a: unknown, b: unknown): boolean {
 
 /**
  * `next`, with every markup value that says the same as last time replaced by last time's object — so
- * the bag comparison, the props signals and `@watchProp` all see an unchanged prop as unchanged.
+ * the bag comparison, the props signals, `@watchProp` and `@compute` all see an unchanged prop as
+ * unchanged.
  *
- * `decided` is for a COMPONENT, which renders once for the whole bag: when a value that is not
- * markup has already changed, the render is certain and nothing is opened. A HOOK passes `false`,
- * because each of its props is a signal of its own — a `Portal` re-reconciles when its `children`
- * changes, whatever its `target` did.
+ * Every markup value is settled, even when some other prop has changed and the component will render
+ * anyway: each prop is a signal of its own, and a `@watchProp` on `children` or a `@compute` reading it
+ * must not run because a `count` beside it moved. What is cheap is asked first — a reference or a
+ * primitive answers at once — and only markup that differs by reference is opened.
  */
-export function settleMarkup(next: Bag, prev: Bag | undefined, decided: boolean): Bag {
+export function settleMarkup(next: Bag, prev: Bag | undefined): Bag {
   if (prev === undefined) return next;
 
   let open: string[] | undefined;
   for (const key in next) {
     const value = next[key];
     const before = prev[key];
-    if (Object.is(value, before)) continue;
-    if (!Object.hasOwn(prev, key) || !isOpenable(value) || !isOpenable(before)) {
-      if (decided) return next;
-      continue;
-    }
-    (open ??= []).push(key);
+    if (Object.is(value, before) || !Object.hasOwn(prev, key)) continue;
+    if (isOpenable(value) && isOpenable(before)) (open ??= []).push(key);
   }
   if (open === undefined) return next;
 
   const walk: Walk = { budget: BUDGET };
   let settled: Bag | undefined;
   for (const key of open) {
-    if (same(next[key], prev[key], walk)) {
-      (settled ??= { ...next })[key] = prev[key];
-    } else if (decided) {
-      return next;
-    }
+    if (same(next[key], prev[key], walk)) (settled ??= { ...next })[key] = prev[key];
   }
   return settled ?? next;
 }

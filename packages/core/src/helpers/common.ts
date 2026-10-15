@@ -294,7 +294,6 @@ export function useCommon<T extends BaseHook<unknown>, P>(
       return settleMarkup(
         resolveStable(buildProps(that, className(hook), hookProps, declaredStable), prevProps, declaredStable),
         prevProps,
-        false,
       );
 
     if (cache.isDirty) {
@@ -316,7 +315,7 @@ export function useCommon<T extends BaseHook<unknown>, P>(
 
       for (const dep of cache.deps) dep[attach]({ id: cacheId, onChange: invalidate });
 
-      cache.bag = settleMarkup(resolveStable(raw, prevProps, declaredStable), prevProps, false);
+      cache.bag = settleMarkup(resolveStable(raw, prevProps, declaredStable), prevProps);
       cache.isDirty = false;
     } else if (__DEV__ && isStrictRender()) {
       // RMD027: the cache claims nothing moved. Call the callback anyway and compare — a

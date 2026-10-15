@@ -82,15 +82,16 @@ export function createRamonda(
     return stringNode;
   }
 
+  // The children array is `h`'s own, built for this call — stamped, in every build, so the markup
+  // comparison can tell it from an array the app hands over as `children` itself.
+  if (children.length) (children as { [JSX_CHILDREN]?: true })[JSX_CHILDREN] = true;
+
   // A COPY, not a mutation. Writing `children` onto the caller's object meant a
   // props object used for two elements ended up with only the last one's
   // children — both then rendered the same content. JSX builds a fresh object
   // per element so it never showed there, but `h()` is public and callable
   // directly, and a reused props object is a reasonable thing to write.
   // Measured "twotwo" where "onetwo" was meant.
-  // In every build: the markup comparison opens a `children` array only when JSX made it.
-  if (children.length) (children as { [JSX_CHILDREN]?: true })[JSX_CHILDREN] = true;
-
   const componentNode: VNodeComponent = {
     type: COMPONENT_TYPE,
     name,

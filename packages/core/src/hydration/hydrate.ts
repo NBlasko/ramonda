@@ -24,6 +24,7 @@ import {
   isLazyList,
   enclosingRow,
   enclosingHost,
+  atTopLevel,
   type ListEngine,
   type LazyListNode,
   type ListHost,
@@ -91,7 +92,7 @@ export function hydrateRoot(vnode: ComponentChild, container: HTMLElement): void
    * is where.
    */
   const walk: HydrationWalk = { cursor: container.firstChild as EnhancedChildNode | null, count: 0 };
-  const level = hydrateLevel([vchild], undefined, container, walk);
+  const level = atTopLevel(() => hydrateLevel([vchild], undefined, container, walk));
   // This level ends here, so a tail no child claimed is nobody's — the same sweep `hydrateChildren`
   // does, and it belongs to whoever ENDS a level rather than to `hydrateLevel`, which is shared by
   // a list's recursion and must leave a tail for the outer level's next text child.

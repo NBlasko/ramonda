@@ -7,8 +7,8 @@ Markup handed down as a prop is compared by what it says, so a parent's render n
 
 JSX is built afresh by every render, so `<Panel><Big n={1} /></Panel>` handed `Panel` new `children`
 each time and `Panel` rendered whenever its parent did. Children, a single node as a prop
-(`header={<Header />}`), and a `list()` among the children with a method or module-level callback
-are now compared by content for every component and every hook, with no declaration. Measured in a
+(`header={<Header />}`), and a `list()` with a method or module-level callback — among the children
+or as a prop of its own — are now compared by content for every component and every hook, with no declaration. Measured in a
 production build, 20 panels of 500 elements under a parent whose state changed for an unrelated
 reason: 25.1 ms and 20 panel renders per change before, 0.2 ms and none after; when the markup
 really changes, 25.4 ms before and 25.5 ms after.
@@ -22,7 +22,8 @@ whose callback changed, and markup past a budget of 500 values are all called di
 renders, as it did before.
 
 `Portal` now watches its `target` together with its `children`, and reconciles once when both
-change. It used to notice a new target through `children`, which a props factory rebuilt on every
+change; a named target (`portalTarget("modal")`) is watched by its name, since every call makes a new
+token. It used to notice a new target through `children`, which a props factory rebuilt on every
 run; with markup settled, a target change with the same children would otherwise not move the block.
 
 `RMD022` no longer reports a hook's markup that the runtime settles; markup holding a handler built

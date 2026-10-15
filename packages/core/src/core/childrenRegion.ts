@@ -12,7 +12,7 @@ import { addTaskToQueue } from "./Task";
 import { queuePostCommit } from "./commit";
 import { hydrateLevel, isSplitRemainder, type HydrationWalk } from "../hydration/hydrate";
 import { reportBlockLengthMismatch } from "../debug/hydrationMismatch";
-import type { ListHost } from "../helpers/listEngine";
+import { atTopLevel, type ListHost } from "../helpers/listEngine";
 import type { EnhancedChildNode, MaybeComponent, RecordEntry } from "../types/vdom";
 import { BLOCK_CLOSE, BLOCK_OWNER, CHILD_RECORD, HOSTS_A_BLOCK, type DONE } from "../helpers/constants";
 
@@ -236,7 +236,9 @@ export class ChildrenRegion {
     const before = this.order;
 
     const unclaimed: (EnhancedChildNode | DONE)[] = [];
-    const result = reconcileEntries(normalized, this.record, undefined, this.owner, parent, unclaimed, this.listHost);
+    const result = atTopLevel(() =>
+      reconcileEntries(normalized, this.record, undefined, this.owner, parent, unclaimed, this.listHost),
+    );
     this.record = result.entries;
     this.publish();
 
@@ -308,7 +310,7 @@ export class ChildrenRegion {
 
     const normalized = normalizeChildren(Array.isArray(children) ? children : [children], this.id);
     const walk: HydrationWalk = { cursor: open.nextSibling as EnhancedChildNode | null, count: 0 };
-    this.record = hydrateLevel(normalized, this.owner, parent, walk, this.listHost).entries;
+    this.record = atTopLevel(() => hydrateLevel(normalized, this.owner, parent, walk, this.listHost)).entries;
 
     /**
      * Where the walk stopped IS the closing anchor, when the server wrote as many nodes as this
