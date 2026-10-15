@@ -6,7 +6,7 @@ import type {
   SearchParamsUpdater,
   StateUpdater,
 } from "./types";
-import { buildUrl, parseUrlString } from "./urlUtils";
+import { buildUrl, keepUnchanged, parseUrlString } from "./urlUtils";
 
 /**
  * How the navigator reaches the route state. Deliberately just two functions
@@ -79,7 +79,8 @@ export interface RouterNavigator {
  */
 export function createNavigator(store: RouteStateAccess, onServerRedirect?: (url: string) => void): RouterNavigator {
   function updateState(updater: StateUpdater, options: NavigateOptions = {}): void {
-    const next = updater(store.read()); // freshest, synchronous
+    const prev = store.read(); // freshest, synchronous
+    const next = keepUnchanged(prev, updater(prev));
     const url = buildUrl(next);
 
     if (onServerRedirect) {

@@ -106,3 +106,25 @@ export function buildUrl(state: RouterState): string {
 
   return sanitizeHref(url);
 }
+
+/** Whether two flat records hold the same pairs. */
+function samePairs(a: Record<string, string>, b: Record<string, string>): boolean {
+  const keys = Object.keys(a);
+  return keys.length === Object.keys(b).length && keys.every((key) => Object.hasOwn(b, key) && a[key] === b[key]);
+}
+
+/**
+ * The next state, with every part that did not change kept as the object it was.
+ *
+ * Each part is published to its readers on its own, and a reader re-renders when its part's object
+ * changes. A `push` parses the whole URL, so it made a new `{}` for a query and a hash that had not
+ * moved, and a component reading only the hash re-rendered on every path change. Comparing here, once,
+ * keeps "a component re-renders for the part it reads" true — for a push, an in-place update and
+ * back/forward alike.
+ */
+export function keepUnchanged(prev: RouterState, next: RouterState): RouterState {
+  const queryParams = samePairs(prev.queryParams, next.queryParams) ? prev.queryParams : next.queryParams;
+  const hashParams = samePairs(prev.hashParams, next.hashParams) ? prev.hashParams : next.hashParams;
+  if (queryParams === next.queryParams && hashParams === next.hashParams) return next;
+  return { ...next, queryParams, hashParams };
+}

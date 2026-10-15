@@ -10,7 +10,7 @@ import {
   captureServerRedirect,
 } from "@ramonda/core";
 import { createNavigator, detachedNavigator, type RouterNavigator } from "./store";
-import { parseUrl } from "./urlUtils";
+import { keepUnchanged, parseUrl } from "./urlUtils";
 import { assertPattern, matchCompiled, type ParamsOf, type RouteConfig, type RouteParams } from "./match";
 import type { HashParamsUpdater, PartialNavigateOptions, RouterState, SearchParamsUpdater } from "./types";
 
@@ -224,7 +224,7 @@ export class Router extends Hook {
     liveRouters++;
 
     // The client's URL is the truth, whatever was restored into state.
-    this.routeState = parseUrl();
+    this.routeState = keepUnchanged(this.routeState, parseUrl());
   }
 
   @destroyed dispose() {
@@ -241,7 +241,7 @@ export class Router extends Hook {
    */
   @onWindow("popstate")
   handlePopState(): void {
-    this.routeState = parseUrl();
+    this.routeState = keepUnchanged(this.routeState, parseUrl());
   }
 
   /**
