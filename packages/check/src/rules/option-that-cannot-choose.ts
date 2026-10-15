@@ -45,17 +45,25 @@ export interface OptionThatCannotChooseIssue {
 }
 
 /**
- * Whether a `<Select>` encloses this option, at any depth.
+ * Whether a `<Select>` that decides the choice encloses this option, at any depth: one with a `value`
+ * or a `defaultValue`, which it sets on every option. A select with neither leaves its options alone,
+ * and there `selected` is what chooses.
  *
  * `<optgroup>` is the ordinary reason for the depth — a grouped select puts its options one level
  * further in — and the walk reads each ancestor's tag the way every rule does now, so the
  * `<Select>` COMPONENT answers "select" exactly as the refused tag would have.
  */
-function insideASelect(element: JsxElementLike, resolve: ElementContext["resolve"]): boolean {
+function insideADecidingSelect(element: JsxElementLike, resolve: ElementContext["resolve"]): boolean {
   let at = enclosingElement(element);
   while (at !== undefined) {
     const tag = tagOf(at) ?? coreElementTag(openingOf(at).tagName, resolve);
-    if (tag === "select") return true;
+    if (tag === "select") {
+      return openingOf(at).attributes.properties.some(
+        (attribute) =>
+          ts.isJsxAttribute(attribute) &&
+          (attribute.name.getText() === "value" || attribute.name.getText() === "defaultValue"),
+      );
+    }
     at = enclosingElement(at);
   }
   return false;
@@ -71,8 +79,8 @@ export const optionThatCannotChoose = {
     lines: (issue) => [
       `  ${issue.file}:${issue.line}:${issue.column}`,
       issue.value === undefined
-        ? "    `selected` here is overwritten — `Select` sets it on every option from its `value`."
-        : `    \`selected\` on \`value="${issue.value}"\` is overwritten — \`Select\` sets it from its own \`value\`.`,
+        ? "    `selected` here is overwritten — `Select` sets it on every option from its `value` or `defaultValue`."
+        : `    \`selected\` on \`value="${issue.value}"\` is overwritten — \`Select\` sets it from its own \`value\` or \`defaultValue\`.`,
     ],
     advice:
       "`Select` decides the choice, and it does it by walking EVERY option and setting each one on\n" +
@@ -121,7 +129,7 @@ export const optionThatCannotChoose = {
      */
     if (!has("selected")) return [];
 
-    if (!insideASelect(element, resolve)) return [];
+    if (!insideADecidingSelect(element, resolve)) return [];
 
     const value = attr("value");
 

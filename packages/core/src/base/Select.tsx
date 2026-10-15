@@ -2,7 +2,7 @@ import { Component } from "./Component";
 import { createRef } from "./Ref";
 import { mounted, updated } from "./decorators";
 import { __h } from "../vdom/h";
-import { answer, controlled, forwarded, given } from "./forwarded";
+import { answer, controlled, forwarded, given, heard } from "./forwarded";
 import type { RamondaNode, RenderEnv } from "../types/vdom";
 import type { RefTarget } from "./Ref";
 
@@ -67,8 +67,8 @@ export class Select extends Component<SelectProps> {
   private e = createRef<HTMLSelectElement>((node) => this.g(node));
 
   /**
-   * `d` — whether the start is settled: by `defaultValue`, applied once the select first has options;
-   * or by a `value`, after which a `defaultValue` never applies.
+   * `d` — whether the start is settled for good: the user has picked, or a `value` has held the select.
+   * Until then a `defaultValue` is where it starts, applied whenever an option it names is there.
    */
   private d = false;
 
@@ -113,20 +113,19 @@ export class Select extends Component<SelectProps> {
     if (this.h !== this.props.ref) this.g(select);
 
     const onServer = env === "server";
-    // `value` every time. `defaultValue` once, when the select first has options to choose from — a
-    // value written before then matches nothing, and the browser picks the first option the moment
-    // one arrives.
-    // The start is settled the first time there are options, whether or not a `defaultValue` was
-    // there yet — one that arrives later, from a load, must not reach a select the user has picked in,
-    // exactly as a `TextArea` keeps the text it started with.
+    // `value` every time.
+    // A `defaultValue` is where the select starts until the user picks — the same rule a `TextArea`
+    // keeps through the browser's own: so options that arrive later, after a "Choose…" that was there
+    // first, are still started on the saved choice, and one that arrives after a pick changes nothing.
+    // Written only once an option it names is there; before, the browser would show no choice at all.
     let chosen = this.props.value;
     if (chosen != null) {
       this.d = true;
     } else {
-      if (this.d || select.options.length === 0) return;
-      this.d = true;
       chosen = this.props.defaultValue;
-      if (chosen == null) return;
+      if (this.d || chosen == null) return;
+      const named = Array.isArray(chosen) ? chosen.map(String) : [String(chosen)];
+      if (!Array.from(select.options).some((option) => named.includes(option.value))) return;
     }
 
     // One write, and the browser works out which option it means. A `multiple` select has no single
@@ -154,6 +153,12 @@ export class Select extends Component<SelectProps> {
     answer(this, event);
   }
 
+  /** The listener a `defaultValue` select notes the user's pick with: from then on it is theirs. */
+  p(event: Event): void {
+    this.d = true;
+    heard(this, event);
+  }
+
   render() {
     /**
      * Built through the factory rather than written as JSX, because `<select>` is refused and JSX
@@ -162,7 +167,12 @@ export class Select extends Component<SelectProps> {
      * site that writes the tag, and this one does not write it.
      */
     // A pick is `input` then `change`, both at once: either is the moment to answer.
-    const field = controlled(this, this.a, ["oninput", "onchange"]);
+    // Without a `value` the select is the user's, and a pick is noted — a `defaultValue` may yet
+    // arrive, and must not move a select somebody has already picked in.
+    const field =
+      this.props.value == null
+        ? { replaced: ["oninput", "onchange"], listeners: { oninput: this.p, onchange: this.p } }
+        : controlled(this, this.a, ["oninput", "onchange"]);
     return __h(
       "select",
       {

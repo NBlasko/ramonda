@@ -25,6 +25,20 @@ function namesOf(element: JsxElementLike): string[] {
     .map((attribute) => attribute.name.getText());
 }
 
+/** Whether `value` is written as `{null}` or `{undefined}`. */
+function writtenAsNothing(element: JsxElementLike): boolean {
+  const value = openingOf(element).attributes.properties.find(
+    (attribute) => ts.isJsxAttribute(attribute) && attribute.name.getText() === "value",
+  );
+  if (value === undefined || !ts.isJsxAttribute(value)) return false;
+  const written = value.initializer;
+  if (written === undefined || !ts.isJsxExpression(written) || written.expression === undefined) return false;
+  const expression = written.expression;
+  return (
+    expression.kind === ts.SyntaxKind.NullKeyword || (ts.isIdentifier(expression) && expression.text === "undefined")
+  );
+}
+
 /** The events an element has a handler for, in any spelling. */
 function eventsOf(element: JsxElementLike): Set<string | undefined> {
   return new Set(namesOf(element).map((name) => eventTypeOf(name)?.type));
@@ -122,7 +136,9 @@ export const fieldTheUserCannotChange = {
     const tag = coreElementTag(opening.tagName, resolve);
     if (tag !== "select" && tag !== "textarea") return [];
 
-    const names = namesOf(element);
+    // `value={null}` and `value={undefined}` — data still loading — are no value: core leaves the
+    // field to the user, and so does this.
+    const names = namesOf(element).filter((name) => name !== "value" || !writtenAsNothing(element));
     if (!names.includes("value")) return [];
 
     const component = tag === "select" ? "Select" : "TextArea";

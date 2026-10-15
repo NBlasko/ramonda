@@ -56,7 +56,6 @@ export function forwarded(component: Component<any>, consumed: readonly string[]
  * which is the same thing, since the field is settled after the whole event either way. A field
  * without a `value` is given nothing: with `defaultValue`, or with neither, the page owns what it shows.
  */
-// biome-ignore lint/suspicious/noExplicitAny: any component, whatever its props
 export function controlled(
   // biome-ignore lint/suspicious/noExplicitAny: any component, whatever its props
   component: Component<any>,
@@ -65,10 +64,27 @@ export function controlled(
 ) {
   // `null` as much as `undefined`: a value still loading is no value, not the text "null".
   if (component[COMPONENT_RUNTIME].rawProps["value"] == null) return { replaced: [] as string[], listeners: {} };
-  const listeners: Record<string, (event: Event) => void> = {};
+  // The composition's start and end too: a settle set before a composition began must not land in it.
+  const listeners: Record<string, (event: Event) => void> = {
+    oncompositionstart: listener,
+    oncompositionend: listener,
+  };
   for (const name of answered) listeners[name] = listener;
-  return { replaced: [...answered], listeners };
+  return { replaced: Object.keys(listeners), listeners };
 }
+
+/** The app's own handler for this event, called as a listener would be: a function, or `handleEvent`. */
+// biome-ignore lint/suspicious/noExplicitAny: any component, whatever its props
+export function heard(component: Component<any>, event: Event): void {
+  const theirs = component[COMPONENT_RUNTIME].rawProps[`on${event.type}`];
+  if (typeof theirs === "function") theirs.call(event.currentTarget, event);
+  else if (typeof (theirs as EventListenerObject | null)?.handleEvent === "function") {
+    (theirs as EventListenerObject).handleEvent(event);
+  }
+}
+
+/** Fields an input method is composing in right now. */
+const composing = new WeakSet<object>();
 
 /** Fields with a settle already set for after the event that is being dispatched. */
 const queued = new WeakSet<object>();
@@ -92,7 +108,8 @@ const queued = new WeakSet<object>();
  * events, and putting the old value back between them cancels it. Nor when it ends: in Chromium the
  * last `input` of a composition still says `isComposing`, and an app that skips those — the usual
  * way to write it — has not taken the text yet. The field is settled at the next input that is not
- * part of a composition, which the app's handler sees whole.
+ * part of a composition, which the app's handler sees whole. And a settle set by an input just BEFORE
+ * a composition began is asked again when it runs, and skipped while one is under way.
  *
  * **Only the value is written** — `settle`, not a render: nothing else about the field changed. A
  * field its handler removed has no element left, and `settle` finds nothing to write. A handler that
@@ -100,19 +117,17 @@ const queued = new WeakSet<object>();
  */
 // biome-ignore lint/suspicious/noExplicitAny: any component, whatever its props
 export function answer(component: Component<any> & { settle(): void }, event: Event): void {
-  const theirs = component[COMPONENT_RUNTIME].rawProps[`on${event.type}`];
   try {
-    // Either form a listener takes: a function, or an object with `handleEvent`.
-    if (typeof theirs === "function") theirs.call(event.currentTarget, event);
-    else if (typeof (theirs as EventListenerObject | null)?.handleEvent === "function") {
-      (theirs as EventListenerObject).handleEvent(event);
-    }
+    heard(component, event);
   } finally {
-    if (!(event as InputEvent).isComposing && !queued.has(component)) {
+    if (event.type === "compositionstart") composing.add(component);
+    else if (event.type === "compositionend") composing.delete(component);
+    else if (!(event as InputEvent).isComposing && !queued.has(component)) {
       queued.add(component);
       setTimeout(() => {
         queued.delete(component);
-        component.settle();
+        // Asked again when it runs: a composition may have started since this was set.
+        if (!composing.has(component)) component.settle();
       }, 0);
     }
   }

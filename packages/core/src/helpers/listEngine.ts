@@ -157,6 +157,8 @@ export function inLevel<T>(rows: readonly unknown[] | undefined, host: ListHost 
  * their parent and that region's host.
  */
 export function atTopLevel<T>(run: () => T): T {
+  // From a drain — every entry today — both are already empty, and there is nothing to restore.
+  if (enclosingRow.current === undefined && enclosingHost.current === undefined) return run();
   return inListContext(undefined, undefined, run);
 }
 

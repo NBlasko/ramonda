@@ -246,8 +246,60 @@ describe("a controlled select shows what the model says", () => {
     expect(shown(app.container)).toEqual({ value: "b", index: 1 });
   });
 
-  /** A `defaultValue` that arrives after the select has options — from a load — does not reach it. */
-  test("a defaultValue that arrives later does not move the select", async () => {
+  /**
+   * Options that arrive after a placeholder — "Choose…" first, the countries from a load — still start
+   * on the saved choice: the default holds until the user picks.
+   */
+  test("a defaultValue whose option arrives after a placeholder is applied", async () => {
+    class Countries extends Component {
+      @state countries: string[] = [];
+      render() {
+        return (
+          <Select id="s" defaultValue="fr">
+            <option value="">Choose…</option>
+            {this.countries.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </Select>
+        );
+      }
+    }
+    const app = await getDOM<Countries>(<Countries />);
+    await app.settle();
+    app.instance.countries = ["de", "fr", "it"];
+    await app.settle();
+
+    expect(shown(app.container)).toEqual({ value: "fr", index: 2 });
+  });
+
+  /** A `defaultValue` from a load reaches a select nobody has picked in yet. */
+  test("a defaultValue that arrives before a pick is applied", async () => {
+    class Loading extends Component {
+      @state saved: string | undefined = undefined;
+      render() {
+        return (
+          <Select id="s" defaultValue={this.saved}>
+            {["a", "b", "c"].map((v) => (
+              <option key={v} value={v}>
+                {v}
+              </option>
+            ))}
+          </Select>
+        );
+      }
+    }
+    const app = await getDOM<Loading>(<Loading />);
+    await app.settle();
+    app.instance.saved = "b";
+    await app.settle();
+
+    expect(shown(app.container)).toEqual({ value: "b", index: 1 });
+  });
+
+  /** A `defaultValue` that arrives after the user picked changes nothing: the select is theirs. */
+  test("a defaultValue that arrives after a pick does not move the select", async () => {
     class Loading extends Component {
       @state saved: string | undefined = undefined;
       render() {

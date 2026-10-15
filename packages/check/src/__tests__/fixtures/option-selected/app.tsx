@@ -69,6 +69,21 @@ class App extends Component {
             A
           </option>
         </Select>
+
+        {/* ✓ A select with neither `value` nor `defaultValue` leaves its options alone: this chooses. */}
+        <Select aria-label="I">
+          <option value="a">A</option>
+          <option value="b" selected>
+            B
+          </option>
+        </Select>
+
+        {/* ✗ `defaultValue` decides the start, and sets every option from it. */}
+        <Select defaultValue={value} aria-label="J">
+          <option value="b" selected>
+            B
+          </option>
+        </Select>
       </div>
     );
   }

@@ -1,4 +1,5 @@
 import ts from "typescript";
+import { openingOf } from "./element";
 import { positionOf } from "../syntax";
 import type { ElementRule, TextEdit } from "./rule";
 
@@ -150,9 +151,12 @@ export const attributeThatDoesNothing = {
    */
   evenWhenSpreading: true,
 
-  read(_element, { tag, attributes }) {
+  read(element, { tag, attributes }) {
     // A component tag decides its own props, so what it does with them is not settled here.
     if (tag === undefined) return [];
+    // Core's `Select` and `TextArea` stand for their tags, and `defaultValue` is THEIR prop: where the
+    // field starts, after which it is the user's. Only the tag written as itself drops it.
+    const component = /^[A-Z]/.test(openingOf(element).tagName.getText());
 
     const found: AttributeThatDoesNothingIssue[] = [];
 
@@ -160,6 +164,7 @@ export const attributeThatDoesNothing = {
       const written = attribute.name;
       const dead = DEAD.get(written.toLowerCase());
       if (dead === undefined) continue;
+      if (component && written === "defaultValue" && (tag === "select" || tag === "textarea")) continue;
 
       /**
        * Four of the six have a name to write instead, and those are carried.

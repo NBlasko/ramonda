@@ -52,8 +52,24 @@ describe("a field the user cannot change", () => {
       "from props",
       "read only string",
       "locked const",
+      "null value",
+      "undefined value",
     ]) {
       expect(lines.has(lineOf(`aria-label="${label}"`))).toBe(false);
     }
+  });
+
+  /**
+   * The answer the advice gives, `defaultValue`, must not be reported by another rule. Core's
+   * `Select` and `TextArea` stand for their tags, and `attribute-that-does-nothing` used to read the
+   * prop as the dead DOM attribute — and rename it to `value`, which makes the field nobody can type in.
+   */
+  test("defaultValue on Select and TextArea is reported by no rule", () => {
+    const all = analyzeProject(join(here, "fixtures", "field-cannot-change", "tsconfig.json")).findings;
+    const line = lineOf('aria-label="default"');
+    const reported = Object.entries(all)
+      .filter(([, issues]) => (issues as { line?: number }[]).some((issue) => issue.line === line))
+      .map(([rule]) => rule);
+    expect(reported).toEqual([]);
   });
 });

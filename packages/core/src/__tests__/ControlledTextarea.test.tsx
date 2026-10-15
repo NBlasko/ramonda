@@ -476,6 +476,32 @@ describe("a controlled textarea follows the model after the event the app handle
     expect(field.value).toBe("a");
   });
 
+  /** A settle set by a keystroke just before a composition began does not land in the middle of it. */
+  test("a settle that comes due mid-composition waits", async () => {
+    class Composed extends Component {
+      @state text = "a";
+      keep(event: InputEvent) {
+        if (event.isComposing) return;
+        this.text = "a";
+      }
+      render() {
+        return <TextArea id="t" value={this.text} oninput={this.keep} />;
+      }
+    }
+    const app = await getDOM<Composed>(<Composed />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+
+    field.value = "ax";
+    field.dispatchEvent(new InputEvent("input", { bubbles: true }));
+    field.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+    field.value = "axk";
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await app.settle();
+
+    expect(field.value).toBe("axk");
+  });
+
   /**
    * A composition that ends with a blur: the `change` the blur fires is not answered, so the composed
    * text the app has not taken yet stays until the next ordinary input.

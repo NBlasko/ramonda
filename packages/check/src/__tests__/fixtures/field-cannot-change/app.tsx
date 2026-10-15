@@ -54,6 +54,9 @@ class App extends Component<{ text: string }> {
         </fieldset>
         {/* ✗ no-handler: readOnly that may be off */}
         <TextArea value={value} readOnly={viewing} aria-label="maybe read only" />
+        {/* ✓ a value still loading is no value */}
+        <TextArea value={null} aria-label="null value" />
+        <TextArea value={undefined} defaultValue="x" aria-label="undefined value" />
         {/* ✓ read-only spelled as a string, and through a const */}
         <TextArea value={value} readonly="true" aria-label="read only string" />
         <TextArea value={value} disabled={LOCKED} aria-label="locked const" />
