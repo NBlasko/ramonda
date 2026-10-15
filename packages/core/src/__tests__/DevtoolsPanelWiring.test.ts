@@ -18,7 +18,11 @@ import { describe, expect, it, vi } from "vitest";
  * for the rest of the file — so it has to stay last.
  */
 describe("the devtools panel the entry wires up", () => {
-  it("has mounted exactly one panel, in the body", () => {
+  it("has mounted exactly one panel, in the body", async () => {
+    // The app's own import, as `create-ramonda` writes it into the entry. The entry's optional import
+    // is built at run time so no bundler resolves it, and an app that wants the panel imports it.
+    await import("@ramonda/devtools");
+    await customElements.whenDefined("ramonda-devtools");
     const panels = document.querySelectorAll("ramonda-devtools");
     expect(panels).toHaveLength(1);
     expect(panels[0]?.parentElement).toBe(document.body);

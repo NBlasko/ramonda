@@ -1,5 +1,93 @@
 # @ramonda/core
 
+## 0.26.1
+
+### Patch Changes
+
+- 8146e4e: What a children region does once there is nothing left for it to do
+  
+  Twelve branches of `core/childrenRegion.ts` had never been taken by either test run, and reading them
+  together says why: most are the `disposed` early return on each method, and they were unhit precisely
+  because no ordinary path calls a method after `dispose()`. They are the promise that a torn-down
+  region is inert, and the guards exist for the arrangement the framework is careful never to produce.
+  
+  `ChildrenRegion` is exported and takes a `MaybeComponent` owner, so a bare one can be driven without
+  a component at all — it reconciles `"hello"` into `<!--r1-->hello<!--/r1-->` and `dispose()` empties
+  the parent. Twelve tests now hold: `anchorId` on an opening anchor, a closing one, a comment that
+  only looks like one and a node that is not a comment; a disposed region reconciled, told its host is
+  gone, asked to hydrate, and disposed again; an empty block that still writes its anchors; and a
+  region's own refresh, which is reached the way its comment describes — an item reading a signal the
+  props factory never read, so the factory's cache stays clean.
+  
+  Eight of the twelve are closed, and the file says what each of the remaining four needs. Two are
+  `invalidate`'s: `!owner` needs a region built without one, and the only constructor call passes a
+  hook's owner; the guard inside its post-commit callback needs a region disposed while its owner
+  lives, and `Portal` disposes only from `@destroyed`. The other two are the hydration tail scan's
+  nesting count, which needs a server block holding another block where this render wants fewer
+  children — reachable, and not built here.
+  
+  Two of the tests state what they do NOT prove, which is the honest half. Taking a branch is not the
+  same as falsifying it: with `refreshQueued` removed the DOM is identical and the mapper still runs
+  exactly twice, and with `dispose()`'s own flag removed a second teardown still removes nothing twice.
+  Both pin the outcome a caller depends on and say the guard itself is invisible from outside.
+- f94e51e: An app without `@ramonda/devtools` no longer logs `Failed to resolve import "@ramonda/devtools"` from the Vite 8 dev server on every start. The optional panel import is written so the dependency pre-bundler cannot fold it into a literal it then tries to resolve.
+- d62db51: Two branches neither test run had ever taken
+  
+  The union of the development and production coverage named them, and they turned out to be different
+  faults wearing the same shape.
+  
+  **`createRef` had no production coverage at all.** `base/Ref.ts`'s `if (__DEV__)
+  reportRefBuiltInAPurePhase()` was taken 61 times in the development run and zero in the production
+  one, so nothing had ever asked what the shipped ref factory does. It builds the ref and says nothing,
+  which is deliberate: a ref built in a render is a new identity every time and costs the child a
+  render it did not need — a real fault, and one that still renders correctly, so taking a page down
+  over it in production would be worse.
+  
+  The test asserts that promise where it can actually fail. Planting the guard away fails nothing,
+  because the reporter asks `purePhase()` first and that answers `undefined` in a shipped build —
+  `renderPhase.component = component` is itself inside `if (__DEV__)` in `generateRenderOutput`. So the
+  mechanism that enforces silence is the unmarked render phase, and moving that assignment outside its
+  guard is what fails the test. It also breaks the ref callback, because the `finally` that clears the
+  mark is inside the same guard: a production build would read as rendering forever.
+  
+  **`configureDev` had never been called with a flag it does not mention**, which is what every caller
+  will do the day a second flag exists. `if (flags.strictRender !== undefined)` had 405 calls on its
+  true side and none on its false one, in either run. It is asserted from both starting values, because
+  "unchanged" is only a claim if it can be told from "assigned a constant" — a body writing `true`
+  unconditionally passes the first of the two.
+  
+  That one is a development test, and the correction is part of the finding: the `if (!__DEV__)` guard
+  above it was already covered from both sides, 405 in development and 12 in production, because
+  `vitest.prod.config.ts` uses the same `src/test/setup.ts` and that file calls `configureDev`. The
+  production side of that function was never the gap.
+  
+  Measured after: `config.ts` line 55's false side is at 2, `Ref.ts` line 44's false side at 4, and
+  `Ref.ts`'s `setCurrent` early return picked up production coverage on the way. Files with every
+  branch taken by one run or the other: 30 of 83, from 28.
+- ff436db: What the debug labels say when they have nothing to say
+  
+  Four branches, one subject, and neither test run had ever taken any of them: the else arm of
+  `stateLabels.ts`'s `label.owner ? … : label.property`, and the `?? "a signal"` in each of
+  `renderPhase.ts`'s three reporters — the write during a render, from `[INSPECT]()`, and from a
+  `@compute`.
+  
+  They were unhit because no ordinary use reaches them. A signal is labelled only when it is built with
+  `metaData`, and the framework builds three kinds: `@state` passes both `metaData` and an `owner` that
+  is `displayName(this)`, which answers `"Unknown"` rather than `undefined` for a nameless class and so
+  is never falsy; the other two are props signals, built with no `metaData` at all. And a write to
+  props never reaches `State.set` — the proxy's `set` trap throws `[RMD004]` in every build, outside
+  `if (__DEV__)` — so the report those fallbacks belong to cannot be raised about the one kind of
+  signal that has no label.
+  
+  So both exist because the options are optional, and what they promise is a graceful degradation. That
+  is what is pinned: a label with no owner reads `items` rather than `undefined.items`, and an
+  unlabelled signal makes a message say `a signal` rather than leaving a hole in it. Each reporter is
+  also asserted to stay silent when its phase is not marked, because the tests set those phases by hand
+  and a reporter that fired regardless would have passed everything else.
+  
+  Measured after: `stateLabels.ts` and `renderPhase.ts` have no unhit branch left between them, 0 of 4
+  and 0 of 14, and files with every branch taken by one run or the other are 32 of 83, from 30.
+
 ## 0.26.0
 
 ### Minor Changes

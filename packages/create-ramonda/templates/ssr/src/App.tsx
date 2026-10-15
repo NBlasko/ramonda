@@ -90,7 +90,7 @@ class NotFound extends Component {
 
 // The route table — shared by the client and the server. `createRoutes` remembers the exact
 // paths in its type, and `createRouter` binds `<Link href>` / `route()` to them, so a typo in a
-// link is a compile error. `server-routes.ts` says which route renders how (static / ISR / per
+// link is a compile error. `entry-server.tsx` says which route renders how (static / ISR / per
 // request).
 export const routes = createRoutes({
   "/": <HomePage />,

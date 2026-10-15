@@ -7,12 +7,34 @@ import {
   mkdirSync,
   renameSync,
   realpathSync,
+  statSync,
+  lstatSync,
+  mkdtempSync,
+  rmSync,
 } from "node:fs";
+import { tmpdir } from "node:os";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import * as p from "@clack/prompts";
 import pc from "picocolors";
+import {
+  type AddOn,
+  type Mode,
+  addOnOptions,
+  DEFAULT_ADD_ONS,
+  DEFAULT_TARGET,
+  HELP,
+  readArgs,
+  readmeLine,
+  MODE_OPTIONS,
+  nextSteps,
+  SAY,
+  unanswered,
+} from "./args";
+
+// What the docs' GIF of the scaffolder is drawn from — see `apps/docs/scripts/build-cli-gif.mjs`.
+export { ADD_ON_INFO, addOnOptions, DEFAULT_ADD_ONS, MODE_OPTIONS, nextSteps, SAY } from "./args";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const templatesDir = resolve(here, "..", "templates");
@@ -49,9 +71,6 @@ function tool(name: string): string {
   return range;
 }
 
-type Mode = "spa" | "ssr";
-type AddOn = "css" | "router" | "query" | "form" | "lens" | "testing" | "devtools" | "biome";
-
 interface Deps {
   dependencies: Record<string, string>;
   devDependencies: Record<string, string>;
@@ -83,6 +102,14 @@ function toPackageName(dir: string): string {
   while (end > start && collapsed[end - 1] === "-") end--;
 
   return collapsed.slice(start, end) || "ramonda-app";
+}
+
+/** The first path from `dir` up that exists and is not a folder, if there is one. */
+function fileOnTheWay(dir: string): string | undefined {
+  for (let at = dir; ; at = dirname(at)) {
+    if (existsSync(at)) return statSync(at).isDirectory() ? undefined : at;
+    if (dirname(at) === at) return undefined;
+  }
 }
 
 function isEmpty(dir: string): boolean {
@@ -131,30 +158,70 @@ function requireNode(): void {
   process.exit(1);
 }
 
+/** A refusal before anything is written: the reason, and exit 1 so a script sees it failed. */
+function refuse(message: string): never {
+  p.cancel(message);
+  process.exit(1);
+}
+
 async function main(): Promise<void> {
-  console.log();
-  p.intro(pc.magenta(pc.bold("🌸 create-ramonda")));
   requireNode();
 
-  // Target directory — from argv or a prompt.
-  const argTarget = process.argv[2];
-  const target = guard(
-    argTarget ??
-      (await p.text({
-        message: "Where should the app go?",
-        placeholder: "ramonda-app",
-        defaultValue: "ramonda-app",
-      })),
+  const parsed = readArgs(process.argv.slice(2));
+  if (parsed.kind === "help") {
+    process.stdout.write(HELP);
+    return;
+  }
+  if (parsed.kind === "version") {
+    const own = JSON.parse(readFileSync(resolve(here, "..", "package.json"), "utf8")) as { version: string };
+    console.log(own.version);
+    return;
+  }
+
+  console.log();
+  p.intro(pc.magenta(pc.bold(SAY.intro)));
+  if (parsed.kind === "error") refuse(parsed.message);
+  const answers = parsed.answers;
+
+  // With no terminal a prompt cannot be answered: it used to draw the first question and exit 0,
+  // having made nothing, so a script read success. Every question is answered up front instead —
+  // by a flag, or by `--yes` — or the run stops here and names what is missing.
+  const interactive = Boolean(process.stdin.isTTY);
+  const missing = unanswered(answers);
+  if (!interactive && !answers.yes && missing.length > 0) {
+    refuse(
+      `No terminal to ask in, and nothing answers: ${missing.join(", ")}.\n` +
+        `  Pass them, or --yes for the defaults. See --help.`,
+    );
+  }
+
+  /** A flag's answer, else the default under `--yes`, else the question. */
+  async function ask<T>(given: T | undefined, fallback: T, question: () => Promise<NoInfer<T> | symbol>): Promise<T> {
+    if (given !== undefined) return given;
+    if (answers.yes) return fallback;
+    return guard(await question()) as T;
+  }
+
+  const target = await ask(answers.target, DEFAULT_TARGET, () =>
+    p.text({ message: SAY.target, placeholder: DEFAULT_TARGET, defaultValue: DEFAULT_TARGET }),
   );
   const targetDir = resolve(process.cwd(), target);
   const name = toPackageName(targetDir);
 
-  if (!isEmpty(targetDir)) {
+  // The target, or any folder on the way to it, may be a file — `afile/app` too.
+  const blocking = fileOnTheWay(targetDir);
+  if (blocking !== undefined) {
+    refuse(
+      `${relative(process.cwd(), blocking) || blocking} is a file, not a folder. Name a folder to write the app into.`,
+    );
+  }
+
+  if (!isEmpty(targetDir) && !answers.overwrite) {
+    const where = relative(process.cwd(), targetDir) || ".";
+    // Never a default: `--yes` takes what is safe to assume, and writing over someone's files is not.
+    if (answers.yes || !interactive) refuse(`${where} is not empty. Pass --overwrite to write into it anyway.`);
     const overwrite = guard(
-      await p.confirm({
-        message: `${pc.yellow(relative(process.cwd(), targetDir) || ".")} is not empty. Continue and overwrite?`,
-        initialValue: false,
-      }),
+      await p.confirm({ message: `${pc.yellow(where)} is not empty. Continue and overwrite?`, initialValue: false }),
     );
     if (!overwrite) {
       p.cancel("Left the directory untouched.");
@@ -162,61 +229,52 @@ async function main(): Promise<void> {
     }
   }
 
-  const mode = guard(
-    await p.select({
-      message: "How should it render?",
-      options: [
-        { value: "spa" as Mode, label: "SPA", hint: "client-side, Vite — the simplest start" },
-        { value: "ssr" as Mode, label: "SSR", hint: "server-rendered + hydrated, Node server" },
-      ],
+  const mode = await ask<Mode>(answers.mode, "spa", () =>
+    p.select({
+      message: SAY.mode,
+      options: [...MODE_OPTIONS],
       initialValue: "spa" as Mode,
     }),
   );
 
-  const addons = guard(
-    await p.multiselect({
-      message: "Add packages and tooling? " + pc.dim("(space to toggle, enter to confirm)"),
+  const addons = await ask<AddOn[]>(answers.addons, [...DEFAULT_ADD_ONS], () =>
+    p.multiselect({
+      message: `${SAY.addons} ${pc.dim(SAY.addonsKeys)}`,
       required: false,
-      options: [
-        {
-          value: "css" as AddOn,
-          label: "CSS",
-          hint: "@ramonda/css — style blocks, tokens, and a strict config to start from",
-        },
-        { value: "router" as AddOn, label: "Router", hint: "@ramonda/router — routes and links" },
-        { value: "query" as AddOn, label: "Query", hint: "@ramonda/query — cached, race-free async data" },
-        { value: "form" as AddOn, label: "Form", hint: "@ramonda/form — typed fields and schema validation" },
-        { value: "lens" as AddOn, label: "Lens", hint: "@ramonda/lens — immutable state updates" },
-        { value: "testing" as AddOn, label: "Testing", hint: "vitest + @ramonda/testing-library" },
-        {
-          value: "devtools" as AddOn,
-          label: "Devtools",
-          // Worth saying, because it is not obvious that the panel grows with the other choices:
-          // a package that has something to show registers its own tab when it is used.
-          hint: "@ramonda/devtools — dev inspector, with a tab per package you picked",
-        },
-        { value: "biome" as AddOn, label: "Biome", hint: "@biomejs/biome — lint + format in one tool" },
-      ],
-      initialValues: ["css" as AddOn, "devtools" as AddOn],
+      options: addOnOptions(mode),
+      initialValues: [...DEFAULT_ADD_ONS],
     }),
   );
 
-  const doGit = guard(await p.confirm({ message: "Initialise a git repository?", initialValue: true }));
+  const doGit = await ask(answers.git, true, () => p.confirm({ message: SAY.git, initialValue: true }));
   const pm = detectPackageManager();
-  const doInstall = guard(
-    await p.confirm({ message: `Install dependencies with ${pc.cyan(pm)}?`, initialValue: true }),
+  const doInstall = await ask(answers.install, true, () =>
+    p.confirm({ message: SAY.install(pc.cyan(pm)), initialValue: true }),
   );
 
   const s = p.spinner();
   s.start("Scaffolding");
 
-  scaffold({ targetDir, name, mode, addons });
+  let placed: { replaced: string[]; kept: string[] };
+  try {
+    placed = scaffold({ targetDir, name, mode, addons });
+  } catch (error) {
+    s.stop("Nothing was written");
+    refuse((error as Error).message);
+  }
+  const { replaced, kept } = placed;
 
-  s.stop("Scaffolded " + pc.green(relative(process.cwd(), targetDir) || "."));
+  s.stop(SAY.scaffolded(pc.green(relative(process.cwd(), targetDir) || ".")));
+  if (replaced.length > 0) p.log.warn(SAY.replaced(replaced));
+  if (kept.includes("README.md")) p.log.info(SAY.keptReadme);
+  if (kept.includes(".gitignore")) p.log.info(SAY.keptIgnore);
 
-  if (doGit) {
+  // A folder that is already a repository is left as it is: `git init` there only reinitialises.
+  if (doGit && existsSync(join(targetDir, ".git"))) {
+    p.log.step(SAY.alreadyGit);
+  } else if (doGit) {
     const git = spawnSync("git", ["init", "-q"], { cwd: targetDir, stdio: "ignore" });
-    if (git.status === 0) p.log.step("Initialised a git repository");
+    if (git.status === 0) p.log.step(SAY.initialised);
   }
 
   if (doInstall) {
@@ -227,7 +285,7 @@ async function main(): Promise<void> {
     // hand. The reason is the useful part of a failure.
     const res = spawnSync(pm, ["install"], { cwd: targetDir, encoding: "utf8" });
     if (res.status === 0) {
-      inst.stop("Installed dependencies");
+      inst.stop(SAY.installed);
     } else {
       inst.stop(pc.yellow(`\`${pm} install\` failed — run it yourself in the project.`));
       const reason = firstUsefulLine(`${res.stderr ?? ""}\n${res.stdout ?? ""}`);
@@ -235,16 +293,16 @@ async function main(): Promise<void> {
     }
   }
 
-  const run = pm === "npm" ? "npm run" : pm;
   const cd = relative(process.cwd(), targetDir);
   p.note(
-    [cd ? pc.dim("$ ") + `cd ${cd}` : "", doInstall ? "" : pc.dim("$ ") + `${pm} install`, pc.dim("$ ") + `${run} dev`]
-      .filter(Boolean)
+    nextSteps(cd, doInstall, pm)
+      .map((line) => (line.startsWith("$ ") ? pc.dim("$ ") + line.slice(2) : pc.dim(line)))
       .join("\n"),
-    "Next steps",
+    SAY.nextSteps,
   );
+  p.log.info(SAY.explained);
 
-  p.outro(`${pc.magenta("Ramonda")} is ready. Docs: ${pc.underline("https://ramonda.dev")}`);
+  p.outro(SAY.outro);
 }
 
 export interface ScaffoldOptions {
@@ -267,7 +325,157 @@ function firstUsefulLine(output: string): string | undefined {
   return lines.find((line) => /err|error|fail/i.test(line)) ?? lines[lines.length - 1];
 }
 
-export function scaffold({ targetDir, name, mode, addons }: ScaffoldOptions): void {
+/**
+ * Writes the project into `targetDir`, keeping what of the reader's is there.
+ *
+ * The project is written to a scratch folder first, so the paths it will take are KNOWN — about
+ * twenty — and only those are looked at in the target: never the rest of the folder, which may be a
+ * repository or hold a file too large to read. Then, before anything is written:
+ *
+ * - a link where the project writes a file is refused, and never followed out of the folder;
+ * - so is a folder where it writes a file, and a file where it needs a folder.
+ *
+ * And while writing: an existing `.gitignore` is kept and gains only the lines it lacks — one
+ * replaced without a word lost `secret.env` once — an existing `README.md` stays, with the project's
+ * beside it as `README.ramonda.md`, and every other file it replaced is returned, to be named.
+ */
+export function scaffold(options: ScaffoldOptions): { replaced: string[]; kept: string[] } {
+  const stage = stageFor(options.targetDir);
+  try {
+    writeProject({ ...options, targetDir: stage });
+    const files = filesUnder(stage);
+    const blocked = inTheWay(options.targetDir, files, readFileSync(join(stage, "README.md")));
+    if (blocked.length > 0) {
+      throw new Error(
+        `In the way in ${options.targetDir}: ${blocked.join(", ")}. A link, a folder where a file goes, or a ` +
+          `file where a folder goes is never written over — move it, or choose another folder.`,
+      );
+    }
+    return place(stage, options.targetDir, files);
+  } finally {
+    rmSync(stage, { recursive: true, force: true });
+  }
+}
+
+/**
+ * A scratch folder: the system's, or — where that cannot be made, as in a sandbox whose `TMPDIR`
+ * points nowhere — one beside the target, in the nearest folder that exists.
+ */
+function stageFor(target: string): string {
+  try {
+    return mkdtempSync(join(tmpdir(), "create-ramonda-"));
+  } catch {
+    let at = resolve(target);
+    while (!existsSync(at) && dirname(at) !== at) at = dirname(at);
+    return mkdtempSync(join(at, ".create-ramonda-"));
+  }
+}
+
+/** Every file under `dir`, relative, with `/` between its parts. */
+function filesUnder(dir: string): string[] {
+  return readdirSync(dir, { recursive: true, withFileTypes: true })
+    .filter((entry) => entry.isFile())
+    .map((entry) => relative(dir, join(entry.parentPath, entry.name)).split("\\").join("/"))
+    .sort();
+}
+
+/** Metadata, or `undefined` for a path that is not there — including under a FILE (`ENOTDIR`). */
+const stat = (path: string) => {
+  try {
+    return lstatSync(path, { throwIfNoEntry: false });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOTDIR") return undefined;
+    throw error;
+  }
+};
+
+/** The project paths something in `target` stands in the way of. Reads their metadata, and the reader's README only when it is the same size as the project's. */
+function inTheWay(target: string, files: readonly string[], readme: Buffer): string[] {
+  const blocked = new Set<string>();
+  const wants = [...files];
+  // Written only beside a README of the reader's own — not beside one identical to the project's.
+  const theirs = join(target, "README.md");
+  const found = stat(theirs);
+  if (found?.isFile() && (found.size !== readme.length || !readFileSync(theirs).equals(readme))) {
+    wants.push("README.ramonda.md");
+  }
+  for (const file of wants) {
+    const parts = file.split("/");
+    let underBlocked = false;
+    for (let depth = 1; depth < parts.length && !underBlocked; depth++) {
+      const folder = parts.slice(0, depth).join("/");
+      const found = stat(join(target, folder));
+      if (found !== undefined && (!found.isDirectory() || found.isSymbolicLink())) {
+        blocked.add(folder);
+        underBlocked = true;
+      }
+    }
+    if (underBlocked) continue;
+    const found = stat(join(target, file));
+    if (found !== undefined && !found.isFile()) blocked.add(file);
+  }
+  return [...blocked].sort();
+}
+
+/** Copies the staged project into `target` — see `scaffold` for what is kept and what is named. */
+function place(stage: string, target: string, files: readonly string[]): { replaced: string[]; kept: string[] } {
+  const replaced: string[] = [];
+  const kept: string[] = [];
+  for (const file of files) {
+    const to = join(target, file);
+    const content = readFileSync(join(stage, file));
+    const theirs = stat(to)?.isFile() ? readFileSync(to) : undefined;
+    mkdirSync(dirname(to), { recursive: true });
+    if (theirs !== undefined && file === ".gitignore") {
+      const mine = theirs.toString("utf8");
+      const merged = mergeIgnore(mine, content.toString("utf8"));
+      // Named only when it gained lines — one that already had them is simply left as it was.
+      if (merged !== mine) {
+        writeFileSync(to, merged);
+        kept.push(file);
+      }
+    } else if (theirs !== undefined && file === "README.md" && theirs.equals(content)) {
+      // The project's own README, from an earlier run: nothing to keep apart.
+    } else if (theirs !== undefined && file === "README.md") {
+      const beside = join(target, "README.ramonda.md");
+      if (stat(beside)?.isFile() && !readFileSync(beside).equals(content)) replaced.push("README.ramonda.md");
+      writeFileSync(beside, content);
+      kept.push(file);
+    } else {
+      if (theirs !== undefined && !theirs.equals(content)) replaced.push(file);
+      writeFileSync(to, content);
+    }
+  }
+  return { replaced: replaced.sort(), kept };
+}
+
+/**
+ * The reader's `.gitignore`, with the project's lines it lacks added at the end — in its own line
+ * endings, and never a line it negates: `!dist` is a decision, and a `dist` after it would undo it.
+ * `/dist/` and `dist` are one line for this.
+ */
+export function mergeIgnore(mine: string, template: string): string {
+  const eol = mine.includes("\r\n") ? "\r\n" : "\n";
+  const bare = (line: string) => line.trim().replace(/^!/, "").replace(/^\//, "").replace(/\/$/, "");
+  const have = new Set(
+    mine
+      .split(/\r?\n/)
+      .filter((line) => line.trim() !== "")
+      .map(bare),
+  );
+  const missing = template
+    .split(/\r?\n/)
+    .filter((line) => line.trim() !== "" && !line.trim().startsWith("#") && !have.has(bare(line)));
+  if (missing.length === 0) return mine;
+  // Trailing line endings cut by a scan from the end: `(\r?\n)+$` retried from every character and was
+  // quadratic — 4.3 s on 50,000, found by CodeQL. Not `trimEnd()`, which would take an escaped `\ `.
+  let end = mine.length;
+  while (end > 0 && (mine[end - 1] === "\n" || mine[end - 1] === "\r")) end--;
+  const before = mine.slice(0, end);
+  return `${before === "" ? "" : `${before}${eol}${eol}`}# Added by create-ramonda${eol}${missing.join(eol)}${eol}`;
+}
+
+function writeProject({ targetDir, name, mode, addons }: ScaffoldOptions): void {
   mkdirSync(targetDir, { recursive: true });
 
   // Copy the base template for the chosen mode.
@@ -356,7 +564,11 @@ export function scaffold({ targetDir, name, mode, addons }: ScaffoldOptions): vo
   pkg.dependencies = sortKeys({ ...(pkg.dependencies as object), ...deps.dependencies });
   pkg.devDependencies = sortKeys({ ...(pkg.devDependencies as object), ...deps.devDependencies });
   const extraScripts: Record<string, string> = {};
-  if (addons.includes("testing")) extraScripts.test = "vitest";
+  // `vitest` alone WATCHES, so `npm test` in a pre-commit step or CI never returned.
+  if (addons.includes("testing")) {
+    extraScripts.test = "vitest run";
+    extraScripts["test:watch"] = "vitest";
+  }
   if (addons.includes("biome")) {
     // Biome cannot read a style block, so with blocks `src` goes through `ramonda-css`, which runs
     // this project's own biome over what it can parse and maps every position home. Biome's own run
@@ -367,10 +579,18 @@ export function scaffold({ targetDir, name, mode, addons }: ScaffoldOptions): vo
   }
   // `tsc` cannot read a style block; `ramonda-css` is the same check with blocks read.
   if (addons.includes("css")) extraScripts.typecheck = "ramonda-css";
-  if (Object.keys(extraScripts).length > 0) {
-    pkg.scripts = { ...(pkg.scripts as object), ...extraScripts };
-  }
+  // One command for "is this project fine", which is what to run before a commit. `build` already
+  // runs `ramonda-check` and the type check, so it is the last step and the only one always there.
+  extraScripts.check = [
+    addons.includes("biome") ? "npm run lint" : "",
+    addons.includes("testing") ? "npm test" : "",
+    "npm run build",
+  ]
+    .filter(Boolean)
+    .join(" && ");
+  pkg.scripts = { ...(pkg.scripts as object), ...extraScripts };
   writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
+  writeReadme(targetDir, addons);
 }
 
 /**
@@ -446,14 +666,17 @@ function edit(file: string, changes: readonly (readonly [string, string])[]): vo
  * One line in the entry fixes it, and it belongs there rather than in core: the app is what
  * knows the panel was installed.
  *
- * Guarded so a production build drops it — `import.meta.env.DEV` for vite, `__DEV__` for the
- * esbuild templates, which now define it per build.
+ * Guarded so a production build drops it, with `import.meta.env.DEV` in both modes: the guard the
+ * docs teach, and one `@ramonda/build` defines for Vite and for the SSR template's esbuild build
+ * alike. The SSR entry used `__DEV__` once, while its own `global.d.ts` told a reader to use the
+ * other. `check-scaffold.mjs` reads the production build for the panel, so a guard the build does
+ * not fold is a failing gate, not a panel shipped quietly.
  */
 function importDevtools(targetDir: string, mode: Mode, addons: readonly AddOn[]): void {
   const entry = mode === "spa" ? join(targetDir, "src", "main.tsx") : join(targetDir, "src", "entry-client.tsx");
   if (!existsSync(entry)) return;
 
-  const guard = mode === "spa" ? "import.meta.env.DEV" : "__DEV__";
+  const guard = "import.meta.env.DEV";
 
   /**
    * A tab per package that has one, and each is its own import.
@@ -514,7 +737,8 @@ ${body}
 function writePnpmSettings(targetDir: string): void {
   writeFileSync(
     join(targetDir, "pnpm-workspace.yaml"),
-    `# esbuild needs its install script to put the platform binary in place. pnpm 11+ reads
+    `# For pnpm only — npm and yarn ignore this file, and it does not make this project a workspace.
+# esbuild needs its install script to put the platform binary in place. pnpm 11+ reads
 # \`allowBuilds\`, pnpm 10 reads \`onlyBuiltDependencies\`; both are here so either works.
 allowBuilds:
   esbuild: true
@@ -595,6 +819,30 @@ function writeBiomeConfig(targetDir: string, blocks: boolean): void {
         .join(" ")}]`,
   );
   writeFileSync(join(targetDir, "biome.json"), text + "\n");
+}
+
+/**
+ * What the README adds to the template's: where to begin with each package chosen, and what
+ * `typecheck` is when it is not `tsc`. A package chosen at the start was installed and then never
+ * mentioned again, so the first step with each started from a blank page.
+ */
+function writeReadme(targetDir: string, addons: readonly AddOn[]): void {
+  const path = join(targetDir, "README.md");
+  const parts = [readFileSync(path, "utf8").trimEnd()];
+  if (addons.includes("css")) {
+    parts.push(
+      "## Type checking",
+      "`typecheck` runs `ramonda-css`, not `tsc`: the same check, reading style blocks too, which `tsc` cannot parse.",
+    );
+  }
+  parts.push(
+    "## Before a commit",
+    "`npm run check` runs lint and the tests, where the project has them, then the build — which type-checks and runs `ramonda-check`.",
+  );
+  if (addons.length > 0) {
+    parts.push("## The packages you chose", addons.map(readmeLine).join("\n"));
+  }
+  writeFileSync(path, `${parts.join("\n\n")}\n`);
 }
 
 function sortKeys(obj: Record<string, string>): Record<string, string> {

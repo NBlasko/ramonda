@@ -21,7 +21,8 @@ if (typeof ts.createProgram !== "function") {
     `\n[ramonda-check] TypeScript ${ts.version ?? "(unknown version)"} is installed, and it has no JavaScript API to read your source with. ` +
       "Install TypeScript 5 or 6: `npm install -D typescript@6`.\n",
   );
-  process.exit(1);
+  // 2, as for any project that cannot be read: 1 means a rule found something, and none ran.
+  process.exit(2);
 }
 
 await import("./dist/cli.js");

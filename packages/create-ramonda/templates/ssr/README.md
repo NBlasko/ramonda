@@ -11,6 +11,9 @@ mode** — static, ISR, or per request.
 npm run dev     # Vite dev server on http://localhost:5173 — hot reload, no build step
 ```
 
+Another app already on 5173? Pick the port: `PORT=5174 npm run dev` — and `PORT=5174 npm start` for the
+production server.
+
 Edit a component and the change is live: the browser hot-updates the client, and
 the server picks up the new code on the next request — no restart.
 
@@ -52,7 +55,7 @@ which never reaches the client bundle). The other files:
 - `server.mjs` — dispatches each request to the right mode (static file / ISR / dynamic).
 - `scripts/prerender.mjs` — the build step that bakes the static routes.
 
-`npm run dev` runs Ramonda in **development** mode (diagnostics + dev inspector, everything
+`npm run dev` runs Ramonda in **development** mode (the framework's diagnostics, everything
 rendered fresh with hot reload). `npm run build` uses the **production** build and bakes the
 static routes.
 

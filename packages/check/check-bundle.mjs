@@ -36,7 +36,7 @@
  */
 import { execFile } from "node:child_process";
 import { readFile, readdir, stat } from "node:fs/promises";
-import { join, relative } from "node:path";
+import { join, relative, resolve } from "node:path";
 
 const JS = /\.(m?js|cjs)$/;
 
@@ -102,7 +102,8 @@ function parses(args, source) {
  * no failure is downgraded: a decorator is unparseable both ways.
  */
 async function check(file) {
-  const asScript = await parses(["--check", file]);
+  // Absolute, so a file under a folder named `-out` is never read by node as an option.
+  const asScript = await parses(["--check", resolve(file)]);
   if (asScript.ok) return undefined;
   if (!PARSED_AS_SCRIPT.some((m) => asScript.message.includes(m))) {
     return { file, message: asScript.message };
@@ -125,10 +126,43 @@ function firstUsefulLine(stderr) {
   return line ?? String(stderr).trim().split("\n")[0] ?? "unparseable";
 }
 
+const HELP = `Usage: ramonda-check-bundle <dir-or-file> [...]
+
+Parses every JavaScript file a build emitted (.js, .mjs, .cjs, in every folder given) and fails if
+one does not parse — most often decorators a bundler left untransformed, which no browser can load.
+
+Options:
+  -h, --help     print this and exit
+  -v, --version  print the version and exit
+
+Exit codes:
+  0  every emitted file parses
+  1  at least one does not; each is named, with the parser's message
+  2  nothing to check: no path, a path that cannot be read, or no JavaScript in it
+
+https://ramonda.dev/reference/check#the-bundle-that-did-not-parse
+`;
+
 async function main() {
-  const targets = process.argv.slice(2);
+  const args = process.argv.slice(2);
+  if (args.includes("--help") || args.includes("-h")) {
+    process.stdout.write(HELP);
+    return;
+  }
+  if (args.includes("--version") || args.includes("-v")) {
+    const own = JSON.parse(await readFile(new URL("./package.json", import.meta.url), "utf8"));
+    console.log(own.version);
+    return;
+  }
+  // An option is not a path: `--help` was read as one once, could not be read, and the run went on.
+  const option = args.find((arg) => arg.startsWith("-"));
+  if (option !== undefined) {
+    console.error(`[check-bundle] unknown option ${option}. See --help.`);
+    process.exit(2);
+  }
+  const targets = args;
   if (targets.length === 0) {
-    console.error("usage: ramonda-check-bundle <dir-or-file> [...]");
+    console.error("usage: ramonda-check-bundle <dir-or-file> [...]  (--help for more)");
     process.exit(2);
   }
 

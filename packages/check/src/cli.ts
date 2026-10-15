@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { applyFixes } from "./fix";
 import { analyzeProject } from "./analyze";
 import { graphHtml } from "./graph-html";
@@ -9,6 +9,7 @@ import type { ComponentGraph } from "./graph";
 import { certify, packageRootOf, renderCertificate } from "./certify";
 import { type AnyRule, failingRules, RULES } from "./rules";
 import { filesOf, splitOf } from "./split";
+import { OPTIONS } from "./cliOptions";
 
 /**
  * `ramonda-check [tsconfig]`
@@ -46,6 +47,63 @@ import { filesOf, splitOf } from "./split";
  * Both are reports: they describe, they never fail a build.
  */
 const argv = process.argv.slice(2);
+const TAG = "[ramonda-check]";
+
+const HELP = `Usage: ramonda-check [tsconfig.json] [options]
+
+Proves what a running page cannot, from the source: a context consumer with no provider above it,
+and every rule on https://ramonda.dev/rules. The project is the tsconfig given, or ./tsconfig.json.
+
+Options:
+${OPTIONS.map(([flag, takes, what]) => `  ${`${flag} ${takes}`.padEnd(22)} ${what}`).join("\n")}
+
+Exit codes:
+  0  nothing to report (reports such as --split and --diff never fail a run)
+  1  a rule found something; each finding is printed with what to do
+  2  the command line or the project could not be read
+
+https://ramonda.dev/reference/check
+`;
+
+if (argv.includes("--help") || argv.includes("-h")) {
+  process.stdout.write(HELP);
+  process.exit(0);
+}
+if (argv.includes("--version") || argv.includes("-v")) {
+  const own = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string };
+  console.log(own.version);
+  process.exit(0);
+}
+{
+  const flags = OPTIONS.map(([flag]) => flag);
+  const takesValue = new Set(OPTIONS.filter(([, takes]) => takes !== "").map(([flag]) => flag));
+  for (const [at, word] of argv.entries()) {
+    // A single dash too: `-x` was read as a tsconfig path, and reported missing as one.
+    if (!word.startsWith("-") || flags.includes(word) || takesValue.has(argv[at - 1] ?? "")) continue;
+    const [flag, value] = word.split("=", 2);
+    if (value !== undefined && takesValue.has(flag)) {
+      console.error(`${TAG} write ${flag} ${value}, with a space — ${flag}=… is not read. See --help.`);
+      process.exit(2);
+    }
+    const meant = flags.find((one) => editDistance(word, one) <= 2);
+    console.error(`${TAG} unknown option ${word}.${meant === undefined ? "" : ` Did you mean ${meant}?`} See --help.`);
+    process.exit(2);
+  }
+}
+
+/** Levenshtein distance — enough to name the option a slip was meant to be. */
+function editDistance(a: string, b: string): number {
+  let previous = Array.from({ length: b.length + 1 }, (_, index) => index);
+  for (let i = 1; i <= a.length; i++) {
+    const row = [i];
+    for (let j = 1; j <= b.length; j++) {
+      row[j] = Math.min(previous[j] + 1, row[j - 1] + 1, previous[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    previous = row;
+  }
+  return previous[b.length];
+}
+
 /** The value after a flag, so it is never mistaken for the tsconfig argument. */
 const valueOf = (flag: string): string | undefined => {
   const at = argv.indexOf(flag);
@@ -58,10 +116,72 @@ const wantsSplit = argv.includes("--split");
 const wantsFix = argv.includes("--fix");
 const wantsCertify = argv.includes("--certify");
 const dryRun = argv.includes("--dry-run");
-const values = new Set([graphAt, graphHtmlAt, diffAgainst].filter((v): v is string => v !== undefined));
-const arg = argv.find((a) => !a.startsWith("--") && !values.has(a));
-const tsconfig = resolve(arg ?? "tsconfig.json");
-const TAG = "[ramonda-check]";
+// By POSITION: a word is a path unless the word before it is a flag that takes one. Matched by text,
+// `--graph out.json out.json` dropped the second as "the value" and checked ./tsconfig.json instead.
+const takesFile = new Set(OPTIONS.filter(([, takes]) => takes !== "").map(([flag]) => flag));
+const positionals = argv.filter((a, at) => !a.startsWith("-") && !takesFile.has(argv[at - 1] ?? ""));
+// One project per run: a second path was read by nobody, and the run said nothing about it.
+if (positionals.length > 1) {
+  console.error(`${TAG} one tsconfig per run, not ${positionals.length}: ${positionals.join(" ")}`);
+  process.exit(2);
+}
+if (dryRun && !wantsFix) {
+  console.error(`${TAG} --dry-run goes with --fix: ramonda-check --fix --dry-run`);
+  process.exit(2);
+}
+// Each option once: `--graph a.json --graph b.json` read the first and dropped the second unsaid.
+for (const [flag] of OPTIONS) {
+  if (argv.filter((a) => a === flag).length > 1) {
+    console.error(`${TAG} ${flag} is given twice; give it once.`);
+    process.exit(2);
+  }
+}
+const arg = positionals[0];
+const given = resolve(arg ?? "tsconfig.json");
+// A folder is read as the tsconfig inside it, as `tsc -p` and `ramonda-css` read one.
+const tsconfig = statSync(given, { throwIfNoEntry: false })?.isDirectory() ? join(given, "tsconfig.json") : given;
+
+/**
+ * Whether two paths are one file — by what it IS: a different case on a case-insensitive disk, or a
+ * link, names the same file in another spelling, and a string comparison let the graph over both.
+ */
+function sameFile(a: string, b: string): boolean {
+  if (resolve(a) === resolve(b)) return true;
+  const one = statSync(a, { throwIfNoEntry: false });
+  const two = statSync(b, { throwIfNoEntry: false });
+  return one !== undefined && two !== undefined && one.dev === two.dev && one.ino === two.ino;
+}
+for (const [flag, value, example] of [
+  ["--graph", graphAt, "--graph graph.json"],
+  ["--graph-html", graphHtmlAt, "--graph-html graph.html"],
+  ["--diff", diffAgainst, "--diff graph.json"],
+] as const) {
+  if (argv.includes(flag) && (value === undefined || value.startsWith("-"))) {
+    console.error(`${TAG} ${flag} wants a file: ramonda-check <tsconfig> ${example}`);
+    process.exit(2);
+  }
+}
+// The graph goes to a file of its own — `--graph tsconfig.json` wrote it over the project being read.
+for (const written of [graphAt, graphHtmlAt]) {
+  if (written === undefined) continue;
+  if (sameFile(written, tsconfig)) {
+    console.error(`${TAG} not writing the graph over ${written}, the tsconfig this run reads. Name another file.`);
+    process.exit(2);
+  }
+  // The baseline is read AFTER the graph is written, so one file for both compared the graph with itself.
+  if (diffAgainst !== undefined && sameFile(written, diffAgainst)) {
+    console.error(
+      `${TAG} not writing the graph over ${written}, the graph --diff compares against. Name another file.`,
+    );
+    process.exit(2);
+  }
+}
+if (graphAt !== undefined && graphHtmlAt !== undefined && sameFile(graphAt, graphHtmlAt)) {
+  console.error(
+    `${TAG} --graph and --graph-html both name ${graphAt}; the page would replace the graph. Name two files.`,
+  );
+  process.exit(2);
+}
 
 /**
  * The line that opens a rule's section, with the rule's ID in it.
@@ -83,16 +203,6 @@ function sectionHeading(rule: AnyRule, found: readonly unknown[]): string {
 if (!existsSync(tsconfig)) {
   console.error(`${TAG} no tsconfig at ${tsconfig}. Pass one: ramonda-check <path>`);
   process.exit(2);
-}
-for (const [flag, value, example] of [
-  ["--graph", graphAt, "--graph graph.json"],
-  ["--graph-html", graphHtmlAt, "--graph-html graph.html"],
-  ["--diff", diffAgainst, "--diff graph.json"],
-] as const) {
-  if (argv.includes(flag) && (value === undefined || value.startsWith("--"))) {
-    console.error(`${TAG} ${flag} wants a file: ramonda-check <tsconfig> ${example}`);
-    process.exit(2);
-  }
 }
 if (diffAgainst && !existsSync(resolve(diffAgainst))) {
   console.error(`${TAG} nothing to compare against at ${resolve(diffAgainst)}`);

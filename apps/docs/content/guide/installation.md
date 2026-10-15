@@ -9,23 +9,32 @@ order: 10
 
 ## The quickest way: create-ramonda
 
-The scaffolder sets up a runnable project for you, with the build already configured:
+The scaffolder sets up a runnable project for you, with the build already configured. It needs
+Node 24 or newer:
 
 ```install
 create ramonda@latest my-app
 ```
 
-It asks a couple of questions — a client-side app or a server-rendered one, and which
-packages and tooling to add ([style blocks](/style-blocks), [router](/routing), [lens](/lens),
-[testing](/testing), [devtools](/devtools), and Biome for lint + format) — then, in the folder it made, install (unless
-you let it) and start the dev server. With another package manager, it is the same two commands in
-its own spelling:
+It asks a few questions — a client-side app or a server-rendered one, and which packages and
+tooling to add — then, in the folder it made, install (unless you let it) and start the dev server.
+
+![create-ramonda in a terminal: it asks how the app should render and picks SPA, then which packages
+to add — CSS and Devtools are ticked already, Query and Testing are added — then to initialise git and
+to install, and ends with the commands to run: npm run dev, and npm run check before a
+commit.](/media/create-ramonda.gif)
+
+Then, in the folder it made — shown with npm; another package manager spells the same two commands
+its own way:
 
 ```
 cd my-app
 npm install   # unless you let it install for you
 npm run dev
 ```
+
+[create-ramonda](/reference/create-ramonda) lists every choice, the flag that answers each one
+without asking — for a script, or CI — and what every project gets.
 
 Open the address it prints and you have a working Ramonda app.
 

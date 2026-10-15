@@ -31,11 +31,48 @@
  *
  * Usage: node scripts/check-scaffold.mjs [spa|ssr]
  */
-import { execFileSync, spawn } from "node:child_process";
+import { execFileSync, spawn as spawnChild } from "node:child_process";
+import { createServer as createNetServer } from "node:net";
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+
+/**
+ * Every server this starts, stopped when this process ends — however it ends. `fail()` exits at
+ * once, so a `finally` never ran on a failing check, and each one left its servers running: eighteen
+ * piled up across runs, and one sat on the port a later run picked, failing it for nothing.
+ */
+const running = new Set();
+process.on("exit", () => {
+  for (const child of running) child.kill("SIGKILL");
+});
+// A cancelled CI job or a timeout ends this with a signal, and "exit" does not fire on one by itself.
+for (const [signal, code] of [
+  ["SIGINT", 130],
+  ["SIGTERM", 143],
+  ["SIGHUP", 129],
+]) {
+  process.on(signal, () => process.exit(code));
+}
+function spawn(...args) {
+  const child = spawnChild(...args);
+  running.add(child);
+  child.on("exit", () => running.delete(child));
+  return child;
+}
+
+/** A port nothing on this machine is listening on, from the system rather than a guess. */
+function freePort() {
+  return new Promise((done, failed) => {
+    const probe = createNetServer();
+    probe.once("error", failed);
+    probe.listen(0, () => {
+      const { port } = probe.address();
+      probe.close(() => done(port));
+    });
+  });
+}
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const mode = process.argv[2] === "spa" ? "spa" : "ssr";
@@ -67,6 +104,10 @@ const PLANTED = {
   // A file that does not type-check. Vite strips types without reading them, so nothing else in the
   // build would stop on it — and `ssr` meets it through `tsc`, `spa` through `ramonda-css`.
   types: { where: "src/planted.ts", expect: "stopped on a type error" },
+  // An import of a package that is not installed, in the code the dev server serves first.
+  dev: { where: mode === "spa" ? "src/main.tsx" : "src/entry-client.tsx", expect: "the dev server could not resolve" },
+  // The devtools import behind a guard no build can fold — true in every browser, so the panel ships.
+  devtools: { where: mode === "spa" ? "src/main.tsx" : "src/entry-client.tsx", expect: "ships the devtools panel" },
 };
 if (selftest !== undefined && PLANTED[selftest] === undefined) {
   console.error(`[scaffold] SELFTEST=${selftest} is not one of: ${Object.keys(PLANTED).join(", ")}`);
@@ -74,7 +115,7 @@ if (selftest !== undefined && PLANTED[selftest] === undefined) {
 }
 
 /** Everything a generated project resolves to this workspace rather than to npm. */
-const FIRST_PARTY = ["core", "router", "server", "check", "build", "css", "testing-library"];
+const FIRST_PARTY = ["core", "router", "server", "check", "build", "css", "testing-library", "devtools"];
 
 /**
  * `@ramonda/css` is not in either template, and that is right — it is a separate package a project
@@ -187,6 +228,13 @@ function stylesheetsOf(html) {
     .map((tag) => /\bhref="([^"]+)"/.exec(tag)?.[1] ?? "");
 }
 
+/** Every file under `dir`, at any depth. */
+function filesUnder(dir) {
+  return readdirSync(dir, { recursive: true, withFileTypes: true })
+    .filter((entry) => entry.isFile())
+    .map((entry) => join(entry.parentPath, entry.name));
+}
+
 function run(command, args, options = {}) {
   return execFileSync(command, args, { encoding: "utf8", stdio: "pipe", ...options });
 }
@@ -229,7 +277,8 @@ function fail(what, detail) {
  * read versus a live render — and only the second one needs the DOM, the router and everything a
  * production install might have dropped.
  */
-async function serves(port = 5100 + Math.floor(Math.random() * 400), attempt = 0) {
+async function serves(port, attempt = 0) {
+  port ??= await freePort();
   const server = spawn(process.execPath, ["server.mjs", "--prod"], {
     cwd: app,
     env: { ...process.env, PORT: String(port) },
@@ -293,6 +342,14 @@ async function serves(port = 5100 + Math.floor(Math.random() * 400), attempt = 0
       }
     }
 
+    // A page that does not exist is a 404 with the app's own Not found page in it. Served as 200 it
+    // reads, to a crawler, as a real page at every mistyped URL — found by an end-to-end run.
+    const missing = await get("/no-such-page");
+    if (missing === "retry") return "retry";
+    if (missing.status !== 404) fail(`a page that does not exist was served as ${missing.status}, not 404`, log);
+    if (!/<!--c\d+/.test(missing.body))
+      fail("the 404 was served without the app's page in it", missing.body.slice(0, 400));
+
     // And the dynamic route's title is ITS OWN, not the layout's — which is what says the head a
     // per-request render produced actually travelled.
     const greeting = await get("/hello/world");
@@ -306,6 +363,120 @@ async function serves(port = 5100 + Math.floor(Math.random() * 400), attempt = 0
   return "served";
 }
 
+/**
+ * Starts the project's dev server, asks for the page and every script it loads — which is what
+ * makes Vite transform the app and pre-bundle its dependencies — and reads the server's log for an
+ * import it could not resolve.
+ */
+async function devIsQuiet() {
+  const port = await freePort();
+  const args =
+    mode === "spa"
+      ? [join(app, "node_modules", "vite", "bin", "vite.js"), "--port", String(port), "--strictPort"]
+      : ["server.mjs"];
+  const server = spawn(process.execPath, args, {
+    cwd: app,
+    env: { ...process.env, PORT: String(port) },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  let log = "";
+  server.stdout.on("data", (d) => (log += d));
+  server.stderr.on("data", (d) => (log += d));
+  try {
+    let page;
+    for (let tries = 0; tries < 200 && page === undefined; tries++) {
+      if (server.exitCode !== null) fail(`the dev server exited with ${server.exitCode} before answering`, log);
+      try {
+        page = await (await fetch(`http://localhost:${port}/`)).text();
+      } catch {
+        await new Promise((r) => setTimeout(r, 150));
+      }
+    }
+    if (page === undefined) fail("the dev server never answered", log);
+    for (const [, src] of page.matchAll(/<script[^>]*\ssrc="([^"]+)"/g)) await fetch(`http://localhost:${port}${src}`);
+    // Pre-bundling and its transforms finish after the response; give them a moment to log.
+    await new Promise((r) => setTimeout(r, 3000));
+    const unresolved = log.split("\n").find((line) => /Failed to resolve import/.test(line));
+    if (unresolved !== undefined) fail(`the dev server could not resolve an import: ${unresolved.trim()}`, log);
+    if (mode === "ssr") await besideAnother(port);
+  } finally {
+    server.kill("SIGTERM");
+  }
+}
+
+/**
+ * A second SSR dev server while one runs — two projects, or one that did not exit. On another port it
+ * must start with hot reload of its own: both used to reach for Vite's one default HMR port, and the
+ * second's reload silently never connected. On the SAME port it must say so and exit 1, not die with
+ * an unhandled `EADDRINUSE` and a stack.
+ */
+async function besideAnother(taken) {
+  const start = (port) => {
+    const child = spawn(process.execPath, ["server.mjs"], {
+      cwd: app,
+      env: { ...process.env, PORT: String(port) },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const out = { child, log: "" };
+    child.stdout.on("data", (d) => (out.log += d));
+    child.stderr.on("data", (d) => (out.log += d));
+    return out;
+  };
+
+  const other = await freePort();
+  const second = start(other);
+  try {
+    for (let tries = 0; tries < 200 && !/Ramonda SSR on/.test(second.log); tries++) {
+      if (second.child.exitCode !== null) break;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    if (!/Ramonda SSR on/.test(second.log)) fail("a second dev server, on another port, did not start", second.log);
+    await (await fetch(`http://localhost:${other}/`)).text();
+    await new Promise((r) => setTimeout(r, 1500));
+    if (/already in use|EADDRINUSE/.test(second.log)) {
+      fail("a second dev server, on another port, clashed with the first", second.log);
+    }
+    // Hot reload that ANSWERS, on the second server's own port — a log with no clash line is not that:
+    // with the socket switched off, or the browser sent to another port, it was just as quiet. So the
+    // client the page loads must not name another port, and a socket there must say it is connected.
+    const client = await (await fetch(`http://localhost:${other}/@vite/client`)).text();
+    const hmrPort = /const hmrPort = ([^;]+);/.exec(client)?.[1];
+    if (hmrPort !== "null" && hmrPort !== String(other)) {
+      fail(`a second dev server sends the browser's hot reload to port ${hmrPort}, not its own`, second.log);
+    }
+    // As a BROWSER connects: with an Origin and the token the client carries. Vite lets a socket with no
+    // Origin in without the token, so a probe without one passed while a browser would be refused.
+    const token = /const wsToken = "([^"]*)"/.exec(client)?.[1];
+    if (token === undefined)
+      fail("the dev server's client carries no hot-reload token to connect with", client.slice(0, 400));
+    const connected = await new Promise((done) => {
+      const socket = new WebSocket(`ws://localhost:${other}/?token=${token}`, {
+        protocols: "vite-hmr",
+        headers: { origin: `http://localhost:${other}` },
+      });
+      const timer = setTimeout(() => done(false), 5000);
+      socket.onmessage = (message) => {
+        clearTimeout(timer);
+        socket.close();
+        done(String(message.data).includes('"connected"'));
+      };
+      socket.onerror = () => {
+        clearTimeout(timer);
+        done(false);
+      };
+    });
+    if (!connected) fail("a second dev server's hot reload did not answer on its own port", second.log);
+  } finally {
+    second.child.kill("SIGTERM");
+  }
+
+  const third = start(taken);
+  const code = await new Promise((done) => third.child.on("exit", done));
+  if (code !== 1 || !third.log.includes(`Port ${taken} is in use`) || /\n\s+at /.test(third.log)) {
+    fail(`a dev server on a port in use did not say so plainly (exit ${code})`, third.log);
+  }
+}
+
 /** Retries once on a port this machine was already using; anything else is the project's fault. */
 async function servesSomewhere() {
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -315,6 +486,8 @@ async function servesSomewhere() {
 }
 
 const work = mkdtempSync(join(tmpdir(), "ramonda-scaffold-check-"));
+// On every exit, not in a `finally`: `fail()` exits at once, and each failing run left ~80 MB behind.
+process.on("exit", () => rmSync(work, { recursive: true, force: true }));
 const packed = join(work, "packed");
 const app = join(work, "app");
 
@@ -340,12 +513,30 @@ try {
   if (!existsSync(cli)) fail("create-ramonda is not built — run `pnpm --filter create-ramonda build` first");
   const scaffolder = `
     import { scaffold } from ${JSON.stringify(cli)};
-    scaffold({ targetDir: ${JSON.stringify(app)}, name: "scaffold-check", mode: ${JSON.stringify(mode)}, addons: ${withAddon ? '["css", "testing", "biome"]' : "[]"} });
+    scaffold({ targetDir: ${JSON.stringify(app)}, name: "scaffold-check", mode: ${JSON.stringify(mode)}, addons: ${withAddon ? '["css", "testing", "biome", "devtools"]' : "[]"} });
   `;
   run(process.execPath, ["--input-type=module", "-e", scaffolder]);
 
   if (selftest === "types") {
     writeFileSync(join(app, PLANTED.types.where), 'export const planted: number = "a string";\n');
+  } else if (selftest === "dev") {
+    const file = join(app, PLANTED.dev.where);
+    writeFileSync(
+      file,
+      `${readFileSync(file, "utf8")}\n// @ts-expect-error — planted: not installed\nvoid import("@ramonda/not-installed").catch(() => {});\n`,
+    );
+  } else if (selftest === "devtools") {
+    const file = join(app, PLANTED.devtools.where);
+    const source = readFileSync(file, "utf8");
+    const broken = source.replace(
+      /if \((?:import\.meta\.env\.DEV|__DEV__)\) \{/,
+      `if (typeof window !== "undefined") {`,
+    );
+    if (broken === source) {
+      console.error(`[scaffold] SELFTEST=devtools: no development-only guard in ${PLANTED.devtools.where}`);
+      process.exit(2);
+    }
+    writeFileSync(file, broken);
   } else if (selftest !== undefined) {
     const file = join(app, PLANTED[selftest].where);
     const source = readFileSync(file, "utf8");
@@ -388,6 +579,15 @@ try {
     fail("`npm install` failed in the generated project", outputOf(error));
   }
 
+  // The dev server, before the build: `npm run dev` is what a newcomer runs first. A project without
+  // devtools printed `Failed to resolve import "@ramonda/devtools"` there on every start — the page
+  // worked, and the first thing a reader saw was a red error. Nothing ran a dev server until this.
+  const checks = [];
+  if (!withAddon) {
+    await devIsQuiet();
+    checks.push("a dev server that starts with no unresolved import");
+  }
+
   const buildProject = () => {
     try {
       run("npm", ["run", "build"], { cwd: app });
@@ -425,7 +625,17 @@ try {
   /* ── 5. what the build EMITTED, not just that it exited 0 ─────────────────────────────────── */
   // Three of the faults above left the build perfectly green. A page with no title is not an
   // error anywhere — it is a page nobody can find.
-  const checks = [];
+
+  // The devtools panel is development-only: the entry imports it behind a guard the production build
+  // folds to false. A guard the build does NOT fold — a name it never defines — leaves the import in,
+  // and every page ships the panel with no error anywhere. So the emitted files are read for it.
+  if (withAddon) {
+    const shipped = filesUnder(join(app, "dist")).filter(
+      (file) => /\.(?:m?js|html)$/.test(file) && readFileSync(file, "utf8").includes("ramonda-devtools"),
+    );
+    if (shipped.length > 0) fail("the production build ships the devtools panel", shipped.join("\n"));
+    checks.push("no devtools panel in the production build");
+  }
   if (mode === "ssr") {
     const baked = join(app, "dist/static/index.html");
     if (!existsSync(baked)) fail("the build produced no dist/static/index.html");

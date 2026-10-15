@@ -1,10 +1,13 @@
 import { renderPage, renderStatic, ServerRedirect, type StaticRender, type ServerRequestInit } from "@ramonda/core";
+import { matchCompiled } from "@ramonda/router";
 import { defineServer, routePlan } from "@ramonda/router/server";
 import { App, routes } from "./App";
 
 /** What one request render produced: a page to send, or a redirect to answer with. */
 export interface RenderResult {
   html?: string;
+  /** 404 when only the `"*"` route matched — the page is the app's own Not found, the status says so. */
+  status?: number;
   /** The `<title>` this page's `Head` chain resolved to. */
   title?: string;
   /** Its `<meta>` / `<link>`, serialized and ready to drop into the shell's head. */
@@ -43,12 +46,14 @@ export function plan() {
  * A route guard can redirect: the render throws `ServerRedirect`, handed back as a plain result.
  */
 export async function render(request?: ServerRequestInit): Promise<RenderResult> {
+  const path = request?.url?.pathname ?? window.location.pathname;
+  const status = matchCompiled(path, routes).key === "*" ? 404 : 200;
   try {
     // `renderPage`, not `renderToString`: the latter hands back the body and NOTHING else — no
     // title, no meta, no portal blocks. A page whose title and description never reach the HTML is
     // invisible to exactly the crawlers server rendering exists for.
     const { body, title, head, portals } = await renderPage(<App />, request ? { request } : undefined);
-    return { html: body, title, head, portals };
+    return { html: body, title, head, portals, status };
   } catch (err) {
     if (err instanceof ServerRedirect) {
       return { redirect: { url: err.url, status: err.status } };

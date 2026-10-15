@@ -31,6 +31,8 @@ is this, exactly* about something you already met.
   page cannot, and the graph it builds on the way.
 - **[Configuring your build](/reference/build)** — the bundler settings the decorators need, as a
   Vite plugin, as esbuild options, or as the settings themselves.
+- **[create-ramonda](/reference/create-ramonda)** — every question the scaffolder asks, the flag that
+  answers it, and the scripts and files a project starts with.
 - **[Upgrading](/reference/upgrading)** — what a version number promises before `1.0`, why a minor
   can break you, and how to move between versions on purpose rather than by surprise.
 

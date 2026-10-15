@@ -35,6 +35,13 @@ let isr;
 const STATIC = resolve(here, "dist/static");
 const origin = `http://localhost:${PORT}`;
 
+// Made before Vite, which takes it for hot reload. `vite` is set below, before the first request.
+const server = createServer((req, res) => {
+  if (isProd) return void renderProd(req, res);
+  // Let Vite serve its own routes (client modules, HMR, /@vite/*); fall through to SSR.
+  vite.middlewares(req, res, () => renderDev(req, res));
+});
+
 if (isProd) {
   const bundle = resolve(here, "dist/server/entry-server.js");
   if (!existsSync(bundle)) {
@@ -66,7 +73,9 @@ if (isProd) {
   vite = await createViteServer({
     root: here,
     appType: "custom",
-    server: { middlewareMode: true },
+    // Hot reload over this server's own port, so two apps side by side do not both reach for Vite's
+    // default HMR port — the second one's hot reload silently never connected.
+    server: { middlewareMode: true, hmr: { server } },
   });
 }
 
@@ -78,10 +87,10 @@ async function renderDev(req, res) {
     const template = await vite.transformIndexHtml(url, rawHtml);
     const { render } = await vite.ssrLoadModule("/src/entry-server.tsx");
 
-    const { html, title, head, portals, redirect } = await render();
+    const { html, title, head, portals, redirect, status } = await render();
     if (redirect) return sendRedirect(res, redirect);
 
-    res.statusCode = 200;
+    res.statusCode = status ?? 200;
     res.setHeader("Content-Type", "text/html");
     res.end(fillDocument({ template, html, title, head, portals }));
   } catch (error) {
@@ -101,8 +110,8 @@ async function renderDev(req, res) {
  * what would silently go stale: page A's cached entry served with whatever title the last render
  * happened to leave.
  */
-function sendHtml(res, html, mode) {
-  res.statusCode = 200;
+function sendHtml(res, html, mode, status = 200) {
+  res.statusCode = status;
   res.setHeader("Content-Type", "text/html");
   res.setHeader("X-Ramonda-Mode", mode);
   res.end(html);
@@ -158,12 +167,12 @@ async function renderProd(req, res) {
 
     // 3. DYNAMIC — render per request (url + cookies for requestContext).
     installDom(`${origin}${url}`);
-    const { html, title, head, portals, redirect } = await prodRender({
+    const { html, title, head, portals, redirect, status } = await prodRender({
       url: new URL(url, origin),
       cookies: parseCookies(req.headers.cookie),
     });
     if (redirect) return sendRedirect(res, redirect);
-    sendHtml(res, fillDocument({ template: prodTemplate, html, title, head, portals }), "dynamic");
+    sendHtml(res, fillDocument({ template: prodTemplate, html, title, head, portals }), "dynamic", status);
   } catch (error) {
     res.statusCode = 500;
     res.end(`<pre>${escapeHtml(error?.stack ?? error)}</pre>`);
@@ -171,10 +180,12 @@ async function renderProd(req, res) {
   }
 }
 
-const server = createServer((req, res) => {
-  if (isProd) return void renderProd(req, res);
-  // Let Vite serve its own routes (client modules, HMR, /@vite/*); fall through to SSR.
-  vite.middlewares(req, res, () => renderDev(req, res));
+server.on("error", (error) => {
+  if (error.code !== "EADDRINUSE") throw error;
+  console.error(
+    `Port ${PORT} is in use — another server is running there. Start this one on another port: PORT=${PORT + 1} npm run ${isProd ? "start" : "dev"}`,
+  );
+  process.exit(1);
 });
 
 server.listen(PORT, () => {

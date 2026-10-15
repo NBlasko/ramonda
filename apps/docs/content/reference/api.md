@@ -14,6 +14,26 @@ different places, so the convention carries its weight.
 
 Everything every package exports. Each entry links to the page that explains it.
 
+## The packages
+
+| Package | What it is for | Added by `create-ramonda` |
+|---|---|---|
+| `@ramonda/core` | Components, decorators, the JSX runtime. [Core concepts](/concepts) | always |
+| `@ramonda/build` | The bundler settings, as a Vite plugin and esbuild options. [Configuring your build](/reference/build) | always |
+| `@ramonda/check` | Static checks before the page runs: `ramonda-check` and `ramonda-check-bundle`. [Checking your app](/reference/check) | always |
+| `@ramonda/css` | Style blocks — real CSS beside the markup, compiled to classes. [Style blocks](/style-blocks) | `css`, on by default |
+| `@ramonda/router` | Routes, links and navigation. [Routing](/routing) | `router`; always with SSR |
+| `@ramonda/query` | Cached, race-free async data. [Async data](/query) | `query` |
+| `@ramonda/form` | Typed fields and schema validation. [Forms](/forms) | `form` |
+| `@ramonda/lens` | Immutable updates by path. [Immutable updates](/lens) | `lens` |
+| `@ramonda/server` | A DOM for a server render, and the document it goes into. [Server rendering](/ssr/server) | always with SSR |
+| `@ramonda/testing-library` | Rendering and querying components in tests. [Testing](/testing) | `testing` |
+| `@ramonda/devtools` | The development panel. [Devtools](/devtools) | `devtools`, on by default |
+| `create-ramonda` | The scaffolder that starts a project. [create-ramonda](/reference/create-ramonda) | — you run it |
+
+Where the last column has a word, it is the one [`--add`](/reference/create-ramonda) takes. A
+package not added at the start is installed like any other, later.
+
 ---
 
 ## `@ramonda/core`
@@ -307,6 +327,67 @@ Immutable updates by path. Zero dependencies, usable on its own. [Immutable upda
 Types: `Focus` · `FocusCommon` · `FocusArray` · `ElementOf` · `KeepSymbols`
 
 ---
+
+## `@ramonda/css`
+
+Style blocks: `@@( … )` in a `className`, compiled to classes before the build. The page loads
+only the compiled values; the compiler, the config and the tools are separate entry points.
+[Style blocks](/style-blocks)
+
+**In your code**
+
+| | |
+|---|---|
+| `mergeClassNames(...names)` | Joins a block with a class of your own, or with another block. [Writing](/style-blocks/writing) |
+| `toStyle(settings)` | Builds a `style` object that sets registered properties and tokens from code, checking each value against its declared kind. [Dynamic values](/style-blocks/dynamic) |
+| `read(token, element)` | The value a token has on an element right now. [Tokens](/style-blocks/tokens) |
+
+**Types**, for code that makes or passes a value outside a block
+
+| | |
+|---|---|
+| `Token` | A declared token — `$color.primary.main` outside a block. A plain string is not one. [Tokens](/style-blocks/tokens) |
+| `CssVar` | What `@@property( … )` binds, carrying the kind its `syntax` declared. [Dynamic values](/style-blocks/dynamic) |
+| `Kind` | The kinds a variable may be declared as — `color`, `length`, `angle`, and the rest. |
+| `ValueByKind` | The TypeScript type each `Kind` takes, which is how `toStyle` refuses a length for a colour. |
+| `Fixed` | A token declared without a `range`: it never changes, and `toStyle` refuses to set it. |
+| `Setting` | One `[token, value]` pair `toStyle` takes. |
+| `StyleValue` | What a block compiles to, and what `className` accepts. Never written by hand. |
+| `CssDimension` | A number with a unit, such as `CssDimension<"px">`. |
+| `CssUnit` | Every unit CSS has. `CssLengthUnit`, `CssAngleUnit`, `CssTimeUnit`, `CssFrequencyUnit` and `CssResolutionUnit` are one family each. |
+| `CssColor` | A colour value. `CssColorKeyword` is its named colours. |
+
+**Called by compiled code** — the build writes these calls, and nothing else needs them
+
+| | |
+|---|---|
+| `shorthands` | Registers what a shorthand in a block clears when blocks are merged. |
+| `pick` | Chooses a `match` arm at run time. |
+| `conditionsOf` | Reads the conditions a class stands for, for a development warning. |
+| `namesOf` | Reads the names a class stands for, for a development warning. |
+| `withoutSourceMarks` | Strips development source marks from a spread. |
+
+**Entry points**
+
+| | |
+|---|---|
+| `@ramonda/css/config` | `defineConfig` and `kind`, for `ramonda.css.ts`. [Config](/style-blocks/config) |
+| `@ramonda/css/vite` | `ramondaCss()`, the Vite plugin. [Setup](/style-blocks/setup) |
+| `@ramonda/css/esbuild` | `ramondaCss()`, the esbuild plugin. [Setup](/style-blocks/setup) |
+| `@ramonda/css/plugin` | The TypeScript plugin that gives an editor completions and errors inside a block. [Setup](/style-blocks/setup) |
+| `@ramonda/css/prettier` | The Prettier plugin that formats a file with blocks. [Tooling](/style-blocks/tooling) |
+| `@ramonda/css/compiler` | The compiler the plugins run — for a build tool of your own. |
+| `@ramonda/css/properties` | `CssBlock` and the property types, for a prop that takes a block. [A block as a prop](/style-blocks/prop) |
+
+**The command, `ramonda-css`** — [Tooling](/style-blocks/tooling)
+
+| | |
+|---|---|
+| `ramonda-css [tsconfig.json]` | Type-checks the project the way `tsc --noEmit` does, reading style blocks too. A generated project's `typecheck` script. |
+| `ramonda-css lint <paths…>` | Lints through the project's own oxlint or biome, with blocks read. |
+| `ramonda-css format <paths…>` | Formats through the project's own biome. `--check` reports instead of writing. |
+| `ramonda-css codegen` | Writes the tokens `ramonda.css.ts` declares, and their types, into `css-system`. |
+| `ramonda-css explain <property>` | What the config does to one property, and which line decided it. |
 
 ## `@ramonda/server`
 
