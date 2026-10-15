@@ -2,7 +2,9 @@ import ts from "typescript";
 import { positionOf } from "../syntax";
 import { coreElementTag } from "./coreElements";
 import { openingOf } from "./element";
-import type { ElementRule } from "./rule";
+import { eventTypeOf } from "./events";
+import { enclosingElement } from "./html";
+import type { ElementRule, JsxElementLike } from "./rule";
 
 export interface FieldTheUserCannotChangeIssue {
   component: "Select" | "TextArea";
@@ -16,10 +18,25 @@ export interface FieldTheUserCannotChangeIssue {
   column: number;
 }
 
-/** The event an `on…` attribute names, by core's own rule (`eventTypeOf` in `core/Attribute.ts`). */
-function eventOf(name: string): string | undefined {
-  if (!name.startsWith("on")) return undefined;
-  return name.startsWith("on:") ? name.slice(3) : name.slice(2).toLowerCase();
+/** The names an element is written with. */
+function namesOf(element: JsxElementLike): string[] {
+  return openingOf(element)
+    .attributes.properties.filter(ts.isJsxAttribute)
+    .map((attribute) => attribute.name.getText());
+}
+
+/** The events an element has a handler for, in any spelling. */
+function eventsOf(element: JsxElementLike): Set<string | undefined> {
+  return new Set(namesOf(element).map((name) => eventTypeOf(name)?.type));
+}
+
+/** Whether an element around this one listens for the field's input — a `<form oninput>`. */
+function heardAbove(element: JsxElementLike): boolean {
+  for (let at = enclosingElement(element); at !== undefined; at = enclosingElement(at)) {
+    const events = eventsOf(at);
+    if (events.has("input") || events.has("change")) return true;
+  }
+  return false;
 }
 
 /**
@@ -39,8 +56,12 @@ function eventOf(name: string): string | undefined {
  * - **`value` beside `defaultValue`** — `value` wins and `defaultValue` says nothing.
  *
  * The answer to the first two is either a handler that moves the model, or `defaultValue` for a field
- * whose text is read when the form is sent. An element with a spread is not asked: `{...bind}` from
- * `@ramonda/form` carries the handler, and a rule that cannot see it would report every bound field.
+ * whose text is read when the form is sent.
+ *
+ * Not reported: an element with a spread — `{...bind}` from `@ramonda/form` carries the handler, and
+ * a rule that cannot see it would report every bound field; a `readonly` or `disabled` field, which
+ * takes no input to undo — showing a value the user cannot edit is what it is for; and a field with a
+ * handler on an element around it, `<form oninput>`, which core waits for before it settles.
  */
 export const fieldTheUserCannotChange = {
   id: "field-the-user-cannot-change",
@@ -80,14 +101,15 @@ export const fieldTheUserCannotChange = {
     const tag = coreElementTag(opening.tagName, resolve);
     if (tag !== "select" && tag !== "textarea") return [];
 
-    const names = opening.attributes.properties.filter(ts.isJsxAttribute).map((attribute) => attribute.name.getText());
+    const names = namesOf(element);
     if (!names.includes("value")) return [];
 
     const component = tag === "select" ? "Select" : "TextArea";
     const at = positionOf(opening);
     if (names.includes("defaultValue")) return [{ component, kind: "both", ...at }];
 
-    const events = new Set(names.map(eventOf));
+    if (names.some((name) => /^(readonly|readOnly|disabled)$/.test(name)) || heardAbove(element)) return [];
+    const events = eventsOf(element);
     if (!events.has("input") && !events.has("change")) return [{ component, kind: "no-handler", ...at }];
     if (tag === "textarea" && !events.has("input")) return [{ component, kind: "held-between-keystrokes", ...at }];
     return [];

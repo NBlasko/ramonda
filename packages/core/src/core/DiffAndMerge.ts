@@ -1172,12 +1172,8 @@ export function reconcileEntries(
           before.parent = parent;
           region = before;
         } else {
-          // A component's lists report to the component, which re-renders itself: no row above it has
-          // to be opened for them. See `enclosingRow`.
           try {
-            region = atTopLevel(() =>
-              reconcileComponentEntry(rawVchild, owner, before, placeholderComponent, parent, unclaimed),
-            );
+            region = reconcileComponentEntry(rawVchild, owner, before, placeholderComponent, parent, unclaimed);
           } catch (e) {
             /**
              * The same door a plain child's build goes through, and it has to be here now.
@@ -2054,7 +2050,10 @@ function buildComponent(
    */
   const children = generateRenderOutput(component);
   const unclaimed: (EnhancedChildNode | DONE)[] = [];
-  const inner = reconcileEntries(children, [], undefined, component, parent, unclaimed);
+  // A component's lists report to the component, which re-renders itself: no row above it, and no
+  // region's host, is theirs. Only here, where the component is BUILT and its render reconciled on
+  // the spot — taking new props only queues a render, which runs from a drain.
+  const inner = atTopLevel(() => reconcileEntries(children, [], undefined, component, parent, unclaimed));
 
   const region: ComponentRegion = {
     owner,

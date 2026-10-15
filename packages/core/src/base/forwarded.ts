@@ -49,8 +49,8 @@ export function forwarded(component: Component<any>, consumed: readonly string[]
   return out;
 }
 
-/** The events a controlled field answers: the two it changes through, and the end of a composition. */
-const ANSWERED = ["oninput", "onchange", "oncompositionend"] as const;
+/** The events a controlled field answers: the two it changes through. */
+const ANSWERED = ["oninput", "onchange"] as const;
 
 /**
  * What a field's element is given for a CONTROLLED field — one with a `value` — and the names of the
@@ -64,7 +64,7 @@ export function controlled(component: Component<any>, listener: (event: Event) =
   if (component[COMPONENT_RUNTIME].rawProps["value"] === undefined) return { replaced: [] as string[], listeners: {} };
   return {
     replaced: [...ANSWERED],
-    listeners: { oninput: listener, onchange: listener, oncompositionend: listener },
+    listeners: { oninput: listener, onchange: listener },
   };
 }
 
@@ -87,8 +87,10 @@ const queued = new WeakSet<object>();
  * an ancestor saw the input — measured by typing in Chromium.
  *
  * **Not in the middle of a composition.** An input method builds a character over several `input`
- * events, and putting the old value back between them cancels it; the field is settled when the
- * composition ends.
+ * events, and putting the old value back between them cancels it. Nor when it ends: in Chromium the
+ * last `input` of a composition still says `isComposing`, and an app that skips those — the usual
+ * way to write it — has not taken the text yet. The field is settled at the next input that is not
+ * part of a composition, which the app's handler sees whole.
  *
  * **Only the value is written** — `settle`, not a render: nothing else about the field changed. A
  * field its handler removed has no element left, and `settle` finds nothing to write. A handler that

@@ -497,7 +497,8 @@ function hydrateComponentRegion(
     const children = generateRenderOutput(component);
 
     walk.cursor = nextOf(open);
-    const inner = hydrateLevel(children, component, parent, walk);
+    // A component's lists report to the component — see `buildComponentRegion` in `DiffAndMerge.ts`.
+    const inner = atTopLevel(() => hydrateLevel(children, component, parent, walk));
     region.entries = inner.entries;
 
     closeBlock(open as unknown as Comment, walk, component);
@@ -810,11 +811,8 @@ function hydrateLevelEntries(
     if (isVNode(rawVchild) && rawVchild.type === COMPONENT_TYPE) {
       skipUnclaimableRemainder(walk);
       let region: ComponentRegion | undefined;
-      // A component's lists report to the component — see `enclosingRow`.
       try {
-        region = atTopLevel(() =>
-          hydrateComponentRegion(rawVchild, placeholder, parent, walk, componentRegionOwner(rawVchild, i)),
-        );
+        region = hydrateComponentRegion(rawVchild, placeholder, parent, walk, componentRegionOwner(rawVchild, i));
       } catch (e) {
         /**
          * The BUILD path inside `hydrateComponentRegion` — the branch it takes when the server

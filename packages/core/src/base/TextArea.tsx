@@ -129,7 +129,11 @@ export class TextArea extends Component<TextAreaProps> {
     const field = controlled(this, this.a);
     return __h(
       "textarea",
-      { ...forwarded(this, ["value", "defaultValue", "children", "ref", ...field.replaced]), ...field.listeners, ref: this.e },
+      {
+        ...forwarded(this, ["value", "defaultValue", "children", "ref", ...field.replaced]),
+        ...field.listeners,
+        ref: this.e,
+      },
       ...given(text || undefined),
     );
   }

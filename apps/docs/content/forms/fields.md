@@ -137,7 +137,8 @@ before any script runs.
 **`value` is the model's; `defaultValue` is where the field starts.** A `Select` or a `TextArea` with
 `value` shows what the model holds after every input, once the event is over: a handler that takes
 the input leaves the field as the user made it, and one that does not — or no handler at all — puts
-the model's value back. An input method's composition is left alone until it ends. A field whose text
+the model's value back. An input method's composition is left alone; the next ordinary input is
+answered. A field whose text
 is read when the form is sent, rather than held in state, takes `defaultValue` instead: it shows that
 first and then belongs to the user, and a later `defaultValue` does not reach it.
 

@@ -424,12 +424,14 @@ describe("a controlled textarea follows the model after the event the app handle
 
   /**
    * An input method builds a character over several `input` events; putting the old value back
-   * between them cancels it. The field is settled when the composition ends.
+   * between them cancels it. Nor is it put back when the composition ends — an app that skips
+   * composing input has not taken the text yet. The next ordinary input is answered.
    */
-  test("a composition is left alone until it ends", async () => {
+  test("a composition is left alone, and the next input is answered", async () => {
     class Composed extends Component {
       @state text = "a";
-      keep() {
+      keep(event: InputEvent) {
+        if (event.isComposing) return;
         this.text = "a";
       }
       render() {
@@ -447,6 +449,12 @@ describe("a controlled textarea follows the model after the event the app handle
     expect(field.value).toBe("ka");
 
     field.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "か" }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await app.settle();
+    expect(field.value).toBe("ka");
+
+    field.value = "kax";
+    field.dispatchEvent(new InputEvent("input", { bubbles: true }));
     await new Promise((resolve) => setTimeout(resolve, 0));
     await app.settle();
     expect(field.value).toBe("a");
@@ -506,6 +514,31 @@ describe("a controlled textarea follows the model after the event the app handle
 
     expect(seen).toBe("typed");
     expect(field.value).toBe("a");
+  });
+
+  /** The model moved by a handler on an element around the field: the field keeps what was typed. */
+  test("a handler on an ancestor that moves the model keeps the input", async () => {
+    class Form extends Component {
+      @state text = "a";
+      sync(event: Event) {
+        this.text = (event.target as HTMLTextAreaElement).value;
+      }
+      render() {
+        return (
+          <form oninput={this.sync}>
+            <TextArea id="t" value={this.text} />
+          </form>
+        );
+      }
+    }
+    const app = await getDOM<Form>(<Form />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+    await typed(field, "typed", ["input"]);
+    await app.settle();
+
+    expect(field.value).toBe("typed");
+    expect(app.instance.text).toBe("typed");
   });
 
   test("a handler that throws still has the model's value put back", async () => {

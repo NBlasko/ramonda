@@ -29,13 +29,24 @@ describe("a field the user cannot change", () => {
   });
 
   /**
-   * A handler in any spelling core answers, a `defaultValue` field, and a spread that may carry the
-   * handler are silent — the last because `{...bind}` from `@ramonda/form` is how a form field is
-   * written, and a rule that cannot see into it would report every one.
+   * A handler in any spelling, a `defaultValue` field, a spread that may carry the handler (`{...bind}`
+   * from `@ramonda/form`), a `readonly` or `disabled` field, and a field with a handler on an element
+   * around it are all silent.
    */
-  test("a handler, a defaultValue and a spread are silent", () => {
+  test("a handler, a defaultValue, a spread, a field that takes no input and one heard above are silent", () => {
     const lines = new Set(found().map((issue) => issue.line));
-    for (const label of ["picked", "picked on input", "typed", "typed camel", "typed colon", "default", "bound"]) {
+    for (const label of [
+      "picked",
+      "picked on input",
+      "typed",
+      "typed camel",
+      "typed colon",
+      "default",
+      "bound",
+      "read only",
+      "disabled",
+      "heard above",
+    ]) {
       expect(lines.has(lineOf(`aria-label="${label}"`))).toBe(false);
     }
   });

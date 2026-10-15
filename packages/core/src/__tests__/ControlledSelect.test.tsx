@@ -196,6 +196,54 @@ describe("a controlled select shows what the model says", () => {
     expect(shown(app.container)).toEqual({ value: "c", index: 2 });
   });
 
+  /** The default waits for options it can choose: options that arrive later still start there. */
+  test("a defaultValue is applied when the options arrive", async () => {
+    class Later extends Component {
+      @state options: string[] = [];
+      render() {
+        return (
+          <Select id="s" defaultValue="b">
+            {this.options.map((v) => (
+              <option key={v} value={v}>
+                {v}
+              </option>
+            ))}
+          </Select>
+        );
+      }
+    }
+    const app = await getDOM<Later>(<Later />);
+    await app.settle();
+    app.instance.options = ["a", "b", "c"];
+    await app.settle();
+
+    expect(shown(app.container)).toEqual({ value: "b", index: 1 });
+  });
+
+  /** Once a `value` has held the select, a `defaultValue` never applies — it is where a select STARTS. */
+  test("a value that goes away does not bring the defaultValue in", async () => {
+    class Dropping extends Component {
+      @state held: string | undefined = "c";
+      render() {
+        return (
+          <Select id="s" value={this.held} defaultValue="a">
+            {["a", "b", "c"].map((v) => (
+              <option key={v} value={v}>
+                {v}
+              </option>
+            ))}
+          </Select>
+        );
+      }
+    }
+    const app = await getDOM<Dropping>(<Dropping />);
+    await app.settle();
+    app.instance.held = undefined;
+    await app.settle();
+
+    expect(shown(app.container)).toEqual({ value: "c", index: 2 });
+  });
+
   /**
    * After a pick the model took, the select is settled — one write — and not rendered again: the one
    * render is the one its new `value` causes.

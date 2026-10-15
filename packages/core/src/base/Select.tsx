@@ -66,7 +66,10 @@ export class Select extends Component<SelectProps> {
    */
   private e = createRef<HTMLSelectElement>((node) => this.g(node));
 
-  /** `d` — whether `defaultValue` has been applied: once, at mount, and never again. */
+  /**
+   * `d` — whether the start is settled: by `defaultValue`, applied once the select first has options;
+   * or by a `value`, after which a `defaultValue` never applies.
+   */
   private d = false;
 
   /** `h` — the caller's ref as of the last HAND-OVER, so a swapped one can be let go of. */
@@ -110,13 +113,16 @@ export class Select extends Component<SelectProps> {
     if (this.h !== this.props.ref) this.g(select);
 
     const onServer = env === "server";
-    // `value` every time; `defaultValue` once, when the select first has its options.
+    // `value` every time. `defaultValue` once, when the select first has options to choose from — a
+    // value written before then matches nothing, and the browser picks the first option the moment
+    // one arrives.
     let chosen = this.props.value;
-    if (chosen === undefined) {
-      if (this.d) return;
+    if (chosen !== undefined) {
+      this.d = true;
+    } else {
+      if (this.d || this.props.defaultValue === undefined || select.options.length === 0) return;
       this.d = true;
       chosen = this.props.defaultValue;
-      if (chosen === undefined) return;
     }
 
     // One write, and the browser works out which option it means. A `multiple` select has no single
@@ -154,7 +160,11 @@ export class Select extends Component<SelectProps> {
     const field = controlled(this, this.a);
     return __h(
       "select",
-      { ...forwarded(this, ["value", "defaultValue", "children", "ref", ...field.replaced]), ...field.listeners, ref: this.e },
+      {
+        ...forwarded(this, ["value", "defaultValue", "children", "ref", ...field.replaced]),
+        ...field.listeners,
+        ref: this.e,
+      },
       ...given(this.props.children),
     );
   }

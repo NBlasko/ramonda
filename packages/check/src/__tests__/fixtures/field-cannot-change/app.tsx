@@ -34,6 +34,15 @@ class App extends Component {
         <TextArea defaultValue="x" aria-label="default" />
         {/* ✓ a spread may carry the handler */}
         <TextArea value={value} {...bind} aria-label="bound" />
+        {/* ✓ takes no input */}
+        <TextArea value={value} readonly aria-label="read only" />
+        <Select value={value} disabled aria-label="disabled">
+          <option value="a">a</option>
+        </Select>
+        {/* ✓ a handler around it */}
+        <fieldset oninput={this.type}>
+          <TextArea value={value} aria-label="heard above" />
+        </fieldset>
       </form>
     );
   }
