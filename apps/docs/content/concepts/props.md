@@ -123,15 +123,17 @@ comparison that is safe to make, so a listed function prop is left exactly as it
 method — `onPick={this.pick}` — or `@memoized` when it has to be built per row.
 
 **Markup handed down is compared by what it says.** Children — anything between the tags — and a
-node handed over as a prop, `header={<Header />}`, are built afresh by every render of the parent.
-The framework compares them by content, so a child whose markup says the same as last time is not
-rendered again, and none of it needs declaring. It holds through nesting, a slots object
-`slots={{ header: <Header /> }}`, an array of nodes, and a `list()` among the children.
+single node handed over as a prop, `header={<Header />}`, are built afresh by every render of the
+parent. The framework compares them by content, so a child whose markup says the same as last time
+is not rendered again, and none of it needs declaring. It holds through nesting and through a
+`list()` among the children, as long as the list's callback is a method or a module-level function —
+one written inline is a new function every render, and its rows are built again.
 
-Only markup is opened. Data — a row, a `filter` object, an array of records — is compared by
-reference wherever it appears, including as an attribute inside the markup, because an object
-changed in place would compare equal to the copy made from it and the change would never be shown.
-Data that should compare by content is what `@StableProps` is for.
+Everything the app builds is compared by reference: a row, a `filter` object, an array of records,
+and also an object or an array that holds nodes, `slots={{ header: <Header /> }}`. The app may change
+any of those in place, and an object changed in place compares equal to the copy made from it, so the
+change would never be shown. A slots object or array that should compare by content is declared on
+the child — `@StableProps("slots")` — which is the child saying it is never changed in place.
 
 A slot that takes the component CLASS rather than a rendered node — `view={Header}` — is the same
 reference for the life of the module, and there is nothing to compare.

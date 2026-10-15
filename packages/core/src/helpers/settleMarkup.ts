@@ -1,4 +1,4 @@
-import { COMPONENT_TYPE, IS_LIST, ORIGIN_SYM, TEXT_TYPE } from "./constants";
+import { COMPONENT_TYPE, IS_LIST, JSX_CHILDREN, ORIGIN_SYM, TEXT_TYPE } from "./constants";
 
 type Bag = Record<string, unknown>;
 
@@ -12,18 +12,20 @@ type Bag = Record<string, unknown>;
  * 0.2 ms and none once the markup is compared by content. When the markup really changes, the
  * comparison finds the difference at once — 25.4 ms before, 25.5 ms after.
  *
- * ## Only markup is opened
+ * ## Only what the framework built is opened
  *
- * Markup is made afresh by the render that returns it and nothing changes it afterwards, so what an
- * old vnode says now is what it said when it was rendered. Data is not like that. A row mutated in
- * place and then copied — `rows[0].value = "x"; rows = rows.map((r) => ({ ...r }))` — compares EQUAL to
- * its copy, because the old object already holds the new value, and a component handed the copy would
- * never render the mutation. That is `PerItemScope.test.tsx`, and it failed when data was opened too.
+ * A vnode, the children array JSX hands a component, a `list()` and a group are made afresh by the
+ * render that returns them, and nothing changes them afterwards — so what an old one says now is what
+ * it said when it was rendered. Anything the app built is not like that. A row changed in place and
+ * then copied — `rows[0].value = "x"; rows = rows.map((r) => ({ ...r }))` — compares EQUAL to its copy,
+ * because the old object already holds the new value, and a child handed the copy would never render
+ * the change. The same holds for an object or an array that carries markup: `cols[0].width = 200`
+ * followed by a copy of `cols` equals the old `cols`, and so does `cols[0].header = <i />`.
  *
- * So data is compared by reference wherever it is met — a prop of its own, or an attribute inside
- * markup (`<Row row={r} />`). An object or an array is opened only to reach markup inside it: a slots
- * object `{ header: <H /> }` or an array of JSX settles, and one holding nothing but data does not. Data
- * that should compare by content says so with `@StableProps`.
+ * So every value the app built is compared by reference, wherever it is met — a prop of its own, an
+ * attribute inside markup (`<Row row={r} />`), a slots object `{ header: <H /> }`, an array of nodes.
+ * A slots object or array that should compare by content is declared with `@StableProps` on the child,
+ * which is the app saying it does not change them in place.
  *
  * ## Bounded
  *
@@ -31,13 +33,6 @@ type Bag = Record<string, unknown>;
  * comparison would have said — the worst case is the old behaviour plus a few hundred cheap steps.
  */
 const BUDGET = 500;
-
-const DIFFERENT = 0;
-/** Equal by reference or by value, with no markup in it. */
-const SAME = 1;
-/** Equal, and markup is what was compared. */
-const SAME_MARKUP = 2;
-type Verdict = typeof DIFFERENT | typeof SAME | typeof SAME_MARKUP;
 
 interface Walk {
   budget: number;
@@ -59,12 +54,6 @@ interface ListLike {
   vnodes?: unknown[];
 }
 
-function isPlain(value: unknown): value is Bag {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
-  const proto = Object.getPrototypeOf(value);
-  return proto === Object.prototype || proto === null;
-}
-
 /**
  * A vnode, known by the origin `createRamonda` stamps on every one it makes — a symbol no record of
  * the app's carries. `type` alone is not enough: `{ type: 7, name: "Bolt", qty }` is data, and
@@ -80,89 +69,63 @@ function isList(value: unknown): value is ListLike {
   return (value as Partial<ListLike> | null)?.[IS_LIST] === true;
 }
 
-/** Something this comparison may open: markup, or a container that may hold it. */
-function isOpenable(value: unknown): boolean {
-  return Array.isArray(value) || isPlain(value) || isMarkupNode(value);
+/** The children array JSX handed a component, as opposed to an array the app passed as `children={…}`. */
+function isJsxChildren(value: unknown): value is unknown[] {
+  return Array.isArray(value) && (value as { [JSX_CHILDREN]?: true })[JSX_CHILDREN] === true;
 }
 
-function compare(a: unknown, b: unknown, walk: Walk): Verdict {
-  if (Object.is(a, b)) return isMarkupNode(a) || isList(a) ? SAME_MARKUP : SAME;
-  if (--walk.budget < 0) return DIFFERENT;
+/** Something this comparison may open: what the framework built. */
+function isOpenable(value: unknown): boolean {
+  return isMarkupNode(value) || isList(value) || isJsxChildren(value);
+}
+
+function same(a: unknown, b: unknown, walk: Walk): boolean {
+  if (Object.is(a, b)) return true;
+  if (--walk.budget < 0) return false;
 
   if (isMarkupNode(a)) {
-    if (!isMarkupNode(b) || a.type !== b.type || a.name !== b.name) return DIFFERENT;
-    // The component that rendered it: it decides the region owner of a list inside, and the style
-    // scope of an element.
-    if (a[ORIGIN_SYM] !== b[ORIGIN_SYM]) return DIFFERENT;
-    // A vnode's own attributes and children are markup by construction, so their members need not
-    // hold markup themselves — a `title` string, a handler, a row object are compared as what they are.
-    if (!sameAttributes(a.attributes ?? {}, b.attributes ?? {}, walk)) return DIFFERENT;
-    return sameMembers(a.children ?? [], b.children ?? [], walk) ? SAME_MARKUP : DIFFERENT;
+    if (!isMarkupNode(b) || a.type !== b.type || a.name !== b.name) return false;
+    // The component that rendered it: a node is reused only for a vnode built where it was
+    // (`areSimilarNodes`), so the same markup from another builder renders as something else.
+    if (a[ORIGIN_SYM] !== b[ORIGIN_SYM]) return false;
+    // An element's own children array is built by `h` with it; a component's arrives among its
+    // attributes and is opened only when JSX made it.
+    return (
+      sameMembers(a.attributes ?? {}, b.attributes ?? {}, walk) && sameMembers(a.children ?? [], b.children ?? [], walk)
+    );
   }
 
   if (isList(a)) {
-    if (!isList(b) || a.owner !== b.owner) return DIFFERENT;
+    if (!isList(b) || a.owner !== b.owner) return false;
     // A `list()` descriptor is the same list for the same array and callback — its rows are the
     // engine's business, and an equal pair is what its own whole-list skip already trusts.
-    if (a.builder !== undefined || b.builder !== undefined) {
-      return a.each === b.each && a.builder === b.builder ? SAME_MARKUP : DIFFERENT;
-    }
+    if (a.builder !== undefined || b.builder !== undefined) return a.each === b.each && a.builder === b.builder;
     // A GROUP — an array among the children, built by `h` — has no callback, only its vnodes.
-    return sameMembers(a.vnodes ?? [], b.vnodes ?? [], walk) ? SAME_MARKUP : DIFFERENT;
+    return sameMembers(a.vnodes ?? [], b.vnodes ?? [], walk);
   }
 
-  // A container is equal only when every member is AND something in it was markup: one holding
-  // nothing but data is data, and data is compared by reference.
-  if ((Array.isArray(a) && Array.isArray(b)) || (isPlain(a) && isPlain(b))) {
-    const keys = Object.keys(a);
-    if (keys.length !== Object.keys(b).length) return DIFFERENT;
-    let markup = false;
-    for (const key of keys) {
-      if (!Object.hasOwn(b, key)) return DIFFERENT;
-      const verdict = compare((a as Bag)[key], (b as Bag)[key], walk);
-      if (verdict === DIFFERENT) return DIFFERENT;
-      if (verdict === SAME_MARKUP) markup = true;
-    }
-    return markup ? SAME_MARKUP : DIFFERENT;
-  }
+  if (isJsxChildren(a)) return isJsxChildren(b) && sameMembers(a, b, walk);
 
-  return DIFFERENT;
+  // Anything the app built, by reference — which `Object.is` above has already answered.
+  return false;
 }
 
-/** Every member equal, for the members of something already known to be markup. */
+/** Every member equal: the members of something the framework built. */
 function sameMembers(a: object, b: object, walk: Walk): boolean {
   const keys = Object.keys(a);
   if (keys.length !== Object.keys(b).length) return false;
   for (const key of keys) {
-    if (!Object.hasOwn(b, key)) return false;
-    if (compare((a as Bag)[key], (b as Bag)[key], walk) === DIFFERENT) return false;
+    if (!Object.hasOwn(b, key) || !same((a as Bag)[key], (b as Bag)[key], walk)) return false;
   }
   return true;
 }
 
-/** A vnode's attributes: a component's `children` among them is markup, the rest as `sameMembers`. */
-function sameAttributes(a: Bag, b: Bag, walk: Walk): boolean {
-  const keys = Object.keys(a);
-  if (keys.length !== Object.keys(b).length) return false;
-  for (const key of keys) {
-    if (!Object.hasOwn(b, key)) return false;
-    const x = a[key];
-    const y = b[key];
-    if (key === "children" && Array.isArray(x) && Array.isArray(y)) {
-      if (!sameMembers(x, y, walk)) return false;
-    } else if (compare(x, y, walk) === DIFFERENT) {
-      return false;
-    }
-  }
-  return true;
-}
-
-/** Whether one prop's new value says the same as its old one. `children` is markup by construction. */
-function settles(key: string, next: unknown, prev: unknown, walk: Walk): boolean {
-  // JSX children are an ARRAY, and what is between the tags may be plain text. A single node handed
-  // over as `children` is markup like any other, and goes the ordinary way.
-  if (key === "children" && Array.isArray(next) && Array.isArray(prev)) return sameMembers(next, prev, walk);
-  return compare(next, prev, walk) === SAME_MARKUP;
+/**
+ * Whether two values are markup that says the same — the question `settleMarkup` asks of one prop,
+ * for a caller that has one pair. RMD022 uses it to stay quiet about what the runtime settles.
+ */
+export function isSameMarkup(a: unknown, b: unknown): boolean {
+  return isOpenable(a) && isOpenable(b) && same(a, b, { budget: BUDGET });
 }
 
 /**
@@ -193,7 +156,7 @@ export function settleMarkup(next: Bag, prev: Bag | undefined, decided: boolean)
   const walk: Walk = { budget: BUDGET };
   let settled: Bag | undefined;
   for (const key of open) {
-    if (settles(key, next[key], prev[key], walk)) {
+    if (same(next[key], prev[key], walk)) {
       (settled ??= { ...next })[key] = prev[key];
     } else if (decided) {
       return next;

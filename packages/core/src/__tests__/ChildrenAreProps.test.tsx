@@ -3,6 +3,7 @@ import { getDOM, instanceOf } from "../test/setup";
 import { renderToString } from "../hydration/ssr";
 import { hydrateRoot } from "../hydration/hydrate";
 import { Component } from "../base/Component";
+import { __h } from "../index";
 import { list } from "../base/list";
 import { Hook } from "../base/Hook";
 import { StableProps, state, watchProp } from "../base/decorators";
@@ -56,6 +57,9 @@ class Slots extends Component<{ slots: unknown }> {
     return <li>{(Array.isArray(slots) ? slots : [slots.header, slots.footer]) as never}</li>;
   }
 }
+
+@StableProps("slots")
+class StableSlots extends Slots {}
 
 class Slotted extends Component<{ view: unknown; data?: unknown }> {
   render() {
@@ -125,9 +129,17 @@ describe("markup handed down settles when it says the same", () => {
     expect(await childRendersOver(owner(() => <Panel header={<Header />} />))).toBe(1);
   });
 
-  test("nor one given the same nodes inside a slots object or an array", async () => {
-    expect(await childRendersOver(owner(() => <Slots slots={{ header: <Header />, footer: <b>f</b> }} />))).toBe(1);
-    expect(await childRendersOver(owner(() => <Slots slots={[<Header />, <b>f</b>]} />))).toBe(1);
+  /**
+   * A slots object or an array of nodes is the APP's object, and the app may change it in place — so it
+   * is compared by reference, like any data, and the child declares it with `@StableProps` when it
+   * should compare by content. `fresh-object-in-props` reports the literal and says so.
+   */
+  test("a slots object or an array of nodes is the app's, until the child declares it", async () => {
+    expect(await childRendersOver(owner(() => <Slots slots={{ header: <Header />, footer: <b>f</b> }} />))).toBe(4);
+    expect(await childRendersOver(owner(() => <Slots slots={[<Header />, <b>f</b>]} />))).toBe(4);
+    expect(await childRendersOver(owner(() => <StableSlots slots={{ header: <Header />, footer: <b>f</b> }} />))).toBe(
+      1,
+    );
   });
 
   /**
@@ -316,6 +328,61 @@ describe("data is compared by reference, even inside markup", () => {
     await dom.settle();
 
     expect(dom.container.querySelector("em")?.textContent).toBe("Bolt:2");
+    dom.unmount();
+  });
+
+  /**
+   * The case that ruled out opening the app's containers. A column carries markup AND a width; the
+   * width is changed in place and the array copied. Opened, the old array already says 200 and equals
+   * the copy, and the table would never show it.
+   */
+  test("columns with markup, changed in place and then copied, reach the page", async () => {
+    class Table extends Component<{ cols: { header: unknown; width: number }[] }> {
+      render() {
+        return <em>{this.props.cols.map((c) => c.width).join(",")}</em>;
+      }
+    }
+    class Holder extends Component {
+      @state cols = [{ header: <b>Name</b>, width: 100 }];
+      render() {
+        return (
+          <ul>
+            <Table cols={this.cols} />
+          </ul>
+        );
+      }
+    }
+    const dom = await getDOM<Holder>(<Holder />);
+    await dom.settle();
+
+    dom.instance.cols[0].width = 200;
+    dom.instance.cols = dom.instance.cols.map((c) => ({ ...c }));
+    await dom.settle();
+
+    expect(dom.container.querySelector("em")?.textContent).toBe("200");
+    dom.unmount();
+  });
+
+  /**
+   * `children` the app hands over in the attributes of a direct `__h()` call is the app's own array —
+   * JSX, between the tags or as `children={…}`, always goes through `h`'s normalisation, and only
+   * that array is opened. Changed in place and copied, the app's array still arrives.
+   */
+  test("children handed to __h() in its attributes are the app's array", async () => {
+    class Holder extends Component {
+      @state items = ["a"];
+      render() {
+        return <ul>{__h(Panel, { children: this.items } as never) as never}</ul>;
+      }
+    }
+    const dom = await getDOM<Holder>(<Holder />);
+    await dom.settle();
+
+    dom.instance.items[0] = "b";
+    dom.instance.items = [...dom.instance.items];
+    await dom.settle();
+
+    expect(dom.container.querySelector("li")?.textContent).toBe("b");
     dom.unmount();
   });
 

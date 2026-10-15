@@ -1,4 +1,4 @@
-import { COMPONENT_TYPE, TEXT_TYPE, ORIGIN_SYM } from "../helpers/constants";
+import { COMPONENT_TYPE, TEXT_TYPE, ORIGIN_SYM, JSX_CHILDREN } from "../helpers/constants";
 import { currentOrigin } from "../core/origin";
 import { diagnose } from "../debug/diagnostics";
 import { renderingOwner } from "../debug/renderPhase";
@@ -88,6 +88,9 @@ export function createRamonda(
   // per element so it never showed there, but `h()` is public and callable
   // directly, and a reused props object is a reasonable thing to write.
   // Measured "twotwo" where "onetwo" was meant.
+  // In every build: the markup comparison opens a `children` array only when JSX made it.
+  if (children.length) (children as { [JSX_CHILDREN]?: true })[JSX_CHILDREN] = true;
+
   const componentNode: VNodeComponent = {
     type: COMPONENT_TYPE,
     name,

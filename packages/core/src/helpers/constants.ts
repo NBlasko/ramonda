@@ -57,6 +57,11 @@ export const ORIGIN_SYM = Symbol("origin");
 /** Brands the opaque object a built list is. See types/vdom.ts → ListNode. */
 export const IS_LIST = Symbol("isList");
 /**
+ * Brands the children array JSX hands a component — built by `h`, and never changed afterwards — so
+ * it can be told from an array the app passes as `children={…}` itself. See `helpers/settleMarkup.ts`.
+ */
+export const JSX_CHILDREN = Symbol("jsxChildren");
+/**
  * The "take these props?" rule a component declared with
  * `@ShouldUpdateOnPropsChange`, held on the CLASS.
  *
