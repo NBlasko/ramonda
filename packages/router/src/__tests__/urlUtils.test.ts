@@ -3,30 +3,45 @@ import { parseUrl, parseUrlString, buildUrl, sanitizeHref, normalizePathname } f
 
 describe("urlUtils", () => {
   test("parseUrlString: pathname + query + hash → structured state", () => {
-    const s = parseUrlString("/players/123?a=1&b=2#tab=film#play=5");
+    const s = parseUrlString("/players/123?a=1&b=2#tab=film&play=5");
     expect(s.baseUrl).toBe("/players/123");
     expect(s.queryParams).toEqual({ a: "1", b: "2" });
-    expect(s.hashTags).toEqual([
-      { key: "tab", value: "film", level: 0 },
-      { key: "play", value: "5", level: 1 },
-    ]);
+    expect(s.hashParams).toEqual({ tab: "film", play: "5" });
   });
 
-  test("parseUrlString: bare hash segment (no value)", () => {
-    const s = parseUrlString("/x#open");
-    expect(s.hashTags).toEqual([{ key: "open", value: "", level: 0 }]);
+  /**
+   * The hash is read the way the query is: `&` between pairs. It was split on `#` instead, one pair
+   * per segment, and `#k1=v1&k2=v2` — the shape an OAuth redirect hands back — kept `k1` and dropped
+   * `k2` without a word. Found by an agent building an app from the docs alone.
+   */
+  test("parseUrlString: every pair in the hash, as in the query", () => {
+    expect(parseUrlString("/view#k1=v1&k2=v2").hashParams).toEqual({ k1: "v1", k2: "v2" });
+    expect(parseUrlString("/view#access_token=abc&state=xyz").hashParams).toEqual({
+      access_token: "abc",
+      state: "xyz",
+    });
   });
 
-  test("buildUrl: state → URL, hash sorted by level", () => {
+  test("parseUrlString: a bare hash names a section, and is a key with no value", () => {
+    expect(parseUrlString("/x#open").hashParams).toEqual({ open: "" });
+  });
+
+  test("buildUrl: state → URL, the hash written as the query is", () => {
     const url = buildUrl({
       baseUrl: "/players/123",
       queryParams: { a: "1", b: "2" },
-      hashTags: [
-        { key: "play", value: "5", level: 1 },
-        { key: "tab", value: "film", level: 0 },
-      ],
+      hashParams: { tab: "film", play: "5" },
     });
-    expect(url).toBe("/players/123?a=1&b=2#tab=film#play=5");
+    expect(url).toBe("/players/123?a=1&b=2#tab=film&play=5");
+  });
+
+  test("buildUrl: a section stays a bare name, and a hash value is encoded", () => {
+    expect(buildUrl({ baseUrl: "/x", queryParams: {}, hashParams: { install: "" } })).toBe("/x#install");
+    expect(buildUrl({ baseUrl: "/x", queryParams: {}, hashParams: { q: "a b&c" } })).toBe("/x#q=a%20b%26c");
+  });
+
+  test("round-trip: a hash with several pairs comes back whole", () => {
+    expect(buildUrl(parseUrlString("/view#k1=v1&k2=v2"))).toBe("/view#k1=v1&k2=v2");
   });
 
   test("round-trip parseUrlString ∘ buildUrl is stable", () => {
@@ -39,7 +54,7 @@ describe("urlUtils", () => {
     const url = buildUrl({
       baseUrl: "/s",
       queryParams: { q: "a b&c" },
-      hashTags: [],
+      hashParams: {},
     });
     expect(url).toBe("/s?q=a%20b%26c");
   });

@@ -186,7 +186,7 @@ what it passes into one. One field today, `label`, which devtools adds to the ho
 |---|---|
 | `Router` | A **hook** on the app root; owns the store, adds no element. Also exposes the `Navigator` surface (minus `params()`). [Setup](/routing) |
 | `RouteOutlet` | Renders the matched route. |
-| `Navigator` | `pathname` · `params<T>()` · `searchParams` · `hashTags` · `push` · `replace` · `updateSearchParams` · `updateHashTags` · `back` · `forward`. [Reading the URL](/routing/params) |
+| `Navigator` | `pathname` · `params<T>()` · `searchParams` · `hashParams` · `push` · `replace` · `updateSearchParams` · `updateHashParams` · `back` · `forward`. [Reading the URL](/routing/params) |
 | `Link` | A real `<a href>` that intercepts a plain left click. [Links](/routing/links) |
 | `createRoutes(map)` | Compiles a route table once, capturing its paths in the type. Call it at module scope. |
 | `createRouter(routes)` | Returns `{ Router, RouteOutlet, Navigator, Link, route }` bound to the table, so `<Link href>` is type-checked. [Setup](/routing) |
@@ -197,7 +197,7 @@ what it passes into one. One field today, `label`, which devtools adds to the ho
 
 Types: `RouteConfig` · `PathOf` · `Href` · `TypedRouterKit` · `TypedLinkProps` · `TypedNavigator` ·
 `RouteParams` · `RoutePaths` · `RouterState` · `RouterNavigator` · `NavigateOptions` ·
-`PartialNavigateOptions` · `SearchParamsUpdater` · `HashTagsUpdater` · `HashTag` · `StateUpdater` ·
+`PartialNavigateOptions` · `SearchParamsUpdater` · `HashParamsUpdater` · `StateUpdater` ·
 `RouteOutletProps` · `LinkProps`
 
 ### `@ramonda/router/server`

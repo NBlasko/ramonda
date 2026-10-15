@@ -37,7 +37,7 @@ export class Toolbar extends Component {
 | `push(href, opts?)` | go to a URL, adding a history entry |
 | `replace(href, opts?)` | go there without adding one |
 | `updateSearchParams(next, opts?)` | change only the query — see [keeping state in the URL](/routing/params#keep-ui-state-in-the-url) |
-| `updateHashTags(next, opts?)` | change only the hash |
+| `updateHashParams(next, opts?)` | change only the hash |
 | `back()` / `forward()` | move through history |
 
 ## The types — `NavigateOptions` and the updaters
@@ -50,7 +50,7 @@ updaters take `PartialNavigateOptions` instead — the same two fields with a di
 | | |
 |---|---|
 | `SearchParamsUpdater` | what `updateSearchParams` takes: an object of the new query, or a function of the current one |
-| `HashTagsUpdater` | the same for hash tags — a `HashTag[]`, or a function of the current ones |
+| `HashParamsUpdater` | the same for the hash — a record of pairs, or a function of the current ones |
 | `StateUpdater` | a whole `RouterState` from the previous one, for the rare change that touches several parts at once |
 
 **The function forms exist to be race-free.** An object says what the query should BE; a function
@@ -58,7 +58,7 @@ says what it should be *given what it is now*, which is the form that survives t
 same tick.
 
 `RouterState` is the whole URL structured — `baseUrl`, `queryParams` as a flat record, and
-`hashTags` as ordered `HashTag`s with a `key`, a `value` and a `level`. It is the source of truth at
+`hashParams` as a flat record too, read the same way. It is the source of truth at
 runtime: the URL is rebuilt from it, and read back only at startup and on back/forward.
 
 ## Scrolling is your choice, per call
@@ -66,7 +66,7 @@ runtime: the URL is rebuilt from it, and read back only at startup and on back/f
 A `push` or `replace` moves to another page, so it scrolls to the top by default.
 Pass `{ scroll: false }` to stay where you are — useful when a `<RouteOutlet>` sits
 partway down a long page and you don't want the jump. The in-place updaters
-(`updateSearchParams`, `updateHashTags`) are the opposite: they *don't* scroll unless
+(`updateSearchParams`, `updateHashParams`) are the opposite: they *don't* scroll unless
 you ask with `{ scroll: true }`.
 
 ## The methods are already bound
@@ -85,8 +85,8 @@ save.
 
 The component that mounts the router with `this.use(Router)` doesn't need a separate
 `Navigator` to read the URL or navigate — the `Router` instance exposes the same
-`pathname`, `searchParams`, `hashTags`, `push`, `replace`, `updateSearchParams`,
-`updateHashTags`, `back` and `forward`, on top of the setup work it does. It's the same
+`pathname`, `searchParams`, `hashParams`, `push`, `replace`, `updateSearchParams`,
+`updateHashParams`, `back` and `forward`, on top of the setup work it does. It's the same
 surface, from the piece that owns the state:
 
 ```tsx

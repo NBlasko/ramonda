@@ -1,11 +1,3 @@
-/** One hash segment, e.g. `#tab=film` → { key: "tab", value: "film", level: 0 }. */
-export interface HashTag {
-  key: string;
-  value: string;
-  /** Order of the segment in the URL (0, 1, 2, ...). */
-  level: number;
-}
-
 /**
  * The whole URL, structured. This is the single source of truth at runtime — the
  * URL is rebuilt from it and synced to history, never read back except at init
@@ -16,8 +8,11 @@ export interface RouterState {
   baseUrl: string;
   /** Flat ?a=1&b=2 → { a: "1", b: "2" } (single value per key, by design). */
   queryParams: Record<string, string>;
-  /** #tab=film#play=5 → ordered segments. */
-  hashTags: HashTag[];
+  /**
+   * #tab=film&play=5 → { tab: "film", play: "5" } — read exactly as the query is. A bare `#install`
+   * is `{ install: "" }`: the name of a section, which is how a link to one is written.
+   */
+  hashParams: Record<string, string>;
 }
 
 export interface NavigateOptions {
@@ -47,5 +42,5 @@ export interface PartialNavigateOptions {
 /** New query params, or a pure function of the current ones (race-free). */
 export type SearchParamsUpdater = Record<string, string> | ((prev: Record<string, string>) => Record<string, string>);
 
-/** New hash tags, or a pure function of the current ones (race-free). */
-export type HashTagsUpdater = HashTag[] | ((prev: HashTag[]) => HashTag[]);
+/** New hash params, or a pure function of the current ones (race-free) — as for the query. */
+export type HashParamsUpdater = Record<string, string> | ((prev: Record<string, string>) => Record<string, string>);

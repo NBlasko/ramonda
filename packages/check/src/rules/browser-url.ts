@@ -12,9 +12,8 @@ import type { Rule } from "./rule";
  * quiet — the page is simply out of date — and it is what makes this worth reporting rather than
  * leaving to taste.
  *
- * The router also answers questions the URL does not: `#tab=film` is route state and
- * `#a-section` names an element, a distinction `location.hash` hands over as one string to be
- * sniffed.
+ * The router also reads what `location.hash` hands over as one string: `#tab=film&step=2` into pairs,
+ * as the query is read, and a bare `#a-section` as the name of an element.
  *
  * ## How far it looks, which is the whole class and no further
  *
@@ -42,7 +41,7 @@ export interface BrowserUrlIssue {
 const ROUTER_ANSWER: Record<string, string> = {
   pathname: "pathname",
   search: "searchParams",
-  hash: "hashTags",
+  hash: "hashParams",
 };
 
 /**
@@ -83,9 +82,9 @@ export const browserUrl = {
     advice:
       "The two are the same fact from two sources, and only one of them is reactive: read from the\n" +
       "router, a component re-renders when the route moves; read from `window`, it is a snapshot\n" +
-      "taken once and never corrected, so the page quietly goes out of date. The router also keeps a\n" +
-      "distinction the URL hands over as one string — `#tab=film` is route state, `#a-section` names\n" +
-      "an element — so a hash tag with no value is a section and one with a value is not.\n\n",
+      "taken once and never corrected, so the page quietly goes out of date. The router also reads the\n" +
+      'hash into pairs, as it reads the query — `#tab=film&step=2` is `{ tab: "film", step: "2" }`,\n' +
+      'and a bare `#a-section`, the name of an element, is `{ "a-section": "" }`.\n\n',
   },
 
   read(cls, { self, resolve }) {

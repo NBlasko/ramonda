@@ -12,7 +12,7 @@ import {
 import { createNavigator, detachedNavigator, type RouterNavigator } from "./store";
 import { parseUrl } from "./urlUtils";
 import { assertPattern, matchCompiled, type ParamsOf, type RouteConfig, type RouteParams } from "./match";
-import type { HashTag, HashTagsUpdater, PartialNavigateOptions, RouterState, SearchParamsUpdater } from "./types";
+import type { HashParamsUpdater, PartialNavigateOptions, RouterState, SearchParamsUpdater } from "./types";
 
 /**
  * What a <Router> publishes to its whole subtree. Split into separate keys on
@@ -27,7 +27,7 @@ interface RouteContextValue {
   state: RouterState;
   baseUrl: string;
   queryParams: Record<string, string>;
-  hashTags: HashTag[];
+  hashParams: Record<string, string>;
   nav: RouterNavigator;
 }
 
@@ -47,7 +47,7 @@ interface ParamsContextValue {
 const EMPTY_STATE: RouterState = {
   baseUrl: "/",
   queryParams: {},
-  hashTags: [],
+  hashParams: {},
 };
 
 const [RouteProvider, RouteConsumer] = createContext<RouteContextValue>(
@@ -55,7 +55,7 @@ const [RouteProvider, RouteConsumer] = createContext<RouteContextValue>(
     state: EMPTY_STATE,
     baseUrl: "/",
     queryParams: {},
-    hashTags: [],
+    hashParams: {},
     nav: detachedNavigator,
   },
   /**
@@ -177,8 +177,8 @@ export class Router extends Hook {
   get searchParams(): Record<string, string> {
     return this.routeState.queryParams;
   }
-  get hashTags(): HashTag[] {
-    return this.routeState.hashTags;
+  get hashParams(): Record<string, string> {
+    return this.routeState.hashParams;
   }
 
   push(href: string, opts?: { scroll?: boolean }): void {
@@ -190,8 +190,8 @@ export class Router extends Hook {
   updateSearchParams(next: SearchParamsUpdater, opts?: PartialNavigateOptions): void {
     this.nav.updateSearchParams(next, opts);
   }
-  updateHashTags(next: HashTagsUpdater, opts?: PartialNavigateOptions): void {
-    this.nav.updateHashTags(next, opts);
+  updateHashParams(next: HashParamsUpdater, opts?: PartialNavigateOptions): void {
+    this.nav.updateHashParams(next, opts);
   }
   back(): void {
     this.nav.back();
@@ -258,7 +258,7 @@ export class Router extends Hook {
     state: this.routeState,
     baseUrl: this.routeState.baseUrl,
     queryParams: this.routeState.queryParams,
-    hashTags: this.routeState.hashTags,
+    hashParams: this.routeState.hashParams,
     nav: this.nav,
   }));
 }
@@ -295,7 +295,7 @@ export class RouteOutlet extends Component<RouteOutletProps> {
 }
 
 /**
- * Reactive router readers (pathname, searchParams, hashTags, params) plus
+ * Reactive router readers (pathname, searchParams, hashParams, params) plus
  * imperative navigation (push, replace, updateSearchParams, …). Needs a <Router>
  * ancestor.
  *
@@ -314,8 +314,8 @@ export class Navigator extends Hook {
   get searchParams(): Record<string, string> {
     return this.ctx.queryParams;
   }
-  get hashTags(): HashTag[] {
-    return this.ctx.hashTags;
+  get hashParams(): Record<string, string> {
+    return this.ctx.hashParams;
   }
 
   /**
@@ -366,8 +366,8 @@ export class Navigator extends Hook {
   updateSearchParams(next: SearchParamsUpdater, opts?: PartialNavigateOptions): void {
     this.ctx.nav.updateSearchParams(next, opts);
   }
-  updateHashTags(next: HashTagsUpdater, opts?: PartialNavigateOptions): void {
-    this.ctx.nav.updateHashTags(next, opts);
+  updateHashParams(next: HashParamsUpdater, opts?: PartialNavigateOptions): void {
+    this.ctx.nav.updateHashParams(next, opts);
   }
   back(): void {
     this.ctx.nav.back();

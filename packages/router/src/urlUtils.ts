@@ -1,4 +1,4 @@
-import type { HashTag, RouterState } from "./types";
+import type { RouterState } from "./types";
 
 // Pure, framework-agnostic URL <-> state functions. Depend only on the standard
 // `URL` / `URLSearchParams` / `window.location` browser APIs.
@@ -12,20 +12,15 @@ function parseQueryParams(search: string): Record<string, string> {
   return out;
 }
 
-function parseHash(hash: string): HashTag[] {
-  const tags: HashTag[] = [];
-  if (!hash) return tags;
-
-  // "#a=1#b=2" → ["a=1", "b=2"]
-  const parts = hash.split("#").filter(Boolean);
-  parts.forEach((part, index) => {
-    // URLSearchParams is used deliberately: it decodes `+`→space and `%xx` correctly.
-    const params = new URLSearchParams(part);
-    const first = params.entries().next().value;
-    if (first) tags.push({ key: first[0], value: first[1], level: index });
-    else tags.push({ key: part, value: "", level: index });
-  });
-  return tags;
+/**
+ * The hash, read exactly as the query is: `#a=1&b=2` → `{ a: "1", b: "2" }`.
+ *
+ * It was split on `#`, one pair per segment, and every pair after the first in a segment was dropped
+ * without a word — `#access_token=…&state=…`, the shape an OAuth redirect hands back, lost its state.
+ * A bare `#install` is `{ install: "" }`, the name of a section.
+ */
+function parseHash(hash: string): Record<string, string> {
+  return parseQueryParams(hash.startsWith("#") ? hash.slice(1) : hash);
 }
 
 /**
@@ -74,7 +69,7 @@ export function parseUrl(): RouterState {
   return {
     baseUrl: normalizePathname(window.location.pathname),
     queryParams: parseQueryParams(window.location.search),
-    hashTags: parseHash(window.location.hash),
+    hashParams: parseHash(window.location.hash),
   };
 }
 
@@ -84,7 +79,7 @@ export function parseUrlString(url: string): RouterState {
   return {
     baseUrl: normalizePathname(parsed.pathname),
     queryParams: parseQueryParams(parsed.search),
-    hashTags: parseHash(parsed.hash),
+    hashParams: parseHash(parsed.hash),
   };
 }
 
@@ -98,10 +93,15 @@ export function buildUrl(state: RouterState): string {
     url += "?" + qs;
   }
 
-  // Sort by level so URL order is deterministic regardless of insertion order.
-  const sorted = [...state.hashTags].sort((a, b) => a.level - b.level);
-  for (const ht of sorted) {
-    url += ht.value ? `#${ht.key}=${ht.value}` : `#${ht.key}`;
+  // As the query is written, except that a key with no value stays bare: `#install` is a section's
+  // name, and `#install=` would be a different fragment that names no element.
+  const hash = Object.entries(state.hashParams);
+  if (hash.length > 0) {
+    url +=
+      "#" +
+      hash
+        .map(([k, v]) => (v === "" ? encodeURIComponent(k) : `${encodeURIComponent(k)}=${encodeURIComponent(v)}`))
+        .join("&");
   }
 
   return sanitizeHref(url);

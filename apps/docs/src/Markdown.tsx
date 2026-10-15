@@ -58,8 +58,9 @@ export class Markdown extends Component<MarkdownProps> {
    */
   @mounted({ env: "client" })
   arriveOnMount(): void {
-    const named = this.route.hashTags.find((tag) => tag.value === "");
-    if (named) show(named.key);
+    // A section's name is a key with no value — `#install` is `{ install: "" }`.
+    const named = Object.entries(this.route.hashParams).find(([, value]) => value === "");
+    if (named) show(named[0]);
   }
 
   /**

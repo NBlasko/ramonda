@@ -1,10 +1,9 @@
 export type {
-  HashTag,
   RouterState,
   NavigateOptions,
   PartialNavigateOptions,
   SearchParamsUpdater,
-  HashTagsUpdater,
+  HashParamsUpdater,
   StateUpdater,
 } from "./types";
 export {

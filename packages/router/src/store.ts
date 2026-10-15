@@ -1,5 +1,5 @@
 import type {
-  HashTagsUpdater,
+  HashParamsUpdater,
   NavigateOptions,
   PartialNavigateOptions,
   RouterState,
@@ -63,7 +63,7 @@ export interface RouterNavigator {
    */
   updateSearchParams(next: SearchParamsUpdater, opts?: PartialNavigateOptions): void;
   /** Change ONLY the hash tags, same race-free contract as updateSearchParams. */
-  updateHashTags(next: HashTagsUpdater, opts?: PartialNavigateOptions): void;
+  updateHashParams(next: HashParamsUpdater, opts?: PartialNavigateOptions): void;
   back(): void;
   forward(): void;
 }
@@ -121,11 +121,11 @@ export function createNavigator(store: RouteStateAccess, onServerRedirect?: (url
         { replace: opts.replace, scroll: opts.scroll === true },
       );
     },
-    updateHashTags(next, opts = {}) {
+    updateHashParams(next, opts = {}) {
       updateState(
         (prev) => ({
           ...prev,
-          hashTags: typeof next === "function" ? next(prev.hashTags) : next,
+          hashParams: typeof next === "function" ? next(prev.hashParams) : next,
         }),
         { replace: opts.replace, scroll: opts.scroll === true },
       );
@@ -156,7 +156,7 @@ export const detachedNavigator: RouterNavigator = {
   push: refuse,
   replace: refuse,
   updateSearchParams: refuse,
-  updateHashTags: refuse,
+  updateHashParams: refuse,
   back: refuse,
   forward: refuse,
 };

@@ -277,10 +277,20 @@ describe("Navigator: partial-state updates", () => {
     expect(window.location.search).toBe("?a=1&b=2");
   });
 
-  test("updateHashTags changes only the hash", () => {
+  test("a hash with several pairs reaches the page whole, from the browser's own navigation", () => {
+    // `#access_token=…&state=…` is how an OAuth redirect lands; the second pair was dropped once.
+    render(app());
+    act(() => {
+      window.history.pushState(null, "", "/#k1=v1&k2=v2");
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    });
+    expect(route.hashParams).toEqual({ k1: "v1", k2: "v2" });
+  });
+
+  test("updateHashParams changes only the hash", () => {
     render(app());
 
-    act(() => route.updateHashTags([{ key: "open", value: "1", level: 0 }]));
+    act(() => route.updateHashParams({ open: "1" }));
 
     expect(window.location.hash).toBe("#open=1");
     expect(route.pathname).toBe("/");

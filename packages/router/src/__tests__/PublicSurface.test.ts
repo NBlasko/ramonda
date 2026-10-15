@@ -41,8 +41,7 @@ const EXPECTED = [
  * a caller who can no longer write down what they were given.
  */
 const EXPECTED_TYPES = [
-  "HashTag",
-  "HashTagsUpdater",
+  "HashParamsUpdater",
   "Href",
   "NavigateOptions",
   "PartialNavigateOptions",
@@ -98,8 +97,7 @@ describe("public API surface", () => {
 
 // Every published type, named once, so `check-types` fails if one is renamed or removed.
 import type {
-  HashTag,
-  HashTagsUpdater,
+  HashParamsUpdater,
   Href,
   NavigateOptions,
   PartialNavigateOptions,
@@ -118,8 +116,7 @@ import type {
 } from "../index";
 
 type _Surface = [
-  HashTag,
-  HashTagsUpdater,
+  HashParamsUpdater,
   Href,
   NavigateOptions,
   PartialNavigateOptions,
