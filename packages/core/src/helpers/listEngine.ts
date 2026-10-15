@@ -138,6 +138,16 @@ export function inListContext<T>(row: RowScope | undefined, host: ListHost | und
 }
 
 /**
+ * Runs one level of a reconcile or a hydration in the list context it sets: `rows` when its children
+ * are a list's rows, `host` when they are a region's. Only such a level saves and restores the
+ * context; every other level — nearly all of them — leaves it as it found it, and runs as it is.
+ */
+export function inLevel<T>(rows: readonly unknown[] | undefined, host: ListHost | undefined, run: () => T): T {
+  if (rows === undefined && host === undefined) return run();
+  return inListContext(enclosingRow.current, host ?? enclosingHost.current, run);
+}
+
+/**
  * Runs a reconcile or a hydration that starts a level of its own — a root, a component's own render,
  * a hook's block — outside any row and any region's host.
  *

@@ -97,7 +97,7 @@ export class TextArea extends Component<TextAreaProps> {
     if (this.h !== this.props.ref) this.g(field);
 
     // A `defaultValue` field is the user's: its text child said where it starts, and nothing more.
-    if (this.props.value === undefined) return;
+    if (this.props.value == null) return;
     field.value = String(this.props.value);
   }
 
@@ -116,7 +116,7 @@ export class TextArea extends Component<TextAreaProps> {
     // `value` every render; `defaultValue` as it was at the FIRST — the text child is where a
     // textarea's default lives, and a later one must not reach a field the user has typed in.
     this.t ??= String(this.props.defaultValue ?? "");
-    const text = this.props.value === undefined ? this.t : String(this.props.value);
+    const text = this.props.value == null ? this.t : String(this.props.value);
 
     /**
      * An EMPTY value is no child at all, not a child that is the empty string.
@@ -126,7 +126,10 @@ export class TextArea extends Component<TextAreaProps> {
      * node disagrees with it. Measured: RMD007, *rendered the text "" but the server sent nothing* —
      * a report about correct markup, which is the worst kind.
      */
-    const field = controlled(this, this.a);
+    // `input` only. `change` comes on blur, and answering it undid an input method's text: the last
+    // `input` of a composition says `isComposing`, an app skips it, and a blur straight after would
+    // settle the field from a model that never took the word.
+    const field = controlled(this, this.a, ["oninput"]);
     return __h(
       "textarea",
       {

@@ -460,6 +460,53 @@ describe("a controlled textarea follows the model after the event the app handle
     expect(field.value).toBe("a");
   });
 
+  /**
+   * A composition that ends with a blur: the `change` the blur fires is not answered, so the composed
+   * text the app has not taken yet stays until the next ordinary input.
+   */
+  test("a composition followed by a blur keeps the composed text", async () => {
+    class Composed extends Component {
+      @state text = "a";
+      take(event: InputEvent) {
+        if (event.isComposing) return;
+        this.text = (event.target as HTMLTextAreaElement).value;
+      }
+      render() {
+        return <TextArea id="t" value={this.text} oninput={this.take} />;
+      }
+    }
+    const app = await getDOM<Composed>(<Composed />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+
+    field.value = "aか";
+    field.dispatchEvent(new InputEvent("input", { bubbles: true, isComposing: true }));
+    field.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "か" }));
+    field.dispatchEvent(new Event("change", { bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await app.settle();
+
+    expect(field.value).toBe("aか");
+  });
+
+  /** A value that is still `null` is no value: the field is not held, and shows nothing until it has one. */
+  test("a null value is no value", async () => {
+    class Loading extends Component {
+      @state text: string | null = null;
+      render() {
+        return <TextArea id="t" value={this.text as never} />;
+      }
+    }
+    const app = await getDOM<Loading>(<Loading />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+    expect(field.value).toBe("");
+
+    await typed(field, "typed", ["input"]);
+    await app.settle();
+    expect(field.value).toBe("typed");
+  });
+
   /** A handler that removes the field leaves nothing to settle, and nothing is reported. */
   test("a field its handler removes is left alone", async () => {
     const codes: string[] = [];

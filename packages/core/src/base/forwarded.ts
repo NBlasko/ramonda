@@ -49,23 +49,25 @@ export function forwarded(component: Component<any>, consumed: readonly string[]
   return out;
 }
 
-/** The events a controlled field answers: the two it changes through. */
-const ANSWERED = ["oninput", "onchange"] as const;
-
 /**
  * What a field's element is given for a CONTROLLED field — one with a `value` — and the names of the
- * app's handlers that moves: `listener` on every answered event, calling the app's own through
+ * app's handlers that moves: `listener` on each event in `answered`, calling the app's own through
  * `answer`. A handler spelled another way (`onInput`, `on:input`) is a listener of its own beside it,
  * which is the same thing, since the field is settled after the whole event either way. A field
  * without a `value` is given nothing: with `defaultValue`, or with neither, the page owns what it shows.
  */
 // biome-ignore lint/suspicious/noExplicitAny: any component, whatever its props
-export function controlled(component: Component<any>, listener: (event: Event) => void) {
-  if (component[COMPONENT_RUNTIME].rawProps["value"] === undefined) return { replaced: [] as string[], listeners: {} };
-  return {
-    replaced: [...ANSWERED],
-    listeners: { oninput: listener, onchange: listener },
-  };
+export function controlled(
+  // biome-ignore lint/suspicious/noExplicitAny: any component, whatever its props
+  component: Component<any>,
+  listener: (event: Event) => void,
+  answered: readonly ("oninput" | "onchange")[],
+) {
+  // `null` as much as `undefined`: a value still loading is no value, not the text "null".
+  if (component[COMPONENT_RUNTIME].rawProps["value"] == null) return { replaced: [] as string[], listeners: {} };
+  const listeners: Record<string, (event: Event) => void> = {};
+  for (const name of answered) listeners[name] = listener;
+  return { replaced: [...answered], listeners };
 }
 
 /** Fields with a settle already set for after the event that is being dispatched. */

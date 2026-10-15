@@ -30,13 +30,43 @@ function eventsOf(element: JsxElementLike): Set<string | undefined> {
   return new Set(namesOf(element).map((name) => eventTypeOf(name)?.type));
 }
 
-/** Whether an element around this one listens for the field's input — a `<form oninput>`. */
-function heardAbove(element: JsxElementLike): boolean {
+/**
+ * Whether an element around this one listens for an event that moves the model in time — `<form
+ * oninput>`. For a `TextArea` only `input` does: an ancestor's `change` comes on blur, after every
+ * keystroke has been undone.
+ */
+function heardAbove(element: JsxElementLike, events: readonly string[]): boolean {
   for (let at = enclosingElement(element); at !== undefined; at = enclosingElement(at)) {
-    const events = eventsOf(at);
-    if (events.has("input") || events.has("change")) return true;
+    const heard = eventsOf(at);
+    if (events.some((event) => heard.has(event))) return true;
   }
   return false;
+}
+
+/**
+ * Whether an attribute is ON as written: bare (`readonly`), or `={true}`. `readOnly={this.viewing}` may
+ * be off, and a field that may take input is asked like any other.
+ */
+function switchedOn(element: JsxElementLike, names: readonly string[]): boolean {
+  return openingOf(element).attributes.properties.some((attribute) => {
+    if (!ts.isJsxAttribute(attribute) || !names.includes(attribute.name.getText())) return false;
+    const value = attribute.initializer;
+    if (value === undefined) return true;
+    return ts.isJsxExpression(value) && value.expression?.kind === ts.SyntaxKind.TrueKeyword;
+  });
+}
+
+/**
+ * Whether the `value` is handed in from outside — `this.props.text`. The handler that moves it is then
+ * the parent's business, and may be an `oninput` on an element of the parent's own render, which this
+ * rule, reading one component, cannot see.
+ */
+function fromProps(element: JsxElementLike): boolean {
+  const value = openingOf(element).attributes.properties.find(
+    (attribute) => ts.isJsxAttribute(attribute) && attribute.name.getText() === "value",
+  );
+  const written = value !== undefined && ts.isJsxAttribute(value) ? value.initializer?.getText() : undefined;
+  return written !== undefined && /\bprops\b/.test(written);
 }
 
 /**
@@ -59,9 +89,10 @@ function heardAbove(element: JsxElementLike): boolean {
  * whose text is read when the form is sent.
  *
  * Not reported: an element with a spread — `{...bind}` from `@ramonda/form` carries the handler, and
- * a rule that cannot see it would report every bound field; a `readonly` or `disabled` field, which
- * takes no input to undo — showing a value the user cannot edit is what it is for; and a field with a
- * handler on an element around it, `<form oninput>`, which core waits for before it settles.
+ * a rule that cannot see it would report every bound field; a field written `readonly` or `disabled`
+ * (bare or `={true}`), which takes no input to undo; a field with a handler on an element around it,
+ * `<form oninput>`, which core waits for before it settles; and a field whose `value` comes from
+ * `props`, whose handler may sit in the parent's render.
  */
 export const fieldTheUserCannotChange = {
   id: "field-the-user-cannot-change",
@@ -108,7 +139,14 @@ export const fieldTheUserCannotChange = {
     const at = positionOf(opening);
     if (names.includes("defaultValue")) return [{ component, kind: "both", ...at }];
 
-    if (names.some((name) => /^(readonly|readOnly|disabled)$/.test(name)) || heardAbove(element)) return [];
+    const moving: readonly string[] = tag === "textarea" ? ["input"] : ["input", "change"];
+    if (
+      switchedOn(element, ["readonly", "readOnly", "disabled"]) ||
+      heardAbove(element, moving) ||
+      fromProps(element)
+    ) {
+      return [];
+    }
     const events = eventsOf(element);
     if (!events.has("input") && !events.has("change")) return [{ component, kind: "no-handler", ...at }];
     if (tag === "textarea" && !events.has("input")) return [{ component, kind: "held-between-keystrokes", ...at }];

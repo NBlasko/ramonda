@@ -116,13 +116,17 @@ export class Select extends Component<SelectProps> {
     // `value` every time. `defaultValue` once, when the select first has options to choose from — a
     // value written before then matches nothing, and the browser picks the first option the moment
     // one arrives.
+    // The start is settled the first time there are options, whether or not a `defaultValue` was
+    // there yet — one that arrives later, from a load, must not reach a select the user has picked in,
+    // exactly as a `TextArea` keeps the text it started with.
     let chosen = this.props.value;
-    if (chosen !== undefined) {
+    if (chosen != null) {
       this.d = true;
     } else {
-      if (this.d || this.props.defaultValue === undefined || select.options.length === 0) return;
+      if (this.d || select.options.length === 0) return;
       this.d = true;
       chosen = this.props.defaultValue;
+      if (chosen == null) return;
     }
 
     // One write, and the browser works out which option it means. A `multiple` select has no single
@@ -157,7 +161,8 @@ export class Select extends Component<SelectProps> {
      * there is nothing to suppress: the refusal keeps meaning exactly what it says at every call
      * site that writes the tag, and this one does not write it.
      */
-    const field = controlled(this, this.a);
+    // A pick is `input` then `change`, both at once: either is the moment to answer.
+    const field = controlled(this, this.a, ["oninput", "onchange"]);
     return __h(
       "select",
       {

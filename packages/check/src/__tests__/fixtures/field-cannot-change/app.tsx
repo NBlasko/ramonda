@@ -2,8 +2,9 @@ import { Component, Select, TextArea } from "@ramonda/core";
 
 declare const value: string;
 declare const bind: Record<string, unknown>;
+declare const viewing: boolean;
 
-class App extends Component {
+class App extends Component<{ text: string }> {
   pick(_event: Event) {}
   type(_event: Event) {}
   render() {
@@ -43,6 +44,14 @@ class App extends Component {
         <fieldset oninput={this.type}>
           <TextArea value={value} aria-label="heard above" />
         </fieldset>
+        {/* ✓ handed in by the parent, whose handler this cannot see */}
+        <TextArea value={this.props.text} aria-label="from props" />
+        {/* ✗ held-between-keystrokes: an ancestor's change comes on blur */}
+        <fieldset onchange={this.type}>
+          <TextArea value={value} aria-label="changed above" />
+        </fieldset>
+        {/* ✗ no-handler: readOnly that may be off */}
+        <TextArea value={value} readOnly={viewing} aria-label="maybe read only" />
       </form>
     );
   }

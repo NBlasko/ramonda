@@ -17,6 +17,8 @@ served page the field shows it before any script runs.
 The settle waits for the whole event, so an `onchange` reads the user's pick and a listener on an
 ancestor reads what was typed — or moves the model itself; it leaves an input method's composition
 alone, settling at the next ordinary input; it writes only the value, with no render; and it still
-runs when the handler throws. A `Select`'s `defaultValue` waits for options to choose from, and never
-applies once a `value` has held it. The app's handler is called as a
+runs when the handler throws. A `TextArea` answers `input` only — `change` comes on blur, and
+answering it undid a composition the app had not taken yet. A `Select`'s start is settled when it
+first has options: a `defaultValue` then applies, one that arrives later from a load does not, and
+none applies once a `value` has held it. A `value` of `null` is no value. The app's handler is called as a
 listener is, with the element as `this`.

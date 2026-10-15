@@ -25,6 +25,8 @@ describe("a field the user cannot change", () => {
       [lineOf('aria-label="held text"'), "TextArea", "no-handler"],
       [lineOf('aria-label="saved on blur"'), "TextArea", "held-between-keystrokes"],
       [lineOf('aria-label="both"'), "TextArea", "both"],
+      [lineOf('aria-label="changed above"'), "TextArea", "no-handler"],
+      [lineOf('aria-label="maybe read only"'), "TextArea", "no-handler"],
     ]);
   });
 
@@ -46,6 +48,7 @@ describe("a field the user cannot change", () => {
       "read only",
       "disabled",
       "heard above",
+      "from props",
     ]) {
       expect(lines.has(lineOf(`aria-label="${label}"`))).toBe(false);
     }

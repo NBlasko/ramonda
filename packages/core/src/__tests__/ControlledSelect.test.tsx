@@ -220,6 +220,31 @@ describe("a controlled select shows what the model says", () => {
     expect(shown(app.container)).toEqual({ value: "b", index: 1 });
   });
 
+  /** A `defaultValue` that arrives after the select has options — from a load — does not reach it. */
+  test("a defaultValue that arrives later does not move the select", async () => {
+    class Loading extends Component {
+      @state saved: string | undefined = undefined;
+      render() {
+        return (
+          <Select id="s" defaultValue={this.saved}>
+            {["a", "b", "c"].map((v) => (
+              <option key={v} value={v}>
+                {v}
+              </option>
+            ))}
+          </Select>
+        );
+      }
+    }
+    const app = await getDOM<Loading>(<Loading />);
+    await app.settle();
+    await pickAsABrowserDoes(app.container.querySelector("#s") as HTMLSelectElement, "c");
+    app.instance.saved = "a";
+    await app.settle();
+
+    expect(shown(app.container)).toEqual({ value: "c", index: 2 });
+  });
+
   /** Once a `value` has held the select, a `defaultValue` never applies — it is where a select STARTS. */
   test("a value that goes away does not bring the defaultValue in", async () => {
     class Dropping extends Component {

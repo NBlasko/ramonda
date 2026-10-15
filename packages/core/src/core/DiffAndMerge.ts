@@ -56,7 +56,7 @@ import {
   enclosingRow,
   enclosingHost,
   atTopLevel,
-  inListContext,
+  inLevel,
   type LazyListNode,
   type ListHost,
   type RowScope,
@@ -1044,10 +1044,7 @@ export function reconcileEntries(
   let plainIndex = 0;
 
   try {
-    // Only a level that changes the list context saves and restores it — a list's rows move the row,
-    // a region's children set the host. Every other level, nearly all of them, leaves both as found.
-    if (rows === undefined && listHost === undefined) reconcileChildren();
-    else inListContext(enclosingRow.current, listHost ?? enclosingHost.current, reconcileChildren);
+    inLevel(rows, listHost, reconcileChildren);
   } catch (e) {
     /**
      * The pass is over and its entries are going nowhere, so what it BUILT has to come back down
