@@ -63,6 +63,7 @@ import { misspelledElementProperty } from "./misspelled-element-property";
 import { halfBuiltKeyboardPath } from "./half-built-keyboard-path";
 import { elementHtmlRemoved } from "./element-html-removed";
 import { optionThatCannotChoose } from "./option-that-cannot-choose";
+import { fieldTheUserCannotChange } from "./field-the-user-cannot-change";
 import { parentWithAForeignChild } from "./parent-with-a-foreign-child";
 import { ariaThatContradictsTheTag } from "./aria-that-contradicts-the-tag";
 import { roleThatFightsTheTag } from "./role-that-fights-the-tag";
@@ -217,6 +218,7 @@ export { misspelledElementProperty, type MisspelledElementPropertyIssue } from "
 export { halfBuiltKeyboardPath, type HalfBuiltKeyboardPathIssue } from "./half-built-keyboard-path";
 export { elementHtmlRemoved, type ElementHtmlRemovedIssue } from "./element-html-removed";
 export { optionThatCannotChoose, type OptionThatCannotChooseIssue } from "./option-that-cannot-choose";
+export { fieldTheUserCannotChange, type FieldTheUserCannotChangeIssue } from "./field-the-user-cannot-change";
 export { parentWithAForeignChild, type ParentWithAForeignChildIssue } from "./parent-with-a-foreign-child";
 export {
   ariaThatContradictsTheTag,
@@ -345,6 +347,7 @@ export const ELEMENT_RULES = [
   halfBuiltKeyboardPath,
   elementHtmlRemoved,
   optionThatCannotChoose,
+  fieldTheUserCannotChange,
   ariaValue,
   ariaWithNoSubject,
   emptyHeadingOrLink,

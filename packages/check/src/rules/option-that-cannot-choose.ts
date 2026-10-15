@@ -85,8 +85,9 @@ export const optionThatCannotChoose = {
       '  <option value="m">Medium</option>\n' +
       "</Select>\n" +
       "```\n\n" +
-      "For an initial choice, that is what the state behind `value` starts as. For several, `value`\n" +
-      "takes an array and the select is `multiple`.\n\n" +
+      "For a choice held in state, that is what the state behind `value` starts as. For one the user\n" +
+      "owns and the form sends, `defaultValue` says where it starts. For several, either takes an\n" +
+      "array and the select is `multiple`.\n\n" +
       "This is the fault the refused `<select>` tag could not reach. The tag is refused because HTML\n" +
       "settles competing `selected` claims by keeping the LAST one, and gives a select with no claim\n" +
       "its first option — so the same markup meant different things depending on the order the\n" +

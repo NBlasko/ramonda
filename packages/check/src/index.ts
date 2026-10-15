@@ -77,6 +77,7 @@ export type {
   HalfBuiltKeyboardPathIssue,
   ElementHtmlRemovedIssue,
   OptionThatCannotChooseIssue,
+  FieldTheUserCannotChangeIssue,
   RoleTakesNoNameIssue,
   RowWithoutAKeyIssue,
   ServerEnvInSharedCodeIssue,

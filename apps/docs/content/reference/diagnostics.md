@@ -1857,8 +1857,12 @@ import { Component, TextArea, createRef, state } from "@ramonda/core";
 class Editor extends Component {
   @state text = "";
 
+  type(event: Event) {
+    this.text = (event.target as HTMLTextAreaElement).value;
+  }
+
   render() {
-    return <TextArea aria-label="Draft" value={this.text} ref={createRef()} />;   // ✗ a new ref every render
+    return <TextArea aria-label="Draft" value={this.text} oninput={this.type} ref={createRef()} />;   // ✗ a new ref every render
   }
 }
 ```
@@ -1881,8 +1885,12 @@ class Editor extends Component {
   private field = createRef<HTMLTextAreaElement>();       // ✓ one identity, for its whole life
   @state text = "";
 
+  type(event: Event) {
+    this.text = (event.target as HTMLTextAreaElement).value;
+  }
+
   render() {
-    return <TextArea aria-label="Draft" value={this.text} ref={this.field} />;
+    return <TextArea aria-label="Draft" value={this.text} oninput={this.type} ref={this.field} />;
   }
 }
 ```
