@@ -142,6 +142,25 @@ booleans. An object has no stable form to build a key out of, and a development 
 throws rather than silently giving up the memoisation. Pass the id, or the index the
 list's mapper already hands you.
 
+When the value is built from an object the row holds — a group's fixtures, an order's lines — pass the
+group's id and find the group inside. If that lookup is awkward, build every item's value in one
+`@compute`, keyed by id, and read it by id in the row:
+
+```tsx
+class Schedule extends Component<{ groups: Group[] }> {
+  @compute get roundsById(): Record<string, Round[]> {
+    return Object.fromEntries(this.props.groups.map((g) => [g.id, byRound(g.fixtures)]));
+  }
+
+  render() {
+    return list(this.props.groups, (g) => <Rounds key={g.id} rounds={this.roundsById[g.id]} />);
+  }
+}
+```
+
+It is one value for the component that holds one entry per item. It is rebuilt whole when `groups`
+changes, so each entry keeps its identity until then.
+
 ## When neither
 
 A value that never varies is not a cache problem. A field, or a module constant, says so
