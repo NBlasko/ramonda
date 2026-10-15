@@ -73,13 +73,24 @@ export function resolvePortalTarget(target: PortalTarget, onServer: boolean): El
     return container;
   }
 
-  const existing = document.querySelector(`[${PORTAL_TARGET_ATTR}="${cssEscape(target.name)}"]`);
+  const existing = shownPortalContainer(target.name);
   if (existing !== null) return existing;
 
   const created = document.createElement("div");
   created.setAttribute(PORTAL_TARGET_ATTR, target.name);
   document.body.appendChild(created);
   return created;
+}
+
+/**
+ * The container the page shows under a name right now, or `null` — a lookup with no side effect,
+ * where `resolvePortalTarget` appends one when there is none. `Portal` watches this, so a container
+ * replaced under the same name (a layout mounted again) is followed, and a new token for the same
+ * container is not a change.
+ */
+export function shownPortalContainer(name: string): Element | null {
+  if (typeof document === "undefined") return null;
+  return document.querySelector(`[${PORTAL_TARGET_ATTR}="${cssEscape(name)}"]`);
 }
 
 /**

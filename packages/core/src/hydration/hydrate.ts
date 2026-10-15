@@ -25,6 +25,7 @@ import {
   enclosingRow,
   enclosingHost,
   atTopLevel,
+  inListContext,
   type ListEngine,
   type LazyListNode,
   type ListHost,
@@ -747,15 +748,9 @@ export function hydrateLevel(
   /** See `reconcileEntries` — per child, the list row it is, when `children` are a list's rows. */
   rows?: readonly unknown[],
 ): { entries: RecordEntry[]; hasRegion: boolean } {
-  const outerRow = enclosingRow.current;
-  const outerHost = enclosingHost.current;
-  if (listHost !== undefined) enclosingHost.current = listHost;
-  try {
-    return hydrateLevelEntries(children, placeholder, parent, walk, listHost, rows);
-  } finally {
-    enclosingRow.current = outerRow;
-    enclosingHost.current = outerHost;
-  }
+  return inListContext(enclosingRow.current, listHost ?? enclosingHost.current, () =>
+    hydrateLevelEntries(children, placeholder, parent, walk, listHost, rows),
+  );
 }
 
 function hydrateLevelEntries(

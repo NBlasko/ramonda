@@ -134,10 +134,11 @@ On a server-rendered page the choice arrives as `selected` on the chosen option,
 where HTML keeps it and a select has no `value` attribute to carry. The reader sees the right option
 before any script runs.
 
-**The model has the last word.** After every `change` and `input`, a `Select` or a `TextArea` asks
-your handler and then shows whatever the model holds. A handler that takes the input leaves the field
-as the user made it; one that leaves the value where it was puts it back at once. A field with a
-`value` and no handler is one the page cannot change — the model never moves.
+**The model has the last word.** After an event you wrote a handler for — `onchange`, `oninput` — a
+`Select` or a `TextArea` shows whatever the model holds once the event is over. A handler that takes
+the input leaves the field as the user made it; one that leaves the value where it was puts it back.
+Only that event is answered: a textarea saved `onchange` keeps every keystroke until it loses focus.
+A field with no handler shows what the user put in, and the model is not asked.
 
 ### `TextArea` — a `<textarea>` keeps its value inside the element
 

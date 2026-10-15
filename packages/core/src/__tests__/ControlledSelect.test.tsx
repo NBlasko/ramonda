@@ -95,47 +95,69 @@ describe("a controlled select shows what the model says", () => {
   });
 
   /**
-   * "Controlled" means the model has the last word, at once. A handler that leaves the value where it
-   * was is a refusal, and the select shows the model's choice again as soon as the handler returns —
-   * not at some later render of the page. With no handler at all the model never moves, so the
-   * select cannot be changed from the page.
+   * "Controlled" means the model has the last word. A pick is the two events a browser sends for it,
+   * `input` and then `change`, and the handler the app wrote reads the user's pick from either. A
+   * handler that leaves the value where it was is a refusal, and the select shows the model's choice
+   * again as soon as the event is over — not at some later render of the page.
    */
   test.each([
-    ["a handler that refuses", true],
-    ["no handler at all", false],
-  ])("a pick the model does not take is put back at once — %s", async (_how, withHandler) => {
-    class Refusing extends Component {
+    ["takes it", "c", { value: "c", index: 2 }],
+    ["refuses it", "a", { value: "a", index: 0 }],
+  ])("an onchange that %s is answered after the pick", async (_how, model, expected) => {
+    let read = "";
+    class Picked extends Component {
       @state choice = "a";
-      refuse() {
-        this.choice = "a";
+      pick(event: Event) {
+        read = (event.target as HTMLSelectElement).value;
+        this.choice = model;
       }
       render() {
-        const options = ["a", "b", "c"].map((v) => (
-          <option key={v} value={v}>
-            {v}
-          </option>
-        ));
-        return withHandler ? (
-          <Select id="s" value={this.choice} onchange={this.refuse}>
-            {options}
-          </Select>
-        ) : (
-          <Select id="s" value={this.choice}>
-            {options}
+        return (
+          <Select id="s" value={this.choice} onchange={this.pick}>
+            {["a", "b", "c"].map((v) => (
+              <option key={v} value={v}>
+                {v}
+              </option>
+            ))}
           </Select>
         );
       }
     }
 
-    const app = await getDOM<Refusing>(<Refusing />);
+    const app = await getDOM<Picked>(<Picked />);
     await app.settle();
-
     const select = app.container.querySelector("#s") as HTMLSelectElement;
-    select.value = "c";
-    select.dispatchEvent(new Event("change", { bubbles: true }));
+    await pickAsABrowserDoes(select, "c");
     await app.settle();
 
-    expect(shown(app.container)).toEqual({ value: "a", index: 0 });
+    // The handler saw the user's pick, not a value put back by the `input` before it.
+    expect(read).toBe("c");
+    expect(shown(app.container)).toEqual(expected);
+  });
+
+  /** With no handler the model is not consulted: the select shows the user's pick. */
+  test("a select with no handler shows what the user picked", async () => {
+    class Plain extends Component {
+      @state choice = "a";
+      render() {
+        return (
+          <Select id="s" value={this.choice}>
+            {["a", "b", "c"].map((v) => (
+              <option key={v} value={v}>
+                {v}
+              </option>
+            ))}
+          </Select>
+        );
+      }
+    }
+    const app = await getDOM<Plain>(<Plain />);
+    await app.settle();
+    const select = app.container.querySelector("#s") as HTMLSelectElement;
+    await pickAsABrowserDoes(select, "c");
+    await app.settle();
+
+    expect(shown(app.container)).toEqual({ value: "c", index: 2 });
   });
 
   test("the option a select is showing survives an unrelated re-render", async () => {
@@ -426,3 +448,11 @@ describe("a caller's own ref", () => {
     expect(shown(app.container)).toEqual({ value: "b", index: 1 });
   });
 });
+
+/** One pick, as a browser sends it: `input`, then `change`, then the task ends. */
+async function pickAsABrowserDoes(select: HTMLSelectElement, value: string): Promise<void> {
+  select.value = value;
+  select.dispatchEvent(new Event("input", { bubbles: true }));
+  select.dispatchEvent(new Event("change", { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+}

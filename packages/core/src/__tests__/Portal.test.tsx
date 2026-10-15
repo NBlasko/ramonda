@@ -610,10 +610,39 @@ describe("Portal follows its props", () => {
     app.unmount();
   });
 
+  /** A new token for the same container is not a new target: nothing is reconciled again. */
+  test("a named target given a new token for the same container does not reconcile again", async () => {
+    const proto = ChildrenRegion.prototype as unknown as { reconcile(...args: unknown[]): void };
+    const original = proto.reconcile;
+    let reconciles = 0;
+    proto.reconcile = function (this: unknown, ...args: unknown[]) {
+      reconciles++;
+      original.apply(this, args);
+    };
+    class Page extends Component {
+      @state tick = 0;
+      portal = this.use(Portal, (self: Page) => ({ children: <b>x</b>, target: portalTarget("same"), n: self.tick }));
+      render() {
+        return <p>{this.tick}</p>;
+      }
+    }
+    const app = await getDOM<Page>(<Page />);
+    try {
+      await app.settle();
+      reconciles = 0;
+      app.instance.tick = 1;
+      await app.settle();
+    } finally {
+      proto.reconcile = original;
+    }
+
+    expect(reconciles).toBe(0);
+    app.unmount();
+  });
+
   /**
-   * A named target is looked up again on every factory run that hands over a token, so a container
-   * replaced under it — a layout that renders it, unmounted and mounted again — is the one the block
-   * moves to. `portalTarget` makes a new token every call, and the watch compares it by identity.
+   * A container replaced under the same name — a layout that renders it, unmounted and mounted
+   * again — is the one the block moves to: the watch compares the container the name finds now.
    */
   test("a named target's container replaced under it is followed", async () => {
     const first = document.createElement("div");

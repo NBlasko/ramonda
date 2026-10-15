@@ -1,5 +1,5 @@
 import type { Component } from "./Component";
-import { COMPONENT_RUNTIME } from "../core/runtime";
+import { COMPONENT_RUNTIME, GLOBAL_RUNTIME } from "../core/runtime";
 import type { ComponentChild, RamondaNode } from "../types/vdom";
 
 /**
@@ -47,4 +47,58 @@ export function forwarded(component: Component<any>, consumed: readonly string[]
     out[name] = props[name];
   }
   return out;
+}
+
+/** The events whose handler `answering` takes over: the two a field changes through. */
+const ANSWERED = ["oninput", "onchange"] as const;
+
+/**
+ * The handlers the app wrote for a field's `input` and `change`, each replaced by `listener` — which
+ * calls them through `answer`. A field with neither is given neither, and behaves as a plain element:
+ * it shows what the user put in, and the model is not consulted.
+ */
+// biome-ignore lint/suspicious/noExplicitAny: any component, whatever its props
+export function answering(component: Component<any>, listener: (event: Event) => void): Record<string, unknown> {
+  const { rawProps } = component[COMPONENT_RUNTIME];
+  const out: Record<string, unknown> = {};
+  for (const name of ANSWERED) if (typeof rawProps[name] === "function") out[name] = listener;
+  return out;
+}
+
+/** Components with a render already set for after the event that is being dispatched. */
+const queued = new WeakSet<object>();
+
+/**
+ * The app's handler for this event, and then the model's word.
+ *
+ * "Controlled" means the field shows what the model says. So after the page has changed the field,
+ * the handler the app wrote for this event runs — as a listener would, with the element as `this` —
+ * and then the component renders again, which runs `settle` with whatever the model now holds: a
+ * handler that took the input leaves the field as the user made it, and one that refused it puts the
+ * model's value back.
+ *
+ * **Only after an event the app handles.** A select fires `input` and then `change` for one pick, and a
+ * textarea fires `input` per keystroke and `change` on blur. Answering an event the app wrote nothing
+ * for put the old value back BEFORE the event it did write for: `<Select onchange>` read the old value
+ * and could not be changed, and `<TextArea onchange>` lost every keystroke.
+ *
+ * **After the whole event, not inside it.** Every listener on the way up — `<form oninput>` around the
+ * field — has to read what the user did, so the render is set for the next task, after dispatch has
+ * finished, and once however many of these events that task carried. A handler that throws still gets
+ * it: the field must not keep a value the model never took.
+ */
+// biome-ignore lint/suspicious/noExplicitAny: any component, whatever its props
+export function answer(component: Component<any>, event: Event): void {
+  const theirs = (component.props as unknown as Record<string, unknown>)[`on${event.type}`];
+  try {
+    if (typeof theirs === "function") theirs.call(event.currentTarget, event);
+  } finally {
+    if (!queued.has(component)) {
+      queued.add(component);
+      setTimeout(() => {
+        queued.delete(component);
+        component[GLOBAL_RUNTIME].reBuild();
+      }, 0);
+    }
+  }
 }

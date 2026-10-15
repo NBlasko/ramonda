@@ -22,7 +22,9 @@ whose callback changed, and markup past a budget of 500 values are all called di
 renders, as it did before.
 
 `Portal` now watches its `target` together with its `children`, and reconciles once when both
-change. It used to notice a new target through `children`, which a props factory rebuilt on every
+change; a named target (`portalTarget("modal")`) is watched by the container that carries the name,
+so a new token for the same container is no change and a container replaced under the name is
+followed. It used to notice a new target through `children`, which a props factory rebuilt on every
 run; with markup settled, a target change with the same children would otherwise not move the block.
 
 A `@watchProp` on `children`, or a `@compute` reading it, now runs only when the children say

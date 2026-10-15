@@ -119,8 +119,27 @@ export const enclosingRow: { current: RowScope | undefined } = { current: undefi
 export const enclosingHost: { current: ListHost | undefined } = { current: undefined };
 
 /**
+ * Runs `run` with `row` and `host` as the list context, and puts what was there back after — however
+ * `run` ends. The one place that saves and restores the two, so no entry into the diff can restore
+ * one and forget the other. A walk over a list's rows moves `enclosingRow` from row to row inside
+ * `run`; that is restored here too.
+ */
+export function inListContext<T>(row: RowScope | undefined, host: ListHost | undefined, run: () => T): T {
+  const outerRow = enclosingRow.current;
+  const outerHost = enclosingHost.current;
+  enclosingRow.current = row;
+  enclosingHost.current = host;
+  try {
+    return run();
+  } finally {
+    enclosingRow.current = outerRow;
+    enclosingHost.current = outerHost;
+  }
+}
+
+/**
  * Runs a reconcile or a hydration that starts a level of its own — a root, a component's own render,
- * a hook's block — outside any row and any region's host, and puts both back after.
+ * a hook's block — outside any row and any region's host.
  *
  * Every one of these entries runs from a drain today, where both are already empty; this makes that
  * a property of the entry rather than of the order things happen to run in. A root mounted, or a
@@ -128,16 +147,7 @@ export const enclosingHost: { current: ListHost | undefined } = { current: undef
  * their parent and that region's host.
  */
 export function atTopLevel<T>(run: () => T): T {
-  const row = enclosingRow.current;
-  const host = enclosingHost.current;
-  enclosingRow.current = undefined;
-  enclosingHost.current = undefined;
-  try {
-    return run();
-  } finally {
-    enclosingRow.current = row;
-    enclosingHost.current = host;
-  }
+  return inListContext(undefined, undefined, run);
 }
 
 /** What the engine needs from whoever owns the list. */

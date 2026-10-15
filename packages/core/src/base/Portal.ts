@@ -3,7 +3,7 @@ import { ownerRuntime } from "../core/renderEnv";
 import { GLOBAL_RUNTIME } from "../core/runtime";
 import { created, destroyed, watchProp } from "./decorators";
 import { ChildrenRegion, isOpenAnchor } from "../core/childrenRegion";
-import { isPortalTarget, resolvePortalTarget, type PortalTarget } from "./portalTarget";
+import { isPortalTarget, resolvePortalTarget, shownPortalContainer, type PortalTarget } from "./portalTarget";
 import type { RamondaNode } from "../types/vdom";
 
 export interface PortalProps {
@@ -120,7 +120,8 @@ export class Portal extends Hook<PortalProps> {
     if (!target) return undefined;
     if (!isPortalTarget(target)) return target;
 
-    if (this.resolvedFrom === target && this.resolvedTo !== undefined) return this.resolvedTo;
+    // The same name, and the container still on the page: a fresh token for it is not a new target.
+    if (this.resolvedFrom?.name === target.name && this.resolvedTo?.isConnected) return this.resolvedTo;
 
     // The side this render is for. `ownerRuntime` holds the reason it is read off the OWNER rather
     // than off a module flag, and there is no missing-owner case to decide: the field is required.
@@ -194,10 +195,11 @@ export class Portal extends Hook<PortalProps> {
    */
   @watchProp(
     (props: PortalProps) => props.children,
-    // By identity, a named target included: `portalTarget("modal")` is a new token every call, and
-    // each one is a chance to look the container up again — a layout that renders it may have been
-    // mounted again since, with a new element under the same name.
-    (props: PortalProps) => props.target,
+    // A named target by the container that carries the name now: `portalTarget("modal")` is a new
+    // token every call and that alone is no change, but a container replaced under the same name —
+    // a layout mounted again — is.
+    (props: PortalProps) =>
+      isPortalTarget(props.target) ? (shownPortalContainer(props.target.name) ?? props.target.name) : props.target,
   )
   replace(): void {
     this.reconcile();

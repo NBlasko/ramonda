@@ -335,14 +335,21 @@ describe("a caller's own ref on a textarea", () => {
 });
 
 /**
- * The model has the last word, at once: an input the handler does not take is undone as soon as the
- * handler returns, and one it takes stays.
+ * The model has the last word: after an event the app handles, the field shows what the model holds.
+ * Only after THAT event — a textarea saved on blur keeps every keystroke until `change` — and only
+ * after the whole event, so a listener on an ancestor reads what the user typed.
  */
-describe("a controlled textarea follows the model after every input", () => {
+describe("a controlled textarea follows the model after the event the app handles", () => {
+  const typed = async (field: HTMLTextAreaElement, text: string, events: string[]) => {
+    field.value = text;
+    for (const type of events) field.dispatchEvent(new Event(type, { bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  };
+
   test.each([
     ["refuses", "a", "a"],
     ["takes it", "typed", "typed"],
-  ])("a handler that %s", async (_how, model, expected) => {
+  ])("an oninput that %s", async (_how, model, expected) => {
     class Typed extends Component {
       @state text = "a";
       answer() {
@@ -354,12 +361,94 @@ describe("a controlled textarea follows the model after every input", () => {
     }
     const app = await getDOM<Typed>(<Typed />);
     await app.settle();
-
     const field = app.container.querySelector("#t") as HTMLTextAreaElement;
-    field.value = "typed";
-    field.dispatchEvent(new Event("input", { bubbles: true }));
+    await typed(field, "typed", ["input"]);
     await app.settle();
 
     expect(field.value).toBe(expected);
+  });
+
+  test("an onchange keeps every keystroke, and answers on change", async () => {
+    let committed = "";
+    class Draft extends Component {
+      @state text = "a";
+      commit(event: Event) {
+        committed = (event.target as HTMLTextAreaElement).value;
+      }
+      render() {
+        return <TextArea id="t" value={this.text} onchange={this.commit} />;
+      }
+    }
+    const app = await getDOM<Draft>(<Draft />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+
+    await typed(field, "typed", ["input"]);
+    await app.settle();
+    expect(field.value).toBe("typed");
+
+    await typed(field, "typed", ["change"]);
+    await app.settle();
+    // The handler read the text, did not take it, and the model's value is back.
+    expect(committed).toBe("typed");
+    expect(field.value).toBe("a");
+  });
+
+  test("a listener on an ancestor reads what the user typed", async () => {
+    let seen = "";
+    class Wrapped extends Component {
+      @state text = "a";
+      keep() {
+        this.text = "a";
+      }
+      sync(event: Event) {
+        seen = (event.target as HTMLTextAreaElement).value;
+      }
+      render() {
+        return (
+          <form oninput={this.sync}>
+            <TextArea id="t" value={this.text} oninput={this.keep} />
+          </form>
+        );
+      }
+    }
+    const app = await getDOM<Wrapped>(<Wrapped />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+    await typed(field, "typed", ["input"]);
+    await app.settle();
+
+    expect(seen).toBe("typed");
+    expect(field.value).toBe("a");
+  });
+
+  test("a handler that throws still has the model's value put back", async () => {
+    const errors: unknown[] = [];
+    const onError = (event: ErrorEvent) => {
+      errors.push(event.error);
+      event.preventDefault();
+    };
+    window.addEventListener("error", onError);
+    class Strict extends Component {
+      @state text = "a";
+      check() {
+        throw new Error("refused");
+      }
+      render() {
+        return <TextArea id="t" value={this.text} oninput={this.check} />;
+      }
+    }
+    try {
+      const app = await getDOM<Strict>(<Strict />);
+      await app.settle();
+      const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+      await typed(field, "typed", ["input"]);
+      await app.settle();
+
+      expect(field.value).toBe("a");
+      expect(errors).toHaveLength(1);
+    } finally {
+      window.removeEventListener("error", onError);
+    }
   });
 });

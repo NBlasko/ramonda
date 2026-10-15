@@ -56,6 +56,7 @@ import {
   enclosingRow,
   enclosingHost,
   atTopLevel,
+  inListContext,
   type LazyListNode,
   type ListHost,
   type RowScope,
@@ -1042,11 +1043,8 @@ export function reconcileEntries(
   let changed = false;
   let plainIndex = 0;
 
-  const outerRow = enclosingRow.current;
-  const outerHost = enclosingHost.current;
-  if (listHost !== undefined) enclosingHost.current = listHost;
   try {
-    reconcileChildren();
+    inListContext(enclosingRow.current, listHost ?? enclosingHost.current, reconcileChildren);
   } catch (e) {
     /**
      * The pass is over and its entries are going nowhere, so what it BUILT has to come back down
@@ -1060,9 +1058,6 @@ export function reconcileEntries(
       disposeRegions(born);
     }
     throw e;
-  } finally {
-    enclosingRow.current = outerRow;
-    enclosingHost.current = outerHost;
   }
 
   function reconcileChildren(): void {
