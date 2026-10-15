@@ -1,4 +1,5 @@
 import { Component } from "./Component";
+import { GLOBAL_RUNTIME } from "../core/runtime";
 import { createRef } from "./Ref";
 import { mounted, updated } from "./decorators";
 import { __h } from "../vdom/h";
@@ -88,6 +89,24 @@ export class TextArea extends Component<TextAreaProps> {
     field.value = String(this.props.value);
   }
 
+  /**
+   * The app's own handler, and then the model's word.
+   *
+   * "Controlled" means the field shows what the model says, so after the page has changed the field,
+   * the app is asked — its `oninput` / `onchange`, if it wrote one — and this component renders again,
+   * which runs `settle` with whatever the model now holds. A handler that took the input leaves the
+   * field as the user made it; one that refused puts the model's value back before anything is
+   * painted. With no handler the model never moves, so the field cannot be changed from the page.
+   * Waiting for some other render to correct it was what this replaced: the field showed a value the
+   * model had refused until the page happened to render again for another reason.
+   */
+  answered(event: Event): void {
+    const theirs = (this.props as unknown as Record<string, unknown>)[`on${event.type}`];
+    // Called as a listener would be, with the element as `this`.
+    if (typeof theirs === "function") theirs.call(event.currentTarget, event);
+    this[GLOBAL_RUNTIME].reBuild();
+  }
+
   render() {
     /**
      * Built through the factory rather than written as JSX, because `<textarea>` is refused and JSX
@@ -107,7 +126,12 @@ export class TextArea extends Component<TextAreaProps> {
      */
     return __h(
       "textarea",
-      { ...forwarded(this, ["value", "children", "ref"]), ref: this.e },
+      {
+        ...forwarded(this, ["value", "children", "ref", "oninput", "onchange"]),
+        oninput: this.answered,
+        onchange: this.answered,
+        ref: this.e,
+      },
       ...given(text || undefined),
     );
   }

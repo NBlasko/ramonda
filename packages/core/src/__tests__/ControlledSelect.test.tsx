@@ -94,6 +94,50 @@ describe("a controlled select shows what the model says", () => {
     expect(shown(app.container)).toEqual({ value: "a", index: 0 });
   });
 
+  /**
+   * "Controlled" means the model has the last word, at once. A handler that leaves the value where it
+   * was is a refusal, and the select shows the model's choice again as soon as the handler returns —
+   * not at some later render of the page. With no handler at all the model never moves, so the
+   * select cannot be changed from the page.
+   */
+  test.each([
+    ["a handler that refuses", true],
+    ["no handler at all", false],
+  ])("a pick the model does not take is put back at once — %s", async (_how, withHandler) => {
+    class Refusing extends Component {
+      @state choice = "a";
+      refuse() {
+        this.choice = "a";
+      }
+      render() {
+        const options = ["a", "b", "c"].map((v) => (
+          <option key={v} value={v}>
+            {v}
+          </option>
+        ));
+        return withHandler ? (
+          <Select id="s" value={this.choice} onchange={this.refuse}>
+            {options}
+          </Select>
+        ) : (
+          <Select id="s" value={this.choice}>
+            {options}
+          </Select>
+        );
+      }
+    }
+
+    const app = await getDOM<Refusing>(<Refusing />);
+    await app.settle();
+
+    const select = app.container.querySelector("#s") as HTMLSelectElement;
+    select.value = "c";
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+    await app.settle();
+
+    expect(shown(app.container)).toEqual({ value: "a", index: 0 });
+  });
+
   test("the option a select is showing survives an unrelated re-render", async () => {
     class WithNoise extends Component {
       @state choice = "b";

@@ -121,7 +121,7 @@ A `multiple` select takes a list, and keeps every value in it:
 ```tsx
 import { Select } from "@ramonda/core";
 
-<Select multiple aria-label="Tags" value={this.picked}>
+<Select multiple aria-label="Tags" value={this.picked} onchange={this.pickMany}>
   {this.all.map((v) => (
     <option key={v} value={v}>
       {v}
@@ -133,6 +133,11 @@ import { Select } from "@ramonda/core";
 On a server-rendered page the choice arrives as `selected` on the chosen option, because that is
 where HTML keeps it and a select has no `value` attribute to carry. The reader sees the right option
 before any script runs.
+
+**The model has the last word.** After every `change` and `input`, a `Select` or a `TextArea` asks
+your handler and then shows whatever the model holds. A handler that takes the input leaves the field
+as the user made it; one that leaves the value where it was puts it back at once. A field with a
+`value` and no handler is one the page cannot change — the model never moves.
 
 ### `TextArea` — a `<textarea>` keeps its value inside the element
 

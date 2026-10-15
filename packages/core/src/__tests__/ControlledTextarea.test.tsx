@@ -333,3 +333,33 @@ describe("a caller's own ref on a textarea", () => {
     expect(app.instance.mine.current).toBe(app.container.querySelector("#t"));
   });
 });
+
+/**
+ * The model has the last word, at once: an input the handler does not take is undone as soon as the
+ * handler returns, and one it takes stays.
+ */
+describe("a controlled textarea follows the model after every input", () => {
+  test.each([
+    ["refuses", "a", "a"],
+    ["takes it", "typed", "typed"],
+  ])("a handler that %s", async (_how, model, expected) => {
+    class Typed extends Component {
+      @state text = "a";
+      answer() {
+        this.text = model;
+      }
+      render() {
+        return <TextArea id="t" value={this.text} oninput={this.answer} />;
+      }
+    }
+    const app = await getDOM<Typed>(<Typed />);
+    await app.settle();
+
+    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+    field.value = "typed";
+    field.dispatchEvent(new Event("input", { bubbles: true }));
+    await app.settle();
+
+    expect(field.value).toBe(expected);
+  });
+});
