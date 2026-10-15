@@ -132,6 +132,10 @@ an HTTP client wants:
 { retry: (failureCount, error) => error instanceof HttpError && error.status >= 500 }
 ```
 
+`retry: false` turns retrying off, for a fetch that can never succeed on a second try — a link that
+fails to decode, a 404. `retry: true` means what leaving it out means: the client's default, or 3.
+So a condition reads as it should: `retry: !permanent`.
+
 **`error` is always an `Error`.** A fetcher is your code and may reject with anything — a string
 after a validation, a status number, an object parsed out of a JSON error body — so a rejection that
 is not an `Error` is wrapped in one, and the value it was is kept on `cause`:

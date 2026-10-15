@@ -106,6 +106,38 @@ describe("failure", () => {
     expect(client.peek(["k"])!.failureCount).toBe(3);
   });
 
+  /**
+   * `false` is "no retries" and `true` is "retry as you would anyway". `retry: false` is the habit people
+   * bring, and it was a type error a screen long, ending in the one line that said why. A boolean, not
+   * only `false`: a literal `false` in a props object nothing pins widens to `boolean`, so `false` alone
+   * would have been refused all the same.
+   */
+  test("false is no retries, and true is whatever would have happened without the option", async () => {
+    const failing = () =>
+      vi.fn(async () => {
+        throw new Error("nope");
+      });
+
+    const client = new QueryClient({ defaults: { retry: 2, retryDelay: 0 } });
+    const off = failing();
+    await client.fetch(["off"], off, { retry: false });
+    expect(off).toHaveBeenCalledTimes(1);
+
+    const on = failing();
+    await client.fetch(["on"], on, { retry: true });
+    expect(on).toHaveBeenCalledTimes(3); // the client's 2, after the first
+
+    const neverByDefault = new QueryClient({ defaults: { retry: false, retryDelay: 0 } });
+    const quiet = failing();
+    await neverByDefault.fetch(["quiet"], quiet);
+    expect(quiet).toHaveBeenCalledTimes(1);
+
+    const yesByDefault = new QueryClient({ defaults: { retry: true, retryDelay: 0 } });
+    const loud = failing();
+    await yesByDefault.fetch(["loud"], loud, { retry: true });
+    expect(loud).toHaveBeenCalledTimes(4); // the built-in 3, after the first
+  });
+
   test("a retry predicate decides per failure", async () => {
     const client = new QueryClient({
       defaults: {

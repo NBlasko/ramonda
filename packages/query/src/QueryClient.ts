@@ -14,6 +14,7 @@ import type {
   ResolvedObserverOptions,
   RetryDelayPolicy,
   RetryPolicy,
+  ResolvedRetryPolicy,
 } from "./types";
 
 export interface QueryClientOptions {
@@ -87,7 +88,7 @@ export class QueryClient {
     this.defaults = {
       staleTime: given.staleTime ?? DEFAULT_STALE_TIME,
       gcTime: given.gcTime ?? DEFAULT_GC_TIME,
-      retry: given.retry ?? DEFAULT_RETRY,
+      retry: resolveRetry(given.retry, DEFAULT_RETRY),
       retryDelay: given.retryDelay ?? defaultRetryDelay,
       // On by default. Measured against the render it prevents: 28 µs of comparison versus
       // 5.4 ms of commit for ten rows, 811 µs versus 272 ms for a thousand — see
@@ -109,7 +110,7 @@ export class QueryClient {
     return {
       staleTime: options.staleTime ?? this.defaults.staleTime,
       gcTime: options.gcTime ?? this.defaults.gcTime,
-      retry: options.retry ?? this.defaults.retry,
+      retry: resolveRetry(options.retry, this.defaults.retry),
       retryDelay: options.retryDelay ?? this.defaults.retryDelay,
       structuralSharing: options.structuralSharing ?? this.defaults.structuralSharing,
     };
@@ -530,7 +531,14 @@ export class QueryClient {
   }
 }
 
-function shouldRetry(policy: RetryPolicy, failureCount: number, error: Error): boolean {
+/** `false` is none, and `true` or nothing is the fallback — what would have happened anyway. */
+function resolveRetry(policy: RetryPolicy | undefined, fallback: ResolvedRetryPolicy): ResolvedRetryPolicy {
+  if (policy === false) return 0;
+  if (policy === true || policy === undefined) return fallback;
+  return policy;
+}
+
+function shouldRetry(policy: ResolvedRetryPolicy, failureCount: number, error: Error): boolean {
   if (typeof policy === "function") return policy(failureCount, error);
   return failureCount <= policy;
 }

@@ -45,8 +45,17 @@ export type QueryFetcher<TData, K extends QueryKey = QueryKey> = (ctx: FetchCont
  *
  * A number is a count; a predicate decides per failure, which is what an HTTP
  * client wants — a 404 will never succeed on the third attempt, a 503 might.
+ * `false` is no retries, and `true` is what would have happened without the
+ * option: the client's default, or 3.
+ *
+ * A boolean, and not `false` alone: `retry: false` is the habit people bring, and
+ * a literal `false` in a props object nothing pins widens to `boolean`, so `false`
+ * alone was refused all the same — with the error on `this.use`, a screen long.
  */
-export type RetryPolicy = number | ((failureCount: number, error: Error) => boolean);
+export type RetryPolicy = boolean | number | ((failureCount: number, error: Error) => boolean);
+
+/** A retry policy with the booleans resolved — what a fetch actually runs by. */
+export type ResolvedRetryPolicy = Exclude<RetryPolicy, boolean>;
 
 /** Milliseconds before attempt `failureCount + 1`. */
 export type RetryDelayPolicy = number | ((failureCount: number, error: Error) => number);
@@ -93,7 +102,7 @@ export interface QueryBehaviour {
    * shown immediately, and refreshed in the background if it is stale.
    */
   gcTime?: number;
-  /** Retries after a failed fetch. Defaults to 3 attempts after the first. */
+  /** Retries after a failed fetch. Defaults to 3 attempts after the first; `false` is none. */
   retry?: RetryPolicy;
   /**
    * Delay before a retry. Defaults to exponential backoff capped at 30s —
@@ -136,7 +145,7 @@ export type QueryObserver = (event: QueryEvent) => void;
 export interface ResolvedFetchOptions {
   staleTime: number;
   gcTime: number;
-  retry: RetryPolicy;
+  retry: ResolvedRetryPolicy;
   retryDelay: RetryDelayPolicy;
   structuralSharing: boolean;
 }
