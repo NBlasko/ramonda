@@ -368,30 +368,110 @@ describe("a controlled textarea follows the model after the event the app handle
     expect(field.value).toBe(expected);
   });
 
-  test("an onchange keeps every keystroke, and answers on change", async () => {
+  /**
+   * A field whose text is only where it starts takes `defaultValue`: every keystroke stays, the app's
+   * handlers run as plain listeners, and a later `defaultValue` does not reach a field the user typed in.
+   */
+  test("a defaultValue field keeps what the user types", async () => {
     let committed = "";
     class Draft extends Component {
-      @state text = "a";
+      @state start = "a";
       commit(event: Event) {
         committed = (event.target as HTMLTextAreaElement).value;
       }
       render() {
-        return <TextArea id="t" value={this.text} onchange={this.commit} />;
+        return <TextArea id="t" defaultValue={this.start} onchange={this.commit} />;
       }
     }
     const app = await getDOM<Draft>(<Draft />);
     await app.settle();
     const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+    expect(field.value).toBe("a");
 
-    await typed(field, "typed", ["input"]);
+    await typed(field, "typed", ["input", "change"]);
     await app.settle();
+    expect(committed).toBe("typed");
     expect(field.value).toBe("typed");
 
-    await typed(field, "typed", ["change"]);
+    app.instance.start = "b";
     await app.settle();
-    // The handler read the text, did not take it, and the model's value is back.
-    expect(committed).toBe("typed");
+    expect(field.value).toBe("typed");
+  });
+
+  /** A `value` with only `onchange`: the model does not move while typing, so each keystroke is undone. */
+  test("a value with only onchange is held between keystrokes", async () => {
+    class Held extends Component {
+      @state text = "a";
+      commit() {}
+      render() {
+        return <TextArea id="t" value={this.text} onchange={this.commit} />;
+      }
+    }
+    const app = await getDOM<Held>(<Held />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+    await typed(field, "typed", ["input"]);
+    await app.settle();
+
     expect(field.value).toBe("a");
+  });
+
+  /**
+   * An input method builds a character over several `input` events; putting the old value back
+   * between them cancels it. The field is settled when the composition ends.
+   */
+  test("a composition is left alone until it ends", async () => {
+    class Composed extends Component {
+      @state text = "a";
+      keep() {
+        this.text = "a";
+      }
+      render() {
+        return <TextArea id="t" value={this.text} oninput={this.keep} />;
+      }
+    }
+    const app = await getDOM<Composed>(<Composed />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+
+    field.value = "ka";
+    field.dispatchEvent(new InputEvent("input", { bubbles: true, isComposing: true }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await app.settle();
+    expect(field.value).toBe("ka");
+
+    field.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "か" }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await app.settle();
+    expect(field.value).toBe("a");
+  });
+
+  /** A handler that removes the field leaves nothing to settle, and nothing is reported. */
+  test("a field its handler removes is left alone", async () => {
+    const codes: string[] = [];
+    globalThis.__RAMONDA_DIAGNOSTICS__ = (record) => codes.push(record.code);
+    class Inline extends Component {
+      @state editing = true;
+      @state text = "a";
+      done(event: Event) {
+        this.text = (event.target as HTMLTextAreaElement).value;
+        this.editing = false;
+      }
+      render() {
+        return this.editing ? <TextArea id="t" value={this.text} oninput={this.done} /> : <p>{this.text}</p>;
+      }
+    }
+    try {
+      const app = await getDOM<Inline>(<Inline />);
+      await app.settle();
+      await typed(app.container.querySelector("#t") as HTMLTextAreaElement, "typed", ["input"]);
+      await app.settle();
+
+      expect(app.container.textContent).toBe("typed");
+      expect(codes).toEqual([]);
+    } finally {
+      globalThis.__RAMONDA_DIAGNOSTICS__ = undefined;
+    }
   });
 
   test("a listener on an ancestor reads what the user typed", async () => {

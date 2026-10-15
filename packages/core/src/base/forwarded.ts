@@ -1,5 +1,5 @@
 import type { Component } from "./Component";
-import { COMPONENT_RUNTIME, GLOBAL_RUNTIME } from "../core/runtime";
+import { COMPONENT_RUNTIME } from "../core/runtime";
 import type { ComponentChild, RamondaNode } from "../types/vdom";
 
 /**
@@ -49,55 +49,62 @@ export function forwarded(component: Component<any>, consumed: readonly string[]
   return out;
 }
 
-/** The events whose handler `answering` takes over: the two a field changes through. */
-const ANSWERED = ["oninput", "onchange"] as const;
+/** The events a controlled field answers: the two it changes through, and the end of a composition. */
+const ANSWERED = ["oninput", "onchange", "oncompositionend"] as const;
 
 /**
- * The handlers the app wrote for a field's `input` and `change`, each replaced by `listener` — which
- * calls them through `answer`. A field with neither is given neither, and behaves as a plain element:
- * it shows what the user put in, and the model is not consulted.
+ * What a field's element is given for a CONTROLLED field — one with a `value` — and the names of the
+ * app's handlers that moves: `listener` on every answered event, calling the app's own through
+ * `answer`. A handler spelled another way (`onInput`, `on:input`) is a listener of its own beside it,
+ * which is the same thing, since the field is settled after the whole event either way. A field
+ * without a `value` is given nothing: with `defaultValue`, or with neither, the page owns what it shows.
  */
 // biome-ignore lint/suspicious/noExplicitAny: any component, whatever its props
-export function answering(component: Component<any>, listener: (event: Event) => void): Record<string, unknown> {
-  const { rawProps } = component[COMPONENT_RUNTIME];
-  const out: Record<string, unknown> = {};
-  for (const name of ANSWERED) if (typeof rawProps[name] === "function") out[name] = listener;
-  return out;
+export function controlled(component: Component<any>, listener: (event: Event) => void) {
+  if (component[COMPONENT_RUNTIME].rawProps["value"] === undefined) return { replaced: [] as string[], listeners: {} };
+  return {
+    replaced: [...ANSWERED],
+    listeners: { oninput: listener, onchange: listener, oncompositionend: listener },
+  };
 }
 
-/** Components with a render already set for after the event that is being dispatched. */
+/** Fields with a settle already set for after the event that is being dispatched. */
 const queued = new WeakSet<object>();
 
 /**
  * The app's handler for this event, and then the model's word.
  *
- * "Controlled" means the field shows what the model says. So after the page has changed the field,
- * the handler the app wrote for this event runs — as a listener would, with the element as `this` —
- * and then the component renders again, which runs `settle` with whatever the model now holds: a
- * handler that took the input leaves the field as the user made it, and one that refused it puts the
- * model's value back.
+ * A field with a `value` shows what the model says. So after the page has changed it, the handler
+ * the app wrote for this event runs — as a listener would, with the element as `this` — and then the
+ * field is settled from whatever the model now holds: a handler that took the input leaves the field
+ * as the user made it, and one that did not puts the model's value back. A field whose text is only
+ * where it starts takes `defaultValue` instead, and is never put back.
  *
- * **Only after an event the app handles.** A select fires `input` and then `change` for one pick, and a
- * textarea fires `input` per keystroke and `change` on blur. Answering an event the app wrote nothing
- * for put the old value back BEFORE the event it did write for: `<Select onchange>` read the old value
- * and could not be changed, and `<TextArea onchange>` lost every keystroke.
+ * **After the whole event, not inside it.** A select fires `input` and then `change` for one pick, and
+ * every listener on the way up — `<form oninput>` around the field — has to read what the user did; so
+ * the settle is set for the next task, after dispatch has finished, and once however many events that
+ * task carried. Answering inside the event put the old value back before `change` was read, and before
+ * an ancestor saw the input — measured by typing in Chromium.
  *
- * **After the whole event, not inside it.** Every listener on the way up — `<form oninput>` around the
- * field — has to read what the user did, so the render is set for the next task, after dispatch has
- * finished, and once however many of these events that task carried. A handler that throws still gets
- * it: the field must not keep a value the model never took.
+ * **Not in the middle of a composition.** An input method builds a character over several `input`
+ * events, and putting the old value back between them cancels it; the field is settled when the
+ * composition ends.
+ *
+ * **Only the value is written** — `settle`, not a render: nothing else about the field changed. A
+ * field its handler removed has no element left, and `settle` finds nothing to write. A handler that
+ * throws still has the value put back: the field must not keep what the model never took.
  */
 // biome-ignore lint/suspicious/noExplicitAny: any component, whatever its props
-export function answer(component: Component<any>, event: Event): void {
-  const theirs = (component.props as unknown as Record<string, unknown>)[`on${event.type}`];
+export function answer(component: Component<any> & { settle(): void }, event: Event): void {
+  const theirs = component[COMPONENT_RUNTIME].rawProps[`on${event.type}`];
   try {
     if (typeof theirs === "function") theirs.call(event.currentTarget, event);
   } finally {
-    if (!queued.has(component)) {
+    if (!(event as InputEvent).isComposing && !queued.has(component)) {
       queued.add(component);
       setTimeout(() => {
         queued.delete(component);
-        component[GLOBAL_RUNTIME].reBuild();
+        component.settle();
       }, 0);
     }
   }

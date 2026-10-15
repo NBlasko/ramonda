@@ -64,14 +64,19 @@ function isMarkupNode(value: unknown): value is MarkupNode {
   return isVNode(value) && Object.hasOwn(value, ORIGIN_SYM);
 }
 
-/** The children array JSX handed a component, as opposed to an array the app passed as `children={…}`. */
+/**
+ * The children array JSX handed a component, as opposed to an array the app passed as `children={…}`.
+ * Asked only of a value under the key `children`: DEV brands every array `normalizeChildren` builds,
+ * production only a component's children, and asking anywhere else would compare differently in the
+ * two builds.
+ */
 function isJsxChildren(value: unknown): value is unknown[] {
   return Array.isArray(value) && (value as { [OWN_CHILDREN]?: boolean })[OWN_CHILDREN] === true;
 }
 
-/** Something this comparison may open: what the framework built. */
-function isOpenable(value: unknown): boolean {
-  return isMarkupNode(value) || isListNode(value) || isJsxChildren(value);
+/** Something this comparison may open, under this key: what the framework built. */
+function isOpenable(key: string, value: unknown): boolean {
+  return isMarkupNode(value) || isListNode(value) || (key === "children" && isJsxChildren(value));
 }
 
 function same(a: unknown, b: unknown, walk: Walk): boolean {
@@ -107,10 +112,14 @@ function same(a: unknown, b: unknown, walk: Walk): boolean {
     return x.owner === y.owner && sameMembers(x.vnodes ?? [], y.vnodes ?? [], walk);
   }
 
-  if (isJsxChildren(a)) return isJsxChildren(b) && sameMembers(a, b, walk);
-
   // Anything the app built, by reference — which `Object.is` above has already answered.
   return false;
+}
+
+/** One value under its key: JSX's `children` array member by member, anything else as `same`. */
+function sameUnder(key: string, a: unknown, b: unknown, walk: Walk): boolean {
+  if (key === "children" && isJsxChildren(a) && isJsxChildren(b)) return sameMembers(a, b, walk);
+  return same(a, b, walk);
 }
 
 /** Every member equal: the members of something the framework built. */
@@ -118,7 +127,7 @@ function sameMembers(a: object, b: object, walk: Walk): boolean {
   const keys = Object.keys(a);
   if (keys.length !== Object.keys(b).length) return false;
   for (const key of keys) {
-    if (!Object.hasOwn(b, key) || !same((a as Bag)[key], (b as Bag)[key], walk)) return false;
+    if (!Object.hasOwn(b, key) || !sameUnder(key, (a as Bag)[key], (b as Bag)[key], walk)) return false;
   }
   return true;
 }
@@ -127,8 +136,8 @@ function sameMembers(a: object, b: object, walk: Walk): boolean {
  * Whether two values are markup that says the same — the question `settleMarkup` asks of one prop,
  * for a caller that has one pair. RMD022 uses it to stay quiet about what the runtime settles.
  */
-export function isSameMarkup(a: unknown, b: unknown): boolean {
-  return isOpenable(a) && isOpenable(b) && same(a, b, { budget: BUDGET });
+export function isSameMarkup(key: string, a: unknown, b: unknown): boolean {
+  return isOpenable(key, a) && isOpenable(key, b) && sameUnder(key, a, b, { budget: BUDGET });
 }
 
 /**
@@ -149,14 +158,14 @@ export function settleMarkup(next: Bag, prev: Bag | undefined): Bag {
     const value = next[key];
     const before = prev[key];
     if (Object.is(value, before) || !Object.hasOwn(prev, key)) continue;
-    if (isOpenable(value) && isOpenable(before)) (open ??= []).push(key);
+    if (isOpenable(key, value) && isOpenable(key, before)) (open ??= []).push(key);
   }
   if (open === undefined) return next;
 
   const walk: Walk = { budget: BUDGET };
   let settled: Bag | undefined;
   for (const key of open) {
-    if (same(next[key], prev[key], walk)) (settled ??= { ...next })[key] = prev[key];
+    if (sameUnder(key, next[key], prev[key], walk)) (settled ??= { ...next })[key] = prev[key];
   }
   return settled ?? next;
 }

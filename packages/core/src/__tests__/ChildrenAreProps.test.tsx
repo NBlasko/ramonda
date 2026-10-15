@@ -29,6 +29,9 @@ import { StableProps, state, watchProp } from "../base/decorators";
  */
 let renders = 0;
 
+/** An element vnode's own children array — built by `normalizeChildren`. */
+const elementChildren = (node: unknown) => (node as { children: unknown[] }).children;
+
 /** Built once, outside any render. */
 const BUILT_OUTSIDE = <b>x</b>;
 
@@ -325,6 +328,28 @@ describe("markup handed down settles when it says the same", () => {
     expect(renders).toBe(0);
     expect(dom.container.querySelector("i")?.textContent).toBe("a");
     dom.unmount();
+  });
+
+  /**
+   * A framework-built array under any other key is the app's to hand around, and is compared by
+   * reference — in a development build too, where every array `normalizeChildren` builds is branded,
+   * and not only a component's `children` as in production.
+   */
+  test("a framework-built array under another key is compared by reference in every build", async () => {
+    expect(
+      await childRendersOver(
+        owner(() => (
+          <Slotted
+            view={Header}
+            data={elementChildren(
+              <p>
+                <b>x</b>
+              </p>,
+            )}
+          />
+        )),
+      ),
+    ).toBe(4);
   });
 
   /** One budget per bag; past it the answer is "different", which renders — never a stale page. */

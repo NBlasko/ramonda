@@ -2,7 +2,7 @@ import { Component } from "./Component";
 import { createRef } from "./Ref";
 import { mounted, updated } from "./decorators";
 import { __h } from "../vdom/h";
-import { answer, answering, forwarded, given } from "./forwarded";
+import { answer, controlled, forwarded, given } from "./forwarded";
 import type { RamondaNode, RenderEnv } from "../types/vdom";
 import type { RefTarget } from "./Ref";
 
@@ -36,8 +36,16 @@ export interface SelectProps {
    */
   // biome-ignore lint/suspicious/noExplicitAny: the same latitude the tag's own type gives
   [attribute: Lowercase<string>]: any;
-  /** Which option is showing. An array for a `multiple` select, which holds more than one. */
-  value: string | number | readonly (string | number)[];
+  /**
+   * Which option is showing, held by the model: after every pick the select shows this again, so a
+   * handler that does not move it undoes the pick. An array for a `multiple` select.
+   */
+  value?: string | number | readonly (string | number)[];
+  /**
+   * Which option shows FIRST, after which the select is the user's: it is never put back. For a
+   * select whose choice is read when the form is sent rather than held in state. Not with `value`.
+   */
+  defaultValue?: string | number | readonly (string | number)[];
   children?: RamondaNode;
   className?: string;
   key?: string | number;
@@ -57,6 +65,9 @@ export class Select extends Component<SelectProps> {
    * at all.
    */
   private e = createRef<HTMLSelectElement>((node) => this.g(node));
+
+  /** `d` — whether `defaultValue` has been applied: once, at mount, and never again. */
+  private d = false;
 
   /** `h` — the caller's ref as of the last HAND-OVER, so a swapped one can be let go of. */
   private h: RefTarget<HTMLSelectElement> | undefined;
@@ -99,7 +110,14 @@ export class Select extends Component<SelectProps> {
     if (this.h !== this.props.ref) this.g(select);
 
     const onServer = env === "server";
-    const chosen = this.props.value;
+    // `value` every time; `defaultValue` once, when the select first has its options.
+    let chosen = this.props.value;
+    if (chosen === undefined) {
+      if (this.d) return;
+      this.d = true;
+      chosen = this.props.defaultValue;
+      if (chosen === undefined) return;
+    }
 
     // One write, and the browser works out which option it means. A `multiple` select has no single
     // value to write, and the server cannot write a property at all, so both answer per option.
@@ -121,7 +139,7 @@ export class Select extends Component<SelectProps> {
     }
   }
 
-  /** The field's `input` / `change` listener — see `answer` in `forwarded.ts`. */
+  /** The listener a controlled select answers its events with — see `answer` in `forwarded.ts`. */
   a(event: Event): void {
     answer(this, event);
   }
@@ -133,13 +151,10 @@ export class Select extends Component<SelectProps> {
      * there is nothing to suppress: the refusal keeps meaning exactly what it says at every call
      * site that writes the tag, and this one does not write it.
      */
+    const field = controlled(this, this.a);
     return __h(
       "select",
-      {
-        ...forwarded(this, ["value", "children", "ref", "oninput", "onchange"]),
-        ...answering(this, this.a),
-        ref: this.e,
-      },
+      { ...forwarded(this, ["value", "defaultValue", "children", "ref", ...field.replaced]), ...field.listeners, ref: this.e },
       ...given(this.props.children),
     );
   }

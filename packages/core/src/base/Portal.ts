@@ -105,11 +105,12 @@ export class Portal extends Hook<PortalProps> {
   /**
    * The last token this resolved, and what it resolved to.
    *
-   * Cached because resolving a token on the client is a document query and, when
-   * nothing has emitted the container, an append — repeating that on every
-   * reconcile would search the document for a node it already holds, and a
-   * container removed from under it would be replaced by a second one rather
-   * than reported.
+   * On the client the page is asked first: the container that carries the name NOW is the target,
+   * so one a layout mounted again — or one that was still detached when this last reconciled, and
+   * was replaced by an appended one in the meantime — is where the block goes as soon as it is
+   * there. Only when the page has none is the one this portal appended kept, rather than a second
+   * one appended on every reconcile. A reconcile runs only when `children` or that container
+   * changed, so the query is not on every render.
    */
   private resolvedFrom: PortalTarget | undefined;
   private resolvedTo: Element | undefined;
@@ -120,12 +121,14 @@ export class Portal extends Hook<PortalProps> {
     if (!target) return undefined;
     if (!isPortalTarget(target)) return target;
 
-    // The same name, and the container still on the page: a fresh token for it is not a new target.
-    if (this.resolvedFrom?.name === target.name && this.resolvedTo?.isConnected) return this.resolvedTo;
-
     // The side this render is for. `ownerRuntime` holds the reason it is read off the OWNER rather
     // than off a module flag, and there is no missing-owner case to decide: the field is required.
     const onServer = ownerRuntime(this).env === "server";
+    if (!onServer) {
+      const shown = shownPortalContainer(target.name);
+      if (shown !== null) return (this.resolvedTo = shown);
+      if (this.resolvedFrom?.name === target.name && this.resolvedTo?.isConnected) return this.resolvedTo;
+    }
     this.resolvedFrom = target;
     this.resolvedTo = resolvePortalTarget(target, onServer);
     return this.resolvedTo;

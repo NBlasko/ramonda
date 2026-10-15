@@ -2,7 +2,7 @@ import { Component } from "./Component";
 import { createRef } from "./Ref";
 import { mounted, updated } from "./decorators";
 import { __h } from "../vdom/h";
-import { answer, answering, forwarded, given } from "./forwarded";
+import { answer, controlled, forwarded, given } from "./forwarded";
 import type { RefTarget } from "./Ref";
 
 /**
@@ -33,8 +33,16 @@ export interface TextAreaProps {
    */
   // biome-ignore lint/suspicious/noExplicitAny: the same latitude the tag's own type gives
   [attribute: Lowercase<string>]: any;
-  /** What the field holds. */
-  value: string | number;
+  /**
+   * What the field holds, held by the model: after every input the field shows this again, so a
+   * handler that does not move it undoes the keystroke.
+   */
+  value?: string | number;
+  /**
+   * What the field holds FIRST, after which it is the user's: it is never put back. For a field whose
+   * text is read when the form is sent rather than held in state. Not with `value`.
+   */
+  defaultValue?: string | number;
   className?: string;
   key?: string | number;
   ref?: RefTarget<HTMLTextAreaElement>;
@@ -51,6 +59,9 @@ export class TextArea extends Component<TextAreaProps> {
    * from ever being applied.
    */
   private e = createRef<HTMLTextAreaElement>((node) => this.g(node));
+
+  /** `t` — the text `defaultValue` gave the field at its first render. */
+  private t: string | undefined;
 
   /** `h` — the caller's ref as of the last HAND-OVER, so a swapped one can be let go of. */
   private h: RefTarget<HTMLTextAreaElement> | undefined;
@@ -85,10 +96,12 @@ export class TextArea extends Component<TextAreaProps> {
      */
     if (this.h !== this.props.ref) this.g(field);
 
+    // A `defaultValue` field is the user's: its text child said where it starts, and nothing more.
+    if (this.props.value === undefined) return;
     field.value = String(this.props.value);
   }
 
-  /** The field's `input` / `change` listener — see `answer` in `forwarded.ts`. */
+  /** The listener a controlled field answers its events with — see `answer` in `forwarded.ts`. */
   a(event: Event): void {
     answer(this, event);
   }
@@ -100,7 +113,10 @@ export class TextArea extends Component<TextAreaProps> {
      * there is nothing to suppress: the refusal keeps meaning exactly what it says at every call
      * site that writes the tag, and this one does not write it.
      */
-    const text = String(this.props.value);
+    // `value` every render; `defaultValue` as it was at the FIRST — the text child is where a
+    // textarea's default lives, and a later one must not reach a field the user has typed in.
+    this.t ??= String(this.props.defaultValue ?? "");
+    const text = this.props.value === undefined ? this.t : String(this.props.value);
 
     /**
      * An EMPTY value is no child at all, not a child that is the empty string.
@@ -110,13 +126,10 @@ export class TextArea extends Component<TextAreaProps> {
      * node disagrees with it. Measured: RMD007, *rendered the text "" but the server sent nothing* —
      * a report about correct markup, which is the worst kind.
      */
+    const field = controlled(this, this.a);
     return __h(
       "textarea",
-      {
-        ...forwarded(this, ["value", "children", "ref", "oninput", "onchange"]),
-        ...answering(this, this.a),
-        ref: this.e,
-      },
+      { ...forwarded(this, ["value", "defaultValue", "children", "ref", ...field.replaced]), ...field.listeners, ref: this.e },
       ...given(text || undefined),
     );
   }

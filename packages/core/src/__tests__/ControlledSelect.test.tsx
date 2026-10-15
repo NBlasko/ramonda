@@ -135,9 +135,9 @@ describe("a controlled select shows what the model says", () => {
     expect(shown(app.container)).toEqual(expected);
   });
 
-  /** With no handler the model is not consulted: the select shows the user's pick. */
-  test("a select with no handler shows what the user picked", async () => {
-    class Plain extends Component {
+  /** A `value` with no handler is held by a model that never moves: the pick is undone. */
+  test("a select with a value and no handler cannot be changed from the page", async () => {
+    class Held extends Component {
       @state choice = "a";
       render() {
         return (
@@ -151,12 +151,87 @@ describe("a controlled select shows what the model says", () => {
         );
       }
     }
-    const app = await getDOM<Plain>(<Plain />);
+    const app = await getDOM<Held>(<Held />);
     await app.settle();
-    const select = app.container.querySelector("#s") as HTMLSelectElement;
-    await pickAsABrowserDoes(select, "c");
+    await pickAsABrowserDoes(app.container.querySelector("#s") as HTMLSelectElement, "c");
     await app.settle();
 
+    expect(shown(app.container)).toEqual({ value: "a", index: 0 });
+  });
+
+  /**
+   * `defaultValue` is where the select starts, and after that it is the user's: a pick stays, the
+   * app's handler still runs as a plain listener, and a later `defaultValue` changes nothing.
+   */
+  test("a defaultValue select starts there and keeps what the user picks", async () => {
+    let read = "";
+    class Free extends Component {
+      @state start = "b";
+      note(event: Event) {
+        read = (event.target as HTMLSelectElement).value;
+      }
+      render() {
+        return (
+          <Select id="s" defaultValue={this.start} onchange={this.note}>
+            {["a", "b", "c"].map((v) => (
+              <option key={v} value={v}>
+                {v}
+              </option>
+            ))}
+          </Select>
+        );
+      }
+    }
+    const app = await getDOM<Free>(<Free />);
+    await app.settle();
+    expect(shown(app.container)).toEqual({ value: "b", index: 1 });
+
+    await pickAsABrowserDoes(app.container.querySelector("#s") as HTMLSelectElement, "c");
+    await app.settle();
+    expect(read).toBe("c");
+    expect(shown(app.container)).toEqual({ value: "c", index: 2 });
+
+    app.instance.start = "a";
+    await app.settle();
+    expect(shown(app.container)).toEqual({ value: "c", index: 2 });
+  });
+
+  /**
+   * After a pick the model took, the select is settled — one write — and not rendered again: the one
+   * render is the one its new `value` causes.
+   */
+  test("a taken pick renders the select once", async () => {
+    let renders = 0;
+    class Counted extends Select {
+      override render() {
+        renders++;
+        return super.render();
+      }
+    }
+    class Picked extends Component {
+      @state choice = "a";
+      pick(event: Event) {
+        this.choice = (event.target as HTMLSelectElement).value;
+      }
+      render() {
+        return (
+          <Counted id="s" value={this.choice} onchange={this.pick}>
+            {["a", "b", "c"].map((v) => (
+              <option key={v} value={v}>
+                {v}
+              </option>
+            ))}
+          </Counted>
+        );
+      }
+    }
+    const app = await getDOM<Picked>(<Picked />);
+    await app.settle();
+    renders = 0;
+    await pickAsABrowserDoes(app.container.querySelector("#s") as HTMLSelectElement, "c");
+    await app.settle();
+
+    expect(renders).toBe(1);
     expect(shown(app.container)).toEqual({ value: "c", index: 2 });
   });
 

@@ -135,7 +135,7 @@ export function checkPropsStability(
 
     // Markup that says the same is settled by the runtime, which hands the hook back the old node —
     // nothing here for the app to fix. See `helpers/settleMarkup.ts`.
-    if (isSameMarkup(a, b)) {
+    if (isSameMarkup(key, a, b)) {
       runs.delete(key);
       continue;
     }

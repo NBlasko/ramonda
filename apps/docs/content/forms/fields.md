@@ -134,11 +134,17 @@ On a server-rendered page the choice arrives as `selected` on the chosen option,
 where HTML keeps it and a select has no `value` attribute to carry. The reader sees the right option
 before any script runs.
 
-**The model has the last word.** After an event you wrote a handler for — `onchange`, `oninput` — a
-`Select` or a `TextArea` shows whatever the model holds once the event is over. A handler that takes
-the input leaves the field as the user made it; one that leaves the value where it was puts it back.
-Only that event is answered: a textarea saved `onchange` keeps every keystroke until it loses focus.
-A field with no handler shows what the user put in, and the model is not asked.
+**`value` is the model's; `defaultValue` is where the field starts.** A `Select` or a `TextArea` with
+`value` shows what the model holds after every input, once the event is over: a handler that takes
+the input leaves the field as the user made it, and one that does not — or no handler at all — puts
+the model's value back. An input method's composition is left alone until it ends. A field whose text
+is read when the form is sent, rather than held in state, takes `defaultValue` instead: it shows that
+first and then belongs to the user, and a later `defaultValue` does not reach it.
+
+```tsx
+<TextArea aria-label="Draft" value={this.draft} oninput={this.onInput} />;   // held by the model
+<TextArea aria-label="Notes" name="notes" defaultValue={this.saved} />;       // the user's, sent with the form
+```
 
 ### `TextArea` — a `<textarea>` keeps its value inside the element
 

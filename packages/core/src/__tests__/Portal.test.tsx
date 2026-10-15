@@ -641,6 +641,39 @@ describe("Portal follows its props", () => {
   });
 
   /**
+   * A container that was not on the page when the portal first reconciled — it was appended one of
+   * its own — is where the block goes once the page has it.
+   */
+  test("a named target's container that arrives later is where the block goes", async () => {
+    class Page extends Component {
+      @state tick = 0;
+      portal = this.use(Portal, (self: Page) => ({
+        children: <b>here</b>,
+        target: portalTarget("late"),
+        n: self.tick,
+      }));
+      render() {
+        return <p>{this.tick}</p>;
+      }
+    }
+    const app = await getDOM<Page>(<Page />);
+    await app.settle();
+    const appended = document.querySelector(`[${PORTAL_TARGET_ATTR}="late"]`);
+    expect(appended?.textContent).toBe("here");
+
+    const real = document.createElement("div");
+    real.setAttribute(PORTAL_TARGET_ATTR, "late");
+    document.body.prepend(real);
+    app.instance.tick = 1;
+    await app.settle();
+
+    expect(real.textContent).toBe("here");
+    app.unmount();
+    real.remove();
+    appended?.remove();
+  });
+
+  /**
    * A container replaced under the same name — a layout that renders it, unmounted and mounted
    * again — is the one the block moves to: the watch compares the container the name finds now.
    */
