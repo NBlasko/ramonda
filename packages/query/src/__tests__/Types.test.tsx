@@ -208,3 +208,21 @@ describe("typing", () => {
     }
   });
 });
+
+/**
+ * `clientOnly: true` compiles in a props object with nothing pinned and no `as const` — the reason it is a
+ * boolean. `env: "client"` was tried first: in an object literal the string widens and the call is
+ * refused, with the error on `this.use` rather than on the option.
+ */
+class ClientOnly extends Component {
+  private todo = this.use(Query, () => ({
+    key: ["todo", 1],
+    fetch: ({ signal }: FetchContext) => getTodo(1, { signal }),
+    clientOnly: true,
+  }));
+
+  render(): RamondaNode {
+    return <p>{this.todo.data?.title}</p>;
+  }
+}
+void ClientOnly;

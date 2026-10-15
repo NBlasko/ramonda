@@ -245,4 +245,6 @@ export interface InfiniteQueryProps<TPage, K extends QueryKey = QueryKey> extend
   maxPages?: number;
   /** Fetch nothing while this is false, and stay `pending`. */
   enabled?: boolean;
+  /** `true` for pages only the browser has — see `clientOnly` on `Query`. */
+  clientOnly?: boolean;
 }

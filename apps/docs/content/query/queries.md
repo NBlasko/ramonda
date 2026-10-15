@@ -229,6 +229,10 @@ than the alternative people reach for — a key with a hole in it,
 `["orders", undefined]` — which fetches with nothing, caches the failure under a key
 that will never be asked for again, and renders an error the user cannot act on.
 
+A query for data only the browser has — IndexedDB, `localStorage` — takes `clientOnly: true`
+instead, so a server render does not ask for it: see [data only the browser
+has](/query/server#data-only-the-browser-has).
+
 ## Narrowing the result
 
 The boolean getters are shortest, and they cannot narrow `data`: a getter tells the

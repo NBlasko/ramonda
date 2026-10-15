@@ -65,6 +65,7 @@ export class InfiniteQuery<TPage, K extends QueryKey = QueryKey> extends Hook<In
     retry: self.props.retry,
     retryDelay: self.props.retryDelay,
     enabled: self.props.enabled,
+    clientOnly: self.props.clientOnly,
     refetchOnMount: self.props.refetchOnMount,
     refetchOnWindowFocus: self.props.refetchOnWindowFocus,
     refetchOnReconnect: self.props.refetchOnReconnect,
