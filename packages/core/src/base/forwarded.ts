@@ -106,6 +106,37 @@ const queued = new WeakSet<object>();
  */
 const unfinished = new WeakMap<object, { field: EventTarget; word: string }>();
 
+/*
+ * TODO(webkit): measure the end of a composition in Safari, on a Mac.
+ *
+ * Chromium and Firefox are measured with a real composition (see "When it ends" on `answer`); WebKit
+ * is not — there is no driver here that types through an input method in it. The code does not
+ * depend on the order a browser uses, so it should hold, but nothing has shown that it does.
+ *
+ * 1. System Settings → Keyboard → Input Sources: add Japanese – Romaji.
+ * 2. In the playground, render this, and open it in Safari:
+ *
+ *      class Probe extends Component {
+ *        @state text = "";
+ *        taken: string[] = [];
+ *        take(event: InputEvent) {
+ *          console.log(event.type, event.isComposing, (event.target as HTMLTextAreaElement).value);
+ *          if (event.isComposing) return;
+ *          this.text = (event.target as HTMLTextAreaElement).value;
+ *          this.taken.push(this.text);
+ *        }
+ *        render() {
+ *          return <TextArea aria-label="probe" value={this.text} oninput={this.take} oncompositionend={(e) => console.log("compositionend", e.data)} />;
+ *        }
+ *      }
+ *
+ * 3. Switch to Japanese, type `nihon`, Space, Enter.
+ *
+ * Right: the field keeps 日本 and `taken` is `["日本"]`, once. Wrong: the field comes back empty, or
+ * `taken` has it twice — then the console says in what order Safari sends `input` and
+ * `compositionend`, which is what this code has to answer. Delete this note once it is measured.
+ */
+
 /**
  * The app's handler for this event, and then the model's word.
  *
