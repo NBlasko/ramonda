@@ -19,7 +19,8 @@ a list as well, built once and kept in the vnode around it, so a reused row hand
 node while a list inside the array has changed; and a group that replaces a `list()` in the same slot
 shares its owner, so it does not take the list's engine — the list's engine is released instead.
 
-A group that comes back whole — `<ul>{this.props.children}</ul>`, whose settled markup is last pass's
-array — no longer makes the element around it walk its children to restore an order that stands.
-Counted in `RenderCost.test.tsx`: a panel over 1000 rows walked all of them on each of its renders, and
-walks none now. The rows themselves are still diffed; only an engine-built list is skipped whole.
+A group — an array among the children, `<ul>{this.props.children}</ul>` — is kept whole too when it is
+the same object as last pass and holds no list and no component anywhere inside it: such a group is
+the same markup. Counted in `RenderCost.test.tsx`, a panel over 1000 rows re-rendering on its own
+state diffs none of them and walks none of them. A group that does hold one, at any depth
+(`[<div>{list(…)}</div>]`), is opened every pass, because something inside it changes on its own.

@@ -43,7 +43,8 @@ function heardAbove(element: JsxElementLike, events: readonly string[], resolve:
  * handler that moves it is then the parent's business, and may be an `oninput` on an element of the
  * parent's own render, which this rule, reading one component, cannot see.
  *
- * Silence wherever a prop REACHES the value, since a maybe is never reported: through a fallback or a
+ * Silence wherever a prop — or a PARAMETER, handed in by a caller just as a prop is — REACHES the
+ * value, since a maybe is never reported: through a fallback or a
  * choice (`?? ""`, `|| ""`, either arm of a ternary), a call (`String(this.props.size)`), a template,
  * or a name taken from the props on the way — `const { text } = this.props`, or `const own =
  * this.props` and then `own.size`. A prop used only as a KEY, `drafts[this.props.id]`, is this
@@ -53,7 +54,7 @@ function fromProps(value: WrittenAttribute, resolve: ElementContext["resolve"]):
   return value.value !== undefined && cameFromProps(value.value, resolve, 0, new Set());
 }
 
-/** How many names a value is followed through before the answer is "not a prop" — and reported. */
+/** How many names a value is followed through before the answer is "not known" — and silent. */
 const HOPS = 20;
 
 function cameFromProps(
@@ -104,10 +105,13 @@ function cameFromProps(
   while (declaration !== undefined && (ts.isBindingElement(declaration) || ts.isObjectBindingPattern(declaration))) {
     declaration = declaration.parent;
   }
+  // A PARAMETER is handed in by whoever calls — the same "outside" a prop is, and as unknowable here.
+  if (declaration !== undefined && ts.isParameter(declaration)) return true;
   if (declaration === undefined || !ts.isVariableDeclaration(declaration) || declaration.initializer === undefined) {
     return false;
   }
-  if (hops >= HOPS) return false;
+  // Past the bound the answer is not known, and a maybe is never reported.
+  if (hops >= HOPS) return true;
   return cameFromProps(declaration.initializer, resolve, hops + 1, seen);
 }
 

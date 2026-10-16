@@ -936,6 +936,33 @@ function applyDiffWithRegions(
  * from seeing each other, and what keeps a component's chrome out of reach of
  * content passed into it.
  */
+/** What `holdsARegion` found for a children array, which settled markup hands back unchanged. */
+const regionsBelow = new WeakMap<readonly unknown[], boolean>();
+
+/**
+ * Whether markup holds a list or a component ANYWHERE inside it — the things that change on their
+ * own, without the markup around them changing. `h` marks an array that holds one directly
+ * (`HAS_REGION`); this follows elements down, once per array.
+ */
+function holdsARegion(children: readonly unknown[]): boolean {
+  const known = regionsBelow.get(children);
+  if (known !== undefined) return known;
+  let found = (children as { [HAS_REGION]?: boolean })[HAS_REGION] === true;
+  for (let i = 0; !found && i < children.length; i++) {
+    const child = children[i];
+    if (isListNode(child)) found = true;
+    else if (isVNode(child)) {
+      if (child.type === COMPONENT_TYPE) found = true;
+      else {
+        const inner = (child as { children?: unknown }).children;
+        if (Array.isArray(inner)) found = holdsARegion(inner);
+      }
+    }
+  }
+  regionsBelow.set(children, found);
+  return found;
+}
+
 /**
  * What a `list()` region reports to when an item's signal changes.
  *
@@ -1108,11 +1135,18 @@ export function reconcileEntries(
          * Without it this skip left a list inside a row stale; `AListInsideARow.test.tsx` and
          * `ListCallbackIdentity.test.tsx` ("BOTH stable") are the cases.
          *
-         * Only for a node an ENGINE built. An array of children is a list too, built once by `h` and
-         * kept in the vnode around it, so a row reused from last pass hands back the same array node
-         * while a list inside the array has changed: `<li>{[<b />, list(…)]}</li>` kept its old prices.
+         * For a node an ENGINE built, or a GROUP — an array of children — that holds no list and no
+         * component anywhere inside it. A group is built once by `h` and kept in the vnode around it,
+         * so a row reused from last pass hands back the same group while a list inside it has changed:
+         * `<li>{[<b />, list(…)]}</li>` kept its old prices, and so would `[<div>{list(…)}</div>]`.
+         * One with nothing below it that changes on its own is the same markup when it is the same
+         * object, and is kept whole: `<ul>{this.props.children}</ul>` over 1000 rows diffs none of them.
          */
-        if (engine !== undefined && before !== undefined && before.source === listNode) {
+        if (
+          before !== undefined &&
+          before.source === listNode &&
+          (engine !== undefined || !holdsARegion(listNode.vnodes))
+        ) {
           entries.push(before);
           if (previous[entries.length - 1] !== before) changed = true;
           continue;

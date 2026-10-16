@@ -1,5 +1,5 @@
 ---
-"@ramonda/core": patch
+"@ramonda/core": minor
 ---
 
 A portal whose target goes away takes its content off the page
@@ -12,5 +12,7 @@ state and is not destroyed while it is away. A change to the children made meanw
 the target returns, so a component the children gain is created on the page, never off it — and so
 is one a list row inside gains when its own signal moves while the block is away.
 
-A target that is absent from the start builds nothing until it arrives, as before.
+A target that is absent from the start builds nothing until it arrives, as before. A block that
+comes back takes the place it left in its target, so two portals sharing one keep their order across
+a close and an open.
 `Portal.test.tsx` covers both.

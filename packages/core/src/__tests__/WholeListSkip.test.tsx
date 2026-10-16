@@ -180,3 +180,36 @@ describe("whole-list skip", () => {
     expect(app.container.querySelector(".price")?.textContent).toBe("p EUR");
   });
 });
+
+/**
+ * A group kept whole must hold no list at ANY depth. `[<div>{list(…)}</div>]` handed down settled is
+ * the same object every render while a row inside the list has changed: skipping the group would
+ * skip the `<div>`, and the list in it would never be reconciled.
+ */
+describe("a group with a list deep inside it", () => {
+  test("still updates the list when only a row read the change", async () => {
+    class Panel extends Component<{ children?: unknown }> {
+      @state n = 0;
+      render() {
+        return <section>{this.props.children as never}</section>;
+      }
+    }
+    class Owner extends Component {
+      @state currency = "EUR";
+      rows = [{ id: 1 }, { id: 2 }];
+      price = (row: { id: number }) => (
+        <i key={row.id}>
+          {row.id} {this.currency}
+        </i>
+      );
+      render() {
+        return <Panel>{[<div key="d">{list(this.rows, this.price)}</div>, <b key="b">x</b>]}</Panel>;
+      }
+    }
+    const app = await getDOM<Owner>(<Owner />);
+    app.instance.currency = "USD";
+    await app.settle();
+
+    expect(Array.from(app.container.querySelectorAll("i"), (i) => i.textContent)).toEqual(["1 USD", "2 USD"]);
+  });
+});

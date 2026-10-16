@@ -11,6 +11,16 @@ declare const Card: (props: { onchange?: unknown; children?: unknown }) => unkno
 class App extends Component<{ text: string; size: string }> {
   pick(_event: Event) {}
   type(_event: Event) {}
+  notes(text: string, { size }: { size: string }) {
+    return (
+      <div>
+        <TextArea value={text} aria-label="from a parameter" />
+        <Select value={size} aria-label="from a destructured parameter">
+          <option value="a">a</option>
+        </Select>
+      </div>
+    );
+  }
   render() {
     const { text } = this.props;
     const own = this.props;

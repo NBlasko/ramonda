@@ -595,4 +595,57 @@ describe("a group that did not change", () => {
 
     expect(reads).toBe(0);
   });
+
+  /**
+   * Nor are its rows diffed one by one: a group with no list and no component anywhere in it is the
+   * same markup when it is the same object, and is kept whole — as it was before groups lost their
+   * skip to the case below a list. Counted as reads of a row's `nodeName`, which the diff of an
+   * element asks first: measured, 0 on `main` before that change, 1000 per render after it.
+   */
+  test("nor are its rows diffed", async () => {
+    class Panel extends Component<{ children?: unknown }> {
+      @state n = 0;
+      render() {
+        return (
+          <section>
+            <p>{this.n}</p>
+            <ul>{this.props.children as never}</ul>
+          </section>
+        );
+      }
+    }
+    const items = Array.from({ length: 1000 }, (_, i) => i);
+    class Owner extends Component {
+      render() {
+        return (
+          <Panel>
+            {items.map((i) => (
+              <li key={i}>{i}</li>
+            ))}
+          </Panel>
+        );
+      }
+    }
+    const app = await getDOM<Owner>(<Owner />);
+    const panel = instanceOf(app.container.querySelector("section") as Element) as unknown as Panel;
+
+    const descriptor = Object.getOwnPropertyDescriptor(Node.prototype, "nodeName")!;
+    let reads = 0;
+    Object.defineProperty(Node.prototype, "nodeName", {
+      ...descriptor,
+      get() {
+        const name = descriptor.get!.call(this) as string;
+        if (name === "LI") reads++;
+        return name;
+      },
+    });
+    try {
+      panel.n = 1;
+      await app.settle();
+    } finally {
+      Object.defineProperty(Node.prototype, "nodeName", descriptor);
+    }
+
+    expect(reads).toBe(0);
+  });
 });

@@ -359,6 +359,40 @@ describe("Portal follows a reactive target", () => {
     }
   });
 
+  /**
+   * A block that comes back takes the place it left, not the end of the target: two portals in one
+   * container keep their order across a close and an open — a modal reopened under a toast stays
+   * under it.
+   */
+  test("a block that comes back takes the place it left", async () => {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    class Page extends Component {
+      @state open = true;
+      first = this.use(Portal, (self: Page) => ({
+        children: <b id="order-first">first</b>,
+        target: (self.open ? host : undefined) as Element,
+      }));
+      second = this.use(Portal, () => ({ children: <b id="order-second">second</b>, target: host }));
+      render() {
+        return <div>page</div>;
+      }
+    }
+    const { instance, settle } = await getDOM<Page>(<Page />);
+    const order = () => Array.from(host.querySelectorAll("b"), (b) => b.id);
+    try {
+      expect(order()).toEqual(["order-first", "order-second"]);
+      instance.open = false;
+      await settle();
+      expect(order()).toEqual(["order-second"]);
+      instance.open = true;
+      await settle();
+      expect(order()).toEqual(["order-first", "order-second"]);
+    } finally {
+      host.remove();
+    }
+  });
+
   /** A block whose target is absent from the start is not built off the page: nothing is created yet. */
   test("a target absent at mount builds nothing until it arrives", async () => {
     let made = 0;
