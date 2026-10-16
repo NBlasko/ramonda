@@ -144,6 +144,8 @@ export class ChildrenRegion {
   /** The last children given, so a self-refresh has something to reconcile. */
   private children: unknown;
   private refreshQueued = false;
+  /** Whether the block is parked off the page — see `park`. */
+  private waiting = false;
   private disposed = false;
   private readonly listHost: ListHost;
 
@@ -162,9 +164,15 @@ export class ChildrenRegion {
     return this.close !== undefined && !this.disposed;
   }
 
-  /** Moves the block, the same nodes, into `parent` without reconciling its children. */
-  move(parent: ChildNode): void {
-    if (this.placed) this.place(parent);
+  /**
+   * Moves the block, the same nodes, into `parent` to WAIT there — a fragment off the page — until the
+   * next `reconcile` brings it back. While it waits nothing in it is rebuilt, not even a list row whose
+   * own signal moved: that row stays stale and is rebuilt by the reconcile, on the page.
+   */
+  park(parent: ChildNode): void {
+    if (!this.placed) return;
+    this.place(parent);
+    this.waiting = true;
   }
 
   /**
@@ -233,6 +241,7 @@ export class ChildrenRegion {
   /** Brings the block into line with `children`, inside `parent`. */
   reconcile(children: unknown, parent: ChildNode): void {
     if (this.disposed) return;
+    this.waiting = false;
     this.children = children;
     this.place(parent);
 
@@ -492,7 +501,7 @@ export class ChildrenRegion {
     addTaskToQueue(owner);
     queuePostCommit(owner, () => {
       this.refreshQueued = false;
-      if (this.disposed || this.parent === undefined) return;
+      if (this.disposed || this.waiting || this.parent === undefined) return;
       this.reconcile(this.children, this.parent);
     });
   }

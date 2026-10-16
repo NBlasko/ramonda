@@ -749,9 +749,7 @@ export function hydrateLevel(
   /** See `reconcileEntries` — per child, the list row it is, when `children` are a list's rows. */
   rows?: readonly unknown[],
 ): { entries: RecordEntry[]; hasRegion: boolean } {
-  // The common level sets no list context, and is hydrated as it is — no closure to build for it.
-  if (rows === undefined && listHost === undefined)
-    return hydrateLevelEntries(children, placeholder, parent, walk, listHost, rows);
+  // `inLevel` decides whether this level sets a list context, so the rule is written once.
   return inLevel(rows, listHost, () => hydrateLevelEntries(children, placeholder, parent, walk, listHost, rows));
 }
 

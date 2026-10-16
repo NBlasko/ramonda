@@ -18,3 +18,8 @@ Only a node an engine built is skipped, and only by the engine that built it. An
 a list as well, built once and kept in the vnode around it, so a reused row hands back the same array
 node while a list inside the array has changed; and a group that replaces a `list()` in the same slot
 shares its owner, so it does not take the list's engine — the list's engine is released instead.
+
+A group that comes back whole — `<ul>{this.props.children}</ul>`, whose settled markup is last pass's
+array — no longer makes the element around it walk its children to restore an order that stands.
+Counted in `RenderCost.test.tsx`: a panel over 1000 rows walked all of them on each of its renders, and
+walks none now. The rows themselves are still diffed; only an engine-built list is skipped whole.

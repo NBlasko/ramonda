@@ -43,10 +43,11 @@ function heardAbove(element: JsxElementLike, events: readonly string[], resolve:
  * handler that moves it is then the parent's business, and may be an `oninput` on an element of the
  * parent's own render, which this rule, reading one component, cannot see.
  *
- * The value itself, read down to where it comes from — a fallback after it (`?? ""`) is still the
- * prop, and so is a name taken from the props on the way: `const { text } = this.props`, or
- * `const own = this.props` and then `own.size`. A prop used only as a KEY, `drafts[this.props.id]`, is
- * this component's own model.
+ * Silence wherever a prop REACHES the value, since a maybe is never reported: through a fallback or a
+ * choice (`?? ""`, `|| ""`, either arm of a ternary), a call (`String(this.props.size)`), a template,
+ * or a name taken from the props on the way — `const { text } = this.props`, or `const own =
+ * this.props` and then `own.size`. A prop used only as a KEY, `drafts[this.props.id]`, is this
+ * component's own model, and is still reported.
  */
 function fromProps(value: WrittenAttribute, resolve: ElementContext["resolve"]): boolean {
   return value.value !== undefined && cameFromProps(value.value, resolve, 0);
@@ -55,25 +56,35 @@ function fromProps(value: WrittenAttribute, resolve: ElementContext["resolve"]):
 /** How many names a value is followed through before the answer is "not a prop" — and reported. */
 const HOPS = 20;
 
-function cameFromProps(expression: ts.Expression, resolve: ElementContext["resolve"], hops: number): boolean {
-  let at: ts.Expression = expression;
-  for (;;) {
-    if (ts.isParenthesizedExpression(at) || ts.isNonNullExpression(at)) at = at.expression;
-    else if (ts.isBinaryExpression(at) && at.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken) at = at.left;
-    else if (ts.isPropertyAccessExpression(at) || ts.isElementAccessExpression(at)) {
-      if (
-        ts.isPropertyAccessExpression(at) &&
-        at.name.text === "props" &&
-        at.expression.kind === ts.SyntaxKind.ThisKeyword
-      ) {
-        return true;
-      }
-      at = at.expression;
-    } else break;
+function cameFromProps(at: ts.Expression, resolve: ElementContext["resolve"], hops: number): boolean {
+  if (hops > HOPS) return false;
+  const next = (inner: ts.Expression) => cameFromProps(inner, resolve, hops + 1);
+
+  if (
+    ts.isParenthesizedExpression(at) ||
+    ts.isNonNullExpression(at) ||
+    ts.isAsExpression(at) ||
+    ts.isSatisfiesExpression(at)
+  ) {
+    return next(at.expression);
+  }
+  if (ts.isBinaryExpression(at)) return next(at.left) || next(at.right);
+  if (ts.isConditionalExpression(at)) return next(at.whenTrue) || next(at.whenFalse);
+  if (ts.isCallExpression(at)) return at.arguments.some(next);
+  if (ts.isTemplateExpression(at)) return at.templateSpans.some((span) => next(span.expression));
+  if (ts.isPropertyAccessExpression(at) || ts.isElementAccessExpression(at)) {
+    if (
+      ts.isPropertyAccessExpression(at) &&
+      at.name.text === "props" &&
+      at.expression.kind === ts.SyntaxKind.ThisKeyword
+    ) {
+      return true;
+    }
+    // The object read from, not the key: `drafts[this.props.id]` is the component's own `drafts`.
+    return next(at.expression);
   }
   if (!ts.isIdentifier(at)) return false;
   if (at.text === "props") return true;
-  if (hops >= HOPS) return false;
 
   // A name: where it was declared says where it came from.
   let declaration: ts.Node | undefined = resolve(at)?.declarations?.[0];
@@ -84,7 +95,7 @@ function cameFromProps(expression: ts.Expression, resolve: ElementContext["resol
   if (declaration === undefined || !ts.isVariableDeclaration(declaration) || declaration.initializer === undefined) {
     return false;
   }
-  return cameFromProps(declaration.initializer, resolve, hops + 1);
+  return next(declaration.initializer);
 }
 
 /**

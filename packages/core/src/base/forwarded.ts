@@ -94,6 +94,20 @@ export function heard(component: Component<any>, event: Event): void {
   }
 }
 
+/**
+ * Whether a field whose composition ended still needs the word handed to it: it is on the page, and
+ * the model does not hold what it shows. A handler that takes composing input as well took the word
+ * from the last one, and is not called again for it; a field the composition's end took away — Enter
+ * closed the dialog — is sent nothing.
+ */
+// biome-ignore lint/suspicious/noExplicitAny: any component, whatever its props
+function lacksTheWord(component: Component<any>, field: EventTarget): boolean {
+  const element = field as HTMLTextAreaElement;
+  if (!element.isConnected) return false;
+  const model = component[COMPONENT_RUNTIME].rawProps["value"];
+  return model == null || String(model) !== element.value;
+}
+
 /** Fields an input method is composing in right now. */
 const composing = new WeakSet<object>();
 
@@ -163,7 +177,8 @@ const unfinished = new WeakMap<object, { field: EventTarget; word: string }>();
  * `isComposing`, and nothing follows `compositionend`, so that handler never took the word and the
  * settle put the old text back. So a field whose composition ended with no ordinary `input` after it,
  * by the time the settle runs, is sent that `input` — the one Firefox sends — and settled after it.
- * Where the browser sends its own, nothing is sent twice, whichever order it uses.
+ * Where the browser sends its own, nothing is sent twice, whichever order it uses; and it is sent only
+ * while the model lacks the word (`lacksTheWord`).
  *
  * **Only the value is written** — `settle`, not a render: nothing else about the field changed. A
  * field its handler removed has no element left, and `settle` finds nothing to write. A handler that
@@ -191,8 +206,8 @@ export function answer(component: Component<any> & { settle(): void }, event: Ev
         // Asked again when it runs: a composition may have started since this was set.
         if (composing.has(component)) return;
         const ended = unfinished.get(component);
-        if (ended !== undefined) {
-          unfinished.delete(component);
+        unfinished.delete(component);
+        if (ended !== undefined && lacksTheWord(component, ended.field)) {
           // Its own answer sets the settle, after every listener has had the word.
           const input = { bubbles: true, composed: true, inputType: "insertCompositionText", data: ended.word };
           ended.field.dispatchEvent(new InputEvent("input", input));

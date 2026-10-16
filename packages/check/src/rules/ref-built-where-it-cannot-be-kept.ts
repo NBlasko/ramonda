@@ -113,7 +113,7 @@ export const refBuiltWhereItCannotBeKept = {
       "    class Editor extends Component {\n" +
       "      private field = createRef<HTMLTextAreaElement>();\n\n" +
       "      render() {\n" +
-      "        return <TextArea value={this.text} ref={this.field} />;\n" +
+      "        return <TextArea value={this.text} oninput={this.type} ref={this.field} />;\n" +
       "      }\n" +
       "    }\n\n" +
       "A CALLBACK belongs on a field too — `createRef<T>((node) => this.arrived(node))` is how\n" +

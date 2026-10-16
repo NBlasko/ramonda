@@ -314,6 +314,51 @@ describe("Portal follows a reactive target", () => {
     }
   });
 
+  /**
+   * A row inside a waiting block that its own signal changes is not rebuilt off the page either: a
+   * component the row gains is created when the target returns, on the page.
+   */
+  test("a list row in a block that is away is rebuilt when it returns", async () => {
+    const mountedInDocument: boolean[] = [];
+    class Badge extends Component {
+      el = createRef<HTMLElement>();
+      @mounted
+      measure() {
+        mountedInDocument.push(this.el.current?.isConnected === true);
+      }
+      render() {
+        return <i ref={this.el}>new</i>;
+      }
+    }
+    class Page extends Component {
+      @state open = true;
+      @state fresh = false;
+      items = [{ id: 1 }];
+      row = (_item: { id: number }) => <li>{this.fresh ? <Badge /> : "old"}</li>;
+      portal = this.use(Portal, (self: Page) => ({
+        children: <ul>{list(self.items, self.row)}</ul>,
+        target: (self.open ? document.body : undefined) as Element,
+      }));
+      render() {
+        return <div>page</div>;
+      }
+    }
+    const { instance, settle } = await getDOM<Page>(<Page />);
+    try {
+      instance.open = false;
+      await settle();
+      instance.fresh = true;
+      await settle();
+      expect(mountedInDocument).toEqual([]);
+      instance.open = true;
+      await settle();
+      expect(mountedInDocument).toEqual([true]);
+    } finally {
+      instance.open = false;
+      await settle();
+    }
+  });
+
   /** A block whose target is absent from the start is not built off the page: nothing is created yet. */
   test("a target absent at mount builds nothing until it arrives", async () => {
     let made = 0;

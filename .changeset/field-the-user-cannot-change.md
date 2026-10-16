@@ -15,8 +15,9 @@ element with a spread, since `{...bind}` from `@ramonda/form` carries the handle
 `readonly` or `disabled` as written (bare, `{true}`, `"true"`, or a const holding it), which takes no
 input; a field with a handler on an element — not a component — around it that moves the model in
 time (`input` for a `TextArea`, whose `change` comes on blur); and a field whose `value` IS a prop
-(`this.props.text`, `props.text ?? ""`, or a name taken from the props — `const { text } = this.props`,
-`const own = this.props` and `own.size`), whose handler may be in the parent's render — a prop used
+(`this.props.text`, `props.text || ""`, either arm of a ternary, `String(this.props.size)`, a
+template, or a name taken from the props — `const { text } = this.props`, `const own = this.props`
+and `own.size`), whose handler may be in the parent's render — a prop used
 only as a key, `drafts[this.props.id]`, is still reported.
 
 `option-that-cannot-choose` names `defaultValue` for a choice the user owns, and reports an

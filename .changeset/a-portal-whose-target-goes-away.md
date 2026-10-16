@@ -9,7 +9,8 @@ how a modal closes, and closing it left the dialog on the page: a missing target
 nothing, so its nodes stayed where they were. The block now leaves with the target. Its nodes move
 into a fragment off the page and come back when a target returns. The component in it keeps its
 state and is not destroyed while it is away. A change to the children made meanwhile is applied when
-the target returns, so a component the children gain is created on the page, never off it.
+the target returns, so a component the children gain is created on the page, never off it — and so
+is one a list row inside gains when its own signal moves while the block is away.
 
 A target that is absent from the start builds nothing until it arrives, as before.
 `Portal.test.tsx` covers both.

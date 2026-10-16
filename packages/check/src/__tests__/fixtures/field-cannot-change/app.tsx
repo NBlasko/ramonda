@@ -55,6 +55,12 @@ class App extends Component<{ text: string; size: string }> {
         <TextArea value={this.props.text} aria-label="from props" />
         <TextArea value={this.props.text ?? ""} aria-label="from props with a fallback" />
         <TextArea value={text} aria-label="from props destructured" />
+        <TextArea value={this.props.text || ""} aria-label="from props or empty" />
+        <TextArea value={viewing ? this.props.text : value} aria-label="from props on one arm" />
+        <Select value={String(this.props.size)} aria-label="from props through a call">
+          <option value="a">a</option>
+        </Select>
+        <TextArea value={`${this.props.text}!`} aria-label="from props in a template" />
         <Select value={own.size} aria-label="from props through a local">
           <option value="a">a</option>
         </Select>

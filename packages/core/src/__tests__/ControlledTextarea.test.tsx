@@ -495,6 +495,63 @@ describe("a controlled textarea follows the model after the event the app handle
   }
 
   /**
+   * A handler that takes every input, composing or not, already has the word from the last composing
+   * `input`: nothing is sent after the composition, and it runs once with the word.
+   */
+  test("a handler that took the word during the composition is not called again", async () => {
+    const taken: string[] = [];
+    class Composed extends Component {
+      @state text = "a";
+      take(event: InputEvent) {
+        this.text = (event.target as HTMLTextAreaElement).value;
+        taken.push(this.text);
+      }
+      render() {
+        return <TextArea id="t" value={this.text} oninput={this.take} />;
+      }
+    }
+    const app = await getDOM<Composed>(<Composed />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+
+    compose(field, "a", "か", "chromium");
+    await drain(app);
+
+    expect({ field: field.value, taken }).toEqual({ field: "aか", taken: ["aか"] });
+  });
+
+  /** A field its composition's end took off the page — Enter closed the dialog — is sent nothing. */
+  test("a field removed as its composition ends is sent nothing", async () => {
+    const taken: string[] = [];
+    class Dialog extends Component {
+      @state text = "";
+      @state open = true;
+      take(event: InputEvent) {
+        if (event.isComposing) return;
+        taken.push((event.target as HTMLTextAreaElement).value);
+      }
+      close() {
+        this.open = false;
+      }
+      render() {
+        return (
+          <div>
+            {this.open ? <TextArea id="t" value={this.text} oninput={this.take} oncompositionend={this.close} /> : null}
+          </div>
+        );
+      }
+    }
+    const app = await getDOM<Dialog>(<Dialog />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+
+    compose(field, "", "日本", "chromium");
+    await drain(app);
+
+    expect({ onPage: field.isConnected, taken }).toEqual({ onPage: false, taken: [] });
+  });
+
+  /**
    * An input method builds a character over several `input` events; putting the old value back
    * between them cancels it. When the composition ends the field shows the model again: a handler
    * that refuses the word has it put back then.

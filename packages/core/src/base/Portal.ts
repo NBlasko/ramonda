@@ -60,10 +60,11 @@ export interface PortalProps {
  * ## Reactivity — it rides the render cycle, on purpose
  *
  * `@created` (env `shared`, so a server render places the children too) does the
- * first reconcile; `@watchProp` on `children` does every later one. Because the
- * props factory is cached on the signals it read, `children` only gets a new
- * identity when something it depends on actually moved — so an unrelated render
- * of the owner does not re-reconcile. When the head DID change, the owner's
+ * first reconcile; `@watchProp` on `children` and `target` together does every
+ * later one. Because the props factory is cached on the signals it read, and
+ * markup that says the same keeps its old object, `children` only changes when
+ * something it shows actually moved — so an unrelated render of the owner does
+ * not re-reconcile. When the head DID change, the owner's
  * render is the cost, and that is accepted: a portal is a portal.
  *
  * ## A reactive `target`, and "inline"
@@ -257,7 +258,7 @@ export class Portal extends Hook<PortalProps> {
    */
   private leave(): void {
     if (!this.area?.placed) return;
-    this.area.move((this.waiting ??= document.createDocumentFragment()) as unknown as ChildNode);
+    this.area.park((this.waiting ??= document.createDocumentFragment()) as unknown as ChildNode);
   }
 }
 

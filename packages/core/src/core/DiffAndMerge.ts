@@ -1156,7 +1156,10 @@ export function reconcileEntries(
         if (before === undefined) (born ??= []).push(region);
 
         entries.push(region);
-        changed = true;
+        // Changed only when something in it is: a new region, a different one in this slot, or rows
+        // inside that moved, came or went. A group reused whole — markup settled to last pass's object
+        // — moved nothing, and the parent need not be flattened and reordered for it.
+        if (before === undefined || inner.changed || previous[entries.length - 1] !== before) changed = true;
         continue;
       }
 
