@@ -43,8 +43,8 @@ function heardAbove(element: JsxElementLike, events: readonly string[], resolve:
  * handler that moves it is then the parent's business, and may be an `oninput` on an element of the
  * parent's own render, which this rule, reading one component, cannot see.
  *
- * Silence wherever a prop — or a PARAMETER, handed in by a caller just as a prop is — REACHES the
- * value, since a maybe is never reported: through a fallback or a
+ * Silence wherever a prop — or a PARAMETER, handed in by a caller just as a prop is (see
+ * `parameterFromOutside` for a callback's) — REACHES the value, since a maybe is never reported: through a fallback or a
  * choice (`?? ""`, `|| ""`, either arm of a ternary), a call (`String(this.props.size)`), a template,
  * or a name taken from the props on the way — `const { text } = this.props`, or `const own =
  * this.props` and then `own.size`. A prop used only as a KEY, `drafts[this.props.id]`, is this
@@ -102,17 +102,53 @@ function cameFromProps(
   // A name: where it was declared says where it came from.
   let declaration: ts.Node | undefined = resolve(at)?.declarations?.[0];
   // `const { text } = this.props`, at any depth of the pattern: up to the declaration it is taken from.
-  while (declaration !== undefined && (ts.isBindingElement(declaration) || ts.isObjectBindingPattern(declaration))) {
+  while (
+    declaration !== undefined &&
+    (ts.isBindingElement(declaration) ||
+      ts.isObjectBindingPattern(declaration) ||
+      ts.isArrayBindingPattern(declaration))
+  ) {
     declaration = declaration.parent;
   }
-  // A PARAMETER is handed in by whoever calls — the same "outside" a prop is, and as unknowable here.
-  if (declaration !== undefined && ts.isParameter(declaration)) return true;
+  if (declaration !== undefined && ts.isParameter(declaration))
+    return parameterFromOutside(declaration, resolve, hops, seen);
   if (declaration === undefined || !ts.isVariableDeclaration(declaration) || declaration.initializer === undefined) {
     return false;
   }
   // Past the bound the answer is not known, and a maybe is never reported.
   if (hops >= HOPS) return true;
   return cameFromProps(declaration.initializer, resolve, hops + 1, seen);
+}
+
+/**
+ * Whether a parameter's value comes from outside what this component holds.
+ *
+ * A parameter of a method or a function is handed in by whoever calls it — the same "outside" a prop
+ * is, and as unknowable here. A parameter of a CALLBACK is an item of what the call walks:
+ * `this.rows.map((row) => …)` and `list(this.rows, (row) => …)` hand it rows of this component's own
+ * model, which is where a field nobody can type in is most often written, so the walked value is
+ * followed — `this.props.rows.map(…)` is still the parent's. A call whose walked value cannot be told
+ * is unknown, and silent.
+ */
+function parameterFromOutside(
+  parameter: ts.ParameterDeclaration,
+  resolve: ElementContext["resolve"],
+  hops: number,
+  seen: Set<ts.Node>,
+): boolean {
+  const fn = parameter.parent;
+  if (!(ts.isArrowFunction(fn) || ts.isFunctionExpression(fn))) return true;
+  const call = fn.parent;
+  if (!ts.isCallExpression(call) || !call.arguments.includes(fn)) return true;
+  const callee = call.expression;
+  // `rows.map(cb)` walks `rows`; `list(rows, cb)` walks its first argument.
+  const walked = ts.isPropertyAccessExpression(callee)
+    ? callee.expression
+    : call.arguments[0] !== fn
+      ? call.arguments[0]
+      : undefined;
+  if (walked === undefined || hops >= HOPS) return true;
+  return cameFromProps(walked, resolve, hops + 1, seen);
 }
 
 /**

@@ -21,6 +21,8 @@ const lineOf = (label: string) =>
 describe("a field the user cannot change", () => {
   test("each shape is reported, and named", () => {
     expect(found().map((issue) => [issue.line, issue.component, issue.kind])).toEqual([
+      [lineOf('aria-label="a row of its own"'), "TextArea", "no-handler"],
+      [lineOf('aria-label="a list row of its own"'), "Select", "no-handler"],
       [lineOf('aria-label="held select"'), "Select", "no-handler"],
       [lineOf('aria-label="held text"'), "TextArea", "no-handler"],
       [lineOf('aria-label="saved on blur"'), "TextArea", "held-between-keystrokes"],
@@ -60,6 +62,9 @@ describe("a field the user cannot change", () => {
       "from props through a method",
       "from a parameter",
       "from a destructured parameter",
+      "from an array parameter",
+      "past the bound",
+      "a row from props",
       "from props at the head of a long sum",
       "from props through a local",
       "from props renamed through a local",

@@ -620,7 +620,8 @@ describe("a group that did not change", () => {
         return (
           <Panel>
             {items.map((i) => (
-              <li key={i}>{i}</li>
+              // A group inside each row is markup too, and does not stop the skip.
+              <li key={i}>{[<b key="b">{i}</b>, <i key="i">.</i>]}</li>
             ))}
           </Panel>
         );

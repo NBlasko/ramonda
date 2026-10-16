@@ -12,6 +12,9 @@ state and is not destroyed while it is away. A change to the children made meanw
 the target returns, so a component the children gain is created on the page, never off it — and so
 is one a list row inside gains when its own signal moves while the block is away.
 
+A portal inside the block closes with it: a modal's dropdown, portalled to a layer of its own, leaves
+the page with the modal and comes back with it, on a client build and after hydration alike.
+
 A target that is absent from the start builds nothing until it arrives, as before. A block that
 comes back takes the place it left in its target, so two portals sharing one keep their order across
 a close and an open.

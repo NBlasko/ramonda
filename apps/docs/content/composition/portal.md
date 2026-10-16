@@ -115,6 +115,10 @@ page, the same as anywhere else, so one rule holds for every component. A compon
 renders while closed, such as a chart that finishes loading, is mounted off the page. If it measures
 itself or takes focus, it does that when the portal opens.
 
+A portal inside a closed portal closes with it. A modal's dropdown, portalled to a layer of its
+own, leaves the page when the modal closes and comes back when it opens, whatever its own `target`
+says. One the modal gains while it is closed is built when it opens.
+
 ## `list()` works here
 
 A portal's children go through the real reconciler, so a list is a list — minted identity,

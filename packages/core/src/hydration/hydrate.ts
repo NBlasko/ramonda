@@ -1,3 +1,4 @@
+import { enclosingBlock } from "../core/enclosingBlock";
 import { COMPONENT_TYPE, CHILD_RECORD, ORIGIN_SYM, REQUEST_ATTR } from "../helpers/constants";
 import { className, displayName } from "../helpers/utils";
 import { installClientRequestScope } from "./requestContext";
@@ -372,6 +373,8 @@ function hydrateComponentRegion(
       componentRuntime.depth = placeholderRuntime.depth + 1;
       componentRuntime.parent = placeholder;
     }
+    // As on a build — see `ComponentRuntime.block`.
+    componentRuntime.block = enclosingBlock.current ?? placeholderRuntime?.block;
 
     // Restore server state before any client lifecycle/render sees it. Note:
     // isInitialized is still falsy here, so the @state setters below don't enqueue

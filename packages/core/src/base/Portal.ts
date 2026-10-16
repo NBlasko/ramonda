@@ -1,6 +1,7 @@
 import { Hook } from "./Hook";
 import { ownerRuntime } from "../core/renderEnv";
-import { GLOBAL_RUNTIME } from "../core/runtime";
+import { COMPONENT_RUNTIME, GLOBAL_RUNTIME } from "../core/runtime";
+import type { EnclosingBlock, NestedBlock } from "../core/enclosingBlock";
 import { created, destroyed, watchProp } from "./decorators";
 import { ChildrenRegion, isOpenAnchor } from "../core/childrenRegion";
 import { isPortalTarget, resolvePortalTarget, type PortalTarget } from "./portalTarget";
@@ -75,7 +76,8 @@ export interface PortalProps {
  * because a hook has no position of its own to fall back to, so instead you aim
  * `target` at an element in your own render. A `target` absent at mount and
  * supplied later is placed then, not lost. A target that goes away takes the
- * block off the page and brings the same nodes back with it — see `leave`. A
+ * block off the page and brings the same nodes back with it — see `leave` — and
+ * closes the portals inside its block with it, see `outer`. A
  * target change is watched on its own, so it moves the nodes whether or not
  * `children` changed with it.
  *
@@ -87,7 +89,7 @@ export interface PortalProps {
  * of the `Portal`'s owner will NOT see events from the portalled subtree: put it on
  * the portalled content, or on an ancestor of the target.
  */
-export class Portal extends Hook<PortalProps> {
+export class Portal extends Hook<PortalProps> implements EnclosingBlock, NestedBlock {
   /**
    * The block this portal owns in the target, and everything that makes it behave
    * like ordinary children: the record, the list regions, the reorder.
@@ -122,6 +124,57 @@ export class Portal extends Hook<PortalProps> {
   /** Where the block waits while it has no target — see `leave`. */
   private waiting: DocumentFragment | undefined;
 
+  /**
+   * Portals inside portals close and open together.
+   *
+   * A modal's dropdown is portalled to a layer of its own, so it is not in the modal's block: closing
+   * the modal took the modal off the page and left the dropdown on it, open and clickable. So a
+   * portal whose owner renders inside another portal's block joins that one, which closes it when it
+   * closes and opens it when it opens — whatever its own target says. The owner knows its block from
+   * how it was built (`ComponentRuntime.block`).
+   */
+  private outer: EnclosingBlock | undefined;
+  /** The portals inside this one's block. */
+  private readonly inner = new Set<NestedBlock>();
+  /** Whether an enclosing portal is closed, which closes this one whatever its own target. */
+  private suspended = false;
+  /** Whether this block is off the page: its target went away, or an enclosing portal closed. */
+  private gone = false;
+
+  get away(): boolean {
+    return this.gone;
+  }
+
+  join(inner: NestedBlock): void {
+    this.inner.add(inner);
+  }
+
+  part(inner: NestedBlock): void {
+    this.inner.delete(inner);
+  }
+
+  suspend(): void {
+    if (this.suspended) return;
+    this.suspended = true;
+    this.reconcile();
+  }
+
+  resume(): void {
+    if (!this.suspended) return;
+    this.suspended = false;
+    this.reconcile();
+  }
+
+  /** Joins the portal whose block this one's owner renders in, and starts closed if that one is. */
+  private enter(): void {
+    const owner = this[GLOBAL_RUNTIME].owner as { [COMPONENT_RUNTIME]?: { block?: EnclosingBlock } } | undefined;
+    const outer = owner?.[COMPONENT_RUNTIME]?.block;
+    if (outer === undefined || outer === this) return;
+    this.outer = outer;
+    outer.join(this);
+    this.suspended = outer.away;
+  }
+
   /** The real element to render into, whichever form `target` took. */
   private get element(): Element | undefined {
     const target = this.props.target;
@@ -139,12 +192,13 @@ export class Portal extends Hook<PortalProps> {
   }
 
   private get region(): ChildrenRegion {
-    return (this.area ??= new ChildrenRegion(this[GLOBAL_RUNTIME].owner, "Portal"));
+    return (this.area ??= new ChildrenRegion(this[GLOBAL_RUNTIME].owner, "Portal", this));
   }
 
   @created({ env: "shared" })
   place(): void {
     this.ranOnce = true;
+    this.enter();
     this.reconcile();
   }
 
@@ -176,6 +230,8 @@ export class Portal extends Hook<PortalProps> {
   adopt(): void {
     if (this.ranOnce) return;
     this.ranOnce = true;
+    this.enter();
+    if (this.suspended) return;
     const target = this.element;
     if (!target) return;
 
@@ -210,6 +266,7 @@ export class Portal extends Hook<PortalProps> {
 
   @destroyed
   clear(): void {
+    this.outer?.part(this);
     // Unmounts the block, releases the list regions' scopes, and takes the anchor
     // out. No flush here: a portal clearing itself is part of a larger teardown,
     // whose enclosing flush drains commit-level work once.
@@ -234,9 +291,12 @@ export class Portal extends Hook<PortalProps> {
    * scoped to a block, so nothing here re-implements the diff any more.
    */
   private reconcile(): void {
-    const target = this.element;
+    const target = this.suspended ? undefined : this.element;
     if (target) {
+      // Back on the page before the children are reconciled, so a portal they build starts open.
+      this.gone = false;
       this.region.reconcile(this.props.children, target);
+      for (const inner of [...this.inner]) inner.resume();
       return;
     }
     this.leave();
@@ -258,8 +318,9 @@ export class Portal extends Hook<PortalProps> {
    * component does — one rule, rather than a paused state to know about.
    */
   private leave(): void {
-    if (!this.area?.placed) return;
-    this.area.park((this.waiting ??= document.createDocumentFragment()) as unknown as ChildNode);
+    this.gone = true;
+    if (this.area?.placed) this.area.park((this.waiting ??= document.createDocumentFragment()) as unknown as ChildNode);
+    for (const inner of [...this.inner]) inner.suspend();
   }
 }
 

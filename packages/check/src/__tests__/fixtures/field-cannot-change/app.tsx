@@ -1,4 +1,4 @@
-import { Component, Select, TextArea } from "@ramonda/core";
+import { Component, Select, TextArea, list } from "@ramonda/core";
 import * as ui from "@ramonda/core";
 
 declare const value: string;
@@ -8,9 +8,59 @@ const LOCKED = true;
 declare const drafts: Record<string, string>;
 declare const Card: (props: { onchange?: unknown; children?: unknown }) => unknown;
 
-class App extends Component<{ text: string; size: string }> {
+class App extends Component<{ text: string; size: string; rows: { text: string }[] }> {
+  rows = [{ text: "a", size: "s" }];
   pick(_event: Event) {}
   type(_event: Event) {}
+  sized([size]: string[]) {
+    return (
+      <Select value={size} aria-label="from an array parameter">
+        <option value="a">a</option>
+      </Select>
+    );
+  }
+  far() {
+    const hop0 = this.props.text;
+    const hop1 = hop0;
+    const hop2 = hop1;
+    const hop3 = hop2;
+    const hop4 = hop3;
+    const hop5 = hop4;
+    const hop6 = hop5;
+    const hop7 = hop6;
+    const hop8 = hop7;
+    const hop9 = hop8;
+    const hop10 = hop9;
+    const hop11 = hop10;
+    const hop12 = hop11;
+    const hop13 = hop12;
+    const hop14 = hop13;
+    const hop15 = hop14;
+    const hop16 = hop15;
+    const hop17 = hop16;
+    const hop18 = hop17;
+    const hop19 = hop18;
+    const hop20 = hop19;
+    const hop21 = hop20;
+    return <TextArea value={hop21} aria-label="past the bound" />;
+  }
+  each() {
+    return (
+      <div>
+        {this.rows.map((row) => (
+          <TextArea value={row.text} aria-label="a row of its own" />
+        ))}
+        {list(this.rows, (row) => (
+          <Select value={row.size} aria-label="a list row of its own">
+            <option value="a">a</option>
+          </Select>
+        ))}
+        {this.props.rows.map((row) => (
+          <TextArea value={row.text} aria-label="a row from props" />
+        ))}
+      </div>
+    );
+  }
   notes(text: string, { size }: { size: string }) {
     return (
       <div>

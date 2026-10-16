@@ -1,3 +1,4 @@
+import { inBlock, type EnclosingBlock } from "./enclosingBlock";
 import { createId } from "../helpers/createId";
 import { normalizeChildren } from "../vdom/h";
 import {
@@ -146,14 +147,16 @@ export class ChildrenRegion {
   private refreshQueued = false;
   /** Whether the block is parked off the page — see `park`. */
   private waiting = false;
-  /** Where a parked block stood, to come back to — see `park`. */
-  private spot: Comment | undefined;
+  /** What stood right after a parked block, to come back in front of — see `park`. */
+  private after: ChildNode | null = null;
   private disposed = false;
   private readonly listHost: ListHost;
 
   constructor(
     private readonly owner: MaybeComponent,
     name: string,
+    /** The portal this block is, for the portals inside it — see `EnclosingBlock`. */
+    private readonly holder?: EnclosingBlock,
   ) {
     this.listHost = {
       reBuild: () => this.invalidate(),
@@ -173,17 +176,13 @@ export class ChildrenRegion {
    */
   park(parent: ChildNode): void {
     if (!this.placed) return;
-    // A mark where the block stood, so it comes back to the same place rather than to the end — a
-    // comment, which no element's diff claims or removes.
-    // Set only after the move: `place` takes the mark as where to come back to, and would spend it on
-    // the move into the fragment.
-    let mark: Comment | undefined;
-    if (this.spot === undefined && this.open?.parentNode != null) {
-      mark = document.createComment("");
-      this.open.parentNode.insertBefore(mark, this.open);
-    }
+    // What stood right after the block, so it comes back in front of it rather than at the end —
+    // another block in a shared target. Nothing is left in the target to say so: a mark among an
+    // element's own children was measured to split them around the block once they changed. Read
+    // before the move, and set after it, because `place` spends it.
+    const after = this.waiting ? this.after : (this.close?.nextSibling ?? null);
     this.place(parent);
-    if (mark !== undefined) this.spot = mark;
+    this.after = after;
     this.waiting = true;
   }
 
@@ -267,8 +266,10 @@ export class ChildrenRegion {
     const before = this.order;
 
     const unclaimed: (EnhancedChildNode | DONE)[] = [];
-    const result = atTopLevel(() =>
-      reconcileEntries(normalized, this.record, undefined, this.owner, parent, unclaimed, this.listHost),
+    const result = inBlock(this.holder, () =>
+      atTopLevel(() =>
+        reconcileEntries(normalized, this.record, undefined, this.owner, parent, unclaimed, this.listHost),
+      ),
     );
     this.record = result.entries;
     this.publish();
@@ -341,7 +342,9 @@ export class ChildrenRegion {
 
     const normalized = normalizeChildren(Array.isArray(children) ? children : [children], this.id);
     const walk: HydrationWalk = { cursor: open.nextSibling as EnhancedChildNode | null, count: 0 };
-    this.record = atTopLevel(() => hydrateLevel(normalized, this.owner, parent, walk, this.listHost)).entries;
+    this.record = inBlock(this.holder, () =>
+      atTopLevel(() => hydrateLevel(normalized, this.owner, parent, walk, this.listHost)),
+    ).entries;
 
     /**
      * Where the walk stopped IS the closing anchor, when the server wrote as many nodes as this
@@ -428,8 +431,7 @@ export class ChildrenRegion {
     this.publish();
     this.open?.remove();
     this.close?.remove();
-    this.spot?.remove();
-    this.spot = undefined;
+    this.after = null;
     this.open = undefined;
     this.close = undefined;
     this.parent = undefined;
@@ -455,14 +457,13 @@ export class ChildrenRegion {
     }
     if (this.parent === parent) return;
 
-    // Back where it was parked from, in front of its mark; anywhere else, at the end.
-    const spot = this.spot;
-    this.spot = undefined;
-    const before = spot !== undefined && spot.parentNode === (parent as unknown as ParentNode) ? spot : null;
+    // Back in front of what stood after it, when that is still there; anywhere else, at the end.
+    const after = this.after;
+    this.after = null;
+    const before = after !== null && after.parentNode === (parent as unknown as ParentNode) ? after : null;
     parent.insertBefore(this.open!, before);
     for (const node of this.order) parent.insertBefore(node, before);
     parent.insertBefore(this.close, before);
-    spot?.remove();
     this.parent = parent;
     reparentRegions(this.record, parent);
   }

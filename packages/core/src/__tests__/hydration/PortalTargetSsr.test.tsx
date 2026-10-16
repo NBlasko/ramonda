@@ -162,6 +162,51 @@ describe("a portal into a named target", () => {
     container.remove();
   });
 
+  /**
+   * A portal inside a portal, served and adopted: the component the client restores inside the outer
+   * block knows that block, so its own portal closes with it — the same rule a client build follows.
+   */
+  test("an adopted portal inside an adopted one closes with it", async () => {
+    const menus = portalTarget("menus");
+    class Dialog extends Component {
+      menu = this.use(Portal, () => ({ children: <ul class="menu">pick</ul>, target: menus }));
+      render() {
+        return <div class="modal">dialog</div>;
+      }
+    }
+    class Page extends Component {
+      @state open = true;
+      portal = this.use(Portal, (self: Page) => ({
+        children: <Dialog />,
+        target: (self.open ? modals : undefined) as never,
+      }));
+      render() {
+        return <p>page</p>;
+      }
+    }
+
+    const page = await renderPage(<Page />);
+    document.body.insertAdjacentHTML("beforeend", `<div ${PORTAL_TARGET_ATTR}="modals">${page.portals.modals}</div>`);
+    document.body.insertAdjacentHTML("beforeend", `<div ${PORTAL_TARGET_ATTR}="menus">${page.portals.menus}</div>`);
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    container.innerHTML = page.body;
+    const served = document.querySelector(".menu");
+    expect(served).not.toBeNull();
+
+    hydrateRoot(<Page />, container);
+    await Promise.resolve();
+    const app = instanceOf<Page>(container.querySelector("p"));
+    expect(document.querySelector(".menu")).toBe(served);
+
+    app.open = false;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(document.querySelector(".menu")).toBeNull();
+    unmountChildrenNodes([container as unknown as never]);
+    container.remove();
+  });
+
   test("a component inside one restores the state the server gave it", async () => {
     // The same promise a head portal got: the block goes through the ordinary
     // hydration walk, so a component in it is hydrated rather than rebuilt.

@@ -1,3 +1,4 @@
+import { enclosingBlock } from "./enclosingBlock";
 import { settleProps } from "../helpers/common";
 import { applyChangesOnAttributes } from "./Attribute";
 import type {
@@ -926,32 +927,27 @@ function applyDiffWithRegions(
   return { cloneChildren: unclaimed, orderedNodes };
 }
 
-/**
- * Reconciles one level of children against the entries that level held last
- * render, and **recurses for a list**, so a list inside a list inside a slot is
- * reconciled the same way at every depth.
- *
- * Plain children share one pool and one key index; each list gets its own,
- * scoped to itself. That scoping is what keeps two lists that both mint `f0`
- * from seeing each other, and what keeps a component's chrome out of reach of
- * content passed into it.
- */
 /** What `holdsARegion` found for a children array, which settled markup hands back unchanged. */
 const regionsBelow = new WeakMap<readonly unknown[], boolean>();
 
 /**
- * Whether markup holds a list or a component ANYWHERE inside it — the things that change on their
- * own, without the markup around them changing. `h` marks an array that holds one directly
- * (`HAS_REGION`); this follows elements down, once per array.
+ * Whether markup holds a `list()` or a component ANYWHERE inside it — the things that change on their
+ * own, without the markup around them changing.
+ *
+ * A plain GROUP, a nested array, is not one: it is markup like the rest and is looked into. That is
+ * why this cannot lean on `HAS_REGION`, which `h` sets for a group as much as for a list. Once per
+ * array: settled markup hands the same arrays back.
  */
 function holdsARegion(children: readonly unknown[]): boolean {
   const known = regionsBelow.get(children);
   if (known !== undefined) return known;
-  let found = (children as { [HAS_REGION]?: boolean })[HAS_REGION] === true;
+  let found = false;
   for (let i = 0; !found && i < children.length; i++) {
     const child = children[i];
-    if (isListNode(child)) found = true;
-    else if (isVNode(child)) {
+    if (isListNode(child)) {
+      const group = (child as { vnodes?: unknown }).vnodes;
+      found = isLazyList(child) || !Array.isArray(group) || holdsARegion(group);
+    } else if (isVNode(child)) {
       if (child.type === COMPONENT_TYPE) found = true;
       else {
         const inner = (child as { children?: unknown }).children;
@@ -962,6 +958,17 @@ function holdsARegion(children: readonly unknown[]): boolean {
   regionsBelow.set(children, found);
   return found;
 }
+
+/**
+ * Reconciles one level of children against the entries that level held last
+ * render, and **recurses for a list**, so a list inside a list inside a slot is
+ * reconciled the same way at every depth.
+ *
+ * Plain children share one pool and one key index; each list gets its own,
+ * scoped to itself. That scoping is what keeps two lists that both mint `f0`
+ * from seeing each other, and what keeps a component's chrome out of reach of
+ * content passed into it.
+ */
 
 /**
  * What a `list()` region reports to when an item's signal changes.
@@ -2015,6 +2022,10 @@ export function buildComponentRegion(
   componentRuntime.serverWork = placeholderComponentRuntime
     ? placeholderComponentRuntime.serverWork
     : getServerWorkCollector();
+
+  // The portal block this is built in: the region being reconciled, or else the parent's — a
+  // component a re-render inside the block builds is in that block too.
+  componentRuntime.block = enclosingBlock.current ?? placeholderComponentRuntime?.block;
 
   // Client render skips server-only lifecycle; server render skips client-only.
   const onServer = env === "server";

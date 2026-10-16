@@ -393,6 +393,144 @@ describe("Portal follows a reactive target", () => {
     }
   });
 
+  /**
+   * Coming back into an element the owner renders leaves that element's own children in their order:
+   * nothing of the portal's stays among them while it is away. Measured before: a mark left in the
+   * host split its paragraphs around the block — 1, 3, the guest, 2.
+   */
+  test("a block that comes back into the owner's own element keeps that element's children in order", async () => {
+    class Page extends Component {
+      @state open = true;
+      @state items = [1];
+      section = createRef<HTMLElement>();
+      portal = this.use(Portal, (self: Page) => ({
+        children: <b id="inline-guest">guest</b>,
+        target: (self.open ? self.section.current : undefined) as Element,
+      }));
+      render() {
+        return (
+          <section ref={this.section}>
+            {this.items.map((i) => (
+              <p key={i}>{i}</p>
+            ))}
+          </section>
+        );
+      }
+    }
+    const { instance, settle, container } = await getDOM<Page>(<Page />);
+    const shown = () => Array.from(container.querySelector("section")!.children, (child) => child.textContent);
+    // The section exists only after the first render, so the factory sees it on its next run.
+    instance.open = false;
+    await settle();
+    instance.open = true;
+    await settle();
+    expect(shown()).toEqual(["1", "guest"]);
+
+    instance.open = false;
+    await settle();
+    instance.items = [1, 2];
+    await settle();
+    instance.open = true;
+    await settle();
+    instance.items = [1, 2, 3];
+    await settle();
+
+    expect(shown()).toEqual(["1", "2", "3", "guest"]);
+  });
+
+  /**
+   * Closing a portal closes the portals inside it. A modal's dropdown, portalled to a layer of its
+   * own, leaves the page with the modal and comes back with it — the same component, not destroyed —
+   * and one the modal gains while closed is built only when it opens.
+   */
+  describe("a portal inside a portal", () => {
+    let layer: HTMLElement;
+    let destroyedMenus = 0;
+    class Menu extends Component<{ id: string }> {
+      @state picked = "none";
+      @destroyed
+      gone() {
+        destroyedMenus++;
+      }
+      render() {
+        return <ul id={this.props.id}>{this.picked}</ul>;
+      }
+    }
+    let dialog: Dialog | undefined;
+    class Dialog extends Component {
+      /** Its own state, so it renders off the page while the modal is closed. */
+      @state second = false;
+      menu = this.use(Portal, () => ({ children: <Menu id="nested-menu" />, target: layer }));
+      @created
+      known() {
+        dialog = this;
+      }
+      render() {
+        return <div id="nested-dialog">{this.second ? <Dropdown /> : null}</div>;
+      }
+    }
+    class Dropdown extends Component {
+      menu = this.use(Portal, () => ({ children: <Menu id="nested-second" />, target: layer }));
+      render() {
+        return <i>dropdown</i>;
+      }
+    }
+    class Page extends Component {
+      @state open = true;
+      modal = this.use(Portal, (self: Page) => ({
+        children: <Dialog />,
+        target: (self.open ? document.body : undefined) as Element,
+      }));
+      render() {
+        return <div>page</div>;
+      }
+    }
+    beforeEach(() => {
+      layer = document.createElement("aside");
+      document.body.appendChild(layer);
+      destroyedMenus = 0;
+    });
+
+    test("closing the outer one takes the inner one off the page, and opening brings it back", async () => {
+      const { instance, settle } = await getDOM<Page>(<Page />);
+      try {
+        const menu = layer.querySelector("#nested-menu");
+        expect(menu).not.toBeNull();
+        instance.open = false;
+        await settle();
+        expect(layer.querySelector("#nested-menu")).toBeNull();
+        instance.open = true;
+        await settle();
+        expect({ same: layer.querySelector("#nested-menu") === menu, destroyedMenus }).toEqual({
+          same: true,
+          destroyedMenus: 0,
+        });
+      } finally {
+        instance.open = false;
+        await settle();
+        layer.remove();
+      }
+    });
+
+    test("an inner portal the closed one gains is built when it opens", async () => {
+      const { instance, settle } = await getDOM<Page>(<Page />);
+      try {
+        instance.open = false;
+        await settle();
+        dialog!.second = true;
+        await settle();
+        expect(layer.querySelector("#nested-second")).toBeNull();
+        instance.open = true;
+        await settle();
+        expect(layer.querySelector("#nested-second")).not.toBeNull();
+      } finally {
+        instance.open = false;
+        await settle();
+        layer.remove();
+      }
+    });
+  });
+
   /** A block whose target is absent from the start is not built off the page: nothing is created yet. */
   test("a target absent at mount builds nothing until it arrives", async () => {
     let made = 0;
