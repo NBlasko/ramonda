@@ -95,17 +95,21 @@ export function heard(component: Component<any>, event: Event): void {
 }
 
 /**
- * Whether a field whose composition ended still needs the word handed to it: it is on the page, and
- * the model does not hold what it shows. A handler that takes composing input as well took the word
- * from the last one, and is not called again for it; a field the composition's end took away — Enter
- * closed the dialog — is sent nothing.
+ * Whether a field whose composition ended still needs the word handed to it: its component is
+ * alive, and the model does not hold what the field shows.
+ *
+ * A handler that takes composing input as well took the word from the last one, and is not called
+ * again for it — its render has already written the model into the field, so the two agree even when
+ * the handler changed the text. A field whose component the composition's end destroyed — Enter
+ * closed the dialog — is sent nothing. A field merely OFF the page is still sent the word: a portal
+ * parks its block in a fragment while it is closed, and the component in it is kept, text and all.
  */
 // biome-ignore lint/suspicious/noExplicitAny: any component, whatever its props
 function lacksTheWord(component: Component<any>, field: EventTarget): boolean {
-  const element = field as HTMLTextAreaElement;
-  if (!element.isConnected) return false;
-  const model = component[COMPONENT_RUNTIME].rawProps["value"];
-  return model == null || String(model) !== element.value;
+  const runtime = component[COMPONENT_RUNTIME];
+  if (runtime.isDestroyed) return false;
+  const model = runtime.rawProps["value"];
+  return model == null || String(model) !== (field as HTMLTextAreaElement).value;
 }
 
 /** Fields an input method is composing in right now. */

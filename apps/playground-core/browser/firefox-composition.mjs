@@ -106,11 +106,22 @@ const browser = spawn(
   ["--marionette", "-remote-allow-system-access", "--headless", "--no-remote", "--profile", profile],
   { stdio: "ignore", detached: true },
 );
-const stop = (child) => {
-  try {
-    process.kill(-child.pid, "SIGTERM");
-  } catch {}
-};
+/** Stops a process group, and resolves once its leader has exited — or after five seconds. */
+const stop = (child) =>
+  new Promise((resolve) => {
+    if (child.exitCode !== null || child.signalCode !== null) return resolve();
+    const timer = setTimeout(resolve, 5000);
+    child.once("exit", () => {
+      clearTimeout(timer);
+      resolve();
+    });
+    try {
+      process.kill(-child.pid, "SIGTERM");
+    } catch {
+      clearTimeout(timer);
+      resolve();
+    }
+  });
 
 let failed = false;
 let session;
@@ -132,12 +143,19 @@ try {
     await session.send("Marionette:SetContext", { value: "chrome" });
     await session.send("WebDriver:ExecuteScript", { script: COMPOSE, args: [] });
     await session.send("Marionette:SetContext", { value: "content" });
-    await wait(500);
-    const { value } = await session.send("WebDriver:ExecuteScript", {
-      script: `return [document.getElementById("${id}").value, document.getElementById("${id}-taken").textContent];`,
-      args: [],
-    });
-    const [field, taken] = value;
+    // Read until the answer is in, rather than after a fixed pause a loaded runner may outlast: the
+    // settle runs a task after the composition, and the readout a render after that.
+    let field = "";
+    let taken = "";
+    for (let attempt = 0; attempt < 50; attempt++) {
+      const { value } = await session.send("WebDriver:ExecuteScript", {
+        script: `return [document.getElementById("${id}").value, document.getElementById("${id}-taken").textContent];`,
+        args: [],
+      });
+      [field, taken] = value;
+      if (field === "日本" && taken === expected) break;
+      await wait(200);
+    }
     const right = field === "日本" && taken === expected;
     if (!right) failed = true;
     console.log(
@@ -150,8 +168,13 @@ try {
 } finally {
   await session?.send("Marionette:Quit", { flags: ["eForceQuit"] }).catch(() => {});
   session?.close();
-  stop(browser);
-  stop(preview);
-  rmSync(profile, { recursive: true, force: true });
+  // Firefox writes to its profile until it has exited, so the profile goes after it.
+  await stop(browser);
+  await stop(preview);
+  try {
+    rmSync(profile, { recursive: true, force: true });
+  } catch (error) {
+    console.warn(`left the profile at ${profile}: ${error.message}`);
+  }
 }
 process.exit(failed ? 1 : 0);

@@ -50,15 +50,23 @@ function heardAbove(element: JsxElementLike, events: readonly string[], resolve:
  * component's own model, and is still reported.
  */
 function fromProps(value: WrittenAttribute, resolve: ElementContext["resolve"]): boolean {
-  return value.value !== undefined && cameFromProps(value.value, resolve, 0);
+  return value.value !== undefined && cameFromProps(value.value, resolve, 0, new Set());
 }
 
 /** How many names a value is followed through before the answer is "not a prop" — and reported. */
 const HOPS = 20;
 
-function cameFromProps(at: ts.Expression, resolve: ElementContext["resolve"], hops: number): boolean {
-  if (hops > HOPS) return false;
-  const next = (inner: ts.Expression) => cameFromProps(inner, resolve, hops + 1);
+function cameFromProps(
+  at: ts.Expression,
+  resolve: ElementContext["resolve"],
+  hops: number,
+  seen: Set<ts.Node>,
+): boolean {
+  // Each expression is asked once: locals built from locals would otherwise branch on both sides
+  // at every level.
+  if (seen.has(at)) return false;
+  seen.add(at);
+  const next = (inner: ts.Expression) => cameFromProps(inner, resolve, hops, seen);
 
   if (
     ts.isParenthesizedExpression(at) ||
@@ -70,7 +78,11 @@ function cameFromProps(at: ts.Expression, resolve: ElementContext["resolve"], ho
   }
   if (ts.isBinaryExpression(at)) return next(at.left) || next(at.right);
   if (ts.isConditionalExpression(at)) return next(at.whenTrue) || next(at.whenFalse);
-  if (ts.isCallExpression(at)) return at.arguments.some(next);
+  // A method of a prop's value — `this.props.text.trim()` — or a prop handed to a call.
+  if (ts.isCallExpression(at)) {
+    const callee = at.expression;
+    return (ts.isPropertyAccessExpression(callee) && next(callee.expression)) || at.arguments.some(next);
+  }
   if (ts.isTemplateExpression(at)) return at.templateSpans.some((span) => next(span.expression));
   if (ts.isPropertyAccessExpression(at) || ts.isElementAccessExpression(at)) {
     if (
@@ -95,7 +107,8 @@ function cameFromProps(at: ts.Expression, resolve: ElementContext["resolve"], ho
   if (declaration === undefined || !ts.isVariableDeclaration(declaration) || declaration.initializer === undefined) {
     return false;
   }
-  return next(declaration.initializer);
+  if (hops >= HOPS) return false;
+  return cameFromProps(declaration.initializer, resolve, hops + 1, seen);
 }
 
 /**

@@ -111,7 +111,11 @@ export const refBuiltWhereItCannotBeKept = {
     advice:
       "A ref is an identity, so it belongs where an identity belongs: a FIELD.\n\n" +
       "    class Editor extends Component {\n" +
+      '      @state text = "";\n' +
       "      private field = createRef<HTMLTextAreaElement>();\n\n" +
+      "      type(event: Event) {\n" +
+      "        this.text = (event.target as HTMLTextAreaElement).value;\n" +
+      "      }\n\n" +
       "      render() {\n" +
       "        return <TextArea value={this.text} oninput={this.type} ref={this.field} />;\n" +
       "      }\n" +

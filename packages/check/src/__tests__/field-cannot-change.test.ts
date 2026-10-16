@@ -57,6 +57,8 @@ describe("a field the user cannot change", () => {
       "from props on one arm",
       "from props through a call",
       "from props in a template",
+      "from props through a method",
+      "from props at the head of a long sum",
       "from props through a local",
       "from props renamed through a local",
       "undefined default",

@@ -520,8 +520,63 @@ describe("a controlled textarea follows the model after the event the app handle
     expect({ field: field.value, taken }).toEqual({ field: "aか", taken: ["aか"] });
   });
 
-  /** A field its composition's end took off the page — Enter closed the dialog — is sent nothing. */
-  test("a field removed as its composition ends is sent nothing", async () => {
+  /**
+   * A handler that takes composing input and CHANGES it — full-width digits to half-width, a trim —
+   * leaves the model unlike the field, and still took the word: it is not called again.
+   */
+  test("a handler that took the word and changed it is not called again", async () => {
+    const taken: string[] = [];
+    class Postcode extends Component {
+      @state text = "";
+      take(event: InputEvent) {
+        this.text = (event.target as HTMLTextAreaElement).value.replace(/[０-９]/g, (d) =>
+          String.fromCharCode(d.charCodeAt(0) - 0xfee0),
+        );
+        taken.push(this.text);
+      }
+      render() {
+        return <TextArea id="t" value={this.text} oninput={this.take} />;
+      }
+    }
+    const app = await getDOM<Postcode>(<Postcode />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+
+    compose(field, "", "１２３", "chromium");
+    await drain(app);
+
+    expect({ field: field.value, taken }).toEqual({ field: "123", taken: ["123"] });
+  });
+
+  /**
+   * A field taken OFF the page but kept — a portal parked while its dialog is closed — still hands
+   * the word over: the component is alive, and opening the dialog again shows what was typed.
+   */
+  test("a field moved off the page as its composition ends still takes the word", async () => {
+    class Editor extends Component {
+      @state text = "";
+      take(event: InputEvent) {
+        if (event.isComposing) return;
+        this.text = (event.target as HTMLTextAreaElement).value;
+      }
+      render() {
+        return <TextArea id="t" value={this.text} oninput={this.take} />;
+      }
+    }
+    const app = await getDOM<Editor>(<Editor />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+    const parked = document.createDocumentFragment();
+
+    compose(field, "", "日本", "chromium");
+    parked.appendChild(field);
+    await drain(app);
+
+    expect({ field: field.value, model: app.instance.text }).toEqual({ field: "日本", model: "日本" });
+  });
+
+  /** A field its composition's end destroyed — Enter closed the dialog — is sent nothing. */
+  test("a field destroyed as its composition ends is sent nothing", async () => {
     const taken: string[] = [];
     class Dialog extends Component {
       @state text = "";

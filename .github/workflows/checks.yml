@@ -186,7 +186,8 @@ jobs:
       - name: Its system libraries
         run: pnpm --filter playground-core exec playwright install-deps chromium-headless-shell
 
-      # Firefox and WebKit, for the three generators below and for nothing else.
+      # Firefox and WebKit, for the generators below — and Firefox also for `test:browser`, whose
+      # `firefox-composition.mjs` types through Firefox's own input method, which only Firefox can.
       #
       # They are HERE rather than in `test` because that job is the bottleneck for how long CI takes,
       # and this one was already built to run beside it — its own note above says so. The generators

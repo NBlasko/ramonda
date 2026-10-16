@@ -61,6 +61,38 @@ class App extends Component<{ text: string; size: string }> {
           <option value="a">a</option>
         </Select>
         <TextArea value={`${this.props.text}!`} aria-label="from props in a template" />
+        <TextArea value={this.props.text.trim()} aria-label="from props through a method" />
+        <TextArea
+          value={
+            this.props.text +
+            value +
+            value +
+            value +
+            value +
+            value +
+            value +
+            value +
+            value +
+            value +
+            value +
+            value +
+            value +
+            value +
+            value +
+            value +
+            value +
+            value +
+            value +
+            value +
+            value +
+            value +
+            value +
+            value +
+            value +
+            value
+          }
+          aria-label="from props at the head of a long sum"
+        />
         <Select value={own.size} aria-label="from props through a local">
           <option value="a">a</option>
         </Select>

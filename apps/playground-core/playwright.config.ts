@@ -22,10 +22,13 @@ import { defineConfig, devices } from "@playwright/test";
  */
 export default defineConfig({
   testDir: "./browser",
-  // One browser, and headless. The claims here are about the platform's own behaviour — where a
+  // One browser, and headless. Most claims here are about the platform's own behaviour — where a
   // caret lands, what holds the focus — which is the same across engines, so a matrix would buy
-  // repetition rather than coverage. The CI job installs `chromium-headless-shell` alone, which is
-  // what this resolves to; a headed run needs `playwright install chromium` first.
+  // repetition rather than coverage. The one that is NOT the same is how a composition ends, and
+  // Firefox's half of it is `browser/firefox-composition.mjs`, which `test:browser` runs after this:
+  // Playwright cannot type through an input method in Firefox. The CI job installs
+  // `chromium-headless-shell` for this, which is what it resolves to; a headed run needs
+  // `playwright install chromium` first.
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   // The built app, served the way it is shipped rather than through the dev server: a transform
   // that only happens in production is exactly the kind of thing this suite exists to catch.

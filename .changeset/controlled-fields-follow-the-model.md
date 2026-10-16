@@ -20,8 +20,9 @@ ancestor reads what was typed — or moves the model itself; it leaves an input 
 alone while it lasts and settles the field when it ends. A handler that skips composing input takes
 the word from the ordinary `input` after the composition: Firefox sends one, Chromium does not, and
 there the field sends it, once — measured with a real composition in both, typing 日本. It is sent
-only to a field still on the page whose model lacks the word, so a handler that takes composing input
-too is not called twice; it writes only the value, with no render; and it still
+only while the field's component is alive and its model lacks the word: a handler that takes composing
+input too is not called twice, a field whose dialog Enter closed is sent nothing, and one a portal
+parked off the page still takes the word; it writes only the value, with no render; and it still
 runs when the handler throws. A `TextArea` answers `input` only — `change` comes on blur, when
 every input has already been answered. A `Select`'s `defaultValue` holds until the
 user picks or a `value` holds the field, and applies once an option with that value is there: a
