@@ -1,10 +1,10 @@
 import ts from "typescript";
 import { positionOf } from "../syntax";
 import { coreElementTag } from "./coreElements";
-import { openingOf, tagOf, writtenAsNothing } from "./element";
+import { contextFor, openingOf, tagOf, writtenAsNothing } from "./element";
 import { eventTypeOf } from "./events";
 import { enclosingElement } from "./html";
-import type { ElementRule, JsxElementLike } from "./rule";
+import type { ElementContext, ElementRule, JsxElementLike, WrittenAttribute } from "./rule";
 
 export interface FieldTheUserCannotChangeIssue {
   component: "Select" | "TextArea";
@@ -18,16 +18,9 @@ export interface FieldTheUserCannotChangeIssue {
   column: number;
 }
 
-/** The names an element is written with. */
-function namesOf(element: JsxElementLike): string[] {
-  return openingOf(element)
-    .attributes.properties.filter(ts.isJsxAttribute)
-    .map((attribute) => attribute.name.getText());
-}
-
 /** The events an element has a handler for, in any spelling. */
-function eventsOf(element: JsxElementLike): Set<string | undefined> {
-  return new Set(namesOf(element).map((name) => eventTypeOf(name)?.type));
+function eventsOf(attributes: readonly WrittenAttribute[]): Set<string | undefined> {
+  return new Set(attributes.map((attribute) => eventTypeOf(attribute.name)?.type));
 }
 
 /**
@@ -35,24 +28,38 @@ function eventsOf(element: JsxElementLike): Set<string | undefined> {
  * oninput>`. For a `TextArea` only `input` does: an ancestor's `change` comes on blur, after every
  * keystroke has been undone.
  */
-function heardAbove(element: JsxElementLike, events: readonly string[]): boolean {
+function heardAbove(element: JsxElementLike, events: readonly string[], resolve: ElementContext["resolve"]): boolean {
   for (let at = enclosingElement(element); at !== undefined; at = enclosingElement(at)) {
     // Only an ELEMENT listens: on a component, `onchange` is a prop it may do anything with.
     if (tagOf(at) === undefined) continue;
-    const heard = eventsOf(at);
+    const heard = eventsOf(contextFor(at, resolve).attributes);
     if (events.some((event) => heard.has(event))) return true;
   }
   return false;
 }
 
 /**
- * Whether the `value` is handed in from outside — `this.props.text`. The handler that moves it is then
- * the parent's business, and may be an `oninput` on an element of the parent's own render, which this
- * rule, reading one component, cannot see.
+ * Whether the `value` is handed in from outside — `this.props.text`, or `props.text` in a function. The
+ * handler that moves it is then the parent's business, and may be an `oninput` on an element of the
+ * parent's own render, which this rule, reading one component, cannot see.
+ *
+ * The value itself, read down to where it comes from — a fallback after it (`?? ""`) is still the
+ * prop. A prop used only as a KEY, `drafts[this.props.id]`, is this component's own model.
  */
-function fromProps(value: ts.JsxAttribute): boolean {
-  const written = value.initializer?.getText();
-  return written !== undefined && /\bprops\b/.test(written);
+function fromProps(value: WrittenAttribute): boolean {
+  let at = value.value;
+  while (at !== undefined) {
+    if (ts.isParenthesizedExpression(at) || ts.isNonNullExpression(at)) at = at.expression;
+    else if (ts.isBinaryExpression(at) && at.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken) at = at.left;
+    else if (ts.isPropertyAccessExpression(at) || ts.isElementAccessExpression(at)) {
+      const below = at.expression;
+      if (ts.isPropertyAccessExpression(at) && at.name.text === "props" && below.kind === ts.SyntaxKind.ThisKeyword) {
+        return true;
+      }
+      at = below;
+    } else return ts.isIdentifier(at) && at.text === "props";
+  }
+  return false;
 }
 
 /**
@@ -114,32 +121,31 @@ export const fieldTheUserCannotChange = {
       "`value` every keystroke before it is undone.\n\n",
   },
 
-  read(element, { resolve, truth }) {
+  read(element, { resolve, truth, attributes }) {
     const opening = openingOf(element);
     const tag = coreElementTag(opening.tagName, resolve);
     if (tag !== "select" && tag !== "textarea") return [];
 
-    // `value={null}` and `value={undefined}` — data still loading — are no value: core leaves the
-    // field to the user, and so does this.
-    const value = opening.attributes.properties.find(
-      (attribute): attribute is ts.JsxAttribute => ts.isJsxAttribute(attribute) && attribute.name.getText() === "value",
-    );
-    if (value === undefined || writtenAsNothing(value)) return [];
-    const names = namesOf(element);
+    // `{null}` and `{undefined}` — data still loading — are no value: core leaves the field to the
+    // user, and so does this. A `defaultValue` written so is no default either.
+    const said = (name: string) =>
+      attributes.find((attribute) => attribute.name === name && !writtenAsNothing(attribute));
+    const value = said("value");
+    if (value === undefined) return [];
 
     const component = tag === "select" ? "Select" : "TextArea";
     const at = positionOf(opening);
-    if (names.includes("defaultValue")) return [{ component, kind: "both", ...at }];
+    if (said("defaultValue") !== undefined) return [{ component, kind: "both", ...at }];
 
     const moving: readonly string[] = tag === "textarea" ? ["input"] : ["input", "change"];
     if (
       ["readonly", "readOnly", "disabled"].some((name) => truth(name) === true) ||
-      heardAbove(element, moving) ||
+      heardAbove(element, moving, resolve) ||
       fromProps(value)
     ) {
       return [];
     }
-    const events = eventsOf(element);
+    const events = eventsOf(attributes);
     if (!events.has("input") && !events.has("change")) return [{ component, kind: "no-handler", ...at }];
     if (tag === "textarea" && !events.has("input")) return [{ component, kind: "held-between-keystrokes", ...at }];
     return [];

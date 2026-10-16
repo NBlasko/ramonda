@@ -73,8 +73,10 @@ export interface PortalProps {
  * second copy. That is also how "inline" is done: there is no `disabled` flag,
  * because a hook has no position of its own to fall back to, so instead you aim
  * `target` at an element in your own render. A `target` absent at mount and
- * supplied later is placed then, not lost. A target change is watched on its own,
- * so it moves the nodes whether or not `children` changed with it.
+ * supplied later is placed then, not lost. A target that goes away takes the
+ * block off the page and brings the same nodes back with it — see `away`. A
+ * target change is watched on its own, so it moves the nodes whether or not
+ * `children` changed with it.
  *
  * ## Events follow the DOM, not the logical tree
  *
@@ -115,6 +117,9 @@ export class Portal extends Hook<PortalProps> {
    */
   private resolvedFrom: PortalTarget | undefined;
   private resolvedTo: Element | undefined;
+
+  /** Where the block waits while it has no target — see `away`. */
+  private waiting: DocumentFragment | undefined;
 
   /** The real element to render into, whichever form `target` took. */
   private get element(): Element | undefined {
@@ -228,10 +233,27 @@ export class Portal extends Hook<PortalProps> {
    * scoped to a block, so nothing here re-implements the diff any more.
    */
   private reconcile(): void {
-    const target = this.element;
+    const target = this.element ?? this.away();
     if (!target) return;
 
     this.region.reconcile(this.props.children, target);
+  }
+
+  /**
+   * Where a block waits while it has no target: OFF the page, in a fragment of its own.
+   *
+   * A target that goes away is how a portal is closed — `target: open ? document.body : undefined` —
+   * so the block must leave the page with it. It moves, the same nodes, into a fragment, and moves
+   * back when a target returns: a component in it keeps its state and is not destroyed. A fragment
+   * rather than nowhere, because the nodes keep a parent: a component in the block re-renders while
+   * it waits, and a change to the children reaches it, as anywhere else.
+   *
+   * Only a block that has been somewhere. One whose target is absent from the start is not built at
+   * all until a target arrives — its components are created on the page, not off it.
+   */
+  private away(): ChildNode | undefined {
+    if (!this.area?.placed) return undefined;
+    return (this.waiting ??= document.createDocumentFragment()) as unknown as ChildNode;
   }
 }
 

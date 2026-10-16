@@ -1,5 +1,5 @@
 import ts from "typescript";
-import { openingOf } from "./element";
+import { tagOf } from "./element";
 import { positionOf } from "../syntax";
 import type { ElementRule, TextEdit } from "./rule";
 
@@ -155,8 +155,9 @@ export const attributeThatDoesNothing = {
     // A component tag decides its own props, so what it does with them is not settled here.
     if (tag === undefined) return [];
     // Core's `Select` and `TextArea` stand for their tags, and `defaultValue` is THEIR prop: where the
-    // field starts, after which it is the user's. Only the tag written as itself drops it.
-    const component = /^[A-Z]/.test(openingOf(element).tagName.getText());
+    // field starts, after which it is the user's. Only the tag written as itself drops it — `tagOf`
+    // names a component however it is written, `ui.Select` as much as `Select`.
+    const component = tagOf(element) === undefined;
 
     const found: AttributeThatDoesNothingIssue[] = [];
 

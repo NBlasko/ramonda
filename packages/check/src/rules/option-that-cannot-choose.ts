@@ -1,7 +1,7 @@
 import ts from "typescript";
 import { positionOf } from "../syntax";
 import { coreElementTag } from "./coreElements";
-import { openingOf, tagOf, writtenAsNothing } from "./element";
+import { contextFor, openingOf, tagOf, writtenAsNothing } from "./element";
 import { enclosingElement } from "./html";
 import type { ElementContext, ElementRule, JsxElementLike, TextEdit } from "./rule";
 
@@ -60,10 +60,12 @@ function insideADecidingSelect(element: JsxElementLike, resolve: ElementContext[
     const tag = tagOf(at) ?? coreElementTag(openingOf(at).tagName, resolve);
     if (tag === "select") {
       // A spread may carry either — `{...bind(form.size)}` carries `value` — so it decides as well.
-      return openingOf(at).attributes.properties.some(
-        (attribute) =>
-          ts.isJsxSpreadAttribute(attribute) ||
-          (["value", "defaultValue"].includes(attribute.name.getText()) && !writtenAsNothing(attribute)),
+      const select = contextFor(at, resolve);
+      return (
+        select.spreads ||
+        select.attributes.some(
+          (attribute) => ["value", "defaultValue"].includes(attribute.name) && !writtenAsNothing(attribute),
+        )
       );
     }
     at = enclosingElement(at);

@@ -1,9 +1,11 @@
 import { Component, Select, TextArea } from "@ramonda/core";
+import * as ui from "@ramonda/core";
 
 declare const value: string;
 declare const bind: Record<string, unknown>;
 declare const viewing: boolean;
 const LOCKED = true;
+declare const drafts: Record<string, string>;
 declare const Card: (props: { onchange?: unknown; children?: unknown }) => unknown;
 
 class App extends Component<{ text: string }> {
@@ -48,6 +50,17 @@ class App extends Component<{ text: string }> {
         </fieldset>
         {/* ✓ handed in by the parent, whose handler this cannot see */}
         <TextArea value={this.props.text} aria-label="from props" />
+        <TextArea value={this.props.text ?? ""} aria-label="from props with a fallback" />
+        {/* ✗ no-handler: the model is this component's, only keyed by a prop */}
+        <TextArea value={drafts[this.props.text]} aria-label="keyed by a prop" />
+        {/* ✓ a defaultValue written as undefined is none */}
+        <Select value={value} oninput={this.pick} defaultValue={undefined} aria-label="undefined default">
+          <option value="a">a</option>
+        </Select>
+        {/* ✓ core's Select through a namespace takes defaultValue as well */}
+        <ui.Select defaultValue="a" aria-label="namespaced default">
+          <option value="a">a</option>
+        </ui.Select>
         {/* ✗ held-between-keystrokes: an ancestor's change comes on blur */}
         <fieldset onchange={this.type}>
           <TextArea value={value} aria-label="changed above" />

@@ -157,6 +157,11 @@ export class ChildrenRegion {
     };
   }
 
+  /** Whether the block is somewhere — placed in a parent, or adopted from a server render. */
+  get placed(): boolean {
+    return this.close !== undefined && !this.disposed;
+  }
+
   /**
    * Publishes this block on its own OPENING ANCHOR: the record it holds, and where it ends.
    *

@@ -20,12 +20,11 @@ export function openingOf(element: JsxElementLike): ts.JsxOpeningLikeElement {
  * Whether an attribute is written as `{null}` or `{undefined}`: there, and saying nothing. Core reads
  * a `value` written so as no value, and a rule about `value` has to read it the same way.
  */
-export function writtenAsNothing(attribute: ts.JsxAttribute): boolean {
-  const written = attribute.initializer;
-  if (written === undefined || !ts.isJsxExpression(written) || written.expression === undefined) return false;
-  const expression = written.expression;
+export function writtenAsNothing(attribute: WrittenAttribute): boolean {
+  const value = attribute.value;
   return (
-    expression.kind === ts.SyntaxKind.NullKeyword || (ts.isIdentifier(expression) && expression.text === "undefined")
+    value !== undefined &&
+    (value.kind === ts.SyntaxKind.NullKeyword || (ts.isIdentifier(value) && value.text === "undefined"))
   );
 }
 

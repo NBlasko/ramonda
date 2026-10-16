@@ -190,10 +190,7 @@ export class Select extends Component<SelectProps> {
     // A pick is `input` then `change`, both at once: either is the moment to answer.
     // Without a `value` the select is the user's, and a pick is noted — a `defaultValue` may yet
     // arrive, and must not move a select somebody has already picked in.
-    const field =
-      this.props.value == null
-        ? { replaced: ["oninput", "onchange"], listeners: { oninput: this.p, onchange: this.p } }
-        : controlled(this, this.a, ["oninput", "onchange"]);
+    const field = controlled(this, this.a, ["oninput", "onchange"], this.p);
     return __h(
       "select",
       {

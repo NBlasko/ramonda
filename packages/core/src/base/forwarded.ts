@@ -50,20 +50,30 @@ export function forwarded(component: Component<any>, consumed: readonly string[]
 }
 
 /**
- * What a field's element is given for a CONTROLLED field — one with a `value` — and the names of the
- * app's handlers that moves: `listener` on each event in `answered`, calling the app's own through
- * `answer`. A handler spelled another way (`onInput`, `on:input`) is a listener of its own beside it,
- * which is the same thing, since the field is settled after the whole event either way. A field
- * without a `value` is given nothing: with `defaultValue`, or with neither, the page owns what it shows.
+ * What a field's element is given, and the names of the app's handlers that moves.
+ *
+ * A CONTROLLED field — one with a `value` — gets `listener` on each event in `answered`, calling the
+ * app's own through `answer`. A handler spelled another way (`onInput`, `on:input`) is a listener of
+ * its own beside it, which is the same thing, since the field is settled after the whole event
+ * either way. A field without a `value` is the page's: it gets `uncontrolled` on the same events when
+ * it needs to hear them — a `Select` notes the user's pick — and nothing otherwise.
  */
 export function controlled(
   // biome-ignore lint/suspicious/noExplicitAny: any component, whatever its props
   component: Component<any>,
   listener: (event: Event) => void,
   answered: readonly ("oninput" | "onchange")[],
+  uncontrolled?: (event: Event) => void,
 ) {
   // `null` as much as `undefined`: a value still loading is no value, not the text "null".
-  if (component[COMPONENT_RUNTIME].rawProps["value"] == null) return { replaced: [] as string[], listeners: {} };
+  if (component[COMPONENT_RUNTIME].rawProps["value"] == null) {
+    // A composition it let go of in the middle ends with the app, not here, and must not leave the
+    // field waiting for that end once it holds a value again.
+    composing.delete(component);
+    const listeners: Record<string, (event: Event) => void> = {};
+    if (uncontrolled !== undefined) for (const name of answered) listeners[name] = uncontrolled;
+    return { replaced: Object.keys(listeners), listeners };
+  }
   // The composition's start and end too: a settle set before a composition began must not land in it.
   const listeners: Record<string, (event: Event) => void> = {
     oncompositionstart: listener,

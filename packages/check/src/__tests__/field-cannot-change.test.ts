@@ -25,6 +25,7 @@ describe("a field the user cannot change", () => {
       [lineOf('aria-label="held text"'), "TextArea", "no-handler"],
       [lineOf('aria-label="saved on blur"'), "TextArea", "held-between-keystrokes"],
       [lineOf('aria-label="both"'), "TextArea", "both"],
+      [lineOf('aria-label="keyed by a prop"'), "TextArea", "no-handler"],
       [lineOf('aria-label="changed above"'), "TextArea", "no-handler"],
       [lineOf('aria-label="maybe read only"'), "TextArea", "no-handler"],
       [lineOf('aria-label="inside a card"'), "Select", "no-handler"],
@@ -50,6 +51,8 @@ describe("a field the user cannot change", () => {
       "disabled",
       "heard above",
       "from props",
+      "from props with a fallback",
+      "undefined default",
       "read only string",
       "locked const",
       "null value",
@@ -66,10 +69,13 @@ describe("a field the user cannot change", () => {
    */
   test("defaultValue on Select and TextArea is reported by no rule", () => {
     const all = analyzeProject(join(here, "fixtures", "field-cannot-change", "tsconfig.json")).findings;
-    const line = lineOf('aria-label="default"');
-    const reported = Object.entries(all)
-      .filter(([, issues]) => (issues as { line?: number }[]).some((issue) => issue.line === line))
-      .map(([rule]) => rule);
-    expect(reported).toEqual([]);
+    // Imported by name, and through a namespace: `ui.Select` is core's `Select` as well.
+    for (const label of ["default", "namespaced default"]) {
+      const line = lineOf(`aria-label="${label}"`);
+      const reported = Object.entries(all)
+        .filter(([, issues]) => (issues as { line?: number }[]).some((issue) => issue.line === line))
+        .map(([rule]) => rule);
+      expect(reported, label).toEqual([]);
+    }
   });
 });

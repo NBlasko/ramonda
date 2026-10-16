@@ -97,6 +97,18 @@ There is no `disabled`/inline flag: to keep the content in place, point `target`
 element in your own render. A `target` that only becomes available after mount is placed
 then, not lost.
 
+A target that goes away takes the content off the page, which is how a modal closes:
+
+```tsx
+this.use(Portal, (self) => ({
+  children: <Dialog />,
+  target: (self.open ? document.body : undefined) as Element,
+}));
+```
+
+The same nodes come back when the target does. `Dialog` keeps its state and is not destroyed
+while it is away, and a change to the children reaches it meanwhile.
+
 ## `list()` works here
 
 A portal's children go through the real reconciler, so a list is a list — minted identity,

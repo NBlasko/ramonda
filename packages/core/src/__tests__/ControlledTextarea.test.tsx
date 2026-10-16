@@ -471,6 +471,39 @@ describe("a controlled textarea follows the model after the event the app handle
     expect(field.value).toBe("a");
   });
 
+  /**
+   * A composition the field stopped being controlled in the middle of — its end goes to the app, not
+   * to core — does not leave the field waiting for an end it will never hear.
+   */
+  test("a field that lets go during a composition is settled again once it holds a value", async () => {
+    class Reloaded extends Component {
+      @state text: string | null = "a";
+      keep() {
+        if (this.text !== null) this.text = "a";
+      }
+      render() {
+        return <TextArea id="t" value={this.text as never} oninput={this.keep} />;
+      }
+    }
+    const app = await getDOM<Reloaded>(<Reloaded />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+
+    field.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+    app.instance.text = null;
+    await app.settle();
+    field.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "か" }));
+    app.instance.text = "a";
+    await app.settle();
+
+    field.value = "ax";
+    field.dispatchEvent(new InputEvent("input", { bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await app.settle();
+
+    expect(field.value).toBe("a");
+  });
+
   /** A settle set by a keystroke just before a composition began does not land in the middle of it. */
   test("a settle that comes due mid-composition waits", async () => {
     class Composed extends Component {

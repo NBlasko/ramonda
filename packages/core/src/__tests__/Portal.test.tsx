@@ -270,6 +270,88 @@ describe("Portal follows a reactive target", () => {
     b.remove();
   });
 
+  /** A block whose target is absent from the start is not built off the page: nothing is created yet. */
+  test("a target absent at mount builds nothing until it arrives", async () => {
+    let made = 0;
+    class Toast extends Component<{ n: number }> {
+      @created
+      made() {
+        made++;
+      }
+      render() {
+        return <b>saved</b>;
+      }
+    }
+    class Page extends Component {
+      @state root: Element | null = null;
+      @state tick = 0;
+      portal = this.use(Portal, (self: Page) => ({ children: <Toast n={self.tick} />, target: self.root as Element }));
+      render() {
+        return <div>page</div>;
+      }
+    }
+    const { instance, settle } = await getDOM<Page>(<Page />);
+    instance.tick = 1;
+    await settle();
+    expect(made).toBe(0);
+  });
+
+  /**
+   * A target that goes away takes the block off the page — `target: open ? document.body : undefined`
+   * is how a modal closes — and brings the SAME nodes back when it returns: the component in it keeps
+   * its state, is not destroyed while away, and hears what changed meanwhile.
+   */
+  test("a target that goes away takes the block off the page, and back", async () => {
+    let destroyedCount = 0;
+    class Dialog extends Component<{ title: string }> {
+      @state typed = "";
+      @destroyed
+      gone() {
+        destroyedCount++;
+      }
+      render() {
+        return <b id="away-dialog">{this.props.title}</b>;
+      }
+    }
+    class Page extends Component {
+      @state open = true;
+      @state title = "first";
+      portal = this.use(Portal, (self: Page) => ({
+        children: <Dialog title={self.title} />,
+        target: (self.open ? document.body : undefined) as Element,
+      }));
+      render() {
+        return <div id="away-page">page</div>;
+      }
+    }
+
+    const { instance, settle } = await getDOM<Page>(<Page />);
+    const shown = document.getElementById("away-dialog")!;
+    expect(shown.parentNode).toBe(document.body);
+
+    try {
+      instance.open = false;
+      await settle();
+      expect(document.getElementById("away-dialog")).toBeNull();
+      expect(destroyedCount).toBe(0);
+
+      instance.title = "second";
+      await settle();
+      instance.open = true;
+      await settle();
+
+      const back = document.getElementById("away-dialog")!;
+      expect({ same: back === shown, text: back.textContent, destroyedCount }).toEqual({
+        same: true,
+        text: "second",
+        destroyedCount: 0,
+      });
+    } finally {
+      instance.open = false;
+      await settle();
+    }
+  });
+
   /**
    * Absent at mount, supplied later — which the class doc promises and nothing measured.
    *
