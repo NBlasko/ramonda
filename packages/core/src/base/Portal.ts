@@ -252,9 +252,10 @@ export class Portal extends Hook<PortalProps> {
    * own state while it waits.
    *
    * The CHILDREN are not reconciled while it waits, only when a target returns — so a component the
-   * children gain meanwhile is created on the page, where its `@mounted` can measure and focus, and
-   * never off it. A block whose target is absent from the start is likewise built only when one
-   * arrives.
+   * children gain meanwhile is created on the page, where its `@mounted` can measure and focus. A
+   * block whose target is absent from the start is likewise built only when one arrives. A component
+   * already IN the block still renders on its own state while it waits, off the page, as every
+   * component does — one rule, rather than a paused state to know about.
    */
   private leave(): void {
     if (!this.area?.placed) return;

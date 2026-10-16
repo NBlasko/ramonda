@@ -110,6 +110,11 @@ The same nodes come back when the target does. `Dialog` keeps its state and is n
 while it is away. A change to the children made meanwhile is applied when it comes back, so a
 component they gain is created on the page, where its `@mounted` can measure and focus.
 
+Inside the closed portal, a component still renders when its own state changes. It does so off the
+page, the same as anywhere else, so one rule holds for every component. A component that `Dialog`
+renders while closed, such as a chart that finishes loading, is mounted off the page. If it measures
+itself or takes focus, it does that when the portal opens.
+
 ## `list()` works here
 
 A portal's children go through the real reconciler, so a list is a list — minted identity,
