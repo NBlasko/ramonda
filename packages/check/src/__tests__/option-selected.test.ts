@@ -25,9 +25,10 @@ const found = () =>
 describe("an option that cannot choose", () => {
   test("every spelling of it, whatever it says and wherever it sits", () => {
     // 13 bare, 21 `selected={true}`, 29 one level down in an optgroup, 52 `selected={false}`, 60 a
-    // value per row, 83 under a `defaultValue`. The question is whether the attribute is THERE,
+    // value per row, 83 under a `defaultValue`, 90 under a select whose spread may carry a `value`.
+    // The question is whether the attribute is THERE,
     // because a `Select` with a `value` or a `defaultValue` overwrites it either way — see below.
-    expect(found().map((issue) => issue.line)).toEqual([13, 21, 29, 52, 60, 83]);
+    expect(found().map((issue) => issue.line)).toEqual([13, 21, 29, 52, 60, 83, 90]);
   });
 
   /**
@@ -51,7 +52,7 @@ describe("an option that cannot choose", () => {
   test("and the report names the option, so a reader can find the line", () => {
     // The four written out say `value="a"`; the one built per row has a value this cannot read, and
     // the report drops the name rather than inventing one.
-    expect(found().map((issue) => issue.value)).toEqual(["a", "a", "a", "a", undefined, "b"]);
+    expect(found().map((issue) => issue.value)).toEqual(["a", "a", "a", "a", undefined, "b", "c"]);
   });
 
   /**
@@ -76,8 +77,9 @@ describe("an option that cannot choose", () => {
   test("the correct shapes stay silent", () => {
     const lines = found().map((issue) => issue.line);
     // 76: a `Select` with neither `value` nor `defaultValue` leaves its options alone, so there
-    // `selected` is what chooses — and deleting it would change the page.
-    for (const quiet of [37, 44, 68, 76]) {
+    // `selected` is what chooses — and deleting it would change the page. 97: `value={null}` is no
+    // value, the same for core.
+    for (const quiet of [37, 44, 68, 76, 97]) {
       expect(lines, `line ${quiet} should be silent`).not.toContain(quiet);
     }
   });

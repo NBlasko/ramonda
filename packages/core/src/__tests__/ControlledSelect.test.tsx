@@ -274,6 +274,32 @@ describe("a controlled select shows what the model says", () => {
     expect(shown(app.container)).toEqual({ value: "fr", index: 2 });
   });
 
+  /** A form's reset returns a `defaultValue` select to its default, as it does a `TextArea`. */
+  test("a reset goes back to the defaultValue", async () => {
+    class Sized extends Component {
+      render() {
+        return (
+          <form>
+            <Select id="s" name="size" defaultValue="m">
+              {["s", "m", "l"].map((v) => (
+                <option key={v} value={v}>
+                  {v}
+                </option>
+              ))}
+            </Select>
+          </form>
+        );
+      }
+    }
+    const app = await getDOM<Sized>(<Sized />);
+    await app.settle();
+    const select = app.container.querySelector("#s") as HTMLSelectElement;
+    await pickAsABrowserDoes(select, "l");
+    (select.form as HTMLFormElement).reset();
+
+    expect(shown(app.container)).toEqual({ value: "m", index: 1 });
+  });
+
   /** A `defaultValue` from a load reaches a select nobody has picked in yet. */
   test("a defaultValue that arrives before a pick is applied", async () => {
     class Loading extends Component {

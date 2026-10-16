@@ -17,6 +17,19 @@ export function openingOf(element: JsxElementLike): ts.JsxOpeningLikeElement {
 }
 
 /**
+ * Whether an attribute is written as `{null}` or `{undefined}`: there, and saying nothing. Core reads
+ * a `value` written so as no value, and a rule about `value` has to read it the same way.
+ */
+export function writtenAsNothing(attribute: ts.JsxAttribute): boolean {
+  const written = attribute.initializer;
+  if (written === undefined || !ts.isJsxExpression(written) || written.expression === undefined) return false;
+  const expression = written.expression;
+  return (
+    expression.kind === ts.SyntaxKind.NullKeyword || (ts.isIdentifier(expression) && expression.text === "undefined")
+  );
+}
+
+/**
  * The tag when it is a host element, lowercased; `undefined` when it names a component.
  *
  * A capital first letter is a component, and so is any dotted name (`<screens.reader />`) — that is

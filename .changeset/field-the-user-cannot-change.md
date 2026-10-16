@@ -17,7 +17,7 @@ time (`input` for a `TextArea`, whose `change` comes on blur); and a field whose
 `props`, whose handler may be in the parent's render.
 
 `option-that-cannot-choose` names `defaultValue` for a choice the user owns, and reports an
-`<option selected>` only inside a `Select` that has a `value` or a `defaultValue` — one without
-either leaves the choice to the option. `attribute-that-does-nothing` no longer reports `defaultValue`
+`<option selected>` only inside a `Select` that has a `value` or a `defaultValue`, or a spread that may
+carry one — a select with neither, or with `value={null}`, leaves the choice to the option. `attribute-that-does-nothing` no longer reports `defaultValue`
 on a core `Select` or `TextArea`, where it is a prop. And
 `fresh-object-in-props` says what core compares by content now.

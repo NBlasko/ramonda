@@ -1,7 +1,7 @@
 import ts from "typescript";
 import { positionOf } from "../syntax";
 import { coreElementTag } from "./coreElements";
-import { openingOf, tagOf } from "./element";
+import { openingOf, tagOf, writtenAsNothing } from "./element";
 import { eventTypeOf } from "./events";
 import { enclosingElement } from "./html";
 import type { ElementRule, JsxElementLike } from "./rule";
@@ -23,20 +23,6 @@ function namesOf(element: JsxElementLike): string[] {
   return openingOf(element)
     .attributes.properties.filter(ts.isJsxAttribute)
     .map((attribute) => attribute.name.getText());
-}
-
-/** Whether `value` is written as `{null}` or `{undefined}`. */
-function writtenAsNothing(element: JsxElementLike): boolean {
-  const value = openingOf(element).attributes.properties.find(
-    (attribute) => ts.isJsxAttribute(attribute) && attribute.name.getText() === "value",
-  );
-  if (value === undefined || !ts.isJsxAttribute(value)) return false;
-  const written = value.initializer;
-  if (written === undefined || !ts.isJsxExpression(written) || written.expression === undefined) return false;
-  const expression = written.expression;
-  return (
-    expression.kind === ts.SyntaxKind.NullKeyword || (ts.isIdentifier(expression) && expression.text === "undefined")
-  );
 }
 
 /** The events an element has a handler for, in any spelling. */
@@ -64,11 +50,8 @@ function heardAbove(element: JsxElementLike, events: readonly string[]): boolean
  * the parent's business, and may be an `oninput` on an element of the parent's own render, which this
  * rule, reading one component, cannot see.
  */
-function fromProps(element: JsxElementLike): boolean {
-  const value = openingOf(element).attributes.properties.find(
-    (attribute) => ts.isJsxAttribute(attribute) && attribute.name.getText() === "value",
-  );
-  const written = value !== undefined && ts.isJsxAttribute(value) ? value.initializer?.getText() : undefined;
+function fromProps(value: ts.JsxAttribute): boolean {
+  const written = value.initializer?.getText();
   return written !== undefined && /\bprops\b/.test(written);
 }
 
@@ -138,8 +121,11 @@ export const fieldTheUserCannotChange = {
 
     // `value={null}` and `value={undefined}` — data still loading — are no value: core leaves the
     // field to the user, and so does this.
-    const names = namesOf(element).filter((name) => name !== "value" || !writtenAsNothing(element));
-    if (!names.includes("value")) return [];
+    const value = opening.attributes.properties.find(
+      (attribute): attribute is ts.JsxAttribute => ts.isJsxAttribute(attribute) && attribute.name.getText() === "value",
+    );
+    if (value === undefined || writtenAsNothing(value)) return [];
+    const names = namesOf(element);
 
     const component = tag === "select" ? "Select" : "TextArea";
     const at = positionOf(opening);
@@ -149,7 +135,7 @@ export const fieldTheUserCannotChange = {
     if (
       ["readonly", "readOnly", "disabled"].some((name) => truth(name) === true) ||
       heardAbove(element, moving) ||
-      fromProps(element)
+      fromProps(value)
     ) {
       return [];
     }

@@ -84,6 +84,20 @@ class App extends Component {
             B
           </option>
         </Select>
+
+        {/* ✗ A spread on the select may carry `value` — `{...bind(field)}` does. */}
+        <Select {...rest} aria-label="K">
+          <option value="c" selected>
+            C
+          </option>
+        </Select>
+
+        {/* ✓ `value={null}` is no value: the option's own claim chooses. */}
+        <Select value={null} aria-label="L">
+          <option value="d" selected>
+            D
+          </option>
+        </Select>
       </div>
     );
   }

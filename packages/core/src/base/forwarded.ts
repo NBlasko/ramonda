@@ -105,11 +105,13 @@ const queued = new WeakSet<object>();
  * an ancestor saw the input — measured by typing in Chromium.
  *
  * **Not in the middle of a composition.** An input method builds a character over several `input`
- * events, and putting the old value back between them cancels it. Nor when it ends: in Chromium the
- * last `input` of a composition still says `isComposing`, and an app that skips those — the usual
- * way to write it — has not taken the text yet. The field is settled at the next input that is not
- * part of a composition, which the app's handler sees whole. And a settle set by an input just BEFORE
- * a composition began is asked again when it runs, and skipped while one is under way.
+ * events, and putting the old value back between them cancels it. The field is settled when it ENDS,
+ * after `compositionend` — the event a handler that skips composing input (`isComposing`) takes the
+ * word on. Measured in Chromium: the last `input` of a composition still says `isComposing`, and
+ * `compositionend` comes after it, with the whole word in the field. A model that took the word
+ * keeps it; one that did not puts the old text back at once, rather than at some later render. A
+ * settle set by an input just BEFORE a composition began is asked again when it runs, and skipped
+ * while one is under way.
  *
  * **Only the value is written** — `settle`, not a render: nothing else about the field changed. A
  * field its handler removed has no element left, and `settle` finds nothing to write. A handler that
@@ -122,7 +124,7 @@ export function answer(component: Component<any> & { settle(): void }, event: Ev
   } finally {
     if (event.type === "compositionstart") composing.add(component);
     else if (event.type === "compositionend") composing.delete(component);
-    else if (!(event as InputEvent).isComposing && !queued.has(component)) {
+    if (event.type !== "compositionstart" && !(event as InputEvent).isComposing && !queued.has(component)) {
       queued.add(component);
       setTimeout(() => {
         queued.delete(component);

@@ -124,9 +124,8 @@ export class TextArea extends Component<TextAreaProps> {
      * node disagrees with it. Measured: RMD007, *rendered the text "" but the server sent nothing* —
      * a report about correct markup, which is the worst kind.
      */
-    // `input` only. `change` comes on blur, and answering it undid an input method's text: the last
-    // `input` of a composition says `isComposing`, an app skips it, and a blur straight after would
-    // settle the field from a model that never took the word.
+    // `input` only. `change` comes on blur, after every input and every composition has already been
+    // answered, so there is nothing left for it to settle.
     const field = controlled(this, this.a, ["oninput"]);
     return __h(
       "textarea",

@@ -23,6 +23,9 @@ import type { RefTarget } from "./Ref";
  * - **The server** serializes markup, and neither the property nor the selection is serialized. So
  *   the chosen option is given the `selected` ATTRIBUTE, which is where HTML keeps it and the only
  *   half a served page can carry: the right option is showing before any script runs.
+ *
+ * A `defaultValue` is the attribute on both sides, because the attribute is what HTML calls the
+ * default: a form's reset returns to it.
  */
 
 export interface SelectProps {
@@ -113,20 +116,12 @@ export class Select extends Component<SelectProps> {
     if (this.h !== this.props.ref) this.g(select);
 
     const onServer = env === "server";
-    // `value` every time.
-    // A `defaultValue` is where the select starts until the user picks — the same rule a `TextArea`
-    // keeps through the browser's own: so options that arrive later, after a "Choose…" that was there
-    // first, are still started on the saved choice, and one that arrives after a pick changes nothing.
-    // Written only once an option it names is there; before, the browser would show no choice at all.
-    let chosen = this.props.value;
-    if (chosen != null) {
-      this.d = true;
-    } else {
-      chosen = this.props.defaultValue;
-      if (this.d || chosen == null) return;
-      const named = Array.isArray(chosen) ? chosen.map(String) : [String(chosen)];
-      if (!Array.from(select.options).some((option) => named.includes(option.value))) return;
+    const chosen = this.props.value;
+    if (chosen == null) {
+      if (!this.d && this.props.defaultValue != null) this.start(select, this.props.defaultValue);
+      return;
     }
+    this.d = true;
 
     // One write, and the browser works out which option it means. A `multiple` select has no single
     // value to write, and the server cannot write a property at all, so both answer per option.
@@ -143,6 +138,32 @@ export class Select extends Component<SelectProps> {
       const on = wanted === undefined ? option.value === only : wanted.has(option.value);
       option.selected = on;
       if (!onServer) continue;
+      if (on) option.setAttribute("selected", "");
+      else option.removeAttribute("selected");
+    }
+  }
+
+  /**
+   * A `defaultValue` is where the select starts until the user picks — so options that arrive later,
+   * after a "Choose…" that was there first, still start on the saved choice, and one that arrives
+   * after a pick changes nothing. It is written only once an option it names is there; before, the
+   * browser would show no choice at all.
+   *
+   * It is written where HTML keeps a default, the `selected` ATTRIBUTE, on both sides: so a form's
+   * reset returns to it, as a `TextArea`'s does to its text. `select.value` would show it and leave
+   * the form believing the first option is the default. Only an option whose attribute says
+   * otherwise is written.
+   */
+  private start(select: HTMLSelectElement, chosen: string | number | readonly (string | number)[]): void {
+    const wanted = new Set(Array.isArray(chosen) ? chosen.map(String) : [String(chosen)]);
+    const options = select.options;
+    let named = false;
+    for (let i = 0; i < options.length && !named; i++) named = wanted.has(options[i].value);
+    if (!named) return;
+    for (let i = 0; i < options.length; i++) {
+      const option = options[i];
+      const on = wanted.has(option.value);
+      if (option.hasAttribute("selected") === on) continue;
       if (on) option.setAttribute("selected", "");
       else option.removeAttribute("selected");
     }

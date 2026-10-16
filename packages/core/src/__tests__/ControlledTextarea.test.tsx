@@ -440,10 +440,10 @@ describe("a controlled textarea follows the model after the event the app handle
 
   /**
    * An input method builds a character over several `input` events; putting the old value back
-   * between them cancels it. Nor is it put back when the composition ends — an app that skips
-   * composing input has not taken the text yet. The next ordinary input is answered.
+   * between them cancels it. When the composition ends the field shows the model again: a model that
+   * did not take the word puts the old text back then, not at some later render.
    */
-  test("a composition is left alone, and the next input is answered", async () => {
+  test("a composition is left alone, and settled when it ends", async () => {
     class Composed extends Component {
       @state text = "a";
       keep(event: InputEvent) {
@@ -458,6 +458,7 @@ describe("a controlled textarea follows the model after the event the app handle
     await app.settle();
     const field = app.container.querySelector("#t") as HTMLTextAreaElement;
 
+    field.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
     field.value = "ka";
     field.dispatchEvent(new InputEvent("input", { bubbles: true, isComposing: true }));
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -465,12 +466,6 @@ describe("a controlled textarea follows the model after the event the app handle
     expect(field.value).toBe("ka");
 
     field.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "か" }));
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    await app.settle();
-    expect(field.value).toBe("ka");
-
-    field.value = "kax";
-    field.dispatchEvent(new InputEvent("input", { bubbles: true }));
     await new Promise((resolve) => setTimeout(resolve, 0));
     await app.settle();
     expect(field.value).toBe("a");
@@ -503,24 +498,25 @@ describe("a controlled textarea follows the model after the event the app handle
   });
 
   /**
-   * A composition that ends with a blur: the `change` the blur fires is not answered, so the composed
-   * text the app has not taken yet stays until the next ordinary input.
+   * The word taken on `oncompositionend` — where a handler that skips composing input takes it — is
+   * kept, and a blur straight after does not undo it: `change` is not answered.
    */
-  test("a composition followed by a blur keeps the composed text", async () => {
+  test("a word taken on compositionend is kept through a blur", async () => {
     class Composed extends Component {
       @state text = "a";
-      take(event: InputEvent) {
-        if (event.isComposing) return;
+      take(event: Event) {
+        if ((event as InputEvent).isComposing) return;
         this.text = (event.target as HTMLTextAreaElement).value;
       }
       render() {
-        return <TextArea id="t" value={this.text} oninput={this.take} />;
+        return <TextArea id="t" value={this.text} oninput={this.take} oncompositionend={this.take} />;
       }
     }
     const app = await getDOM<Composed>(<Composed />);
     await app.settle();
     const field = app.container.querySelector("#t") as HTMLTextAreaElement;
 
+    field.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
     field.value = "aか";
     field.dispatchEvent(new InputEvent("input", { bubbles: true, isComposing: true }));
     field.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "か" }));
@@ -528,7 +524,7 @@ describe("a controlled textarea follows the model after the event the app handle
     await new Promise((resolve) => setTimeout(resolve, 0));
     await app.settle();
 
-    expect(field.value).toBe("aか");
+    expect({ field: field.value, model: app.instance.text }).toEqual({ field: "aか", model: "aか" });
   });
 
   /** A value that is still `null` is no value: the field is not held, and shows nothing until it has one. */

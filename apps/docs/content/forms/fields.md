@@ -137,11 +137,12 @@ before any script runs.
 **`value` is the model's; `defaultValue` is where the field starts.** A `Select` or a `TextArea` with
 `value` shows what the model holds after every input, once the event is over: a handler that takes
 the input leaves the field as the user made it, and one that does not — or no handler at all — puts
-the model's value back. An input method's composition is left alone; the next ordinary input is
-answered. A handler that skips composing input (`if (event.isComposing) return`) should take the
-composed text on `oncompositionend`, or the model never receives it. A field whose text
+the model's value back. An input method's composition is left alone while it lasts, and settled when it
+ends. A handler that skips composing input (`if (event.isComposing) return`) takes the composed
+word on `oncompositionend` as well; without that, the word is gone as soon as it is finished. A field whose text
 is read when the form is sent, rather than held in state, takes `defaultValue` instead: it shows that
-first and then belongs to the user, and a later `defaultValue` does not reach it.
+first and then belongs to the user. A `defaultValue` that arrives later — from a load — reaches a
+field the user has not changed, and stops at one they have; a form's reset returns to it.
 
 ```tsx
 <TextArea aria-label="Draft" value={this.draft} oninput={this.onInput} />;   // held by the model

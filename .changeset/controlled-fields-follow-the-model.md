@@ -17,9 +17,11 @@ any script runs. A handler may be a function or a listener object, as for any el
 
 The settle waits for the whole event, so an `onchange` reads the user's pick and a listener on an
 ancestor reads what was typed — or moves the model itself; it leaves an input method's composition
-alone — a settle that comes due while one is under way waits for the next ordinary input; it writes only the value, with no render; and it still
-runs when the handler throws. A `TextArea` answers `input` only — `change` comes on blur, and
-answering it undid a composition the app had not taken yet. A `Select`'s `defaultValue` holds until the
+alone while it lasts and settles the field when it ends, after `compositionend` — where a handler
+that skips composing input takes the word; it writes only the value, with no render; and it still
+runs when the handler throws. A `TextArea` answers `input` only — `change` comes on blur, when
+every input has already been answered. A `Select`'s `defaultValue` holds until the
 user picks or a `value` holds the field, and applies once an option with that value is there: a
-placeholder first and the options from a load still start on the saved choice. A `value` of `null` is no value. The app's handler is called as a
+placeholder first and the options from a load still start on the saved choice. It is written as the
+option's `selected` attribute, so a form's reset returns to it. A `value` of `null` is no value. The app's handler is called as a
 listener is, with the element as `this`.

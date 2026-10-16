@@ -1,7 +1,7 @@
 import ts from "typescript";
 import { positionOf } from "../syntax";
 import { coreElementTag } from "./coreElements";
-import { openingOf, tagOf } from "./element";
+import { openingOf, tagOf, writtenAsNothing } from "./element";
 import { enclosingElement } from "./html";
 import type { ElementContext, ElementRule, JsxElementLike, TextEdit } from "./rule";
 
@@ -46,8 +46,9 @@ export interface OptionThatCannotChooseIssue {
 
 /**
  * Whether a `<Select>` that decides the choice encloses this option, at any depth: one with a `value`
- * or a `defaultValue`, which it sets on every option. A select with neither leaves its options alone,
- * and there `selected` is what chooses.
+ * or a `defaultValue`, which it sets on every option, or a spread that may carry one. A select with
+ * neither — or with one written as `{null}`, which core reads as none — leaves its options alone, and
+ * there `selected` is what chooses.
  *
  * `<optgroup>` is the ordinary reason for the depth — a grouped select puts its options one level
  * further in — and the walk reads each ancestor's tag the way every rule does now, so the
@@ -58,10 +59,11 @@ function insideADecidingSelect(element: JsxElementLike, resolve: ElementContext[
   while (at !== undefined) {
     const tag = tagOf(at) ?? coreElementTag(openingOf(at).tagName, resolve);
     if (tag === "select") {
+      // A spread may carry either — `{...bind(form.size)}` carries `value` — so it decides as well.
       return openingOf(at).attributes.properties.some(
         (attribute) =>
-          ts.isJsxAttribute(attribute) &&
-          (attribute.name.getText() === "value" || attribute.name.getText() === "defaultValue"),
+          ts.isJsxSpreadAttribute(attribute) ||
+          (["value", "defaultValue"].includes(attribute.name.getText()) && !writtenAsNothing(attribute)),
       );
     }
     at = enclosingElement(at);
