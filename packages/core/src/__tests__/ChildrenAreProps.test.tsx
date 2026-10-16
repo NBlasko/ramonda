@@ -352,7 +352,7 @@ describe("markup handed down settles when it says the same", () => {
     ).toBe(4);
   });
 
-  /** One budget per bag; past it the answer is "different", which renders — never a stale page. */
+  /** One budget per key; past it the answer is "different", which renders — never a stale page. */
   test("markup larger than the comparison's budget renders as before", async () => {
     const many = Array.from({ length: 600 }, (_, i) => i);
     expect(
@@ -375,6 +375,54 @@ describe("markup handed down settles when it says the same", () => {
  * in the bag moved.
  */
 describe("a hook's markup settles key by key", () => {
+  /**
+   * Each key is compared within a budget of its own: a large `a` that is unchanged does not use up
+   * what `b` is compared with, so an unchanged `b` stays unchanged. 250 items is measured to fit the
+   * budget alone and not twice over.
+   */
+  test("a large key does not use up the budget of the next", async () => {
+    let fired = 0;
+    class Watcher extends Hook<{ a?: unknown; b?: unknown; n: number }> {
+      @watchProp((props: { b?: unknown }) => props.b)
+      changed() {
+        fired++;
+      }
+    }
+    const items = Array.from({ length: 250 }, (_, i) => i);
+    class Owner extends Component {
+      @state tick = 0;
+      watcher = this.use(Watcher, () => ({
+        a: (
+          <div>
+            {items.map((i) => (
+              <i>{i}</i>
+            ))}
+          </div>
+        ),
+        b: (
+          <div>
+            {items.map((i) => (
+              <i>{i}</i>
+            ))}
+          </div>
+        ),
+        n: this.tick,
+      }));
+      render() {
+        return <p>{this.tick}</p>;
+      }
+    }
+
+    const dom = await getDOM<Owner>(<Owner />);
+    await dom.settle();
+    fired = 0;
+    for (let tick = 1; tick <= 3; tick++) {
+      dom.instance.tick = tick;
+      await dom.settle();
+    }
+    expect(fired).toBe(0);
+  });
+
   test("a watch on children fires only when the children change", async () => {
     let fired = 0;
     class Watcher extends Hook<{ children?: unknown; n: number }> {

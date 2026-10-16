@@ -18,7 +18,7 @@ the app builds is compared by reference, including an object or an array that ho
 (`slots={{ header: <Header /> }}`): the app may change it in place, and a copy of something changed in
 place compares equal to the original, so the change would never be shown. Such a slots prop is
 declared on the child with `@StableProps("slots")`. Markup built by a different component, a `list()`
-whose callback changed, and markup past a budget of 500 values are all called different — the child
+whose callback changed, and markup past a budget of 500 values for its key are all called different — the child
 renders, as it did before.
 
 `Portal` now watches its `target` together with its `children`, and reconciles once when both

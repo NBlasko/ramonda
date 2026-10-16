@@ -2,6 +2,7 @@ import { describe, test, expect, beforeEach } from "vitest";
 import { Component } from "../base/Component";
 import { state, created, mounted, destroyed } from "../base/decorators";
 import { Portal } from "../base/Portal";
+import { createRef } from "../base/Ref";
 import { ChildrenRegion } from "../core/childrenRegion";
 import { portalTarget, PORTAL_TARGET_ATTR } from "../base/portalTarget";
 import { list } from "../base/list";
@@ -270,6 +271,49 @@ describe("Portal follows a reactive target", () => {
     b.remove();
   });
 
+  /**
+   * A component the children gain while the block is away is created on the page, when the target
+   * returns — its `@mounted` sees an element in the document, which is what lets it measure or focus.
+   */
+  test("a component added while the block is away is mounted on the page", async () => {
+    const mountedInDocument: boolean[] = [];
+    class Chart extends Component {
+      el = createRef<HTMLElement>();
+      @mounted
+      measure() {
+        mountedInDocument.push(this.el.current?.isConnected === true);
+      }
+      render() {
+        return <i ref={this.el}>chart</i>;
+      }
+    }
+    class Page extends Component {
+      @state open = true;
+      @state withChart = false;
+      portal = this.use(Portal, (self: Page) => ({
+        children: self.withChart ? [<b key="d">dialog</b>, <Chart key="c" />] : [<b key="d">dialog</b>],
+        target: (self.open ? document.body : undefined) as Element,
+      }));
+      render() {
+        return <div>page</div>;
+      }
+    }
+    const { instance, settle } = await getDOM<Page>(<Page />);
+    try {
+      instance.open = false;
+      await settle();
+      instance.withChart = true;
+      await settle();
+      expect(mountedInDocument).toEqual([]);
+      instance.open = true;
+      await settle();
+      expect(mountedInDocument).toEqual([true]);
+    } finally {
+      instance.open = false;
+      await settle();
+    }
+  });
+
   /** A block whose target is absent from the start is not built off the page: nothing is created yet. */
   test("a target absent at mount builds nothing until it arrives", async () => {
     let made = 0;
@@ -299,7 +343,7 @@ describe("Portal follows a reactive target", () => {
   /**
    * A target that goes away takes the block off the page — `target: open ? document.body : undefined`
    * is how a modal closes — and brings the SAME nodes back when it returns: the component in it keeps
-   * its state, is not destroyed while away, and hears what changed meanwhile.
+   * its state, is not destroyed while away, and hears what changed meanwhile once it is back.
    */
   test("a target that goes away takes the block off the page, and back", async () => {
     let destroyedCount = 0;

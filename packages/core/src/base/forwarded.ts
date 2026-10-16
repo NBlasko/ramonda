@@ -70,6 +70,7 @@ export function controlled(
     // A composition it let go of in the middle ends with the app, not here, and must not leave the
     // field waiting for that end once it holds a value again.
     composing.delete(component);
+    unfinished.delete(component);
     const listeners: Record<string, (event: Event) => void> = {};
     if (uncontrolled !== undefined) for (const name of answered) listeners[name] = uncontrolled;
     return { replaced: Object.keys(listeners), listeners };
@@ -100,6 +101,12 @@ const composing = new WeakSet<object>();
 const queued = new WeakSet<object>();
 
 /**
+ * Fields whose composition has ended with no ordinary `input` after it yet: the element, and the word
+ * it ended with. See "When it ends" on `answer`.
+ */
+const unfinished = new WeakMap<object, { field: EventTarget; word: string }>();
+
+/**
  * The app's handler for this event, and then the model's word.
  *
  * A field with a `value` shows what the model says. So after the page has changed it, the handler
@@ -115,13 +122,17 @@ const queued = new WeakSet<object>();
  * an ancestor saw the input — measured by typing in Chromium.
  *
  * **Not in the middle of a composition.** An input method builds a character over several `input`
- * events, and putting the old value back between them cancels it. The field is settled when it ENDS,
- * after `compositionend` — the event a handler that skips composing input (`isComposing`) takes the
- * word on. Measured in Chromium: the last `input` of a composition still says `isComposing`, and
- * `compositionend` comes after it, with the whole word in the field. A model that took the word
- * keeps it; one that did not puts the old text back at once, rather than at some later render. A
- * settle set by an input just BEFORE a composition began is asked again when it runs, and skipped
- * while one is under way.
+ * events, and putting the old value back between them cancels it. A settle set by an input just
+ * BEFORE a composition began is asked again when it runs, and skipped while one is under way.
+ *
+ * **When it ends, every browser hands the word over the same way.** The usual handler skips composing
+ * input, `if (event.isComposing) return;`, and takes the word from the ordinary `input` that follows.
+ * Measured: Firefox sends one — `compositionend`, then `input` with `isComposing: false` and
+ * `insertCompositionText`, in the same task. Chromium does not: its last `input` still says
+ * `isComposing`, and nothing follows `compositionend`, so that handler never took the word and the
+ * settle put the old text back. So a field whose composition ended with no ordinary `input` after it,
+ * by the time the settle runs, is sent that `input` — the one Firefox sends — and settled after it.
+ * Where the browser sends its own, nothing is sent twice, whichever order it uses.
  *
  * **Only the value is written** — `settle`, not a render: nothing else about the field changed. A
  * field its handler removed has no element left, and `settle` finds nothing to write. A handler that
@@ -132,14 +143,31 @@ export function answer(component: Component<any> & { settle(): void }, event: Ev
   try {
     heard(component, event);
   } finally {
-    if (event.type === "compositionstart") composing.add(component);
-    else if (event.type === "compositionend") composing.delete(component);
+    if (event.type === "compositionstart") {
+      composing.add(component);
+      unfinished.delete(component);
+    } else if (event.type === "compositionend") {
+      composing.delete(component);
+      const field = event.currentTarget;
+      if (field !== null) unfinished.set(component, { field, word: (event as CompositionEvent).data ?? "" });
+    } else if (event.type === "input" && !(event as InputEvent).isComposing) {
+      unfinished.delete(component);
+    }
     if (event.type !== "compositionstart" && !(event as InputEvent).isComposing && !queued.has(component)) {
       queued.add(component);
       setTimeout(() => {
         queued.delete(component);
         // Asked again when it runs: a composition may have started since this was set.
-        if (!composing.has(component)) component.settle();
+        if (composing.has(component)) return;
+        const ended = unfinished.get(component);
+        if (ended !== undefined) {
+          unfinished.delete(component);
+          // Its own answer sets the settle, after every listener has had the word.
+          const input = { bubbles: true, composed: true, inputType: "insertCompositionText", data: ended.word };
+          ended.field.dispatchEvent(new InputEvent("input", input));
+          return;
+        }
+        component.settle();
       }, 0);
     }
   }

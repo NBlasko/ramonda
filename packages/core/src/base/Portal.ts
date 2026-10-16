@@ -74,7 +74,7 @@ export interface PortalProps {
  * because a hook has no position of its own to fall back to, so instead you aim
  * `target` at an element in your own render. A `target` absent at mount and
  * supplied later is placed then, not lost. A target that goes away takes the
- * block off the page and brings the same nodes back with it — see `away`. A
+ * block off the page and brings the same nodes back with it — see `leave`. A
  * target change is watched on its own, so it moves the nodes whether or not
  * `children` changed with it.
  *
@@ -102,7 +102,7 @@ export class Portal extends Hook<PortalProps> {
    * then take the hydration `adopt` path and sweep up every other portal's
    * marked nodes.
    */
-  private placed = false;
+  private ranOnce = false;
 
   /**
    * The last token this resolved, and what it resolved to.
@@ -118,7 +118,7 @@ export class Portal extends Hook<PortalProps> {
   private resolvedFrom: PortalTarget | undefined;
   private resolvedTo: Element | undefined;
 
-  /** Where the block waits while it has no target — see `away`. */
+  /** Where the block waits while it has no target — see `leave`. */
   private waiting: DocumentFragment | undefined;
 
   /** The real element to render into, whichever form `target` took. */
@@ -143,7 +143,7 @@ export class Portal extends Hook<PortalProps> {
 
   @created({ env: "shared" })
   place(): void {
-    this.placed = true;
+    this.ranOnce = true;
     this.reconcile();
   }
 
@@ -164,7 +164,7 @@ export class Portal extends Hook<PortalProps> {
    * reads the state blob off a host and adopts it as the instance's own.
    *
    * On a NORMAL client build the `shared` create already placed the block, so
-   * `placed` is set and this does nothing.
+   * `ranOnce` is set and this does nothing.
    *
    * Several portals may share one target. Each takes the first UNCLAIMED block —
    * adopts run in the same tree order the server placed in, so the first portal
@@ -173,8 +173,8 @@ export class Portal extends Hook<PortalProps> {
    */
   @created({ env: "client" })
   adopt(): void {
-    if (this.placed) return;
-    this.placed = true;
+    if (this.ranOnce) return;
+    this.ranOnce = true;
     const target = this.element;
     if (!target) return;
 
@@ -233,27 +233,31 @@ export class Portal extends Hook<PortalProps> {
    * scoped to a block, so nothing here re-implements the diff any more.
    */
   private reconcile(): void {
-    const target = this.element ?? this.away();
-    if (!target) return;
-
-    this.region.reconcile(this.props.children, target);
+    const target = this.element;
+    if (target) {
+      this.region.reconcile(this.props.children, target);
+      return;
+    }
+    this.leave();
   }
 
   /**
-   * Where a block waits while it has no target: OFF the page, in a fragment of its own.
+   * With no target, the block waits OFF the page, in a fragment of its own.
    *
    * A target that goes away is how a portal is closed — `target: open ? document.body : undefined` —
    * so the block must leave the page with it. It moves, the same nodes, into a fragment, and moves
    * back when a target returns: a component in it keeps its state and is not destroyed. A fragment
-   * rather than nowhere, because the nodes keep a parent: a component in the block re-renders while
-   * it waits, and a change to the children reaches it, as anywhere else.
+   * rather than nowhere, because the nodes keep a parent: a component in the block re-renders on its
+   * own state while it waits.
    *
-   * Only a block that has been somewhere. One whose target is absent from the start is not built at
-   * all until a target arrives — its components are created on the page, not off it.
+   * The CHILDREN are not reconciled while it waits, only when a target returns — so a component the
+   * children gain meanwhile is created on the page, where its `@mounted` can measure and focus, and
+   * never off it. A block whose target is absent from the start is likewise built only when one
+   * arrives.
    */
-  private away(): ChildNode | undefined {
-    if (!this.area?.placed) return undefined;
-    return (this.waiting ??= document.createDocumentFragment()) as unknown as ChildNode;
+  private leave(): void {
+    if (!this.area?.placed) return;
+    this.area.move((this.waiting ??= document.createDocumentFragment()) as unknown as ChildNode);
   }
 }
 

@@ -44,22 +44,47 @@ function heardAbove(element: JsxElementLike, events: readonly string[], resolve:
  * parent's own render, which this rule, reading one component, cannot see.
  *
  * The value itself, read down to where it comes from — a fallback after it (`?? ""`) is still the
- * prop. A prop used only as a KEY, `drafts[this.props.id]`, is this component's own model.
+ * prop, and so is a name taken from the props on the way: `const { text } = this.props`, or
+ * `const own = this.props` and then `own.size`. A prop used only as a KEY, `drafts[this.props.id]`, is
+ * this component's own model.
  */
-function fromProps(value: WrittenAttribute): boolean {
-  let at = value.value;
-  while (at !== undefined) {
+function fromProps(value: WrittenAttribute, resolve: ElementContext["resolve"]): boolean {
+  return value.value !== undefined && cameFromProps(value.value, resolve, 0);
+}
+
+/** How many names a value is followed through before the answer is "not a prop" — and reported. */
+const HOPS = 20;
+
+function cameFromProps(expression: ts.Expression, resolve: ElementContext["resolve"], hops: number): boolean {
+  let at: ts.Expression = expression;
+  for (;;) {
     if (ts.isParenthesizedExpression(at) || ts.isNonNullExpression(at)) at = at.expression;
     else if (ts.isBinaryExpression(at) && at.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken) at = at.left;
     else if (ts.isPropertyAccessExpression(at) || ts.isElementAccessExpression(at)) {
-      const below = at.expression;
-      if (ts.isPropertyAccessExpression(at) && at.name.text === "props" && below.kind === ts.SyntaxKind.ThisKeyword) {
+      if (
+        ts.isPropertyAccessExpression(at) &&
+        at.name.text === "props" &&
+        at.expression.kind === ts.SyntaxKind.ThisKeyword
+      ) {
         return true;
       }
-      at = below;
-    } else return ts.isIdentifier(at) && at.text === "props";
+      at = at.expression;
+    } else break;
   }
-  return false;
+  if (!ts.isIdentifier(at)) return false;
+  if (at.text === "props") return true;
+  if (hops >= HOPS) return false;
+
+  // A name: where it was declared says where it came from.
+  let declaration: ts.Node | undefined = resolve(at)?.declarations?.[0];
+  // `const { text } = this.props`, at any depth of the pattern: up to the declaration it is taken from.
+  while (declaration !== undefined && (ts.isBindingElement(declaration) || ts.isObjectBindingPattern(declaration))) {
+    declaration = declaration.parent;
+  }
+  if (declaration === undefined || !ts.isVariableDeclaration(declaration) || declaration.initializer === undefined) {
+    return false;
+  }
+  return cameFromProps(declaration.initializer, resolve, hops + 1);
 }
 
 /**
@@ -141,7 +166,7 @@ export const fieldTheUserCannotChange = {
     if (
       ["readonly", "readOnly", "disabled"].some((name) => truth(name) === true) ||
       heardAbove(element, moving, resolve) ||
-      fromProps(value)
+      fromProps(value, resolve)
     ) {
       return [];
     }

@@ -130,16 +130,13 @@ export class Select extends Component<SelectProps> {
       return;
     }
 
-    const wanted = Array.isArray(chosen) ? new Set(chosen.map(String)) : undefined;
-    const only = wanted === undefined ? String(chosen) : "";
+    const wanted = wantedOf(chosen);
     const options = select.options;
     for (let i = 0; i < options.length; i++) {
       const option = options[i];
-      const on = wanted === undefined ? option.value === only : wanted.has(option.value);
+      const on = wanted.has(option.value);
       option.selected = on;
-      if (!onServer) continue;
-      if (on) option.setAttribute("selected", "");
-      else option.removeAttribute("selected");
+      if (onServer) markDefault(option, on);
     }
   }
 
@@ -155,18 +152,12 @@ export class Select extends Component<SelectProps> {
    * otherwise is written.
    */
   private start(select: HTMLSelectElement, chosen: string | number | readonly (string | number)[]): void {
-    const wanted = new Set(Array.isArray(chosen) ? chosen.map(String) : [String(chosen)]);
+    const wanted = wantedOf(chosen);
     const options = select.options;
     let named = false;
     for (let i = 0; i < options.length && !named; i++) named = wanted.has(options[i].value);
     if (!named) return;
-    for (let i = 0; i < options.length; i++) {
-      const option = options[i];
-      const on = wanted.has(option.value);
-      if (option.hasAttribute("selected") === on) continue;
-      if (on) option.setAttribute("selected", "");
-      else option.removeAttribute("selected");
-    }
+    for (let i = 0; i < options.length; i++) markDefault(options[i], wanted.has(options[i].value));
   }
 
   /** The listener a controlled select answers its events with — see `answer` in `forwarded.ts`. */
@@ -201,4 +192,16 @@ export class Select extends Component<SelectProps> {
       ...given(this.props.children),
     );
   }
+}
+
+/** The option values a choice names, written as an option's `value` is: strings. */
+function wantedOf(chosen: string | number | readonly (string | number)[]): Set<string> {
+  return new Set(Array.isArray(chosen) ? chosen.map(String) : [String(chosen)]);
+}
+
+/** Gives an option the `selected` attribute or takes it away, and touches it only when it says otherwise. */
+function markDefault(option: HTMLOptionElement, on: boolean): void {
+  if (option.hasAttribute("selected") === on) return;
+  if (on) option.setAttribute("selected", "");
+  else option.removeAttribute("selected");
 }

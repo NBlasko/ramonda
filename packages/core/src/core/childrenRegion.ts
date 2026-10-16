@@ -162,6 +162,11 @@ export class ChildrenRegion {
     return this.close !== undefined && !this.disposed;
   }
 
+  /** Moves the block, the same nodes, into `parent` without reconciling its children. */
+  move(parent: ChildNode): void {
+    if (this.placed) this.place(parent);
+  }
+
   /**
    * Publishes this block on its own OPENING ANCHOR: the record it holds, and where it ends.
    *

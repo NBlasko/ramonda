@@ -8,10 +8,13 @@ const LOCKED = true;
 declare const drafts: Record<string, string>;
 declare const Card: (props: { onchange?: unknown; children?: unknown }) => unknown;
 
-class App extends Component<{ text: string }> {
+class App extends Component<{ text: string; size: string }> {
   pick(_event: Event) {}
   type(_event: Event) {}
   render() {
+    const { text } = this.props;
+    const own = this.props;
+    const { size: picked } = own;
     return (
       <form>
         {/* ✗ no-handler */}
@@ -51,6 +54,13 @@ class App extends Component<{ text: string }> {
         {/* ✓ handed in by the parent, whose handler this cannot see */}
         <TextArea value={this.props.text} aria-label="from props" />
         <TextArea value={this.props.text ?? ""} aria-label="from props with a fallback" />
+        <TextArea value={text} aria-label="from props destructured" />
+        <Select value={own.size} aria-label="from props through a local">
+          <option value="a">a</option>
+        </Select>
+        <Select value={picked} aria-label="from props renamed through a local">
+          <option value="a">a</option>
+        </Select>
         {/* ✗ no-handler: the model is this component's, only keyed by a prop */}
         <TextArea value={drafts[this.props.text]} aria-label="keyed by a prop" />
         {/* ✓ a defaultValue written as undefined is none */}

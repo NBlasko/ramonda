@@ -17,8 +17,9 @@ any script runs. A handler may be a function or a listener object, as for any el
 
 The settle waits for the whole event, so an `onchange` reads the user's pick and a listener on an
 ancestor reads what was typed — or moves the model itself; it leaves an input method's composition
-alone while it lasts and settles the field when it ends, after `compositionend` — where a handler
-that skips composing input takes the word; it writes only the value, with no render; and it still
+alone while it lasts and settles the field when it ends. A handler that skips composing input takes
+the word from the ordinary `input` after the composition: Firefox sends one, Chromium does not, and
+there the field sends it, once — measured with a real composition in both, typing 日本; it writes only the value, with no render; and it still
 runs when the handler throws. A `TextArea` answers `input` only — `change` comes on blur, when
 every input has already been answered. A `Select`'s `defaultValue` holds until the
 user picks or a `value` holds the field, and applies once an option with that value is there: a

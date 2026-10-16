@@ -439,9 +439,65 @@ describe("a controlled textarea follows the model after the event the app handle
   });
 
   /**
+   * A composition as each browser delivers it, measured. Both end with `compositionend` after the last
+   * composing `input`; only Firefox then sends an ordinary `input` with the word.
+   */
+  function compose(field: HTMLTextAreaElement, from: string, word: string, browser: "chromium" | "firefox") {
+    field.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+    field.value = from + word;
+    field.dispatchEvent(new InputEvent("input", { bubbles: true, isComposing: true, data: word }));
+    field.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: word }));
+    if (browser === "firefox") {
+      field.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertCompositionText", data: word }));
+    }
+  }
+
+  /** Until every settle set so far has run — the one a composition's end sets takes two turns. */
+  async function drain(app: { settle(): Promise<void> }) {
+    for (let turn = 0; turn < 3; turn++) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await app.settle();
+    }
+  }
+
+  /**
+   * The usual handler skips composing input and takes the word from the ordinary `input` after it.
+   * Chromium sends none, so core sends it; Firefox sends its own, so core sends nothing — the handler
+   * takes the word once, in both.
+   */
+  for (const browser of ["chromium", "firefox"] as const) {
+    test(`a word typed through an input method is taken, once (${browser})`, async () => {
+      const taken: string[] = [];
+      class Composed extends Component {
+        @state text = "a";
+        take(event: InputEvent) {
+          if (event.isComposing) return;
+          this.text = (event.target as HTMLTextAreaElement).value;
+          taken.push(this.text);
+        }
+        render() {
+          return <TextArea id="t" value={this.text} oninput={this.take} />;
+        }
+      }
+      const app = await getDOM<Composed>(<Composed />);
+      await app.settle();
+      const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+
+      compose(field, "a", "か", browser);
+      await drain(app);
+
+      expect({ field: field.value, model: app.instance.text, taken }).toEqual({
+        field: "aか",
+        model: "aか",
+        taken: ["aか"],
+      });
+    });
+  }
+
+  /**
    * An input method builds a character over several `input` events; putting the old value back
-   * between them cancels it. When the composition ends the field shows the model again: a model that
-   * did not take the word puts the old text back then, not at some later render.
+   * between them cancels it. When the composition ends the field shows the model again: a handler
+   * that refuses the word has it put back then.
    */
   test("a composition is left alone, and settled when it ends", async () => {
     class Composed extends Component {
@@ -461,13 +517,11 @@ describe("a controlled textarea follows the model after the event the app handle
     field.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
     field.value = "ka";
     field.dispatchEvent(new InputEvent("input", { bubbles: true, isComposing: true }));
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    await app.settle();
+    await drain(app);
     expect(field.value).toBe("ka");
 
     field.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "か" }));
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    await app.settle();
+    await drain(app);
     expect(field.value).toBe("a");
   });
 

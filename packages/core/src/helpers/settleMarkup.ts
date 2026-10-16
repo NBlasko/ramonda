@@ -30,8 +30,10 @@ type Bag = Record<string, unknown>;
  *
  * ## Bounded
  *
- * One budget per bag. Running out of it calls the rest different, which is what a reference
- * comparison would have said — the worst case is the old behaviour plus a few hundred cheap steps.
+ * One budget per key. Running out of it calls that key different, which is what a reference
+ * comparison would have said — the worst case is the old behaviour plus a few hundred cheap steps for
+ * each markup key. Per key rather than per bag, so a large `children` that is unchanged does not use
+ * up what a `header={<H />}` beside it is compared with.
  */
 const BUDGET = 500;
 
@@ -162,10 +164,9 @@ export function settleMarkup(next: Bag, prev: Bag | undefined): Bag {
   }
   if (open === undefined) return next;
 
-  const walk: Walk = { budget: BUDGET };
   let settled: Bag | undefined;
   for (const key of open) {
-    if (sameUnder(key, next[key], prev[key], walk)) (settled ??= { ...next })[key] = prev[key];
+    if (sameUnder(key, next[key], prev[key], { budget: BUDGET })) (settled ??= { ...next })[key] = prev[key];
   }
   return settled ?? next;
 }

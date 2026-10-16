@@ -107,7 +107,8 @@ this.use(Portal, (self) => ({
 ```
 
 The same nodes come back when the target does. `Dialog` keeps its state and is not destroyed
-while it is away, and a change to the children reaches it meanwhile.
+while it is away. A change to the children made meanwhile is applied when it comes back, so a
+component they gain is created on the page, where its `@mounted` can measure and focus.
 
 ## `list()` works here
 
