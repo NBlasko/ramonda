@@ -127,28 +127,17 @@ const unfinished = new WeakMap<object, { field: EventTarget; word: string }>();
  * is not — there is no driver here that types through an input method in it. The code does not
  * depend on the order a browser uses, so it should hold, but nothing has shown that it does.
  *
+ * Chromium is checked by `apps/playground-core/browser/fields.spec.ts`, Firefox by
+ * `browser/firefox-composition.mjs`, both against the playground's `/fields` page.
+ *
  * 1. System Settings → Keyboard → Input Sources: add Japanese – Romaji.
- * 2. In the playground, render this, and open it in Safari:
+ * 2. Build the playground, `vite preview` it, and open `/fields` in Safari.
+ * 3. In each of the two text fields, switch to Japanese, type `nihon`, Space, Enter.
  *
- *      class Probe extends Component {
- *        @state text = "";
- *        taken: string[] = [];
- *        take(event: InputEvent) {
- *          console.log(event.type, event.isComposing, (event.target as HTMLTextAreaElement).value);
- *          if (event.isComposing) return;
- *          this.text = (event.target as HTMLTextAreaElement).value;
- *          this.taken.push(this.text);
- *        }
- *        render() {
- *          return <TextArea aria-label="probe" value={this.text} oninput={this.take} oncompositionend={(e) => console.log("compositionend", e.data)} />;
- *        }
- *      }
- *
- * 3. Switch to Japanese, type `nihon`, Space, Enter.
- *
- * Right: the field keeps 日本 and `taken` is `["日本"]`, once. Wrong: the field comes back empty, or
- * `taken` has it twice — then the console says in what order Safari sends `input` and
- * `compositionend`, which is what this code has to answer. Delete this note once it is measured.
+ * Right: both fields keep 日本; the first readout is `["日本"]`, and the second ends in 日本 with no
+ * 日本 that Safari did not send itself. Wrong: a field comes back empty, or the first readout has 日本
+ * twice — then log `input` and `compositionend` on the field to see the order Safari sends them in,
+ * which is what this code has to answer. Delete this note once it is measured.
  */
 
 /**
