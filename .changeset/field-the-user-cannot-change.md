@@ -18,7 +18,10 @@ time (`input` for a `TextArea`, whose `change` comes on blur); and a field whose
 (`this.props.text`, `props.text || ""`, either arm of a ternary, `String(this.props.size)`,
 `this.props.text.trim()`, a template, or a name taken from the props — `const { text } = this.props`, `const own = this.props`
 and `own.size`), whose handler may be in the parent's render — a prop used
-only as a key, `drafts[this.props.id]`, is still reported.
+only as a key, `drafts[this.props.id]`, is still reported. A row of a `map`, `flatMap` or `list` is
+followed to what the call walks: `this.rows.map((row) => <TextArea value={row.text} />)` is the
+component's own model and is reported, `this.props.rows.map(…)` and `ui.list(this.props.rows, …)` are
+not, and a callback of any other call is silent.
 
 `option-that-cannot-choose` names `defaultValue` for a choice the user owns, and reports an
 `<option selected>` only inside a `Select` that has a `value` or a `defaultValue`, or a spread that may

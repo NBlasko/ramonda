@@ -1,4 +1,4 @@
-import { inBlock, type EnclosingBlock } from "./enclosingBlock";
+import type { EnclosingBlock } from "./enclosingBlock";
 import { createId } from "../helpers/createId";
 import { normalizeChildren } from "../vdom/h";
 import {
@@ -148,7 +148,7 @@ export class ChildrenRegion {
   /** Whether the block is parked off the page — see `park`. */
   private waiting = false;
   /** What stood right after a parked block, to come back in front of — see `park`. */
-  private after: ChildNode | null = null;
+  private after: WeakRef<ChildNode> | null = null;
   private disposed = false;
   private readonly listHost: ListHost;
 
@@ -180,7 +180,8 @@ export class ChildrenRegion {
     // another block in a shared target. Nothing is left in the target to say so: a mark among an
     // element's own children was measured to split them around the block once they changed. Read
     // before the move, and set after it, because `place` spends it.
-    const after = this.waiting ? this.after : (this.close?.nextSibling ?? null);
+    // Held weakly: a node the region does not own, which a block closed for good must not keep alive.
+    const after = this.waiting ? this.after : this.close?.nextSibling ? new WeakRef(this.close.nextSibling) : null;
     this.place(parent);
     this.after = after;
     this.waiting = true;
@@ -225,6 +226,8 @@ export class ChildrenRegion {
    */
   hostRemoved(): void {
     if (this.disposed || this.open === undefined) return;
+    this.after = null;
+    this.waiting = false;
 
     const held = this.order;
     if (held.length > 0) unmountChildrenNodes(held as EnhancedChildNode[], false);
@@ -266,10 +269,9 @@ export class ChildrenRegion {
     const before = this.order;
 
     const unclaimed: (EnhancedChildNode | DONE)[] = [];
-    const result = inBlock(this.holder, () =>
-      atTopLevel(() =>
-        reconcileEntries(normalized, this.record, undefined, this.owner, parent, unclaimed, this.listHost),
-      ),
+    const result = atTopLevel(
+      () => reconcileEntries(normalized, this.record, undefined, this.owner, parent, unclaimed, this.listHost),
+      this.holder,
     );
     this.record = result.entries;
     this.publish();
@@ -342,8 +344,9 @@ export class ChildrenRegion {
 
     const normalized = normalizeChildren(Array.isArray(children) ? children : [children], this.id);
     const walk: HydrationWalk = { cursor: open.nextSibling as EnhancedChildNode | null, count: 0 };
-    this.record = inBlock(this.holder, () =>
-      atTopLevel(() => hydrateLevel(normalized, this.owner, parent, walk, this.listHost)),
+    this.record = atTopLevel(
+      () => hydrateLevel(normalized, this.owner, parent, walk, this.listHost),
+      this.holder,
     ).entries;
 
     /**
@@ -458,7 +461,7 @@ export class ChildrenRegion {
     if (this.parent === parent) return;
 
     // Back in front of what stood after it, when that is still there; anywhere else, at the end.
-    const after = this.after;
+    const after = this.after?.deref() ?? null;
     this.after = null;
     const before = after !== null && after.parentNode === (parent as unknown as ParentNode) ? after : null;
     parent.insertBefore(this.open!, before);

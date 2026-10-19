@@ -12,6 +12,9 @@ class App extends Component<{ text: string; size: string; rows: { text: string }
   rows = [{ text: "a", size: "s" }];
   pick(_event: Event) {}
   type(_event: Event) {}
+  renderEach(each: (row: { text: string }) => unknown) {
+    return this.rows.map(each);
+  }
   sized([size]: string[]) {
     return (
       <Select value={size} aria-label="from an array parameter">
@@ -57,6 +60,18 @@ class App extends Component<{ text: string; size: string; rows: { text: string }
         ))}
         {this.props.rows.map((row) => (
           <TextArea value={row.text} aria-label="a row from props" />
+        ))}
+        {ui.list(this.props.rows, (row) => (
+          <ui.TextArea value={row.text} aria-label="a namespaced list row from props" />
+        ))}
+        {Array.from(this.props.rows, (row) => (
+          <TextArea value={row.text} aria-label="a row through Array.from" />
+        ))}
+        {[this.props.text].map((text) => (
+          <TextArea value={text} aria-label="a row of props in a literal" />
+        ))}
+        {this.renderEach((row) => (
+          <TextArea value={row.text} aria-label="a callback the rule cannot read" />
         ))}
       </div>
     );

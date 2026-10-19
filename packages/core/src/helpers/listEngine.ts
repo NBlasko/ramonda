@@ -1,3 +1,4 @@
+import { enclosingBlock, type EnclosingBlock } from "../core/enclosingBlock";
 import type { VNode, ListNode } from "../types/vdom";
 import { IS_LIST, attach, detach } from "../helpers/constants";
 import { isListNode } from "../vdom/guards";
@@ -149,17 +150,28 @@ export function inLevel<T>(rows: readonly unknown[] | undefined, host: ListHost 
 
 /**
  * Runs a reconcile or a hydration that starts a level of its own — a root, a component's own render,
- * a hook's block — outside any row and any region's host.
+ * a hook's block — outside any row and any region's host, and in `block`: the portal block a region
+ * reconciles, and no block for every other entry. A component built inside a block's render takes
+ * the block from its parent instead (`ComponentRuntime.block`), so a ROOT started from inside one —
+ * which has no parent — belongs to nothing.
  *
  * Every one of these entries runs from a drain today, where both are already empty; this makes that
  * a property of the entry rather than of the order things happen to run in. A root mounted, or a
  * component re-rendered, synchronously inside a row walk would otherwise give its lists that row as
  * their parent and that region's host.
  */
-export function atTopLevel<T>(run: () => T): T {
-  // From a drain — every entry today — both are already empty, and there is nothing to restore.
-  if (enclosingRow.current === undefined && enclosingHost.current === undefined) return run();
-  return inListContext(undefined, undefined, run);
+export function atTopLevel<T>(run: () => T, block?: EnclosingBlock): T {
+  // From a drain — every entry today — all three are already empty, and there is nothing to restore.
+  if (enclosingRow.current === undefined && enclosingHost.current === undefined && enclosingBlock.current === block) {
+    return run();
+  }
+  const outerBlock = enclosingBlock.current;
+  enclosingBlock.current = block;
+  try {
+    return inListContext(undefined, undefined, run);
+  } finally {
+    enclosingBlock.current = outerBlock;
+  }
 }
 
 /** What the engine needs from whoever owns the list. */

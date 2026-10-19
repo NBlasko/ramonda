@@ -77,7 +77,7 @@ export interface PortalProps {
  * `target` at an element in your own render. A `target` absent at mount and
  * supplied later is placed then, not lost. A target that goes away takes the
  * block off the page and brings the same nodes back with it — see `leave` — and
- * closes the portals inside its block with it, see `outer`. A
+ * closes the portals inside its block with it, see `Nesting`. A
  * target change is watched on its own, so it moves the nodes whether or not
  * `children` changed with it.
  *
@@ -89,7 +89,7 @@ export interface PortalProps {
  * of the `Portal`'s owner will NOT see events from the portalled subtree: put it on
  * the portalled content, or on an ancestor of the target.
  */
-export class Portal extends Hook<PortalProps> implements EnclosingBlock, NestedBlock {
+export class Portal extends Hook<PortalProps> {
   /**
    * The block this portal owns in the target, and everything that makes it behave
    * like ordinary children: the record, the list regions, the reorder.
@@ -124,56 +124,8 @@ export class Portal extends Hook<PortalProps> implements EnclosingBlock, NestedB
   /** Where the block waits while it has no target — see `leave`. */
   private waiting: DocumentFragment | undefined;
 
-  /**
-   * Portals inside portals close and open together.
-   *
-   * A modal's dropdown is portalled to a layer of its own, so it is not in the modal's block: closing
-   * the modal took the modal off the page and left the dropdown on it, open and clickable. So a
-   * portal whose owner renders inside another portal's block joins that one, which closes it when it
-   * closes and opens it when it opens — whatever its own target says. The owner knows its block from
-   * how it was built (`ComponentRuntime.block`).
-   */
-  private outer: EnclosingBlock | undefined;
-  /** The portals inside this one's block. */
-  private readonly inner = new Set<NestedBlock>();
-  /** Whether an enclosing portal is closed, which closes this one whatever its own target. */
-  private suspended = false;
-  /** Whether this block is off the page: its target went away, or an enclosing portal closed. */
-  private gone = false;
-
-  get away(): boolean {
-    return this.gone;
-  }
-
-  join(inner: NestedBlock): void {
-    this.inner.add(inner);
-  }
-
-  part(inner: NestedBlock): void {
-    this.inner.delete(inner);
-  }
-
-  suspend(): void {
-    if (this.suspended) return;
-    this.suspended = true;
-    this.reconcile();
-  }
-
-  resume(): void {
-    if (!this.suspended) return;
-    this.suspended = false;
-    this.reconcile();
-  }
-
-  /** Joins the portal whose block this one's owner renders in, and starts closed if that one is. */
-  private enter(): void {
-    const owner = this[GLOBAL_RUNTIME].owner as { [COMPONENT_RUNTIME]?: { block?: EnclosingBlock } } | undefined;
-    const outer = owner?.[COMPONENT_RUNTIME]?.block;
-    if (outer === undefined || outer === this) return;
-    this.outer = outer;
-    outer.join(this);
-    this.suspended = outer.away;
-  }
+  /** How this portal closes and opens with the ones around it and inside it — see `Nesting`. */
+  private readonly nesting = new Nesting(() => this.reconcile());
 
   /** The real element to render into, whichever form `target` took. */
   private get element(): Element | undefined {
@@ -192,13 +144,13 @@ export class Portal extends Hook<PortalProps> implements EnclosingBlock, NestedB
   }
 
   private get region(): ChildrenRegion {
-    return (this.area ??= new ChildrenRegion(this[GLOBAL_RUNTIME].owner, "Portal", this));
+    return (this.area ??= new ChildrenRegion(this[GLOBAL_RUNTIME].owner, "Portal", this.nesting));
   }
 
   @created({ env: "shared" })
   place(): void {
     this.ranOnce = true;
-    this.enter();
+    this.nesting.enter(this[GLOBAL_RUNTIME].owner);
     this.reconcile();
   }
 
@@ -230,8 +182,8 @@ export class Portal extends Hook<PortalProps> implements EnclosingBlock, NestedB
   adopt(): void {
     if (this.ranOnce) return;
     this.ranOnce = true;
-    this.enter();
-    if (this.suspended) return;
+    // An enclosing block is always open while it hydrates its own children, so this starts open.
+    this.nesting.enter(this[GLOBAL_RUNTIME].owner);
     const target = this.element;
     if (!target) return;
 
@@ -266,7 +218,7 @@ export class Portal extends Hook<PortalProps> implements EnclosingBlock, NestedB
 
   @destroyed
   clear(): void {
-    this.outer?.part(this);
+    this.nesting.part();
     // Unmounts the block, releases the list regions' scopes, and takes the anchor
     // out. No flush here: a portal clearing itself is part of a larger teardown,
     // whose enclosing flush drains commit-level work once.
@@ -291,12 +243,12 @@ export class Portal extends Hook<PortalProps> implements EnclosingBlock, NestedB
    * scoped to a block, so nothing here re-implements the diff any more.
    */
   private reconcile(): void {
-    const target = this.suspended ? undefined : this.element;
+    const target = this.nesting.suspended ? undefined : this.element;
     if (target) {
-      // Back on the page before the children are reconciled, so a portal they build starts open.
-      this.gone = false;
+      // Open again — and the portals inside opened — before the children are reconciled: a portal
+      // they build then starts open and goes after the ones already there, in the order of the tree.
+      this.nesting.open();
       this.region.reconcile(this.props.children, target);
-      for (const inner of [...this.inner]) inner.resume();
       return;
     }
     this.leave();
@@ -318,9 +270,8 @@ export class Portal extends Hook<PortalProps> implements EnclosingBlock, NestedB
    * component does — one rule, rather than a paused state to know about.
    */
   private leave(): void {
-    this.gone = true;
     if (this.area?.placed) this.area.park((this.waiting ??= document.createDocumentFragment()) as unknown as ChildNode);
-    for (const inner of [...this.inner]) inner.suspend();
+    this.nesting.close();
   }
 }
 
@@ -342,4 +293,76 @@ function firstUnclaimedBlock(target: Element): Comment | undefined {
     if (!claimed.has(anchor)) return anchor;
   }
   return undefined;
+}
+
+/**
+ * Portals inside portals close and open together.
+ *
+ * A modal's dropdown is portalled to a layer of its own, so it is not in the modal's block: closing
+ * the modal took the modal off the page and left the dropdown on it, open and clickable. So a portal
+ * whose owner renders inside another portal's block joins that one, which closes it when it closes
+ * and opens it when it opens — whatever its own target says. The owner knows its block from how it
+ * was built (`ComponentRuntime.block`).
+ *
+ * Its own object rather than members of `Portal`, so none of it is part of the hook anybody can call:
+ * `resume()` on a dropdown whose modal is closed would put it back on the page alone.
+ */
+class Nesting implements EnclosingBlock, NestedBlock {
+  /** The block this portal's owner renders in, if any. */
+  private outer: EnclosingBlock | undefined;
+  /** The portals inside this one's block. */
+  private readonly inner = new Set<NestedBlock>();
+  /** Whether an enclosing portal is closed, which closes this one whatever its own target. */
+  suspended = false;
+  /** Whether this block is off the page: its target went away, or an enclosing portal closed. */
+  private gone = false;
+
+  constructor(private readonly reconcile: () => void) {}
+
+  get away(): boolean {
+    return this.gone;
+  }
+
+  join(inner: NestedBlock): void {
+    this.inner.add(inner);
+  }
+
+  part(inner?: NestedBlock): void {
+    if (inner !== undefined) this.inner.delete(inner);
+    else this.outer?.part(this);
+  }
+
+  suspend(): void {
+    if (this.suspended) return;
+    this.suspended = true;
+    this.reconcile();
+  }
+
+  resume(): void {
+    if (!this.suspended) return;
+    this.suspended = false;
+    this.reconcile();
+  }
+
+  /** Joins the block the owner renders in, and starts closed if that one is. */
+  enter(owner: unknown): void {
+    const outer = (owner as { [COMPONENT_RUNTIME]?: { block?: EnclosingBlock } } | undefined)?.[COMPONENT_RUNTIME]
+      ?.block;
+    if (outer === undefined || outer === this) return;
+    this.outer = outer;
+    outer.join(this);
+    this.suspended = outer.away;
+  }
+
+  /** On the page again, and the portals inside with it. */
+  open(): void {
+    this.gone = false;
+    for (const inner of [...this.inner]) inner.resume();
+  }
+
+  /** Off the page, and the portals inside with it. */
+  close(): void {
+    this.gone = true;
+    for (const inner of [...this.inner]) inner.suspend();
+  }
 }

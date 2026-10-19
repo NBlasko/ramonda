@@ -86,6 +86,17 @@ function namedCallee(call: ts.CallExpression): string | undefined {
   return named !== undefined && BUILDS_ROWS.has(named) ? named : undefined;
 }
 
+/**
+ * What a row-building call walks: the array before `.map` / `.flatMap`, and `list`'s first argument —
+ * `list(rows, …)` or `ui.list(rows, …)`. `undefined` for every call that does not build rows.
+ */
+export function rowsWalkedBy(call: ts.CallExpression): ts.Expression | undefined {
+  const named = namedCallee(call);
+  if (named === undefined) return undefined;
+  if (named === "list") return call.arguments[0];
+  return ts.isPropertyAccessExpression(call.expression) ? call.expression.expression : undefined;
+}
+
 /** What a call makes of the callback it was handed, when the call builds rows at all. */
 function builtBy(call: ts.CallExpression, callback: ts.SignatureDeclaration): RowCallback | undefined {
   const named = namedCallee(call);

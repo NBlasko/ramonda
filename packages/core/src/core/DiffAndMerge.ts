@@ -960,17 +960,6 @@ function holdsARegion(children: readonly unknown[]): boolean {
 }
 
 /**
- * Reconciles one level of children against the entries that level held last
- * render, and **recurses for a list**, so a list inside a list inside a slot is
- * reconciled the same way at every depth.
- *
- * Plain children share one pool and one key index; each list gets its own,
- * scoped to itself. That scoping is what keeps two lists that both mint `f0`
- * from seeing each other, and what keeps a component's chrome out of reach of
- * content passed into it.
- */
-
-/**
  * What a `list()` region reports to when an item's signal changes.
  *
  * The owner is the component whose render produced the descriptor — a plain
@@ -990,6 +979,16 @@ export function listHostFor(owner: MaybeComponent): ListHost {
   };
 }
 
+/**
+ * Reconciles one level of children against the entries that level held last
+ * render, and **recurses for a list**, so a list inside a list inside a slot is
+ * reconciled the same way at every depth.
+ *
+ * Plain children share one pool and one key index; each list gets its own,
+ * scoped to itself. That scoping is what keeps two lists that both mint `f0`
+ * from seeing each other, and what keeps a component's chrome out of reach of
+ * content passed into it.
+ */
 export function reconcileEntries(
   children: unknown[],
   previous: RecordEntry[],

@@ -3,6 +3,7 @@ import { positionOf } from "../syntax";
 import { coreElementTag } from "./coreElements";
 import { contextFor, openingOf, tagOf, writtenAsNothing } from "./element";
 import { eventTypeOf } from "./events";
+import { rowsWalkedBy } from "./row-callback";
 import { enclosingElement } from "./html";
 import type { ElementContext, ElementRule, JsxElementLike, WrittenAttribute } from "./rule";
 
@@ -85,6 +86,8 @@ function cameFromProps(
     return (ts.isPropertyAccessExpression(callee) && next(callee.expression)) || at.arguments.some(next);
   }
   if (ts.isTemplateExpression(at)) return at.templateSpans.some((span) => next(span.expression));
+  // `[this.props.a, this.props.b].map(…)`: what a row is made of.
+  if (ts.isArrayLiteralExpression(at)) return at.elements.some(next);
   if (ts.isPropertyAccessExpression(at) || ts.isElementAccessExpression(at)) {
     if (
       ts.isPropertyAccessExpression(at) &&
@@ -124,11 +127,11 @@ function cameFromProps(
  * Whether a parameter's value comes from outside what this component holds.
  *
  * A parameter of a method or a function is handed in by whoever calls it — the same "outside" a prop
- * is, and as unknowable here. A parameter of a CALLBACK is an item of what the call walks:
+ * is, and as unknowable here. A parameter of a ROW callback is an item of what the call walks:
  * `this.rows.map((row) => …)` and `list(this.rows, (row) => …)` hand it rows of this component's own
  * model, which is where a field nobody can type in is most often written, so the walked value is
- * followed — `this.props.rows.map(…)` is still the parent's. A call whose walked value cannot be told
- * is unknown, and silent.
+ * followed — `this.props.rows.map(…)` is still the parent's. A row call is one `rowsWalkedBy` names,
+ * the set every row rule reads; any other call with a callback is unknown, and silent.
  */
 function parameterFromOutside(
   parameter: ts.ParameterDeclaration,
@@ -140,14 +143,8 @@ function parameterFromOutside(
   if (!(ts.isArrowFunction(fn) || ts.isFunctionExpression(fn))) return true;
   const call = fn.parent;
   if (!ts.isCallExpression(call) || !call.arguments.includes(fn)) return true;
-  const callee = call.expression;
-  // `rows.map(cb)` walks `rows`; `list(rows, cb)` walks its first argument.
-  const walked = ts.isPropertyAccessExpression(callee)
-    ? callee.expression
-    : call.arguments[0] !== fn
-      ? call.arguments[0]
-      : undefined;
-  if (walked === undefined || hops >= HOPS) return true;
+  const walked = rowsWalkedBy(call);
+  if (walked === undefined || walked === fn || hops >= HOPS) return true;
   return cameFromProps(walked, resolve, hops + 1, seen);
 }
 

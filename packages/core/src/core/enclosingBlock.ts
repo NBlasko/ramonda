@@ -17,19 +17,8 @@ export interface NestedBlock {
 
 /**
  * The block whose children are being reconciled right now, for the components built in it — see
- * `ComponentRuntime.block`. A component built later, by a re-render inside the block, takes it from
- * its parent instead.
+ * `ComponentRuntime.block`. Set by `atTopLevel` with the rest of the list context, so every entry that
+ * starts a level of its own resets it. A component built later, by a re-render inside the block,
+ * takes it from its parent instead.
  */
 export const enclosingBlock: { current: EnclosingBlock | undefined } = { current: undefined };
-
-/** Runs `run` with `holder` as the enclosing block, when there is one, and restores what was there. */
-export function inBlock<T>(holder: EnclosingBlock | undefined, run: () => T): T {
-  if (holder === undefined) return run();
-  const outer = enclosingBlock.current;
-  enclosingBlock.current = holder;
-  try {
-    return run();
-  } finally {
-    enclosingBlock.current = outer;
-  }
-}

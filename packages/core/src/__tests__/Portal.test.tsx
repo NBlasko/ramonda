@@ -2,6 +2,7 @@ import { describe, test, expect, beforeEach } from "vitest";
 import { Component } from "../base/Component";
 import { state, created, mounted, destroyed } from "../base/decorators";
 import { Portal } from "../base/Portal";
+import { bootstrap } from "../index";
 import { createRef } from "../base/Ref";
 import { ChildrenRegion } from "../core/childrenRegion";
 import { portalTarget, PORTAL_TARGET_ATTR } from "../base/portalTarget";
@@ -505,6 +506,95 @@ describe("Portal follows a reactive target", () => {
           same: true,
           destroyedMenus: 0,
         });
+      } finally {
+        instance.open = false;
+        await settle();
+        layer.remove();
+      }
+    });
+
+    /**
+     * A ROOT started from inside a modal is not inside it: it has no parent, and its portals belong to
+     * nothing. Closing the modal leaves its toasts where they are.
+     */
+    test("a root started from inside a closed portal is not closed with it", async () => {
+      class Toasts extends Component {
+        toast = this.use(Portal, () => ({ children: <b id="nested-toast">saved</b>, target: layer }));
+        render() {
+          return <i>toasts</i>;
+        }
+      }
+      const elsewhere = document.createElement("div");
+      document.body.appendChild(elsewhere);
+      class Starter extends Component {
+        @created
+        start() {
+          bootstrap(<Toasts />, elsewhere);
+        }
+        render() {
+          return <b>starter</b>;
+        }
+      }
+      class Host extends Component {
+        @state open = true;
+        modal = this.use(Portal, (self: Host) => ({
+          children: <Starter />,
+          target: (self.open ? document.body : undefined) as Element,
+        }));
+        render() {
+          return <div>host</div>;
+        }
+      }
+      const { instance, settle } = await getDOM<Host>(<Host />);
+      try {
+        await settle();
+        expect(layer.querySelector("#nested-toast")).not.toBeNull();
+        instance.open = false;
+        await settle();
+        expect(layer.querySelector("#nested-toast")).not.toBeNull();
+      } finally {
+        elsewhere.remove();
+        layer.remove();
+      }
+    });
+
+    /**
+     * Opening brings the inner portals back before the outer one's children are reconciled, so one
+     * those children build then goes after them — the layer keeps the order of the tree.
+     */
+    test("an inner portal built as the outer one opens goes after the ones already there", async () => {
+      class Tip extends Component {
+        tip = this.use(Portal, () => ({ children: <b id="nested-tip">tip</b>, target: layer }));
+        render() {
+          return <i>tip</i>;
+        }
+      }
+      class Modal extends Component<{ tip: boolean }> {
+        menu = this.use(Portal, () => ({ children: <b id="nested-first">menu</b>, target: layer }));
+        render() {
+          return <div>{this.props.tip ? <Tip /> : null}</div>;
+        }
+      }
+      class Host extends Component {
+        @state open = true;
+        @state tip = false;
+        modal = this.use(Portal, (self: Host) => ({
+          children: <Modal tip={self.tip} />,
+          target: (self.open ? document.body : undefined) as Element,
+        }));
+        render() {
+          return <div>host</div>;
+        }
+      }
+      const { instance, settle } = await getDOM<Host>(<Host />);
+      try {
+        instance.open = false;
+        await settle();
+        instance.tip = true;
+        await settle();
+        instance.open = true;
+        await settle();
+        expect(Array.from(layer.querySelectorAll("b"), (b) => b.id)).toEqual(["nested-first", "nested-tip"]);
       } finally {
         instance.open = false;
         await settle();
