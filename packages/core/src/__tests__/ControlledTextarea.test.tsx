@@ -521,6 +521,38 @@ describe("a controlled textarea follows the model after the event the app handle
   });
 
   /**
+   * A render in the middle of a composition — an autosave flipping `disabled`, a class from the
+   * parent — does not write the model into the field: that would cancel the word being typed.
+   */
+  test("a render during a composition leaves the word being typed", async () => {
+    class Saving extends Component {
+      @state text = "a";
+      @state saving = false;
+      take(event: InputEvent) {
+        if (event.isComposing) return;
+        this.text = (event.target as HTMLTextAreaElement).value;
+      }
+      render() {
+        return <TextArea id="t" value={this.text} oninput={this.take} disabled={this.saving} />;
+      }
+    }
+    const app = await getDOM<Saving>(<Saving />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+
+    field.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+    field.value = "aか";
+    field.dispatchEvent(new InputEvent("input", { bubbles: true, isComposing: true }));
+    app.instance.saving = true;
+    await app.settle();
+    expect(field.value).toBe("aか");
+
+    field.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "か" }));
+    await drain(app);
+    expect({ field: field.value, model: app.instance.text }).toEqual({ field: "aか", model: "aか" });
+  });
+
+  /**
    * A handler that takes composing input and CHANGES it — full-width digits to half-width, a trim —
    * leaves the model unlike the field, and still took the word: it is not called again.
    */

@@ -2,7 +2,7 @@ import { Component } from "./Component";
 import { createRef } from "./Ref";
 import { mounted, updated } from "./decorators";
 import { __h } from "../vdom/h";
-import { answer, controlled, forwarded, given } from "./forwarded";
+import { answer, composingIn, controlled, forwarded, given } from "./forwarded";
 import type { RefTarget } from "./Ref";
 
 /**
@@ -95,6 +95,8 @@ export class TextArea extends Component<TextAreaProps> {
 
     // A `defaultValue` field is the user's: its text child said where it starts, and nothing more.
     if (this.props.value == null) return;
+    // Not in the middle of a word: its end settles the field — see `composingIn`.
+    if (composingIn(this)) return;
     field.value = String(this.props.value);
   }
 

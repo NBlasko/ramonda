@@ -115,6 +115,16 @@ function lacksTheWord(component: Component<any>, field: EventTarget): boolean {
 /** Fields an input method is composing in right now. */
 const composing = new WeakSet<object>();
 
+/**
+ * Whether an input method is composing in this field right now. A field's own `settle` asks it too,
+ * because a render reaches it from `@updated` — an autosave flipping `disabled` in the middle of a
+ * word — and writing the model then cancels the word being typed. The composition's end settles it.
+ */
+// biome-ignore lint/suspicious/noExplicitAny: any component, whatever its props
+export function composingIn(component: Component<any>): boolean {
+  return composing.has(component);
+}
+
 /** Fields with a settle already set for after the event that is being dispatched. */
 const queued = new WeakSet<object>();
 

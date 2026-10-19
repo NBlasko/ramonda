@@ -218,7 +218,7 @@ export class Portal extends Hook<PortalProps> {
 
   @destroyed
   clear(): void {
-    this.nesting.part();
+    this.nesting.detach();
     // Unmounts the block, releases the list regions' scopes, and takes the anchor
     // out. No flush here: a portal clearing itself is part of a larger teardown,
     // whose enclosing flush drains commit-level work once.
@@ -245,10 +245,12 @@ export class Portal extends Hook<PortalProps> {
   private reconcile(): void {
     const target = this.nesting.suspended ? undefined : this.element;
     if (target) {
-      // Open again — and the portals inside opened — before the children are reconciled: a portal
-      // they build then starts open and goes after the ones already there, in the order of the tree.
-      this.nesting.open();
+      // The children are reconciled while this still counts as closed, and only then is it opened
+      // with the portals inside. A portal whose owner the reconcile removes is gone before it would
+      // have built what it gained while closed, and one the reconcile builds starts closed and opens
+      // after the ones already there, in the order they joined.
       this.region.reconcile(this.props.children, target);
+      this.nesting.open();
       return;
     }
     this.leave();
@@ -327,9 +329,14 @@ class Nesting implements EnclosingBlock, NestedBlock {
     this.inner.add(inner);
   }
 
-  part(inner?: NestedBlock): void {
-    if (inner !== undefined) this.inner.delete(inner);
-    else this.outer?.part(this);
+  part(inner: NestedBlock): void {
+    this.inner.delete(inner);
+  }
+
+  /** Leaves the block this one joined — the portal is going. */
+  detach(): void {
+    this.outer?.part(this);
+    this.outer = undefined;
   }
 
   suspend(): void {

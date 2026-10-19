@@ -192,6 +192,8 @@ class App extends Component<{ text: string; size: string; rows: { text: string }
         <TextArea value={value} readOnly={viewing} aria-label="maybe read only" />
         {/* ✓ a value still loading is no value */}
         <TextArea value={null} aria-label="null value" />
+        {/* biome-ignore format: the parentheses are the case */}
+        <TextArea value={(null)} aria-label="null value in parentheses" />
         <TextArea value={undefined} defaultValue="x" aria-label="undefined value" />
         {/* ✓ read-only spelled as a string, and through a const */}
         <TextArea value={value} readonly="true" aria-label="read only string" />

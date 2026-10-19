@@ -30,6 +30,16 @@ const EXPECTED = {
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/** How long one Marionette reply may take before the run fails rather than hangs. */
+const REPLY = 30_000;
+
+/** `promise`, or a failure naming `what` once `ms` have passed. */
+const within = (promise, ms, what) =>
+  Promise.race([
+    promise,
+    new Promise((_, fail) => setTimeout(() => fail(new Error(`${what}: no answer in ${ms} ms`)), ms).unref()),
+  ]);
+
 /** Marionette speaks `length:json`; a command is `[0, id, name, params]`, a reply `[1, id, error, result]`. */
 function marionette(port) {
   return new Promise((resolve, reject) => {
@@ -57,10 +67,14 @@ function marionette(port) {
           const data = Buffer.from(JSON.stringify([0, ++id, name, params]));
           socket.write(`${data.length}:`);
           socket.write(data);
-          return new Promise((done, fail) =>
-            pending.push(([, , error, result]) =>
-              error ? fail(new Error(`${name}: ${error.message}`)) : done(result),
+          return within(
+            new Promise((done, fail) =>
+              pending.push(([, , error, result]) =>
+                error ? fail(new Error(`${name}: ${error.message}`)) : done(result),
+              ),
             ),
+            REPLY,
+            name,
           );
         },
         close: () => socket.destroy(),
@@ -72,7 +86,7 @@ function marionette(port) {
 async function connect() {
   for (let attempt = 0; attempt < 100; attempt++) {
     try {
-      return await marionette(MARIONETTE);
+      return await within(marionette(MARIONETTE), REPLY, "Marionette's greeting");
     } catch {
       await wait(200);
     }

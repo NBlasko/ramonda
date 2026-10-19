@@ -17,7 +17,8 @@ any script runs. A handler may be a function or a listener object, as for any el
 
 The settle waits for the whole event, so an `onchange` reads the user's pick and a listener on an
 ancestor reads what was typed — or moves the model itself; it leaves an input method's composition
-alone while it lasts and settles the field when it ends. A handler that skips composing input takes
+alone while it lasts — a render in the middle of one, say an autosave flipping `disabled`, does not
+write the model into the field — and settles the field when it ends. A handler that skips composing input takes
 the word from the ordinary `input` after the composition: Firefox sends one, Chromium does not, and
 there the field sends it, once — measured with a real composition in both, typing 日本. It is sent
 only while the field's component is alive and its model lacks the word: a handler that takes composing

@@ -602,6 +602,65 @@ describe("Portal follows a reactive target", () => {
       }
     });
 
+    /**
+     * An inner portal whose owner the reopening removes is not opened first: what it gained while
+     * closed is never built, mounted and torn down for nothing.
+     */
+    test("an inner portal whose owner goes as the outer one opens builds nothing", async () => {
+      let built = 0;
+      class Row extends Component {
+        @created
+        counted() {
+          built++;
+        }
+        render() {
+          return <li>row</li>;
+        }
+      }
+      let picker: Picker | undefined;
+      class Picker extends Component {
+        @state rows = false;
+        menu = this.use(Portal, (self: Picker) => ({
+          children: <ul>{self.rows ? <Row /> : null}</ul>,
+          target: layer,
+        }));
+        @created
+        known() {
+          picker = this;
+        }
+        render() {
+          return <i>picker</i>;
+        }
+      }
+      class Host extends Component {
+        @state open = true;
+        @state confirm = false;
+        modal = this.use(Portal, (self: Host) => ({
+          children: self.confirm ? <b>confirm</b> : <Picker />,
+          target: (self.open ? document.body : undefined) as Element,
+        }));
+        render() {
+          return <div>host</div>;
+        }
+      }
+      const { instance, settle } = await getDOM<Host>(<Host />);
+      try {
+        instance.open = false;
+        await settle();
+        picker!.rows = true;
+        await settle();
+        instance.confirm = true;
+        await settle();
+        instance.open = true;
+        await settle();
+        expect(built).toBe(0);
+      } finally {
+        instance.open = false;
+        await settle();
+        layer.remove();
+      }
+    });
+
     test("an inner portal the closed one gains is built when it opens", async () => {
       const { instance, settle } = await getDOM<Page>(<Page />);
       try {

@@ -16,16 +16,19 @@ export function openingOf(element: JsxElementLike): ts.JsxOpeningLikeElement {
   return ts.isJsxElement(element) ? element.openingElement : element;
 }
 
+/** `null` or `undefined`, in any number of parentheses. One question, asked the same way by every rule. */
+export function isNothing(node: ts.Expression): boolean {
+  let bare = node;
+  while (ts.isParenthesizedExpression(bare)) bare = bare.expression;
+  return bare.kind === ts.SyntaxKind.NullKeyword || (ts.isIdentifier(bare) && bare.text === "undefined");
+}
+
 /**
  * Whether an attribute is written as `{null}` or `{undefined}`: there, and saying nothing. Core reads
  * a `value` written so as no value, and a rule about `value` has to read it the same way.
  */
 export function writtenAsNothing(attribute: WrittenAttribute): boolean {
-  const value = attribute.value;
-  return (
-    value !== undefined &&
-    (value.kind === ts.SyntaxKind.NullKeyword || (ts.isIdentifier(value) && value.text === "undefined"))
-  );
+  return attribute.value !== undefined && isNothing(attribute.value);
 }
 
 /**

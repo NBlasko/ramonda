@@ -370,6 +370,51 @@ describe("markup handed down settles when it says the same", () => {
 });
 
 /**
+ * A form field that holds a value — a host `<input value>`, `<textarea value>`, `<select value>`, or a
+ * `checked` — is never the same markup: what it shows depends on what the user did to it, and the
+ * render that puts the model's value back is the one that diffs it. Settled, a field whose handler
+ * refused a keystroke kept showing it.
+ */
+describe("markup holding a form field's value", () => {
+  test("is not settled, so the field shows the model again", async () => {
+    class Card extends Component<{ children?: unknown }> {
+      render() {
+        return <section>{this.props.children as never}</section>;
+      }
+    }
+    class Form extends Component {
+      @state name = "";
+      @state error = "";
+      onInput(event: Event) {
+        const typed = (event.target as HTMLInputElement).value;
+        if (/\d/.test(typed)) {
+          this.error = "no digits";
+          return;
+        }
+        this.name = typed;
+      }
+      render() {
+        return (
+          <div>
+            <Card>
+              <input id="n" value={this.name} oninput={this.onInput} />
+            </Card>
+            <p>{this.error}</p>
+          </div>
+        );
+      }
+    }
+    const app = await getDOM<Form>(<Form />);
+    const field = app.container.querySelector("#n") as HTMLInputElement;
+    field.value = "1";
+    field.dispatchEvent(new Event("input", { bubbles: true }));
+    await app.settle();
+
+    expect({ field: field.value, error: app.instance.error }).toEqual({ field: "", error: "no digits" });
+  });
+});
+
+/**
  * A hook's props are signals one by one, so its markup is settled key by key: `Portal` reconciles its
  * block when `children` changes, and a `children` that says the same must not wake it, whatever else
  * in the bag moved.

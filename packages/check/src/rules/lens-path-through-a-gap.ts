@@ -1,4 +1,5 @@
 import ts from "typescript";
+import { isNothing } from "./element";
 import { positionOf } from "../syntax";
 import { importedFromPackage } from "./core-import";
 import { guardedBy, type Means } from "./guard-walk";
@@ -344,7 +345,7 @@ function narrowing(text: string, resolve: ModuleContext["resolve"]): Means {
       const { operatorToken: op, left, right } = node;
       // `a && b` proves the path when either side does: both have to hold for the guarded code to run.
       if (op.kind === ts.SyntaxKind.AmpersandAmpersandToken) return proves(left) || proves(right);
-      if (isNotEqual(op.kind)) return isPath(left) ? isEmptiness(right) : isPath(right) && isEmptiness(left);
+      if (isNotEqual(op.kind)) return isPath(left) ? isNothing(right) : isPath(right) && isNothing(left);
     }
     return false;
   };
@@ -369,7 +370,7 @@ function narrowing(text: string, resolve: ModuleContext["resolve"]): Means {
     if (ts.isBinaryExpression(node)) {
       const { operatorToken: op, left, right } = node;
       if (op.kind === ts.SyntaxKind.BarBarToken) return refutes(left) || refutes(right);
-      if (isEqual(op.kind)) return isPath(left) ? isEmptiness(right) : isPath(right) && isEmptiness(left);
+      if (isEqual(op.kind)) return isPath(left) ? isNothing(right) : isPath(right) && isNothing(left);
     }
     return false;
   };
@@ -385,12 +386,6 @@ function isConstDeclaration(declaration: ts.VariableDeclaration): boolean {
 
 function stripParens(node: ts.Expression): ts.Expression {
   return ts.isParenthesizedExpression(node) ? stripParens(node.expression) : node;
-}
-
-/** `null` or `undefined`, as the other side of a comparison. */
-function isEmptiness(node: ts.Expression): boolean {
-  const bare = stripParens(node);
-  return bare.kind === ts.SyntaxKind.NullKeyword || (ts.isIdentifier(bare) && bare.text === "undefined");
 }
 
 function isEqual(kind: ts.SyntaxKind): boolean {

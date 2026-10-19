@@ -76,6 +76,7 @@ describe("a field the user cannot change", () => {
       "read only string",
       "locked const",
       "null value",
+      "null value in parentheses",
       "undefined value",
     ]) {
       expect(lines.has(lineOf(`aria-label="${label}"`))).toBe(false);

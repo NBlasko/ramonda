@@ -81,12 +81,30 @@ function isOpenable(key: string, value: unknown): boolean {
   return isMarkupNode(value) || isListNode(value) || (key === "children" && isJsxChildren(value));
 }
 
+/** The host fields whose shown value the user changes, and the attributes the model holds it in. */
+const FIELDS: ReadonlySet<string> = new Set(["input", "textarea", "select"]);
+
+/**
+ * A form field that holds a value — `<input value>`, `<input checked>` — is never the same markup.
+ * What it SHOWS is also what the user did to it, and the render that diffs it is what puts the
+ * model's value back: settled, a field whose handler refused a keystroke kept showing it, because the
+ * child holding it no longer rendered. Measured against main, where that child rendered on every new
+ * `children`. Only a host tag — core's `TextArea` and `Select` settle the field themselves.
+ */
+function holdsAFieldValue(node: MarkupNode): boolean {
+  // A host tag's name is kept as the DOM spells it, upper case.
+  if (typeof node.name !== "string" || !FIELDS.has(node.name.toLowerCase())) return false;
+  const attributes = node.attributes as Record<string, unknown> | undefined;
+  return attributes !== undefined && ("value" in attributes || "checked" in attributes);
+}
+
 function same(a: unknown, b: unknown, walk: Walk): boolean {
   if (Object.is(a, b)) return true;
   if (--walk.budget < 0) return false;
 
   if (isMarkupNode(a)) {
     if (!isMarkupNode(b) || a.type !== b.type || a.name !== b.name) return false;
+    if (holdsAFieldValue(a)) return false;
     // The component that rendered it: a node is reused only for a vnode built where it was
     // (`areSimilarNodes`), so the same markup from another builder renders as something else.
     if (a[ORIGIN_SYM] !== b[ORIGIN_SYM]) return false;
