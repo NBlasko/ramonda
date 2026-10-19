@@ -521,6 +521,70 @@ describe("a controlled textarea follows the model after the event the app handle
   });
 
   /**
+   * A handler that changes what was typed — upper case, a length limit — shows the change with its
+   * own render, in the same task as the keystroke: a browser may paint between tasks, and the field
+   * must not show the raw keystroke for a frame.
+   */
+  test("a handler that changes the input shows it with its render, not a task later", async () => {
+    class Upper extends Component {
+      @state text = "";
+      take(event: InputEvent) {
+        this.text = (event.target as HTMLTextAreaElement).value.toUpperCase();
+      }
+      render() {
+        return <TextArea id="t" value={this.text} oninput={this.take} />;
+      }
+    }
+    const app = await getDOM<Upper>(<Upper />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+
+    field.value = "a";
+    field.dispatchEvent(new InputEvent("input", { bubbles: true }));
+    await app.settle();
+
+    expect(field.value).toBe("A");
+  });
+
+  /**
+   * Two keystrokes in one task, before the first one's settle has run — fast typing — and a render in
+   * the middle of the second, before the form around has taken it: the second keystroke is kept.
+   */
+  test("a render in the middle of the next keystroke keeps it", async () => {
+    class Formed extends Component {
+      @state text = "";
+      @state typed = 0;
+      render() {
+        return (
+          <form
+            oninput={(event: Event) =>
+              (this.text = (event.currentTarget as HTMLFormElement).querySelector("textarea")!.value)
+            }
+          >
+            <TextArea id="t" value={this.text} oninput={() => this.typed++} />
+          </form>
+        );
+      }
+    }
+    const app = await getDOM<Formed>(<Formed />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+    const form = app.container.querySelector("form") as HTMLFormElement;
+
+    field.value = "a";
+    field.dispatchEvent(new InputEvent("input", { bubbles: true }));
+    await app.settle();
+    // The second keystroke reaches the field's own listener, a render lands, then the form's.
+    field.value = "ab";
+    field.dispatchEvent(new InputEvent("input", { bubbles: false }));
+    await app.settle();
+    form.dispatchEvent(new InputEvent("input", { bubbles: true }));
+    await drain(app);
+
+    expect({ field: field.value, model: app.instance.text }).toEqual({ field: "ab", model: "ab" });
+  });
+
+  /**
    * A render in the middle of a composition — an autosave flipping `disabled`, a class from the
    * parent — does not write the model into the field: that would cancel the word being typed.
    */

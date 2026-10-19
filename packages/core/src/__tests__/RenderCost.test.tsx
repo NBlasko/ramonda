@@ -600,7 +600,7 @@ describe("a group that did not change", () => {
   /**
    * A group of COMPONENT rows is kept whole too: the same vnode carries the same props, and a row
    * that changes on its own renders itself. Counted as reads of the rows' props, which looking at a
-   * component row starts with — measured 1000 per render before (main: 0), 0 now.
+   * component row starts with: 0 per render, where looking at every row reads 4000.
    */
   test("nor are its component rows looked at", async () => {
     class Row extends Component<{ n: number }> {
@@ -651,10 +651,9 @@ describe("a group that did not change", () => {
   });
 
   /**
-   * Nor are its rows diffed one by one: a group with no list and no component anywhere in it is the
-   * same markup when it is the same object, and is kept whole — as it was before groups lost their
-   * skip to the case below a list. Counted as reads of a row's `nodeName`, which the diff of an
-   * element asks first: measured, 0 on `main` before that change, 1000 per render after it.
+   * Nor are its rows diffed one by one: a group with no `list()` anywhere in it is the same markup when
+   * it is the same object, and is kept whole. Counted as reads of a row's `nodeName`, which the diff
+   * of an element asks first: 0 per render, where diffing every row reads 1000.
    */
   test("nor are its rows diffed", async () => {
     class Panel extends Component<{ children?: unknown }> {

@@ -14,7 +14,8 @@ so is no default either); an
 element with a spread, since `{...bind}` from `@ramonda/form` carries the handler; a field that is
 `readonly` or `disabled` as written (bare, `{true}`, `"true"`, or a const holding it), which takes no
 input; a field with a handler on an element — not a component — around it that moves the model in
-time (`input` for a `TextArea`, whose `change` comes on blur); and a field whose `value` IS a prop or a parameter
+time (`input` for a `TextArea`, whose `change` comes on blur), or with a spread on a `form` or
+`fieldset` around it, which may carry one; and a field whose `value` IS a prop or a parameter
 (`this.props.text`, `props.text || ""`, either arm of a ternary, `String(this.props.size)`,
 `this.props.text.trim()`, a template, or a name taken from the props — `const { text } = this.props`, `const own = this.props`
 and `own.size`), whose handler may be in the parent's render — a prop used

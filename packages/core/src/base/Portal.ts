@@ -256,7 +256,9 @@ export class Portal extends Hook<PortalProps> {
       } catch (error) {
         try {
           this.nesting.open();
-        } catch {}
+        } catch (inner) {
+          throw new AggregateError([error, inner], "A portal's children and a portal inside it both failed to open");
+        }
         throw error;
       }
       this.nesting.open();
@@ -373,20 +375,30 @@ class Nesting implements EnclosingBlock, NestedBlock {
   /** On the page again, and the portals inside with it — every one, even past one that throws. */
   open(): void {
     this.gone = false;
-    let failed: { error: unknown } | undefined;
-    for (const inner of [...this.inner]) {
-      try {
-        inner.resume();
-      } catch (error) {
-        failed ??= { error };
-      }
-    }
-    if (failed !== undefined) throw failed.error;
+    everyOne(this.inner, (inner) => inner.resume(), "open");
   }
 
-  /** Off the page, and the portals inside with it. */
+  /** Off the page, and the portals inside with it — every one, even past one that throws. */
   close(): void {
     this.gone = true;
-    for (const inner of [...this.inner]) inner.suspend();
+    everyOne(this.inner, (inner) => inner.suspend(), "close");
   }
+}
+
+/**
+ * Runs `step` for every inner portal, and then throws what failed: the one error as it is, or every
+ * one of them together — none is dropped, and no portal is skipped because one before it threw.
+ */
+function everyOne(inner: ReadonlySet<NestedBlock>, step: (one: NestedBlock) => void, doing: string): void {
+  const failed: unknown[] = [];
+  for (const one of [...inner]) {
+    try {
+      step(one);
+    } catch (error) {
+      failed.push(error);
+    }
+  }
+  if (failed.length === 1) throw failed[0];
+  if (failed.length > 1)
+    throw new AggregateError(failed, `${failed.length} portals inside a portal failed to ${doing}`);
 }

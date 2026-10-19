@@ -27,6 +27,7 @@ describe("a field the user cannot change", () => {
       [lineOf('aria-label="held text"'), "TextArea", "no-handler"],
       [lineOf('aria-label="saved on blur"'), "TextArea", "held-between-keystrokes"],
       [lineOf('aria-label="both"'), "TextArea", "both"],
+      [lineOf('aria-label="spread on a wrapper"'), "TextArea", "no-handler"],
       [lineOf('aria-label="keyed by a prop"'), "TextArea", "no-handler"],
       [lineOf('aria-label="changed above"'), "TextArea", "no-handler"],
       [lineOf('aria-label="maybe read only"'), "TextArea", "no-handler"],

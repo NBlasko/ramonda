@@ -2,7 +2,7 @@ import { Component } from "./Component";
 import { createRef } from "./Ref";
 import { mounted, updated } from "./decorators";
 import { __h } from "../vdom/h";
-import { answer, controlled, forwarded, given, heard, settlingAfterEvent } from "./forwarded";
+import { answer, controlled, forwarded, given, heard, settlesLater } from "./forwarded";
 import type { RamondaNode, RenderEnv } from "../types/vdom";
 import type { RefTarget } from "./Ref";
 
@@ -122,8 +122,8 @@ export class Select extends Component<SelectProps> {
       return;
     }
     this.d = true;
-    // Not in the middle of a pick's event: the settle after it writes — see `settlingAfterEvent`.
-    if (!onServer && settlingAfterEvent(this)) return;
+    // Not in the middle of a pick's event, while the model stands where it found it — see `settlesLater`.
+    if (!onServer && settlesLater(this)) return;
 
     // One write, and the browser works out which option it means. A `multiple` select has no single
     // value to write, and the server cannot write a property at all, so both answer per option.

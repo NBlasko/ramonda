@@ -85,8 +85,6 @@ describe("a controlled select shows what the model says", () => {
     const select = app.container.querySelector("#s") as HTMLSelectElement;
     select.value = "c";
     select.dispatchEvent(new Event("change", { bubbles: true }));
-    // The event is over before anything else happens: its settle runs a task after it.
-    await new Promise((resolve) => setTimeout(resolve, 0));
     await app.settle();
     expect(app.instance.choice).toBe("c");
 

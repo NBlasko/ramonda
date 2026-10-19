@@ -2,7 +2,7 @@ import { Component } from "./Component";
 import { createRef } from "./Ref";
 import { mounted, updated } from "./decorators";
 import { __h } from "../vdom/h";
-import { answer, composingIn, controlled, forwarded, given, settlingAfterEvent } from "./forwarded";
+import { answer, controlled, forwarded, given, settlesLater } from "./forwarded";
 import type { RefTarget } from "./Ref";
 
 /**
@@ -95,9 +95,8 @@ export class TextArea extends Component<TextAreaProps> {
 
     // A `defaultValue` field is the user's: its text child said where it starts, and nothing more.
     if (this.props.value == null) return;
-    // Not in the middle of a word, nor of an event: each settles the field when it ends — see
-    // `composingIn` and `settlingAfterEvent`.
-    if (composingIn(this) || settlingAfterEvent(this)) return;
+    // Not while a word or an event is under way that settles the field when it ends — see `settlesLater`.
+    if (settlesLater(this)) return;
     field.value = String(this.props.value);
   }
 

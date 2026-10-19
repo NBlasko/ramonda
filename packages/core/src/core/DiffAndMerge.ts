@@ -1141,8 +1141,8 @@ export function reconcileEntries(
          * Without it this skip left a list inside a row stale; `AListInsideARow.test.tsx` and
          * `ListCallbackIdentity.test.tsx` ("BOTH stable") are the cases.
          *
-         * For a node an ENGINE built, or a GROUP — an array of children — that holds no list and no
-         * component anywhere inside it. A group is built once by `h` and kept in the vnode around it,
+         * For a node an ENGINE built, or a GROUP — an array of children — that holds no `list()`
+         * anywhere inside it (`holdsARegion`; a component row does not count, it renders itself). A group is built once by `h` and kept in the vnode around it,
          * so a row reused from last pass hands back the same group while a list inside it has changed:
          * `<li>{[<b />, list(…)]}</li>` kept its old prices, and so would `[<div>{list(…)}</div>]`.
          * One with nothing below it that changes on its own is the same markup when it is the same

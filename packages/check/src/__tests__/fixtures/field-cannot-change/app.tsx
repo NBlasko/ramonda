@@ -122,10 +122,14 @@ class App extends Component<{ text: string; size: string; rows: { text: string }
         <Select value={value} disabled aria-label="disabled">
           <option value="a">a</option>
         </Select>
-        {/* ✓ a spread around it may carry the handler */}
+        {/* ✓ a spread on a form or fieldset around it may carry the handler */}
         <fieldset {...bind}>
           <TextArea value={value} aria-label="spread above" />
         </fieldset>
+        {/* ✗ no-handler: a spread on a wrapper that groups no fields says nothing about input */}
+        <div {...bind}>
+          <TextArea value={value} aria-label="spread on a wrapper" />
+        </div>
         {/* ✓ a handler around it */}
         <fieldset oninput={this.type}>
           <TextArea value={value} aria-label="heard above" />

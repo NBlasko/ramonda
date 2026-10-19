@@ -35,8 +35,9 @@ function heardAbove(element: JsxElementLike, events: readonly string[], resolve:
     // Only an ELEMENT listens: on a component, `onchange` is a prop it may do anything with.
     if (tagOf(at) === undefined) continue;
     const around = contextFor(at, resolve);
-    // A spread may carry the handler — `<form {...form.events}>` — and a maybe is never reported.
-    if (around.spreads) return true;
+    // A spread on a form or a fieldset may carry the handler — `<form {...form.events}>` — and a maybe
+    // is never reported. One on any other wrapper, a `<div {...attrs}>`, says nothing about input.
+    if (around.spreads && (around.tag === "form" || around.tag === "fieldset")) return true;
     const heard = eventsOf(around.attributes);
     if (events.some((event) => heard.has(event))) return true;
   }
@@ -170,8 +171,9 @@ function parameterFromOutside(
  * a rule that cannot see it would report every bound field; a field that is `readonly` or `disabled`
  * as written (`truth`: bare, `{true}`, `"true"`, or a name holding it), which takes no input to undo;
  * a field with a handler on an ELEMENT around it, `<form oninput>`, which core waits for before it
- * settles — a component's `onchange` is only a prop; and a field whose `value` comes from `props`,
- * whose handler may sit in the parent's render.
+ * settles — a component's `onchange` is only a prop — or with a spread on a `form` or `fieldset`
+ * around it, which may carry one; and a field whose `value` comes from `props` or a parameter, whose
+ * handler may sit in the caller's render.
  */
 export const fieldTheUserCannotChange = {
   id: "field-the-user-cannot-change",
