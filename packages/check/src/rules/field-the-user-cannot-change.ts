@@ -168,8 +168,9 @@ function parameterFromOutside(
  * whose text is read when the form is sent.
  *
  * Not reported: an element with a spread — `{...bind}` from `@ramonda/form` carries the handler, and
- * a rule that cannot see it would report every bound field; a field that is `readonly` or `disabled`
- * as written (`truth`: bare, `{true}`, `"true"`, or a name holding it), which takes no input to undo;
+ * a rule that cannot see it would report every bound field; a field that is `disabled` as written
+ * (`truth`: bare, `{true}`, `"true"`, or a name holding it), or a `TextArea` that is `readonly`, which
+ * takes no input to undo — `readonly` does nothing to a `<select>`, so a `Select` is still reported;
  * a field with a handler on an ELEMENT around it, `<form oninput>`, which core waits for before it
  * settles — a component's `onchange` is only a prop — or with a spread on a `form` or `fieldset`
  * around it, which may carry one; and a field whose `value` comes from `props` or a parameter, whose

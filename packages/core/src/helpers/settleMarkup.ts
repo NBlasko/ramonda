@@ -96,7 +96,8 @@ const READONLY_IGNORED: ReadonlySet<string> = new Set(["checkbox", "radio", "fil
  *
  * `<input>` only: a host `<textarea>` or `<select>` is refused by the JSX types, and core's `TextArea`
  * and `Select` settle the field themselves. One the user cannot change — a button's label, a hidden
- * value, `readonly` or `disabled` as written, a `value` that is `undefined` — is markup like any other.
+ * value, `disabled` as written, `readonly` where HTML honours it, a `value` that is `undefined` — is
+ * markup like any other. `readonly` does not stop a checkbox, radio, file, range or color input.
  */
 function holdsAFieldValue(node: MarkupNode): boolean {
   // A host tag's name is kept as the DOM spells it, upper case.

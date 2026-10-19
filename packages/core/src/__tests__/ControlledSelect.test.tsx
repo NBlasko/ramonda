@@ -423,6 +423,65 @@ describe("a controlled select shows what the model says", () => {
     expect({ shownAfterLoad, afterReset: select.value }).toEqual({ shownAfterLoad: "l", afterReset: "m" });
   });
 
+  /** After a reset the select shows its default again, so a later default reaches it — as a `TextArea`'s does. */
+  test("after a reset a later defaultValue is shown", async () => {
+    class Sized extends Component {
+      @state saved = "m";
+      render() {
+        return (
+          <form>
+            <Select id="s" name="size" defaultValue={this.saved}>
+              {["s", "m", "l"].map((v) => (
+                <option key={v} value={v}>
+                  {v}
+                </option>
+              ))}
+            </Select>
+          </form>
+        );
+      }
+    }
+    const app = await getDOM<Sized>(<Sized />);
+    await app.settle();
+    const select = app.container.querySelector("#s") as HTMLSelectElement;
+    await pickAsABrowserDoes(select, "l");
+    (select.form as HTMLFormElement).reset();
+    app.instance.saved = "s";
+    await app.settle();
+
+    expect(select.value).toBe("s");
+  });
+
+  /** The pick that is put back is the option the user picked, even when another shares its value. */
+  test("the pick put back is the very option, not another with its value", async () => {
+    class Choose extends Component {
+      @state saved = "a";
+      render() {
+        return (
+          <Select id="s" defaultValue={this.saved}>
+            <option value="">Choose…</option>
+            <option value="a">a</option>
+            <option value="b">b</option>
+            <option value="" disabled>
+              ──
+            </option>
+          </Select>
+        );
+      }
+    }
+    const app = await getDOM<Choose>(<Choose />);
+    await app.settle();
+    const select = app.container.querySelector("#s") as HTMLSelectElement;
+    select.selectedIndex = 0;
+    select.dispatchEvent(new Event("input", { bubbles: true }));
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    app.instance.saved = "b";
+    await app.settle();
+
+    expect(select.selectedIndex).toBe(0);
+  });
+
   /** A `defaultValue` from a load reaches a select nobody has picked in yet. */
   test("a defaultValue that arrives before a pick is applied", async () => {
     class Loading extends Component {

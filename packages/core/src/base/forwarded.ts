@@ -133,7 +133,7 @@ const modelOf = (component: Component<any>): unknown => component[COMPONENT_RUNT
  */
 function sameModel(a: unknown, b: unknown): boolean {
   if (Object.is(a, b)) return true;
-  if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+  if (!Array.isArray(a) || !Array.isArray(b)) return false;
   // As the select reads it: which options are chosen, in any order — the same set both ways.
   const before = new Set(a.map(String));
   const after = new Set(b.map(String));

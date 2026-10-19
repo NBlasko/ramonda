@@ -1034,6 +1034,8 @@ export function reconcileEntries(
    * This is the same outcome for a region: retired with the ones this render no longer asks for.
    */
   let displacedRegions: (ListRegion | ComponentRegion)[] | undefined;
+  /** The engines of lists that became groups in their slot this pass — released with `retire`, below. */
+  let retiredEngines: NonNullable<ListRegion["engine"]>[] | undefined;
 
   /**
    * Components this pass BUILT, so a throw can take them back down.
@@ -1184,9 +1186,9 @@ export function reconcileEntries(
          * not: it is still in the caller's record, and the rows it built come through `inner.born`.
          */
 
-        // Only now, with the group reconciled: a pass that throws above leaves the list in the record
-        // it came from, and its rows must still hear their signals.
-        if (engine === undefined) before?.engine?.dispose();
+        // Released with everything else this level retires, at its end: a pass that throws before
+        // then leaves the list in the record it came from, and its rows must still hear their signals.
+        if (engine === undefined && before?.engine !== undefined) (retiredEngines ??= []).push(before.engine);
 
         if (inner.born !== undefined) (born ??= []).push(...inner.born);
 
@@ -1297,6 +1299,7 @@ export function reconcileEntries(
   };
   for (const region of previousRegions.values()) retire(region);
   if (displacedRegions !== undefined) for (const region of displacedRegions) retire(region);
+  if (retiredEngines !== undefined) for (const engine of retiredEngines) engine.dispose();
   for (const leftover of cloneChildren) {
     if (leftover !== DONE) unclaimed.push(leftover);
   }

@@ -45,8 +45,9 @@ export interface SelectProps {
    */
   value?: string | number | readonly (string | number)[];
   /**
-   * Which option shows FIRST, after which the select is the user's: it is never put back. For a
-   * select whose choice is read when the form is sent rather than held in state. Not with `value`.
+   * Which option shows FIRST, after which the select is the user's: a pick is never put back. A later
+   * one still says where a form's reset returns. For a select whose choice is read when the form is
+   * sent rather than held in state. Not with `value`.
    */
   defaultValue?: string | number | readonly (string | number)[];
   children?: RamondaNode;
@@ -120,10 +121,11 @@ export class Select extends Component<SelectProps> {
     if (chosen == null) {
       const fallback = this.props.defaultValue;
       if (fallback != null) {
-        if (!this.d) this.start(select, fallback);
+        // Not settled, or back on its defaults after a form's reset: the default is what it shows.
+        if (!this.d || showsItsDefault(select)) this.start(select, fallback);
         // Settled for good — the user picked, or a value held it — and a later default still says
         // where a reset returns, as a TextArea's does. Writing the attribute moves the choice in a
-        // browser, so what the select shows is put back right after.
+        // browser, so what the select shows is put back right after, when anything was written.
         else keepingTheChoice(select, () => this.start(select, fallback));
       }
       return;
@@ -152,21 +154,23 @@ export class Select extends Component<SelectProps> {
   /**
    * A `defaultValue` is where the select starts until the user picks — so options that arrive later,
    * after a "Choose…" that was there first, still start on the saved choice, and one that arrives
-   * after a pick changes nothing. It is written only once an option it names is there; before, the
-   * browser would show no choice at all.
+   * after a pick leaves the pick showing and changes only where a reset returns. It is written only
+   * once an option it names is there; before, the browser would show no choice at all.
    *
    * It is written where HTML keeps a default, the `selected` ATTRIBUTE, on both sides: so a form's
    * reset returns to it, as a `TextArea`'s does to its text. `select.value` would show it and leave
    * the form believing the first option is the default. Only an option whose attribute says
    * otherwise is written.
    */
-  private start(select: HTMLSelectElement, chosen: string | number | readonly (string | number)[]): void {
+  private start(select: HTMLSelectElement, chosen: string | number | readonly (string | number)[]): boolean {
     const wanted = wantedOf(chosen);
     const options = select.options;
     let named = false;
     for (let i = 0; i < options.length && !named; i++) named = wanted.has(options[i].value);
-    if (!named) return;
-    for (let i = 0; i < options.length; i++) markDefault(options[i], wanted.has(options[i].value));
+    if (!named) return false;
+    let wrote = false;
+    for (let i = 0; i < options.length; i++) wrote = markDefault(options[i], wanted.has(options[i].value)) || wrote;
+    return wrote;
   }
 
   /** The listener a controlled select answers its events with — see `answer` in `forwarded.ts`. */
@@ -209,16 +213,27 @@ function wantedOf(chosen: string | number | readonly (string | number)[]): Set<s
 }
 
 /** Gives an option the `selected` attribute or takes it away, and touches it only when it says otherwise. */
-function markDefault(option: HTMLOptionElement, on: boolean): void {
-  if (option.hasAttribute("selected") === on) return;
+function markDefault(option: HTMLOptionElement, on: boolean): boolean {
+  if (option.hasAttribute("selected") === on) return false;
   if (on) option.setAttribute("selected", "");
   else option.removeAttribute("selected");
+  return true;
 }
 
-/** Runs `write` and puts back which options were chosen before it. */
-function keepingTheChoice(select: HTMLSelectElement, write: () => void): void {
-  const chosen = new Set(Array.from(select.selectedOptions, (option) => option.value));
-  write();
+/**
+ * Runs `write` and, when it wrote anything, puts back the very options that were chosen before it —
+ * the elements, not their values, since two options may share one (a "Choose…" and a separator).
+ */
+function keepingTheChoice(select: HTMLSelectElement, write: () => boolean): void {
+  const chosen = new Set(Array.from(select.selectedOptions));
+  if (!write()) return;
   const options = select.options;
-  for (let i = 0; i < options.length; i++) options[i].selected = chosen.has(options[i].value);
+  for (let i = 0; i < options.length; i++) options[i].selected = chosen.has(options[i]);
+}
+
+/** Whether the select shows its defaults — nothing changed since it began, or since a form's reset. */
+function showsItsDefault(select: HTMLSelectElement): boolean {
+  const options = select.options;
+  for (let i = 0; i < options.length; i++) if (options[i].selected !== options[i].defaultSelected) return false;
+  return true;
 }
