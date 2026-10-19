@@ -226,7 +226,8 @@ export const fieldTheUserCannotChange = {
 
     const moving: readonly string[] = tag === "textarea" ? ["input"] : ["input", "change"];
     if (
-      ["readonly", "readOnly", "disabled"].some((name) => truth(name) === true) ||
+      // `readonly` does nothing to a select, which still opens and picks; only `disabled` stops it.
+      (tag === "select" ? ["disabled"] : ["readonly", "readOnly", "disabled"]).some((name) => truth(name) === true) ||
       heardAbove(element, moving, resolve) ||
       fromProps(value, resolve)
     ) {

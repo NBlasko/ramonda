@@ -407,6 +407,39 @@ describe("markup holding a form field's value", () => {
     expect(renders).toBe(0);
   });
 
+  /** `readonly` does not stop a checkbox — HTML ignores it there — so a readonly checkbox still holds a value. */
+  test("a readonly checkbox is a field the user changes", async () => {
+    class Card extends Component<{ children?: unknown }> {
+      render() {
+        return <section>{this.props.children as never}</section>;
+      }
+    }
+    class Form extends Component {
+      @state on = false;
+      @state tick = 0;
+      refuse() {
+        this.tick = this.tick + 1;
+      }
+      render() {
+        return (
+          <div>
+            <Card>
+              <input id="c" type="checkbox" checked={this.on} readonly onchange={this.refuse} />
+            </Card>
+            <p>{this.tick}</p>
+          </div>
+        );
+      }
+    }
+    const app = await getDOM<Form>(<Form />);
+    const box = app.container.querySelector("#c") as HTMLInputElement;
+    box.checked = true;
+    box.dispatchEvent(new Event("change", { bubbles: true }));
+    await app.settle();
+
+    expect(box.checked).toBe(false);
+  });
+
   test("is not settled, so the field shows the model again", async () => {
     class Card extends Component<{ children?: unknown }> {
       render() {

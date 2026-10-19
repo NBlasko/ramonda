@@ -390,6 +390,39 @@ describe("a controlled select shows what the model says", () => {
     expect(shown(app.container)).toEqual({ value: "m", index: 1 });
   });
 
+  /**
+   * A `defaultValue` that changes after the user picked leaves the pick showing, and is where a reset
+   * returns — as a `TextArea`'s does.
+   */
+  test("a later defaultValue after a pick keeps the pick, and is where a reset goes", async () => {
+    class Sized extends Component {
+      @state saved = "s";
+      render() {
+        return (
+          <form>
+            <Select id="s" name="size" defaultValue={this.saved}>
+              {["s", "m", "l"].map((v) => (
+                <option key={v} value={v}>
+                  {v}
+                </option>
+              ))}
+            </Select>
+          </form>
+        );
+      }
+    }
+    const app = await getDOM<Sized>(<Sized />);
+    await app.settle();
+    const select = app.container.querySelector("#s") as HTMLSelectElement;
+    await pickAsABrowserDoes(select, "l");
+    app.instance.saved = "m";
+    await app.settle();
+    const shownAfterLoad = select.value;
+    (select.form as HTMLFormElement).reset();
+
+    expect({ shownAfterLoad, afterReset: select.value }).toEqual({ shownAfterLoad: "l", afterReset: "m" });
+  });
+
   /** A `defaultValue` from a load reaches a select nobody has picked in yet. */
   test("a defaultValue that arrives before a pick is applied", async () => {
     class Loading extends Component {

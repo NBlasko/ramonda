@@ -122,6 +122,10 @@ class App extends Component<{ text: string; size: string; rows: { text: string }
         <Select value={value} disabled aria-label="disabled">
           <option value="a">a</option>
         </Select>
+        {/* ✗ no-handler: `readonly` does nothing to a select — it still opens and picks */}
+        <Select value={value} readonly aria-label="readonly select">
+          <option value="a">a</option>
+        </Select>
         {/* ✓ a spread on a form or fieldset around it may carry the handler */}
         <fieldset {...bind}>
           <TextArea value={value} aria-label="spread above" />

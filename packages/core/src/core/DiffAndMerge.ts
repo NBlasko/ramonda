@@ -1126,9 +1126,9 @@ export function reconcileEntries(
            * left in this slot: the two share an owner, so a list that became a group found the list's
            * region, and with its engine the skip below trusted a node the engine never built. Measured:
            * `<Panel>{open ? list(a, …) : [<b />, list(prices, …)]}</Panel>`, and the prices stayed old.
-           * The list's engine is let go of here, or it stays subscribed to whatever its rows read.
+           * The list's engine is let go of once the group is in its place — below — or it stays
+           * subscribed to whatever its rows read.
            */
-          before?.engine?.dispose();
         }
 
         /**
@@ -1183,6 +1183,10 @@ export function reconcileEntries(
          * engine nothing holds keeps every item subscribed to whatever it read. An ADOPTED list is
          * not: it is still in the caller's record, and the rows it built come through `inner.born`.
          */
+
+        // Only now, with the group reconciled: a pass that throws above leaves the list in the record
+        // it came from, and its rows must still hear their signals.
+        if (engine === undefined) before?.engine?.dispose();
 
         if (inner.born !== undefined) (born ??= []).push(...inner.born);
 

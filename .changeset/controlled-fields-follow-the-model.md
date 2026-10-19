@@ -33,6 +33,7 @@ parked off the page still takes the word; it writes only the value, with no rend
 runs when the handler throws. A `TextArea` answers `input` only — `change` comes on blur, when
 every input has already been answered. A `Select`'s `defaultValue` holds until the
 user picks or a `value` holds the field, and applies once an option with that value is there: a
-placeholder first and the options from a load still start on the saved choice. It is written as the
+placeholder first and the options from a load still start on the saved choice. One that changes after
+the pick leaves the pick showing and is where a reset returns, as a `TextArea`'s is. It is written as the
 option's `selected` attribute, so a form's reset returns to it. A `value` of `null` is no value. The app's handler is called as a
 listener is, with the element as `this`.

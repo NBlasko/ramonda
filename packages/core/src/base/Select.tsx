@@ -118,7 +118,14 @@ export class Select extends Component<SelectProps> {
     const onServer = env === "server";
     const chosen = this.props.value;
     if (chosen == null) {
-      if (!this.d && this.props.defaultValue != null) this.start(select, this.props.defaultValue);
+      const fallback = this.props.defaultValue;
+      if (fallback != null) {
+        if (!this.d) this.start(select, fallback);
+        // Settled for good — the user picked, or a value held it — and a later default still says
+        // where a reset returns, as a TextArea's does. Writing the attribute moves the choice in a
+        // browser, so what the select shows is put back right after.
+        else keepingTheChoice(select, () => this.start(select, fallback));
+      }
       return;
     }
     this.d = true;
@@ -206,4 +213,12 @@ function markDefault(option: HTMLOptionElement, on: boolean): void {
   if (option.hasAttribute("selected") === on) return;
   if (on) option.setAttribute("selected", "");
   else option.removeAttribute("selected");
+}
+
+/** Runs `write` and puts back which options were chosen before it. */
+function keepingTheChoice(select: HTMLSelectElement, write: () => void): void {
+  const chosen = new Set(Array.from(select.selectedOptions, (option) => option.value));
+  write();
+  const options = select.options;
+  for (let i = 0; i < options.length; i++) options[i].selected = chosen.has(options[i].value);
 }

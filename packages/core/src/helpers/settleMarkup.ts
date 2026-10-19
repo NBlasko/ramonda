@@ -84,6 +84,9 @@ function isOpenable(key: string, value: unknown): boolean {
 /** `<input>` types whose value the user does not change: a button's label, a hidden value. */
 const UNCHANGED_BY_THE_USER: ReadonlySet<string> = new Set(["hidden", "submit", "reset", "button", "image"]);
 
+/** `<input>` types `readonly` does not stop — HTML ignores it on them, and a click still changes them. */
+const READONLY_IGNORED: ReadonlySet<string> = new Set(["checkbox", "radio", "file", "range", "color"]);
+
 /**
  * A host `<input>` the user can change, holding a `value` or a `checked`, is never the same markup.
  * What it SHOWS is also what the user did to it, and the render that diffs it is what puts the
@@ -101,8 +104,9 @@ function holdsAFieldValue(node: MarkupNode): boolean {
   const attributes = (node.attributes ?? {}) as Record<string, unknown>;
   const type = typeof attributes["type"] === "string" ? (attributes["type"] as string).toLowerCase() : "text";
   if (UNCHANGED_BY_THE_USER.has(type)) return false;
-  if (attributes["readonly"] === true || attributes["readOnly"] === true || attributes["disabled"] === true)
-    return false;
+  if (attributes["disabled"] === true) return false;
+  const readonly = attributes["readonly"] === true || attributes["readOnly"] === true;
+  if (readonly && !READONLY_IGNORED.has(type)) return false;
   return attributes["value"] !== undefined || attributes["checked"] !== undefined;
 }
 

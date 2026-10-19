@@ -134,9 +134,10 @@ const modelOf = (component: Component<any>): unknown => component[COMPONENT_RUNT
 function sameModel(a: unknown, b: unknown): boolean {
   if (Object.is(a, b)) return true;
   if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
-  // As the select reads it: which options are chosen, in any order.
-  const chosen = new Set(a.map(String));
-  return b.every((member) => chosen.has(String(member)));
+  // As the select reads it: which options are chosen, in any order — the same set both ways.
+  const before = new Set(a.map(String));
+  const after = new Set(b.map(String));
+  return before.size === after.size && [...before].every((member) => after.has(member));
 }
 
 /**
@@ -202,7 +203,14 @@ function lacksTheWord(component: Component<any>, state: FieldState): boolean {
  * Right: both fields keep 日本; the first readout is `["日本"]`, and the second ends in 日本 with no
  * 日本 that Safari did not send itself. Wrong: a field comes back empty, or the first readout has 日本
  * twice — then log `input` and `compositionend` on the field to see the order Safari sends them in,
- * which is what this code has to answer. Delete this note once it is measured.
+ * which is what this code has to answer.
+ *
+ * 4. Type `nihon` again and, before Enter, press Tab to leave the field. Right: the word is kept, or
+ *    the field shows the model — never an empty field. Wrong: an empty field, which means Safari sends
+ *    `compositionend` LATER than the task after the blur, when "A composition lost" on `answer` has
+ *    already ended the composition and put the model back.
+ *
+ * Delete this note once it is measured.
  */
 
 /**

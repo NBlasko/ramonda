@@ -12,8 +12,8 @@ is a handler that moves the model, or `defaultValue` for a field the form sends.
 `value` written as `{null}` or `{undefined}`, which core treats as no value (a `defaultValue` written
 so is no default either); an
 element with a spread, since `{...bind}` from `@ramonda/form` carries the handler; a field that is
-`readonly` or `disabled` as written (bare, `{true}`, `"true"`, or a const holding it), which takes no
-input; a field with a handler on an element — not a component — around it that moves the model in
+`disabled` as written (bare, `{true}`, `"true"`, or a const holding it), or a `TextArea` that is
+`readonly`, which takes no input (`readonly` does nothing to a `Select`, which is still reported); a field with a handler on an element — not a component — around it that moves the model in
 time (`input` for a `TextArea`, whose `change` comes on blur), or with a spread on a `form` or
 `fieldset` around it, which may carry one; and a field whose `value` IS a prop or a parameter
 (`this.props.text`, `props.text || ""`, either arm of a ternary, `String(this.props.size)`,

@@ -20,7 +20,8 @@ place compares equal to the original, so the change would never be shown. Such a
 declared on the child with `@StableProps("slots")`. Markup built by a different component, a `list()`
 whose callback changed, markup holding a host `<input>` the user can change with a `value` or `checked` (what it
 shows is also what the user did to it, and the render is what puts the model's value back — a submit
-button's label or a hidden value settles like any markup), and markup past a
+button's label, a hidden value, a `readonly` text field settle like any markup — `readonly` does not
+stop a checkbox, a radio, a file, range or color input, so those still count), and markup past a
 budget of 500 values for its key are all called different — the child
 renders, as it did before.
 
