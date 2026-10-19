@@ -136,7 +136,7 @@ export function formatAttributes(attributes: NodeAttributes): Record<string, any
  * whose `type` is `number`, `email`, `date` or `color`, and a value written to one of those is a
  * value written to a field with no caret to keep.
  */
-function writeValue(enhancedNode: EnhancedHTMLNode, value: unknown, onServer: boolean): void {
+export function writeValue(enhancedNode: EnhancedHTMLNode, value: unknown, onServer: boolean): void {
   const field = enhancedNode as unknown as {
     value: unknown;
     selectionStart: number | null;

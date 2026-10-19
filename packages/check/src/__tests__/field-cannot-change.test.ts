@@ -28,11 +28,11 @@ describe("a field the user cannot change", () => {
       [lineOf('aria-label="saved on blur"'), "TextArea", "held-between-keystrokes"],
       [lineOf('aria-label="both"'), "TextArea", "both"],
       [lineOf('aria-label="readonly select"'), "Select", "no-handler"],
+      [lineOf('aria-label="literal value"'), "TextArea", "literal"],
       [lineOf('aria-label="spread on a wrapper"'), "TextArea", "no-handler"],
       [lineOf('aria-label="keyed by a prop"'), "TextArea", "no-handler"],
       [lineOf('aria-label="changed above"'), "TextArea", "no-handler"],
       [lineOf('aria-label="maybe read only"'), "TextArea", "no-handler"],
-      [lineOf('aria-label="inside a card"'), "Select", "no-handler"],
     ]);
   });
 
@@ -55,6 +55,7 @@ describe("a field the user cannot change", () => {
       "disabled",
       "heard above",
       "spread above",
+      "inside a card",
       "from props",
       "from props with a fallback",
       "from props destructured",

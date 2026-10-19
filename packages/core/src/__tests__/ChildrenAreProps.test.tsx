@@ -440,6 +440,37 @@ describe("markup holding a form field's value", () => {
     expect(box.checked).toBe(false);
   });
 
+  /** `<details open>` is state the user changes too: the model's `open={false}` is put back. */
+  test("a details the user opened is closed again by the model", async () => {
+    class Panel extends Component<{ children?: unknown }> {
+      render() {
+        return <section>{this.props.children as never}</section>;
+      }
+    }
+    class Host extends Component {
+      @state tick = 0;
+      render() {
+        return (
+          <div>
+            <Panel>
+              <details id="d" open={false}>
+                <summary>more</summary>
+              </details>
+            </Panel>
+            <p>{this.tick}</p>
+          </div>
+        );
+      }
+    }
+    const app = await getDOM<Host>(<Host />);
+    const details = app.container.querySelector("#d") as HTMLDetailsElement;
+    details.open = true;
+    app.instance.tick = 1;
+    await app.settle();
+
+    expect(details.open).toBe(false);
+  });
+
   test("is not settled, so the field shows the model again", async () => {
     class Card extends Component<{ children?: unknown }> {
       render() {

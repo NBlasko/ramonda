@@ -1,7 +1,7 @@
 import ts from "typescript";
 import { positionOf } from "../syntax";
 import { coreElementTag } from "./coreElements";
-import { contextFor, openingOf, tagOf, writtenAsNothing } from "./element";
+import { contextFor, openingOf, writtenAsNothing } from "./element";
 import { eventTypeOf } from "./events";
 import { unwrap } from "./follow-value";
 import { rowsWalkedBy } from "./row-callback";
@@ -12,12 +12,20 @@ export interface FieldTheUserCannotChangeIssue {
   component: "Select" | "TextArea";
   /**
    * `no-handler` — a `value` and nothing that could move it; `held-between-keystrokes` — a
-   * `TextArea` whose `value` moves only `onchange`, on blur; `both` — `value` beside `defaultValue`.
+   * `TextArea` whose `value` moves only `onchange`, on blur; `both` — `value` beside `defaultValue`;
+   * `literal` — a `value` written as itself, `value=""`, which no handler can move.
    */
-  kind: "no-handler" | "held-between-keystrokes" | "both";
+  kind: "no-handler" | "held-between-keystrokes" | "both" | "literal";
   file: string;
   line: number;
   column: number;
+}
+
+/** Whether a `value` is written as itself — a string, a number or a plain template — not read from anything. */
+function writtenAsItself(value: WrittenAttribute): boolean {
+  if (value.value === undefined) return false;
+  const written = unwrap(value.value);
+  return ts.isStringLiteral(written) || ts.isNumericLiteral(written) || ts.isNoSubstitutionTemplateLiteral(written);
 }
 
 /** The events an element has a handler for, in any spelling. */
@@ -32,8 +40,8 @@ function eventsOf(attributes: readonly WrittenAttribute[]): Set<string | undefin
  */
 function heardAbove(element: JsxElementLike, events: readonly string[], resolve: ElementContext["resolve"]): boolean {
   for (let at = enclosingElement(element); at !== undefined; at = enclosingElement(at)) {
-    // Only an ELEMENT listens: on a component, `onchange` is a prop it may do anything with.
-    if (tagOf(at) === undefined) continue;
+    // A component's `oninput` is a prop it may hand to a `<form>` inside it, or not: a maybe, and a
+    // maybe is never reported. Its spread is not asked about — that question is for a form.
     const around = contextFor(at, resolve);
     // A spread on a form or a fieldset may carry the handler — `<form {...form.events}>` — and a maybe
     // is never reported. One on any other wrapper, a `<div {...attrs}>`, says nothing about input.
@@ -182,16 +190,19 @@ export const fieldTheUserCannotChange = {
   report: {
     severity: "error",
     reportedWhen:
-      "a `Select` or `TextArea` has a `value` that nothing moves — no handler, or a `TextArea` with only " +
-      "`onchange` — so every input is undone; or `value` sits beside `defaultValue`",
+      "a `Select` or `TextArea` has a `value` that nothing moves — no handler, a `TextArea` with only " +
+      '`onchange`, or a value written as itself (`value=""`) — so every input is undone; or `value` sits ' +
+      "beside `defaultValue`",
     heading: (found) => `${found.length} field(s) the user cannot change:`,
     lines: (issue) => [
       `  ${issue.file}:${issue.line}:${issue.column}`,
-      issue.kind === "both"
-        ? `    <${issue.component}> has \`value\` and \`defaultValue\` — \`value\` wins, and \`defaultValue\` says nothing.`
-        : issue.kind === "held-between-keystrokes"
-          ? `    <${issue.component} value> moves only \`onchange\`, on blur — every keystroke is undone before it.`
-          : `    <${issue.component} value> has no handler — the model never moves, so every input is undone.`,
+      issue.kind === "literal"
+        ? `    <${issue.component} value> is written as itself — no handler can move it, so every input is undone.`
+        : issue.kind === "both"
+          ? `    <${issue.component}> has \`value\` and \`defaultValue\` — \`value\` wins, and \`defaultValue\` says nothing.`
+          : issue.kind === "held-between-keystrokes"
+            ? `    <${issue.component} value> moves only \`onchange\`, on blur — every keystroke is undone before it.`
+            : `    <${issue.component} value> has no handler — the model never moves, so every input is undone.`,
     ],
     advice:
       "A field with `value` shows what the model holds: after every input, once the event is over, it\n" +
@@ -226,14 +237,14 @@ export const fieldTheUserCannotChange = {
     if (said("defaultValue") !== undefined) return [{ component, kind: "both", ...at }];
 
     const moving: readonly string[] = tag === "textarea" ? ["input"] : ["input", "change"];
-    if (
-      // `readonly` does nothing to a select, which still opens and picks; only `disabled` stops it.
-      (tag === "select" ? ["disabled"] : ["readonly", "readOnly", "disabled"]).some((name) => truth(name) === true) ||
-      heardAbove(element, moving, resolve) ||
-      fromProps(value, resolve)
-    ) {
+    // `readonly` does nothing to a select, which still opens and picks; only `disabled` stops it.
+    if ((tag === "select" ? ["disabled"] : ["readonly", "readOnly", "disabled"]).some((name) => truth(name) === true)) {
       return [];
     }
+    // A value written as itself — `value=""`, a chat box meant to clear on send — is one no handler
+    // can move, wherever the handler is: every input is undone.
+    if (writtenAsItself(value)) return [{ component, kind: "literal", ...at }];
+    if (heardAbove(element, moving, resolve) || fromProps(value, resolve)) return [];
     const events = eventsOf(attributes);
     if (!events.has("input") && !events.has("change")) return [{ component, kind: "no-handler", ...at }];
     if (tag === "textarea" && !events.has("input")) return [{ component, kind: "held-between-keystrokes", ...at }];

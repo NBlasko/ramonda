@@ -516,7 +516,9 @@ export class ChildrenRegion {
    * whole-list skip and touches nothing.
    */
   private invalidate(): void {
-    if (this.disposed || this.refreshQueued) return;
+    // A parked block queues nothing: the row stays stale and is rebuilt when the block comes back,
+    // and its owner is not rendered for a change nobody can see.
+    if (this.disposed || this.waiting || this.refreshQueued) return;
     const owner = this.owner;
     if (!owner) return;
 

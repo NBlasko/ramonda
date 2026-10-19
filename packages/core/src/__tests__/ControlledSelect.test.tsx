@@ -452,6 +452,35 @@ describe("a controlled select shows what the model says", () => {
     expect(select.value).toBe("s");
   });
 
+  /** A pick that happens to equal the default is still the user's: a later default does not move it. */
+  test("a pick equal to the default is kept when the default changes", async () => {
+    class Sized extends Component {
+      @state saved = "m";
+      render() {
+        return (
+          <form>
+            <Select id="s" name="size" defaultValue={this.saved}>
+              {["s", "m", "l"].map((v) => (
+                <option key={v} value={v}>
+                  {v}
+                </option>
+              ))}
+            </Select>
+          </form>
+        );
+      }
+    }
+    const app = await getDOM<Sized>(<Sized />);
+    await app.settle();
+    const select = app.container.querySelector("#s") as HTMLSelectElement;
+    await pickAsABrowserDoes(select, "l");
+    await pickAsABrowserDoes(select, "m");
+    app.instance.saved = "s";
+    await app.settle();
+
+    expect(select.value).toBe("m");
+  });
+
   /** The pick that is put back is the option the user picked, even when another shares its value. */
   test("the pick put back is the very option, not another with its value", async () => {
     class Choose extends Component {

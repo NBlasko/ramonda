@@ -126,6 +126,8 @@ class App extends Component<{ text: string; size: string; rows: { text: string }
         <Select value={value} readonly aria-label="readonly select">
           <option value="a">a</option>
         </Select>
+        {/* ✗ literal: no handler can move a value written as itself */}
+        <TextArea value="" oninput={this.type} aria-label="literal value" />
         {/* ✓ a spread on a form or fieldset around it may carry the handler */}
         <fieldset {...bind}>
           <TextArea value={value} aria-label="spread above" />
@@ -210,7 +212,7 @@ class App extends Component<{ text: string; size: string; rows: { text: string }
         {/* ✓ read-only spelled as a string, and through a const */}
         <TextArea value={value} readonly="true" aria-label="read only string" />
         <TextArea value={value} disabled={LOCKED} aria-label="locked const" />
-        {/* ✗ no-handler: a component's onchange is a prop, not a listener */}
+        {/* ✓ a component's onchange may be handed to a form inside it — a maybe, so silent */}
         <Card onchange={this.pick}>
           <Select value={value} aria-label="inside a card">
             <option value="a">a</option>

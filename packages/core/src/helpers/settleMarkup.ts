@@ -88,27 +88,44 @@ const UNCHANGED_BY_THE_USER: ReadonlySet<string> = new Set(["hidden", "submit", 
 const READONLY_IGNORED: ReadonlySet<string> = new Set(["checkbox", "radio", "file", "range", "color"]);
 
 /**
- * A host `<input>` the user can change, holding a `value` or a `checked`, is never the same markup.
- * What it SHOWS is also what the user did to it, and the render that diffs it is what puts the
- * model's value back: settled, a field whose handler refused a keystroke kept showing it, because the
- * child holding it no longer rendered. Measured against main, where that child rendered on every new
- * `children`.
+ * Elements whose state the user changes besides `<input>`, and the attribute the model holds it in:
+ * a `<details>` or `<dialog>` the user opens, a `<video>` or `<audio>` the user mutes.
+ */
+const USER_STATE: ReadonlyMap<string, string> = new Map([
+  ["details", "open"],
+  ["dialog", "open"],
+  ["video", "muted"],
+  ["audio", "muted"],
+]);
+
+/**
+ * Markup holding state the user changes, which the model also says, is never the same markup. What
+ * it SHOWS is also what the user did to it, and the render that diffs it is what puts the model's
+ * answer back: settled, a field whose handler refused a keystroke kept showing it, and a `<details
+ * open={false}>` the user opened stayed open, because the child holding it no longer rendered.
+ * Measured against main, where that child rendered on every new `children`.
  *
- * `<input>` only: a host `<textarea>` or `<select>` is refused by the JSX types, and core's `TextArea`
- * and `Select` settle the field themselves. One the user cannot change — a button's label, a hidden
- * value, `disabled` as written, `readonly` where HTML honours it, a `value` that is `undefined` — is
- * markup like any other. `readonly` does not stop a checkbox, radio, file, range or color input.
+ * A host `<input>` with a `value` or a `checked`; a host `<textarea>` or `<select>` is refused by the
+ * JSX types, and core's `TextArea` and `Select` settle the field themselves. One the user cannot
+ * change — a button's label, a hidden value, `disabled` as written, `readonly` where HTML honours it,
+ * a `value` that is `undefined` or `null` (no value, as everywhere in core) — is markup like any other.
+ * `readonly` does not stop a checkbox, radio, file, range or color input. And the elements in
+ * `USER_STATE`, whenever the model writes the attribute at all, `false` included.
  */
 function holdsAFieldValue(node: MarkupNode): boolean {
+  if (typeof node.name !== "string") return false;
   // A host tag's name is kept as the DOM spells it, upper case.
-  if (typeof node.name !== "string" || node.name.toLowerCase() !== "input") return false;
+  const tag = node.name.toLowerCase();
   const attributes = (node.attributes ?? {}) as Record<string, unknown>;
+  const held = USER_STATE.get(tag);
+  if (held !== undefined) return held in attributes;
+  if (tag !== "input") return false;
   const type = typeof attributes["type"] === "string" ? (attributes["type"] as string).toLowerCase() : "text";
   if (UNCHANGED_BY_THE_USER.has(type)) return false;
   if (attributes["disabled"] === true) return false;
   const readonly = attributes["readonly"] === true || attributes["readOnly"] === true;
   if (readonly && !READONLY_IGNORED.has(type)) return false;
-  return attributes["value"] !== undefined || attributes["checked"] !== undefined;
+  return attributes["value"] != null || attributes["checked"] != null;
 }
 
 function same(a: unknown, b: unknown, walk: Walk): boolean {

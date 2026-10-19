@@ -2,6 +2,7 @@ import { describe, test, expect, beforeEach } from "vitest";
 import { Component } from "../base/Component";
 import { state, created, mounted, destroyed } from "../base/decorators";
 import { Portal } from "../base/Portal";
+import { State } from "../reactivity/State";
 import { bootstrap } from "../index";
 import { createRef } from "../base/Ref";
 import { ChildrenRegion } from "../core/childrenRegion";
@@ -723,6 +724,35 @@ describe("Portal follows a reactive target", () => {
         layer.remove();
       }
     });
+  });
+
+  /** A list row changing in a closed portal does not render the portal's owner for nothing. */
+  test("a row changing in a closed portal renders nothing", async () => {
+    let renders = 0;
+    // A signal the page does not own, so only the row reads it.
+    const price = new State(1);
+    class Page extends Component {
+      @state open = true;
+      items = [{ id: 1 }];
+      row = (_item: { id: number }) => <li>{price.get()}</li>;
+      portal = this.use(Portal, (self: Page) => ({
+        children: <ul>{list(self.items, self.row)}</ul>,
+        target: (self.open ? document.body : undefined) as Element,
+      }));
+      render() {
+        renders++;
+        return <div>page</div>;
+      }
+    }
+    const { instance, settle } = await getDOM<Page>(<Page />);
+    instance.open = false;
+    await settle();
+    renders = 0;
+    for (let tick = 2; tick <= 4; tick++) {
+      price.set(tick);
+      await settle();
+    }
+    expect(renders).toBe(0);
   });
 
   /** A block whose target is absent from the start is not built off the page: nothing is created yet. */

@@ -585,6 +585,33 @@ describe("a controlled textarea follows the model after the event the app handle
   });
 
   /**
+   * A handler that rewrites in place — upper case — keeps the caret where the user put it, as an
+   * `<input>` does: a rewrite of the same length leaves every offset meaning what it meant.
+   */
+  test("an upper-casing handler leaves the caret where the user typed", async () => {
+    class Upper extends Component {
+      @state text = "ABC";
+      take(event: InputEvent) {
+        this.text = (event.target as HTMLTextAreaElement).value.toUpperCase();
+      }
+      render() {
+        return <TextArea id="t" value={this.text} oninput={this.take} />;
+      }
+    }
+    const app = await getDOM<Upper>(<Upper />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+    field.focus();
+
+    field.value = "Axbc".slice(0, 1) + "x" + "BC";
+    field.setSelectionRange(2, 2);
+    field.dispatchEvent(new InputEvent("input", { bubbles: true }));
+    await drain(app);
+
+    expect({ value: field.value, caret: field.selectionStart }).toEqual({ value: "AXBC", caret: 2 });
+  });
+
+  /**
    * A render in the middle of a composition — an autosave flipping `disabled`, a class from the
    * parent — does not write the model into the field: that would cancel the word being typed.
    */

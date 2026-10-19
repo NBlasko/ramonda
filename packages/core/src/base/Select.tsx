@@ -1,6 +1,6 @@
 import { Component } from "./Component";
 import { createRef } from "./Ref";
-import { mounted, updated } from "./decorators";
+import { destroyed, mounted, updated } from "./decorators";
 import { __h } from "../vdom/h";
 import { answer, controlled, forwarded, given, heard, settlesLater } from "./forwarded";
 import type { RamondaNode, RenderEnv } from "../types/vdom";
@@ -76,6 +76,19 @@ export class Select extends Component<SelectProps> {
    */
   private d = false;
 
+  /**
+   * `f` — the form this select is in, whose `reset` it listens to: a reset puts the select back on its
+   * default, so the user's pick is forgotten and a later `defaultValue` is shown again, as a
+   * `TextArea`'s is. Asked of the form itself — what the select shows cannot tell a reset from a pick
+   * that happens to equal the default.
+   */
+  private f: HTMLFormElement | null = null;
+
+  /** `r` — what a reset of the form does: unless a `value` holds the select, the pick is forgotten. */
+  r(): void {
+    if (this.props.value == null) this.d = false;
+  }
+
   /** `h` — the caller's ref as of the last HAND-OVER, so a swapped one can be let go of. */
   private h: RefTarget<HTMLSelectElement> | undefined;
 
@@ -117,12 +130,18 @@ export class Select extends Component<SelectProps> {
     if (this.h !== this.props.ref) this.g(select);
 
     const onServer = env === "server";
+    // The form whose reset forgets the pick — followed when the select moves to another.
+    if (!onServer && select.form !== this.f) {
+      this.f?.removeEventListener("reset", this.r);
+      this.f = select.form;
+      this.f?.addEventListener("reset", this.r);
+    }
     const chosen = this.props.value;
     if (chosen == null) {
       const fallback = this.props.defaultValue;
       if (fallback != null) {
-        // Not settled, or back on its defaults after a form's reset: the default is what it shows.
-        if (!this.d || showsItsDefault(select)) this.start(select, fallback);
+        // Not settled — never picked, or picked and then reset (`f`): the default is what it shows.
+        if (!this.d) this.start(select, fallback);
         // Settled for good — the user picked, or a value held it — and a later default still says
         // where a reset returns, as a TextArea's does. Writing the attribute moves the choice in a
         // browser, so what the select shows is put back right after, when anything was written.
@@ -171,6 +190,13 @@ export class Select extends Component<SelectProps> {
     let wrote = false;
     for (let i = 0; i < options.length; i++) wrote = markDefault(options[i], wanted.has(options[i].value)) || wrote;
     return wrote;
+  }
+
+  /** Lets go of the form's reset. */
+  @destroyed
+  release(): void {
+    this.f?.removeEventListener("reset", this.r);
+    this.f = null;
   }
 
   /** The listener a controlled select answers its events with — see `answer` in `forwarded.ts`. */
@@ -229,11 +255,4 @@ function keepingTheChoice(select: HTMLSelectElement, write: () => boolean): void
   if (!write()) return;
   const options = select.options;
   for (let i = 0; i < options.length; i++) options[i].selected = chosen.has(options[i]);
-}
-
-/** Whether the select shows its defaults — nothing changed since it began, or since a form's reset. */
-function showsItsDefault(select: HTMLSelectElement): boolean {
-  const options = select.options;
-  for (let i = 0; i < options.length; i++) if (options[i].selected !== options[i].defaultSelected) return false;
-  return true;
 }

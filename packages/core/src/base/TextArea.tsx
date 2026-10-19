@@ -1,3 +1,5 @@
+import { writeValue } from "../core/Attribute";
+import type { EnhancedHTMLNode } from "../types/vdom";
 import { Component } from "./Component";
 import { createRef } from "./Ref";
 import { mounted, updated } from "./decorators";
@@ -97,7 +99,9 @@ export class TextArea extends Component<TextAreaProps> {
     if (this.props.value == null) return;
     // Not while a word or an event is under way that settles the field when it ends — see `settlesLater`.
     if (settlesLater(this)) return;
-    field.value = String(this.props.value);
+    // Through the attribute layer's own write, which keeps the caret across a rewrite of the same
+    // length — an upper-casing handler leaves it where the user typed, as an `<input>` does.
+    writeValue(field as unknown as EnhancedHTMLNode, String(this.props.value), false);
   }
 
   /** The listener a controlled field answers its events with — see `answer` in `forwarded.ts`. */
