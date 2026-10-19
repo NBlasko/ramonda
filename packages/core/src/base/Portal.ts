@@ -249,8 +249,12 @@ export class Portal extends Hook<PortalProps> {
       // with the portals inside. A portal whose owner the reconcile removes is gone before it would
       // have built what it gained while closed, and one the reconcile builds starts closed and opens
       // after the ones already there, in the order they joined.
-      this.region.reconcile(this.props.children, target);
-      this.nesting.open();
+      // Opened even when the reconcile throws: the block is back on the page whatever it built.
+      try {
+        this.region.reconcile(this.props.children, target);
+      } finally {
+        this.nesting.open();
+      }
       return;
     }
     this.leave();

@@ -581,6 +581,65 @@ describe("a controlled textarea follows the model after the event the app handle
   });
 
   /**
+   * As a browser does it: the app renders between the composing input and the composition's end. A
+   * handler that took the word and changed it moved the model, and is not called again; one that
+   * cleared the model mid-word is not handed the word back.
+   */
+  test("a handler that changed the word is not called again, with a render in between", async () => {
+    const taken: string[] = [];
+    class Postcode extends Component {
+      @state text = "";
+      take(event: InputEvent) {
+        this.text = (event.target as HTMLTextAreaElement).value.replace(/[０-９]/g, (d) =>
+          String.fromCharCode(d.charCodeAt(0) - 0xfee0),
+        );
+        taken.push(this.text);
+      }
+      render() {
+        return <TextArea id="t" value={this.text} oninput={this.take} />;
+      }
+    }
+    const app = await getDOM<Postcode>(<Postcode />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+
+    field.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+    field.value = "１２３";
+    field.dispatchEvent(new InputEvent("input", { bubbles: true, isComposing: true }));
+    await app.settle();
+    field.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "１２３" }));
+    await drain(app);
+
+    expect({ field: field.value, taken }).toEqual({ field: "123", taken: ["123"] });
+  });
+
+  test("a model cleared in the middle of a word is not handed the word back", async () => {
+    class Clearing extends Component {
+      @state text = "a";
+      take(event: InputEvent) {
+        if (event.isComposing) return;
+        this.text = (event.target as HTMLTextAreaElement).value;
+      }
+      render() {
+        return <TextArea id="t" value={this.text} oninput={this.take} />;
+      }
+    }
+    const app = await getDOM<Clearing>(<Clearing />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+
+    field.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+    field.value = "aか";
+    field.dispatchEvent(new InputEvent("input", { bubbles: true, isComposing: true }));
+    app.instance.text = "";
+    await app.settle();
+    field.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "か" }));
+    await drain(app);
+
+    expect({ field: field.value, model: app.instance.text }).toEqual({ field: "", model: "" });
+  });
+
+  /**
    * A field taken OFF the page but kept — a portal parked while its dialog is closed — still hands
    * the word over: the component is alive, and opening the dialog again shows what was typed.
    */

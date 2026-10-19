@@ -1,5 +1,5 @@
 import ts from "typescript";
-import { isNothing } from "./element";
+import { isNothing, withoutParens } from "./element";
 import { positionOf } from "../syntax";
 import { importedFromPackage } from "./core-import";
 import { guardedBy, type Means } from "./guard-walk";
@@ -304,7 +304,7 @@ function narrowing(text: string, resolve: ModuleContext["resolve"]): Means {
    * be reassigned, so its truthiness is the path's at the moment it was read.
    */
   const isPath = (node: ts.Expression): boolean => {
-    const bare = stripParens(node);
+    const bare = withoutParens(node);
     if (pathText(bare) === text) return true;
     if (!ts.isIdentifier(bare)) return false;
     const declaration = resolve(bare)?.declarations?.[0];
@@ -322,7 +322,7 @@ function narrowing(text: string, resolve: ModuleContext["resolve"]): Means {
    * reached from the `!==` arm below.
    */
   const isThroughPath = (node: ts.Expression): boolean => {
-    const longer = pathText(stripParens(node));
+    const longer = pathText(withoutParens(node));
     return longer !== undefined && longer.startsWith(`${text}.`);
   };
 
@@ -334,7 +334,7 @@ function narrowing(text: string, resolve: ModuleContext["resolve"]): Means {
   };
 
   const proves = (condition: ts.Expression): boolean => {
-    const node = stripParens(condition);
+    const node = withoutParens(condition);
     if (isPath(node) || isThroughPath(node)) return true;
     if (ts.isPrefixUnaryExpression(node) && node.operator === ts.SyntaxKind.ExclamationToken) {
       return refutes(node.operand);
@@ -351,7 +351,7 @@ function narrowing(text: string, resolve: ModuleContext["resolve"]): Means {
   };
 
   const refutes = (condition: ts.Expression): boolean => {
-    const node = stripParens(condition);
+    const node = withoutParens(condition);
     /**
      * The bare path is NOT a refutation, and reading it as one is the bug this comment replaces.
      *
@@ -382,10 +382,6 @@ function narrowing(text: string, resolve: ModuleContext["resolve"]): Means {
 function isConstDeclaration(declaration: ts.VariableDeclaration): boolean {
   const list = declaration.parent;
   return ts.isVariableDeclarationList(list) && (list.flags & ts.NodeFlags.Const) !== 0;
-}
-
-function stripParens(node: ts.Expression): ts.Expression {
-  return ts.isParenthesizedExpression(node) ? stripParens(node.expression) : node;
 }
 
 function isEqual(kind: ts.SyntaxKind): boolean {

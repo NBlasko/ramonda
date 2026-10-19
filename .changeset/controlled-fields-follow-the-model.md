@@ -21,8 +21,9 @@ alone while it lasts — a render in the middle of one, say an autosave flipping
 write the model into the field — and settles the field when it ends. A handler that skips composing input takes
 the word from the ordinary `input` after the composition: Firefox sends one, Chromium does not, and
 there the field sends it, once — measured with a real composition in both, typing 日本. It is sent
-only while the field's component is alive and its model lacks the word: a handler that takes composing
-input too is not called twice, a field whose dialog Enter closed is sent nothing, and one a portal
+only while the field's component is alive and its model has not moved since the composition began: a
+handler that takes composing input too — keeping the word, changing it, or clearing the field — is not
+called twice, a field whose dialog Enter closed is sent nothing, and one a portal
 parked off the page still takes the word; it writes only the value, with no render; and it still
 runs when the handler throws. A `TextArea` answers `input` only — `change` comes on blur, when
 every input has already been answered. A `Select`'s `defaultValue` holds until the

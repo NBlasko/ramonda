@@ -28,4 +28,6 @@ not, and a callback of any other call is silent.
 carry one — a select with neither, or with `value={null}`, leaves the choice to the option. `attribute-that-does-nothing` no longer reports `defaultValue`
 on a core `Select` or `TextArea`, where it is a prop, imported by name or through a namespace
 (`ui.Select`). And
-`fresh-object-in-props` says what core compares by content now.
+`fresh-object-in-props` says what core compares by content now. `dev-guard-as-an-expression` reads an
+empty arm in parentheses, `__DEV__ ? publish() : (null)`, as empty, and every rule asks about `null`
+and `undefined` the same way.

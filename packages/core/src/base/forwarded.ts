@@ -96,20 +96,20 @@ export function heard(component: Component<any>, event: Event): void {
 
 /**
  * Whether a field whose composition ended still needs the word handed to it: its component is
- * alive, and the model does not hold what the field shows.
+ * alive, and its model has not moved since the composition began.
  *
- * A handler that takes composing input as well took the word from the last one, and is not called
- * again for it — its render has already written the model into the field, so the two agree even when
- * the handler changed the text. A field whose component the composition's end destroyed — Enter
- * closed the dialog — is sent nothing. A field merely OFF the page is still sent the word: a portal
- * parks its block in a fragment while it is closed, and the component in it is kept, text and all.
+ * A handler that takes composing input moved the model — whether it kept the word, changed it
+ * (full-width digits to half-width) or cleared the field — and is not called again. Only a model that
+ * stands where it stood took nothing, which is the handler that skips composing input. The field is
+ * not asked: a render during a composition does not write it (`composingIn`), so it shows the word
+ * whatever the model holds. A field whose component the composition's end destroyed — Enter closed
+ * the dialog — is sent nothing; one merely OFF the page, in a parked portal, still takes the word.
  */
 // biome-ignore lint/suspicious/noExplicitAny: any component, whatever its props
-function lacksTheWord(component: Component<any>, field: EventTarget): boolean {
+function lacksTheWord(component: Component<any>, before: unknown): boolean {
   const runtime = component[COMPONENT_RUNTIME];
   if (runtime.isDestroyed) return false;
-  const model = runtime.rawProps["value"];
-  return model == null || String(model) !== (field as HTMLTextAreaElement).value;
+  return Object.is(runtime.rawProps["value"], before);
 }
 
 /** Fields an input method is composing in right now. */
@@ -132,7 +132,10 @@ const queued = new WeakSet<object>();
  * Fields whose composition has ended with no ordinary `input` after it yet: the element, and the word
  * it ended with. See "When it ends" on `answer`.
  */
-const unfinished = new WeakMap<object, { field: EventTarget; word: string }>();
+const unfinished = new WeakMap<object, { field: EventTarget; word: string; before: unknown }>();
+
+/** What each field's model held when its composition began — see `lacksTheWord`. */
+const startedAt = new WeakMap<object, unknown>();
 
 /*
  * TODO(webkit): measure the end of a composition in Safari, on a Mac.
@@ -195,10 +198,12 @@ export function answer(component: Component<any> & { settle(): void }, event: Ev
     if (event.type === "compositionstart") {
       composing.add(component);
       unfinished.delete(component);
+      startedAt.set(component, component[COMPONENT_RUNTIME].rawProps["value"]);
     } else if (event.type === "compositionend") {
       composing.delete(component);
       const field = event.currentTarget;
-      if (field !== null) unfinished.set(component, { field, word: (event as CompositionEvent).data ?? "" });
+      const before = startedAt.get(component);
+      if (field !== null) unfinished.set(component, { field, word: (event as CompositionEvent).data ?? "", before });
     } else if (event.type === "input" && !(event as InputEvent).isComposing) {
       unfinished.delete(component);
     }
@@ -210,7 +215,7 @@ export function answer(component: Component<any> & { settle(): void }, event: Ev
         if (composing.has(component)) return;
         const ended = unfinished.get(component);
         unfinished.delete(component);
-        if (ended !== undefined && lacksTheWord(component, ended.field)) {
+        if (ended !== undefined && lacksTheWord(component, ended.before)) {
           // Its own answer sets the settle, after every listener has had the word.
           const input = { bubbles: true, composed: true, inputType: "insertCompositionText", data: ended.word };
           ended.field.dispatchEvent(new InputEvent("input", input));

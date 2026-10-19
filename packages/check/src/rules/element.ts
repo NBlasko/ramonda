@@ -16,11 +16,15 @@ export function openingOf(element: JsxElementLike): ts.JsxOpeningLikeElement {
   return ts.isJsxElement(element) ? element.openingElement : element;
 }
 
+/** An expression without the parentheses around it, however many. */
+export function withoutParens(node: ts.Expression): ts.Expression {
+  return ts.isParenthesizedExpression(node) ? withoutParens(node.expression) : node;
+}
+
 /** `null` or `undefined`, in any number of parentheses. One question, asked the same way by every rule. */
 export function isNothing(node: ts.Expression): boolean {
-  let bare = node;
-  while (ts.isParenthesizedExpression(bare)) bare = bare.expression;
-  return bare.kind === ts.SyntaxKind.NullKeyword || (ts.isIdentifier(bare) && bare.text === "undefined");
+  const written = withoutParens(node);
+  return written.kind === ts.SyntaxKind.NullKeyword || (ts.isIdentifier(written) && written.text === "undefined");
 }
 
 /**
@@ -380,8 +384,7 @@ const PRESENCE: Looking<boolean> = {
   leaf: (expression) => {
     if (expression.kind === ts.SyntaxKind.TrueKeyword) return true;
     if (expression.kind === ts.SyntaxKind.FalseKeyword) return false;
-    if (expression.kind === ts.SyntaxKind.NullKeyword) return false;
-    if (ts.isIdentifier(expression) && expression.text === "undefined") return false;
+    if (isNothing(expression)) return false;
     // Any string reaches the element, `""` included — which is what the runtime writes for `true`.
     if (ts.isStringLiteralLike(expression)) return true;
     if (ts.isNumericLiteral(expression)) return true;

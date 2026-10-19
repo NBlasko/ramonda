@@ -661,6 +661,51 @@ describe("Portal follows a reactive target", () => {
       }
     });
 
+    /**
+     * A reopening whose reconcile throws — a child's `@destroyed` — still opens the portals inside:
+     * the block is back on the page, and a dropdown left closed would be lost for good.
+     */
+    test("a reconcile that throws on opening still opens the inner portals", async () => {
+      class Fragile extends Component {
+        @destroyed
+        boom() {
+          throw new Error("teardown failed");
+        }
+        render() {
+          return <i>fragile</i>;
+        }
+      }
+      class Shell extends Component<{ fragile: boolean }> {
+        menu = this.use(Portal, () => ({ children: <b id="nested-kept">menu</b>, target: layer }));
+        render() {
+          return <div>{this.props.fragile ? <Fragile /> : null}</div>;
+        }
+      }
+      class Host extends Component {
+        @state open = true;
+        @state fragile = true;
+        modal = this.use(Portal, (self: Host) => ({
+          children: <Shell fragile={self.fragile} />,
+          target: (self.open ? document.body : undefined) as Element,
+        }));
+        render() {
+          return <div>host</div>;
+        }
+      }
+      const { instance, settle } = await getDOM<Host>(<Host />);
+      try {
+        instance.open = false;
+        await settle();
+        instance.fragile = false;
+        await settle();
+        instance.open = true;
+        await settle().catch(() => {});
+        expect(layer.querySelector("#nested-kept")).not.toBeNull();
+      } finally {
+        layer.remove();
+      }
+    });
+
     test("an inner portal the closed one gains is built when it opens", async () => {
       const { instance, settle } = await getDOM<Page>(<Page />);
       try {

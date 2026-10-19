@@ -40,13 +40,34 @@ const within = (promise, ms, what) =>
     new Promise((_, fail) => setTimeout(() => fail(new Error(`${what}: no answer in ${ms} ms`)), ms).unref()),
   ]);
 
-/** Marionette speaks `length:json`; a command is `[0, id, name, params]`, a reply `[1, id, error, result]`. */
+/**
+ * Marionette speaks `length:json`; a command is `[0, id, name, params]`, a reply `[1, id, error, result]`.
+ *
+ * Replies are matched to commands by their id, not by order: a command that timed out and answers
+ * later must not hand its reply to the one after it. The first message, the greeting, is not a reply.
+ */
 function marionette(port) {
   return new Promise((resolve, reject) => {
     const socket = createConnection(port, "127.0.0.1");
     let buffer = Buffer.alloc(0);
-    const pending = [];
+    let greeted = false;
+    const waiting = new Map();
     let id = 0;
+    const session = {
+      send(name, params = {}) {
+        const mine = ++id;
+        const data = Buffer.from(JSON.stringify([0, mine, name, params]));
+        socket.write(`${data.length}:`);
+        socket.write(data);
+        const reply = new Promise((done, fail) =>
+          waiting.set(mine, ([, , error, result]) =>
+            error ? fail(new Error(`${name}: ${error.message}`)) : done(result),
+          ),
+        );
+        return within(reply, REPLY, name).finally(() => waiting.delete(mine));
+      },
+      close: () => socket.destroy(),
+    };
     socket.on("data", (chunk) => {
       buffer = Buffer.concat([buffer, chunk]);
       for (;;) {
@@ -56,38 +77,35 @@ function marionette(port) {
         if (buffer.length < colon + 1 + length) return;
         const message = JSON.parse(buffer.subarray(colon + 1, colon + 1 + length).toString());
         buffer = buffer.subarray(colon + 1 + length);
-        pending.shift()?.(message);
+        if (!greeted) {
+          greeted = true;
+          resolve(session);
+        } else if (Array.isArray(message)) {
+          waiting.get(message[1])?.(message);
+        }
       }
     });
-    socket.on("error", reject);
-    // The first message is the server's greeting.
-    pending.push(() =>
-      resolve({
-        send(name, params = {}) {
-          const data = Buffer.from(JSON.stringify([0, ++id, name, params]));
-          socket.write(`${data.length}:`);
-          socket.write(data);
-          return within(
-            new Promise((done, fail) =>
-              pending.push(([, , error, result]) =>
-                error ? fail(new Error(`${name}: ${error.message}`)) : done(result),
-              ),
-            ),
-            REPLY,
-            name,
-          );
-        },
-        close: () => socket.destroy(),
-      }),
-    );
+    socket.on("error", (error) => {
+      socket.destroy();
+      reject(error);
+    });
   });
 }
 
+/**
+ * Connects, within one deadline for the whole of it. Firefox takes a moment to open the port, so a
+ * refused connection is tried again; a connection that opens and never greets is given up on, and
+ * its socket closed, when the deadline passes — not retried for another full wait each time.
+ */
 async function connect() {
-  for (let attempt = 0; attempt < 100; attempt++) {
+  const deadline = Date.now() + REPLY;
+  while (Date.now() < deadline) {
+    const attempt = marionette(MARIONETTE);
     try {
-      return await within(marionette(MARIONETTE), REPLY, "Marionette's greeting");
-    } catch {
+      return await within(attempt, Math.max(deadline - Date.now(), 1), "Marionette's greeting");
+    } catch (error) {
+      attempt.then((late) => late.close()).catch(() => {});
+      if (/no answer/.test(error.message)) throw error;
       await wait(200);
     }
   }
@@ -144,12 +162,14 @@ try {
   await session.send("WebDriver:NewSession", { capabilities: {} });
   for (const [id, expected] of Object.entries(EXPECTED)) {
     await session.send("Marionette:SetContext", { value: "content" });
+    // The preview may not be listening yet: a refused page is tried again, a command that never
+    // answers is not.
     for (let attempt = 0; ; attempt++) {
       try {
         await session.send("WebDriver:Navigate", { url: `http://localhost:${PREVIEW}/fields` });
         break;
       } catch (error) {
-        if (attempt > 50) throw error;
+        if (attempt > 50 || /no answer/.test(error.message)) throw error;
         await wait(200);
       }
     }

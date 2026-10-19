@@ -370,12 +370,43 @@ describe("markup handed down settles when it says the same", () => {
 });
 
 /**
- * A form field that holds a value — a host `<input value>`, `<textarea value>`, `<select value>`, or a
- * `checked` — is never the same markup: what it shows depends on what the user did to it, and the
- * render that puts the model's value back is the one that diffs it. Settled, a field whose handler
- * refused a keystroke kept showing it.
+ * A host `<input>` the user can change, holding a `value` or a `checked`, is never the same markup:
+ * what it shows depends on what the user did to it, and the render that puts the model's value back is
+ * the one that diffs it. Settled, a field whose handler refused a keystroke kept showing it. One the
+ * user cannot change — a submit button's label, a hidden value — is markup like any other.
  */
 describe("markup holding a form field's value", () => {
+  test("an input the user cannot change is settled as before", async () => {
+    let renders = 0;
+    class Card extends Component<{ children?: unknown }> {
+      render() {
+        renders++;
+        return <section>{this.props.children as never}</section>;
+      }
+    }
+    class Form extends Component {
+      @state tick = 0;
+      render() {
+        return (
+          <div>
+            <Card>
+              <input type="submit" value="Save" />
+              <input type="hidden" value="token" />
+              <input value="fixed" readonly />
+            </Card>
+            <p>{this.tick}</p>
+          </div>
+        );
+      }
+    }
+    const app = await getDOM<Form>(<Form />);
+    renders = 0;
+    app.instance.tick = 1;
+    await app.settle();
+
+    expect(renders).toBe(0);
+  });
+
   test("is not settled, so the field shows the model again", async () => {
     class Card extends Component<{ children?: unknown }> {
       render() {
