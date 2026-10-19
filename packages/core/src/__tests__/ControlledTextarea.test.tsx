@@ -603,6 +603,7 @@ describe("a controlled textarea follows the model after the event the app handle
     const app = await getDOM<Saving>(<Saving />);
     await app.settle();
     const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+    field.focus();
 
     field.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
     field.value = "aか";
@@ -614,6 +615,37 @@ describe("a controlled textarea follows the model after the event the app handle
     field.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "か" }));
     await drain(app);
     expect({ field: field.value, model: app.instance.text }).toEqual({ field: "aか", model: "aか" });
+  });
+
+  /**
+   * A composition that never ends — the field lost focus, or was moved, and no `compositionend` came
+   * — does not hold the field back for good: a composition happens in the focused field, so one that
+   * is not focused is not composing, and the field shows the model again.
+   */
+  test("a composition with no end does not hold the field once it is not focused", async () => {
+    class Lost extends Component {
+      @state text = "a";
+      take(event: InputEvent) {
+        if (event.isComposing) return;
+        this.text = (event.target as HTMLTextAreaElement).value;
+      }
+      render() {
+        return <TextArea id="t" value={this.text} oninput={this.take} />;
+      }
+    }
+    const app = await getDOM<Lost>(<Lost />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+    field.focus();
+
+    field.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+    field.value = "aか";
+    field.dispatchEvent(new InputEvent("input", { bubbles: true, isComposing: true }));
+    field.blur();
+    app.instance.text = "";
+    await app.settle();
+
+    expect(field.value).toBe("");
   });
 
   /**
@@ -872,6 +904,8 @@ describe("a controlled textarea follows the model after the event the app handle
     const app = await getDOM<Composed>(<Composed />);
     await app.settle();
     const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+    // A composition happens in the focused field.
+    field.focus();
 
     field.value = "ax";
     field.dispatchEvent(new InputEvent("input", { bubbles: true }));

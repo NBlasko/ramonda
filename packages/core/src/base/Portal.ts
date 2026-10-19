@@ -185,7 +185,11 @@ export class Portal extends Hook<PortalProps> {
     // An enclosing block is always open while it hydrates its own children, so this starts open.
     this.nesting.enter(this[GLOBAL_RUNTIME].owner);
     const target = this.element;
-    if (!target) return;
+    // No target: off the page from the start, as a client build of it is — see `leave`.
+    if (!target) {
+      this.leave();
+      return;
+    }
 
     const open = firstUnclaimedBlock(target);
     // No block: the server rendered nothing here (or this page was never server
@@ -390,6 +394,7 @@ class Nesting implements EnclosingBlock, NestedBlock {
  * one of them together — none is dropped, and no portal is skipped because one before it threw.
  */
 function everyOne(inner: ReadonlySet<NestedBlock>, step: (one: NestedBlock) => void, doing: string): void {
+  if (inner.size === 0) return;
   const failed: unknown[] = [];
   for (const one of [...inner]) {
     try {

@@ -212,7 +212,7 @@ so a rule cannot be added without appearing here.
 | [`misspelled-element-property`](/rules/misspelled-element-property) | a name is written in the wrong case for element state that lives only in a property, so it is written as an attribute nothing reads |
 | [`half-built-keyboard-path`](/rules/half-built-keyboard-path) | an element with an interactive `role` and a pointer handler is missing the `tabIndex` or the key handler that would finish it |
 | [`element-html-removed`](/rules/element-html-removed) | a tag HTML has removed is written, so nothing defines what it means |
-| [`option-that-cannot-choose`](/rules/option-that-cannot-choose) | `selected` is written on an `<option>` inside a `<Select>`, which sets it from `value` instead |
+| [`option-that-cannot-choose`](/rules/option-that-cannot-choose) | `selected` is written on an `<option>` inside a `<Select>` that has a `value` or a `defaultValue` (or a spread that may carry one), which sets every option from it instead |
 | [`field-the-user-cannot-change`](/rules/field-the-user-cannot-change) | a `Select` or `TextArea` has a `value` that nothing moves — no handler, or a `TextArea` with only `onchange` — so every input is undone; or `value` sits beside `defaultValue` |
 | [`aria-value`](/rules/aria-value) | an `aria-*` attribute carries a literal value its specification does not permit |
 | [`aria-with-no-subject`](/rules/aria-with-no-subject) | a `role` or an `aria-*` sits on an element with no accessibility tree node to describe |

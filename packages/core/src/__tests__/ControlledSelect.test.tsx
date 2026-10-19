@@ -319,6 +319,51 @@ describe("a controlled select shows what the model says", () => {
     expect({ read, shown: select.value, model: app.instance.size }).toEqual({ read: "l", shown: "l", model: "l" });
   });
 
+  /**
+   * A `multiple` select whose `value` is a new array each render, with the same members, has not
+   * moved: a render in the middle of a pick leaves the pick alone, as it does for one array kept.
+   */
+  test("a multiple select given a fresh array each render keeps a pick made mid-event", async () => {
+    let read: string[] = [];
+    class Tags extends Component {
+      @state picked = ["a"];
+      @state dirty = false;
+      render() {
+        return (
+          <form oninput={() => (this.dirty = true)}>
+            <Select
+              id="s"
+              multiple
+              value={[...this.picked]}
+              onchange={(event: Event) => {
+                read = Array.from((event.target as HTMLSelectElement).selectedOptions, (o) => o.value);
+                this.picked = read;
+              }}
+            >
+              {["a", "b", "c"].map((v) => (
+                <option key={v} value={v}>
+                  {v}
+                </option>
+              ))}
+            </Select>
+          </form>
+        );
+      }
+    }
+    const app = await getDOM<Tags>(<Tags />);
+    await app.settle();
+    const select = app.container.querySelector("#s") as HTMLSelectElement;
+
+    select.options[1].selected = true;
+    select.dispatchEvent(new Event("input", { bubbles: true }));
+    await app.settle();
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await app.settle();
+
+    expect(read).toEqual(["a", "b"]);
+  });
+
   /** A form's reset returns a `defaultValue` select to its default, as it does a `TextArea`. */
   test("a reset goes back to the defaultValue", async () => {
     class Sized extends Component {

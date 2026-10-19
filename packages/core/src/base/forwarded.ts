@@ -95,8 +95,9 @@ export function heard(component: Component<any>, event: Event): void {
 
 /** What one controlled field is in the middle of: an event, a composition, or both. */
 interface FieldState {
-  /** An input method is composing in the field right now. */
+  /** An input method is composing in the field right now, and the element it is composing in. */
   composing: boolean;
+  composingIn?: EventTarget;
   /** What the model held when the composition began, and whether it has left it since. */
   composedFrom?: unknown;
   composedMoved: boolean;
@@ -121,6 +122,17 @@ function stateOf(component: Component<any>): FieldState {
 const modelOf = (component: Component<any>): unknown => component[COMPONENT_RUNTIME].rawProps["value"];
 
 /**
+ * Whether the model says the same as before. A `multiple` select's `value` is an array, and one
+ * rebuilt each render (`value={[...this.picked]}`) is a new object with the same members — it has not
+ * moved, and treating it as moved wrote the old selection back over a pick.
+ */
+function sameModel(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true;
+  if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+  return a.every((member, i) => String(member) === String(b[i]));
+}
+
+/**
  * Whether a field's own `settle` leaves the value alone for now, because something that is under way
  * settles it when it ends. Asked by the field when a render reaches it from `@updated`.
  *
@@ -136,14 +148,25 @@ const modelOf = (component: Component<any>): unknown => component[COMPONENT_RUNT
 export function settlesLater(component: Component<any>): boolean {
   const state = fields.get(component);
   if (state === undefined) return false;
-  if (state.composing) return true;
-  return state.queued && Object.is(modelOf(component), state.eventFrom);
+  if (state.composing) return stillComposing(state);
+  return state.queued && sameModel(modelOf(component), state.eventFrom);
+}
+
+/**
+ * Whether the composition is still under way. A composition happens in the focused field: one that
+ * lost the focus — or was moved — with no `compositionend` to say so is over, and must not hold the
+ * field back for good. Only asked: the composition's own tracking is left to its events.
+ */
+function stillComposing(state: FieldState): boolean {
+  if (!state.composing) return false;
+  const field = state.composingIn as Node | undefined;
+  return field === undefined || field.ownerDocument?.activeElement === field;
 }
 
 /** Notes it when the model is somewhere else than where the composition found it. */
 // biome-ignore lint/suspicious/noExplicitAny: any component, whatever its props
 function noteMovement(component: Component<any>, state: FieldState): void {
-  if (!Object.is(modelOf(component), state.composedFrom)) state.composedMoved = true;
+  if (!sameModel(modelOf(component), state.composedFrom)) state.composedMoved = true;
 }
 
 /**
@@ -230,6 +253,7 @@ export function answer(component: Component<any> & { settle(): void }, event: Ev
   } finally {
     if (event.type === "compositionstart") {
       state.composing = true;
+      state.composingIn = event.currentTarget ?? undefined;
       state.unfinished = undefined;
       state.composedFrom = modelOf(component);
       state.composedMoved = false;
@@ -249,7 +273,7 @@ export function answer(component: Component<any> & { settle(): void }, event: Ev
       setTimeout(() => {
         state.queued = false;
         // Asked again when it runs: a composition may have started since this was set.
-        if (state.composing) return;
+        if (stillComposing(state)) return;
         const ended = state.unfinished;
         state.unfinished = undefined;
         if (ended !== undefined && lacksTheWord(component, state)) {

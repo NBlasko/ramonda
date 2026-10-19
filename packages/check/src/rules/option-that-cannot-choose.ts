@@ -78,7 +78,9 @@ export const optionThatCannotChoose = {
 
   report: {
     severity: "error",
-    reportedWhen: "`selected` is written on an `<option>` inside a `<Select>`, which sets it from `value` instead",
+    reportedWhen:
+      "`selected` is written on an `<option>` inside a `<Select>` that has a `value` or a `defaultValue` " +
+      "(or a spread that may carry one), which sets every option from it instead",
     heading: (found) => `${found.length} \`<option selected>\` that decide(s) nothing:`,
     lines: (issue) => [
       `  ${issue.file}:${issue.line}:${issue.column}`,
