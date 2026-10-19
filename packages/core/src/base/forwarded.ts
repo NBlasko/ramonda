@@ -75,9 +75,11 @@ export function controlled(
     return { replaced: Object.keys(listeners), listeners };
   }
   // The composition's start and end too: a settle set before a composition began must not land in it.
+  // And the blur, which a composition can be lost to with no end of its own.
   const listeners: Record<string, (event: Event) => void> = {
     oncompositionstart: listener,
     oncompositionend: listener,
+    onblur: listener,
   };
   for (const name of answered) listeners[name] = listener;
   return { replaced: Object.keys(listeners), listeners };
@@ -95,9 +97,10 @@ export function heard(component: Component<any>, event: Event): void {
 
 /** What one controlled field is in the middle of: an event, a composition, or both. */
 interface FieldState {
-  /** An input method is composing in the field right now, and the element it is composing in. */
+  /** An input method is composing in the field right now. */
   composing: boolean;
-  composingIn?: EventTarget;
+  /** The field lost the focus in the middle of the composition — see "A composition lost" on `answer`. */
+  blurredComposing: boolean;
   /** What the model held when the composition began, and whether it has left it since. */
   composedFrom?: unknown;
   composedMoved: boolean;
@@ -114,7 +117,9 @@ const fields = new WeakMap<object, FieldState>();
 // biome-ignore lint/suspicious/noExplicitAny: any component, whatever its props
 function stateOf(component: Component<any>): FieldState {
   let state = fields.get(component);
-  if (state === undefined) fields.set(component, (state = { composing: false, composedMoved: false, queued: false }));
+  if (state === undefined) {
+    fields.set(component, (state = { composing: false, blurredComposing: false, composedMoved: false, queued: false }));
+  }
   return state;
 }
 
@@ -129,7 +134,9 @@ const modelOf = (component: Component<any>): unknown => component[COMPONENT_RUNT
 function sameModel(a: unknown, b: unknown): boolean {
   if (Object.is(a, b)) return true;
   if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
-  return a.every((member, i) => String(member) === String(b[i]));
+  // As the select reads it: which options are chosen, in any order.
+  const chosen = new Set(a.map(String));
+  return b.every((member) => chosen.has(String(member)));
 }
 
 /**
@@ -148,19 +155,8 @@ function sameModel(a: unknown, b: unknown): boolean {
 export function settlesLater(component: Component<any>): boolean {
   const state = fields.get(component);
   if (state === undefined) return false;
-  if (state.composing) return stillComposing(state);
+  if (state.composing) return true;
   return state.queued && sameModel(modelOf(component), state.eventFrom);
-}
-
-/**
- * Whether the composition is still under way. A composition happens in the focused field: one that
- * lost the focus — or was moved — with no `compositionend` to say so is over, and must not hold the
- * field back for good. Only asked: the composition's own tracking is left to its events.
- */
-function stillComposing(state: FieldState): boolean {
-  if (!state.composing) return false;
-  const field = state.composingIn as Node | undefined;
-  return field === undefined || field.ownerDocument?.activeElement === field;
 }
 
 /** Notes it when the model is somewhere else than where the composition found it. */
@@ -228,6 +224,12 @@ function lacksTheWord(component: Component<any>, state: FieldState): boolean {
  * events, and putting the old value back between them cancels it. A settle set by an input just
  * BEFORE a composition began is asked again when it runs, and skipped while one is under way.
  *
+ * **A composition lost.** A field that loses the focus mid-word may get no `compositionend` at all.
+ * The blur sets a settle; a browser that commits the word on blur sends its `compositionend` before
+ * that runs, and the word is handled as any. If none has come by then, the composition is over, and
+ * the field shows the model. Until then it is held, so a render between the blur and a late
+ * `compositionend` does not write over the word being committed.
+ *
  * **When it ends, every browser hands the word over the same way.** The usual handler skips composing
  * input, `if (event.isComposing) return;`, and takes the word from the ordinary `input` that follows.
  * Measured: Firefox sends one — `compositionend`, then `input` with `isComposing: false` and
@@ -253,15 +255,18 @@ export function answer(component: Component<any> & { settle(): void }, event: Ev
   } finally {
     if (event.type === "compositionstart") {
       state.composing = true;
-      state.composingIn = event.currentTarget ?? undefined;
+      state.blurredComposing = false;
       state.unfinished = undefined;
       state.composedFrom = modelOf(component);
       state.composedMoved = false;
     } else if (event.type === "compositionend") {
       noteMovement(component, state);
       state.composing = false;
+      state.blurredComposing = false;
       const field = event.currentTarget;
       if (field !== null) state.unfinished = { field, word: (event as CompositionEvent).data ?? "" };
+    } else if (event.type === "blur") {
+      if (state.composing) state.blurredComposing = true;
     } else if (event.type === "input" && !(event as InputEvent).isComposing) {
       state.unfinished = undefined;
     } else if (state.composing) {
@@ -272,8 +277,14 @@ export function answer(component: Component<any> & { settle(): void }, event: Ev
       state.queued = true;
       setTimeout(() => {
         state.queued = false;
-        // Asked again when it runs: a composition may have started since this was set.
-        if (stillComposing(state)) return;
+        // Asked again when it runs: a composition may have started since this was set. One whose
+        // field was blurred, with no `compositionend` by now, is over: it ends here, and the field
+        // shows the model again.
+        if (state.composing) {
+          if (!state.blurredComposing) return;
+          state.composing = false;
+          state.blurredComposing = false;
+        }
         const ended = state.unfinished;
         state.unfinished = undefined;
         if (ended !== undefined && lacksTheWord(component, state)) {

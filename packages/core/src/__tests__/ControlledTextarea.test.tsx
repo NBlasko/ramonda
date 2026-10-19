@@ -618,19 +618,19 @@ describe("a controlled textarea follows the model after the event the app handle
   });
 
   /**
-   * A composition that never ends — the field lost focus, or was moved, and no `compositionend` came
-   * — does not hold the field back for good: a composition happens in the focused field, so one that
-   * is not focused is not composing, and the field shows the model again.
+   * A composition that loses its field — a blur, and no `compositionend` after it — is over: the
+   * field shows the model again by itself, and after it is focused again it follows the model as any
+   * field does.
    */
-  test("a composition with no end does not hold the field once it is not focused", async () => {
+  test("a composition lost to a blur ends, and the field follows the model again", async () => {
     class Lost extends Component {
       @state text = "a";
-      take(event: InputEvent) {
+      keep(event: InputEvent) {
         if (event.isComposing) return;
-        this.text = (event.target as HTMLTextAreaElement).value;
+        this.text = "a";
       }
       render() {
-        return <TextArea id="t" value={this.text} oninput={this.take} />;
+        return <TextArea id="t" value={this.text} oninput={this.keep} />;
       }
     }
     const app = await getDOM<Lost>(<Lost />);
@@ -642,10 +642,59 @@ describe("a controlled textarea follows the model after the event the app handle
     field.value = "aか";
     field.dispatchEvent(new InputEvent("input", { bubbles: true, isComposing: true }));
     field.blur();
-    app.instance.text = "";
-    await app.settle();
+    await drain(app);
+    const afterBlur = field.value;
 
-    expect(field.value).toBe("");
+    field.focus();
+    field.value = "ax";
+    field.dispatchEvent(new InputEvent("input", { bubbles: true }));
+    await drain(app);
+
+    expect({ afterBlur, afterTyping: field.value }).toEqual({ afterBlur: "a", afterTyping: "a" });
+  });
+
+  /**
+   * A browser may commit the word on a blur, sending `blur` before `compositionend`: a render in
+   * between — an `onblur` that moves the model, a placeholder for an empty field — must not write the
+   * model over the word being committed.
+   */
+  test("a blur before compositionend does not lose the word being committed", async () => {
+    class Committed extends Component {
+      @state text = "";
+      @state touched = false;
+      take(event: Event) {
+        if ((event as InputEvent).isComposing) return;
+        this.text = (event.target as HTMLTextAreaElement).value;
+      }
+      render() {
+        return (
+          <TextArea
+            id="t"
+            value={this.text}
+            oninput={this.take}
+            oncompositionend={this.take}
+            onblur={() => {
+              this.touched = true;
+              if (this.text === "") this.text = "-";
+            }}
+          />
+        );
+      }
+    }
+    const app = await getDOM<Committed>(<Committed />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+    field.focus();
+
+    field.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+    field.value = "日本";
+    field.dispatchEvent(new InputEvent("input", { bubbles: true, isComposing: true }));
+    field.blur();
+    await app.settle();
+    field.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "日本" }));
+    await drain(app);
+
+    expect({ field: field.value, model: app.instance.text }).toEqual({ field: "日本", model: "日本" });
   });
 
   /**

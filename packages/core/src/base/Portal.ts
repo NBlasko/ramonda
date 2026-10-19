@@ -394,7 +394,6 @@ class Nesting implements EnclosingBlock, NestedBlock {
  * one of them together — none is dropped, and no portal is skipped because one before it threw.
  */
 function everyOne(inner: ReadonlySet<NestedBlock>, step: (one: NestedBlock) => void, doing: string): void {
-  if (inner.size === 0) return;
   const failed: unknown[] = [];
   for (const one of [...inner]) {
     try {
