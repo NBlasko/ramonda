@@ -249,12 +249,17 @@ export class Portal extends Hook<PortalProps> {
       // with the portals inside. A portal whose owner the reconcile removes is gone before it would
       // have built what it gained while closed, and one the reconcile builds starts closed and opens
       // after the ones already there, in the order they joined.
-      // Opened even when the reconcile throws: the block is back on the page whatever it built.
+      // Opened even when the reconcile throws — the block is back on the page whatever it built — and
+      // the reconcile's error is the one that goes on: it is the real failure.
       try {
         this.region.reconcile(this.props.children, target);
-      } finally {
-        this.nesting.open();
+      } catch (error) {
+        try {
+          this.nesting.open();
+        } catch {}
+        throw error;
       }
+      this.nesting.open();
       return;
     }
     this.leave();
@@ -365,10 +370,18 @@ class Nesting implements EnclosingBlock, NestedBlock {
     this.suspended = outer.away;
   }
 
-  /** On the page again, and the portals inside with it. */
+  /** On the page again, and the portals inside with it — every one, even past one that throws. */
   open(): void {
     this.gone = false;
-    for (const inner of [...this.inner]) inner.resume();
+    let failed: { error: unknown } | undefined;
+    for (const inner of [...this.inner]) {
+      try {
+        inner.resume();
+      } catch (error) {
+        failed ??= { error };
+      }
+    }
+    if (failed !== undefined) throw failed.error;
   }
 
   /** Off the page, and the portals inside with it. */

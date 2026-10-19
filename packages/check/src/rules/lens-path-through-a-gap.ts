@@ -1,5 +1,6 @@
 import ts from "typescript";
-import { isNothing, withoutParens } from "./element";
+import { isNothing } from "./element";
+import { unwrap } from "./follow-value";
 import { positionOf } from "../syntax";
 import { importedFromPackage } from "./core-import";
 import { guardedBy, type Means } from "./guard-walk";
@@ -304,7 +305,7 @@ function narrowing(text: string, resolve: ModuleContext["resolve"]): Means {
    * be reassigned, so its truthiness is the path's at the moment it was read.
    */
   const isPath = (node: ts.Expression): boolean => {
-    const bare = withoutParens(node);
+    const bare = unwrap(node);
     if (pathText(bare) === text) return true;
     if (!ts.isIdentifier(bare)) return false;
     const declaration = resolve(bare)?.declarations?.[0];
@@ -322,7 +323,7 @@ function narrowing(text: string, resolve: ModuleContext["resolve"]): Means {
    * reached from the `!==` arm below.
    */
   const isThroughPath = (node: ts.Expression): boolean => {
-    const longer = pathText(withoutParens(node));
+    const longer = pathText(unwrap(node));
     return longer !== undefined && longer.startsWith(`${text}.`);
   };
 
@@ -334,7 +335,7 @@ function narrowing(text: string, resolve: ModuleContext["resolve"]): Means {
   };
 
   const proves = (condition: ts.Expression): boolean => {
-    const node = withoutParens(condition);
+    const node = unwrap(condition);
     if (isPath(node) || isThroughPath(node)) return true;
     if (ts.isPrefixUnaryExpression(node) && node.operator === ts.SyntaxKind.ExclamationToken) {
       return refutes(node.operand);
@@ -351,7 +352,7 @@ function narrowing(text: string, resolve: ModuleContext["resolve"]): Means {
   };
 
   const refutes = (condition: ts.Expression): boolean => {
-    const node = withoutParens(condition);
+    const node = unwrap(condition);
     /**
      * The bare path is NOT a refutation, and reading it as one is the bug this comment replaces.
      *

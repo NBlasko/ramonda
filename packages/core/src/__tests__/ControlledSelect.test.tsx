@@ -85,6 +85,8 @@ describe("a controlled select shows what the model says", () => {
     const select = app.container.querySelector("#s") as HTMLSelectElement;
     select.value = "c";
     select.dispatchEvent(new Event("change", { bubbles: true }));
+    // The event is over before anything else happens: its settle runs a task after it.
+    await new Promise((resolve) => setTimeout(resolve, 0));
     await app.settle();
     expect(app.instance.choice).toBe("c");
 
@@ -272,6 +274,51 @@ describe("a controlled select shows what the model says", () => {
     await app.settle();
 
     expect(shown(app.container)).toEqual({ value: "fr", index: 2 });
+  });
+
+  /**
+   * A browser drains microtasks between the listeners of one event, so a render can land between a
+   * pick's `input` and its `change` — `<form oninput>` setting state does it. That render must not
+   * write the old value back before `onchange` has read the pick: the field settles after the event.
+   */
+  test("a render between a pick's input and its change does not undo the pick", async () => {
+    let read = "";
+    class Sized extends Component {
+      @state size = "m";
+      @state dirty = false;
+      render() {
+        return (
+          <form oninput={() => (this.dirty = true)}>
+            <Select
+              id="s"
+              value={this.size}
+              onchange={(event: Event) => {
+                read = (event.target as HTMLSelectElement).value;
+                this.size = read;
+              }}
+            >
+              {["s", "m", "l"].map((v) => (
+                <option key={v} value={v}>
+                  {v}
+                </option>
+              ))}
+            </Select>
+          </form>
+        );
+      }
+    }
+    const app = await getDOM<Sized>(<Sized />);
+    await app.settle();
+    const select = app.container.querySelector("#s") as HTMLSelectElement;
+
+    select.value = "l";
+    select.dispatchEvent(new Event("input", { bubbles: true }));
+    await app.settle();
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await app.settle();
+
+    expect({ read, shown: select.value, model: app.instance.size }).toEqual({ read: "l", shown: "l", model: "l" });
   });
 
   /** A form's reset returns a `defaultValue` select to its default, as it does a `TextArea`. */

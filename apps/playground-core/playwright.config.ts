@@ -28,7 +28,7 @@ export default defineConfig({
   // Firefox's half of it is `browser/firefox-composition.mjs`, which `test:browser` runs after this:
   // Playwright cannot type through an input method in Firefox. The CI job installs
   // `chromium-headless-shell` for this, which is what it resolves to; a headed run needs
-  // `playwright install chromium` first.
+  // `playwright install chromium` first, and `test:browser` needs `playwright install firefox` too.
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   // The built app, served the way it is shipped rather than through the dev server: a transform
   // that only happens in production is exactly the kind of thing this suite exists to catch.

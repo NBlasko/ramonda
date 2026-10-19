@@ -3,6 +3,7 @@ import { positionOf } from "../syntax";
 import { coreElementTag } from "./coreElements";
 import { contextFor, openingOf, tagOf, writtenAsNothing } from "./element";
 import { eventTypeOf } from "./events";
+import { unwrap } from "./follow-value";
 import { rowsWalkedBy } from "./row-callback";
 import { enclosingElement } from "./html";
 import type { ElementContext, ElementRule, JsxElementLike, WrittenAttribute } from "./rule";
@@ -33,7 +34,10 @@ function heardAbove(element: JsxElementLike, events: readonly string[], resolve:
   for (let at = enclosingElement(element); at !== undefined; at = enclosingElement(at)) {
     // Only an ELEMENT listens: on a component, `onchange` is a prop it may do anything with.
     if (tagOf(at) === undefined) continue;
-    const heard = eventsOf(contextFor(at, resolve).attributes);
+    const around = contextFor(at, resolve);
+    // A spread may carry the handler — `<form {...form.events}>` — and a maybe is never reported.
+    if (around.spreads) return true;
+    const heard = eventsOf(around.attributes);
     if (events.some((event) => heard.has(event))) return true;
   }
   return false;
@@ -70,14 +74,9 @@ function cameFromProps(
   seen.add(at);
   const next = (inner: ts.Expression) => cameFromProps(inner, resolve, hops, seen);
 
-  if (
-    ts.isParenthesizedExpression(at) ||
-    ts.isNonNullExpression(at) ||
-    ts.isAsExpression(at) ||
-    ts.isSatisfiesExpression(at)
-  ) {
-    return next(at.expression);
-  }
+  // Parentheses and the type-only wrappers say nothing about where a value comes from.
+  const written = unwrap(at);
+  if (written !== at) return next(written);
   if (ts.isBinaryExpression(at)) return next(at.left) || next(at.right);
   if (ts.isConditionalExpression(at)) return next(at.whenTrue) || next(at.whenFalse);
   // A method of a prop's value — `this.props.text.trim()` — or a prop handed to a call.

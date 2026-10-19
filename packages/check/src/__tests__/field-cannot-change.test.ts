@@ -52,6 +52,7 @@ describe("a field the user cannot change", () => {
       "read only",
       "disabled",
       "heard above",
+      "spread above",
       "from props",
       "from props with a fallback",
       "from props destructured",

@@ -213,3 +213,55 @@ describe("a group with a list deep inside it", () => {
     expect(Array.from(app.container.querySelectorAll("i"), (i) => i.textContent)).toEqual(["1 USD", "2 USD"]);
   });
 });
+
+/** A component row in a group kept whole still renders on its own, and a list inside it still updates. */
+describe("a group of component rows kept whole", () => {
+  test("a row's own state and a list it renders still update", async () => {
+    let first: Row | undefined;
+    class Row extends Component<{ id: number; currency: () => string }> {
+      @state picked = false;
+      constructor(...args: ConstructorParameters<typeof Component<{ id: number; currency: () => string }>>) {
+        super(...args);
+        if (first === undefined) first = this;
+      }
+      render() {
+        return (
+          <li>
+            {this.picked ? "picked" : "open"}{" "}
+            {list([1], () => (
+              <i>{this.props.currency()}</i>
+            ))}
+          </li>
+        );
+      }
+    }
+    class Panel extends Component<{ children?: unknown }> {
+      @state n = 0;
+      render() {
+        return <ul>{this.props.children as never}</ul>;
+      }
+    }
+    class Owner extends Component {
+      @state currency = "EUR";
+      read = () => this.currency;
+      render() {
+        return (
+          <Panel>
+            {[1, 2].map((id) => (
+              <Row key={id} id={id} currency={this.read} />
+            ))}
+          </Panel>
+        );
+      }
+    }
+    const app = await getDOM<Owner>(<Owner />);
+    first!.picked = true;
+    app.instance.currency = "USD";
+    await app.settle();
+
+    expect(Array.from(app.container.querySelectorAll("li"), (li) => li.textContent)).toEqual([
+      "picked USD",
+      "open USD",
+    ]);
+  });
+});

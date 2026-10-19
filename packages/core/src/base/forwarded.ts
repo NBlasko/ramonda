@@ -96,7 +96,9 @@ export function heard(component: Component<any>, event: Event): void {
 
 /**
  * Whether a field whose composition ended still needs the word handed to it: its component is
- * alive, and its model has not moved since the composition began.
+ * alive, and its model has not moved at any point since the composition began — asked at every event
+ * of it, because a word typed again over itself, or a cancelled one, ends where it began after
+ * moving on the way.
  *
  * A handler that takes composing input moved the model — whether it kept the word, changed it
  * (full-width digits to half-width) or cleared the field — and is not called again. Only a model that
@@ -106,10 +108,10 @@ export function heard(component: Component<any>, event: Event): void {
  * the dialog — is sent nothing; one merely OFF the page, in a parked portal, still takes the word.
  */
 // biome-ignore lint/suspicious/noExplicitAny: any component, whatever its props
-function lacksTheWord(component: Component<any>, before: unknown): boolean {
-  const runtime = component[COMPONENT_RUNTIME];
-  if (runtime.isDestroyed) return false;
-  return Object.is(runtime.rawProps["value"], before);
+function lacksTheWord(component: Component<any>): boolean {
+  if (component[COMPONENT_RUNTIME].isDestroyed) return false;
+  noteMovement(component);
+  return !moved.has(component);
 }
 
 /** Fields an input method is composing in right now. */
@@ -129,13 +131,33 @@ export function composingIn(component: Component<any>): boolean {
 const queued = new WeakSet<object>();
 
 /**
+ * Whether this field's event is still being dispatched, with its settle set for after it. A render
+ * can land in the middle — a browser drains microtasks between the listeners of one event, and
+ * `<form oninput>` setting state is enough — and the field's own `settle` then leaves the value alone:
+ * writing the model there undid a pick before `onchange` had read it. The settle after the event writes.
+ */
+// biome-ignore lint/suspicious/noExplicitAny: any component, whatever its props
+export function settlingAfterEvent(component: Component<any>): boolean {
+  return queued.has(component);
+}
+
+/**
  * Fields whose composition has ended with no ordinary `input` after it yet: the element, and the word
  * it ended with. See "When it ends" on `answer`.
  */
-const unfinished = new WeakMap<object, { field: EventTarget; word: string; before: unknown }>();
+const unfinished = new WeakMap<object, { field: EventTarget; word: string }>();
 
 /** What each field's model held when its composition began — see `lacksTheWord`. */
 const startedAt = new WeakMap<object, unknown>();
+
+/** Fields whose model left where it began at some point of the composition — see `lacksTheWord`. */
+const moved = new WeakSet<object>();
+
+/** Notes it when the model is somewhere else than where the composition found it. */
+// biome-ignore lint/suspicious/noExplicitAny: any component, whatever its props
+function noteMovement(component: Component<any>): void {
+  if (!Object.is(component[COMPONENT_RUNTIME].rawProps["value"], startedAt.get(component))) moved.add(component);
+}
 
 /*
  * TODO(webkit): measure the end of a composition in Safari, on a Mac.
@@ -199,13 +221,17 @@ export function answer(component: Component<any> & { settle(): void }, event: Ev
       composing.add(component);
       unfinished.delete(component);
       startedAt.set(component, component[COMPONENT_RUNTIME].rawProps["value"]);
+      moved.delete(component);
     } else if (event.type === "compositionend") {
+      noteMovement(component);
       composing.delete(component);
       const field = event.currentTarget;
-      const before = startedAt.get(component);
-      if (field !== null) unfinished.set(component, { field, word: (event as CompositionEvent).data ?? "", before });
+      if (field !== null) unfinished.set(component, { field, word: (event as CompositionEvent).data ?? "" });
     } else if (event.type === "input" && !(event as InputEvent).isComposing) {
       unfinished.delete(component);
+    } else if (composing.has(component)) {
+      // A composing input: the render of the one before it has landed by now, if it moved the model.
+      noteMovement(component);
     }
     if (event.type !== "compositionstart" && !(event as InputEvent).isComposing && !queued.has(component)) {
       queued.add(component);
@@ -215,7 +241,7 @@ export function answer(component: Component<any> & { settle(): void }, event: Ev
         if (composing.has(component)) return;
         const ended = unfinished.get(component);
         unfinished.delete(component);
-        if (ended !== undefined && lacksTheWord(component, ended.before)) {
+        if (ended !== undefined && lacksTheWord(component)) {
           // Its own answer sets the settle, after every listener has had the word.
           const input = { bubbles: true, composed: true, inputType: "insertCompositionText", data: ended.word };
           ended.field.dispatchEvent(new InputEvent("input", input));

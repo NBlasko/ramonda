@@ -1,7 +1,7 @@
 import ts from "typescript";
 import { BOOLEAN_ATTRIBUTES, svgElements } from "@ramonda/dom-facts";
 import { coreElementTag } from "./coreElements";
-import { follow, type Looking } from "./follow-value";
+import { follow, unwrap, type Looking } from "./follow-value";
 import type { ElementContext, JsxElementLike, WrittenAttribute } from "./rule";
 
 /**
@@ -16,14 +16,12 @@ export function openingOf(element: JsxElementLike): ts.JsxOpeningLikeElement {
   return ts.isJsxElement(element) ? element.openingElement : element;
 }
 
-/** An expression without the parentheses around it, however many. */
-export function withoutParens(node: ts.Expression): ts.Expression {
-  return ts.isParenthesizedExpression(node) ? withoutParens(node.expression) : node;
-}
-
-/** `null` or `undefined`, in any number of parentheses. One question, asked the same way by every rule. */
+/**
+ * `null` or `undefined`, through parentheses and the type-only wrappers (`unwrap`). One question,
+ * asked the same way by every rule.
+ */
 export function isNothing(node: ts.Expression): boolean {
-  const written = withoutParens(node);
+  const written = unwrap(node);
   return written.kind === ts.SyntaxKind.NullKeyword || (ts.isIdentifier(written) && written.text === "undefined");
 }
 

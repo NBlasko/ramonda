@@ -41,6 +41,18 @@ test.describe("fields only a browser settles", () => {
     await expect(page.locator("#takes")).toHaveValue("日本");
   });
 
+  /**
+   * A render between the listeners of one event — the field's handler changes other state, the form
+   * around it moves the model — does not write the old value back before the form has read it.
+   */
+  test("a render in the middle of an event keeps what the user did", async ({ page }) => {
+    await page.locator("#between-text").pressSequentially("abc");
+    await page.locator("#between-size").selectOption("l");
+    await expect(page.locator("#between-model")).toHaveText('{"text":"abc","size":"l"}');
+    await expect(page.locator("#between-text")).toHaveValue("abc");
+    await expect(page.locator("#between-size")).toHaveValue("l");
+  });
+
   test("a form's reset returns a defaultValue select to its default", async ({ page }) => {
     const size = page.locator("#size");
     await expect(size).toHaveValue("m");

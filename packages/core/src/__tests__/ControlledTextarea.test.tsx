@@ -613,6 +613,38 @@ describe("a controlled textarea follows the model after the event the app handle
     expect({ field: field.value, taken }).toEqual({ field: "123", taken: ["123"] });
   });
 
+  /**
+   * A composition that ends where it began — the word typed again over itself, or cancelled — still
+   * moved the model on the way for a handler that takes every input, and it is not called again.
+   */
+  test("a model that moved and came back is not handed the word again", async () => {
+    const taken: string[] = [];
+    class Again extends Component {
+      @state text = "日本";
+      take(event: InputEvent) {
+        this.text = (event.target as HTMLTextAreaElement).value;
+        taken.push(this.text);
+      }
+      render() {
+        return <TextArea id="t" value={this.text} oninput={this.take} />;
+      }
+    }
+    const app = await getDOM<Again>(<Again />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+
+    field.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+    for (const step of ["n", "日本"]) {
+      field.value = step;
+      field.dispatchEvent(new InputEvent("input", { bubbles: true, isComposing: true }));
+      await app.settle();
+    }
+    field.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "日本" }));
+    await drain(app);
+
+    expect(taken).toEqual(["n", "日本"]);
+  });
+
   test("a model cleared in the middle of a word is not handed the word back", async () => {
     class Clearing extends Component {
       @state text = "a";

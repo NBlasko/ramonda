@@ -64,6 +64,50 @@ class Sized extends Component {
   }
 }
 
+/**
+ * A browser drains microtasks between the listeners of one event, so a render can land in the
+ * middle of it. Here the field's own handler changes other state, and the form around it is what
+ * moves the model: the render between them must not write the old text back before the form reads
+ * the keystroke. The select does the same between a pick's `input` and its `change`.
+ */
+class Between extends Component {
+  @state text = "";
+  @state typed = 0;
+  @state size = "m";
+  @state touched = false;
+
+  render() {
+    return (
+      <section style={box}>
+        <h3 style={{ margin: "0 0 0.25rem" }}>3 — a render in the middle of an event</h3>
+        <p style={hint}>Type into the field, and pick a size: both keep what you did.</p>
+        <form
+          oninput={(event: Event) => {
+            const target = event.target as HTMLElement;
+            if (target.id === "between-text") this.text = (target as HTMLTextAreaElement).value;
+            else this.touched = true;
+          }}
+        >
+          <TextArea id="between-text" aria-label="Typed" value={this.text} oninput={() => this.typed++} />
+          <Select
+            id="between-size"
+            aria-label="Size"
+            value={this.size}
+            onchange={(event: Event) => (this.size = (event.target as HTMLSelectElement).value)}
+          >
+            <option value="s">s</option>
+            <option value="m">m</option>
+            <option value="l">l</option>
+          </Select>
+        </form>
+        <output id="between-model" style={readout}>
+          {JSON.stringify({ text: this.text, size: this.size })}
+        </output>
+      </section>
+    );
+  }
+}
+
 /** Fields whose behaviour only a browser settles — see `browser/fields.spec.ts`. */
 export class FieldsPage extends Component {
   render() {
@@ -73,6 +117,7 @@ export class FieldsPage extends Component {
         <Composed id="skips" title="1 — a handler that skips composing input" skipsComposing={true} />
         <Composed id="takes" title="2 — a handler that takes every input" skipsComposing={false} />
         <Sized />
+        <Between />
       </div>
     );
   }

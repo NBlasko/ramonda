@@ -20,7 +20,8 @@ node while a list inside the array has changed; and a group that replaces a `lis
 shares its owner, so it does not take the list's engine — the list's engine is released instead.
 
 A group — an array among the children, `<ul>{this.props.children}</ul>` — is kept whole too when it is
-the same object as last pass and holds no list and no component anywhere inside it: such a group is
-the same markup. Counted in `RenderCost.test.tsx`, a panel over 1000 rows re-rendering on its own
+the same object as last pass and holds no `list()` anywhere inside it: such a group is the same
+markup. A component row does not stop it — the same vnode carries the same props, and a row that
+changes on its own renders itself — so 1000 `<Row />` are not looked at either, as on `main`. Counted in `RenderCost.test.tsx`, a panel over 1000 rows re-rendering on its own
 state diffs none of them and walks none of them. A group that does hold one, at any depth
 (`[<div>{list(…)}</div>]`), is opened every pass, because something inside it changes on its own.

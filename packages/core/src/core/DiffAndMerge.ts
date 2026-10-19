@@ -931,8 +931,9 @@ function applyDiffWithRegions(
 const regionsBelow = new WeakMap<readonly unknown[], boolean>();
 
 /**
- * Whether markup holds a `list()` or a component ANYWHERE inside it — the things that change on their
- * own, without the markup around them changing.
+ * Whether markup holds a `list()` ANYWHERE inside it — the one thing that changes on its own, without
+ * the markup around it changing, and is reconciled by whoever holds the markup. A component changes
+ * on its own too, but renders itself: a group of component rows is kept whole like any other.
  *
  * A plain GROUP, a nested array, is not one: it is markup like the rest and is looked into. That is
  * why this cannot lean on `HAS_REGION`, which `h` sets for a group as much as for a list. Once per
@@ -947,12 +948,11 @@ function holdsARegion(children: readonly unknown[]): boolean {
     if (isListNode(child)) {
       const group = (child as { vnodes?: unknown }).vnodes;
       found = isLazyList(child) || !Array.isArray(group) || holdsARegion(group);
-    } else if (isVNode(child)) {
-      if (child.type === COMPONENT_TYPE) found = true;
-      else {
-        const inner = (child as { children?: unknown }).children;
-        if (Array.isArray(inner)) found = holdsARegion(inner);
-      }
+    } else if (isVNode(child) && child.type !== COMPONENT_TYPE) {
+      // A component is not one: the same vnode object carries the same props, and what changes in it
+      // on its own — its state, a list it renders — reports to the component, which renders itself.
+      const inner = (child as { children?: unknown }).children;
+      if (Array.isArray(inner)) found = holdsARegion(inner);
     }
   }
   regionsBelow.set(children, found);

@@ -5,6 +5,7 @@ import { Component } from "../base/Component";
 import { list } from "../base/list";
 import { findOne, instanceOf } from "../test/setup";
 import { CHILD_RECORD } from "../helpers/constants";
+import { COMPONENT_RUNTIME } from "../core/runtime";
 
 /**
  * What a render costs the DOM, asserted.
@@ -592,6 +593,59 @@ describe("a group that did not change", () => {
     } finally {
       Object.defineProperty(Node.prototype, "nextSibling", descriptor);
     }
+
+    expect(reads).toBe(0);
+  });
+
+  /**
+   * A group of COMPONENT rows is kept whole too: the same vnode carries the same props, and a row
+   * that changes on its own renders itself. Counted as reads of the rows' props, which looking at a
+   * component row starts with — measured 1000 per render before (main: 0), 0 now.
+   */
+  test("nor are its component rows looked at", async () => {
+    class Row extends Component<{ n: number }> {
+      render() {
+        return <li>{this.props.n}</li>;
+      }
+    }
+    class Panel extends Component<{ children?: unknown }> {
+      @state n = 0;
+      render() {
+        return (
+          <section>
+            <p>{this.n}</p>
+            <ul>{this.props.children as never}</ul>
+          </section>
+        );
+      }
+    }
+    const items = Array.from({ length: 1000 }, (_, i) => i);
+    class Owner extends Component {
+      render() {
+        return (
+          <Panel>
+            {items.map((i) => (
+              <Row key={i} n={i} />
+            ))}
+          </Panel>
+        );
+      }
+    }
+    const app = await getDOM<Owner>(<Owner />);
+    const panel = instanceOf(app.container.querySelector("section") as Element) as unknown as Panel;
+    let reads = 0;
+    for (const li of app.container.querySelectorAll("li")) {
+      const runtime = instanceOf<Row>(li)[COMPONENT_RUNTIME];
+      runtime.rawProps = new Proxy(runtime.rawProps, {
+        get(target, key, receiver) {
+          reads++;
+          return Reflect.get(target, key, receiver);
+        },
+      });
+    }
+    reads = 0;
+    panel.n = 1;
+    await app.settle();
 
     expect(reads).toBe(0);
   });

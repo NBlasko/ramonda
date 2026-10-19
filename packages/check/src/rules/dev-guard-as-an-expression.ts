@@ -1,4 +1,5 @@
-import { isNothing, withoutParens } from "./element";
+import { isNothing } from "./element";
+import { unwrap } from "./follow-value";
 import ts from "typescript";
 import { positionOf } from "../syntax";
 import { guardsDev } from "./dev-guard";
@@ -46,14 +47,14 @@ export interface DevGuardAsAnExpressionIssue {
  * while `dev-guard.ts` recognised both. Two answers about one flag.
  */
 function guardedByADevChain(written: ts.Expression): ts.Expression | undefined {
-  const bare = ts.isParenthesizedExpression(written) ? withoutParens(written) : written;
+  // Parentheses around a statement's expression say nothing about what it does.
+  const bare = unwrap(written);
   if (!ts.isBinaryExpression(bare) || bare.operatorToken.kind !== ts.SyntaxKind.AmpersandAmpersandToken) {
     return undefined;
   }
   return guardsDev(bare.left) ? bare.right : undefined;
 }
 
-/** Parentheses around a statement's expression say nothing about what it does. */
 /**
  * Whether a ternary's other arm is nothing, which is what makes `if` a REPLACEMENT for it.
  *
@@ -62,7 +63,7 @@ function guardedByADevChain(written: ts.Expression): ts.Expression | undefined {
  * whose own boundary is that the advice has to fit every site it fires on.
  */
 function armIsNothing(written: ts.Expression): boolean {
-  return isNothing(written) || ts.isVoidExpression(withoutParens(written));
+  return isNothing(written) || ts.isVoidExpression(unwrap(written));
 }
 
 /** What a guard runs, shortened, so a report quotes the line without printing a screenful. */
@@ -119,7 +120,7 @@ export const devGuardAsAnExpression = {
           });
         }
 
-        const bare = withoutParens(written);
+        const bare = unwrap(written);
         // A ternary with a real other arm is an `if`/`else`, and the advice here is not that.
         if (ts.isConditionalExpression(bare) && guardsDev(bare.condition) && armIsNothing(bare.whenFalse)) {
           found.push({
