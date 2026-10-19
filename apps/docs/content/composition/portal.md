@@ -170,6 +170,10 @@ const modals = portalTarget("modals");
 this.use(Portal, () => ({ children: <Dialog />, target: modals }));
 ```
 
+Make the token once — a module constant, as here, or a field — rather than inside the callback.
+`target: portalTarget("modals")` written there is a new token every time the callback runs, and the
+portal reconciles its whole block each time to follow it.
+
 The server collects that target's content and hands it back on `page.portals`, keyed by the
 name — from `renderPage` for a per-request render and from `renderStatic` for a baked one.
 [`renderDocument`](/ssr/render) emits a container per entry, after the app root, so a modal is
