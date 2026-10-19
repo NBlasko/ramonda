@@ -446,10 +446,42 @@ describe("a controlled select shows what the model says", () => {
     const select = app.container.querySelector("#s") as HTMLSelectElement;
     await pickAsABrowserDoes(select, "l");
     (select.form as HTMLFormElement).reset();
+    // The default arrives later — a load — after the reset's event is over.
+    await new Promise((resolve) => setTimeout(resolve, 0));
     app.instance.saved = "s";
     await app.settle();
 
     expect(select.value).toBe("s");
+  });
+
+  /** A reset the form's own handler cancels resets nothing: the pick stays the user's. */
+  test("a cancelled reset keeps the pick", async () => {
+    class Sized extends Component {
+      @state saved = "m";
+      render() {
+        return (
+          <form onreset={(event: Event) => event.preventDefault()}>
+            <Select id="s" name="size" defaultValue={this.saved}>
+              {["s", "m", "l"].map((v) => (
+                <option key={v} value={v}>
+                  {v}
+                </option>
+              ))}
+            </Select>
+          </form>
+        );
+      }
+    }
+    const app = await getDOM<Sized>(<Sized />);
+    await app.settle();
+    const select = app.container.querySelector("#s") as HTMLSelectElement;
+    await pickAsABrowserDoes(select, "l");
+    (select.form as HTMLFormElement).reset();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    app.instance.saved = "s";
+    await app.settle();
+
+    expect(select.value).toBe("l");
   });
 
   /** A pick that happens to equal the default is still the user's: a later default does not move it. */

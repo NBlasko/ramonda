@@ -101,7 +101,10 @@ export class TextArea extends Component<TextAreaProps> {
     if (settlesLater(this)) return;
     // Through the attribute layer's own write, which keeps the caret across a rewrite of the same
     // length — an upper-casing handler leaves it where the user typed, as an `<input>` does.
-    writeValue(field as unknown as EnhancedHTMLNode, String(this.props.value), false);
+    // Only a value that differs: writing the same one would collapse the user's selection, and
+    // `writeValue` is the write for a value that has changed.
+    const model = String(this.props.value);
+    if (field.value !== model) writeValue(field as unknown as EnhancedHTMLNode, model, false);
   }
 
   /** The listener a controlled field answers its events with — see `answer` in `forwarded.ts`. */

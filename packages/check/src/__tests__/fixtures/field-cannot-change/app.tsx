@@ -5,6 +5,7 @@ declare const value: string;
 declare const bind: Record<string, unknown>;
 declare const viewing: boolean;
 const LOCKED = true;
+const EMPTY = "";
 declare const drafts: Record<string, string>;
 declare const Card: (props: { onchange?: unknown; children?: unknown }) => unknown;
 
@@ -128,6 +129,12 @@ class App extends Component<{ text: string; size: string; rows: { text: string }
         </Select>
         {/* ✗ literal: no handler can move a value written as itself */}
         <TextArea value="" oninput={this.type} aria-label="literal value" />
+        <TextArea value={-1} oninput={this.type} aria-label="negative literal value" />
+        <TextArea value={EMPTY} oninput={this.type} aria-label="literal through a const" />
+        {/* ✓ an action menu: the select goes back to its placeholder after the handler acts */}
+        <Select value="" onchange={this.pick} aria-label="action menu">
+          <option value="">Go to…</option>
+        </Select>
         {/* ✓ a spread on a form or fieldset around it may carry the handler */}
         <fieldset {...bind}>
           <TextArea value={value} aria-label="spread above" />

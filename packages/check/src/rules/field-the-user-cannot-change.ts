@@ -21,11 +21,30 @@ export interface FieldTheUserCannotChangeIssue {
   column: number;
 }
 
-/** Whether a `value` is written as itself — a string, a number or a plain template — not read from anything. */
-function writtenAsItself(value: WrittenAttribute): boolean {
-  if (value.value === undefined) return false;
-  const written = unwrap(value.value);
-  return ts.isStringLiteral(written) || ts.isNumericLiteral(written) || ts.isNoSubstitutionTemplateLiteral(written);
+/**
+ * Whether a `value` is a literal — a string, a number (`-1` included), a plain template, or a `const`
+ * holding one — read from nothing the page can move.
+ */
+function writtenAsItself(value: WrittenAttribute, resolve: ElementContext["resolve"]): boolean {
+  return value.value !== undefined && isLiteral(value.value, resolve, 0);
+}
+
+function isLiteral(expression: ts.Expression, resolve: ElementContext["resolve"], hops: number): boolean {
+  const written = unwrap(expression);
+  if (ts.isStringLiteral(written) || ts.isNumericLiteral(written) || ts.isNoSubstitutionTemplateLiteral(written)) {
+    return true;
+  }
+  if (ts.isPrefixUnaryExpression(written) && written.operator === ts.SyntaxKind.MinusToken) {
+    return ts.isNumericLiteral(unwrap(written.operand));
+  }
+  if (!ts.isIdentifier(written) || hops >= HOPS) return false;
+  const declaration = resolve(written)?.declarations?.[0];
+  if (declaration === undefined || !ts.isVariableDeclaration(declaration) || declaration.initializer === undefined) {
+    return false;
+  }
+  // A `const` only: a `let` may be assigned again, which is a way to move it.
+  if (!(ts.getCombinedNodeFlags(declaration) & ts.NodeFlags.Const)) return false;
+  return isLiteral(declaration.initializer, resolve, hops + 1);
 }
 
 /** The events an element has a handler for, in any spelling. */
@@ -34,9 +53,9 @@ function eventsOf(attributes: readonly WrittenAttribute[]): Set<string | undefin
 }
 
 /**
- * Whether an element around this one listens for an event that moves the model in time — `<form
- * oninput>`. For a `TextArea` only `input` does: an ancestor's `change` comes on blur, after every
- * keystroke has been undone.
+ * Whether an element or a component around this one may hear an event that moves the model in time
+ * — `<form oninput>`, `<FormShell oninput>`. For a `TextArea` only `input` does: an ancestor's
+ * `change` comes on blur, after every keystroke has been undone.
  */
 function heardAbove(element: JsxElementLike, events: readonly string[], resolve: ElementContext["resolve"]): boolean {
   for (let at = enclosingElement(element); at !== undefined; at = enclosingElement(at)) {
@@ -164,23 +183,26 @@ function parameterFromOutside(
  * no handler cannot be changed at all. That is what makes `value` mean one thing; it is also what
  * turns the habit of writing `value` for where a field STARTS into a field nobody can type in.
  *
- * Three shapes, all provable from the source:
+ * Four shapes, all provable from the source:
  *
  * - **`value` and no `oninput` / `onchange`** — nothing can move the model, so every input is undone.
  * - **A `TextArea` with `value` and only `onchange`** — `change` comes on blur, so every keystroke is
  *   undone before it: the user cannot type. A `Select` is not reported for this: its `change` comes
  *   with the pick itself.
  * - **`value` beside `defaultValue`** — `value` wins and `defaultValue` says nothing.
+ * - **A `TextArea` whose `value` is a literal** — `value=""`, `{-1}`, or a `const` holding one — which
+ *   no handler can move, wherever it is: nobody can type in it. A `Select`'s literal is a pattern, an
+ *   action menu that goes back to its placeholder once its handler acts, and is not reported.
  *
- * The answer to the first two is either a handler that moves the model, or `defaultValue` for a field
- * whose text is read when the form is sent.
+ * The answer to the first two and the last is either a handler that moves the model, or
+ * `defaultValue` for a field whose text is read when the form is sent.
  *
  * Not reported: an element with a spread — `{...bind}` from `@ramonda/form` carries the handler, and
  * a rule that cannot see it would report every bound field; a field that is `disabled` as written
  * (`truth`: bare, `{true}`, `"true"`, or a name holding it), or a `TextArea` that is `readonly`, which
  * takes no input to undo — `readonly` does nothing to a `<select>`, so a `Select` is still reported;
- * a field with a handler on an ELEMENT around it, `<form oninput>`, which core waits for before it
- * settles — a component's `onchange` is only a prop — or with a spread on a `form` or `fieldset`
+ * a field with a handler around it, `<form oninput>`, which core waits for before it settles — on a
+ * component too, which may hand it to a form inside it — or with a spread on a `form` or `fieldset`
  * around it, which may carry one; and a field whose `value` comes from `props` or a parameter, whose
  * handler may sit in the caller's render.
  */
@@ -191,7 +213,7 @@ export const fieldTheUserCannotChange = {
     severity: "error",
     reportedWhen:
       "a `Select` or `TextArea` has a `value` that nothing moves — no handler, a `TextArea` with only " +
-      '`onchange`, or a value written as itself (`value=""`) — so every input is undone; or `value` sits ' +
+      '`onchange`, or a `TextArea` value written as itself (`value=""`) — so every input is undone; or `value` sits ' +
       "beside `defaultValue`",
     heading: (found) => `${found.length} field(s) the user cannot change:`,
     lines: (issue) => [
@@ -241,9 +263,10 @@ export const fieldTheUserCannotChange = {
     if ((tag === "select" ? ["disabled"] : ["readonly", "readOnly", "disabled"]).some((name) => truth(name) === true)) {
       return [];
     }
-    // A value written as itself — `value=""`, a chat box meant to clear on send — is one no handler
-    // can move, wherever the handler is: every input is undone.
-    if (writtenAsItself(value)) return [{ component, kind: "literal", ...at }];
+    // A TextArea's value written as itself — `value=""`, a chat box meant to clear on send — is one no
+    // handler can move, wherever the handler is: nobody can type in it. A Select's is a pattern, an
+    // action menu going back to its "Go to…" placeholder once its handler acts, and is left alone.
+    if (tag === "textarea" && writtenAsItself(value, resolve)) return [{ component, kind: "literal", ...at }];
     if (heardAbove(element, moving, resolve) || fromProps(value, resolve)) return [];
     const events = eventsOf(attributes);
     if (!events.has("input") && !events.has("change")) return [{ component, kind: "no-handler", ...at }];

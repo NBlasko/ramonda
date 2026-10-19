@@ -77,16 +77,13 @@ export class Select extends Component<SelectProps> {
   private d = false;
 
   /**
-   * `f` — the form this select is in, whose `reset` it listens to: a reset puts the select back on its
-   * default, so the user's pick is forgotten and a later `defaultValue` is shown again, as a
-   * `TextArea`'s is. Asked of the form itself — what the select shows cannot tell a reset from a pick
-   * that happens to equal the default.
+   * `r` — a form was reset: if it is this select's, and no `value` holds the select, the pick is
+   * forgotten, so a later `defaultValue` is shown again, as a `TextArea`'s is. Asked of the form
+   * itself — what the select shows cannot tell a reset from a pick that happens to equal the default.
+   * See `resettable` for how it hears one.
    */
-  private f: HTMLFormElement | null = null;
-
-  /** `r` — what a reset of the form does: unless a `value` holds the select, the pick is forgotten. */
-  r(): void {
-    if (this.props.value == null) this.d = false;
+  r(form: EventTarget | null): void {
+    if (this.props.value == null && form !== null && this.e.current?.form === form) this.d = false;
   }
 
   /** `h` — the caller's ref as of the last HAND-OVER, so a swapped one can be let go of. */
@@ -130,11 +127,10 @@ export class Select extends Component<SelectProps> {
     if (this.h !== this.props.ref) this.g(select);
 
     const onServer = env === "server";
-    // The form whose reset forgets the pick — followed when the select moves to another.
-    if (!onServer && select.form !== this.f) {
-      this.f?.removeEventListener("reset", this.r);
-      this.f = select.form;
-      this.f?.addEventListener("reset", this.r);
+    // Told of a form's reset only while a reset can matter to it — see `resettable`.
+    if (!onServer) {
+      if (this.props.value == null && this.props.defaultValue != null) hearResets(this, select.ownerDocument);
+      else resettable.delete(this);
     }
     const chosen = this.props.value;
     if (chosen == null) {
@@ -192,11 +188,10 @@ export class Select extends Component<SelectProps> {
     return wrote;
   }
 
-  /** Lets go of the form's reset. */
+  /** No longer told of resets. */
   @destroyed
   release(): void {
-    this.f?.removeEventListener("reset", this.r);
-    this.f = null;
+    resettable.delete(this);
   }
 
   /** The listener a controlled select answers its events with — see `answer` in `forwarded.ts`. */
@@ -255,4 +250,32 @@ function keepingTheChoice(select: HTMLSelectElement, write: () => boolean): void
   if (!write()) return;
   const options = select.options;
   for (let i = 0; i < options.length; i++) options[i].selected = chosen.has(options[i]);
+}
+
+/**
+ * The selects a form's reset concerns: a `defaultValue` select with no `value`, which the user may
+ * have picked in. One listener per document, in the capture phase, rather than one per select on
+ * its form: a select a portal moves into another form hears that form's reset without a render, and
+ * fifty controlled selects add nothing.
+ *
+ * The answer is asked once dispatch is over, a task later — a reset the form's own `onreset` cancels
+ * with `preventDefault` resets nothing, and the capture listener runs before that handler does.
+ */
+const resettable = new Set<Select>();
+const documentsHeard = new WeakSet<Document>();
+
+function hearResets(select: Select, document: Document): void {
+  resettable.add(select);
+  if (documentsHeard.has(document)) return;
+  documentsHeard.add(document);
+  document.addEventListener(
+    "reset",
+    (event) => {
+      setTimeout(() => {
+        if (event.defaultPrevented) return;
+        for (const one of resettable) one.r(event.target);
+      }, 0);
+    },
+    true,
+  );
 }

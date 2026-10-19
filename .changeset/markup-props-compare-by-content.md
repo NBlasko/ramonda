@@ -18,9 +18,8 @@ the app builds is compared by reference, including an object or an array that ho
 (`slots={{ header: <Header /> }}`): the app may change it in place, and a copy of something changed in
 place compares equal to the original, so the change would never be shown. Such a slots prop is
 declared on the child with `@StableProps("slots")`. Markup built by a different component, a `list()`
-whose callback changed, markup holding state the user changes and the model also says — a host `<input>` with a
-`value` or `checked`, a `<details open>`, a `<dialog open>`, a muted `<video>` or `<audio>` (what it
-shows is also what the user did to it, and the render is what puts the model's answer back — a submit
+whose callback changed, markup holding a host `<input>` the user can change with a `value` or `checked` (what it
+shows is also what the user did to it, and the render is what puts the model's value back — a submit
 button's label, a hidden value, a `readonly` text field settle like any markup — `readonly` does not
 stop a checkbox, a radio, a file, range or color input, so those still count), and markup past a
 budget of 500 values for its key are all called different — the child

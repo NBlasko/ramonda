@@ -7,8 +7,9 @@
 Core settles a field with `value` from the model after every input, so a field the model never
 follows undoes every input. Reported, with which of four it is: `value` and no `oninput` /
 `onchange`; a `TextArea` with `value` and only `onchange`, which comes on blur, so every keystroke is
-undone before it; `value` beside `defaultValue`, where `defaultValue` says nothing; and a `value` written as itself,
-`value=""`, which no handler can move. The advice
+undone before it; `value` beside `defaultValue`, where `defaultValue` says nothing; and a `TextArea` whose `value` is a literal —
+`value=""`, `{-1}`, or a `const` holding one — which no handler can move (a `Select`'s is an action
+menu going back to its placeholder, and is not reported). The advice
 is a handler that moves the model, or `defaultValue` for a field the form sends. Not reported: a
 `value` written as `{null}` or `{undefined}`, which core treats as no value (a `defaultValue` written
 so is no default either); an

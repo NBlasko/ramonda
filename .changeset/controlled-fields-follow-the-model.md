@@ -37,6 +37,7 @@ placeholder first and the options from a load still start on the saved choice. O
 the pick leaves the pick showing and is where a reset returns, as a `TextArea`'s is — and after the form's
 reset, which the select hears, a later one is shown; a pick that happens to equal the default is still
 the user's. A `TextArea` written from the model keeps the caret across a rewrite of the same length, as
-an `<input>` does. It is written as the
+an `<input>` does, and a render that leaves its value as it is leaves the user's selection alone. A
+reset the form's own handler cancels resets nothing. It is written as the
 option's `selected` attribute, so a form's reset returns to it. A `value` of `null` is no value. The app's handler is called as a
 listener is, with the element as `this`.

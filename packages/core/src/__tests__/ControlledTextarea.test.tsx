@@ -603,12 +603,32 @@ describe("a controlled textarea follows the model after the event the app handle
     const field = app.container.querySelector("#t") as HTMLTextAreaElement;
     field.focus();
 
-    field.value = "Axbc".slice(0, 1) + "x" + "BC";
+    field.value = "AxBC";
     field.setSelectionRange(2, 2);
     field.dispatchEvent(new InputEvent("input", { bubbles: true }));
     await drain(app);
 
     expect({ value: field.value, caret: field.selectionStart }).toEqual({ value: "AXBC", caret: 2 });
+  });
+
+  /** A render that leaves the value as it is — an unrelated prop changed — leaves the user's selection too. */
+  test("a render with the same value keeps the user's selection", async () => {
+    class Marked extends Component {
+      @state text = "hello world";
+      @state invalid = false;
+      render() {
+        return <TextArea id="t" value={this.text} oninput={() => {}} aria-invalid={String(this.invalid)} />;
+      }
+    }
+    const app = await getDOM<Marked>(<Marked />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+    field.focus();
+    field.setSelectionRange(6, 11);
+    app.instance.invalid = true;
+    await app.settle();
+
+    expect([field.selectionStart, field.selectionEnd]).toEqual([6, 11]);
   });
 
   /**
