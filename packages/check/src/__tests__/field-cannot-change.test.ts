@@ -57,6 +57,7 @@ describe("a field the user cannot change", () => {
       "disabled",
       "heard above",
       "spread above",
+      "beforeinput editor",
       "inside a card",
       "action menu",
       "from props",

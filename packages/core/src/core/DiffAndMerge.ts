@@ -1111,6 +1111,14 @@ export function reconcileEntries(
         // the previous region is in hand, and with it the engine holding the
         // minted ids, the per-item scopes and the whole-list skip.
         let listNode = rawVchild;
+        /**
+         * Only a `list()` has an engine. A GROUP — an array among the children — has none, and must
+         * not take the one a `list()` left in this slot: the two share an owner, so a list that became
+         * a group found the list's region, and with its engine the skip below trusted a node the engine
+         * never built. Measured: `<Panel>{open ? list(a, …) : [<b />, list(prices, …)]}</Panel>`, and
+         * the prices stayed old. The list's engine is let go of once the group is in its place —
+         * below — or it stays subscribed to whatever its rows read.
+         */
         let engine: ListRegion["engine"];
 
         if (isLazyList(rawVchild)) {
@@ -1122,15 +1130,6 @@ export function reconcileEntries(
           );
           listNode = materialized.node as typeof rawVchild;
           engine = materialized.engine;
-        } else {
-          /**
-           * A GROUP — an array among the children — has no engine, and must not take the one a `list()`
-           * left in this slot: the two share an owner, so a list that became a group found the list's
-           * region, and with its engine the skip below trusted a node the engine never built. Measured:
-           * `<Panel>{open ? list(a, …) : [<b />, list(prices, …)]}</Panel>`, and the prices stayed old.
-           * The list's engine is let go of once the group is in its place — below — or it stays
-           * subscribed to whatever its rows read.
-           */
         }
 
         /**

@@ -83,7 +83,11 @@ export class Select extends Component<SelectProps> {
    * See `resettable` for how it hears one.
    */
   r(form: EventTarget | null): void {
-    if (this.props.value == null && form !== null && this.e.current?.form === form) this.d = false;
+    if (form === null || this.e.current?.form !== form) return;
+    // A `value` holds it: the reset went back to whichever option carries the attribute, and sent no
+    // event to settle after, so the select is put back on the model here.
+    if (this.props.value != null) this.settle();
+    else this.d = false;
   }
 
   /** `h` — the caller's ref as of the last HAND-OVER, so a swapped one can be let go of. */
@@ -127,16 +131,17 @@ export class Select extends Component<SelectProps> {
     if (this.h !== this.props.ref) this.g(select);
 
     const onServer = env === "server";
-    // Told of a form's reset only while a reset can matter to it — see `resettable`.
+    // Told of a form's reset while one can matter to it: a `value` it must show again, or a
+    // `defaultValue` it must go back to — see `resettable`.
     if (!onServer) {
-      if (this.props.value == null && this.props.defaultValue != null) hearResets(this, select.ownerDocument);
+      if (this.props.value != null || this.props.defaultValue != null) hearResets(this, select);
       else resettable.delete(this);
     }
     const chosen = this.props.value;
     if (chosen == null) {
       const fallback = this.props.defaultValue;
       if (fallback != null) {
-        // Not settled — never picked, or picked and then reset (`f`): the default is what it shows.
+        // Not settled — never picked, or picked and then reset (`r`): the default is what it shows.
         if (!this.d) this.start(select, fallback);
         // Settled for good — the user picked, or a value held it — and a later default still says
         // where a reset returns, as a TextArea's does. Writing the attribute moves the choice in a
@@ -169,8 +174,8 @@ export class Select extends Component<SelectProps> {
   /**
    * A `defaultValue` is where the select starts until the user picks — so options that arrive later,
    * after a "Choose…" that was there first, still start on the saved choice, and one that arrives
-   * after a pick leaves the pick showing and changes only where a reset returns. It is written only
-   * once an option it names is there; before, the browser would show no choice at all.
+   * after a pick leaves the pick showing and changes only where a reset returns. It is written once
+   * an option it names is there; one that names none yet takes the old default's attribute off.
    *
    * It is written where HTML keeps a default, the `selected` ATTRIBUTE, on both sides: so a form's
    * reset returns to it, as a `TextArea`'s does to its text. `select.value` would show it and leave
@@ -182,9 +187,12 @@ export class Select extends Component<SelectProps> {
     const options = select.options;
     let named = false;
     for (let i = 0; i < options.length && !named; i++) named = wanted.has(options[i].value);
-    if (!named) return false;
+    // A default that names no option yet takes the old one's attribute off — a reset must not go back
+    // to a choice the model no longer says — and is written once its option arrives.
     let wrote = false;
-    for (let i = 0; i < options.length; i++) wrote = markDefault(options[i], wanted.has(options[i].value)) || wrote;
+    for (let i = 0; i < options.length; i++) {
+      wrote = markDefault(options[i], named && wanted.has(options[i].value)) || wrote;
+    }
     return wrote;
   }
 
@@ -253,27 +261,36 @@ function keepingTheChoice(select: HTMLSelectElement, write: () => boolean): void
 }
 
 /**
- * The selects a form's reset concerns: a `defaultValue` select with no `value`, which the user may
- * have picked in. One listener per document, in the capture phase, rather than one per select on
- * its form: a select a portal moves into another form hears that form's reset without a render, and
- * fifty controlled selects add nothing.
+ * The selects a form's reset concerns: one with a `value`, which the reset moves off the model with no
+ * event to settle after, and one with a `defaultValue`, which the user may have picked in. One listener
+ * per root — the document, and a shadow root a select sits in, since a `reset` does not leave one — in
+ * the capture phase, rather than one per select on its form: a select a portal moves into another form
+ * hears that form's reset without a render.
  *
  * The answer is asked once dispatch is over, a task later — a reset the form's own `onreset` cancels
  * with `preventDefault` resets nothing, and the capture listener runs before that handler does.
  */
 const resettable = new Set<Select>();
-const documentsHeard = new WeakSet<Document>();
+const rootsHeard = new WeakSet<Node>();
 
-function hearResets(select: Select, document: Document): void {
+function hearResets(select: Select, element: HTMLSelectElement): void {
   resettable.add(select);
-  if (documentsHeard.has(document)) return;
-  documentsHeard.add(document);
-  document.addEventListener(
+  listenForResets(element.ownerDocument);
+  // Asked at every settle, so a select that has moved into a shadow root hears resets there.
+  listenForResets(element.getRootNode());
+}
+
+function listenForResets(root: Node): void {
+  if (rootsHeard.has(root) || !(root instanceof Document || root instanceof ShadowRoot)) return;
+  rootsHeard.add(root);
+  root.addEventListener(
     "reset",
     (event) => {
+      // Read now: once dispatch is over, an event from inside a shadow root has no target left.
+      const form = event.target;
       setTimeout(() => {
         if (event.defaultPrevented) return;
-        for (const one of resettable) one.r(event.target);
+        for (const one of resettable) one.r(form);
       }, 0);
     },
     true,

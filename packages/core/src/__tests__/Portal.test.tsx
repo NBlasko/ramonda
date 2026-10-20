@@ -755,6 +755,32 @@ describe("Portal follows a reactive target", () => {
     expect(renders).toBe(0);
   });
 
+  /** A block in another document — an iframe — waits in a fragment of that document, not of this one. */
+  test("a block closed in an iframe stays in the iframe's document", async () => {
+    const frame = document.createElement("iframe");
+    document.body.appendChild(frame);
+    const inside = frame.contentDocument!.body;
+    class Page extends Component {
+      @state open = true;
+      portal = this.use(Portal, (self: Page) => ({
+        children: <b id="framed">framed</b>,
+        target: (self.open ? inside : undefined) as Element,
+      }));
+      render() {
+        return <div>page</div>;
+      }
+    }
+    const { instance, settle } = await getDOM<Page>(<Page />);
+    try {
+      const node = inside.querySelector("#framed")!;
+      instance.open = false;
+      await settle();
+      expect(node.ownerDocument).toBe(frame.contentDocument);
+    } finally {
+      frame.remove();
+    }
+  });
+
   /** A block whose target is absent from the start is not built off the page: nothing is created yet. */
   test("a target absent at mount builds nothing until it arrives", async () => {
     let made = 0;

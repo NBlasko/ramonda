@@ -143,6 +143,8 @@ class App extends Component<{ text: string; size: string; rows: { text: string }
         <div {...bind}>
           <TextArea value={value} aria-label="spread on a wrapper" />
         </div>
+        {/* ✓ an editor that writes the model on beforeinput */}
+        <TextArea value={value} onbeforeinput={this.type} aria-label="beforeinput editor" />
         {/* ✓ a handler around it */}
         <fieldset oninput={this.type}>
           <TextArea value={value} aria-label="heard above" />

@@ -123,6 +123,8 @@ export class Portal extends Hook<PortalProps> {
 
   /** Where the block waits while it has no target — see `leave`. */
   private waiting: DocumentFragment | undefined;
+  /** The document the block was last placed in — where it waits, so its nodes never change document. */
+  private home: Document | undefined;
 
   /** How this portal closes and opens with the ones around it and inside it — see `Nesting`. */
   private readonly nesting = new Nesting(() => this.reconcile());
@@ -249,6 +251,7 @@ export class Portal extends Hook<PortalProps> {
   private reconcile(): void {
     const target = this.nesting.suspended ? undefined : this.element;
     if (target) {
+      this.home = target.ownerDocument;
       // The children are reconciled while this still counts as closed, and only then is it opened
       // with the portals inside. A portal whose owner the reconcile removes is gone before it would
       // have built what it gained while closed, and one the reconcile builds starts closed and opens
@@ -287,7 +290,13 @@ export class Portal extends Hook<PortalProps> {
    * component does — one rule, rather than a paused state to know about.
    */
   private leave(): void {
-    if (this.area?.placed) this.area.park((this.waiting ??= document.createDocumentFragment()) as unknown as ChildNode);
+    if (this.area?.placed) {
+      // A fragment of the block's own document: one of this document would adopt every node of a
+      // block that lives in an iframe, and adopt them back when it opens.
+      const home = this.home ?? document;
+      if (this.waiting?.ownerDocument !== home) this.waiting = home.createDocumentFragment();
+      this.area.park(this.waiting as unknown as ChildNode);
+    }
     this.nesting.close();
   }
 }

@@ -3,7 +3,7 @@ import { positionOf } from "../syntax";
 import { coreElementTag } from "./coreElements";
 import { contextFor, openingOf, writtenAsNothing } from "./element";
 import { eventTypeOf } from "./events";
-import { unwrap } from "./follow-value";
+import { follow, unwrap, type Looking } from "./follow-value";
 import { rowsWalkedBy } from "./row-callback";
 import { enclosingElement } from "./html";
 import type { ElementContext, ElementRule, JsxElementLike, WrittenAttribute } from "./rule";
@@ -21,31 +21,32 @@ export interface FieldTheUserCannotChangeIssue {
   column: number;
 }
 
-/**
- * Whether a `value` is a literal — a string, a number (`-1` included), a plain template, or a `const`
- * holding one — read from nothing the page can move.
- */
+/** A value read down to a literal — a string, a number (`-1` included), a plain template — and no further. */
+const LITERAL: Looking<true> = {
+  leaf: (expression) => {
+    if (ts.isStringLiteral(expression) || ts.isNumericLiteral(expression)) return true;
+    if (ts.isNoSubstitutionTemplateLiteral(expression)) return true;
+    const negative =
+      ts.isPrefixUnaryExpression(expression) &&
+      expression.operator === ts.SyntaxKind.MinusToken &&
+      ts.isNumericLiteral(unwrap(expression.operand));
+    return negative ? true : undefined;
+  },
+  throughModuleScope: true,
+  // One arm says nothing about the other, and a call or a `let` may hand back something else.
+  throughBranches: false,
+  throughCalls: false,
+  throughMutableBindings: false,
+  throughMemoizedCalls: false,
+};
+
+/** Whether a `value` is a literal, or a `const` holding one — read from nothing the page can move. */
 function writtenAsItself(value: WrittenAttribute, resolve: ElementContext["resolve"]): boolean {
-  return value.value !== undefined && isLiteral(value.value, resolve, 0);
+  return value.value !== undefined && follow(value.value, resolve, LITERAL) !== undefined;
 }
 
-function isLiteral(expression: ts.Expression, resolve: ElementContext["resolve"], hops: number): boolean {
-  const written = unwrap(expression);
-  if (ts.isStringLiteral(written) || ts.isNumericLiteral(written) || ts.isNoSubstitutionTemplateLiteral(written)) {
-    return true;
-  }
-  if (ts.isPrefixUnaryExpression(written) && written.operator === ts.SyntaxKind.MinusToken) {
-    return ts.isNumericLiteral(unwrap(written.operand));
-  }
-  if (!ts.isIdentifier(written) || hops >= HOPS) return false;
-  const declaration = resolve(written)?.declarations?.[0];
-  if (declaration === undefined || !ts.isVariableDeclaration(declaration) || declaration.initializer === undefined) {
-    return false;
-  }
-  // A `const` only: a `let` may be assigned again, which is a way to move it.
-  if (!(ts.getCombinedNodeFlags(declaration) & ts.NodeFlags.Const)) return false;
-  return isLiteral(declaration.initializer, resolve, hops + 1);
-}
+/** Events a handler may take the input on and write the model itself, without `input` or `change`. */
+const MAY_MOVE_THE_MODEL: readonly string[] = ["beforeinput", "keydown", "paste", "drop", "cut"];
 
 /** The events an element has a handler for, in any spelling. */
 function eventsOf(attributes: readonly WrittenAttribute[]): Set<string | undefined> {
@@ -269,6 +270,9 @@ export const fieldTheUserCannotChange = {
     if (tag === "textarea" && writtenAsItself(value, resolve)) return [{ component, kind: "literal", ...at }];
     if (heardAbove(element, moving, resolve) || fromProps(value, resolve)) return [];
     const events = eventsOf(attributes);
+    // A handler that may write the model itself — an editor that takes `beforeinput`, a key, a paste or
+    // a drop and cancels it — is a maybe, and a maybe is never reported.
+    if (MAY_MOVE_THE_MODEL.some((event) => events.has(event))) return [];
     if (!events.has("input") && !events.has("change")) return [{ component, kind: "no-handler", ...at }];
     if (tag === "textarea" && !events.has("input")) return [{ component, kind: "held-between-keystrokes", ...at }];
     return [];

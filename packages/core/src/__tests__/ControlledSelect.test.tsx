@@ -1,7 +1,7 @@
 import { describe, test, expect, vi, beforeEach } from "vitest";
 import { getDOM } from "../test/setup";
-import { state } from "../base/decorators";
-import { Component, Select, createRef } from "../index";
+import { created, state } from "../base/decorators";
+import { Component, Select, bootstrap, createRef } from "../index";
 import { renderToString } from "../hydration/ssr";
 import { hydrateRoot } from "../hydration/hydrate";
 
@@ -452,6 +452,117 @@ describe("a controlled select shows what the model says", () => {
     await app.settle();
 
     expect(select.value).toBe("s");
+  });
+
+  /**
+   * A controlled select shows the model after a form's reset too: the reset sends no `input` or
+   * `change`, and goes back to whatever option carries the `selected` attribute.
+   */
+  test("a controlled select shows the model after a form's reset", async () => {
+    class Sized extends Component {
+      @state size = "m";
+      pick(event: Event) {
+        this.size = (event.target as HTMLSelectElement).value;
+      }
+      render() {
+        return (
+          <form>
+            <Select id="s" name="size" value={this.size} onchange={this.pick}>
+              {["s", "m", "l"].map((v) => (
+                <option key={v} value={v}>
+                  {v}
+                </option>
+              ))}
+            </Select>
+          </form>
+        );
+      }
+    }
+    const app = await getDOM<Sized>(<Sized />);
+    await app.settle();
+    const select = app.container.querySelector("#s") as HTMLSelectElement;
+    await pickAsABrowserDoes(select, "l");
+    await app.settle();
+    (select.form as HTMLFormElement).reset();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await app.settle();
+
+    expect({ shown: select.value, model: app.instance.size }).toEqual({ shown: "l", model: "l" });
+  });
+
+  /** A form inside a shadow root is heard too: a `reset` does not leave the shadow root it happens in. */
+  test("a reset inside a shadow root forgets the pick", async () => {
+    let page: Sized | undefined;
+    class Sized extends Component {
+      @state saved = "m";
+      @created
+      known() {
+        page = this;
+      }
+      render() {
+        return (
+          <form>
+            <Select id="s" name="size" defaultValue={this.saved}>
+              {["s", "m", "l"].map((v) => (
+                <option key={v} value={v}>
+                  {v}
+                </option>
+              ))}
+            </Select>
+          </form>
+        );
+      }
+    }
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const mount = document.createElement("div");
+    host.attachShadow({ mode: "open" }).appendChild(mount);
+    try {
+      bootstrap(<Sized />, mount);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      const select = mount.querySelector("#s") as HTMLSelectElement;
+      await pickAsABrowserDoes(select, "l");
+      (select.form as HTMLFormElement).reset();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      page!.saved = "s";
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(select.value).toBe("s");
+    } finally {
+      host.remove();
+    }
+  });
+
+  /**
+   * A new `defaultValue` that names no option yet takes the old default off: a reset must not go back
+   * to a choice the model no longer says. The new one is written once its option arrives.
+   */
+  test("a default with no option yet clears the old one", async () => {
+    class Saved extends Component {
+      @state saved = "a";
+      @state options = ["a", "b"];
+      render() {
+        return (
+          <Select id="s" defaultValue={this.saved}>
+            {this.options.map((v) => (
+              <option key={v} value={v}>
+                {v}
+              </option>
+            ))}
+          </Select>
+        );
+      }
+    }
+    const app = await getDOM<Saved>(<Saved />);
+    await app.settle();
+    const select = app.container.querySelector("#s") as HTMLSelectElement;
+    app.instance.saved = "z";
+    await app.settle();
+    const marked = Array.from(select.options, (o) => o.hasAttribute("selected"));
+    app.instance.options = ["a", "b", "z"];
+    await app.settle();
+
+    expect({ marked, shown: select.value }).toEqual({ marked: [false, false], shown: "z" });
   });
 
   /** A reset the form's own handler cancels resets nothing: the pick stays the user's. */
