@@ -38,8 +38,8 @@ the pick leaves the pick showing and is where a reset returns, as a `TextArea`'s
 reset, which the select hears, a later one is shown; a pick that happens to equal the default is still
 the user's. A `TextArea` written from the model keeps the caret across a rewrite of the same length, as
 an `<input>` does, and a render that leaves its value as it is leaves the user's selection alone. A
-reset the form's own handler cancels resets nothing; a `Select` with a `value` shows the model again
-after a reset, which sends no event of its own; a form in a shadow root is heard as well; and a
-`defaultValue` that names no option yet takes the old default off. It is written as the
+reset the form's own handler cancels resets nothing; a `Select` with a `value` marks the model's
+option `selected`, so a reset lands on the model at once; a form in a shadow root or an iframe is
+heard as well; and a `defaultValue` that names no option yet takes the old default off. It is written as the
 option's `selected` attribute, so a form's reset returns to it. A `value` of `null` is no value. The app's handler is called as a
 listener is, with the element as `this`.

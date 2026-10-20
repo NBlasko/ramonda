@@ -45,9 +45,6 @@ function writtenAsItself(value: WrittenAttribute, resolve: ElementContext["resol
   return value.value !== undefined && follow(value.value, resolve, LITERAL) !== undefined;
 }
 
-/** Events a handler may take the input on and write the model itself, without `input` or `change`. */
-const MAY_MOVE_THE_MODEL: readonly string[] = ["beforeinput", "keydown", "paste", "drop", "cut"];
-
 /** The events an element has a handler for, in any spelling. */
 function eventsOf(attributes: readonly WrittenAttribute[]): Set<string | undefined> {
   return new Set(attributes.map((attribute) => eventTypeOf(attribute.name)?.type));
@@ -202,7 +199,8 @@ function parameterFromOutside(
  * a rule that cannot see it would report every bound field; a field that is `disabled` as written
  * (`truth`: bare, `{true}`, `"true"`, or a name holding it), or a `TextArea` that is `readonly`, which
  * takes no input to undo — `readonly` does nothing to a `<select>`, so a `Select` is still reported;
- * a field with a handler around it, `<form oninput>`, which core waits for before it settles — on a
+ * a field with an `onbeforeinput` — an editor that cancels each keystroke and writes the model itself —
+ * on it or around it; a field with a handler around it, `<form oninput>`, which core waits for before it settles — on a
  * component too, which may hand it to a form inside it — or with a spread on a `form` or `fieldset`
  * around it, which may carry one; and a field whose `value` comes from `props` or a parameter, whose
  * handler may sit in the caller's render.
@@ -259,7 +257,11 @@ export const fieldTheUserCannotChange = {
     const at = positionOf(opening);
     if (said("defaultValue") !== undefined) return [{ component, kind: "both", ...at }];
 
-    const moving: readonly string[] = tag === "textarea" ? ["input"] : ["input", "change"];
+    // `beforeinput` comes before every keystroke, paste and drop: an editor that takes it, cancels it
+    // and writes the model itself — a mask — moves the value as `input` does. A key or a paste handler
+    // alone does not: Enter-to-send or a shortcut leaves every other keystroke undone.
+    const moving: readonly string[] =
+      tag === "textarea" ? ["input", "beforeinput"] : ["input", "change", "beforeinput"];
     // `readonly` does nothing to a select, which still opens and picks; only `disabled` stops it.
     if ((tag === "select" ? ["disabled"] : ["readonly", "readOnly", "disabled"]).some((name) => truth(name) === true)) {
       return [];
@@ -270,11 +272,9 @@ export const fieldTheUserCannotChange = {
     if (tag === "textarea" && writtenAsItself(value, resolve)) return [{ component, kind: "literal", ...at }];
     if (heardAbove(element, moving, resolve) || fromProps(value, resolve)) return [];
     const events = eventsOf(attributes);
-    // A handler that may write the model itself — an editor that takes `beforeinput`, a key, a paste or
-    // a drop and cancels it — is a maybe, and a maybe is never reported.
-    if (MAY_MOVE_THE_MODEL.some((event) => events.has(event))) return [];
-    if (!events.has("input") && !events.has("change")) return [{ component, kind: "no-handler", ...at }];
-    if (tag === "textarea" && !events.has("input")) return [{ component, kind: "held-between-keystrokes", ...at }];
+    const keystrokes = events.has("input") || events.has("beforeinput");
+    if (!keystrokes && !events.has("change")) return [{ component, kind: "no-handler", ...at }];
+    if (tag === "textarea" && !keystrokes) return [{ component, kind: "held-between-keystrokes", ...at }];
     return [];
   },
 } as const satisfies ElementRule<FieldTheUserCannotChangeIssue>;

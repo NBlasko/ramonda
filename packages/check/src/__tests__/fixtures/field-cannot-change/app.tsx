@@ -101,6 +101,8 @@ class App extends Component<{ text: string; size: string; rows: { text: string }
         <TextArea value={value} aria-label="held text" />
         {/* ✗ held-between-keystrokes */}
         <TextArea value={value} onchange={this.type} aria-label="saved on blur" />
+        {/* ✗ held-between-keystrokes: Enter-to-send writes nothing on the other keys */}
+        <TextArea value={value} onchange={this.type} onkeydown={this.type} aria-label="chat box" />
         {/* ✗ both */}
         <TextArea value={value} defaultValue="x" oninput={this.type} aria-label="both" />
 
@@ -143,8 +145,11 @@ class App extends Component<{ text: string; size: string; rows: { text: string }
         <div {...bind}>
           <TextArea value={value} aria-label="spread on a wrapper" />
         </div>
-        {/* ✓ an editor that writes the model on beforeinput */}
+        {/* ✓ an editor that writes the model on beforeinput, on the field or around it */}
         <TextArea value={value} onbeforeinput={this.type} aria-label="beforeinput editor" />
+        <div onbeforeinput={this.type}>
+          <TextArea value={value} aria-label="beforeinput around" />
+        </div>
         {/* ✓ a handler around it */}
         <fieldset oninput={this.type}>
           <TextArea value={value} aria-label="heard above" />

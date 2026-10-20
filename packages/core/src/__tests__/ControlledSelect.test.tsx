@@ -1,7 +1,7 @@
 import { describe, test, expect, vi, beforeEach } from "vitest";
 import { getDOM } from "../test/setup";
 import { created, state } from "../base/decorators";
-import { Component, Select, bootstrap, createRef } from "../index";
+import { Component, Portal, Select, bootstrap, createRef } from "../index";
 import { renderToString } from "../hydration/ssr";
 import { hydrateRoot } from "../hydration/hydrate";
 
@@ -484,10 +484,10 @@ describe("a controlled select shows what the model says", () => {
     await pickAsABrowserDoes(select, "l");
     await app.settle();
     (select.form as HTMLFormElement).reset();
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    await app.settle();
+    // At once, in the same task: what the form reads right after a reset is the model.
+    const read = new FormData(select.form as HTMLFormElement).get("size");
 
-    expect({ shown: select.value, model: app.instance.size }).toEqual({ shown: "l", model: "l" });
+    expect({ shown: select.value, read, model: app.instance.size }).toEqual({ shown: "l", read: "l", model: "l" });
   });
 
   /** A form inside a shadow root is heard too: a `reset` does not leave the shadow root it happens in. */
@@ -563,6 +563,103 @@ describe("a controlled select shows what the model says", () => {
     await app.settle();
 
     expect({ marked, shown: select.value }).toEqual({ marked: [false, false], shown: "z" });
+  });
+
+  /** A form in an iframe is heard too: its document is another window's, which `instanceof` cannot see. */
+  test("a reset inside an iframe forgets the pick", async () => {
+    let page: Sized | undefined;
+    class Sized extends Component {
+      @state saved = "m";
+      @created
+      known() {
+        page = this;
+      }
+      render() {
+        return (
+          <form>
+            <Select id="s" name="size" defaultValue={this.saved}>
+              {["s", "m", "l"].map((v) => (
+                <option key={v} value={v}>
+                  {v}
+                </option>
+              ))}
+            </Select>
+          </form>
+        );
+      }
+    }
+    const frame = document.createElement("iframe");
+    document.body.appendChild(frame);
+    const mount = frame.contentDocument!.createElement("div");
+    frame.contentDocument!.body.appendChild(mount);
+    try {
+      bootstrap(<Sized />, mount);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      const select = mount.querySelector("#s") as HTMLSelectElement;
+      await pickAsABrowserDoes(select, "l");
+      (select.form as HTMLFormElement).reset();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      page!.saved = "s";
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(select.value).toBe("s");
+    } finally {
+      frame.remove();
+    }
+  });
+
+  /** A select a portal moves into a shadow root's form, with no render of its own, hears that reset. */
+  test("a select moved into a shadow root forgets the pick on its form's reset", async () => {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const outside = document.createElement("form");
+    document.body.appendChild(outside);
+    const inside = document.createElement("form");
+    host.attachShadow({ mode: "open" }).appendChild(inside);
+    let page: Moved | undefined;
+    class Moved extends Component {
+      @state saved = "m";
+      @state shadowed = false;
+      @created
+      known() {
+        page = this;
+      }
+      portal = this.use(Portal, (self: Moved) => ({
+        children: (
+          <Select id="s" defaultValue={self.saved}>
+            {["s", "m", "l"].map((v) => (
+              <option key={v} value={v}>
+                {v}
+              </option>
+            ))}
+          </Select>
+        ),
+        target: (self.shadowed ? inside : outside) as Element,
+      }));
+      render() {
+        return <div>page</div>;
+      }
+    }
+    const mount = document.createElement("div");
+    document.body.appendChild(mount);
+    try {
+      bootstrap(<Moved />, mount);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      page!.shadowed = true;
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      const select = inside.querySelector("#s") as HTMLSelectElement;
+      await pickAsABrowserDoes(select, "l");
+      inside.reset();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      page!.saved = "s";
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(select.value).toBe("s");
+    } finally {
+      host.remove();
+      outside.remove();
+      mount.remove();
+    }
   });
 
   /** A reset the form's own handler cancels resets nothing: the pick stays the user's. */

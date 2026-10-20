@@ -169,6 +169,11 @@ export class ChildrenRegion {
     return this.close !== undefined && !this.disposed;
   }
 
+  /** The document the block's nodes belong to — built or adopted from a server render alike. */
+  get ownerDocument(): Document | undefined {
+    return this.close?.ownerDocument;
+  }
+
   /**
    * Moves the block, the same nodes, into `parent` to WAIT there — a fragment off the page — until the
    * next `reconcile` brings it back. While it waits nothing in it is rebuilt, not even a list row whose
