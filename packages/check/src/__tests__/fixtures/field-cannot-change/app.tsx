@@ -101,6 +101,14 @@ class App extends Component<{ text: string; size: string; rows: { text: string }
         <TextArea value={value} aria-label="held text" />
         {/* ✗ held-between-keystrokes */}
         <TextArea value={value} onchange={this.type} aria-label="saved on blur" />
+        {/* ✓ a keydown mask, with no other handler */}
+        <TextArea value={value} onkeydown={this.type} aria-label="keydown mask" />
+        {/* ✗ no-handler: a select fires no beforeinput, on it or around it */}
+        <form onbeforeinput={this.type}>
+          <Select value={value} aria-label="select under beforeinput">
+            <option value="a">a</option>
+          </Select>
+        </form>
         {/* ✗ held-between-keystrokes: Enter-to-send writes nothing on the other keys */}
         <TextArea value={value} onchange={this.type} onkeydown={this.type} aria-label="chat box" />
         {/* ✗ both */}

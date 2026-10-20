@@ -45,6 +45,9 @@ function writtenAsItself(value: WrittenAttribute, resolve: ElementContext["resol
   return value.value !== undefined && follow(value.value, resolve, LITERAL) !== undefined;
 }
 
+/** The events a handler may take the input on and write the model itself, without `input` or `change`. */
+const MAY_WRITE_THE_MODEL: readonly string[] = ["keydown", "paste", "drop", "cut"];
+
 /** The events an element has a handler for, in any spelling. */
 function eventsOf(attributes: readonly WrittenAttribute[]): Set<string | undefined> {
   return new Set(attributes.map((attribute) => eventTypeOf(attribute.name)?.type));
@@ -199,8 +202,9 @@ function parameterFromOutside(
  * a rule that cannot see it would report every bound field; a field that is `disabled` as written
  * (`truth`: bare, `{true}`, `"true"`, or a name holding it), or a `TextArea` that is `readonly`, which
  * takes no input to undo — `readonly` does nothing to a `<select>`, so a `Select` is still reported;
- * a field with an `onbeforeinput` — an editor that cancels each keystroke and writes the model itself —
- * on it or around it; a field with a handler around it, `<form oninput>`, which core waits for before it settles — on a
+ * a `TextArea` with an `onbeforeinput` — an editor that cancels each keystroke and writes the model
+ * itself — on it or around it; a field whose only handlers take a key, a paste, a drop or a cut, which
+ * may write the model there; a field with a handler around it, `<form oninput>`, which core waits for before it settles — on a
  * component too, which may hand it to a form inside it — or with a spread on a `form` or `fieldset`
  * around it, which may carry one; and a field whose `value` comes from `props` or a parameter, whose
  * handler may sit in the caller's render.
@@ -257,11 +261,10 @@ export const fieldTheUserCannotChange = {
     const at = positionOf(opening);
     if (said("defaultValue") !== undefined) return [{ component, kind: "both", ...at }];
 
-    // `beforeinput` comes before every keystroke, paste and drop: an editor that takes it, cancels it
-    // and writes the model itself — a mask — moves the value as `input` does. A key or a paste handler
-    // alone does not: Enter-to-send or a shortcut leaves every other keystroke undone.
-    const moving: readonly string[] =
-      tag === "textarea" ? ["input", "beforeinput"] : ["input", "change", "beforeinput"];
+    // `beforeinput` comes before every keystroke, paste and drop in a TextArea: an editor that takes it,
+    // cancels it and writes the model itself — a mask — moves the value as `input` does. A `<select>`
+    // never fires it.
+    const moving: readonly string[] = tag === "textarea" ? ["input", "beforeinput"] : ["input", "change"];
     // `readonly` does nothing to a select, which still opens and picks; only `disabled` stops it.
     if ((tag === "select" ? ["disabled"] : ["readonly", "readOnly", "disabled"]).some((name) => truth(name) === true)) {
       return [];
@@ -272,8 +275,12 @@ export const fieldTheUserCannotChange = {
     if (tag === "textarea" && writtenAsItself(value, resolve)) return [{ component, kind: "literal", ...at }];
     if (heardAbove(element, moving, resolve) || fromProps(value, resolve)) return [];
     const events = eventsOf(attributes);
-    const keystrokes = events.has("input") || events.has("beforeinput");
-    if (!keystrokes && !events.has("change")) return [{ component, kind: "no-handler", ...at }];
+    const keystrokes = events.has("input") || (tag === "textarea" && events.has("beforeinput"));
+    // A field with no handler of its own but one on a key, a paste, a drop or a cut may be an editor
+    // that writes the model there — a maybe, never reported. Beside an `onchange` it is not: the field
+    // waits for `change`, and Enter-to-send leaves every other keystroke undone.
+    const mayWrite = MAY_WRITE_THE_MODEL.some((event) => events.has(event));
+    if (!keystrokes && !events.has("change")) return mayWrite ? [] : [{ component, kind: "no-handler", ...at }];
     if (tag === "textarea" && !keystrokes) return [{ component, kind: "held-between-keystrokes", ...at }];
     return [];
   },

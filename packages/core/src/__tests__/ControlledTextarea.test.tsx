@@ -349,7 +349,7 @@ describe("a controlled textarea follows the model after the event the app handle
   const typed = async (field: HTMLTextAreaElement, text: string, events: string[]) => {
     field.value = text;
     for (const type of events) field.dispatchEvent(new Event(type, { bubbles: true }));
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await answered();
   };
 
   test.each([
@@ -455,7 +455,7 @@ describe("a controlled textarea follows the model after the event the app handle
   /** Until every settle set so far has run — the one a composition's end sets takes two turns. */
   async function drain(app: { settle(): Promise<void> }) {
     for (let turn = 0; turn < 3; turn++) {
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await answered();
       await app.settle();
     }
   }
@@ -979,7 +979,7 @@ describe("a controlled textarea follows the model after the event the app handle
 
     field.value = "ax";
     field.dispatchEvent(new InputEvent("input", { bubbles: true }));
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await answered();
     await app.settle();
 
     expect(field.value).toBe("a");
@@ -1007,7 +1007,7 @@ describe("a controlled textarea follows the model after the event the app handle
     field.dispatchEvent(new InputEvent("input", { bubbles: true }));
     field.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
     field.value = "axk";
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await answered();
     await app.settle();
 
     expect(field.value).toBe("axk");
@@ -1037,7 +1037,7 @@ describe("a controlled textarea follows the model after the event the app handle
     field.dispatchEvent(new InputEvent("input", { bubbles: true, isComposing: true }));
     field.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "か" }));
     field.dispatchEvent(new Event("change", { bubbles: true }));
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await answered();
     await app.settle();
 
     expect({ field: field.value, model: app.instance.text }).toEqual({ field: "aか", model: "aか" });
@@ -1172,3 +1172,8 @@ describe("a controlled textarea follows the model after the event the app handle
     }
   });
 });
+
+/** The answer to an event comes in the next frame, before it is drawn: wait for that frame, and a task after it. */
+function answered(): Promise<void> {
+  return new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
+}

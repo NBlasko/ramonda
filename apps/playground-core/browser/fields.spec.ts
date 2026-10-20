@@ -12,6 +12,9 @@ import { expect, test } from "@playwright/test";
  * - **A form's reset.** It returns a select to the option whose `selected` ATTRIBUTE is set, which is
  *   where `Select` writes its `defaultValue`. jsdom was measured to move a choice where browsers do
  *   not, so this is asked of a browser.
+ * - **What is drawn.** A refused pick is put back before the frame it would be drawn in. Chromium
+ *   draws a frame between an event and a timer, so an answer a task later was measured to show the
+ *   refused pick in 100 tries of 100; jsdom draws nothing, so this is asked of a browser.
  */
 test.describe("fields only a browser settles", () => {
   test.beforeEach(async ({ page }) => {
@@ -60,5 +63,58 @@ test.describe("fields only a browser settles", () => {
     await expect(size).toHaveValue("l");
     await page.locator("#reset").click();
     await expect(size).toHaveValue("m");
+  });
+
+  /**
+   * What each frame shows, read just before it is drawn: a `ResizeObserver` runs after every
+   * animation-frame callback of the frame, so it sees what the answer left. A probe resized every
+   * frame makes it run on each.
+   */
+  async function watchFrames(page: import("@playwright/test").Page, selector: string) {
+    await page.evaluate((selector) => {
+      const field = document.querySelector(selector) as HTMLSelectElement | HTMLTextAreaElement;
+      const probe = document.body.appendChild(document.createElement("div"));
+      probe.style.cssText = "width:1px;height:1px";
+      const w = window as unknown as { drawn: string[] };
+      w.drawn = [];
+      new ResizeObserver(() => w.drawn.push(field.value)).observe(probe);
+      const tick = () => {
+        probe.style.width = probe.style.width === "1px" ? "2px" : "1px";
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    }, selector);
+  }
+
+  const drawn = (page: import("@playwright/test").Page) =>
+    page.evaluate(() => (window as unknown as { drawn: string[] }).drawn);
+
+  test("a refused pick is read by the form and never drawn", async ({ page }) => {
+    await watchFrames(page, "#refused-size");
+    await page.locator("#refused-size").focus();
+    // From m, ArrowDown is l — refused every time, so the select is back on m for the next one.
+    for (let i = 0; i < 20; i++) {
+      await page.keyboard.press("ArrowDown");
+      await page.waitForTimeout(40);
+    }
+    await expect(page.locator("#refused-read")).toHaveText("l");
+    await expect(page.locator("#refused-size")).toHaveValue("m");
+    const frames = await drawn(page);
+    expect(frames.length).toBeGreaterThan(20);
+    expect(frames).not.toContain("l");
+  });
+
+  test("a refused keystroke is never drawn", async ({ page }) => {
+    await watchFrames(page, "#refused-text");
+    await page.locator("#refused-text").click();
+    await page.keyboard.press("End");
+    for (let i = 0; i < 20; i++) {
+      await page.keyboard.type("d");
+      await page.waitForTimeout(40);
+    }
+    await expect(page.locator("#refused-text")).toHaveValue("abc");
+    const frames = await drawn(page);
+    expect(frames.length).toBeGreaterThan(20);
+    expect(frames.filter((value) => value.length > 3)).toEqual([]);
   });
 });

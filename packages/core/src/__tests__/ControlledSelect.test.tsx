@@ -313,7 +313,7 @@ describe("a controlled select shows what the model says", () => {
     select.dispatchEvent(new Event("input", { bubbles: true }));
     await app.settle();
     select.dispatchEvent(new Event("change", { bubbles: true }));
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await answered();
     await app.settle();
 
     expect({ read, shown: select.value, model: app.instance.size }).toEqual({ read: "l", shown: "l", model: "l" });
@@ -358,7 +358,7 @@ describe("a controlled select shows what the model says", () => {
     select.dispatchEvent(new Event("input", { bubbles: true }));
     await app.settle();
     select.dispatchEvent(new Event("change", { bubbles: true }));
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await answered();
     await app.settle();
 
     expect(read).toEqual(["a", "b"]);
@@ -447,7 +447,7 @@ describe("a controlled select shows what the model says", () => {
     await pickAsABrowserDoes(select, "l");
     (select.form as HTMLFormElement).reset();
     // The default arrives later — a load — after the reset's event is over.
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await answered();
     app.instance.saved = "s";
     await app.settle();
 
@@ -519,13 +519,13 @@ describe("a controlled select shows what the model says", () => {
     host.attachShadow({ mode: "open" }).appendChild(mount);
     try {
       bootstrap(<Sized />, mount);
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await answered();
       const select = mount.querySelector("#s") as HTMLSelectElement;
       await pickAsABrowserDoes(select, "l");
       (select.form as HTMLFormElement).reset();
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await answered();
       page!.saved = "s";
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await answered();
 
       expect(select.value).toBe("s");
     } finally {
@@ -594,13 +594,13 @@ describe("a controlled select shows what the model says", () => {
     frame.contentDocument!.body.appendChild(mount);
     try {
       bootstrap(<Sized />, mount);
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await answered();
       const select = mount.querySelector("#s") as HTMLSelectElement;
       await pickAsABrowserDoes(select, "l");
       (select.form as HTMLFormElement).reset();
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await answered();
       page!.saved = "s";
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await answered();
 
       expect(select.value).toBe("s");
     } finally {
@@ -644,15 +644,15 @@ describe("a controlled select shows what the model says", () => {
     document.body.appendChild(mount);
     try {
       bootstrap(<Moved />, mount);
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await answered();
       page!.shadowed = true;
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await answered();
       const select = inside.querySelector("#s") as HTMLSelectElement;
       await pickAsABrowserDoes(select, "l");
       inside.reset();
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await answered();
       page!.saved = "s";
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await answered();
 
       expect(select.value).toBe("s");
     } finally {
@@ -685,7 +685,7 @@ describe("a controlled select shows what the model says", () => {
     const select = app.container.querySelector("#s") as HTMLSelectElement;
     await pickAsABrowserDoes(select, "l");
     (select.form as HTMLFormElement).reset();
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await answered();
     app.instance.saved = "s";
     await app.settle();
 
@@ -744,7 +744,7 @@ describe("a controlled select shows what the model says", () => {
     select.selectedIndex = 0;
     select.dispatchEvent(new Event("input", { bubbles: true }));
     select.dispatchEvent(new Event("change", { bubbles: true }));
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await answered();
     app.instance.saved = "b";
     await app.settle();
 
@@ -1179,5 +1179,10 @@ async function pickAsABrowserDoes(select: HTMLSelectElement, value: string): Pro
   select.value = value;
   select.dispatchEvent(new Event("input", { bubbles: true }));
   select.dispatchEvent(new Event("change", { bubbles: true }));
-  await new Promise((resolve) => setTimeout(resolve, 0));
+  await answered();
+}
+
+/** The answer to an event comes in the next frame, before it is drawn: wait for that frame, and a task after it. */
+function answered(): Promise<void> {
+  return new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
 }

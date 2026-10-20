@@ -108,6 +108,50 @@ class Between extends Component {
   }
 }
 
+/**
+ * A pick or a keystroke the handler refuses is put back before the browser draws it: the form reads
+ * what the user did, and the screen never shows it. `l` is not in stock, and the text holds three
+ * characters at most.
+ */
+class Refused extends Component {
+  @state size = "m";
+  @state text = "abc";
+  @state read = "";
+
+  pick(event: Event) {
+    const target = event.target as HTMLElement;
+    if (target.id !== "refused-size") return;
+    const wanted = (target as HTMLSelectElement).value;
+    this.read = wanted;
+    if (wanted !== "l") this.size = wanted;
+  }
+
+  type(event: Event) {
+    const typed = (event.target as HTMLTextAreaElement).value;
+    if (typed.length <= 3) this.text = typed;
+  }
+
+  render() {
+    return (
+      <section style={box}>
+        <h3 style={{ margin: "0 0 0.25rem" }}>4 — a refused pick is never drawn</h3>
+        <p style={hint}>Pick l, or type a fourth character: neither shows, even for a frame.</p>
+        <form onchange={this.pick}>
+          <Select id="refused-size" aria-label="Size" value={this.size}>
+            <option value="s">s</option>
+            <option value="m">m</option>
+            <option value="l">l</option>
+          </Select>
+          <TextArea id="refused-text" aria-label="Three at most" value={this.text} oninput={this.type} />
+        </form>
+        <output id="refused-read" style={readout}>
+          {this.read}
+        </output>
+      </section>
+    );
+  }
+}
+
 /** Fields whose behaviour only a browser settles — see `browser/fields.spec.ts`. */
 export class FieldsPage extends Component {
   render() {
@@ -118,6 +162,7 @@ export class FieldsPage extends Component {
         <Composed id="takes" title="2 — a handler that takes every input" skipsComposing={false} />
         <Sized />
         <Between />
+        <Refused />
       </div>
     );
   }

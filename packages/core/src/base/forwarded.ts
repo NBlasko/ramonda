@@ -150,7 +150,7 @@ function sameModel(a: unknown, b: unknown): boolean {
  *   the listeners of one event, so a render can land in the middle — the field's handler changing other
  *   state is enough — and writing the old value then undid a pick before `onchange` read it, or a
  *   keystroke before `<form oninput>` took it. The settle after the event writes. A model the handler
- *   HAS moved is written at once: an upper-casing handler shows `A` with its render, not a task later.
+ *   HAS moved is written at once: an upper-casing handler shows `A` with its render, not a frame later.
  */
 // biome-ignore lint/suspicious/noExplicitAny: any component, whatever its props
 export function settlesLater(component: Component<any>): boolean {
@@ -224,9 +224,12 @@ function lacksTheWord(component: Component<any>, state: FieldState): boolean {
  *
  * **After the whole event, not inside it.** A select fires `input` and then `change` for one pick, and
  * every listener on the way up — `<form oninput>` around the field — has to read what the user did; so
- * the settle is set for the next task, after dispatch has finished, and once however many events that
- * task carried. Answering inside the event put the old value back before `change` was read, and before
- * an ancestor saw the input — measured by typing in Chromium.
+ * the settle is set for the next animation frame — after dispatch has finished, and BEFORE that frame
+ * is drawn — once however many events the task carried. Answering inside the event put the old value
+ * back before `change` was read, and before an ancestor saw the input — measured by typing in
+ * Chromium. A task later was too late: Chromium draws a frame between an event and the next task, so
+ * a refused pick showed for a frame in 100 tries of 100 (Firefox: 8 of 100), and a frame shows it in
+ * none — see `fields.spec.ts`.
  *
  * **Not in the middle of a composition.** An input method builds a character over several `input`
  * events, and putting the old value back between them cancels it. A settle set by an input just
@@ -283,7 +286,7 @@ export function answer(component: Component<any> & { settle(): void }, event: Ev
     }
     if (event.type !== "compositionstart" && !(event as InputEvent).isComposing && !state.queued) {
       state.queued = true;
-      setTimeout(() => {
+      requestAnimationFrame(() => {
         state.queued = false;
         // Asked again when it runs: a composition may have started since this was set. One whose
         // field was blurred, with no `compositionend` by now, is over: it ends here, and the field
@@ -302,7 +305,7 @@ export function answer(component: Component<any> & { settle(): void }, event: Ev
           return;
         }
         component.settle();
-      }, 0);
+      });
     }
   }
 }
