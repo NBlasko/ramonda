@@ -10,6 +10,12 @@ one that does not — or no handler at all — puts the model's value back. Befo
 showing the user's input until the page rendered again for another reason: a `Select` was put right
 by its parent's next render, which handed it new children every time, and a `TextArea` never was.
 
+A `transform(next, prev, input)` on the field decides an edit before any handler reads it: what it
+returns is in the field at once, so the handler, a form around the field and every other listener
+read the same value, and a refused keystroke or pick is never drawn. `prev` refuses the edit and puts
+the caret back where it was; `input` gives the edit's `inputType` and the caret, for a mask. During an
+input method's composition the word is decided once it ends.
+
 With `defaultValue`, the field shows it first and then belongs to the user — for a form whose fields
 are read when it is sent. A `TextArea`'s text follows `defaultValue` until the user edits it, so one
 that arrives from a load fills a field nobody has typed in; on a served page the field shows it before

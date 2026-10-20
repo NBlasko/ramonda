@@ -2,7 +2,7 @@ import { Component } from "./Component";
 import { createRef } from "./Ref";
 import { destroyed, mounted, updated } from "./decorators";
 import { __h } from "../vdom/h";
-import { answer, controlled, forwarded, given, heard, settlesLater } from "./forwarded";
+import { answer, controlled, forwarded, given, heard, settlesLater, type TransformInput } from "./forwarded";
 import type { RamondaNode, RenderEnv } from "../types/vdom";
 import type { RefTarget } from "./Ref";
 
@@ -50,6 +50,15 @@ export interface SelectProps {
    * sent rather than held in state. Not with `value`.
    */
   defaultValue?: string | number | readonly (string | number)[];
+  /**
+   * What a pick leaves in the select, decided before any handler reads it: `next` is the pick, `prev`
+   * what the model holds, and what comes back is what the select shows — `prev` refuses the pick, so
+   * an option that is out of stock is never even drawn. The chosen values for a `multiple` select. A
+   * pure function: see `transformAtSource` in `forwarded.ts`.
+   */
+  transform?:
+    | ((next: string, prev: string, input: TransformInput) => string)
+    | ((next: string[], prev: string[], input: TransformInput) => string[]);
   children?: RamondaNode;
   className?: string;
   key?: string | number;
@@ -225,7 +234,7 @@ export class Select extends Component<SelectProps> {
     return __h(
       "select",
       {
-        ...forwarded(this, ["value", "defaultValue", "children", "ref", ...field.replaced]),
+        ...forwarded(this, ["value", "defaultValue", "transform", "children", "ref", ...field.replaced]),
         ...field.listeners,
         ref: this.e,
       },
