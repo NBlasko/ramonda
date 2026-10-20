@@ -349,7 +349,7 @@ describe("a controlled textarea follows the model after the event the app handle
   const typed = async (field: HTMLTextAreaElement, text: string, events: string[]) => {
     field.value = text;
     for (const type of events) field.dispatchEvent(new Event(type, { bubbles: true }));
-    await answered();
+    await new Promise((resolve) => setTimeout(resolve, 0));
   };
 
   test.each([
@@ -455,7 +455,7 @@ describe("a controlled textarea follows the model after the event the app handle
   /** Until every settle set so far has run — the one a composition's end sets takes two turns. */
   async function drain(app: { settle(): Promise<void> }) {
     for (let turn = 0; turn < 3; turn++) {
-      await answered();
+      await new Promise((resolve) => setTimeout(resolve, 0));
       await app.settle();
     }
   }
@@ -547,44 +547,6 @@ describe("a controlled textarea follows the model after the event the app handle
   });
 
   /**
-   * Two keystrokes in one task, before the first one's settle has run — fast typing — and a render in
-   * the middle of the second, before the form around has taken it: the second keystroke is kept.
-   */
-  test("a render in the middle of the next keystroke keeps it", async () => {
-    class Formed extends Component {
-      @state text = "";
-      @state typed = 0;
-      render() {
-        return (
-          <form
-            oninput={(event: Event) =>
-              (this.text = (event.currentTarget as HTMLFormElement).querySelector("textarea")!.value)
-            }
-          >
-            <TextArea id="t" value={this.text} oninput={() => this.typed++} />
-          </form>
-        );
-      }
-    }
-    const app = await getDOM<Formed>(<Formed />);
-    await app.settle();
-    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
-    const form = app.container.querySelector("form") as HTMLFormElement;
-
-    field.value = "a";
-    field.dispatchEvent(new InputEvent("input", { bubbles: true }));
-    await app.settle();
-    // The second keystroke reaches the field's own listener, a render lands, then the form's.
-    field.value = "ab";
-    field.dispatchEvent(new InputEvent("input", { bubbles: false }));
-    await app.settle();
-    form.dispatchEvent(new InputEvent("input", { bubbles: true }));
-    await drain(app);
-
-    expect({ field: field.value, model: app.instance.text }).toEqual({ field: "ab", model: "ab" });
-  });
-
-  /**
    * A handler that rewrites in place — upper case — keeps the caret where the user put it, as an
    * `<input>` does: a rewrite of the same length leaves every offset meaning what it meant.
    */
@@ -665,11 +627,11 @@ describe("a controlled textarea follows the model after the event the app handle
   });
 
   /**
-   * A composition that loses its field — a blur, and no `compositionend` after it — is over: the
-   * field shows the model again by itself, and after it is focused again it follows the model as any
-   * field does.
+   * A composition that loses its field — a blur, and no `compositionend` after it — holds the field as
+   * it is: nothing writes it in case the word is still being committed. The next ordinary edit ends the
+   * composition, and the field follows the model as any field does.
    */
-  test("a composition lost to a blur ends, and the field follows the model again", async () => {
+  test("a composition lost to a blur holds the field until the next edit, which follows the model", async () => {
     class Lost extends Component {
       @state text = "a";
       keep(event: InputEvent) {
@@ -697,7 +659,7 @@ describe("a controlled textarea follows the model after the event the app handle
     field.dispatchEvent(new InputEvent("input", { bubbles: true }));
     await drain(app);
 
-    expect({ afterBlur, afterTyping: field.value }).toEqual({ afterBlur: "a", afterTyping: "a" });
+    expect({ afterBlur, afterTyping: field.value }).toEqual({ afterBlur: "aか", afterTyping: "a" });
   });
 
   /**
@@ -979,7 +941,7 @@ describe("a controlled textarea follows the model after the event the app handle
 
     field.value = "ax";
     field.dispatchEvent(new InputEvent("input", { bubbles: true }));
-    await answered();
+    await new Promise((resolve) => setTimeout(resolve, 0));
     await app.settle();
 
     expect(field.value).toBe("a");
@@ -1007,7 +969,7 @@ describe("a controlled textarea follows the model after the event the app handle
     field.dispatchEvent(new InputEvent("input", { bubbles: true }));
     field.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
     field.value = "axk";
-    await answered();
+    await new Promise((resolve) => setTimeout(resolve, 0));
     await app.settle();
 
     expect(field.value).toBe("axk");
@@ -1037,7 +999,7 @@ describe("a controlled textarea follows the model after the event the app handle
     field.dispatchEvent(new InputEvent("input", { bubbles: true, isComposing: true }));
     field.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "か" }));
     field.dispatchEvent(new Event("change", { bubbles: true }));
-    await answered();
+    await new Promise((resolve) => setTimeout(resolve, 0));
     await app.settle();
 
     expect({ field: field.value, model: app.instance.text }).toEqual({ field: "aか", model: "aか" });
@@ -1089,7 +1051,8 @@ describe("a controlled textarea follows the model after the event the app handle
     }
   });
 
-  test("a listener on an ancestor reads what the user typed", async () => {
+  /** The field's own handler has answered before a listener around it runs: that listener reads what the field keeps. */
+  test("a listener on an ancestor reads what the field keeps", async () => {
     let seen = "";
     class Wrapped extends Component {
       @state text = "a";
@@ -1113,12 +1076,16 @@ describe("a controlled textarea follows the model after the event the app handle
     await typed(field, "typed", ["input"]);
     await app.settle();
 
-    expect(seen).toBe("typed");
+    expect(seen).toBe("a");
     expect(field.value).toBe("a");
   });
 
-  /** The model moved by a handler on an element around the field: the field keeps what was typed. */
-  test("a handler on an ancestor that moves the model keeps the input", async () => {
+  /**
+   * A field with no handler of its own shows its model, whatever a handler around it does: the field is
+   * answered first, so the form reads the model's value back, and the field cannot be typed in — as in
+   * React, which warns about the same markup.
+   */
+  test("a field with no handler of its own shows its model, though a form around it writes it", async () => {
     class Form extends Component {
       @state text = "a";
       sync(event: Event) {
@@ -1138,8 +1105,7 @@ describe("a controlled textarea follows the model after the event the app handle
     await typed(field, "typed", ["input"]);
     await app.settle();
 
-    expect(field.value).toBe("typed");
-    expect(app.instance.text).toBe("typed");
+    expect({ field: field.value, model: app.instance.text }).toEqual({ field: "a", model: "a" });
   });
 
   test("a handler that throws still has the model's value put back", async () => {
@@ -1172,8 +1138,3 @@ describe("a controlled textarea follows the model after the event the app handle
     }
   });
 });
-
-/** The answer to an event comes in the next frame, before it is drawn: wait for that frame, and a task after it. */
-function answered(): Promise<void> {
-  return new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
-}

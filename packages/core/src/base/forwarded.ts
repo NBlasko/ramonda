@@ -1,5 +1,6 @@
 import type { Component } from "./Component";
 import { COMPONENT_RUNTIME } from "../core/runtime";
+import { drainSync } from "../core/Task";
 import { decideEdit } from "../core/transform";
 import type { ComponentChild, RamondaNode } from "../types/vdom";
 
@@ -97,30 +98,35 @@ function transformAtSource(component: Component<any>, event: Event): void {
   decideEdit(field, transform as Parameters<typeof decideEdit>[1], prev, event);
 }
 
-/** The app's own handler for this event, called as a listener would be: a function, or `handleEvent`. */
+/** The app's own handler for `type` on the field, called as a listener would be: a function, or `handleEvent`. */
 // biome-ignore lint/suspicious/noExplicitAny: any component, whatever its props
-export function heard(component: Component<any>, event: Event): void {
-  const theirs = component[COMPONENT_RUNTIME].rawProps[`on${event.type}`];
+function callOwn(component: Component<any>, type: string, event: Event): void {
+  const theirs = component[COMPONENT_RUNTIME].rawProps[`on${type}`];
   if (typeof theirs === "function") theirs.call(event.currentTarget, event);
   else if (typeof (theirs as EventListenerObject | null)?.handleEvent === "function") {
     (theirs as EventListenerObject).handleEvent(event);
   }
 }
 
-/** What one controlled field is in the middle of: an event, a composition, or both. */
+/** The app's own handler for this event — see `callOwn`. */
+// biome-ignore lint/suspicious/noExplicitAny: any component, whatever its props
+export function heard(component: Component<any>, event: Event): void {
+  callOwn(component, event.type, event);
+}
+
+/** What one controlled field is in the middle of: a composition, or a pick. */
 interface FieldState {
   /** An input method is composing in the field right now. */
   composing: boolean;
   /** The field lost the focus in the middle of the composition — see "A composition lost" on `answer`. */
-  blurredComposing: boolean;
+  blurred: boolean;
   /** What the model held when the composition began, and whether it has left it since. */
   composedFrom?: unknown;
   composedMoved: boolean;
-  /** A settle is set for after the events being dispatched, and what the model held when the last began. */
-  queued: boolean;
-  eventFrom?: unknown;
-  /** A composition that ended with no ordinary `input` after it yet: the element, and its word. */
-  unfinished?: { field: EventTarget; word: string };
+  /** The word the field's handler was handed when its composition ended — see "When it ends" on `answer`. */
+  handedOver?: string;
+  /** A select's pick was answered on its `input`, so its `change` has nothing left to do. */
+  picked: boolean;
 }
 
 /** Every controlled field's state, one record each, so no two pieces of it can disagree. */
@@ -130,7 +136,7 @@ const fields = new WeakMap<object, FieldState>();
 function stateOf(component: Component<any>): FieldState {
   let state = fields.get(component);
   if (state === undefined) {
-    fields.set(component, (state = { composing: false, blurredComposing: false, composedMoved: false, queued: false }));
+    fields.set(component, (state = { composing: false, blurred: false, composedMoved: false, picked: false }));
   }
   return state;
 }
@@ -141,7 +147,7 @@ const modelOf = (component: Component<any>): unknown => component[COMPONENT_RUNT
 /**
  * Whether the model says the same as before. A `multiple` select's `value` is an array, and one
  * rebuilt each render (`value={[...this.picked]}`) is a new object with the same members — it has not
- * moved, and treating it as moved wrote the old selection back over a pick.
+ * moved.
  */
 function sameModel(a: unknown, b: unknown): boolean {
   if (Object.is(a, b)) return true;
@@ -153,23 +159,13 @@ function sameModel(a: unknown, b: unknown): boolean {
 }
 
 /**
- * Whether a field's own `settle` leaves the value alone for now, because something that is under way
- * settles it when it ends. Asked by the field when a render reaches it from `@updated`.
- *
- * - **A composition.** An autosave flipping `disabled` in the middle of a word, and writing the model
- *   then, cancels the word being typed. Its end settles the field.
- * - **An event, while the model stands where the event found it.** A browser drains microtasks between
- *   the listeners of one event, so a render can land in the middle — the field's handler changing other
- *   state is enough — and writing the old value then undid a pick before `onchange` read it, or a
- *   keystroke before `<form oninput>` took it. The settle after the event writes. A model the handler
- *   HAS moved is written at once: an upper-casing handler shows `A` with its render, not a frame later.
+ * Whether a field's own `settle` leaves the value alone for now: an input method is composing in it.
+ * An autosave flipping `disabled` in the middle of a word, and writing the model then, cancels the
+ * word being typed. Asked by the field when a render reaches it from `@updated`.
  */
 // biome-ignore lint/suspicious/noExplicitAny: any component, whatever its props
 export function settlesLater(component: Component<any>): boolean {
-  const state = fields.get(component);
-  if (state === undefined) return false;
-  if (state.composing) return true;
-  return state.queued && sameModel(modelOf(component), state.eventFrom);
+  return fields.get(component)?.composing === true;
 }
 
 /** Notes it when the model is somewhere else than where the composition found it. */
@@ -186,16 +182,24 @@ function noteMovement(component: Component<any>, state: FieldState): void {
  *
  * A handler that takes composing input moved the model — whether it kept the word, changed it
  * (full-width digits to half-width) or cleared the field — and is not called again. Only a model that
- * stands where it stood took nothing, which is the handler that skips composing input. The field is
- * not asked: a render during a composition does not write it (`settlesLater`), so it shows the word
- * whatever the model holds. A field whose component the composition's end destroyed — Enter closed
- * the dialog — is sent nothing; one merely OFF the page, in a parked portal, still takes the word.
+ * stands where it stood took nothing, which is the handler that skips composing input. A field whose
+ * component the composition's end destroyed — Enter closed the dialog — is handed nothing.
  */
 // biome-ignore lint/suspicious/noExplicitAny: any component, whatever its props
 function lacksTheWord(component: Component<any>, state: FieldState): boolean {
   if (component[COMPONENT_RUNTIME].isDestroyed) return false;
   noteMovement(component, state);
   return !state.composedMoved;
+}
+
+/**
+ * The renders the handler caused, run now, and then the field made to show the model — before any
+ * listener after this one reads it, and before the browser draws.
+ */
+// biome-ignore lint/suspicious/noExplicitAny: any component, whatever its props
+function show(component: Component<any> & { settle(): void }): void {
+  drainSync();
+  component.settle();
 }
 
 /*
@@ -219,109 +223,122 @@ function lacksTheWord(component: Component<any>, state: FieldState): boolean {
  *
  * 4. Type `nihon` again and, before Enter, press Tab to leave the field. Right: the word is kept, or
  *    the field shows the model — never an empty field. Wrong: an empty field, which means Safari sends
- *    `compositionend` LATER than the task after the blur, when "A composition lost" on `answer` has
- *    already ended the composition and put the model back.
+ *    `compositionend` after the blur and something wrote the field in between — see "A composition
+ *    lost" on `answer`.
  *
  * Delete this note once it is measured.
  */
 
 /**
- * The app's handler for this event, and then the model's word.
+ * The field's `transform`, its own handler, and then the model — all in the field's own listener.
  *
- * A field with a `value` shows what the model says. So after the page has changed it, the handler
- * the app wrote for this event runs — as a listener would, with the element as `this` — and then the
- * field is settled from whatever the model now holds: a handler that took the input leaves the field
- * as the user made it, and one that did not puts the model's value back. A field whose text is only
- * where it starts takes `defaultValue` instead, and is never put back.
+ * A field with a `value` shows what the model says, and its own handler is what writes the model.
+ * So, on every edit and in this order: the edit is decided (`transformAtSource`); the handler the app
+ * wrote on the field runs, as a listener would, with the element as `this`; the renders it caused
+ * run at once; and the field is made to show the model (`show`). All before any other listener — a
+ * form around the field, a library's own — reads the field, and before the browser draws. So every
+ * reader reads the same value, and a handler that did not write the model leaves the field showing
+ * the model, in the same event. A field with a `value` and no handler of its own shows its model
+ * whatever is typed, as in React.
  *
- * **After the whole event, not inside it.** A select fires `input` and then `change` for one pick, and
- * every listener on the way up — `<form oninput>` around the field — has to read what the user did; so
- * the settle is set for the next animation frame — after dispatch has finished, and BEFORE that frame
- * is drawn — once however many events the task carried. Answering inside the event put the old value
- * back before `change` was read, and before an ancestor saw the input — measured by typing in
- * Chromium. A task later was too late: Chromium draws a frame between an event and the next task, so
- * a refused pick showed for a frame in 100 tries of 100 (Firefox: 8 of 100), and a frame shows it in
- * none — see `fields.spec.ts`.
+ * **A pick is one edit.** A select sends `input` and then `change` for one pick, both at once. Both
+ * of the field's own handlers run on the `input`, so the model is the pick's before a render can land
+ * between the two — a form's `oninput` flipping a "Save" button is enough — and the `change` finds
+ * nothing left to do.
  *
  * **Not in the middle of a composition.** An input method builds a character over several `input`
- * events, and putting the old value back between them cancels it. A settle set by an input just
- * BEFORE a composition began is asked again when it runs, and skipped while one is under way.
- *
- * **A composition lost.** A field that loses the focus mid-word may get no `compositionend` at all.
- * The blur sets a settle; a browser that commits the word on blur sends its `compositionend` before
- * that runs, and the word is handled as any. If none has come by then, the composition is over, and
- * the field shows the model. Until then it is held, so a render between the blur and a late
- * `compositionend` does not write over the word being committed.
+ * events, and writing the field between them cancels it: they reach the field's handler, and the
+ * field is left alone until the word ends.
  *
  * **When it ends, every browser hands the word over the same way.** The usual handler skips composing
  * input, `if (event.isComposing) return;`, and takes the word from the ordinary `input` that follows.
  * Measured: Firefox sends one — `compositionend`, then `input` with `isComposing: false` and
- * `insertCompositionText`, in the same task. Chromium does not: its last `input` still says
- * `isComposing`, and nothing follows `compositionend`, so that handler never took the word and the
- * settle put the old text back. So a field whose composition ended with no ordinary `input` after it,
- * by the time the settle runs, is sent that `input` — the one Firefox sends — and settled after it.
- * Where the browser sends its own, nothing is sent twice, whichever order it uses; and it is sent only
- * while the model lacks the word (`lacksTheWord`).
+ * `insertCompositionText`. Chromium does not: its last `input` still says `isComposing`, and nothing
+ * follows `compositionend`. So at `compositionend`, while the model lacks the word (`lacksTheWord`),
+ * the field's own `oninput` is handed it at once, with that `compositionend`; and Firefox's `input`
+ * after it, carrying the same word, does not reach the handler a second time. Every other listener
+ * hears what the browser sent.
  *
- * **Only the value is written** — `settle`, not a render: nothing else about the field changed. A
- * field its handler removed has no element left, and `settle` finds nothing to write. A handler that
- * throws still has the value put back: the field must not keep what the model never took.
+ * **A composition lost.** A field that loses the focus mid-word may get no `compositionend` at all, or
+ * get it after the blur. The blur is noted and the composition goes on, so a render the blur causes —
+ * an `onblur` that moves the model — does not write over the word a browser is committing; its
+ * `compositionend` hands the word over as any. One that never comes leaves the field as it is until
+ * the next ordinary edit, which ends the composition and is answered as any edit.
  */
 // biome-ignore lint/suspicious/noExplicitAny: any component, whatever its props
-export function answer(component: Component<any> & { settle(): void }, event: Event): void {
+export function answer(component: Component<any> & { settle(): void }, event: Event, pick = false): void {
   const state = stateOf(component);
-  // The decision comes first, in the field's own listener: every listener after it reads what it left.
-  const ends = event.type === "compositionend";
-  const typed = (event.type === "input" || event.type === "change") && !(event as InputEvent).isComposing;
-  if (ends || (typed && !state.composing)) transformAtSource(component, event);
-  // Where the model stands as THIS event begins — every event, not only the first of a task: fast
-  // typing sends the next keystroke before the last one's settle has run — see `settlesLater`.
-  state.eventFrom = modelOf(component);
+  const field = event.currentTarget as HTMLTextAreaElement | HTMLSelectElement | null;
+
+  if (event.type === "compositionstart") {
+    state.composing = true;
+    state.blurred = false;
+    state.handedOver = undefined;
+    state.composedFrom = modelOf(component);
+    state.composedMoved = false;
+    heard(component, event);
+    return;
+  }
+  if (event.type === "blur") {
+    if (state.composing) state.blurred = true;
+    heard(component, event);
+    return;
+  }
+  if (event.type === "compositionend") {
+    state.composing = false;
+    state.blurred = false;
+    transformAtSource(component, event);
+    try {
+      heard(component, event);
+      // What the handler took during the composition has been rendered by now, so the model says it.
+      drainSync();
+      if (field !== null && lacksTheWord(component, state)) {
+        state.handedOver = field.value;
+        callOwn(component, "input", event);
+      }
+    } finally {
+      show(component);
+    }
+    return;
+  }
+
+  // A composition lost to a blur, with no `compositionend` since, is over once an ordinary edit arrives.
+  if (state.blurred && !(event as InputEvent).isComposing) {
+    state.composing = false;
+    state.blurred = false;
+  }
+  const composingInput = (event as InputEvent).isComposing || state.composing;
+  if (composingInput) {
+    try {
+      heard(component, event);
+    } finally {
+      // The render of this input lands before the next event, and tells whether the model moved.
+      drainSync();
+      noteMovement(component, state);
+    }
+    return;
+  }
+
+  // Firefox's `input` after a composition, with the word the handler was already handed.
+  const handed = state.handedOver;
+  state.handedOver = undefined;
+  if (event.type === "input" && handed !== undefined && field !== null && field.value === handed) {
+    return;
+  }
+
+  if (pick && event.type === "change" && state.picked) {
+    state.picked = false;
+    return;
+  }
+
+  transformAtSource(component, event);
   try {
     heard(component, event);
+    if (pick && event.type === "input") {
+      state.picked = true;
+      callOwn(component, "change", event);
+    }
   } finally {
-    if (event.type === "compositionstart") {
-      state.composing = true;
-      state.blurredComposing = false;
-      state.unfinished = undefined;
-      state.composedFrom = modelOf(component);
-      state.composedMoved = false;
-    } else if (event.type === "compositionend") {
-      noteMovement(component, state);
-      state.composing = false;
-      state.blurredComposing = false;
-      const field = event.currentTarget;
-      if (field !== null) state.unfinished = { field, word: (event as CompositionEvent).data ?? "" };
-    } else if (event.type === "blur") {
-      if (state.composing) state.blurredComposing = true;
-    } else if (event.type === "input" && !(event as InputEvent).isComposing) {
-      state.unfinished = undefined;
-    } else if (state.composing) {
-      // A composing input: the render of the one before it has landed by now, if it moved the model.
-      noteMovement(component, state);
-    }
-    if (event.type !== "compositionstart" && !(event as InputEvent).isComposing && !state.queued) {
-      state.queued = true;
-      requestAnimationFrame(() => {
-        state.queued = false;
-        // Asked again when it runs: a composition may have started since this was set. One whose
-        // field was blurred, with no `compositionend` by now, is over: it ends here, and the field
-        // shows the model again.
-        if (state.composing) {
-          if (!state.blurredComposing) return;
-          state.composing = false;
-          state.blurredComposing = false;
-        }
-        const ended = state.unfinished;
-        state.unfinished = undefined;
-        if (ended !== undefined && lacksTheWord(component, state)) {
-          // Its own answer sets the settle, after every listener has had the word.
-          const input = { bubbles: true, composed: true, inputType: "insertCompositionText", data: ended.word };
-          ended.field.dispatchEvent(new InputEvent("input", input));
-          return;
-        }
-        component.settle();
-      });
-    }
+    show(component);
   }
 }

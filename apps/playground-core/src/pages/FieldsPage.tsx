@@ -1,4 +1,4 @@
-import { Component, Select, TextArea, state } from "@ramonda/core";
+import { Component, Select, TextArea, state, type EventOn } from "@ramonda/core";
 
 const box = { margin: "0 0 1.5rem", padding: "0.75rem", border: "1px solid #ccc" };
 const hint = { margin: "0 0 0.5rem", fontSize: "0.9em", color: "#555" };
@@ -66,39 +66,42 @@ class Sized extends Component {
 
 /**
  * A browser drains microtasks between the listeners of one event, so a render can land in the
- * middle of it. Here the field's own handler changes other state, and the form around it is what
- * moves the model: the render between them must not write the old text back before the form reads
- * the keystroke. The select does the same between a pick's `input` and its `change`.
+ * middle of it. Here each field writes its own model, and the form around them flips other state on
+ * every `input` — a "Save" button coming on is the usual reason. The render that causes lands before
+ * the select's `change`: the pick is the model's already, so it is not written back over.
  */
 class Between extends Component {
   @state text = "";
-  @state typed = 0;
   @state size = "m";
   @state touched = false;
+
+  typed(event: EventOn<HTMLTextAreaElement>) {
+    this.text = event.currentTarget.value;
+  }
+
+  picked(event: EventOn<HTMLSelectElement>) {
+    this.size = event.currentTarget.value;
+  }
+
+  touch() {
+    this.touched = true;
+  }
 
   render() {
     return (
       <section style={box}>
         <h3 style={{ margin: "0 0 0.25rem" }}>3 — a render in the middle of an event</h3>
         <p style={hint}>Type into the field, and pick a size: both keep what you did.</p>
-        <form
-          oninput={(event: Event) => {
-            const target = event.target as HTMLElement;
-            if (target.id === "between-text") this.text = (target as HTMLTextAreaElement).value;
-            else this.touched = true;
-          }}
-        >
-          <TextArea id="between-text" aria-label="Typed" value={this.text} oninput={() => this.typed++} />
-          <Select
-            id="between-size"
-            aria-label="Size"
-            value={this.size}
-            onchange={(event: Event) => (this.size = (event.target as HTMLSelectElement).value)}
-          >
+        <form oninput={this.touch}>
+          <TextArea id="between-text" aria-label="Typed" value={this.text} oninput={this.typed} />
+          <Select id="between-size" aria-label="Size" value={this.size} onchange={this.picked}>
             <option value="s">s</option>
             <option value="m">m</option>
             <option value="l">l</option>
           </Select>
+          <button type="button" disabled={!this.touched}>
+            Save
+          </button>
         </form>
         <output id="between-model" style={readout}>
           {JSON.stringify({ text: this.text, size: this.size })}
@@ -109,26 +112,41 @@ class Between extends Component {
 }
 
 /**
- * A pick or a keystroke the handler refuses is put back before the browser draws it: the form reads
- * what the user did, and the screen never shows it. `l` is not in stock, and the text holds three
- * characters at most.
+ * A pick or a keystroke that is refused is never drawn, refused either way: by the field's
+ * `transform`, before any handler, or by the handler itself, which the field answers at once. `l` is
+ * not in stock, and the text holds three characters at most. The form reads what the field keeps.
  */
 class Refused extends Component {
   @state size = "m";
   @state text = "abc";
+  @state handled = "m";
   @state read = "";
 
-  pick(event: Event) {
-    const target = event.target as HTMLElement;
-    if (target.id !== "refused-size") return;
-    const wanted = (target as HTMLSelectElement).value;
-    this.read = wanted;
-    if (wanted !== "l") this.size = wanted;
+  inStock(next: string, prev: string): string {
+    return next === "l" ? prev : next;
   }
 
-  type(event: Event) {
-    const typed = (event.target as HTMLTextAreaElement).value;
-    if (typed.length <= 3) this.text = typed;
+  max3(next: string, prev: string): string {
+    return next.length <= 3 ? next : prev;
+  }
+
+  picked(event: EventOn<HTMLSelectElement>) {
+    this.size = event.currentTarget.value;
+  }
+
+  typed(event: EventOn<HTMLTextAreaElement>) {
+    this.text = event.currentTarget.value;
+  }
+
+  /** The handler refuses on its own: it leaves the model where it was. */
+  pickedByHand(event: EventOn<HTMLSelectElement>) {
+    const wanted = event.currentTarget.value;
+    if (wanted !== "l") this.handled = wanted;
+  }
+
+  heard(event: EventOn<HTMLFormElement>) {
+    const target = event.target as HTMLSelectElement;
+    if (target.id === "refused-size") this.read = target.value;
   }
 
   render() {
@@ -136,13 +154,29 @@ class Refused extends Component {
       <section style={box}>
         <h3 style={{ margin: "0 0 0.25rem" }}>4 — a refused pick is never drawn</h3>
         <p style={hint}>Pick l, or type a fourth character: neither shows, even for a frame.</p>
-        <form onchange={this.pick}>
-          <Select id="refused-size" aria-label="Size" value={this.size}>
+        <form onchange={this.heard}>
+          <Select id="refused-size" aria-label="Size" value={this.size} onchange={this.picked} transform={this.inStock}>
             <option value="s">s</option>
             <option value="m">m</option>
             <option value="l">l</option>
           </Select>
-          <TextArea id="refused-text" aria-label="Three at most" value={this.text} oninput={this.type} />
+          <TextArea
+            id="refused-text"
+            aria-label="Three at most"
+            value={this.text}
+            oninput={this.typed}
+            transform={this.max3}
+          />
+          <Select
+            id="refused-by-hand"
+            aria-label="Size, refused by the handler"
+            value={this.handled}
+            onchange={this.pickedByHand}
+          >
+            <option value="s">s</option>
+            <option value="m">m</option>
+            <option value="l">l</option>
+          </Select>
         </form>
         <output id="refused-read" style={readout}>
           {this.read}

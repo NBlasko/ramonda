@@ -1,8 +1,8 @@
 import { Component } from "./Component";
 import { createRef } from "./Ref";
-import { destroyed, mounted, updated } from "./decorators";
+import { mounted, updated } from "./decorators";
 import { __h } from "../vdom/h";
-import { answer, controlled, forwarded, given, heard, settlesLater } from "./forwarded";
+import { answer, controlled, forwarded, given, heard } from "./forwarded";
 import type { TransformInput } from "../types/commonTypes";
 import type { RamondaNode, RenderEnv } from "../types/vdom";
 import type { RefTarget } from "./Ref";
@@ -86,16 +86,6 @@ export class Select extends Component<SelectProps> {
    */
   private d = false;
 
-  /**
-   * `r` — a form was reset: if it is this select's, and no `value` holds the select, the pick is
-   * forgotten, so a later `defaultValue` is shown again, as a `TextArea`'s is. Asked of the form
-   * itself — what the select shows cannot tell a reset from a pick that happens to equal the default.
-   * See `resettable` for how it hears one.
-   */
-  r(form: EventTarget | null): void {
-    if (this.props.value == null && form !== null && this.e.current?.form === form) this.d = false;
-  }
-
   /** `h` — the caller's ref as of the last HAND-OVER, so a swapped one can be let go of. */
   private h: RefTarget<HTMLSelectElement> | undefined;
 
@@ -137,17 +127,11 @@ export class Select extends Component<SelectProps> {
     if (this.h !== this.props.ref) this.g(select);
 
     const onServer = env === "server";
-    // Told of a form's reset while one can matter to it: a `defaultValue` select the user may have
-    // picked in. One with a `value` needs nothing — its attribute is the model's — see `resettable`.
-    if (!onServer) {
-      if (this.props.value == null && this.props.defaultValue != null) hearResets(this, select);
-      else resettable.delete(this);
-    }
     const chosen = this.props.value;
     if (chosen == null) {
       const fallback = this.props.defaultValue;
       if (fallback != null) {
-        // Not settled — never picked, or picked and then reset (`r`): the default is what it shows.
+        // Never picked in: the default is what it shows.
         if (!this.d) this.start(select, fallback);
         // Settled for good — the user picked, or a value held it — and a later default still says
         // where a reset returns, as a TextArea's does. Writing the attribute moves the choice in a
@@ -157,23 +141,22 @@ export class Select extends Component<SelectProps> {
       return;
     }
     this.d = true;
-    // Not in the middle of a pick's event, while the model stands where it found it — see `settlesLater`.
-    if (!onServer && settlesLater(this)) return;
 
-    // The `selected` attribute follows the model on both sides — the server's only way to say the
-    // choice, and on the client what a form's reset goes back to: a reset lands on the model at once,
-    // with no event to wait for and nothing to listen to.
-    const wanted = wantedOf(chosen);
-    const options = select.options;
-    for (let i = 0; i < options.length; i++) markDefault(options[i], wanted.has(options[i].value));
-
-    // Then one write, and the browser works out which option it means. A `multiple` select has no
-    // single value to write, and the server cannot write a property at all, so both answer per option.
+    // One write, and the browser works out which option it means. A `multiple` select has no single
+    // value to write, and the server cannot write a property at all, so both answer per option.
     if (!onServer && !Array.isArray(chosen)) {
       select.value = String(chosen);
       return;
     }
-    for (let i = 0; i < options.length; i++) options[i].selected = wanted.has(options[i].value);
+    const wanted = wantedOf(chosen);
+    const options = select.options;
+    for (let i = 0; i < options.length; i++) {
+      const option = options[i];
+      const on = wanted.has(option.value);
+      option.selected = on;
+      // The served page's only way to say the choice: the attribute, before any script runs.
+      if (onServer) markDefault(option, on);
+    }
   }
 
   /**
@@ -201,23 +184,14 @@ export class Select extends Component<SelectProps> {
     return wrote;
   }
 
-  /** No longer told of resets. */
-  @destroyed
-  release(): void {
-    resettable.delete(this);
-  }
-
   /** The listener a controlled select answers its events with — see `answer` in `forwarded.ts`. */
   a(event: Event): void {
-    answer(this, event);
+    answer(this, event, true);
   }
 
   /** The listener a `defaultValue` select notes the user's pick with: from then on it is theirs. */
   p(event: Event): void {
     this.d = true;
-    // A reset matters only after a pick, and the select is in its root now — wherever a portal took
-    // it since it last settled.
-    if (event.currentTarget) listenForResets((event.currentTarget as Node).getRootNode());
     heard(this, event);
   }
 
@@ -266,45 +240,4 @@ function keepingTheChoice(select: HTMLSelectElement, write: () => boolean): void
   if (!write()) return;
   const options = select.options;
   for (let i = 0; i < options.length; i++) options[i].selected = chosen.has(options[i]);
-}
-
-/**
- * The selects a form's reset concerns: one with a `defaultValue`, which the user may have picked in —
- * a reset forgets the pick. One with a `value` is not among them: its `selected` attribute follows the
- * model, so a reset already lands there. One listener per root — the document, and a shadow root a
- * select sits in, since a `reset` does not leave one — in the capture phase, rather than one per
- * select on its form: a select a portal moves into another form hears that form's reset without a
- * render. The root is asked when the select settles and again when the user picks, since only a pick
- * gives a reset something to forget.
- *
- * The answer is asked once dispatch is over, a task later — a reset the form's own `onreset` cancels
- * with `preventDefault` resets nothing, and the capture listener runs before that handler does.
- */
-const resettable = new Set<Select>();
-const rootsHeard = new WeakSet<Node>();
-
-function hearResets(select: Select, element: HTMLSelectElement): void {
-  resettable.add(select);
-  listenForResets(element.ownerDocument);
-  listenForResets(element.getRootNode());
-}
-
-function listenForResets(root: Node): void {
-  // By `nodeType`, not `instanceof`: an iframe's document and a shadow root in it are another window's
-  // classes. 9 is a document; 11 with a `host` is a shadow root.
-  const isRoot = root.nodeType === 9 || (root.nodeType === 11 && (root as ShadowRoot).host !== undefined);
-  if (rootsHeard.has(root) || !isRoot) return;
-  rootsHeard.add(root);
-  root.addEventListener(
-    "reset",
-    (event) => {
-      // Read now: once dispatch is over, an event from inside a shadow root has no target left.
-      const form = event.target;
-      setTimeout(() => {
-        if (event.defaultPrevented) return;
-        for (const one of resettable) one.r(form);
-      }, 0);
-    },
-    true,
-  );
 }

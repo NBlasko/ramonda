@@ -12,9 +12,10 @@ import { expect, test } from "@playwright/test";
  * - **A form's reset.** It returns a select to the option whose `selected` ATTRIBUTE is set, which is
  *   where `Select` writes its `defaultValue`. jsdom was measured to move a choice where browsers do
  *   not, so this is asked of a browser.
- * - **What is drawn.** A refused pick is put back before the frame it would be drawn in. Chromium
- *   draws a frame between an event and a timer, so an answer a task later was measured to show the
- *   refused pick in 100 tries of 100; jsdom draws nothing, so this is asked of a browser.
+ * - **What is drawn.** A refused pick or keystroke is gone in the event that made it — by the field's
+ *   `transform`, or by its own handler, which the field answers at once. Chromium draws a frame
+ *   between an event and a timer, so an answer a task later was measured to show the refused pick in
+ *   100 tries of 100; jsdom draws nothing, so this is asked of a browser.
  */
 test.describe("fields only a browser settles", () => {
   test.beforeEach(async ({ page }) => {
@@ -45,8 +46,9 @@ test.describe("fields only a browser settles", () => {
   });
 
   /**
-   * A render between the listeners of one event — the field's handler changes other state, the form
-   * around it moves the model — does not write the old value back before the form has read it.
+   * A render between the listeners of one event — the form around the fields flips its "Save" button
+   * on every `input` — does not write an old value back: each field's model is its own handler's by
+   * then, the select's included, whose `change` comes after that render.
    */
   test("a render in the middle of an event keeps what the user did", async ({ page }) => {
     await page.locator("#between-text").pressSequentially("abc");
@@ -89,7 +91,7 @@ test.describe("fields only a browser settles", () => {
   const drawn = (page: import("@playwright/test").Page) =>
     page.evaluate(() => (window as unknown as { drawn: string[] }).drawn);
 
-  test("a refused pick is read by the form and never drawn", async ({ page }) => {
+  test("a refused pick is never drawn, and the form reads what the select keeps", async ({ page }) => {
     await watchFrames(page, "#refused-size");
     await page.locator("#refused-size").focus();
     // From m, ArrowDown is l — refused every time, so the select is back on m for the next one.
@@ -97,7 +99,7 @@ test.describe("fields only a browser settles", () => {
       await page.keyboard.press("ArrowDown");
       await page.waitForTimeout(40);
     }
-    await expect(page.locator("#refused-read")).toHaveText("l");
+    await expect(page.locator("#refused-read")).toHaveText("m");
     await expect(page.locator("#refused-size")).toHaveValue("m");
     const frames = await drawn(page);
     expect(frames.length).toBeGreaterThan(20);
@@ -116,5 +118,19 @@ test.describe("fields only a browser settles", () => {
     const frames = await drawn(page);
     expect(frames.length).toBeGreaterThan(20);
     expect(frames.filter((value) => value.length > 3)).toEqual([]);
+  });
+
+  /** A handler that refuses on its own is answered in the same event, so its refusal is never drawn either. */
+  test("a pick the handler refuses is never drawn", async ({ page }) => {
+    await watchFrames(page, "#refused-by-hand");
+    await page.locator("#refused-by-hand").focus();
+    for (let i = 0; i < 20; i++) {
+      await page.keyboard.press("ArrowDown");
+      await page.waitForTimeout(40);
+    }
+    await expect(page.locator("#refused-by-hand")).toHaveValue("m");
+    const frames = await drawn(page);
+    expect(frames.length).toBeGreaterThan(20);
+    expect(frames).not.toContain("l");
   });
 });

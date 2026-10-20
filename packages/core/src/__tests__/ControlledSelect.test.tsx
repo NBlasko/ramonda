@@ -1,7 +1,7 @@
 import { describe, test, expect, vi, beforeEach } from "vitest";
 import { getDOM } from "../test/setup";
-import { created, state } from "../base/decorators";
-import { Component, Portal, Select, bootstrap, createRef } from "../index";
+import { state } from "../base/decorators";
+import { Component, Select, createRef } from "../index";
 import { renderToString } from "../hydration/ssr";
 import { hydrateRoot } from "../hydration/hydrate";
 
@@ -313,7 +313,7 @@ describe("a controlled select shows what the model says", () => {
     select.dispatchEvent(new Event("input", { bubbles: true }));
     await app.settle();
     select.dispatchEvent(new Event("change", { bubbles: true }));
-    await answered();
+    await new Promise((resolve) => setTimeout(resolve, 0));
     await app.settle();
 
     expect({ read, shown: select.value, model: app.instance.size }).toEqual({ read: "l", shown: "l", model: "l" });
@@ -358,7 +358,7 @@ describe("a controlled select shows what the model says", () => {
     select.dispatchEvent(new Event("input", { bubbles: true }));
     await app.settle();
     select.dispatchEvent(new Event("change", { bubbles: true }));
-    await answered();
+    await new Promise((resolve) => setTimeout(resolve, 0));
     await app.settle();
 
     expect(read).toEqual(["a", "b"]);
@@ -423,116 +423,6 @@ describe("a controlled select shows what the model says", () => {
     expect({ shownAfterLoad, afterReset: select.value }).toEqual({ shownAfterLoad: "l", afterReset: "m" });
   });
 
-  /** After a reset the select shows its default again, so a later default reaches it — as a `TextArea`'s does. */
-  test("after a reset a later defaultValue is shown", async () => {
-    class Sized extends Component {
-      @state saved = "m";
-      render() {
-        return (
-          <form>
-            <Select id="s" name="size" defaultValue={this.saved}>
-              {["s", "m", "l"].map((v) => (
-                <option key={v} value={v}>
-                  {v}
-                </option>
-              ))}
-            </Select>
-          </form>
-        );
-      }
-    }
-    const app = await getDOM<Sized>(<Sized />);
-    await app.settle();
-    const select = app.container.querySelector("#s") as HTMLSelectElement;
-    await pickAsABrowserDoes(select, "l");
-    (select.form as HTMLFormElement).reset();
-    // The default arrives later — a load — after the reset's event is over.
-    await answered();
-    app.instance.saved = "s";
-    await app.settle();
-
-    expect(select.value).toBe("s");
-  });
-
-  /**
-   * A controlled select shows the model after a form's reset too: the reset sends no `input` or
-   * `change`, and goes back to whatever option carries the `selected` attribute.
-   */
-  test("a controlled select shows the model after a form's reset", async () => {
-    class Sized extends Component {
-      @state size = "m";
-      pick(event: Event) {
-        this.size = (event.target as HTMLSelectElement).value;
-      }
-      render() {
-        return (
-          <form>
-            <Select id="s" name="size" value={this.size} onchange={this.pick}>
-              {["s", "m", "l"].map((v) => (
-                <option key={v} value={v}>
-                  {v}
-                </option>
-              ))}
-            </Select>
-          </form>
-        );
-      }
-    }
-    const app = await getDOM<Sized>(<Sized />);
-    await app.settle();
-    const select = app.container.querySelector("#s") as HTMLSelectElement;
-    await pickAsABrowserDoes(select, "l");
-    await app.settle();
-    (select.form as HTMLFormElement).reset();
-    // At once, in the same task: what the form reads right after a reset is the model.
-    const read = new FormData(select.form as HTMLFormElement).get("size");
-
-    expect({ shown: select.value, read, model: app.instance.size }).toEqual({ shown: "l", read: "l", model: "l" });
-  });
-
-  /** A form inside a shadow root is heard too: a `reset` does not leave the shadow root it happens in. */
-  test("a reset inside a shadow root forgets the pick", async () => {
-    let page: Sized | undefined;
-    class Sized extends Component {
-      @state saved = "m";
-      @created
-      known() {
-        page = this;
-      }
-      render() {
-        return (
-          <form>
-            <Select id="s" name="size" defaultValue={this.saved}>
-              {["s", "m", "l"].map((v) => (
-                <option key={v} value={v}>
-                  {v}
-                </option>
-              ))}
-            </Select>
-          </form>
-        );
-      }
-    }
-    const host = document.createElement("div");
-    document.body.appendChild(host);
-    const mount = document.createElement("div");
-    host.attachShadow({ mode: "open" }).appendChild(mount);
-    try {
-      bootstrap(<Sized />, mount);
-      await answered();
-      const select = mount.querySelector("#s") as HTMLSelectElement;
-      await pickAsABrowserDoes(select, "l");
-      (select.form as HTMLFormElement).reset();
-      await answered();
-      page!.saved = "s";
-      await answered();
-
-      expect(select.value).toBe("s");
-    } finally {
-      host.remove();
-    }
-  });
-
   /**
    * A new `defaultValue` that names no option yet takes the old default off: a reset must not go back
    * to a choice the model no longer says. The new one is written once its option arrives.
@@ -565,103 +455,6 @@ describe("a controlled select shows what the model says", () => {
     expect({ marked, shown: select.value }).toEqual({ marked: [false, false], shown: "z" });
   });
 
-  /** A form in an iframe is heard too: its document is another window's, which `instanceof` cannot see. */
-  test("a reset inside an iframe forgets the pick", async () => {
-    let page: Sized | undefined;
-    class Sized extends Component {
-      @state saved = "m";
-      @created
-      known() {
-        page = this;
-      }
-      render() {
-        return (
-          <form>
-            <Select id="s" name="size" defaultValue={this.saved}>
-              {["s", "m", "l"].map((v) => (
-                <option key={v} value={v}>
-                  {v}
-                </option>
-              ))}
-            </Select>
-          </form>
-        );
-      }
-    }
-    const frame = document.createElement("iframe");
-    document.body.appendChild(frame);
-    const mount = frame.contentDocument!.createElement("div");
-    frame.contentDocument!.body.appendChild(mount);
-    try {
-      bootstrap(<Sized />, mount);
-      await answered();
-      const select = mount.querySelector("#s") as HTMLSelectElement;
-      await pickAsABrowserDoes(select, "l");
-      (select.form as HTMLFormElement).reset();
-      await answered();
-      page!.saved = "s";
-      await answered();
-
-      expect(select.value).toBe("s");
-    } finally {
-      frame.remove();
-    }
-  });
-
-  /** A select a portal moves into a shadow root's form, with no render of its own, hears that reset. */
-  test("a select moved into a shadow root forgets the pick on its form's reset", async () => {
-    const host = document.createElement("div");
-    document.body.appendChild(host);
-    const outside = document.createElement("form");
-    document.body.appendChild(outside);
-    const inside = document.createElement("form");
-    host.attachShadow({ mode: "open" }).appendChild(inside);
-    let page: Moved | undefined;
-    class Moved extends Component {
-      @state saved = "m";
-      @state shadowed = false;
-      @created
-      known() {
-        page = this;
-      }
-      portal = this.use(Portal, (self: Moved) => ({
-        children: (
-          <Select id="s" defaultValue={self.saved}>
-            {["s", "m", "l"].map((v) => (
-              <option key={v} value={v}>
-                {v}
-              </option>
-            ))}
-          </Select>
-        ),
-        target: (self.shadowed ? inside : outside) as Element,
-      }));
-      render() {
-        return <div>page</div>;
-      }
-    }
-    const mount = document.createElement("div");
-    document.body.appendChild(mount);
-    try {
-      bootstrap(<Moved />, mount);
-      await answered();
-      page!.shadowed = true;
-      await answered();
-      const select = inside.querySelector("#s") as HTMLSelectElement;
-      await pickAsABrowserDoes(select, "l");
-      inside.reset();
-      await answered();
-      page!.saved = "s";
-      await answered();
-
-      expect(select.value).toBe("s");
-    } finally {
-      host.remove();
-      outside.remove();
-      mount.remove();
-    }
-  });
-
   /** A reset the form's own handler cancels resets nothing: the pick stays the user's. */
   test("a cancelled reset keeps the pick", async () => {
     class Sized extends Component {
@@ -685,7 +478,7 @@ describe("a controlled select shows what the model says", () => {
     const select = app.container.querySelector("#s") as HTMLSelectElement;
     await pickAsABrowserDoes(select, "l");
     (select.form as HTMLFormElement).reset();
-    await answered();
+    await new Promise((resolve) => setTimeout(resolve, 0));
     app.instance.saved = "s";
     await app.settle();
 
@@ -744,7 +537,7 @@ describe("a controlled select shows what the model says", () => {
     select.selectedIndex = 0;
     select.dispatchEvent(new Event("input", { bubbles: true }));
     select.dispatchEvent(new Event("change", { bubbles: true }));
-    await answered();
+    await new Promise((resolve) => setTimeout(resolve, 0));
     app.instance.saved = "b";
     await app.settle();
 
@@ -1179,10 +972,5 @@ async function pickAsABrowserDoes(select: HTMLSelectElement, value: string): Pro
   select.value = value;
   select.dispatchEvent(new Event("input", { bubbles: true }));
   select.dispatchEvent(new Event("change", { bubbles: true }));
-  await answered();
-}
-
-/** The answer to an event comes in the next frame, before it is drawn: wait for that frame, and a task after it. */
-function answered(): Promise<void> {
-  return new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
+  await new Promise((resolve) => setTimeout(resolve, 0));
 }
