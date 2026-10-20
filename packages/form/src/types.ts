@@ -177,6 +177,11 @@ export type Bind<T> = [NonNullable<T>] extends [boolean]
  * ------------------------------------------------------------------ */
 
 export interface LeafApi<T> extends FieldApi<T> {
+  /**
+   * The attributes for this value's control, to spread onto it: its value and its own `oninput`.
+   *
+   * @ramondaFieldBinding — what `@ramonda/check` reads to know a spread carries the field's handler.
+   */
   readonly bind: Bind<T>;
 }
 

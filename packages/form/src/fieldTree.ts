@@ -246,6 +246,8 @@ export class FieldHandle {
    * attributes, and RMD020 compares those key by key. `name` is a string, `value` is a
    * string or number, and the two handlers are the same bound methods every time — so
    * nothing in here ever differs between two renders of unchanged state.
+   *
+   * @ramondaFieldBinding — the field's value and its own `oninput`; see `LeafApi.bind`.
    */
   get bind(): Record<string, unknown> {
     const value = this.host.read(this.at_);

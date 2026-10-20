@@ -1,21 +1,21 @@
 import ts from "typescript";
 import { positionOf } from "../syntax";
 import { coreElementTag } from "./coreElements";
-import { contextFor, openingOf, writtenAsNothing } from "./element";
-import { eventTypeOf } from "./events";
+import { openingOf, writtenAsNothing } from "./element";
 import { follow, unwrap, type Looking } from "./follow-value";
-import { rowsWalkedBy } from "./row-callback";
-import { enclosingElement } from "./html";
-import type { ElementContext, ElementRule, JsxElementLike, WrittenAttribute } from "./rule";
+import type { ElementContext, ElementRule, WrittenAttribute } from "./rule";
 
 export interface FieldTheUserCannotChangeIssue {
-  component: "Select" | "TextArea";
+  component: "Select" | "TextArea" | "input";
   /**
-   * `no-handler` — a `value` and nothing that could move it; `held-between-keystrokes` — a
-   * `TextArea` whose `value` moves only `onchange`, on blur; `both` — `value` beside `defaultValue`;
-   * `literal` — a `value` written as itself, `value=""`, which no handler can move.
+   * `no-handler` — a controlled field with no handler of its own that writes the model;
+   * `held-between-keystrokes` — a text field whose only handler is `onchange`, on blur;
+   * `both` — `value` beside `defaultValue`, or `checked` beside `defaultChecked`;
+   * `literal` — a text field's `value` written as itself, `value=""`, which no handler can move;
+   * `unknown-spread` — a spread on a controlled field that the source cannot say carries a handler;
+   * `handler-may-be-missing` — the field's handler is a prop declared optional, `oninput?:`.
    */
-  kind: "no-handler" | "held-between-keystrokes" | "both" | "literal";
+  kind: "no-handler" | "held-between-keystrokes" | "both" | "literal" | "unknown-spread" | "handler-may-be-missing";
   file: string;
   line: number;
   column: number;
@@ -45,169 +45,71 @@ function writtenAsItself(value: WrittenAttribute, resolve: ElementContext["resol
   return value.value !== undefined && follow(value.value, resolve, LITERAL) !== undefined;
 }
 
-/** The events a handler may take the input on and write the model itself, without `input` or `change`. */
-const MAY_WRITE_THE_MODEL: readonly string[] = ["keydown", "paste", "drop", "cut"];
-
-/** The events an element has a handler for, in any spelling. */
-function eventsOf(attributes: readonly WrittenAttribute[]): Set<string | undefined> {
-  return new Set(attributes.map((attribute) => eventTypeOf(attribute.name)?.type));
-}
-
 /**
- * Whether an element or a component around this one may hear an event that moves the model in time
- * — `<form oninput>`, `<FormShell oninput>`. For a `TextArea` only `input` does: an ancestor's
- * `change` comes on blur, after every keystroke has been undone.
+ * The tag that marks a declaration as a FIELD BINDING: an object made to be spread onto a control,
+ * which carries the control's value and its own `oninput`. `@ramonda/form` writes it on `$.bind`.
+ *
+ * A JSDoc tag, because this package asks the compiler where a name was declared and never what type
+ * anything is — and a tag is part of the declaration, kept in a published `.d.ts` as in the source.
  */
-function heardAbove(element: JsxElementLike, events: readonly string[], resolve: ElementContext["resolve"]): boolean {
-  for (let at = enclosingElement(element); at !== undefined; at = enclosingElement(at)) {
-    // A component's `oninput` is a prop it may hand to a `<form>` inside it, or not: a maybe, and a
-    // maybe is never reported. Its spread is not asked about — that question is for a form.
-    const around = contextFor(at, resolve);
-    // A spread on a form or a fieldset may carry the handler — `<form {...form.events}>` — and a maybe
-    // is never reported. One on any other wrapper, a `<div {...attrs}>`, says nothing about input.
-    if (around.spreads && (around.tag === "form" || around.tag === "fieldset")) return true;
-    const heard = eventsOf(around.attributes);
-    if (events.some((event) => heard.has(event))) return true;
-  }
-  return false;
+export const FIELD_BINDING_TAG = "ramondaFieldBinding";
+
+/** Whether a spread's expression is a declaration marked as a field binding — see `FIELD_BINDING_TAG`. */
+function isFieldBinding(expression: ts.Expression, resolve: ElementContext["resolve"]): boolean {
+  const written = unwrap(expression);
+  const name = ts.isPropertyAccessExpression(written) ? written.name : ts.isIdentifier(written) ? written : undefined;
+  if (name === undefined) return false;
+  return (resolve(name)?.declarations ?? []).some((declaration) =>
+    ts.getJSDocTags(declaration).some((tag) => tag.tagName.text === FIELD_BINDING_TAG),
+  );
 }
+
+/** Whether a handler is read off a declaration marked optional — `oninput?:` on a wrapper's props. */
+function declaredOptional(expression: ts.Expression | undefined, resolve: ElementContext["resolve"]): boolean {
+  if (expression === undefined) return false;
+  const written = unwrap(expression);
+  const name = ts.isPropertyAccessExpression(written) ? written.name : ts.isIdentifier(written) ? written : undefined;
+  if (name === undefined) return false;
+  return (resolve(name)?.declarations ?? []).some(
+    (declaration) =>
+      (ts.isPropertySignature(declaration) || ts.isPropertyDeclaration(declaration) || ts.isParameter(declaration)) &&
+      declaration.questionToken !== undefined,
+  );
+}
+
+/** `<input>` types whose `value` is not something the user edits: a label, a hidden value, a file list. */
+const NOT_EDITED = new Set(["hidden", "submit", "button", "reset", "image", "file"]);
 
 /**
- * Whether the `value` is handed in from outside — `this.props.text`, or `props.text` in a function. The
- * handler that moves it is then the parent's business, and may be an `oninput` on an element of the
- * parent's own render, which this rule, reading one component, cannot see.
+ * A controlled field the page can never change.
  *
- * Silence wherever a prop — or a PARAMETER, handed in by a caller just as a prop is (see
- * `parameterFromOutside` for a callback's) — REACHES the value, since a maybe is never reported: through a fallback or a
- * choice (`?? ""`, `|| ""`, either arm of a ternary), a call (`String(this.props.size)`), a template,
- * or a name taken from the props on the way — `const { text } = this.props`, or `const own =
- * this.props` and then `own.size`. A prop used only as a KEY, `drafts[this.props.id]`, is this
- * component's own model, and is still reported.
- */
-function fromProps(value: WrittenAttribute, resolve: ElementContext["resolve"]): boolean {
-  return value.value !== undefined && cameFromProps(value.value, resolve, 0, new Set());
-}
-
-/** How many names a value is followed through before the answer is "not known" — and silent. */
-const HOPS = 20;
-
-function cameFromProps(
-  at: ts.Expression,
-  resolve: ElementContext["resolve"],
-  hops: number,
-  seen: Set<ts.Node>,
-): boolean {
-  // Each expression is asked once: locals built from locals would otherwise branch on both sides
-  // at every level.
-  if (seen.has(at)) return false;
-  seen.add(at);
-  const next = (inner: ts.Expression) => cameFromProps(inner, resolve, hops, seen);
-
-  // Parentheses and the type-only wrappers say nothing about where a value comes from.
-  const written = unwrap(at);
-  if (written !== at) return next(written);
-  if (ts.isBinaryExpression(at)) return next(at.left) || next(at.right);
-  if (ts.isConditionalExpression(at)) return next(at.whenTrue) || next(at.whenFalse);
-  // A method of a prop's value — `this.props.text.trim()` — or a prop handed to a call.
-  if (ts.isCallExpression(at)) {
-    const callee = at.expression;
-    return (ts.isPropertyAccessExpression(callee) && next(callee.expression)) || at.arguments.some(next);
-  }
-  if (ts.isTemplateExpression(at)) return at.templateSpans.some((span) => next(span.expression));
-  // `[this.props.a, this.props.b].map(…)`: what a row is made of.
-  if (ts.isArrayLiteralExpression(at)) return at.elements.some(next);
-  if (ts.isPropertyAccessExpression(at) || ts.isElementAccessExpression(at)) {
-    if (
-      ts.isPropertyAccessExpression(at) &&
-      at.name.text === "props" &&
-      at.expression.kind === ts.SyntaxKind.ThisKeyword
-    ) {
-      return true;
-    }
-    // The object read from, not the key: `drafts[this.props.id]` is the component's own `drafts`.
-    return next(at.expression);
-  }
-  if (!ts.isIdentifier(at)) return false;
-  if (at.text === "props") return true;
-
-  // A name: where it was declared says where it came from.
-  let declaration: ts.Node | undefined = resolve(at)?.declarations?.[0];
-  // `const { text } = this.props`, at any depth of the pattern: up to the declaration it is taken from.
-  while (
-    declaration !== undefined &&
-    (ts.isBindingElement(declaration) ||
-      ts.isObjectBindingPattern(declaration) ||
-      ts.isArrayBindingPattern(declaration))
-  ) {
-    declaration = declaration.parent;
-  }
-  if (declaration !== undefined && ts.isParameter(declaration))
-    return parameterFromOutside(declaration, resolve, hops, seen);
-  if (declaration === undefined || !ts.isVariableDeclaration(declaration) || declaration.initializer === undefined) {
-    return false;
-  }
-  // Past the bound the answer is not known, and a maybe is never reported.
-  if (hops >= HOPS) return true;
-  return cameFromProps(declaration.initializer, resolve, hops + 1, seen);
-}
-
-/**
- * Whether a parameter's value comes from outside what this component holds.
+ * A field with a `value` — a `checked` on a checkbox or radio — shows what the model holds, and the
+ * handler ON the field is what writes the model: core answers every edit in the field's own listener,
+ * calls that handler, and makes the field show the model before anything else reads it. So a
+ * controlled field with no handler of its own cannot be changed at all, whatever is written around it
+ * — a form's `oninput` runs after the field has shown its model again.
  *
- * A parameter of a method or a function is handed in by whoever calls it — the same "outside" a prop
- * is, and as unknowable here. A parameter of a ROW callback is an item of what the call walks:
- * `this.rows.map((row) => …)` and `list(this.rows, (row) => …)` hand it rows of this component's own
- * model, which is where a field nobody can type in is most often written, so the walked value is
- * followed — `this.props.rows.map(…)` is still the parent's. A row call is one `rowsWalkedBy` names,
- * the set every row rule reads; any other call with a callback is unknown, and silent.
- */
-function parameterFromOutside(
-  parameter: ts.ParameterDeclaration,
-  resolve: ElementContext["resolve"],
-  hops: number,
-  seen: Set<ts.Node>,
-): boolean {
-  const fn = parameter.parent;
-  if (!(ts.isArrowFunction(fn) || ts.isFunctionExpression(fn))) return true;
-  const call = fn.parent;
-  if (!ts.isCallExpression(call) || !call.arguments.includes(fn)) return true;
-  const walked = rowsWalkedBy(call);
-  if (walked === undefined || walked === fn || hops >= HOPS) return true;
-  return cameFromProps(walked, resolve, hops + 1, seen);
-}
-
-/**
- * A `Select` or `TextArea` given a `value` the page can never change.
+ * What is reported, each provable from the source:
  *
- * A field with `value` is the MODEL's: after every input, once the event is over, core settles it
- * from `value` again — so a handler that does not move the model undoes the input, and a field with
- * no handler cannot be changed at all. That is what makes `value` mean one thing; it is also what
- * turns the habit of writing `value` for where a field STARTS into a field nobody can type in.
+ * - **No handler on the field** — no `oninput` (for a select, a checkbox or a radio, no `oninput` or
+ *   `onchange`), spelled so: the field's handler is the one core calls, and `on:input` is a listener
+ *   of its own.
+ * - **A text field with only `onchange`** — `change` comes on blur, so every keystroke before it is
+ *   undone.
+ * - **`value` beside `defaultValue`**, or `checked` beside `defaultChecked` — the first wins and the
+ *   second says nothing.
+ * - **A text field whose `value` is a literal** — `value=""`, `{-1}`, or a `const` holding one — which
+ *   no handler can move. A `Select`'s literal is a pattern, an action menu that goes back to its
+ *   placeholder once its handler acts, and is not reported.
+ * - **A spread on a controlled field** that the source cannot say carries a handler: what it holds is
+ *   not written down. A field binding is — `$.bind` from `@ramonda/form`, marked `@ramondaFieldBinding`.
+ * - **A handler that is an optional prop** — `oninput={this.props.oninput}` where the props declare
+ *   `oninput?:` — whose caller may leave it out.
  *
- * Four shapes, all provable from the source:
- *
- * - **`value` and no `oninput` / `onchange`** — nothing can move the model, so every input is undone.
- * - **A `TextArea` with `value` and only `onchange`** — `change` comes on blur, so every keystroke is
- *   undone before it: the user cannot type. A `Select` is not reported for this: its `change` comes
- *   with the pick itself.
- * - **`value` beside `defaultValue`** — `value` wins and `defaultValue` says nothing.
- * - **A `TextArea` whose `value` is a literal** — `value=""`, `{-1}`, or a `const` holding one — which
- *   no handler can move, wherever it is: nobody can type in it. A `Select`'s literal is a pattern, an
- *   action menu that goes back to its placeholder once its handler acts, and is not reported.
- *
- * The answer to the first two and the last is either a handler that moves the model, or
- * `defaultValue` for a field whose text is read when the form is sent.
- *
- * Not reported: an element with a spread — `{...bind}` from `@ramonda/form` carries the handler, and
- * a rule that cannot see it would report every bound field; a field that is `disabled` as written
- * (`truth`: bare, `{true}`, `"true"`, or a name holding it), or a `TextArea` that is `readonly`, which
- * takes no input to undo — `readonly` does nothing to a `<select>`, so a `Select` is still reported;
- * a `TextArea` with an `onbeforeinput` — an editor that cancels each keystroke and writes the model
- * itself — on it or around it; a field whose only handlers take a key, a paste, a drop or a cut, which
- * may write the model there; a field with a handler around it, `<form oninput>`, which core waits for before it settles — on a
- * component too, which may hand it to a form inside it — or with a spread on a `form` or `fieldset`
- * around it, which may carry one; and a field whose `value` comes from `props` or a parameter, whose
- * handler may sit in the caller's render.
+ * Not reported: a field that is `disabled` as written, or a text field that is `readonly`, which takes
+ * no input — `readonly` does nothing to a select, a checkbox or a radio; an `<input>` whose type is
+ * not edited (`hidden`, `submit`, `button`, `reset`, `image`, `file`); and a field whose `value` or
+ * `checked` is `null` or `undefined` as written, which is no model.
  */
 export const fieldTheUserCannotChange = {
   id: "field-the-user-cannot-change",
@@ -215,73 +117,89 @@ export const fieldTheUserCannotChange = {
   report: {
     severity: "error",
     reportedWhen:
-      "a `Select` or `TextArea` has a `value` that nothing moves — no handler, a `TextArea` with only " +
-      '`onchange`, or a `TextArea` value written as itself (`value=""`) — so every input is undone; or `value` sits ' +
+      "a controlled field — a `Select`, a `TextArea` or an `<input>` with a `value` or a `checked` — has no " +
+      "handler of its own that writes the model, a text field has only `onchange`, a text field's value is " +
+      "written as itself, a spread on it cannot be read, its handler is an optional prop, or `value` sits " +
       "beside `defaultValue`",
     heading: (found) => `${found.length} field(s) the user cannot change:`,
     lines: (issue) => [
       `  ${issue.file}:${issue.line}:${issue.column}`,
-      issue.kind === "literal"
-        ? `    <${issue.component} value> is written as itself — no handler can move it, so every input is undone.`
-        : issue.kind === "both"
-          ? `    <${issue.component}> has \`value\` and \`defaultValue\` — \`value\` wins, and \`defaultValue\` says nothing.`
-          : issue.kind === "held-between-keystrokes"
-            ? `    <${issue.component} value> moves only \`onchange\`, on blur — every keystroke is undone before it.`
-            : `    <${issue.component} value> has no handler — the model never moves, so every input is undone.`,
+      `    <${issue.component}> ${
+        {
+          "no-handler": "has a value and no handler of its own — every edit shows the model again at once.",
+          "held-between-keystrokes":
+            "has a value and only `onchange`, which comes on blur — every keystroke is undone before it.",
+          both: "has a value and a default — the value wins, and the default says nothing.",
+          literal: "has a value written as itself — no handler can move it, so every edit is undone.",
+          "unknown-spread": "is controlled, and a spread on it may or may not carry its handler — nothing says which.",
+          "handler-may-be-missing": "takes its handler from a prop declared optional — a caller may leave it out.",
+        }[issue.kind]
+      }`,
     ],
     advice:
-      "A field with `value` shows what the model holds: after every input, once the event is over, it\n" +
-      "is settled from `value` again. A handler that moves the model keeps what the user did; one that\n" +
-      "does not, or none, undoes it.\n\n" +
-      "Hold it in the model, and move the model on every input:\n\n" +
+      "A controlled field shows what the model holds, and its own handler is what writes the model:\n" +
+      "core calls it, then shows the model, before any other listener reads the field.\n\n" +
+      "Write the model in the field's own handler:\n\n" +
       "```tsx\n" +
-      '<TextArea aria-label="Draft" value={this.draft} oninput={this.type} />\n' +
+      "typed(event: EventOn<HTMLTextAreaElement>) {\n" +
+      "  this.draft = event.currentTarget.value;\n" +
+      "}\n\n" +
+      '<TextArea aria-label="Draft" value={this.draft} oninput={this.typed} />\n' +
       "```\n\n" +
-      "Or, for a field whose text is read when the form is sent, say where it STARTS:\n\n" +
+      "Or, for a field whose value is read when the form is sent, say where it STARTS:\n\n" +
       "```tsx\n" +
-      '<TextArea aria-label="Notes" name="notes" defaultValue={this.saved} />\n' +
+      '<input name="email" defaultValue={this.saved} />\n' +
       "```\n\n" +
-      "A `TextArea` saved on blur is the second form: `onchange` comes when it loses focus, and with\n" +
-      "`value` every keystroke before it is undone.\n\n",
+      "To refuse or rewrite an edit, give the field a `transform` — a pure function it runs before any\n" +
+      "handler reads it.\n\n",
   },
 
-  read(element, { resolve, truth, attributes }) {
-    const opening = openingOf(element);
-    const tag = coreElementTag(opening.tagName, resolve);
-    if (tag !== "select" && tag !== "textarea") return [];
+  /**
+   * A spread is the one place a controlled field's handler can hide, so the rule reads the element
+   * with one — to accept a field binding, and to report any other spread on a controlled field.
+   */
+  evenWhenSpreading: true,
 
-    // `{null}` and `{undefined}` — data still loading — are no value: core leaves the field to the
-    // user, and so does this. A `defaultValue` written so is no default either.
+  read(element, { resolve, truth, attributes, attr }) {
+    const opening = openingOf(element);
+    const core = coreElementTag(opening.tagName, resolve);
+    const host = ts.isIdentifier(opening.tagName) && opening.tagName.text === "input" ? "input" : undefined;
+    const tag = core ?? host;
+    if (tag !== "select" && tag !== "textarea" && tag !== "input") return [];
+    const component = tag === "select" ? "Select" : tag === "textarea" ? "TextArea" : "input";
+
+    const type = tag === "input" ? attr("type")?.toLowerCase() : undefined;
+    if (type !== undefined && NOT_EDITED.has(type)) return [];
+    const box = type === "checkbox" || type === "radio";
+    const pick = tag === "select" || box;
+
+    // `{null}` and `{undefined}` — data still loading — are no value: the field is the user's.
     const said = (name: string) =>
       attributes.find((attribute) => attribute.name === name && !writtenAsNothing(attribute));
-    const value = said("value");
-    if (value === undefined) return [];
+    const model = said(box ? "checked" : "value");
+    const spreads = opening.attributes.properties.filter(ts.isJsxSpreadAttribute);
+    const bound = spreads.some((spread) => isFieldBinding(spread.expression, resolve));
+    if (model === undefined && !bound) return [];
 
-    const component = tag === "select" ? "Select" : "TextArea";
     const at = positionOf(opening);
-    if (said("defaultValue") !== undefined) return [{ component, kind: "both", ...at }];
+    if (said(box ? "defaultChecked" : "defaultValue") !== undefined) return [{ component, kind: "both", ...at }];
 
-    // `beforeinput` comes before every keystroke, paste and drop in a TextArea: an editor that takes it,
-    // cancels it and writes the model itself — a mask — moves the value as `input` does. A `<select>`
-    // never fires it.
-    const moving: readonly string[] = tag === "textarea" ? ["input", "beforeinput"] : ["input", "change"];
-    // `readonly` does nothing to a select, which still opens and picks; only `disabled` stops it.
-    if ((tag === "select" ? ["disabled"] : ["readonly", "readOnly", "disabled"]).some((name) => truth(name) === true)) {
-      return [];
+    // `readonly` takes the input away from a text field, and does nothing to a pick.
+    const still = pick ? ["disabled"] : ["readonly", "readOnly", "disabled"];
+    if (still.some((name) => truth(name) === true)) return [];
+    if (!pick && model !== undefined && writtenAsItself(model, resolve)) {
+      return [{ component, kind: "literal", ...at }];
     }
-    // A TextArea's value written as itself — `value=""`, a chat box meant to clear on send — is one no
-    // handler can move, wherever the handler is: nobody can type in it. A Select's is a pattern, an
-    // action menu going back to its "Go to…" placeholder once its handler acts, and is left alone.
-    if (tag === "textarea" && writtenAsItself(value, resolve)) return [{ component, kind: "literal", ...at }];
-    if (heardAbove(element, moving, resolve) || fromProps(value, resolve)) return [];
-    const events = eventsOf(attributes);
-    const keystrokes = events.has("input") || (tag === "textarea" && events.has("beforeinput"));
-    // A field with no handler of its own but one on a key, a paste, a drop or a cut may be an editor
-    // that writes the model there — a maybe, never reported. Beside an `onchange` it is not: the field
-    // waits for `change`, and Enter-to-send leaves every other keystroke undone.
-    const mayWrite = MAY_WRITE_THE_MODEL.some((event) => events.has(event));
-    if (!keystrokes && !events.has("change")) return mayWrite ? [] : [{ component, kind: "no-handler", ...at }];
-    if (tag === "textarea" && !keystrokes) return [{ component, kind: "held-between-keystrokes", ...at }];
+    if (bound) return [];
+    if (spreads.length > 0) return [{ component, kind: "unknown-spread", ...at }];
+
+    const own = (name: string) => attributes.find((attribute) => attribute.name === name);
+    const writer = own("oninput") ?? (pick ? own("onchange") : undefined);
+    if (writer === undefined) {
+      if (!pick && own("onchange") !== undefined) return [{ component, kind: "held-between-keystrokes", ...at }];
+      return [{ component, kind: "no-handler", ...at }];
+    }
+    if (declaredOptional(writer.value, resolve)) return [{ component, kind: "handler-may-be-missing", ...at }];
     return [];
   },
 } as const satisfies ElementRule<FieldTheUserCannotChangeIssue>;
