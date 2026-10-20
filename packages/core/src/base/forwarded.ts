@@ -1,7 +1,7 @@
 import type { Component } from "./Component";
 import { COMPONENT_RUNTIME } from "../core/runtime";
-import { writeValue } from "../core/Attribute";
-import type { ComponentChild, EnhancedHTMLNode, RamondaNode } from "../types/vdom";
+import { decideEdit } from "../core/transform";
+import type { ComponentChild, RamondaNode } from "../types/vdom";
 
 /**
  * What a component that OWNS one element needs in order to be transparent.
@@ -86,80 +86,15 @@ export function controlled(
   return { replaced: Object.keys(listeners), listeners };
 }
 
-/**
- * What `transform` is told about the edit besides the two values — plain data, never the event or the
- * element, so the function can stay pure. A mask needs both: where the caret is, and whether the user
- * typed, deleted or pasted. A `Select` has neither, and is told `""` and `null`.
- */
-export interface TransformInput {
-  /** The `InputEvent`'s `inputType` — `insertText`, `deleteContentBackward`, `insertFromPaste` … */
-  readonly inputType: string;
-  readonly selectionStart: number | null;
-  readonly selectionEnd: number | null;
-}
-
-/** A field's value as `transform` sees it: a string, or the chosen values of a `multiple` select. */
-type FieldValue = string | string[];
-
-// By tag name, not `instanceof`: a field in an iframe is another window's class.
-function valueOf(field: HTMLTextAreaElement | HTMLSelectElement): FieldValue {
-  if (field.tagName === "SELECT" && (field as HTMLSelectElement).multiple) {
-    return Array.from((field as HTMLSelectElement).selectedOptions, (option) => option.value);
-  }
-  return field.value;
-}
-
-function sameValue(a: FieldValue, b: FieldValue): boolean {
-  if (typeof a === "string" || typeof b === "string") return a === b;
-  return a.length === b.length && a.every((value, i) => value === b[i]);
-}
-
-/**
- * The app's `transform(next, prev, input)`, applied to the field before any listener reads it.
- *
- * `next` is what the edit left in the field and `prev` what the model holds; what comes back is what
- * the field keeps — `next` to take the edit, `prev` to refuse it, anything else to rewrite it. It is
- * written at once, in this listener, so the app's handler, a form around the field and any other
- * listener all read the same value, and the browser never draws the edit it replaced.
- *
- * A refused edit puts the caret back where the edit found it: the text is the text before the edit,
- * so the offset before the edit means what it meant. A rewrite of the same length keeps the caret
- * through `writeValue`; any other rewrite is the app's to place, as `writeValue` explains.
- */
+/** The app's `transform` on a `Select` or `TextArea`, against the model its `value` holds — see `decideEdit`. */
 // biome-ignore lint/suspicious/noExplicitAny: any component, whatever its props
 function transformAtSource(component: Component<any>, event: Event): void {
   const transform = component[COMPONENT_RUNTIME].rawProps.transform;
   const field = event.currentTarget as HTMLTextAreaElement | HTMLSelectElement | null;
   if (typeof transform !== "function" || field === null) return;
-
   const model = component[COMPONENT_RUNTIME].rawProps.value;
-  const prev: FieldValue = Array.isArray(model) ? model.map(String) : String(model ?? "");
-  const next = valueOf(field);
-  const text = field.tagName === "TEXTAREA" ? (field as HTMLTextAreaElement) : null;
-  const input: TransformInput = {
-    inputType: (event as InputEvent).inputType ?? "",
-    selectionStart: text?.selectionStart ?? null,
-    selectionEnd: text?.selectionEnd ?? null,
-  };
-  const kept = transform(next, prev, input) as FieldValue;
-  if (sameValue(kept, next)) return;
-
-  if (Array.isArray(kept)) {
-    const wanted = new Set(kept.map(String));
-    const options = (field as HTMLSelectElement).options;
-    for (let i = 0; i < options.length; i++) options[i].selected = wanted.has(options[i].value);
-    return;
-  }
-  if (text === null) {
-    field.value = String(kept);
-    return;
-  }
-  const caret = text.selectionStart;
-  writeValue(text as unknown as EnhancedHTMLNode, String(kept), false);
-  if (caret !== null && typeof next === "string" && String(kept) === prev) {
-    const back = Math.max(0, Math.min(prev.length, caret - (next.length - prev.length)));
-    text.setSelectionRange(back, back);
-  }
+  const prev = Array.isArray(model) ? model.map(String) : String(model ?? "");
+  decideEdit(field, transform as Parameters<typeof decideEdit>[1], prev, event);
 }
 
 /** The app's own handler for this event, called as a listener would be: a function, or `handleEvent`. */

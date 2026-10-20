@@ -167,6 +167,30 @@ export interface RefusedOnFields {
 }
 
 /**
+ * What a field's `transform` is told about the edit besides the two values — plain data, never the
+ * event or the element, so the function can stay pure. A mask needs both: where the caret is, and
+ * whether the user typed, deleted or pasted. A select and a checkbox have no caret, and are told `null`.
+ */
+export interface TransformInput {
+  /** The `InputEvent`'s `inputType` — `insertText`, `deleteContentBackward`, `insertFromPaste` … */
+  readonly inputType: string;
+  readonly selectionStart: number | null;
+  readonly selectionEnd: number | null;
+}
+
+/**
+ * `transform` on an `<input>`: what an edit leaves in the field, decided before any handler reads it.
+ * `next` is what the edit made, `prev` what the `value` (or `checked`) attribute says, and what comes
+ * back is what the field shows — `prev` refuses the edit, so it is never even drawn. Text for a text
+ * field, the state for a checkbox. A pure function; see `decideEdit` in `core/transform.ts`.
+ */
+export interface InputTransform {
+  transform?:
+    | ((next: string, prev: string, input: TransformInput) => string)
+    | ((next: boolean, prev: boolean, input: TransformInput) => boolean);
+}
+
+/**
  * `selected` on an `<option>`, which `Select` overwrites on every render.
  *
  * The choice belongs to the select, not to the option, and `Select` applies it by walking EVERY

@@ -1,6 +1,7 @@
 import type { EnhancedHTMLNode } from "../types/vdom";
 import { IS_SVG, KEY_SYM, STYLE_SYM, REF_SYM, BOOLEAN_ATTRIBUTES, keptInAProperty } from "../helpers/constants";
 import { checkBooleanAttribute } from "../debug/booleanAttribute";
+import { transformInput } from "./transform";
 type NodeAttributes = Record<string, any>;
 
 /**
@@ -22,6 +23,15 @@ export function applyChangesOnAttributes(enhancedNode: ChildNode, rawNextAttribu
   removePreviousFromenhancedNode(enhancedNode as EnhancedHTMLNode, previousAttributes, nextAttributes);
   attachNextOnenhancedNode(enhancedNode as EnhancedHTMLNode, previousAttributes, nextAttributes, onServer);
   releaseDroppedRef(enhancedNode as EnhancedHTMLNode, nextAttributes.ref);
+  /**
+   * `transform` on an `<input>` is a function the field's own listener calls, not an attribute — so it
+   * is given here on every pass, and taken away by a pass that no longer has it, which the attribute
+   * diff, reading attributes back off the element, would never see. On any other element it is the
+   * attribute it is: SVG's `transform="translate(…)"`.
+   */
+  if (!onServer && enhancedNode.nodeName === "INPUT") {
+    transformInput(enhancedNode as unknown as HTMLInputElement, nextAttributes.transform);
+  }
 }
 
 /**
@@ -254,6 +264,9 @@ function setNextOnenhancedNode(enhancedNode: EnhancedHTMLNode, name: string, val
    * true nor false — and a `data-*` flag is data that something reads back.
    */
   if (value === true && isBooleanAttribute(name)) value = "";
+
+  // An `<input>`'s `transform` is the field's, given in `applyChangesOnAttributes` — never markup.
+  if (name === "transform" && typeof value === "function") return;
 
   if (name === "ref") {
     // Remembered on the node so unmount can clear it. Without that, `current`

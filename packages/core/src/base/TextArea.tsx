@@ -4,7 +4,8 @@ import { Component } from "./Component";
 import { createRef } from "./Ref";
 import { mounted, updated } from "./decorators";
 import { __h } from "../vdom/h";
-import { answer, controlled, forwarded, given, settlesLater, type TransformInput } from "./forwarded";
+import { answer, controlled, forwarded, given, settlesLater } from "./forwarded";
+import type { TransformInput } from "../types/commonTypes";
 import type { RefTarget } from "./Ref";
 
 /**

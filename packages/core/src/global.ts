@@ -1,4 +1,5 @@
 import type {
+  InputTransform,
   NamedFrame,
   NamedImage,
   RamondaArgs,
@@ -122,7 +123,7 @@ declare global {
       i: RamondaArgs<HTMLElement>;
       iframe: RamondaArgs<HTMLIFrameElement> & NamedFrame;
       img: RamondaArgs<HTMLImageElement> & NamedImage;
-      input: RamondaArgs<HTMLInputElement> & Partial<RefusedOnFields>;
+      input: RamondaArgs<HTMLInputElement> & Partial<RefusedOnFields> & InputTransform;
       ins: RamondaArgs<HTMLModElement>;
       kbd: RamondaArgs<HTMLElement>;
       keygen: RamondaArgs<HTMLElement>;

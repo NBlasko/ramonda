@@ -10,7 +10,8 @@ one that does not — or no handler at all — puts the model's value back. Befo
 showing the user's input until the page rendered again for another reason: a `Select` was put right
 by its parent's next render, which handed it new children every time, and a `TextArea` never was.
 
-A `transform(next, prev, input)` on the field decides an edit before any handler reads it: what it
+A `transform(next, prev, input)` on a `Select`, a `TextArea` or a plain `<input>` (text, number or
+checkbox) decides an edit before any handler reads it: what it
 returns is in the field at once, so the handler, a form around the field and every other listener
 read the same value, and a refused keystroke or pick is never drawn. `prev` refuses the edit and puts
 the caret back where it was; `input` gives the edit's `inputType` and the caret, for a mask. During an

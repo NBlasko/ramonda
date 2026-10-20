@@ -2,7 +2,8 @@ import { Component } from "./Component";
 import { createRef } from "./Ref";
 import { destroyed, mounted, updated } from "./decorators";
 import { __h } from "../vdom/h";
-import { answer, controlled, forwarded, given, heard, settlesLater, type TransformInput } from "./forwarded";
+import { answer, controlled, forwarded, given, heard, settlesLater } from "./forwarded";
+import type { TransformInput } from "../types/commonTypes";
 import type { RamondaNode, RenderEnv } from "../types/vdom";
 import type { RefTarget } from "./Ref";
 

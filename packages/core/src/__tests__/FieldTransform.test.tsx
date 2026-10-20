@@ -2,6 +2,7 @@ import { describe, test, expect } from "vitest";
 import { getDOM } from "../test/setup";
 import { state } from "../base/decorators";
 import { Component, Select, TextArea, type EventOn, type TransformInput } from "../index";
+import { renderToString } from "../hydration/ssr";
 
 /**
  * `transform` decides an edit in the field's own listener, before any other listener reads it. So
@@ -216,5 +217,142 @@ describe("a field's transform decides the edit before anyone reads it", () => {
     select.dispatchEvent(new Event("change", { bubbles: true }));
 
     expect(Array.from(select.selectedOptions, (option) => option.value)).toEqual(["a"]);
+  });
+});
+
+/** The same on a plain `<input>`, where the attribute pass gives the field its `transform`. */
+describe("an input's transform decides the edit before anyone reads it", () => {
+  function edit(field: HTMLInputElement, text: string, caret = text.length) {
+    field.value = text;
+    field.setSelectionRange(caret, caret);
+    field.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText" }));
+  }
+
+  /** `oninput` is written BEFORE `transform`: the decision still comes first. */
+  class Phone extends Component {
+    @state phone = "064";
+    @state limited = true;
+    read: string[] = [];
+    typed(event: EventOn<HTMLInputElement>) {
+      this.read.push(event.currentTarget.value);
+      this.phone = event.currentTarget.value;
+    }
+    digits(next: string, prev: string): string {
+      return /^\d*$/.test(next) ? next : prev;
+    }
+    render() {
+      return (
+        <input id="i" value={this.phone} oninput={this.typed} transform={this.limited ? this.digits : undefined} />
+      );
+    }
+  }
+
+  test("a refused keystroke is gone before the handler reads the field, whatever the attribute order", async () => {
+    const app = await getDOM<Phone>(<Phone />);
+    await app.settle();
+    const field = app.container.querySelector("#i") as HTMLInputElement;
+    edit(field, "064a");
+
+    expect({ read: app.instance.read, shown: field.value }).toEqual({ read: ["064"], shown: "064" });
+  });
+
+  test("a refused keystroke in the middle puts the caret back where it was", async () => {
+    const app = await getDOM<Phone>(<Phone />);
+    await app.settle();
+    const field = app.container.querySelector("#i") as HTMLInputElement;
+    edit(field, "0x64", 2);
+
+    expect({ shown: field.value, caret: field.selectionStart }).toEqual({ shown: "064", caret: 1 });
+  });
+
+  test("an accepted edit is the model's after the render, as the attribute the next edit is decided against", async () => {
+    const app = await getDOM<Phone>(<Phone />);
+    await app.settle();
+    const field = app.container.querySelector("#i") as HTMLInputElement;
+    edit(field, "0641");
+    await app.settle();
+    edit(field, "0641x");
+
+    expect({ shown: field.value, model: app.instance.phone }).toEqual({ shown: "0641", model: "0641" });
+  });
+
+  test("a transform taken away by a render no longer decides", async () => {
+    const app = await getDOM<Phone>(<Phone />);
+    await app.settle();
+    app.instance.limited = false;
+    await app.settle();
+    const field = app.container.querySelector("#i") as HTMLInputElement;
+    edit(field, "064a");
+
+    expect(field.value).toBe("064a");
+  });
+
+  test("a checkbox the transform keeps off is never ticked", async () => {
+    const read: boolean[] = [];
+    class Terms extends Component {
+      @state agreed = false;
+      ticked(event: EventOn<HTMLInputElement>) {
+        read.push(event.currentTarget.checked);
+        this.agreed = event.currentTarget.checked;
+      }
+      locked(_next: boolean, prev: boolean): boolean {
+        return prev;
+      }
+      render() {
+        return <input id="c" type="checkbox" checked={this.agreed} onchange={this.ticked} transform={this.locked} />;
+      }
+    }
+    const app = await getDOM<Terms>(<Terms />);
+    await app.settle();
+    const box = app.container.querySelector("#c") as HTMLInputElement;
+    box.click();
+
+    expect({ read, checked: box.checked }).toEqual({ read: [false], checked: false });
+  });
+
+  test("a number field, which has no caret, is decided without one", async () => {
+    class Age extends Component {
+      @state age = "30";
+      typed(event: EventOn<HTMLInputElement>) {
+        this.age = event.currentTarget.value;
+      }
+      under150(next: string, prev: string): string {
+        return Number(next) < 150 ? next : prev;
+      }
+      render() {
+        return <input id="n" type="number" value={this.age} oninput={this.typed} transform={this.under150} />;
+      }
+    }
+    const app = await getDOM<Age>(<Age />);
+    await app.settle();
+    const field = app.container.querySelector("#n") as HTMLInputElement;
+    field.value = "300";
+    field.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText" }));
+
+    expect(field.value).toBe("30");
+  });
+
+  test("it is never markup: a served input carries no transform, and an SVG transform stays an attribute", async () => {
+    class Both extends Component {
+      digits(next: string, prev: string): string {
+        return /^\d*$/.test(next) ? next : prev;
+      }
+      render() {
+        return (
+          <div>
+            <input value="1" transform={this.digits} />
+            <svg>
+              <g transform="translate(10, 0)" />
+            </svg>
+          </div>
+        );
+      }
+    }
+    const html = await renderToString(<Both />);
+
+    expect({ input: /<input[^>]*transform/.test(html), svg: html.includes('transform="translate(10, 0)"') }).toEqual({
+      input: false,
+      svg: true,
+    });
   });
 });
