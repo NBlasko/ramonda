@@ -20,8 +20,8 @@ describe("an attribute that does nothing", () => {
       "httpEquiv",
       "acceptCharset",
       "acceptcharset",
+      "defaultvalue",
       "defaultValue",
-      "defaultChecked",
       "innerHTML",
       "textContent",
     ]);

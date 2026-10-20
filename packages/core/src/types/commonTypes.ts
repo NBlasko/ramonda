@@ -156,17 +156,6 @@ export interface RefusedOnForm {
 }
 
 /**
- * The `defaultValue` / `defaultChecked` pair, which this framework does not have.
- *
- * There is no controlled/uncontrolled distinction here for them to mark: the `value` and `checked`
- * attributes ARE the initial state, and a render decides them like any other attribute.
- */
-export interface RefusedOnFields {
-  defaultValue: "write `value` — the attribute IS the initial value";
-  defaultChecked: "write `checked` — the attribute IS the initial state";
-}
-
-/**
  * What a field's `transform` is told about the edit besides the two values — plain data, never the
  * event or the element, so the function can stay pure. A mask needs both: where the caret is, and
  * whether the user typed, deleted or pasted. A select and a checkbox have no caret, and are told `null`.
@@ -182,7 +171,7 @@ export interface TransformInput {
  * `transform` on an `<input>`: what an edit leaves in the field, decided before any handler reads it.
  * `next` is what the edit made, `prev` what the `value` (or `checked`) attribute says, and what comes
  * back is what the field shows — `prev` refuses the edit, so it is never even drawn. Text for a text
- * field, the state for a checkbox. A pure function; see `decideEdit` in `core/transform.ts`.
+ * field, the state for a checkbox. A pure function; see `decideEdit` in `core/field.ts`.
  */
 export interface InputTransform {
   transform?:

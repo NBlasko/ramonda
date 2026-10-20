@@ -1,7 +1,7 @@
 import type { EnhancedHTMLNode } from "../types/vdom";
 import { IS_SVG, KEY_SYM, STYLE_SYM, REF_SYM, BOOLEAN_ATTRIBUTES, keptInAProperty } from "../helpers/constants";
 import { checkBooleanAttribute } from "../debug/booleanAttribute";
-import { transformInput } from "./transform";
+import { INPUT_OWN_EVENTS, controlInput, keepOwnHandler } from "./field";
 type NodeAttributes = Record<string, any>;
 
 /**
@@ -24,13 +24,35 @@ export function applyChangesOnAttributes(enhancedNode: ChildNode, rawNextAttribu
   attachNextOnenhancedNode(enhancedNode as EnhancedHTMLNode, previousAttributes, nextAttributes, onServer);
   releaseDroppedRef(enhancedNode as EnhancedHTMLNode, nextAttributes.ref);
   /**
-   * `transform` on an `<input>` is a function the field's own listener calls, not an attribute — so it
-   * is given here on every pass, and taken away by a pass that no longer has it, which the attribute
-   * diff, reading attributes back off the element, would never see. On any other element it is the
-   * attribute it is: SVG's `transform="translate(…)"`.
+   * An `<input>` is told, on every pass, whether it is controlled and what its `transform` is — a
+   * function its field listener calls, not an attribute, so a pass that no longer has it takes it away,
+   * which the attribute diff, reading attributes back off the element, would never see. On any other
+   * element `transform` is the attribute it is: SVG's `transform="translate(…)"`.
    */
-  if (!onServer && enhancedNode.nodeName === "INPUT") {
-    transformInput(enhancedNode as unknown as HTMLInputElement, nextAttributes.transform);
+  if (enhancedNode.nodeName === "INPUT") {
+    writeDefaults(enhancedNode as unknown as HTMLInputElement, rawNextAttributes);
+    if (!onServer) controlInput(enhancedNode as unknown as HTMLInputElement, rawNextAttributes);
+  }
+}
+
+/**
+ * `defaultValue` and `defaultChecked` on an `<input>`: where an uncontrolled field STARTS, and nothing
+ * more. Written as the attribute HTML keeps a default in — `value`, or `checked` — which the property
+ * follows until the user edits and a form's reset returns to, on both sides, so a served page starts
+ * on it before any script runs. Nothing writes the property: the field is the user's.
+ *
+ * Here rather than in the attribute loop, because neither is an attribute of its own name for the
+ * diff to read back, so a default taken away — `defaultChecked` turned `false` — would never be seen.
+ */
+function writeDefaults(input: HTMLInputElement, attributes: NodeAttributes): void {
+  if ("defaultValue" in attributes) {
+    const value = attributes.defaultValue;
+    if (value == null) input.removeAttribute("value");
+    else if (input.getAttribute("value") !== String(value)) input.setAttribute("value", String(value));
+  }
+  if ("defaultChecked" in attributes) {
+    const on = attributes.defaultChecked === true;
+    if (input.hasAttribute("checked") !== on) input.toggleAttribute("checked", on);
   }
 }
 
@@ -267,6 +289,8 @@ function setNextOnenhancedNode(enhancedNode: EnhancedHTMLNode, name: string, val
 
   // An `<input>`'s `transform` is the field's, given in `applyChangesOnAttributes` — never markup.
   if (name === "transform" && typeof value === "function") return;
+  // Nor are an `<input>`'s defaults attributes of those names: `writeDefaults` writes them.
+  if ((name === "defaultValue" || name === "defaultChecked") && enhancedNode.nodeName === "INPUT") return;
 
   if (name === "ref") {
     // Remembered on the node so unmount can clear it. Without that, `current`
@@ -386,6 +410,17 @@ function setNextOnenhancedNode(enhancedNode: EnhancedHTMLNode, name: string, val
     const type = eventTypeOf(name);
     enhancedNode._listeners ??= {};
     const listeners = enhancedNode._listeners;
+
+    /**
+     * An `<input>`'s own handlers for the events its field answers are KEPT, not attached: its field
+     * listener calls them, so it knows when they have returned — see `answerEdit`. Recorded among the
+     * listeners all the same, so the next pass compares them as it does any.
+     */
+    if (enhancedNode.nodeName === "INPUT" && INPUT_OWN_EVENTS.has(type)) {
+      listeners[name] = value;
+      keepOwnHandler(enhancedNode as unknown as HTMLInputElement, type, value);
+      return;
+    }
 
     if (listeners[name]) {
       enhancedNode.removeEventListener(type, listeners[name]);
@@ -533,7 +568,12 @@ function removePreviousFromenhancedNode(
 
     if (name.startsWith("on")) {
       const listeners = enhancedNode._listeners ?? {};
-      enhancedNode.removeEventListener(eventTypeOf(name), previousAttributes[name]);
+      const type = eventTypeOf(name);
+      if (enhancedNode.nodeName === "INPUT" && INPUT_OWN_EVENTS.has(type)) {
+        keepOwnHandler(enhancedNode as unknown as HTMLInputElement, type, undefined);
+      } else {
+        enhancedNode.removeEventListener(type, previousAttributes[name]);
+      }
       delete listeners[name];
     } else {
       removeByQualifiedName(enhancedNode, name);

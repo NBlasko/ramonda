@@ -19,9 +19,9 @@ class Page extends Component {
           <form acceptCharset="utf-8" />
           {/* REPORTED — lowercase is exactly as dead, and passes the types through the index signature. */}
           <form acceptcharset="utf-8" />
-          {/* REPORTED — a controlled/uncontrolled pair this framework does not have, so no attributes at all. */}
-          <input defaultValue="v" />
-          <input defaultChecked="true" />
+          {/* REPORTED — a default only an <input> has, spelled so: in lowercase, or on another tag. */}
+          <input defaultvalue="v" />
+          <div defaultValue="v" />
           {/* REPORTED — properties, not attributes. */}
           <div innerHTML="<p>x</p>" />
           <span textContent="hi" />
@@ -30,6 +30,9 @@ class Page extends Component {
           <meta http-equiv="refresh" content="5" />
           <form accept-charset="utf-8" />
           <input value="v" checked="true" readOnly="true" maxLength="5" />
+          {/* Not reported: an uncontrolled input's defaults. */}
+          <input defaultValue="v" />
+          <input type="checkbox" defaultChecked="true" />
           {/* Not reported: the two names that ARE aliased, because they are reserved words. */}
           <div className="x" />
           <label htmlFor="a" />

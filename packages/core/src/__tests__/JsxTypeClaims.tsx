@@ -48,10 +48,6 @@ export class RefusedNames extends Component {
         <meta httpEquiv="refresh" content="5" />
         {/* @ts-expect-error — the attribute is `accept-charset` */}
         <form acceptCharset="utf-8" />
-        {/* @ts-expect-error — the attribute IS the initial value */}
-        <input defaultValue="v" />
-        {/* @ts-expect-error — the attribute IS the initial state */}
-        <input defaultChecked />
         {/* @ts-expect-error — Ramonda renders children */}
         <div innerHTML="<p>x</p>" />
         {/* @ts-expect-error — put the text in the children */}
@@ -445,4 +441,23 @@ export const targetIsNotNarrowed = (
     // @ts-expect-error — `target` is not narrowed, and that is the claim rather than a gap.
     onchange={(e: EventOn<HTMLInputElement>) => e.target?.value}
   />
+);
+
+/**
+ * An uncontrolled `<input>` says where it starts with `defaultValue` or `defaultChecked`, and a
+ * controlled one takes `transform` — a function, which no other element's `transform` is.
+ */
+export const inputDefaults = (
+  <div>
+    <input name="email" defaultValue="ana@example.com" />
+    <input type="checkbox" name="news" defaultChecked />
+    <input
+      value="064"
+      oninput={() => {}}
+      transform={(next: string, prev: string) => (/^\d*$/.test(next) ? next : prev)}
+    />
+    <svg>
+      <g transform="translate(10, 0)" />
+    </svg>
+  </div>
 );

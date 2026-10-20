@@ -3,7 +3,6 @@ import type {
   NamedFrame,
   NamedImage,
   RamondaArgs,
-  RefusedOnFields,
   RefusedOnOption,
   RefusedOnForm,
   RefusedOnMeta,
@@ -123,7 +122,7 @@ declare global {
       i: RamondaArgs<HTMLElement>;
       iframe: RamondaArgs<HTMLIFrameElement> & NamedFrame;
       img: RamondaArgs<HTMLImageElement> & NamedImage;
-      input: RamondaArgs<HTMLInputElement> & Partial<RefusedOnFields> & InputTransform;
+      input: RamondaArgs<HTMLInputElement> & InputTransform;
       ins: RamondaArgs<HTMLModElement>;
       kbd: RamondaArgs<HTMLElement>;
       keygen: RamondaArgs<HTMLElement>;
@@ -160,7 +159,7 @@ declare global {
       slot: RamondaArgs<HTMLSlotElement>;
       script: RamondaArgs<HTMLScriptElement>;
       section: RamondaArgs<HTMLElement>;
-      select: RamondaArgs<HTMLSelectElement> & Partial<RefusedOnFields> & RefusedSelectTag;
+      select: RamondaArgs<HTMLSelectElement> & RefusedSelectTag;
       small: RamondaArgs<HTMLElement>;
       source: RamondaArgs<HTMLSourceElement>;
       span: RamondaArgs<HTMLSpanElement>;
@@ -173,7 +172,7 @@ declare global {
       template: RamondaArgs<HTMLTemplateElement>;
       tbody: RamondaArgs<HTMLTableSectionElement>;
       td: RamondaArgs<HTMLTableDataCellElement>;
-      textarea: RamondaArgs<HTMLTextAreaElement> & Partial<RefusedOnFields> & RefusedTextAreaTag;
+      textarea: RamondaArgs<HTMLTextAreaElement> & RefusedTextAreaTag;
       tfoot: RamondaArgs<HTMLTableSectionElement>;
       th: RamondaArgs<HTMLTableHeaderCellElement>;
       thead: RamondaArgs<HTMLTableSectionElement>;
