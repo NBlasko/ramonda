@@ -1,0 +1,322 @@
+import ts from "typescript";
+import { positionOf } from "../syntax";
+import { coreElementTag } from "./coreElements";
+import { isNothing, openingOf, tagOf } from "./element";
+import { unwrap } from "./follow-value";
+import { enclosingElement } from "./html";
+import type { Resolver, Where } from "./rule";
+
+/**
+ * The project's `@ramonda/form` forms, the fields inside them, and every place a component is used
+ * inside one — collected in one pass, judged by `form-field-without-what-the-form-needs`.
+ *
+ * Every question here is about DECLARATIONS and source, never about types, as everywhere in this
+ * package: where a field of a class was declared and what initialises it, where an identifier was
+ * imported from, what attributes an element is written with. A form is recognised by exactly one
+ * shape — see `ramondaFormElements` — so nothing is inferred from names or guessed through a chain.
+ */
+
+/** What `@ramonda/form` needs on a control, each written by name. */
+export const FORM_ATTRIBUTES = ["name", "value", "oninput", "onblur", "aria-invalid"] as const;
+
+/** Where a field's attribute comes from: written on it, a prop of its component, or nowhere. */
+export type AttributeSource = { kind: "written" } | { kind: "prop"; prop: string } | { kind: "missing" };
+
+/** A controlled field, as the rule needs to see it. */
+export interface FormField extends Where {
+  /** The class whose render writes it, or `undefined` in a function outside any class. */
+  owner: ts.ClassLikeDeclaration | undefined;
+  /** Whether a `@ramonda/form` form encloses it within the same render. */
+  inForm: boolean;
+  /** Each of `FORM_ATTRIBUTES`, and where it comes from. `value` stands for `checked` on a box. */
+  attributes: Record<(typeof FORM_ATTRIBUTES)[number], AttributeSource>;
+  /** Props spread onto the field AFTER one of its form attributes, which may therefore overwrite them. */
+  lateBags: string[];
+  /** How the field is written, for a report: `input`, `Select`, `TextArea`. */
+  tag: string;
+}
+
+/** One place a component is used, as the rule needs to see it. */
+export interface ComponentSite extends Where {
+  /** The class whose render writes the tag. */
+  owner: ts.ClassLikeDeclaration | undefined;
+  /** The component it names, when its declaration has a body this can read. */
+  target: ts.ClassLikeDeclaration | undefined;
+  /** The tag as written, for a report. */
+  tag: string;
+  /** Whether a `@ramonda/form` form encloses this use within the same render. */
+  inForm: boolean;
+  /** Each attribute written on the tag, by name, with its value. `undefined` is a bare attribute. */
+  props: Map<string, ts.Expression | undefined>;
+  /** Whether a spread is written on the tag. */
+  spreads: boolean;
+}
+
+/** A class that holds a `Form` and what became of it. */
+export interface FormHolder extends Where {
+  component: string;
+  /** A hook holding one — `class SignupForm extends Hook { form = this.use(Form, …) }`. */
+  isHook: boolean;
+  /** Whether the class renders a `<form onsubmit={this.X.submit}>` for it. */
+  attached: boolean;
+}
+
+export interface FormFacts {
+  fields: FormField[];
+  sites: ComponentSite[];
+  holders: FormHolder[];
+}
+
+const NOT_EDITED = new Set(["hidden", "submit", "button", "reset", "image", "file"]);
+
+/** `this.use(Form, …)` or `this.use(Form<typeof schema>, …)`, with `Form` imported from `@ramonda/form`. */
+function isFormHook(initializer: ts.Expression | undefined, resolve: Resolver): boolean {
+  if (initializer === undefined) return false;
+  const call = unwrap(initializer);
+  if (!ts.isCallExpression(call)) return false;
+  const callee = call.expression;
+  if (!ts.isPropertyAccessExpression(callee) || callee.name.text !== "use") return false;
+  if (callee.expression.kind !== ts.SyntaxKind.ThisKeyword) return false;
+  const first = call.arguments[0];
+  if (first === undefined) return false;
+  const hook = ts.isExpressionWithTypeArguments(first) ? first.expression : unwrap(first);
+  if (!ts.isIdentifier(hook) || !resolve.fromPackage(hook, "@ramonda/form")) return false;
+  const declared = resolve(hook)?.declarations?.[0];
+  return declared !== undefined && ts.isClassDeclaration(declared) && declared.name?.text === "Form";
+}
+
+/** The names of a class's fields that hold a `Form`. */
+function formFieldsOf(cls: ts.ClassLikeDeclaration, resolve: Resolver): Set<string> {
+  const names = new Set<string>();
+  for (const member of cls.members) {
+    if (ts.isPropertyDeclaration(member) && ts.isIdentifier(member.name) && isFormHook(member.initializer, resolve)) {
+      names.add(member.name.text);
+    }
+  }
+  return names;
+}
+
+/** Whether a class extends core's `Hook`. */
+function isHookClass(cls: ts.ClassLikeDeclaration, resolve: Resolver): boolean {
+  for (const clause of cls.heritageClauses ?? []) {
+    if (clause.token !== ts.SyntaxKind.ExtendsKeyword) continue;
+    for (const type of clause.types) if (resolve.coreName(type.expression) === "Hook") return true;
+  }
+  return false;
+}
+
+function enclosingClass(node: ts.Node): ts.ClassLikeDeclaration | undefined {
+  for (let at: ts.Node | undefined = node.parent; at !== undefined; at = at.parent) {
+    if (ts.isClassDeclaration(at) || ts.isClassExpression(at)) return at;
+  }
+  return undefined;
+}
+
+/** `this.props.P`, as written. */
+function propRead(expression: ts.Expression | undefined): string | undefined {
+  if (expression === undefined) return undefined;
+  const written = unwrap(expression);
+  if (!ts.isPropertyAccessExpression(written)) return undefined;
+  const object = unwrap(written.expression);
+  if (!ts.isPropertyAccessExpression(object) || object.name.text !== "props") return undefined;
+  return object.expression.kind === ts.SyntaxKind.ThisKeyword ? written.name.text : undefined;
+}
+
+function valueOf(attribute: ts.JsxAttribute): ts.Expression | undefined {
+  const initializer = attribute.initializer;
+  if (initializer === undefined) return undefined;
+  if (ts.isJsxExpression(initializer)) return initializer.expression;
+  return ts.isStringLiteral(initializer) ? initializer : undefined;
+}
+
+/** A component class this can read the render of: declared in source, with a body. */
+function readableClass(tagName: ts.JsxTagNameExpression, resolve: Resolver): ts.ClassLikeDeclaration | undefined {
+  const declared = resolve(tagName)?.declarations?.[0];
+  if (declared === undefined || !(ts.isClassDeclaration(declared) || ts.isClassExpression(declared))) return undefined;
+  // A `declare class` has no render, wherever it is written — the same as one from a package's `.d.ts`.
+  const ambient = ts.getCombinedModifierFlags(declared as ts.Declaration) & ts.ModifierFlags.Ambient;
+  return declared.getSourceFile().isDeclarationFile || ambient !== 0 ? undefined : declared;
+}
+
+export function formTableFor(sources: readonly ts.SourceFile[], resolve: Resolver): FormFacts {
+  const fields: FormField[] = [];
+  const sites: ComponentSite[] = [];
+  const holders: FormHolder[] = [];
+
+  /** Every `<form onsubmit={this.X.submit}>` whose `X` holds a `Form`, and the class that renders it. */
+  const formElements = new Set<ts.Node>();
+  /** Classes whose render places `this.props.children` inside such a form. */
+  const childrenInForm = new Set<ts.ClassLikeDeclaration>();
+
+  // Pass one: the forms, the classes holding them, and where children land.
+  const firstPass = (node: ts.Node): void => {
+    if (ts.isClassDeclaration(node) || ts.isClassExpression(node)) {
+      const held = formFieldsOf(node, resolve);
+      if (held.size > 0) {
+        let attached = false;
+        const look = (inner: ts.Node): void => {
+          if ((ts.isJsxElement(inner) || ts.isJsxSelfClosingElement(inner)) && tagOf(inner) === "form") {
+            const submit = openingOf(inner).attributes.properties.find(
+              (p): p is ts.JsxAttribute => ts.isJsxAttribute(p) && p.name.getText() === "onsubmit",
+            );
+            const handler = submit === undefined ? undefined : valueOf(submit);
+            const written = handler === undefined ? undefined : unwrap(handler);
+            if (
+              written !== undefined &&
+              ts.isPropertyAccessExpression(written) &&
+              written.name.text === "submit" &&
+              ts.isPropertyAccessExpression(written.expression) &&
+              written.expression.expression.kind === ts.SyntaxKind.ThisKeyword &&
+              held.has(written.expression.name.text) &&
+              enclosingClass(inner) === node
+            ) {
+              formElements.add(inner);
+              attached = true;
+            }
+          }
+          ts.forEachChild(inner, look);
+        };
+        ts.forEachChild(node, look);
+        holders.push({
+          component: node.name?.text ?? "(anonymous)",
+          isHook: isHookClass(node, resolve),
+          attached,
+          ...positionOf(node.name ?? node),
+        });
+      }
+    }
+    ts.forEachChild(node, firstPass);
+  };
+  for (const file of sources) firstPass(file);
+
+  // Where `this.props.children` sits inside one of those forms.
+  const childrenPass = (node: ts.Node): void => {
+    if (propRead(ts.isExpression(node) ? node : undefined) === "children" && insideAForm(node, false)) {
+      const owner = enclosingClass(node);
+      if (owner !== undefined) childrenInForm.add(owner);
+    }
+    ts.forEachChild(node, childrenPass);
+  };
+
+  /** Whether a form — or a component placing its children in one — encloses this, in the same render. */
+  function insideAForm(node: ts.Node, throughChildren: boolean): boolean {
+    // The element that holds `node` — an expression's nearest one, or an element's own parent.
+    let first: ts.Node | undefined = node.parent;
+    while (first !== undefined && !ts.isJsxElement(first) && !ts.isJsxSelfClosingElement(first)) first = first.parent;
+    const start = ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node) ? enclosingElement(node) : first;
+    for (
+      let at = start as ts.JsxElement | ts.JsxSelfClosingElement | undefined;
+      at !== undefined;
+      at = enclosingElement(at)
+    ) {
+      if (formElements.has(at)) return true;
+      if (throughChildren) {
+        const opening = openingOf(at);
+        const target = tagOf(at) === undefined ? readableClass(opening.tagName, resolve) : undefined;
+        if (target !== undefined && childrenInForm.has(target)) return true;
+      }
+    }
+    return false;
+  }
+  for (const file of sources) childrenPass(file);
+
+  // Pass two: fields and component sites.
+  const readElement = (element: ts.JsxElement | ts.JsxSelfClosingElement): void => {
+    const opening = openingOf(element);
+    const host = tagOf(element);
+    const core = host === undefined ? coreElementTag(opening.tagName, resolve) : undefined;
+    const fieldTag = host === "input" ? "input" : core;
+
+    if (fieldTag === "input" || fieldTag === "select" || fieldTag === "textarea") {
+      readField(element, fieldTag);
+      return;
+    }
+    // A component — core's own render their children where they stand, and hold no field of theirs.
+    if (host !== undefined || resolve.coreName(opening.tagName) !== undefined) return;
+
+    const props = new Map<string, ts.Expression | undefined>();
+    let spreads = false;
+    for (const attribute of opening.attributes.properties) {
+      if (ts.isJsxSpreadAttribute(attribute)) spreads = true;
+      else props.set(attribute.name.getText(), valueOf(attribute));
+    }
+    sites.push({
+      owner: enclosingClass(element),
+      target: readableClass(opening.tagName, resolve),
+      tag: opening.tagName.getText(),
+      inForm: insideAForm(element, true),
+      props,
+      spreads,
+      ...positionOf(opening),
+    });
+  };
+
+  const readField = (element: ts.JsxElement | ts.JsxSelfClosingElement, tag: string): void => {
+    const opening = openingOf(element);
+    const written = new Map<string, ts.JsxAttribute>();
+    for (const attribute of opening.attributes.properties) {
+      if (ts.isJsxAttribute(attribute)) written.set(attribute.name.getText(), attribute);
+    }
+    const typeAttribute = written.get("type");
+    const type =
+      typeAttribute?.initializer !== undefined && ts.isStringLiteral(typeAttribute.initializer)
+        ? typeAttribute.initializer.text.toLowerCase()
+        : undefined;
+    if (type !== undefined && NOT_EDITED.has(type)) return;
+    const box = type === "checkbox" || type === "radio";
+    const pick = tag === "select" || box;
+
+    const modelName = box ? "checked" : "value";
+    const model = written.get(modelName);
+    const modelValue = model === undefined ? undefined : valueOf(model);
+    if (model === undefined || (modelValue !== undefined && isNothing(modelValue))) return;
+
+    const sourceOf = (name: string): AttributeSource => {
+      const attribute = written.get(name);
+      if (attribute === undefined) return { kind: "missing" };
+      const value = valueOf(attribute);
+      const prop = propRead(value);
+      if (prop !== undefined) return { kind: "prop", prop };
+      if (value !== undefined && isNothing(value)) return { kind: "missing" };
+      return { kind: "written" };
+    };
+    const writer = written.has("oninput") || !pick ? sourceOf("oninput") : sourceOf("onchange");
+
+    // A spread written after one of the form's attributes may overwrite it, so what is handed for it
+    // is what the use sites have to show.
+    const formNames = new Set<string>([modelName, "name", "oninput", "onchange", "onblur", "aria-invalid"]);
+    const lateBags: string[] = [];
+    let seenOne = false;
+    for (const attribute of opening.attributes.properties) {
+      if (ts.isJsxAttribute(attribute)) {
+        if (formNames.has(attribute.name.getText())) seenOne = true;
+      } else if (seenOne) {
+        const bag = propRead(attribute.expression);
+        if (bag !== undefined) lateBags.push(bag);
+      }
+    }
+
+    fields.push({
+      owner: enclosingClass(element),
+      inForm: insideAForm(element, true),
+      attributes: {
+        name: sourceOf("name"),
+        value: sourceOf(modelName),
+        oninput: writer,
+        onblur: sourceOf("onblur"),
+        "aria-invalid": sourceOf("aria-invalid"),
+      },
+      lateBags,
+      tag: tag === "select" ? "Select" : tag === "textarea" ? "TextArea" : "input",
+      ...positionOf(opening),
+    });
+  };
+
+  const secondPass = (node: ts.Node): void => {
+    if (ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node)) readElement(node);
+    ts.forEachChild(node, secondPass);
+  };
+  for (const file of sources) secondPass(file);
+
+  return { fields, sites, holders };
+}

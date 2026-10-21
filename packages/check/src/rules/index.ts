@@ -46,6 +46,7 @@ import { mediaWithNoCaptions } from "./media-with-no-captions";
 import { fragmentLinkToNowhere } from "./fragment-link-to-nowhere";
 import { referenceToAnIdThatIsNotThere } from "./reference-to-an-id-that-is-not-there";
 import { controlWithNoLabel } from "./control-with-no-label";
+import { formFieldWithoutWhatTheFormNeeds } from "./form-field-without-what-the-form-needs";
 import { namedOnlyByAPlaceholder } from "./named-only-by-a-placeholder";
 import { ariaHiddenOnFocusable } from "./aria-hidden-on-focusable";
 import { presentationRoleOnFocusable } from "./presentation-role-on-focusable";
@@ -185,6 +186,10 @@ export {
   type ReferenceToAnIdThatIsNotThereIssue,
 } from "./reference-to-an-id-that-is-not-there";
 export { controlWithNoLabel, type ControlWithNoLabelIssue } from "./control-with-no-label";
+export {
+  formFieldWithoutWhatTheFormNeeds,
+  type FormFieldWithoutWhatTheFormNeedsIssue,
+} from "./form-field-without-what-the-form-needs";
 export { namedOnlyByAPlaceholder, type NamedOnlyByAPlaceholderIssue } from "./named-only-by-a-placeholder";
 export { couldExist, idTableFor, NAMES_AN_ID } from "./idTable";
 export { ariaHiddenOnFocusable, type AriaHiddenOnFocusableIssue } from "./aria-hidden-on-focusable";
@@ -399,6 +404,7 @@ export const PROJECT_RULES = [
   referenceToAnIdThatIsNotThere,
   controlWithNoLabel,
   namedOnlyByAPlaceholder,
+  formFieldWithoutWhatTheFormNeeds,
 ] as const;
 
 export const RULES = [...CLASS_RULES, ...MODULE_RULES, ...ELEMENT_RULES, ...TREE_RULES, ...PROJECT_RULES] as const;

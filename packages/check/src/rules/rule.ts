@@ -452,6 +452,9 @@ export interface ProjectContext {
   /** Every id written out in full, anywhere in the project. */
   ids: ReadonlySet<string>;
 
+  /** The project's `@ramonda/form` forms, the fields inside them and the uses of components there. */
+  forms: import("./formTable").FormFacts;
+
   /** Every `lazy` on an `AsyncLoad` this pass could read — see {@link LazySite}. */
   lazySites: readonly LazySite[];
 

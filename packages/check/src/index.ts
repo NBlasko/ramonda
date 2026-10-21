@@ -22,6 +22,7 @@ export type {
   CachedReadOfAPlainFieldIssue,
   ContextConsumedAboveItsProviderIssue,
   ControlWithNoLabelIssue,
+  FormFieldWithoutWhatTheFormNeedsIssue,
   ComputeTakesNoArgumentsIssue,
   ContextIssue,
   DecoratorThatAddsNothingIssue,
