@@ -6,7 +6,7 @@ import { mounted, updated } from "./decorators";
 import { __h } from "../vdom/h";
 import { composingIn } from "../core/field";
 import { answer, controlled, forwarded, given } from "./forwarded";
-import type { TransformInput } from "../types/commonTypes";
+import type { RefusedVerbatimStandard, TransformInput } from "../types/commonTypes";
 import type { RefTarget } from "./Ref";
 
 /**
@@ -27,7 +27,8 @@ import type { RefTarget } from "./Ref";
  * its DEFAULT value: it stops driving the element the moment somebody types in it, and from then on
  * the property is the only thing that speaks.
  */
-export interface TextAreaProps {
+/** `on:input` is refused as on any element: a standard event has one spelling — see `RefusedVerbatimStandard`. */
+export interface TextAreaProps extends Partial<RefusedVerbatimStandard> {
   /**
    * Anything a `<textarea>` takes, passed straight through.
    *
@@ -52,7 +53,7 @@ export interface TextAreaProps {
    * made, `prev` what the model holds, and what comes back is what the field shows — `prev` refuses
    * the edit, so a fourth character in a field of three is never even drawn, and the caret goes back
    * where it was. `input` says where the caret is and what kind of edit it was, for a mask. A pure
-   * function: see `transformAtSource` in `forwarded.ts`.
+   * function: see `decideEdit` in `core/field.ts`.
    */
   transform?: (next: string, prev: string, input: TransformInput) => string;
   className?: string;

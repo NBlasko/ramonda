@@ -4,9 +4,9 @@ import { expect, test } from "@playwright/test";
  * What a field does that jsdom cannot settle, because it is the browser's own.
  *
  * - **A word typed through an input method.** Chromium sends no ordinary `input` after a
- *   composition — its last `input` still says `isComposing` — so a handler that skips composing
- *   input would never take the word; the field hands it over at `compositionend` (`field.ts`, "When
- *   it ends"), on a `TextArea` and on an `<input>` alike. The composition is driven through the
+ *   composition — its last `input` still says `isComposing` — so the field hands the word over at
+ *   `compositionend` (`field.ts`, "When it ends"), once, to either way of writing a handler, on a
+ *   `TextArea` and on an `<input>` alike. The composition is driven through the
  *   DevTools protocol's IME, which goes through the same path a real input method does. Firefox,
  *   which sends that `input` itself, is checked by `firefox-composition.mjs`: Playwright cannot
  *   compose in it.
@@ -43,10 +43,10 @@ test.describe("fields only a browser settles", () => {
       await expect(page.locator(`#skips${suffix}`)).toHaveValue("日本");
     });
 
-    /** It had the word from the last composing `input`, so the field hands over nothing more. */
-    test(`a handler that takes every input is not called again for the word — on ${on}`, async ({ page }) => {
+    /** The unfinished word reaches no handler, so one that reads every input hears the word once too. */
+    test(`a handler that takes every input hears the word once — on ${on}`, async ({ page }) => {
       await compose(page, `#takes${suffix}`);
-      await expect(page.locator(`#takes${suffix}-taken`)).toHaveText('["n","に","日本"]');
+      await expect(page.locator(`#takes${suffix}-taken`)).toHaveText('["日本"]');
       await expect(page.locator(`#takes${suffix}`)).toHaveValue("日本");
     });
   }

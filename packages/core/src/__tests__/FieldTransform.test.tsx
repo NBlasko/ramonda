@@ -491,8 +491,12 @@ describe("a refused edit leaves the field as the edit found it", () => {
   });
 });
 
-/** Round 31: `on:input` is a field's own handler on a `Select` and a `TextArea`, as on an `<input>`. */
-describe("a handler written `on:input`", () => {
+/**
+ * `on:input` is refused by the types — a standard event has one spelling — but a caller the types do
+ * not reach (JavaScript, a spread of something untyped) can still hand it over, so the field answers
+ * it as its own: after the edit is decided, never around it.
+ */
+describe("a handler written `on:input`, past the types", () => {
   test("on a TextArea, never hears an edit the transform refuses", async () => {
     class Short extends Component {
       @state text = "abc";
@@ -505,7 +509,8 @@ describe("a handler written `on:input`", () => {
         return next.length <= 3 ? next : prev;
       }
       render() {
-        return <TextArea id="t" aria-label="Short" value={this.text} on:input={this.typed} transform={this.max3} />;
+        const untyped: Record<string, unknown> = { "on:input": this.typed };
+        return <TextArea id="t" aria-label="Short" value={this.text} {...untyped} transform={this.max3} />;
       }
     }
     const app = await getDOM<Short>(<Short />);
@@ -537,8 +542,9 @@ describe("a handler written `on:input`", () => {
         return next === "l" ? prev : next;
       }
       render() {
+        const untyped: Record<string, unknown> = { "on:input": this.picked };
         return (
-          <Select id="s" aria-label="Size" value={this.size} on:input={this.picked} transform={this.inStock}>
+          <Select id="s" aria-label="Size" value={this.size} {...untyped} transform={this.inStock}>
             <option value="m">m</option>
             <option value="l">l</option>
           </Select>
@@ -590,5 +596,45 @@ describe("a handler written `on:input`", () => {
     select.dispatchEvent(new Event("change", { bubbles: true }));
 
     expect({ picks: app.instance.picks, tags: app.instance.tags }).toEqual({ picks: 0, tags: ["b", "a"] });
+  });
+});
+
+/**
+ * The unfinished word reaches no handler, so a handler that takes every input — every
+ * `@ramonda/form` field's does — cannot write past a `transform`: the word is decided whole, at its end.
+ */
+describe("an input method's word and a transform", () => {
+  test("a handler that takes every input cannot write a word the transform refuses", async () => {
+    class Short extends Component {
+      @state text = "abc";
+      heard: string[] = [];
+      typed(event: EventOn<HTMLTextAreaElement>) {
+        this.heard.push(event.currentTarget.value);
+        this.text = event.currentTarget.value;
+      }
+      max3(next: string, prev: string): string {
+        return next.length <= 3 ? next : prev;
+      }
+      render() {
+        return <TextArea id="t" aria-label="Short" value={this.text} oninput={this.typed} transform={this.max3} />;
+      }
+    }
+    const app = await getDOM<Short>(<Short />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+    field.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+    for (const step of ["abcに", "abc日本"]) {
+      field.value = step;
+      field.dispatchEvent(new InputEvent("input", { bubbles: true, isComposing: true }));
+      await app.settle();
+    }
+    field.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "日本" }));
+    await app.settle();
+
+    expect({ heard: app.instance.heard, model: app.instance.text, shown: field.value }).toEqual({
+      heard: [],
+      model: "abc",
+      shown: "abc",
+    });
   });
 });

@@ -281,7 +281,10 @@ describe("an uncontrolled input across a render", () => {
   });
 });
 
-/** Each handler written on an `<input>` is one of its own, as a listener is. */
+/**
+ * Each handler handed to an `<input>` is one of its own, as a listener is. `on:input` is refused by the
+ * types; this is a caller they do not reach, through a spread of something untyped.
+ */
 describe("an input's own handlers", () => {
   class Both extends Component {
     @state second = true;
@@ -293,7 +296,8 @@ describe("an input's own handlers", () => {
       this.calls.push("b");
     }
     render() {
-      return <input id="i" aria-label="Both" oninput={this.a} on:input={this.second ? this.b : undefined} />;
+      const untyped: Record<string, unknown> = { "on:input": this.second ? this.b : undefined };
+      return <input id="i" aria-label="Both" oninput={this.a} {...untyped} />;
     }
   }
 

@@ -71,6 +71,9 @@ So write it after a colon and it is taken exactly as it stands:
 The handler receives a plain `Event`; a custom event's `detail` is your own, so cast it
 to the shape you dispatched.
 
+A standard event has one spelling, `on` and its name: `on:input` or `on:click` is a type
+error that names it, so `oninput` is the only way a field's handler is ever written.
+
 ### Reading a field off the element the handler is on
 
 The event itself is already typed from the name — `onclick` gives you a `PointerEvent`, `onkeydown`

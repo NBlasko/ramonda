@@ -3,7 +3,7 @@ import { createRef } from "./Ref";
 import { mounted, updated } from "./decorators";
 import { __h } from "../vdom/h";
 import { answer, controlled, forwarded, given, heard } from "./forwarded";
-import type { TransformInput } from "../types/commonTypes";
+import type { RefusedVerbatimStandard, TransformInput } from "../types/commonTypes";
 import type { RamondaNode, RenderEnv } from "../types/vdom";
 import type { RefTarget } from "./Ref";
 
@@ -29,7 +29,8 @@ import type { RefTarget } from "./Ref";
  * default: a form's reset returns to it.
  */
 
-export interface SelectProps {
+/** `on:input` is refused as on any element: a standard event has one spelling — see `RefusedVerbatimStandard`. */
+export interface SelectProps extends Partial<RefusedVerbatimStandard> {
   /**
    * Anything a `<select>` takes, passed straight through.
    *
@@ -55,7 +56,7 @@ export interface SelectProps {
    * What a pick leaves in the select, decided before any handler reads it: `next` is the pick, `prev`
    * what the model holds, and what comes back is what the select shows — `prev` refuses the pick, so
    * an option that is out of stock is never even drawn. The chosen values for a `multiple` select. A
-   * pure function: see `transformAtSource` in `forwarded.ts`.
+   * pure function: see `decideEdit` in `core/field.ts`.
    */
   transform?:
     | ((next: string, prev: string, input: TransformInput) => string)

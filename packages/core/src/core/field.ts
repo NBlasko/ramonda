@@ -130,9 +130,8 @@ interface FieldState {
   composing: boolean;
   /** The field lost the focus in the middle of the composition — see "A composition lost" on `answerEdit`. */
   blurred: boolean;
-  /** What the model held when the composition began, and whether it has left it since. */
+  /** What the model held when the composition began: a model the app moves in the middle of a word wins. */
   composedFrom?: unknown;
-  composedMoved: boolean;
   /**
    * What the field held when its composition ended — the word its handler was handed, or what a
    * refusal left — so Firefox's `input` after it reaches no handler. See "When it ends" on `answerEdit`.
@@ -148,7 +147,7 @@ const fields = new WeakMap<object, FieldState>();
 function stateOf(key: object): FieldState {
   let state = fields.get(key);
   if (state === undefined) {
-    fields.set(key, (state = { composing: false, blurred: false, composedMoved: false, picked: false }));
+    fields.set(key, (state = { composing: false, blurred: false, picked: false }));
   }
   return state;
 }
@@ -179,27 +178,6 @@ function sameModel(a: unknown, b: unknown): boolean {
   const before = new Set(a.map(String));
   const after = new Set(b.map(String));
   return before.size === after.size && [...before].every((member) => after.has(member));
-}
-
-function noteMovement(control: FieldControl, state: FieldState): void {
-  if (!sameModel(control.model(), state.composedFrom)) state.composedMoved = true;
-}
-
-/**
- * Whether a field whose composition ended still needs the word handed to it: its component is
- * alive, and its model has not moved at any point since the composition began — asked at every event
- * of it, because a word typed again over itself, or a cancelled one, ends where it began after
- * moving on the way.
- *
- * A handler that takes composing input moved the model — whether it kept the word, changed it
- * (full-width digits to half-width) or cleared the field — and is not called again. Only a model that
- * stands where it stood took nothing, which is the handler that skips composing input. A field whose
- * component the composition's end destroyed — Enter closed the dialog — is handed nothing.
- */
-function lacksTheWord(control: FieldControl, state: FieldState): boolean {
-  if (control.gone()) return false;
-  noteMovement(control, state);
-  return !state.composedMoved;
 }
 
 /**
@@ -236,18 +214,19 @@ function decide(control: FieldControl, event: Event): boolean {
  * before a render can land between the two — a form's `oninput` flipping a "Save" button is enough —
  * and the `change` finds nothing left to do.
  *
- * **Not in the middle of a composition.** An input method builds a character over several `input`
- * events, and writing the field between them cancels it: they reach the field's handler, and the
- * field is left alone until the word ends.
+ * **Not in the middle of a composition.** An input method builds a word over several `input` events,
+ * and writing the field between them cancels it. They reach no handler of the field — the
+ * `transform` cannot decide a word that is not finished, and a handler that took the unfinished one
+ * would write past it — and the field is left alone until the word ends.
  *
- * **When it ends, every browser hands the word over the same way.** The usual handler skips composing
- * input, `if (event.isComposing) return;`, and takes the word from the ordinary `input` that follows.
- * Measured: Firefox sends one — `compositionend`, then `input` with `isComposing: false` and
- * `insertCompositionText`. Chromium does not: its last `input` still says `isComposing`, and nothing
- * follows `compositionend`. So at `compositionend`, while the model lacks the word (`lacksTheWord`),
- * the field's own `oninput` is handed it at once, with that `compositionend`; and Firefox's `input`
- * after it, carrying the same word, does not reach the handler a second time. Every other listener
- * hears what the browser sent.
+ * **When it ends, the word is one edit, and every browser hands it over the same way.** It is decided
+ * by the `transform` against the model as it stood before the word, and a word the transform keeps
+ * reaches the field's `oninput` once, at `compositionend` — so a handler never has to ask
+ * `isComposing`. Measured: Firefox then sends an `input` of its own, `insertCompositionText` with the
+ * same word, which reaches no handler a second time; Chromium sends nothing after `compositionend`.
+ * A field the end of the word removed — Enter closed its dialog — is handed nothing, and so is one
+ * whose model the app moved in the middle of the word — a chat that sent and cleared it: the app's
+ * write wins, and the field shows it. Every other listener hears what the browser sent.
  *
  * **A composition lost.** A field that loses the focus mid-word may get no `compositionend` at all, or
  * get it after the blur. The blur is noted and the composition goes on, so a render the blur causes —
@@ -264,7 +243,6 @@ export function answerEdit(control: FieldControl, event: Event): void {
     state.blurred = false;
     state.handedOver = undefined;
     state.composedFrom = control.model();
-    state.composedMoved = false;
     control.own(event.type, event);
     return;
   }
@@ -279,12 +257,12 @@ export function answerEdit(control: FieldControl, event: Event): void {
     const refused = decide(control, event);
     try {
       control.own(event.type, event);
-      // What the handler took during the composition has been rendered by now, so the model says it.
+      // What `oncompositionend` rendered has run by now: it may have removed the field.
       drainSync();
       // A word the transform refused is no word: it is not handed over, and Firefox's `input` after
       // it, carrying the field as the refusal left it, reaches no handler either.
       if (refused && field !== null) state.handedOver = field.value;
-      else if (field !== null && lacksTheWord(control, state)) {
+      else if (field !== null && !control.gone() && sameModel(control.model(), state.composedFrom)) {
         state.handedOver = field.value;
         control.own("input", event);
       }
@@ -299,16 +277,8 @@ export function answerEdit(control: FieldControl, event: Event): void {
     state.composing = false;
     state.blurred = false;
   }
-  if ((event as InputEvent).isComposing || state.composing) {
-    try {
-      control.own(event.type, event);
-    } finally {
-      // The render of this input lands before the next event, and tells whether the model moved.
-      drainSync();
-      noteMovement(control, state);
-    }
-    return;
-  }
+  // The unfinished word reaches no handler of the field: it is handed over, decided, when it ends.
+  if ((event as InputEvent).isComposing || state.composing) return;
 
   // Firefox's `input` after a composition, with the word the handler was handed or what a refusal left.
   // Only Firefox sends it, as `insertCompositionText`; Chromium sends nothing, so whatever comes next

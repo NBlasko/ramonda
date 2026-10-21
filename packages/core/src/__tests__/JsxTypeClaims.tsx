@@ -225,6 +225,14 @@ export class EventNames extends Component {
         {/* `on:` takes the rest of the name exactly as written, for an event `on…` cannot spell. */}
         <div on:my-event={(event) => event.type} />
         <div on:DOMSomething={(event) => event.type} />
+        {/* @ts-expect-error — a standard event has one spelling: `oninput` */}
+        <input aria-label="colon" on:input={(event) => event.type} />
+        {/* @ts-expect-error — and so does a click, on any element */}
+        <div on:click={(event) => event.type} />
+        {/* @ts-expect-error — on a core field too, which spells out its own props */}
+        <TextArea aria-label="colon area" value="" on:input={() => {}} />
+        {/* @ts-expect-error — and on a select */}
+        <Select aria-label="colon select" value="" on:change={() => {}} />
       </div>
     );
   }

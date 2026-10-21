@@ -109,6 +109,19 @@ type RefusedEventCasing = {
 };
 
 /**
+ * `on:` before a STANDARD event, refused with the one spelling it has.
+ *
+ * `on:` exists for the event `on…` cannot spell — a custom one with a dash. Written before `input` or
+ * `click` it reaches the same listener as `oninput`, and a second way to write one thing is a second
+ * thing to read, to check and to get wrong: on a `Select` or a `TextArea` it once bypassed the field's
+ * `transform`. Generated from the same maps as `EventHandlers`, so it cannot fall out of step.
+ */
+export type RefusedVerbatimStandard = {
+  [K in keyof (HTMLElementEventMap &
+    HTMLMediaElementEventMap) as `on:${K}`]: `write \`on${K}\` — \`on:\` is for an event \`on…\` cannot spell`;
+};
+
+/**
  * Names that typecheck and do nothing, refused here with the reason in the error.
  *
  * `DomProperties<T>` maps every property of the DOM interface, so a PROPERTY that is not an
@@ -305,7 +318,8 @@ export type RamondaArgs<T extends BaseElements> = Partial<
     }
 > &
   Partial<RefusedNames> &
-  Partial<RefusedEventCasing>;
+  Partial<RefusedEventCasing> &
+  Partial<RefusedVerbatimStandard>;
 
 export interface SVGArguments extends SVGGraphicsElement {
   width: string | number;
@@ -425,7 +439,8 @@ export type SVGArgs<T extends SVGElement> = Partial<
   } & Omit<DomProperties<T>, keyof SVGCamelCaseAttributes | Lowercase<string>> &
     EventHandlers &
     VerbatimEvents
->;
+> &
+  Partial<RefusedVerbatimStandard>;
 
 /**
  * An event, told which element the handler is ON — for the one line the DOM's own types cannot type.

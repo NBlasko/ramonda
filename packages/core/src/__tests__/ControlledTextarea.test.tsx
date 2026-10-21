@@ -768,10 +768,10 @@ describe("a controlled textarea follows the model after the event the app handle
   });
 
   /**
-   * A composition that ends where it began — the word typed again over itself, or cancelled — still
-   * moved the model on the way for a handler that takes every input, and it is not called again.
+   * A handler that takes every input hears the unfinished word at no step: the word is one edit,
+   * handed over once, decided, when it ends — even one typed again over itself.
    */
-  test("a model that moved and came back is not handed the word again", async () => {
+  test("a handler that takes every input hears the word once, at its end", async () => {
     const taken: string[] = [];
     class Again extends Component {
       @state text = "日本";
@@ -796,7 +796,7 @@ describe("a controlled textarea follows the model after the event the app handle
     field.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "日本" }));
     await drain(app);
 
-    expect(taken).toEqual(["n", "日本"]);
+    expect(taken).toEqual(["日本"]);
   });
 
   test("a model cleared in the middle of a word is not handed the word back", async () => {

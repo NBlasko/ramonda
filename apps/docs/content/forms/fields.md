@@ -145,9 +145,9 @@ before any script runs.
 **`value` is the model's; `defaultValue` is where the field starts.** A field with `value` shows what
 the model holds: its own handler writes the model, and the field shows the model again in the same
 event, before the event bubbles to anything around it — so a handler that does not take an edit leaves the
-field as it was, and a field with no handler of its own cannot be changed. An input method's
-composition is left alone while it lasts, and its word is handed to the handler once it ends, in every
-browser. A field whose text is read when the form is sent, rather than held in state, takes
+field as it was, and a field with no handler of its own cannot be changed. An input method's word is
+one edit: while it is composed it reaches no handler, and once it ends it is handed to the handler
+once, in every browser — so a handler never asks `isComposing`. A field whose text is read when the form is sent, rather than held in state, takes
 `defaultValue` instead: it shows that first and then belongs to the user, and a form's reset returns
 to it.
 
@@ -187,8 +187,8 @@ class Phone extends Component {
 
 `input` says what the edit was — `inputType` (`insertText`, `deleteContentBackward`, `insertFromPaste`)
 and the caret's `selectionStart` and `selectionEnd` — which is what a mask needs. On a checkbox or a
-radio, `next` and `prev` are whether it is checked. During an input method's composition the word is
-decided once it ends.
+radio, `next` and `prev` are whether it is checked. An input method's word is decided whole, once it
+ends, so a `transform` holds for it as for anything typed.
 
 A `transform` is pure — its answer depends on what it is given and on fixed values, and it changes
 nothing — and [`transform-that-is-not-pure`](/reference/check) proves it from the source, following the

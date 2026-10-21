@@ -33,16 +33,22 @@ pure: returning `prev` refuses the edit and puts the caret back where it was; `i
 checkbox or a radio `transform` is told whether the box is checked; a word an input method commits is
 decided once it ends, and a refused word is handed to no handler.
 
-An input method's composition is left alone while it lasts — its `input` events reach the handler,
-and the field is not written. When it ends, a handler that skips composing input is handed the word
-at `compositionend` while its model lacks it, the same in Chromium, which sends nothing more, and in
-Firefox, whose ordinary `input` after it is recognised and not handed over a second time. A blur in
-the middle of a word keeps the composition going until its `compositionend` or the next ordinary edit.
+An input method's word is one edit. While it is composed, its `input` events reach no handler of the
+field and the field is not written; when it ends, the word is decided by the `transform` and handed
+to the field's `oninput` once, at `compositionend` — the same in Chromium, which sends nothing more,
+and in Firefox, whose `input` after it is recognised and not handed over a second time. So a handler
+never asks `isComposing`, and a `transform` holds for every word typed through an input method. A
+model the app moves in the middle of a word wins over it, and a blur keeps the composition going
+until its `compositionend` or the next ordinary edit.
 
 `defaultValue` (and `defaultChecked`) starts a field the user owns — for a form whose fields are read
 when it is sent. It is written as the field's default — the `value` attribute, the `checked`
 attribute, the option's `selected` — so a served page shows it before any script runs, and a form's
 reset returns to it. A `value` of `null` or `undefined` is no value. The field's handler is called as a
 listener is, with the element as `this`, and may be a function or a listener object; one written
-`on:input` is the field's own as much as `oninput`, called after it and refused with it. A field the
-end of a composition removes — Enter closing its dialog — hands the word to no handler.
+`on:input` — a type error now, see below — reaching the field anyway is its own as much as `oninput`.
+A field the end of a composition removes — Enter closing its dialog — hands the word to no handler.
+
+`on:` before a standard event is a type error that names the spelling: `on:input` is written
+`oninput`, on every element and on `Select` and `TextArea`. `on:` is for an event `on…` cannot
+spell, a custom one with a dash.

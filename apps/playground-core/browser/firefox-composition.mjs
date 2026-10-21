@@ -20,14 +20,14 @@ import { firefox } from "@playwright/test";
 const PREVIEW = 4174;
 const MARIONETTE = 2829;
 
-/** What each handler must have taken: the word, once — and for `takes`, every step before it. */
+/** What each handler must have taken: the word, once, whichever way the handler is written. */
 const EXPECTED = {
   skips: '["日本"]',
-  // Firefox's own events: the last composing `input` and the ordinary one after it both carry the
-  // word. Core adds nothing, which is the claim.
-  takes: '["n","に","日本","日本"]',
+  // The unfinished word reaches no handler, and Firefox's own `input` after the end is recognised as
+  // the word already handed over: a handler that reads every input hears it once too.
+  takes: '["日本"]',
   "skips-input": '["日本"]',
-  "takes-input": '["n","に","日本","日本"]',
+  "takes-input": '["日本"]',
 };
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));

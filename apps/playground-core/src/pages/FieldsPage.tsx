@@ -7,11 +7,11 @@ const readout = { display: "block", margin: "0.5rem 0 0", fontFamily: "monospace
 /**
  * A word typed through an input method, into a field the model holds.
  *
- * Two handlers, the two ways one is written. `skips` leaves on composing input, the usual way, and
- * takes the word when the composition ends — handed to it then, in every browser, while its model
- * lacks the word. `takes` reads every input, composing or not, and has the word already. Each
- * readout lists what its handler took: the word must be there, and once. The same two are written
- * on a `TextArea` and on an `<input>`, which reach the field by different paths.
+ * Two handlers, the two ways one is written: `skips` leaves on composing input, `takes` reads every
+ * input. Both hear the same thing — the unfinished word reaches no handler, and the finished one is
+ * handed over once, at the composition's end, in every browser. Each readout lists what its handler
+ * took: the word, once. The same two are written on a `TextArea` and on an `<input>`, which reach the
+ * field by different paths.
  */
 class Composed extends Component<{ id: string; title: string; skipsComposing: boolean; field: "textarea" | "input" }> {
   @state text = "";
