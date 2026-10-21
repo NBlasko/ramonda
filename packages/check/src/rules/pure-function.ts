@@ -237,7 +237,7 @@ export function whyImpure(
 
     if (ts.isIdentifier(node) && isRead(node)) {
       const declared = resolve(node)?.declarations?.[0];
-      if (declared === undefined) {
+      if (declared === undefined || fromThePlatform(declared)) {
         if (!PURE_GLOBALS.has(node.text)) return fail(node, `it reads \`${node.text}\`, which the page owns`);
       } else if (!unchanging(declared)) {
         // A function named as a value — `map(toDigit)` — runs too, so it is read like one that is called.
@@ -255,7 +255,8 @@ export function whyImpure(
 
     if (ts.isPropertyAccessExpression(node) && IMPURE_MEMBERS.has(node.name.text)) {
       const root = rootOf(node.expression);
-      if (ts.isIdentifier(root) && resolve(root) === undefined) return fail(node, `it reads \`${node.getText()}\``);
+      if (ts.isIdentifier(root) && fromThePlatform(resolve(root)?.declarations?.[0]))
+        return fail(node, `it reads \`${node.getText()}\``);
     }
 
     ts.forEachChild(node, visit);
@@ -277,9 +278,9 @@ export function whyImpure(
       if (MUTATING_METHODS.has(name.text)) {
         return isLocal(callee.expression) ? undefined : `it changes \`${callee.expression.getText()}\``;
       }
-      if (PURE_METHODS.has(name.text) && declaredByThePlatform(declared)) return undefined;
+      if (PURE_METHODS.has(name.text) && fromThePlatform(declared)) return undefined;
     }
-    if (ts.isIdentifier(callee) && declared === undefined && PURE_GLOBALS.has(callee.text)) return undefined;
+    if (ts.isIdentifier(callee) && fromThePlatform(declared) && PURE_GLOBALS.has(callee.text)) return undefined;
     return `it calls \`${callee.getText()}\`, whose body cannot be read`;
   };
 
@@ -287,10 +288,18 @@ export function whyImpure(
   return found;
 }
 
-/** A method this package knows only by name: the platform's, which no project file declares. */
-function declaredByThePlatform(declared: ts.Declaration | undefined): boolean {
-  return declared === undefined;
+/**
+ * Whether a name is the platform's: declared nowhere — the analyzer's own program has no lib — or in
+ * one of TypeScript's lib files, which a program with a lib resolves it to. Both answer the same, so
+ * a rule says the same thing whichever program it is handed.
+ */
+export function fromThePlatform(declared: ts.Declaration | undefined): boolean {
+  if (declared === undefined) return true;
+  return TYPESCRIPT_LIB.test(declared.getSourceFile().fileName);
 }
+
+/** `…/typescript/lib/lib.dom.d.ts` — one of TypeScript's own lib files, whichever copy the project has. */
+const TYPESCRIPT_LIB = /[\\/]typescript[\\/]lib[\\/]lib\.[^\\/]+\.d\.ts$/;
 
 function isAssignment(kind: ts.SyntaxKind): boolean {
   return kind >= ts.SyntaxKind.FirstAssignment && kind <= ts.SyntaxKind.LastAssignment;
@@ -396,7 +405,7 @@ export function isFixed(expression: ts.Expression, resolve: Resolver, depth = 0)
       callee.name.text === "freeze" &&
       ts.isIdentifier(callee.expression) &&
       callee.expression.text === "Object" &&
-      resolve(callee.expression) === undefined;
+      fromThePlatform(resolve(callee.expression)?.declarations?.[0]);
     if (!frozen) return false;
     const held = unwrap(value.arguments[0]);
     if (ts.isArrayLiteralExpression(held)) return held.elements.every((e) => isFixed(e, resolve, depth + 1));

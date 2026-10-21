@@ -287,7 +287,7 @@ describe("an input's transform decides the edit before anyone reads it", () => {
     expect(field.value).toBe("064a");
   });
 
-  test("a checkbox the transform keeps off is never ticked", async () => {
+  test("a checkbox the transform keeps off is never ticked, and its handler never hears of it", async () => {
     const read: boolean[] = [];
     class Terms extends Component {
       @state agreed = false;
@@ -307,7 +307,7 @@ describe("an input's transform decides the edit before anyone reads it", () => {
     const box = app.container.querySelector("#c") as HTMLInputElement;
     box.click();
 
-    expect({ read, checked: box.checked }).toEqual({ read: [false], checked: false });
+    expect({ read, checked: box.checked }).toEqual({ read: [], checked: false });
   });
 
   test("a number field, which has no caret, is decided without one", async () => {
@@ -401,9 +401,9 @@ describe("a refused edit leaves the field as the edit found it", () => {
     class Pets extends Component {
       @state pet = "a";
       told: unknown[] = [];
-      /** Reads `checked`: the transform decides whether the radio is on, and a refused one is off. */
+      /** Reads `value`, as a radio's handler usually does: a refused pick never reaches it. */
       picked(event: EventOn<HTMLInputElement>) {
-        if (event.currentTarget.checked) this.pet = event.currentTarget.value;
+        this.pet = event.currentTarget.value;
       }
       refuse(next: boolean, prev: boolean): boolean {
         this.told.push([next, prev]);
@@ -439,5 +439,41 @@ describe("a refused edit leaves the field as the edit found it", () => {
       checked: [a.checked, b.checked],
       told: app.instance.told,
     }).toEqual({ pet: "a", value: "b", checked: [true, false], told: [[true, false]] });
+  });
+
+  /** A refused pick is no pick: neither of the box's handlers runs, on its `input` or its `change`. */
+  test("a checkbox whose transform refuses the tick calls no handler", async () => {
+    class Terms extends Component {
+      @state accepted = false;
+      calls: string[] = [];
+      typed() {
+        this.calls.push("oninput");
+      }
+      changed() {
+        this.calls.push("onchange");
+      }
+      notYet(_next: boolean, prev: boolean): boolean {
+        return prev;
+      }
+      render() {
+        return (
+          <input
+            id="c"
+            type="checkbox"
+            aria-label="Terms"
+            checked={this.accepted}
+            oninput={this.typed}
+            onchange={this.changed}
+            transform={this.notYet}
+          />
+        );
+      }
+    }
+    const app = await getDOM<Terms>(<Terms />);
+    await app.settle();
+    const box = app.container.querySelector("#c") as HTMLInputElement;
+    box.click();
+
+    expect({ calls: app.instance.calls, checked: box.checked }).toEqual({ calls: [], checked: false });
   });
 });

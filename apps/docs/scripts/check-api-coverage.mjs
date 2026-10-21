@@ -138,11 +138,11 @@ const expected = [
   ...publicTypesOf("core", 25),
   ...publicSurfaceOf("lens", 1),
   ...publicSurfaceOf("query", 8),
-  // Form publishes one VALUE and twenty-odd types. `publicSurfaceOf` slices the first list in
+  // Form publishes one VALUE and some eighteen types. `publicSurfaceOf` slices the first list in
   // the file, which is `EXPECTED` — so the floor is 1, and the types are covered separately
   // below from `EXPECTED_TYPES`, because a type never appears in `Object.keys`.
   ...publicSurfaceOf("form", 1),
-  ...publicTypesOf("form", 20),
+  ...publicTypesOf("form", 15),
   // A SECOND entry point is API too. `@ramonda/form/bguard` has its own surface test, and its
   // exports were documented by hand and guarded by nothing until this line.
   ...publicSurfaceOf("form", 2, "BguardSurface.test.ts"),

@@ -27,7 +27,9 @@ put back with its whole group.
 
 `transform(next, prev, input)` on any of the three decides an edit before the handler reads it, and is
 pure: returning `prev` refuses the edit and puts the caret back where it was; `input` gives the edit's
-`inputType` and the caret, for a mask.
+`inputType` and the caret, for a mask. On a checkbox or a radio it is told whether the box is checked,
+and a refused pick is no pick: neither of the field's handlers runs, so a radio's handler that reads
+its `value` never writes the pick it refused.
 
 An input method's composition is left alone while it lasts — its `input` events reach the handler,
 and the field is not written. When it ends, a handler that skips composing input is handed the word

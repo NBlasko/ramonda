@@ -160,6 +160,7 @@ const EXPECTED_TYPES = [
   "ServerRequestInit",
   "StaticRender",
   "SubscriptionOwner",
+  "TransformInput",
   "VNode",
 ];
 
@@ -231,6 +232,7 @@ import type {
   ServerRequestInit,
   StaticRender,
   SubscriptionOwner,
+  TransformInput,
   VNode,
 } from "../index";
 
@@ -268,5 +270,6 @@ export type __Published = [
   ServerRequestInit,
   StaticRender,
   SubscriptionOwner,
+  TransformInput,
   VNode,
 ];

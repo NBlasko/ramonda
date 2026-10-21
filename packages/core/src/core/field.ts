@@ -79,8 +79,12 @@ function sameValue(a: FieldValue, b: FieldValue): boolean {
  * A refused edit puts the caret back where the edit found it: the text is the text before the edit,
  * so the offset before the edit means what it meant. A rewrite of the same length keeps the caret
  * through `writeValue`; any other rewrite is the app's to place, as `writeValue` explains.
+ *
+ * Returns whether it refused the pick of a checkbox or a radio: then nothing was picked, and no
+ * handler of the field is called. A radio's `value` is the same whether it is on or off, so a handler
+ * that read it would write the refused pick into the model.
  */
-export function decideEdit(field: Field, transform: Transform, prev: FieldValue, event: Event): void {
+export function decideEdit(field: Field, transform: Transform, prev: FieldValue, event: Event): boolean {
   const next = valueOf(field);
   const text = caretOf(field);
   const input: TransformInput = {
@@ -89,20 +93,20 @@ export function decideEdit(field: Field, transform: Transform, prev: FieldValue,
     selectionEnd: text?.selectionEnd ?? null,
   };
   const kept = transform(next as never, prev as never, input) as FieldValue;
-  if (sameValue(kept, next)) return;
+  if (sameValue(kept, next)) return false;
 
   if (isBox(field)) {
     field.checked = Boolean(kept);
-    return;
+    return Boolean(kept) === prev;
   }
   if (isMultiple(field)) {
     const wanted = new Set((kept as string[]).map(String));
     for (let i = 0; i < field.options.length; i++) field.options[i].selected = wanted.has(field.options[i].value);
-    return;
+    return false;
   }
   if (text === null) {
     field.value = String(kept);
-    return;
+    return false;
   }
   const caret = text.selectionStart;
   writeValue(text as unknown as EnhancedHTMLNode, String(kept), false);
@@ -114,6 +118,7 @@ export function decideEdit(field: Field, transform: Transform, prev: FieldValue,
     const back = Math.max(0, Math.min(prev.length, caret - moved));
     text.setSelectionRange(back, back);
   }
+  return false;
 }
 
 /** What one controlled field is in the middle of: a composition, or a pick. */
@@ -200,10 +205,11 @@ function show(control: FieldControl): void {
   control.settle();
 }
 
-function decide(control: FieldControl, event: Event): void {
+/** Decides the edit; whether it refused a box's pick, which then reaches no handler — see `decideEdit`. */
+function decide(control: FieldControl, event: Event): boolean {
   const transform = control.transform();
   const field = event.currentTarget as Field | null;
-  if (transform !== undefined && field !== null) decideEdit(field, transform, control.prev(), event);
+  return transform !== undefined && field !== null && decideEdit(field, transform, control.prev(), event);
 }
 
 /**
@@ -304,7 +310,12 @@ export function answerEdit(control: FieldControl, event: Event): void {
     return;
   }
 
-  decide(control, event);
+  if (decide(control, event)) {
+    // A refused pick is no pick: its `change`, coming next, finds nothing to do either.
+    if (control.pick && event.type === "input") state.picked = true;
+    show(control);
+    return;
+  }
   try {
     control.own(event.type, event);
     if (control.pick && event.type === "input") {

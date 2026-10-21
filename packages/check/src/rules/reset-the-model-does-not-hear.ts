@@ -5,6 +5,7 @@ import { isNothing, openingOf, tagOf } from "./element";
 import { unwrap } from "./follow-value";
 import { enclosingElement } from "./html";
 import type { JsxElementLike, ModuleRule, Resolver } from "./rule";
+import { fromThePlatform } from "./pure-function";
 
 export interface ResetTheModelDoesNotHearIssue {
   /**
@@ -258,7 +259,7 @@ export const resetTheModelDoesNotHear = {
         const callee = unwrap(node.expression);
         if (ts.isPropertyAccessExpression(callee) && callee.name.text === "reset") {
           const declared = resolve(callee.name)?.declarations?.[0];
-          if (declared === undefined && !rootedInAHook(callee.expression, resolve, file)) {
+          if (fromThePlatform(declared) && !rootedInAHook(callee.expression, resolve, file)) {
             found.push({ kind: "browser-reset", detail: `${callee.getText()}()`, ...positionOf(node) });
           }
         }

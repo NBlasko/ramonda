@@ -312,9 +312,14 @@ describe("an input's own handlers", () => {
   test("an uncontrolled input is heard only for the events it has a handler for", async () => {
     const attached: string[] = [];
     const original = HTMLInputElement.prototype.addEventListener;
-    HTMLInputElement.prototype.addEventListener = function (this: HTMLInputElement, type: string, ...rest: never[]) {
+    HTMLInputElement.prototype.addEventListener = function (
+      this: HTMLInputElement,
+      type: string,
+      listener: EventListenerOrEventListenerObject,
+      options?: boolean | AddEventListenerOptions,
+    ) {
       attached.push(type);
-      return original.call(this, type, ...rest);
+      return original.call(this, type, listener, options);
     } as typeof original;
     try {
       class Blurred extends Component {

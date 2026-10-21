@@ -156,6 +156,45 @@ to it.
 <TextArea aria-label="Notes" name="notes" defaultValue={this.saved} />;       // the user's, sent with the form
 ```
 
+### `transform` — an edit decided before anyone reads it
+
+A `transform(next, prev, input)` on an `<input>`, a `Select` or a `TextArea` decides each edit before
+the field's handler runs: `next` is what the edit left in the field, `prev` what the model holds, and
+what it returns is what the field keeps. Return `next` to take the edit, `prev` to refuse it, or
+anything else to rewrite it. A refused keystroke is never drawn, and the caret stays where the edit
+found it.
+
+```tsx
+import { Component, state, type EventOn } from "@ramonda/core";
+
+class Phone extends Component {
+  @state phone = "";
+
+  typed(event: EventOn<HTMLInputElement>) {
+    this.phone = event.currentTarget.value;
+  }
+
+  digitsOnly(next: string, prev: string): string {
+    return /^\d*$/.test(next) ? next : prev;
+  }
+
+  render() {
+    return <input aria-label="Phone" value={this.phone} oninput={this.typed} transform={this.digitsOnly} />;
+  }
+}
+```
+
+`input` says what the edit was — `inputType` (`insertText`, `deleteContentBackward`, `insertFromPaste`)
+and the caret's `selectionStart` and `selectionEnd` — which is what a mask needs. On a checkbox or a
+radio, `next` and `prev` are whether it is checked; a refused pick is no pick, so neither `oninput`
+nor `onchange` of the field runs. During an input method's composition the word is decided once it
+ends.
+
+A `transform` is pure — its answer depends on what it is given and on fixed values, and it changes
+nothing — and [`transform-that-is-not-pure`](/reference/check) proves it from the source, following the
+functions it calls into other files. One made by a factory is made once, at the top of a module —
+`export const max20 = maxLength(20)` — and named in the markup.
+
 ### `TextArea` — a `<textarea>` keeps its value inside the element
 
 HTML gives a textarea no `value` attribute — the value is the element's **text** — so `<textarea>` is
