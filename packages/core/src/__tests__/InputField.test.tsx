@@ -826,3 +826,83 @@ test("a form-less radio group whose name holds a line break is put back", async 
 
   expect([a.checked, b.checked]).toEqual([true, false]);
 });
+
+/** Round 34: a field answering an event fired inside a commit flushed without a drain. */
+describe("a field answering inside a commit", () => {
+  test("a blur from a @mounted on the first mount does not spin", async () => {
+    const { mounted, createRef } = await import("../index");
+    class Searching extends Component {
+      @state query = "";
+      field = createRef<HTMLInputElement>();
+      typed(event: EventOn<HTMLInputElement>) {
+        this.query = event.currentTarget.value;
+      }
+      @mounted
+      take() {
+        this.field.current?.focus();
+      }
+      render() {
+        return <input id="q" aria-label="Search" ref={this.field} value={this.query} oninput={this.typed} />;
+      }
+    }
+    class Stealing extends Component {
+      field = createRef<HTMLInputElement>();
+      @mounted
+      take() {
+        this.field.current?.focus();
+      }
+      render() {
+        return <input id="s" aria-label="Steal" ref={this.field} />;
+      }
+    }
+    class After extends Component {
+      @mounted
+      noted() {}
+      render() {
+        return <span>after</span>;
+      }
+    }
+    const app = await getDOM(
+      <div>
+        <Searching />
+        <Stealing />
+        <After />
+      </div>,
+    );
+    await app.settle();
+
+    expect(document.activeElement?.id).toBe("s");
+  });
+
+  /** A box clicked from a @mounted: what a listener around it reads is the click, not the old model. */
+  test("a field clicked from a @mounted is not shown the model before its handler's render", async () => {
+    const { mounted, createRef } = await import("../index");
+    const read: boolean[] = [];
+    class Terms extends Component {
+      @state on = false;
+      box = createRef<HTMLInputElement>();
+      flipped(event: EventOn<HTMLInputElement>) {
+        this.on = event.currentTarget.checked;
+      }
+      heard() {
+        read.push(this.box.current?.checked ?? false);
+      }
+      @mounted
+      tick() {
+        this.box.current?.click();
+      }
+      render() {
+        return (
+          <form onchange={this.heard}>
+            <input id="c" type="checkbox" aria-label="Terms" ref={this.box} checked={this.on} onchange={this.flipped} />
+          </form>
+        );
+      }
+    }
+    const app = await getDOM<Terms>(<Terms />);
+    await app.settle();
+    const box = app.container.querySelector("#c") as HTMLInputElement;
+
+    expect({ read, model: app.instance.on, shown: box.checked }).toEqual({ read: [true], model: true, shown: true });
+  });
+});

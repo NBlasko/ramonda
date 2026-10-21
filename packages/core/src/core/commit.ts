@@ -78,6 +78,14 @@ const pendingUpdates = new Set<BaseComponent>();
 /** A flush already running; same reasoning as `flushing` above. */
 let flushingUpdates = false;
 
+/**
+ * Whether a commit's own work is running — its `@mounted`s, its commit-level work, its `@updated`s —
+ * whoever started it: a drain, `bootstrap` or a hydration, which flush without one.
+ */
+export function inACommit(): boolean {
+  return flushing || flushingUpdates;
+}
+
 export function queueUpdated(component: BaseComponent): void {
   pendingUpdates.add(component);
 }

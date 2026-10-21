@@ -1,7 +1,8 @@
 import type { TransformInput } from "../types/commonTypes";
 import type { EnhancedHTMLNode } from "../types/vdom";
 import { writeValue } from "./Attribute";
-import { drainUnlessDraining } from "./Task";
+import { drainSync, drainingNow } from "./Task";
+import { queueAfterCommit } from "./commit";
 
 /** The fields a controlled value can sit on. Told apart by tag name: a field in an iframe is another window's class. */
 type Field = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
@@ -89,11 +90,14 @@ export function decideEdit(field: Field, transform: Transform, prev: FieldValue,
   const next = valueOf(field);
   const text = caretOf(field);
   const input: TransformInput = {
-    inputType: (event as InputEvent).inputType ?? "",
+    // The word an input method commits is decided at `compositionend`, as the edit it is.
+    inputType: event.type === "compositionend" ? "insertCompositionText" : ((event as InputEvent).inputType ?? ""),
     selectionStart: text?.selectionStart ?? null,
     selectionEnd: text?.selectionEnd ?? null,
   };
-  const kept = transform(next as never, prev as never, input) as FieldValue;
+  // A transform that answers nothing — a path with no `return`, past the types — refuses the edit,
+  // rather than writing the text "undefined" into the field and the model.
+  const kept = (transform(next as never, prev as never, input) ?? prev) as FieldValue;
   if (sameValue(kept, next)) return false;
   // As the model is compared: a multiple select's answer in another order is the same choice.
   const refused = sameModel(kept, prev);
@@ -141,6 +145,8 @@ interface FieldState {
   handedOver?: string;
   /** A pick was answered on its `input`, so its `change` has nothing left to do. */
   picked: boolean;
+  /** What the field's `onchange`, called on the pick's `input`, asked of the `change` it was told it had. */
+  pickAsked?: Asked;
 }
 
 /** Every controlled field's state, one record each, so no two pieces of it can disagree. */
@@ -186,11 +192,30 @@ function sameModel(a: unknown, b: unknown): boolean {
 }
 
 /**
+ * The renders an event caused, run now — unless rendering work is already running (an event fired
+ * from a `@mounted`, a field a reconcile removes), which runs them itself before it returns.
+ */
+function runRenders(): void {
+  if (!drainingNow()) drainSync();
+}
+
+/**
  * The renders the handler caused, run now, and then the field made to show the model — before any
  * listener after this one reads it, and before the browser draws.
+ *
+ * Inside running rendering work the handler's renders have not happened yet, so settling now would
+ * show the model as it was: the field is settled once that commit is done instead.
  */
 function show(control: FieldControl): void {
-  drainUnlessDraining();
+  if (drainingNow()) {
+    queueAfterCommit(() => control.settle());
+    // A commit flushed without a drain (`bootstrap`, a hydration) may end before reaching it.
+    queueMicrotask(() => {
+      if (!drainingNow()) drainSync();
+    });
+    return;
+  }
+  drainSync();
   control.settle();
 }
 
@@ -261,7 +286,7 @@ export function answerEdit(control: FieldControl, event: Event): void {
     state.inBlur = true;
     try {
       control.own(event.type, event);
-      drainUnlessDraining();
+      runRenders();
     } finally {
       state.inBlur = false;
     }
@@ -274,11 +299,12 @@ export function answerEdit(control: FieldControl, event: Event): void {
     try {
       control.own(event.type, event);
       // What `oncompositionend` rendered has run by now: it may have removed the field.
-      drainUnlessDraining();
+      runRenders();
       // A word the transform refused is no word: it is not handed over, and Firefox's `input` after
       // it, carrying the field as the refusal left it, reaches no handler either.
       if (!refused && field !== null && !control.gone() && sameModel(control.model(), state.composedFrom)) {
-        control.own("input", event);
+        // An `input`, as `oninput` is promised: the word, one edit, `insertCompositionText`.
+        control.own("input", as(event, "input", { inputType: "insertCompositionText", isComposing: false }));
       }
     } finally {
       show(control);
@@ -314,6 +340,12 @@ export function answerEdit(control: FieldControl, event: Event): void {
 
   if (control.pick && event.type === "change" && state.picked) {
     state.picked = false;
+    // What `onchange` asked of the `change` it was handed on the pick's `input` is done to this one.
+    const asked = state.pickAsked;
+    state.pickAsked = undefined;
+    if (asked?.immediate) event.stopImmediatePropagation();
+    else if (asked?.propagation) event.stopPropagation();
+    if (asked?.prevented) event.preventDefault();
     return;
   }
 
@@ -327,7 +359,10 @@ export function answerEdit(control: FieldControl, event: Event): void {
     control.own(event.type, event);
     if (control.pick && event.type === "input") {
       state.picked = true;
-      control.own("change", event);
+      // A `change`, as `onchange` is promised; what it stops or prevents is done to the real one.
+      const asked: Asked = { propagation: false, immediate: false, prevented: false };
+      state.pickAsked = asked;
+      control.own("change", as(event, "change", {}, asked));
     }
   } finally {
     show(control);
@@ -344,6 +379,36 @@ export function showsTheModel(field: { type?: string; value: string }, model: un
   if (field.value === text) return true;
   if (field.type !== "number" || field.value === "" || text === "") return false;
   return Number(field.value) === Number(text);
+}
+
+/** What a handler asked of an event it was handed as another: to stop it, or to prevent its default. */
+interface Asked {
+  propagation: boolean;
+  immediate: boolean;
+  prevented: boolean;
+}
+
+/**
+ * `event` as a handler of the field is promised it: `oninput` an `input`, `onchange` a `change` —
+ * when the field answers the edit on another event (a pick on its `input`, a word on its
+ * `compositionend`). Everything else is the event itself, `currentTarget` included. What the handler
+ * stops or prevents is recorded in `asked`, for the event it was told about; without `asked` it
+ * reaches the event itself.
+ */
+function as(event: Event, type: string, own: Record<string, unknown>, asked?: Asked): Event {
+  return new Proxy(event, {
+    get(target, key) {
+      if (key === "type") return type;
+      if (typeof key === "string" && Object.hasOwn(own, key)) return own[key];
+      if (asked !== undefined) {
+        if (key === "stopPropagation") return () => void (asked.propagation = true);
+        if (key === "stopImmediatePropagation") return () => void (asked.immediate = true);
+        if (key === "preventDefault") return () => void (asked.prevented = true);
+      }
+      const value = Reflect.get(target, key, target);
+      return typeof value === "function" ? (value as (...args: unknown[]) => unknown).bind(target) : value;
+    },
+  });
 }
 
 /** Calls a handler as a listener would be: a function with the element as `this`, or `handleEvent`. */

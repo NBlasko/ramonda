@@ -1,6 +1,6 @@
 import type { Component } from "./Component";
 import { COMPONENT_RUNTIME } from "../core/runtime";
-import { answerEdit, callHandler, forgetField, type Transform } from "../core/field";
+import { answerEdit, callHandler, forgetField, type FieldControl, type Transform } from "../core/field";
 import type { ComponentChild, RamondaNode } from "../types/vdom";
 
 /**
@@ -129,28 +129,38 @@ export function heard(component: Component<any>, event: Event): void {
  */
 // biome-ignore lint/suspicious/noExplicitAny: any component, whatever its props
 export function answer(component: Component<any> & { settle(): void }, event: Event, pick = false): void {
+  answerEdit(controlFor(component, pick), event);
+}
+
+/** One control per component, as an `<input>` keeps one per element: every member reads the props live. */
+// biome-ignore lint/suspicious/noExplicitAny: any component, whatever its props
+const controls = new WeakMap<Component<any>, FieldControl>();
+
+// biome-ignore lint/suspicious/noExplicitAny: any component, whatever its props
+function controlFor(component: Component<any> & { settle(): void }, pick: boolean): FieldControl {
+  const existing = controls.get(component);
+  if (existing !== undefined) return existing;
   const runtime = component[COMPONENT_RUNTIME];
-  answerEdit(
-    {
-      key: component,
-      pick,
-      model: () => runtime.rawProps.value,
-      prev: () => {
-        const model = runtime.rawProps.value;
-        return Array.isArray(model) ? model.map(String) : String(model ?? "");
-      },
-      transform: () => {
-        const transform = runtime.rawProps.transform;
-        return typeof transform === "function" ? (transform as Transform) : undefined;
-      },
-      own: (type, own) => {
-        // Both spellings, in the order a listener would be: `oninput`, then `on:input`.
-        callHandler(runtime.rawProps[`on${type}`], own);
-        callHandler(runtime.rawProps[`on:${type}`], own);
-      },
-      settle: () => component.settle(),
-      gone: () => runtime.isDestroyed === true,
+  const control: FieldControl = {
+    key: component,
+    pick,
+    model: () => runtime.rawProps.value,
+    prev: () => {
+      const model = runtime.rawProps.value;
+      return Array.isArray(model) ? model.map(String) : String(model ?? "");
     },
-    event,
-  );
+    transform: () => {
+      const transform = runtime.rawProps.transform;
+      return typeof transform === "function" ? (transform as Transform) : undefined;
+    },
+    own: (type, own) => {
+      // Both spellings, in the order a listener would be: `oninput`, then `on:input`.
+      callHandler(runtime.rawProps[`on${type}`], own);
+      callHandler(runtime.rawProps[`on:${type}`], own);
+    },
+    settle: () => component.settle(),
+    gone: () => runtime.isDestroyed === true,
+  };
+  controls.set(component, control);
+  return control;
 }

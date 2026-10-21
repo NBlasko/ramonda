@@ -11,6 +11,7 @@ import {
   flushUpdated,
   hasPendingPostCommit,
   hasPendingUpdated,
+  inACommit,
   queuePostCommit,
   queueUpdated,
 } from "./commit";
@@ -265,12 +266,14 @@ function resumeIfWorkRemains(): void {
 let processing = false;
 
 /**
- * `drainSync`, unless a drain is already running — a field answering an event fired from inside one:
- * a blur from a `focus()` in `@mounted`, a field a reconcile removes. That drain runs what the event
- * scheduled before it returns; a second one nested in it would find the commit mid-flush and spin.
+ * Whether rendering work is running now: a drain, or a commit's own work flushed without one —
+ * `bootstrap` and a hydration run their `@mounted`s directly. A field answering an event fired from
+ * inside it — a blur from a `focus()` in `@mounted`, a field a reconcile removes — must not drain
+ * again: that one runs what the event scheduled before it returns, and a second one nested in it
+ * would find the commit mid-flush and spin.
  */
-export function drainUnlessDraining(): void {
-  if (!processing) drainSync();
+export function drainingNow(): boolean {
+  return processing || inACommit();
 }
 
 function processTask() {

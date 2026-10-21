@@ -200,6 +200,11 @@ export class FieldHandle {
   readonly oninput: (event: Event) => void;
   /** The control's `onblur`: the field is touched, which is what decides whether its message shows. */
   readonly onblur: (event: Event) => void;
+  /**
+   * What the field holds when it holds something: a number, a date, a box. Kept because an emptied
+   * number field holds `""`, and what the next keystroke writes is still a number.
+   */
+  private kind: Kind | undefined;
 
   constructor(
     private readonly host: FieldHost,
@@ -208,7 +213,11 @@ export class FieldHandle {
   ) {
     this.path = pathToString(at_);
     this.name = this.path;
-    this.oninput = (event: Event) => this.host.write(this.at_, fromControl(event.target, this.host.read(this.at_)));
+    this.oninput = (event: Event) => {
+      const current = this.host.read(this.at_);
+      this.kind = kindOf(current) ?? this.kind;
+      this.host.write(this.at_, fromControl(event.target, current, this.kind));
+    };
     this.onblur = () => this.host.touch(this.at_);
   }
 
@@ -374,13 +383,27 @@ function sameIds(a: readonly string[] | undefined, b: readonly string[]): boolea
  * `""` rather than `NaN`, which is a value a schema can report on ("expected a number") instead of
  * one that quietly poisons arithmetic.
  */
-function fromControl(target: EventTarget | null, current: unknown): unknown {
+type Kind = "number" | "date" | "boolean";
+
+function kindOf(value: unknown): Kind | undefined {
+  if (typeof value === "number") return "number";
+  if (value instanceof Date) return "date";
+  if (typeof value === "boolean") return "boolean";
+  return undefined;
+}
+
+/**
+ * What a control's edit writes, decided by what the field HOLDS as much as by the control's `type`:
+ * a number field written without `type="number"` still writes numbers, as `bind` once made sure by
+ * writing the `type` itself.
+ */
+function fromControl(target: EventTarget | null, current: unknown, kind: Kind | undefined): unknown {
   const element = target as (HTMLInputElement & { type?: string }) | null;
   if (element === null) return current;
 
-  if (element.type === "checkbox") return element.checked;
-  if (element.type === "number") return element.value === "" ? "" : Number(element.value);
-  if (element.type === "date" && current instanceof Date) {
+  if (element.type === "checkbox" || kind === "boolean") return element.checked;
+  if (element.type === "number" || kind === "number") return element.value === "" ? "" : Number(element.value);
+  if ((element.type === "date" || kind === "date") && current instanceof Date) {
     return fromDateInput(element.value, current) ?? element.value;
   }
 

@@ -14,9 +14,17 @@ export interface FieldTheUserCannotChangeIssue {
    * `both` — `value` beside `defaultValue`, or `checked` beside `defaultChecked`;
    * `literal` — a text field's `value` written as itself, `value=""`, which no handler can move;
    * `unknown-spread` — a spread on a controlled field that the source cannot say carries a handler;
-   * `handler-may-be-missing` — the field's handler is a prop declared optional, `oninput?:`.
+   * `handler-may-be-missing` — the field's handler is a prop declared optional, `oninput?:`;
+   * `pick-through-click` — a box picked through `onclick`, which runs before the field decides the pick.
    */
-  kind: "no-handler" | "held-between-keystrokes" | "both" | "literal" | "unknown-spread" | "handler-may-be-missing";
+  kind:
+    | "no-handler"
+    | "held-between-keystrokes"
+    | "both"
+    | "literal"
+    | "unknown-spread"
+    | "handler-may-be-missing"
+    | "pick-through-click";
   file: string;
   line: number;
   column: number;
@@ -78,8 +86,6 @@ function declaredOptional(expression: ts.Expression | undefined, resolve: Elemen
   );
 }
 
-/** `<input>` types whose `value` is not something the user edits: a label, a hidden value, a file list. */
-
 /**
  * A controlled field the page can never change.
  *
@@ -105,6 +111,8 @@ function declaredOptional(expression: ts.Expression | undefined, resolve: Elemen
  *   the schema's HTML constraints, `html(path)` from `@ramonda/form/bguard` — see `isConstraints`.
  *   A spread of a prop, `{...this.props.attrs}`, is read where the component is used, by
  *   `form-field-without-what-the-form-needs`.
+ * - **A box picked through `onclick`** — it works, but `click` comes before the field's `input`, so
+ *   it writes the model before the pick is decided: past the `transform`, and past a refusal.
  * - **A handler that is an optional prop** — `oninput={this.props.oninput}` where the props declare
  *   `oninput?:` — whose caller may leave it out.
  *
@@ -135,6 +143,8 @@ export const fieldTheUserCannotChange = {
           literal: "has a value written as itself — no handler can move it, so every edit is undone.",
           "unknown-spread": "is controlled, and a spread on it may or may not carry its handler — nothing says which.",
           "handler-may-be-missing": "takes its handler from a prop declared optional — a caller may leave it out.",
+          "pick-through-click":
+            "takes its pick through `onclick`, which runs before the field decides it — write it as `onchange`.",
         }[issue.kind]
       }`,
     ],
@@ -211,6 +221,9 @@ export const fieldTheUserCannotChange = {
     const writer = own("oninput") ?? (pick ? own("onchange") : undefined);
     if (writer === undefined) {
       if (!pick && own("onchange") !== undefined) return [{ component, kind: "held-between-keystrokes", ...at }];
+      // `onclick` on a box writes the model before the field decides the pick — around its `transform`.
+      const click = attributes.find((attribute) => attribute.name === "onclick" && !writtenAsNothing(attribute));
+      if (pick && click !== undefined) return [{ component, kind: "pick-through-click", ...at }];
       return [{ component, kind: "no-handler", ...at }];
     }
     if (declaredOptional(writer.value, resolve)) return [{ component, kind: "handler-may-be-missing", ...at }];

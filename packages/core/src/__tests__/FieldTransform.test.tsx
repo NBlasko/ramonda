@@ -638,3 +638,108 @@ describe("an input method's word and a transform", () => {
     });
   });
 });
+
+/** Round 34: a field's handlers are handed the event they are promised. */
+describe("the event a field's handler is handed", () => {
+  test("the word an input method commits reaches `oninput` as an input, and the transform knows it", async () => {
+    class Words extends Component {
+      @state text = "";
+      seen: string[] = [];
+      told: string[] = [];
+      typed(event: EventOn<HTMLTextAreaElement, InputEvent>) {
+        this.seen.push(`${event.type}:${event.inputType}`);
+        this.text = event.currentTarget.value;
+      }
+      keep(next: string, _prev: string, input: TransformInput): string {
+        this.told.push(input.inputType);
+        return next;
+      }
+      render() {
+        return <TextArea id="t" aria-label="Words" value={this.text} oninput={this.typed} transform={this.keep} />;
+      }
+    }
+    const app = await getDOM<Words>(<Words />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+    field.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+    field.value = "日本";
+    field.dispatchEvent(new InputEvent("input", { bubbles: true, isComposing: true }));
+    field.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "日本" }));
+    await app.settle();
+
+    expect({ seen: app.instance.seen, told: app.instance.told }).toEqual({
+      seen: ["input:insertCompositionText"],
+      told: ["insertCompositionText"],
+    });
+  });
+
+  /** A pick is answered on its `input`; `onchange` stopping its `change` stops the real one. */
+  test("`onchange` on a pick is handed a change, and stopping it stops the change", async () => {
+    class Sizes extends Component {
+      @state size = "m";
+      types: string[] = [];
+      formHeard = 0;
+      picked(event: EventOn<HTMLSelectElement>) {
+        this.types.push(event.type);
+        event.stopPropagation();
+        this.size = event.currentTarget.value;
+      }
+      dirty() {
+        this.formHeard++;
+      }
+      render() {
+        return (
+          <form onchange={this.dirty}>
+            <Select id="s" aria-label="Size" value={this.size} onchange={this.picked}>
+              <option value="m">m</option>
+              <option value="l">l</option>
+            </Select>
+          </form>
+        );
+      }
+    }
+    const app = await getDOM<Sizes>(<Sizes />);
+    await app.settle();
+    const select = app.container.querySelector("#s") as HTMLSelectElement;
+    select.value = "l";
+    select.dispatchEvent(new Event("input", { bubbles: true }));
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+    await app.settle();
+
+    expect({ types: app.instance.types, formHeard: app.instance.formHeard, size: app.instance.size }).toEqual({
+      types: ["change"],
+      formHeard: 0,
+      size: "l",
+    });
+  });
+});
+
+/** A transform that answers nothing — a missing `return`, which only a caller past the types can write. */
+test("a transform that returns nothing refuses the edit", async () => {
+  class Digits extends Component {
+    @state text = "12";
+    heard: string[] = [];
+    typed(event: EventOn<HTMLTextAreaElement>) {
+      this.heard.push(event.currentTarget.value);
+      this.text = event.currentTarget.value;
+    }
+    render() {
+      const forgetful = ((next: string) => {
+        if (/^\d*$/.test(next)) return next;
+      }) as unknown as (next: string, prev: string) => string;
+      return <TextArea id="t" aria-label="Digits" value={this.text} oninput={this.typed} transform={forgetful} />;
+    }
+  }
+  const app = await getDOM<Digits>(<Digits />);
+  await app.settle();
+  const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+  field.value = "12a";
+  field.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText" }));
+  await app.settle();
+
+  expect({ heard: app.instance.heard, model: app.instance.text, shown: field.value }).toEqual({
+    heard: [],
+    model: "12",
+    shown: "12",
+  });
+});

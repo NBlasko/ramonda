@@ -277,6 +277,18 @@ describe("the field tree", () => {
     expect((h.values as Shape).age).toBe(7);
   });
 
+  /** Written without `type="number"`, a number field still writes numbers — cleared and typed again. */
+  test("a number field written without its type writes numbers by what it holds", () => {
+    const { h, fields } = tree(SEED);
+
+    fields.age.$.oninput(inputEvent("text", { value: "42" }));
+    const typed = (h.values as Shape).age;
+    fields.age.$.oninput(inputEvent("text", { value: "" }));
+    fields.age.$.oninput(inputEvent("text", { value: "7" }));
+
+    expect({ typed, again: (h.values as Shape).age }).toEqual({ typed: 42, again: 7 });
+  });
+
   test("a cleared date field shows nothing", () => {
     const { fields } = tree(SEED);
 

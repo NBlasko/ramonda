@@ -11,7 +11,8 @@ source: no handler on the field (`oninput`, or for a pick `oninput` or `onchange
 only `onchange`, which comes on blur, so every keystroke is undone before it; `value` beside
 `defaultValue`, or `checked` beside `defaultChecked`; a text field whose `value` is a literal, or a
 `const` holding one; a spread on a controlled field, except the schema's constraints, `html(path)` from
-`@ramonda/form/bguard`, and a spread of a prop, which is read where the component is used; and a handler taken from a prop declared optional. Not reported: a field
+`@ramonda/form/bguard`, and a spread of a prop, which is read where the component is used; a handler taken from a prop declared optional; and a box picked through `onclick`, which writes the
+model before the field decides the pick. Not reported: a field
 `disabled` as written, a text field that is `readonly`, an `<input>` whose type is not edited
 (`hidden`, `submit`, `button`, `reset`, `image`, `file`), and a `value` written as `null` or
 `undefined`, which is no model.

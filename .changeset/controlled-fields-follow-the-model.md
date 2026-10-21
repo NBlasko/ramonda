@@ -52,3 +52,8 @@ A field the end of a composition removes — Enter closing its dialog — hands 
 `on:` before a standard event is a type error that names the spelling: `on:input` is written
 `oninput`, on every element and on `Select` and `TextArea`. `on:` is for an event `on…` cannot
 spell, a custom one with a dash.
+
+Each handler is handed the event it is promised: `oninput` an `input` — the word an input method
+commits arrives as one, `insertCompositionText` — and a pick's `onchange` a `change`, whose
+`stopPropagation()` stops the browser's own `change`. A transform that answers nothing refuses the
+edit.

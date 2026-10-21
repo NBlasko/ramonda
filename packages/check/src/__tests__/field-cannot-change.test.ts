@@ -48,6 +48,7 @@ describe("a field the user cannot change", () => {
       [lineOf('aria-label="own field spread"'), "input", "unknown-spread"],
       [lineOf('aria-label="a spread and a default"'), "input", "unknown-spread"],
       [lineOf('aria-label="a handler written as nothing"'), "input", "no-handler"],
+      [lineOf('aria-label="a box picked by click"'), "input", "pick-through-click"],
     ]);
   });
 
