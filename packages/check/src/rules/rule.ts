@@ -478,7 +478,7 @@ export interface ProjectContext {
    * nobody can see is a silence nobody can fix.
    *
    * **A SPREAD is deliberately not one of these**, and the line is worth defending because it is
-   * the one place this family accepts a residual risk. `<input {...bind} />` may carry an `id` and
+   * the one place this family accepts a residual risk. `<input {...attrs} />` may carry an `id` and
    * nothing here can say whether it does — but it is not a claim that it does, whereas `id={x}` is.
    * Counting spreads here was measured against this repository and would have silenced every rule
    * in every project in it: four to sixteen spreading elements each, against **zero** explicit

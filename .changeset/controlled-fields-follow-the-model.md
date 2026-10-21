@@ -2,52 +2,41 @@
 "@ramonda/core": minor
 ---
 
-`Select` and `TextArea` take `value` for a field the model holds, and `defaultValue` for one the user owns
+A field with a `value` shows the model, in the event that changed it; `defaultValue` and `defaultChecked` start a field the user owns
 
-With `value`, the field shows what the model holds after every input: once the event is over it is
-settled from the model, so a handler that takes the input leaves the field as the user made it and
-one that does not — or no handler at all — puts the model's value back. Before, the field kept
-showing the user's input until the page rendered again for another reason: a `Select` was put right
-by its parent's next render, which handed it new children every time, and a `TextArea` never was.
+`Select`, `TextArea` and `<input>` are controlled the same way: a field with a `value` — `checked` on a
+checkbox or a radio — shows what the model holds, and the handler written on the field is what writes
+the model. Core answers every edit in the field's own listener, before any other listener and before
+the browser draws: the edit is decided by the field's `transform`, the field's handler runs, the
+renders it caused run at once, and the field shows the model. A handler that takes the edit leaves
+the field as the user made it; one that refuses it, or no handler at all, leaves the model showing —
+in the same event, so a refused keystroke or pick is never drawn, and a form around the field reads
+the value the field keeps.
 
-A `transform(next, prev, input)` on a `Select`, a `TextArea` or a plain `<input>` (text, number or
-checkbox) decides an edit before any handler reads it: what it
-returns is in the field at once, so the handler, a form around the field and every other listener
-read the same value, and a refused keystroke or pick is never drawn. `prev` refuses the edit and puts
-the caret back where it was; `input` gives the edit's `inputType` and the caret, for a mask. During an
-input method's composition the word is decided once it ends.
+```tsx
+typed(event: EventOn<HTMLInputElement>) {
+  this.email = event.currentTarget.value;
+}
 
-With `defaultValue`, the field shows it first and then belongs to the user — for a form whose fields
-are read when it is sent. A `TextArea`'s text follows `defaultValue` until the user edits it, so one
-that arrives from a load fills a field nobody has typed in; on a served page the field shows it before
-any script runs. A handler may be a function or a listener object, as for any element.
+<input aria-label="Email" value={this.email} oninput={this.typed} />
+```
 
-The settle waits for the whole event, so an `onchange` reads the user's pick and a listener on an
-ancestor reads what was typed — or moves the model itself — and lands before the next frame is drawn,
-so a refused pick or keystroke never shows; it leaves an input method's composition
-alone while it lasts — a render in the middle of one, say an autosave flipping `disabled`, does not
-write the model into the field — and settles the field when it ends. One whose field is blurred with
-no `compositionend` by the end of that event is over: the field shows the model again, and follows it
-as any field does; a browser that commits the word on blur, sending `compositionend` just after,
-keeps the word. A render in the middle of an event leaves the field alone while
-the model is where the event found it — a `multiple` select's array compared by which options it
-chooses, in any order. A handler that skips composing input takes
-the word from the ordinary `input` after the composition: Firefox sends one, Chromium does not, and
-there the field sends it, once — measured with a real composition in both, typing 日本. It is sent
-only while the field's component is alive and its model has not moved since the composition began: a
-handler that takes composing input too — keeping the word, changing it, or clearing the field — is not
-called twice, a field whose dialog Enter closed is sent nothing, and one a portal
-parked off the page still takes the word; it writes only the value, with no render; and it still
-runs when the handler throws. A `TextArea` answers `input` only — `change` comes on blur, when
-every input has already been answered. A `Select`'s `defaultValue` holds until the
-user picks or a `value` holds the field, and applies once an option with that value is there: a
-placeholder first and the options from a load still start on the saved choice. One that changes after
-the pick leaves the pick showing and is where a reset returns, as a `TextArea`'s is — and after the form's
-reset, which the select hears, a later one is shown; a pick that happens to equal the default is still
-the user's. A `TextArea` written from the model keeps the caret across a rewrite of the same length, as
-an `<input>` does, and a render that leaves its value as it is leaves the user's selection alone. A
-reset the form's own handler cancels resets nothing; a `Select` with a `value` marks the model's
-option `selected`, so a reset lands on the model at once; a form in a shadow root or an iframe is
-heard as well; and a `defaultValue` that names no option yet takes the old default off. It is written as the
-option's `selected` attribute, so a form's reset returns to it. A `value` of `null` is no value. The app's handler is called as a
-listener is, with the element as `this`.
+A select, a checkbox and a radio pick in one move: both of the field's own `oninput` and `onchange`
+run on the `input`, and the `change` after it finds nothing left to do. A radio the handler refuses is
+put back with its whole group.
+
+`transform(next, prev, input)` on any of the three decides an edit before the handler reads it, and is
+pure: returning `prev` refuses the edit and puts the caret back where it was; `input` gives the edit's
+`inputType` and the caret, for a mask.
+
+An input method's composition is left alone while it lasts — its `input` events reach the handler,
+and the field is not written. When it ends, a handler that skips composing input is handed the word
+at `compositionend` while its model lacks it, the same in Chromium, which sends nothing more, and in
+Firefox, whose ordinary `input` after it is recognised and not handed over a second time. A blur in
+the middle of a word keeps the composition going until its `compositionend` or the next ordinary edit.
+
+`defaultValue` (and `defaultChecked`) starts a field the user owns — for a form whose fields are read
+when it is sent. It is written as the field's default — the `value` attribute, the `checked`
+attribute, the option's `selected` — so a served page shows it before any script runs, and a form's
+reset returns to it. A `value` of `null` or `undefined` is no value. The field's handler is called as a
+listener is, with the element as `this`, and may be a function or a listener object.

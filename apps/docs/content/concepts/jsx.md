@@ -62,8 +62,9 @@ Everything else — `id`, `href`, `disabled`, `value`, `placeholder`, `aria-*`,
 `http-equiv` and `accept-charset` are written with their hyphens, not as
 `httpEquiv` and `acceptCharset`.
 
-Those two are the exception list in full. An attribute name is given to
-`setAttribute` as it stands, so a name spelled any other way arrives in the
+Those two, and a field's `defaultValue` and `defaultChecked` below, are the
+exception list in full. An attribute name is given to `setAttribute` as it
+stands, so a name spelled any other way arrives in the
 document as something no browser reads — it renders, it does nothing, and there
 is nothing on the page to see. The types refuse the ones people reach for, with
 the right spelling written into the error:
@@ -72,12 +73,15 @@ the right spelling written into the error:
 |---|---|
 | `httpEquiv` | `http-equiv` |
 | `acceptCharset` | `accept-charset` |
-| `defaultValue` | `value` — the attribute **is** the initial value |
-| `defaultChecked` | `checked` |
 | `innerHTML`, `textContent` | the element's children |
 
-There is no controlled/uncontrolled pair here, which is why `defaultValue` has
-nothing to mean: a render decides `value` like it decides any other attribute.
+**A field has two names of its own.** On an `<input>`, a `Select` or a
+`TextArea`, `value` (`checked` on a checkbox or a radio) is a field the model
+holds, and `defaultValue` (`defaultChecked`) is where a field the user owns
+starts — written into the markup as the field's default (the `value` or
+`checked` attribute, a textarea's text, an option's `selected`), which is what a
+served page shows and what a form's reset returns to. [Fields](/forms/fields)
+has both.
 
 ### A `false` takes an attribute away
 

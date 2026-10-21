@@ -59,7 +59,7 @@ function insideADecidingSelect(element: JsxElementLike, resolve: ElementContext[
   while (at !== undefined) {
     const tag = tagOf(at) ?? coreElementTag(openingOf(at).tagName, resolve);
     if (tag === "select") {
-      // A spread may carry either — `{...bind(form.size)}` carries `value` — so it decides as well.
+      // A spread may carry either — `{...this.props.attrs}` may hold `value` — so it decides as well.
       const select = contextFor(at, resolve);
       return (
         select.spreads ||

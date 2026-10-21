@@ -2,36 +2,22 @@
 "@ramonda/check": minor
 ---
 
-`field-the-user-cannot-change`: a `Select` or `TextArea` whose `value` nothing moves
+`field-the-user-cannot-change`: a controlled field no handler on it can change
 
-Core settles a field with `value` from the model after every input, so a field the model never
-follows undoes every input. Reported, with which of four it is: `value` and no `oninput` /
-`onchange`; a `TextArea` with `value` and only `onchange`, which comes on blur, so every keystroke is
-undone before it; `value` beside `defaultValue`, where `defaultValue` says nothing; and a `TextArea` whose `value` is a literal —
-`value=""`, `{-1}`, or a `const` holding one — which no handler can move (a `Select`'s is an action
-menu going back to its placeholder, and is not reported). The advice
-is a handler that moves the model, or `defaultValue` for a field the form sends. Not reported: a
-`value` written as `{null}` or `{undefined}`, which core treats as no value (a `defaultValue` written
-so is no default either); an
-element with a spread, since `{...bind}` from `@ramonda/form` carries the handler; a field that is
-`disabled` as written (bare, `{true}`, `"true"`, or a const holding it), or a `TextArea` that is
-`readonly`, which takes no input (`readonly` does nothing to a `Select`, which is still reported); a field with an `onbeforeinput`, on it or around it,
-as an editor with a mask has, which writes the model itself; a field with a handler around it that moves the model in time — on an element, or on a
-component, which may hand it to a form inside it — (`input` for a `TextArea`, whose `change` comes on blur), or with a spread on a `form` or
-`fieldset` around it, which may carry one; and a field whose `value` IS a prop or a parameter
-(`this.props.text`, `props.text || ""`, either arm of a ternary, `String(this.props.size)`,
-`this.props.text.trim()`, a template, or a name taken from the props — `const { text } = this.props`, `const own = this.props`
-and `own.size`), whose handler may be in the parent's render — a prop used
-only as a key, `drafts[this.props.id]`, is still reported. A row of a `map`, `flatMap` or `list` is
-followed to what the call walks: `this.rows.map((row) => <TextArea value={row.text} />)` is the
-component's own model and is reported, `this.props.rows.map(…)` and `ui.list(this.props.rows, …)` are
-not, and a callback of any other call is silent.
+A field with a `value` — a `Select`, a `TextArea`, an `<input>`; `checked` on a checkbox or a radio —
+shows the model, and only the handler written on the field writes it. Reported, each provable from the
+source: no handler on the field (`oninput`, or for a pick `oninput` or `onchange`); a text field with
+only `onchange`, which comes on blur, so every keystroke is undone before it; `value` beside
+`defaultValue`, or `checked` beside `defaultChecked`; a text field whose `value` is a literal, or a
+`const` holding one; a spread on a controlled field, except the schema's constraints, `html(path)` from
+`@ramonda/form/bguard`; and a handler taken from a prop declared optional. Not reported: a field
+`disabled` as written, a text field that is `readonly`, an `<input>` whose type is not edited
+(`hidden`, `submit`, `button`, `reset`, `image`, `file`), and a `value` written as `null` or
+`undefined`, which is no model.
 
-`option-that-cannot-choose` names `defaultValue` for a choice the user owns, and reports an
-`<option selected>` only inside a `Select` that has a `value` or a `defaultValue`, or a spread that may
-carry one — a select with neither, or with `value={null}`, leaves the choice to the option. `attribute-that-does-nothing` no longer reports `defaultValue`
-on a core `Select` or `TextArea`, where it is a prop, imported by name or through a namespace
-(`ui.Select`). And
-`fresh-object-in-props` says what core compares by content now. `dev-guard-as-an-expression` reads an
-empty arm in parentheses, `__DEV__ ? publish() : (null)`, as empty, and every rule asks about `null`
-and `undefined` the same way.
+`option-that-cannot-choose` reports an `<option selected>` only inside a `Select` with a `value`, a
+`defaultValue`, or a spread that may carry one. `attribute-that-does-nothing` takes `defaultValue` and
+`defaultChecked` as written on an `<input>`, a `Select` and a `TextArea`, where they start an
+uncontrolled field. `fresh-object-in-props` says what core compares by content. `dev-guard-as-an-expression`
+reads an empty arm in parentheses, `__DEV__ ? publish() : (null)`, as empty, and every rule asks about
+`null` and `undefined` the same way.

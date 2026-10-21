@@ -1,6 +1,6 @@
 import type { Component } from "./Component";
 import { COMPONENT_RUNTIME } from "../core/runtime";
-import { answerEdit, callHandler, composingIn, forgetField, type Transform } from "../core/field";
+import { answerEdit, callHandler, forgetField, type Transform } from "../core/field";
 import type { ComponentChild, RamondaNode } from "../types/vdom";
 
 /**
@@ -90,15 +90,6 @@ export function controlled(
 // biome-ignore lint/suspicious/noExplicitAny: any component, whatever its props
 export function heard(component: Component<any>, event: Event): void {
   callHandler(component[COMPONENT_RUNTIME].rawProps[`on${event.type}`], event);
-}
-
-/**
- * Whether a field's own `settle` leaves the value alone for now: an input method is composing in it —
- * see `composingIn`.
- */
-// biome-ignore lint/suspicious/noExplicitAny: any component, whatever its props
-export function settlesLater(component: Component<any>): boolean {
-  return composingIn(component);
 }
 
 /*

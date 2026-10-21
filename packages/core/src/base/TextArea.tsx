@@ -4,7 +4,8 @@ import { Component } from "./Component";
 import { createRef } from "./Ref";
 import { mounted, updated } from "./decorators";
 import { __h } from "../vdom/h";
-import { answer, controlled, forwarded, given, settlesLater } from "./forwarded";
+import { composingIn } from "../core/field";
+import { answer, controlled, forwarded, given } from "./forwarded";
 import type { TransformInput } from "../types/commonTypes";
 import type { RefTarget } from "./Ref";
 
@@ -106,8 +107,9 @@ export class TextArea extends Component<TextAreaProps> {
 
     // A `defaultValue` field is the user's: its text child said where it starts, and nothing more.
     if (this.props.value == null) return;
-    // Not while a word or an event is under way that settles the field when it ends — see `settlesLater`.
-    if (settlesLater(this)) return;
+    // Not while an input method is composing in it: writing the field would cancel the word, and its
+    // `compositionend` shows the model.
+    if (composingIn(this)) return;
     // Through the attribute layer's own write, which keeps the caret across a rewrite of the same
     // length — an upper-casing handler leaves it where the user typed, as an `<input>` does.
     // Only a value that differs: writing the same one would collapse the user's selection, and
