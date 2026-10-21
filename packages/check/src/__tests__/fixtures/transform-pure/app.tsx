@@ -1,5 +1,20 @@
 import { Component, Select, TextArea } from "@ramonda/core";
-import { counted, fetched, handsOn, marks, viaHelper, max20, maxLength, phoneMask, rebinds, stamped } from "./masks";
+import {
+  counted,
+  fetched,
+  handsOn,
+  marks,
+  viaHelper,
+  noBlocked,
+  configured,
+  frozen,
+  loose,
+  max20,
+  maxLength,
+  phoneMask,
+  rebinds,
+  stamped,
+} from "./masks";
 import { fromAPackage } from "./lib";
 
 declare const value: string;
@@ -25,6 +40,7 @@ class Fields extends Component<{ transform: (next: string, prev: string) => stri
         <input aria-label="imported" value={value} oninput={this.type} transform={phoneMask} />
         <input aria-label="factory const" value={value} oninput={this.type} transform={max20} />
         <input aria-label="rebinds" value={value} oninput={this.type} transform={rebinds} />
+        <input aria-label="frozen" value={value} oninput={this.type} transform={frozen} />
         <TextArea aria-label="arrow" value={value} oninput={this.type} transform={(next: string) => next.trim()} />
         <Select aria-label="select" value={value} onchange={this.type} transform={this.upper}>
           <option value="a">a</option>
@@ -35,6 +51,9 @@ class Fields extends Component<{ transform: (next: string, prev: string) => stri
         <input aria-label="counts" value={value} oninput={this.type} transform={counted} />
         <input aria-label="clock" value={value} oninput={this.type} transform={stamped} />
         <input aria-label="network" value={value} oninput={this.type} transform={fetched} />
+        <input aria-label="blocked set" value={value} oninput={this.type} transform={noBlocked} />
+        <input aria-label="plain config" value={value} oninput={this.type} transform={configured} />
+        <input aria-label="loose factory" value={value} oninput={this.type} transform={loose} />
         <input aria-label="via helper" value={value} oninput={this.type} transform={viaHelper} />
         <input aria-label="hands on" value={value} oninput={this.type} transform={handsOn} />
         <input aria-label="marks input" value={value} oninput={this.type} transform={marks} />

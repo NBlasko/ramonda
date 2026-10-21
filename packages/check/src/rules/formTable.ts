@@ -30,8 +30,6 @@ export interface FormField extends Where {
   inForm: boolean;
   /** Each of `FORM_ATTRIBUTES`, and where it comes from. `value` stands for `checked` on a box. */
   attributes: Record<(typeof FORM_ATTRIBUTES)[number], AttributeSource>;
-  /** Props spread onto the field AFTER one of its form attributes, which may therefore overwrite them. */
-  lateBags: string[];
   /** How the field is written, for a report: `input`, `Select`, `TextArea`. */
   tag: string;
 }
@@ -61,8 +59,15 @@ export interface FormHolder extends Where {
   attached: boolean;
 }
 
+/** `{...this.props.P}` on a field: what `P` holds is read where the component is used. */
+export interface SpreadBag extends Where {
+  owner: ts.ClassLikeDeclaration | undefined;
+  prop: string;
+}
+
 export interface FormFacts {
   fields: FormField[];
+  bags: SpreadBag[];
   sites: ComponentSite[];
   holders: FormHolder[];
 }
@@ -112,8 +117,8 @@ function enclosingClass(node: ts.Node): ts.ClassLikeDeclaration | undefined {
   return undefined;
 }
 
-/** `this.props.P`, as written. */
-function propRead(expression: ts.Expression | undefined): string | undefined {
+/** `this.props.P`, as written — the name, or `undefined`. */
+export function propRead(expression: ts.Expression | undefined): string | undefined {
   if (expression === undefined) return undefined;
   const written = unwrap(expression);
   if (!ts.isPropertyAccessExpression(written)) return undefined;
@@ -142,6 +147,7 @@ export function formTableFor(sources: readonly ts.SourceFile[], resolve: Resolve
   const fields: FormField[] = [];
   const sites: ComponentSite[] = [];
   const holders: FormHolder[] = [];
+  const bags: SpreadBag[] = [];
 
   /** Every `<form onsubmit={this.X.submit}>` whose `X` holds a `Form`, and the class that renders it. */
   const formElements = new Set<ts.Node>();
@@ -257,10 +263,19 @@ export function formTableFor(sources: readonly ts.SourceFile[], resolve: Resolve
     for (const attribute of opening.attributes.properties) {
       if (ts.isJsxAttribute(attribute)) written.set(attribute.name.getText(), attribute);
     }
+    // Every `{...this.props.P}` on a field, controlled or not: it may carry a model, or take one away.
+    for (const attribute of opening.attributes.properties) {
+      if (!ts.isJsxSpreadAttribute(attribute)) continue;
+      const prop = propRead(attribute.expression);
+      if (prop !== undefined) bags.push({ owner: enclosingClass(element), prop, ...positionOf(opening) });
+    }
+
+    // `type="checkbox"` or `type={"checkbox"}`.
     const typeAttribute = written.get("type");
+    const typeValue = typeAttribute === undefined ? undefined : valueOf(typeAttribute);
     const type =
-      typeAttribute?.initializer !== undefined && ts.isStringLiteral(typeAttribute.initializer)
-        ? typeAttribute.initializer.text.toLowerCase()
+      typeValue !== undefined && ts.isStringLiteralLike(unwrap(typeValue))
+        ? (unwrap(typeValue) as ts.StringLiteralLike).text.toLowerCase()
         : undefined;
     if (type !== undefined && NOT_EDITED.has(type)) return;
     const box = type === "checkbox" || type === "radio";
@@ -282,20 +297,6 @@ export function formTableFor(sources: readonly ts.SourceFile[], resolve: Resolve
     };
     const writer = written.has("oninput") || !pick ? sourceOf("oninput") : sourceOf("onchange");
 
-    // A spread written after one of the form's attributes may overwrite it, so what is handed for it
-    // is what the use sites have to show.
-    const formNames = new Set<string>([modelName, "name", "oninput", "onchange", "onblur", "aria-invalid"]);
-    const lateBags: string[] = [];
-    let seenOne = false;
-    for (const attribute of opening.attributes.properties) {
-      if (ts.isJsxAttribute(attribute)) {
-        if (formNames.has(attribute.name.getText())) seenOne = true;
-      } else if (seenOne) {
-        const bag = propRead(attribute.expression);
-        if (bag !== undefined) lateBags.push(bag);
-      }
-    }
-
     fields.push({
       owner: enclosingClass(element),
       inForm: insideAForm(element, true),
@@ -306,7 +307,6 @@ export function formTableFor(sources: readonly ts.SourceFile[], resolve: Resolve
         onblur: sourceOf("onblur"),
         "aria-invalid": sourceOf("aria-invalid"),
       },
-      lateBags,
       tag: tag === "select" ? "Select" : tag === "textarea" ? "TextArea" : "input",
       ...positionOf(opening),
     });
@@ -318,5 +318,5 @@ export function formTableFor(sources: readonly ts.SourceFile[], resolve: Resolve
   };
   for (const file of sources) secondPass(file);
 
-  return { fields, sites, holders };
+  return { fields, bags, sites, holders };
 }

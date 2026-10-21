@@ -28,8 +28,9 @@ class Strict extends Component<{ value: string; oninput: (event: Event) => void 
   }
 }
 
-class App extends Component<{ text: string; rows: { text: string }[] }> {
+class App extends Component<{ text: string; rows: { text: string }[]; attrs?: Record<string, unknown> }> {
   rows = [{ text: "a", size: "s" }];
+  overrides: Record<string, unknown> = {};
   pick(_event: Event) {}
   type(_event: Event) {}
   render() {
@@ -71,6 +72,7 @@ class App extends Component<{ text: string; rows: { text: string }[] }> {
         <input {...bag} aria-label="unknown spread without a value" />
         <input {...fake("nick")} value={value} oninput={this.type} aria-label="an app's own constraints" />
         <input {...html("nick")} value={value} aria-label="constraints and no handler" />
+        <input value={value} oninput={this.type} {...this.overrides} aria-label="own field spread" />
 
         {/* ✓ a handler of its own */}
         <Select value={value} onchange={this.pick} aria-label="picked">
@@ -85,6 +87,8 @@ class App extends Component<{ text: string; rows: { text: string }[] }> {
         <input type="radio" name="r" value="a" checked={on} oninput={this.pick} aria-label="radio picked" />
         {/* ✓ the schema's constraints carry nothing a field is written with */}
         <input {...html("nick")} value={value} oninput={this.type} aria-label="constraints" />
+        {/* ✓ a spread of props is read where the component is used, by the form rule */}
+        <input value={value} oninput={this.type} {...this.props.attrs} aria-label="props spread" />
         {/* ✓ the user's */}
         <TextArea defaultValue="x" aria-label="default" />
         <ui.Select defaultValue="a" aria-label="namespaced default">

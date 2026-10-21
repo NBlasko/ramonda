@@ -1,7 +1,7 @@
 import ts from "typescript";
 import { isNothing } from "./element";
 import { unwrap } from "./follow-value";
-import { FORM_ATTRIBUTES, type ComponentSite } from "./formTable";
+import { FORM_ATTRIBUTES, propRead, type ComponentSite } from "./formTable";
 import type { ProjectRule } from "./rule";
 
 export interface FormFieldWithoutWhatTheFormNeedsIssue {
@@ -19,6 +19,7 @@ export interface FormFieldWithoutWhatTheFormNeedsIssue {
     | "not-passed"
     | "bag-overrides"
     | "bag-unreadable"
+    | "bag-without-a-handler"
     | "unreadable-component"
     | "form-not-attached"
     | "form-in-a-hook";
@@ -34,16 +35,6 @@ export interface FormFieldWithoutWhatTheFormNeedsIssue {
 /** The names a field's form attributes may be handed under, in a spread written last on it. */
 const FORM_KEYS = new Set(["name", "value", "checked", "oninput", "onchange", "onblur", "aria-invalid"]);
 
-/** `this.props.P`, as written — the name, or `undefined`. */
-function propRead(expression: ts.Expression | undefined): string | undefined {
-  if (expression === undefined) return undefined;
-  const written = unwrap(expression);
-  if (!ts.isPropertyAccessExpression(written)) return undefined;
-  const object = unwrap(written.expression);
-  if (!ts.isPropertyAccessExpression(object) || object.name.text !== "props") return undefined;
-  return object.expression.kind === ts.SyntaxKind.ThisKeyword ? written.name.text : undefined;
-}
-
 /**
  * A field inside a `@ramonda/form` form, written without everything the form needs.
  *
@@ -56,9 +47,10 @@ function propRead(expression: ts.Expression | undefined): string | undefined {
  *
  * A component that takes them as props — a design system's `StyledInput`, writing
  * `name={this.props.name}` — is checked where it is USED inside a form: every use there hands each of
- * those props. One spread on the field written AFTER them, the usual way to let a caller overwrite a
- * default, is checked the same way: every use inside a form hands it as an object written there, and
- * sets none of them to nothing.
+ * those props. A spread of a prop on a field, `{...this.props.attrs}` — the usual way to let a caller
+ * overwrite a default — is checked at every use, inside a form or not: each hands it as an object
+ * written there, sets none of the form's attributes to nothing, and hands no `value` (`checked`)
+ * without an `oninput` or `onchange` beside it.
  *
  * Reported as well, since a form this cannot recognise is a form whose fields this cannot check: a
  * component that holds a `Form` and renders no `<form onsubmit={this.X.submit}>` for it, a hook that
@@ -80,6 +72,7 @@ export const formFieldWithoutWhatTheFormNeeds = {
           missing: `is inside a @ramonda/form form and is written without ${issue.detail}.`,
           "not-passed": `is used inside a @ramonda/form form and is not handed \`${issue.detail}\`, which a field in it is written with.`,
           "bag-overrides": `is handed \`${issue.detail}\` set to nothing, in what a field in it spreads last.`,
+          "bag-without-a-handler": `is handed \`${issue.detail}\` with a value and no \`oninput\` or \`onchange\` beside it, so the field it is spread on cannot be changed.`,
           "bag-unreadable": `is handed \`${issue.detail}\` as something this cannot read — a field in it spreads it last, over its form attributes.`,
           "unreadable-component":
             "is used inside a @ramonda/form form, and its render cannot be read to check its fields.",
@@ -106,7 +99,7 @@ export const formFieldWithoutWhatTheFormNeeds = {
   },
 
   read(project) {
-    const { fields, sites, holders } = project.forms;
+    const { fields, bags, sites, holders } = project.forms;
     const found: FormFieldWithoutWhatTheFormNeedsIssue[] = [];
 
     for (const holder of holders) {
@@ -163,13 +156,15 @@ export const formFieldWithoutWhatTheFormNeeds = {
         const source = field.attributes[name];
         if (source.kind === "prop") need(field.owner, source.prop, false);
       }
-      for (const bag of field.lateBags) need(field.owner, bag, true);
     }
+    // A spread of props on a field, anywhere: what each use hands for it is read there.
+    for (const bag of bags) need(bag.owner, bag.prop, true);
 
     for (let next = queue.shift(); next !== undefined; next = queue.shift()) {
       const { owner, name, bag } = next;
       for (const site of sites) {
-        if (site.target !== owner || !inContext(site.owner, site.inForm)) continue;
+        // What a field needs from a form is asked inside one; what a spread on it carries, everywhere.
+        if (site.target !== owner || (!bag && !inContext(site.owner, site.inForm))) continue;
         const handed = site.props.get(name);
         if (!site.props.has(name)) {
           if (!bag) found.push({ kind: "not-passed", component: site.tag, detail: name, ...where(site) });
@@ -218,6 +213,14 @@ function readBag(
     if (FORM_KEYS.has(key) && ts.isPropertyAssignment(property) && isNothing(property.initializer)) {
       found.push({ kind: "bag-overrides", component: site.tag, detail: `${name}.${key}`, ...where(site) });
     }
+  }
+  const keys = new Set(
+    written.properties.map((p) =>
+      p.name !== undefined && (ts.isIdentifier(p.name) || ts.isStringLiteral(p.name)) ? p.name.text : "",
+    ),
+  );
+  if ((keys.has("value") || keys.has("checked")) && !keys.has("oninput") && !keys.has("onchange")) {
+    found.push({ kind: "bag-without-a-handler", component: site.tag, detail: name, ...where(site) });
   }
 }
 

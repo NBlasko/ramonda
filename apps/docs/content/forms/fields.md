@@ -144,7 +144,7 @@ before any script runs.
 
 **`value` is the model's; `defaultValue` is where the field starts.** A field with `value` shows what
 the model holds: its own handler writes the model, and the field shows the model again in the same
-event, before anything around it reads the field — so a handler that does not take an edit leaves the
+event, before the event bubbles to anything around it — so a handler that does not take an edit leaves the
 field as it was, and a field with no handler of its own cannot be changed. An input method's
 composition is left alone while it lasts, and its word is handed to the handler once it ends, in every
 browser. A field whose text is read when the form is sent, rather than held in state, takes

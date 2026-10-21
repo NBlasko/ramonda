@@ -3,7 +3,7 @@ import { positionOf } from "../syntax";
 import { coreElementTag } from "./coreElements";
 import { isNothing, openingOf } from "./element";
 import { unwrap } from "./follow-value";
-import { functionOf, whyImpure, type FunctionBody } from "./pure-function";
+import { reach, whyImpure, type Reached } from "./pure-function";
 import type { ElementContext, ElementRule } from "./rule";
 
 export interface TransformThatIsNotPureIssue {
@@ -26,17 +26,19 @@ export interface TransformThatIsNotPureIssue {
 function transformOf(
   value: ts.Expression | undefined,
   resolve: ElementContext["resolve"],
-): FunctionBody | "unreadable" | "built-in-render" {
+): Reached | "unreadable" | "built-in-render" {
   if (value === undefined) return "unreadable";
   const written = unwrap(value);
-  if (ts.isArrowFunction(written) || ts.isFunctionExpression(written)) return written;
+  if (ts.isArrowFunction(written) || ts.isFunctionExpression(written)) return { fn: written };
   if (ts.isCallExpression(written)) return "built-in-render";
   const name = ts.isPropertyAccessExpression(written) ? written.name : ts.isIdentifier(written) ? written : undefined;
   if (name === undefined) return "unreadable";
   const declared = resolve(name)?.declarations?.[0];
-  const fn = declared === undefined ? undefined : functionOf(declared, resolve);
-  if (fn === undefined || fn.body === undefined || fn.getSourceFile().isDeclarationFile) return "unreadable";
-  return fn;
+  const reached = declared === undefined ? undefined : reach(declared, resolve);
+  if (reached === undefined) return "unreadable";
+  const fn = reached.fn;
+  if (fn.body === undefined || fn.getSourceFile().isDeclarationFile) return "unreadable";
+  return reached;
 }
 
 /**
@@ -48,8 +50,10 @@ function transformOf(
  * function is read, and so is every function it calls that is written in the project, wherever it is
  * imported from — `transform={phoneMask}` from `./masks`, or `max20` made once by `maxLength(20)`.
  *
- * Reported: a function that reads `this`, the page (`document`, `fetch`, the clock, chance) or a
- * `let`; one that writes anything it did not make, or waits; one that calls a function whose body
+ * Reported: a function that reads `this`, the page (`document`, `fetch`, the clock, chance), a `let`,
+ * or a `const` holding anything but a fixed value — a literal, a regular expression, a function,
+ * `Object.freeze` of fixed values; a `Set`, a `Map` or a plain object may be changed by whatever else
+ * holds it — or a factory's parameter when the call that made it handed something else; one that writes anything it did not make, or waits; one that calls a function whose body
  * cannot be read; a `transform` whose own body cannot be read — handed down as a prop, or from a
  * package's declarations; one made by a call in the markup, a new function every render; and one on a
  * field with no `value`, which has no model to decide against.
@@ -105,10 +109,12 @@ export const transformThatIsNotPure = {
     );
     if (model === undefined) return [{ component, kind: "uncontrolled", detail: "", ...at }];
 
-    const fn = transformOf(transform.value, resolve);
+    const reached = transformOf(transform.value, resolve);
     const written = transform.value?.getText() ?? "transform";
-    if (fn === "unreadable" || fn === "built-in-render") return [{ component, kind: fn, detail: written, ...at }];
-    const impurity = whyImpure(fn, resolve);
+    if (reached === "unreadable" || reached === "built-in-render") {
+      return [{ component, kind: reached, detail: written, ...at }];
+    }
+    const impurity = whyImpure(reached.fn, resolve, 0, new Set(), reached.fixedFactory);
     return impurity === undefined ? [] : [{ component, kind: "impure", detail: impurity.why, ...at }];
   },
 } as const satisfies ElementRule<TransformThatIsNotPureIssue>;

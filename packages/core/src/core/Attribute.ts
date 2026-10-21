@@ -418,7 +418,7 @@ function setNextOnenhancedNode(enhancedNode: EnhancedHTMLNode, name: string, val
      */
     if (enhancedNode.nodeName === "INPUT" && INPUT_OWN_EVENTS.has(type)) {
       listeners[name] = value;
-      keepOwnHandler(enhancedNode as unknown as HTMLInputElement, type, value);
+      keepOwnHandler(enhancedNode as unknown as HTMLInputElement, name, type, value);
       return;
     }
 
@@ -570,15 +570,27 @@ function removePreviousFromenhancedNode(
       const listeners = enhancedNode._listeners ?? {};
       const type = eventTypeOf(name);
       if (enhancedNode.nodeName === "INPUT" && INPUT_OWN_EVENTS.has(type)) {
-        keepOwnHandler(enhancedNode as unknown as HTMLInputElement, type, undefined);
+        keepOwnHandler(enhancedNode as unknown as HTMLInputElement, name, type, undefined);
       } else {
         enhancedNode.removeEventListener(type, previousAttributes[name]);
       }
       delete listeners[name];
-    } else {
+    } else if (!heldAsADefault(enhancedNode, name, nextAttributes)) {
       removeByQualifiedName(enhancedNode, name);
     }
   }
+}
+
+/**
+ * An `<input>`'s `value` or `checked` attribute that its `defaultValue` or `defaultChecked` holds:
+ * `writeDefaults` writes it, and only when the default changes. Taken away here and written back
+ * there, a radio's `checked` would turn the default back on and the user's pick off, on every pass.
+ */
+function heldAsADefault(enhancedNode: EnhancedHTMLNode, name: string, nextAttributes: NodeAttributes): boolean {
+  if (enhancedNode.nodeName !== "INPUT") return false;
+  if (name === "value") return "defaultValue" in nextAttributes;
+  if (name === "checked") return "defaultChecked" in nextAttributes;
+  return false;
 }
 
 /**

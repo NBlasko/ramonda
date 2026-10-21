@@ -35,11 +35,14 @@ describe("a field inside a @ramonda/form form", () => {
         [lineOf("attrs={bag}"), "bag-unreadable", "attrs"],
         [lineOf("<Fancy"), "unreadable-component", "Fancy"],
         [lineOf("<Ambient"), "unreadable-component", "Ambient"],
+        [lineOf('aria-label="braced box"'), "missing", "`name`, `onblur`, `aria-invalid`"],
+        [lineOf('attrs={{ value: "fixed" }}'), "bag-without-a-handler", "attrs"],
+        [lineOf("attrs={bag}", 2), "bag-unreadable", "attrs"],
         [lineOf("class Detached"), "form-not-attached", "form"],
         [lineOf("class SignupForm"), "form-in-a-hook", "form"],
       ]),
     );
-    expect(issues).toHaveLength(12);
+    expect(issues).toHaveLength(15);
   });
 
   test("a complete field, a wrapper handed everything, a harmless bag, a field outside a form and an app's own Form are silent", () => {
@@ -51,6 +54,7 @@ describe("a field inside a @ramonda/form form", () => {
       lineOf('attrs={{ placeholder: "you@example.com" }}'),
       lineOf('aria-label="loose"'),
       lineOf("<StyledInput value={value} oninput={this.type} />"),
+      lineOf('attrs={{ value: "x", oninput: this.type }}'),
       lineOf('aria-label="own form field"'),
       lineOf("class OwnForm"),
     ]) {

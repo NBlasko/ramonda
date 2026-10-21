@@ -24,6 +24,9 @@ describe("a transform that is not pure", () => {
       [lineOf('aria-label="counts"'), "impure"],
       [lineOf('aria-label="clock"'), "impure"],
       [lineOf('aria-label="network"'), "impure"],
+      [lineOf('aria-label="blocked set"'), "impure"],
+      [lineOf('aria-label="plain config"'), "impure"],
+      [lineOf('aria-label="loose factory"'), "impure"],
       [lineOf('aria-label="via helper"'), "impure"],
       [lineOf('aria-label="hands on"'), "impure"],
       [lineOf('aria-label="marks input"'), "impure"],
@@ -44,7 +47,7 @@ describe("a transform that is not pure", () => {
 
   test("a method, an imported function and its helper, a factory's function, an arrow and an SVG transform are silent", () => {
     const lines = new Set(found().map((issue) => issue.line));
-    for (const label of ["method", "imported", "factory const", "rebinds", "arrow", "select"]) {
+    for (const label of ["method", "imported", "factory const", "rebinds", "frozen", "arrow", "select"]) {
       expect(lines.has(lineOf(`aria-label="${label}"`)), label).toBe(false);
     }
     expect(lines.has(lineOf("<g transform"))).toBe(false);

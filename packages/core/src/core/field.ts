@@ -34,8 +34,11 @@ export interface FieldControl {
   gone(): boolean;
 }
 
-function isCheckbox(field: Field): field is HTMLInputElement {
-  return field.tagName === "INPUT" && (field as HTMLInputElement).type === "checkbox";
+/** A checkbox or a radio: its value is whether it is checked. */
+function isBox(field: Field): field is HTMLInputElement {
+  if (field.tagName !== "INPUT") return false;
+  const type = (field as HTMLInputElement).type;
+  return type === "checkbox" || type === "radio";
 }
 
 function isMultiple(field: Field): field is HTMLSelectElement {
@@ -44,7 +47,7 @@ function isMultiple(field: Field): field is HTMLSelectElement {
 
 /** Whether the field has a caret — a text field; `setSelectionRange` throws on a `number` or `date` input. */
 function caretOf(field: Field): HTMLInputElement | HTMLTextAreaElement | null {
-  if (field.tagName === "SELECT" || isCheckbox(field)) return null;
+  if (field.tagName === "SELECT" || isBox(field)) return null;
   const text = field as HTMLInputElement | HTMLTextAreaElement;
   try {
     return text.selectionStart === null ? null : text;
@@ -54,7 +57,7 @@ function caretOf(field: Field): HTMLInputElement | HTMLTextAreaElement | null {
 }
 
 export function valueOf(field: Field): FieldValue {
-  if (isCheckbox(field)) return field.checked;
+  if (isBox(field)) return field.checked;
   if (isMultiple(field)) return Array.from(field.selectedOptions, (option) => option.value);
   return field.value;
 }
@@ -65,12 +68,13 @@ function sameValue(a: FieldValue, b: FieldValue): boolean {
 }
 
 /**
- * The app's `transform(next, prev, input)`, applied to the field before any listener reads it.
+ * The app's `transform(next, prev, input)`, applied to the field before its handler reads it.
  *
  * `next` is what the edit left in the field and `prev` what the model holds; what comes back is what
  * the field keeps — `next` to take the edit, `prev` to refuse it, anything else to rewrite it. It is
- * written at once, in the field's own listener, so the app's handler, a form around the field and any
- * other listener all read the same value, and the browser never draws the edit it replaced.
+ * written at once, in the field's own listener, so the app's handler, a form around the field and
+ * anything the event bubbles to all read the same value, and the browser never draws the edit it
+ * replaced.
  *
  * A refused edit puts the caret back where the edit found it: the text is the text before the edit,
  * so the offset before the edit means what it meant. A rewrite of the same length keeps the caret
@@ -87,7 +91,7 @@ export function decideEdit(field: Field, transform: Transform, prev: FieldValue,
   const kept = transform(next as never, prev as never, input) as FieldValue;
   if (sameValue(kept, next)) return;
 
-  if (isCheckbox(field)) {
+  if (isBox(field)) {
     field.checked = Boolean(kept);
     return;
   }
@@ -103,7 +107,11 @@ export function decideEdit(field: Field, transform: Transform, prev: FieldValue,
   const caret = text.selectionStart;
   writeValue(text as unknown as EnhancedHTMLNode, String(kept), false);
   if (caret !== null && typeof next === "string" && typeof prev === "string" && String(kept) === prev) {
-    const back = Math.max(0, Math.min(prev.length, caret - (next.length - prev.length)));
+    // What a delete forward took was after the caret, so the caret is where the edit found it; any
+    // other edit moved it by what it added or took before it.
+    const forward = input.inputType.startsWith("delete") && input.inputType.endsWith("Forward");
+    const moved = forward ? 0 : next.length - prev.length;
+    const back = Math.max(0, Math.min(prev.length, caret - moved));
     text.setSelectionRange(back, back);
   }
 }
@@ -204,11 +212,11 @@ function decide(control: FieldControl, event: Event): void {
  * A field with a `value` (or `checked`) shows what the model says, and its own handler is what
  * writes the model. So, on every edit and in this order: the edit is decided (`decideEdit`); the
  * handler the app wrote on the field runs, as a listener would, with the element as `this`; the
- * renders it caused run at once; and the field is made to show the model (`show`). All before any
- * other listener — a form around the field, a library's own — reads the field, and before the
- * browser draws. So every reader reads the same value, and a handler that did not write the model
- * leaves the field showing the model, in the same event. A field with a `value` and no handler of
- * its own shows its model whatever is typed, as in React.
+ * renders it caused run at once; and the field is made to show the model (`show`). All before the
+ * event bubbles to anything around the field — a form's `oninput`, a library listening on the
+ * document — and before the browser draws. So every reader reads the same value, and a handler that
+ * did not write the model leaves the field showing the model, in the same event. A field with a
+ * `value` and no handler of its own shows its model whatever is typed, as in React.
  *
  * **A pick is one edit.** A select, a checkbox and a radio send `input` and then `change` for one
  * pick, both at once. Both of the field's own handlers run on the `input`, so the model is the pick's
@@ -324,27 +332,40 @@ const OWN = Symbol("ramonda.input.own");
 const TRANSFORM = Symbol("ramonda.input.transform");
 const CONTROLLED = Symbol("ramonda.input.controlled");
 const HEARD = Symbol("ramonda.input.heard");
+const CONTROL = Symbol("ramonda.input.control");
 
 type Kept = HTMLInputElement & {
-  [OWN]?: Record<string, unknown>;
+  /** By event type, then by the name the handler was written under — `oninput`, `on:input`. */
+  [OWN]?: Record<string, Map<string, unknown>>;
   [TRANSFORM]?: Transform;
   [CONTROLLED]?: boolean;
-  [HEARD]?: true;
+  /** The event types the field listener is attached for. */
+  [HEARD]?: Set<string>;
+  [CONTROL]?: FieldControl;
 };
 
 /** The events an `<input>`'s own handlers are called on by its field listener, rather than attached. */
 export const INPUT_OWN_EVENTS = new Set(["input", "change", "compositionstart", "compositionend", "blur"]);
 
 /**
- * An `<input>`'s own handler for `type`, kept on the element instead of attached to it: the field's
- * listener calls it, so the field knows when it has returned. `undefined` takes it away.
+ * An `<input>`'s own handler for `type`, written as `name`, kept on the element instead of attached to
+ * it: the field's listener calls it, so the field knows when it has returned. Each name is a handler
+ * of its own, as a listener would be — `oninput` and `on:input` both run. `undefined` takes it away.
  */
-export function keepOwnHandler(input: HTMLInputElement, type: string, handler: unknown): void {
+export function keepOwnHandler(input: HTMLInputElement, name: string, type: string, handler: unknown): void {
   const kept = input as Kept;
   kept[OWN] ??= {};
-  if (handler === undefined) delete kept[OWN][type];
-  else kept[OWN][type] = handler;
-  listen(kept);
+  const handlers = (kept[OWN][type] ??= new Map());
+  if (handler === undefined) handlers.delete(name);
+  else handlers.set(name, handler);
+  if (handler !== undefined) listen(kept, [type]);
+}
+
+/** Every own handler of `input` for `type`, in the order they were written. */
+function callOwn(input: Kept, type: string, event: Event): void {
+  const handlers = input[OWN]?.[type];
+  if (handlers === undefined) return;
+  for (const handler of [...handlers.values()]) callHandler(handler, event);
 }
 
 function isRadio(input: HTMLInputElement): boolean {
@@ -360,17 +381,26 @@ function groupOf(input: HTMLInputElement): HTMLInputElement[] {
   );
 }
 
-/** An `<input>` as `answerEdit` sees it. Its model is what the attribute pass wrote as the attribute. */
+/**
+ * An `<input>` as `answerEdit` sees it, made once per element. Its model is what the attribute pass
+ * wrote as the attribute; the type is read on each call, since a render may change it.
+ */
 function controlOf(input: Kept): FieldControl {
-  const box = input.type === "checkbox" || isRadio(input);
-  return {
+  const existing = input[CONTROL];
+  if (existing !== undefined) return existing;
+  const isBoxNow = () => input.type === "checkbox" || isRadio(input);
+  const model = () => (isBoxNow() ? input.hasAttribute("checked") : (input.getAttribute("value") ?? ""));
+  const control: FieldControl = {
     key: input,
-    pick: box,
-    model: () => (box ? input.hasAttribute("checked") : (input.getAttribute("value") ?? "")),
-    prev: () => (box ? input.hasAttribute("checked") : (input.getAttribute("value") ?? "")),
+    get pick() {
+      return isBoxNow();
+    },
+    model,
+    prev: model,
     transform: () => input[TRANSFORM],
-    own: (type, event) => callHandler(input[OWN]?.[type], event),
+    own: (type, event) => callOwn(input, type, event),
     settle: () => {
+      const box = isBoxNow();
       if (composingIn(input)) return;
       if (isRadio(input)) {
         // Clicking one radio unchecks another, which hears nothing: the whole group is put back.
@@ -388,24 +418,35 @@ function controlOf(input: Kept): FieldControl {
     },
     gone: () => false,
   };
+  input[CONTROL] = control;
+  return control;
 }
 
 /**
  * The one listener an `<input>` answers its own events with, attached once, in the CAPTURE phase on
  * the element: at its target an event reaches capture listeners before the others, so the field is
- * answered before any other listener on it, and before anything around it. An uncontrolled input's
+ * answered before any other listener on it, and before the event bubbles to anything around it. A
+ * capture listener on an ancestor runs first, as the DOM orders capture, and sees the edit undecided.
+ * An uncontrolled input's
  * handlers are simply called; a controlled one's go through `answerEdit`.
  */
 function heardByInput(event: Event): void {
   const input = event.currentTarget as Kept;
   if (input[CONTROLLED]) answerEdit(controlOf(input), event);
-  else callHandler(input[OWN]?.[event.type], event);
+  else callOwn(input, event.type, event);
 }
 
-function listen(input: Kept): void {
-  if (input[HEARD]) return;
-  input[HEARD] = true;
-  for (const type of INPUT_OWN_EVENTS) input.addEventListener(type, heardByInput, true);
+/**
+ * Attaches the field listener for `types`, each once. An uncontrolled input is heard for the events it
+ * has a handler for; a controlled one for all of `INPUT_OWN_EVENTS`, which its field answers.
+ */
+function listen(input: Kept, types: Iterable<string>): void {
+  const heard = (input[HEARD] ??= new Set());
+  for (const type of types) {
+    if (heard.has(type)) continue;
+    heard.add(type);
+    input.addEventListener(type, heardByInput, true);
+  }
 }
 
 /**
@@ -420,5 +461,5 @@ export function controlInput(input: HTMLInputElement, attributes: Record<string,
   kept[CONTROLLED] = controlled;
   const transform = attributes.transform;
   kept[TRANSFORM] = controlled && typeof transform === "function" ? (transform as Transform) : undefined;
-  if (controlled) listen(kept);
+  if (controlled) listen(kept, INPUT_OWN_EVENTS);
 }

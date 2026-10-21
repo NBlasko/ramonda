@@ -154,27 +154,31 @@ export function whyImpure(
   fn: FunctionBody,
   resolve: Resolver,
   depth = 0,
-  seen = new Set<ts.Node>(),
+  seen = new Set<string>(),
+  fixedFactory?: ts.Node,
 ): Impurity | undefined {
-  if (seen.has(fn)) return undefined;
-  seen.add(fn);
+  // One function made by two calls is two answers — `maxLength(20)` and `maxLength(current)`.
+  const key = `${fn.getSourceFile().fileName}:${fn.pos}:${fixedFactory?.pos ?? -1}`;
+  if (seen.has(key)) return undefined;
+  seen.add(key);
   if (depth > DEPTH) return { at: fn, why: "it calls further than this follows" };
   if (fn.body === undefined) return { at: fn, why: "its body cannot be read" };
 
   /** Whether a name is declared inside `fn` — a parameter or a local — or inside a function enclosing it. */
-  const ownOrEnclosing = (declaration: ts.Node): boolean => {
-    for (let at: ts.Node | undefined = declaration; at !== undefined; at = at.parent) {
-      if (at === fn) return true;
-    }
-    // A parameter or a `const` of a function around `fn` — what a factory's returned function closes over.
-    for (let outer: ts.Node | undefined = fn.parent; outer !== undefined; outer = outer.parent) {
-      if (ts.isFunctionLike(outer)) {
-        for (let at: ts.Node | undefined = declaration; at !== undefined; at = at.parent) {
-          if (at === outer) return ts.isParameter(declaration) || isConst(declaration);
-        }
-      }
-    }
-    return false;
+  /**
+   * Whether reading `declaration` from inside `fn` reads something that cannot change: one of `fn`'s
+   * own names; a parameter of the factory that made `fn`, when the call that made it handed fixed
+   * values (`maxLength(20)`); or a `const` anywhere holding a fixed value (see `isFixed`).
+   */
+  const unchanging = (declaration: ts.Node): boolean => {
+    if (isInside(declaration, fn)) return true;
+    if (ts.isParameter(declaration)) return fixedFactory !== undefined && declaration.parent === fixedFactory;
+    return (
+      ts.isVariableDeclaration(declaration) &&
+      isConst(declaration) &&
+      declaration.initializer !== undefined &&
+      isFixed(declaration.initializer, resolve)
+    );
   };
 
   let found: Impurity | undefined;
@@ -235,16 +239,15 @@ export function whyImpure(
       const declared = resolve(node)?.declarations?.[0];
       if (declared === undefined) {
         if (!PURE_GLOBALS.has(node.text)) return fail(node, `it reads \`${node.text}\`, which the page owns`);
-      } else if (!ownOrEnclosing(declared)) {
+      } else if (!unchanging(declared)) {
         // A function named as a value — `map(toDigit)` — runs too, so it is read like one that is called.
-        const named =
-          ts.isCallExpression(node.parent) && node.parent.expression === node
-            ? undefined
-            : functionOf(declared, resolve);
+        const reached =
+          ts.isCallExpression(node.parent) && node.parent.expression === node ? undefined : reach(declared, resolve);
+        const named = reached?.fn;
         if (named !== undefined && !named.getSourceFile().isDeclarationFile && named.body !== undefined) {
-          const inner = whyImpure(named, resolve, depth + 1, seen);
+          const inner = whyImpure(named, resolve, depth + 1, seen, reached?.fixedFactory);
           if (inner !== undefined) return fail(node, `it hands on \`${node.text}\`, and ${inner.why}`);
-        } else if (!isConst(declared) && !ts.isFunctionLike(declared) && !isImportOfAFunction(declared)) {
+        } else if (!ts.isFunctionLike(declared) && !isImportOfAFunction(declared)) {
           return fail(node, `it reads \`${node.text}\`, which may change`);
         }
       }
@@ -264,9 +267,10 @@ export function whyImpure(
     if (name === undefined) return "it calls something this cannot name";
 
     const declared = resolve(name)?.declarations?.[0];
-    const body = declared === undefined ? undefined : functionOf(declared, resolve);
+    const reached = declared === undefined ? undefined : reach(declared, resolve);
+    const body = reached?.fn;
     if (body !== undefined && !body.getSourceFile().isDeclarationFile && body.body !== undefined) {
-      const inner = whyImpure(body, resolve, depth + 1, seen);
+      const inner = whyImpure(body, resolve, depth + 1, seen, reached?.fixedFactory);
       return inner === undefined ? undefined : `it calls \`${callee.getText()}\`, and ${inner.why}`;
     }
     if (ts.isPropertyAccessExpression(callee)) {
@@ -329,25 +333,93 @@ function isRead(node: ts.Identifier): boolean {
  * returns. `undefined` when it is none of those.
  */
 export function functionOf(declaration: ts.Node, resolve: Resolver): FunctionBody | undefined {
-  if (ts.isFunctionDeclaration(declaration) || ts.isMethodDeclaration(declaration)) return declaration;
+  return reach(declaration, resolve)?.fn;
+}
+
+/**
+ * The function a declaration stands for, and — when a factory made it from a call whose every
+ * argument is fixed — that factory, whose parameters the function may then read as fixed.
+ */
+export interface Reached {
+  fn: FunctionBody;
+  fixedFactory?: ts.Node;
+}
+
+export function reach(declaration: ts.Node, resolve: Resolver): Reached | undefined {
+  if (ts.isFunctionDeclaration(declaration) || ts.isMethodDeclaration(declaration)) return { fn: declaration };
   if (ts.isVariableDeclaration(declaration) && declaration.initializer !== undefined) {
     const value = unwrap(declaration.initializer);
-    if (ts.isArrowFunction(value) || ts.isFunctionExpression(value)) return value;
+    if (ts.isArrowFunction(value) || ts.isFunctionExpression(value)) return { fn: value };
     if (ts.isCallExpression(value) && isConst(declaration)) return returnedBy(value, resolve);
   }
   return undefined;
 }
 
+/**
+ * A value nothing can change: a literal — string, number, `true`, `null`, a regular expression — a
+ * function, `Object.freeze` of an array or object of fixed values, or a `const` holding one. A `Set`, a
+ * `Map` or a plain object held in a `const` is not: whatever else holds it may change it.
+ */
+export function isFixed(expression: ts.Expression, resolve: Resolver, depth = 0): boolean {
+  if (depth > 8) return false;
+  const value = unwrap(expression);
+  if (
+    ts.isStringLiteralLike(value) ||
+    ts.isNumericLiteral(value) ||
+    ts.isBigIntLiteral(value) ||
+    ts.isRegularExpressionLiteral(value) ||
+    value.kind === ts.SyntaxKind.TrueKeyword ||
+    value.kind === ts.SyntaxKind.FalseKeyword ||
+    value.kind === ts.SyntaxKind.NullKeyword ||
+    ts.isArrowFunction(value) ||
+    ts.isFunctionExpression(value)
+  ) {
+    return true;
+  }
+  if (ts.isPrefixUnaryExpression(value)) return ts.isNumericLiteral(unwrap(value.operand));
+  if (ts.isIdentifier(value)) {
+    if (value.text === "undefined" || value.text === "NaN" || value.text === "Infinity") return true;
+    const declared = resolve(value)?.declarations?.[0];
+    if (declared === undefined) return false;
+    if (ts.isFunctionDeclaration(declared)) return true;
+    return (
+      ts.isVariableDeclaration(declared) &&
+      isConst(declared) &&
+      declared.initializer !== undefined &&
+      isFixed(declared.initializer, resolve, depth + 1)
+    );
+  }
+  if (ts.isCallExpression(value) && value.arguments.length === 1) {
+    const callee = unwrap(value.expression);
+    const frozen =
+      ts.isPropertyAccessExpression(callee) &&
+      callee.name.text === "freeze" &&
+      ts.isIdentifier(callee.expression) &&
+      callee.expression.text === "Object" &&
+      resolve(callee.expression) === undefined;
+    if (!frozen) return false;
+    const held = unwrap(value.arguments[0]);
+    if (ts.isArrayLiteralExpression(held)) return held.elements.every((e) => isFixed(e, resolve, depth + 1));
+    if (ts.isObjectLiteralExpression(held)) {
+      return held.properties.every((p) => ts.isPropertyAssignment(p) && isFixed(p.initializer, resolve, depth + 1));
+    }
+  }
+  return false;
+}
+
 /** The one function a factory call returns, read off the factory's own `return`. */
-function returnedBy(call: ts.CallExpression, resolve: Resolver): FunctionBody | undefined {
+function returnedBy(call: ts.CallExpression, resolve: Resolver): Reached | undefined {
   const callee = unwrap(call.expression);
   if (!ts.isIdentifier(callee)) return undefined;
   const declared = resolve(callee)?.declarations?.[0];
   const factory = declared === undefined ? undefined : functionOf(declared, resolve);
   if (factory === undefined || factory.body === undefined) return undefined;
+  const fixed = call.arguments.every((argument) => isFixed(argument, resolve));
+  const made = (fn: FunctionBody | undefined): Reached | undefined =>
+    fn === undefined ? undefined : { fn, fixedFactory: fixed ? factory : undefined };
   if (!ts.isBlock(factory.body)) {
     const value = unwrap(factory.body);
-    return ts.isArrowFunction(value) || ts.isFunctionExpression(value) ? value : undefined;
+    return made(ts.isArrowFunction(value) || ts.isFunctionExpression(value) ? value : undefined);
   }
   let returned: FunctionBody | undefined;
   let count = 0;
@@ -361,5 +433,5 @@ function returnedBy(call: ts.CallExpression, resolve: Resolver): FunctionBody | 
     ts.forEachChild(node, look);
   };
   ts.forEachChild(factory.body, look);
-  return count === 1 ? returned : undefined;
+  return made(count === 1 ? returned : undefined);
 }

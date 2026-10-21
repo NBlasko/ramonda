@@ -6,8 +6,8 @@ A field with a `value` shows the model, in the event that changed it; `defaultVa
 
 `Select`, `TextArea` and `<input>` are controlled the same way: a field with a `value` — `checked` on a
 checkbox or a radio — shows what the model holds, and the handler written on the field is what writes
-the model. Core answers every edit in the field's own listener, before any other listener and before
-the browser draws: the edit is decided by the field's `transform`, the field's handler runs, the
+the model. Core answers every edit in the field's own listener, before the event bubbles to anything
+around the field and before the browser draws: the edit is decided by the field's `transform`, the field's handler runs, the
 renders it caused run at once, and the field shows the model. A handler that takes the edit leaves
 the field as the user made it; one that refuses it, or no handler at all, leaves the model showing —
 in the same event, so a refused keystroke or pick is never drawn, and a form around the field reads

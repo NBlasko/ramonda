@@ -4,6 +4,7 @@ import { coreElementTag } from "./coreElements";
 import { openingOf, writtenAsNothing } from "./element";
 import { follow, unwrap, type Looking } from "./follow-value";
 import type { ElementContext, ElementRule, WrittenAttribute } from "./rule";
+import { propRead } from "./formTable";
 
 export interface FieldTheUserCannotChangeIssue {
   component: "Select" | "TextArea" | "input";
@@ -104,6 +105,8 @@ const NOT_EDITED = new Set(["hidden", "submit", "button", "reset", "image", "fil
  * - **A spread on a field**, with a `value` written beside it or not: what it holds is not written
  *   down, and it may carry a `value` without the handler. The one spread that says what it holds is
  *   the schema's HTML constraints, `html(path)` from `@ramonda/form/bguard` — see `isConstraints`.
+ *   A spread of a prop, `{...this.props.attrs}`, is read where the component is used, by
+ *   `form-field-without-what-the-form-needs`.
  * - **A handler that is an optional prop** — `oninput={this.props.oninput}` where the props declare
  *   `oninput?:` — whose caller may leave it out.
  *
@@ -139,7 +142,7 @@ export const fieldTheUserCannotChange = {
     ],
     advice:
       "A controlled field shows what the model holds, and its own handler is what writes the model:\n" +
-      "core calls it, then shows the model, before any other listener reads the field.\n\n" +
+      "core calls it, then shows the model, before the event bubbles to anything around the field.\n\n" +
       "Write the model in the field's own handler:\n\n" +
       "```tsx\n" +
       "typed(event: EventOn<HTMLTextAreaElement>) {\n" +
@@ -181,7 +184,10 @@ export const fieldTheUserCannotChange = {
     const spreads = opening.attributes.properties.filter(ts.isJsxSpreadAttribute);
     // Any spread but the schema's constraints may carry a `value` — which makes the field controlled —
     // and nothing says whether it carries the handler too: reported whether or not a value is written.
-    const unknown = spreads.some((spread) => !isConstraints(spread.expression, resolve));
+    // `{...this.props.P}` is read where the component is used, by `form-field-without-what-the-form-needs`.
+    const unknown = spreads.some(
+      (spread) => !isConstraints(spread.expression, resolve) && propRead(spread.expression) === undefined,
+    );
     if (model === undefined && !unknown) return [];
 
     const at = positionOf(opening);

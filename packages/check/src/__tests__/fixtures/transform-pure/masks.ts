@@ -59,3 +59,22 @@ export function rebinds(next: string): string {
 export function viaHelper(next: string): string {
   return stamped(next).trim();
 }
+
+const blocked = new Set<string>();
+/** Changes `blocked` — so a transform reading it depends on what else ran. */
+export const block = (word: string) => blocked.add(word);
+/** Not pure: reads a Set others change. */
+export const noBlocked = (next: string, prev: string) => (blocked.has(next) ? prev : next);
+
+const config = { max: 3 };
+/** Not pure: reads a plain object, which anything holding it may change. */
+export const configured = (next: string, prev: string) => (next.length <= config.max ? next : prev);
+
+const LIMITS = Object.freeze({ max: 3 });
+const DIGITS = /^\d*$/;
+/** Pure: a frozen object of literals, and a regular expression. */
+export const frozen = (next: string, prev: string) => (next.length <= LIMITS.max && DIGITS.test(next) ? next : prev);
+
+let current = 20;
+/** Not pure: made from a value that may change, which the function then reads. */
+export const loose = maxLength(current);

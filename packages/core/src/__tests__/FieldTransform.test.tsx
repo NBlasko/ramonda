@@ -356,3 +356,88 @@ describe("an input's transform decides the edit before anyone reads it", () => {
     });
   });
 });
+
+/** What a refused edit leaves: the caret where the edit found it, and a box's pick as it was. */
+describe("a refused edit leaves the field as the edit found it", () => {
+  class Locked extends Component {
+    @state text = "abc";
+    typed(event: EventOn<HTMLTextAreaElement>) {
+      this.text = event.currentTarget.value;
+    }
+    refuse(_next: string, prev: string): string {
+      return prev;
+    }
+    render() {
+      return <TextArea id="t" value={this.text} oninput={this.typed} transform={this.refuse} />;
+    }
+  }
+
+  /** Delete pressed in `a|bc` takes the `b` AFTER the caret: the caret never moved, and stays at 1. */
+  test("a delete forward keeps the caret where it was", async () => {
+    const app = await getDOM<Locked>(<Locked />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+    field.value = "ac";
+    field.setSelectionRange(1, 1);
+    field.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "deleteContentForward" }));
+
+    expect({ shown: field.value, caret: field.selectionStart }).toEqual({ shown: "abc", caret: 1 });
+  });
+
+  /** Backspace in `ab|c` takes the `b` BEFORE the caret, which moved to 1: back to 2. */
+  test("a delete backward puts the caret back after what it took", async () => {
+    const app = await getDOM<Locked>(<Locked />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+    field.value = "ac";
+    field.setSelectionRange(1, 1);
+    field.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "deleteContentBackward" }));
+
+    expect({ shown: field.value, caret: field.selectionStart }).toEqual({ shown: "abc", caret: 2 });
+  });
+
+  /** A radio's transform is told whether it is checked, as a checkbox's is — never its `value`. */
+  test("a radio whose transform refuses the pick keeps its value and its group", async () => {
+    class Pets extends Component {
+      @state pet = "a";
+      told: unknown[] = [];
+      /** Reads `checked`: the transform decides whether the radio is on, and a refused one is off. */
+      picked(event: EventOn<HTMLInputElement>) {
+        if (event.currentTarget.checked) this.pet = event.currentTarget.value;
+      }
+      refuse(next: boolean, prev: boolean): boolean {
+        this.told.push([next, prev]);
+        return prev;
+      }
+      render() {
+        return (
+          <form>
+            {["a", "b"].map((pet) => (
+              <input
+                id={pet}
+                type="radio"
+                name="pet"
+                value={pet}
+                checked={this.pet === pet}
+                onchange={this.picked}
+                transform={this.refuse}
+              />
+            ))}
+          </form>
+        );
+      }
+    }
+    const app = await getDOM<Pets>(<Pets />);
+    await app.settle();
+    const a = app.container.querySelector("#a") as HTMLInputElement;
+    const b = app.container.querySelector("#b") as HTMLInputElement;
+    b.click();
+
+    expect({
+      pet: app.instance.pet,
+      value: b.value,
+      checked: [a.checked, b.checked],
+      told: app.instance.told,
+    }).toEqual({ pet: "a", value: "b", checked: [true, false], told: [[true, false]] });
+  });
+});

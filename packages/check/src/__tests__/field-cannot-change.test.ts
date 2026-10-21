@@ -46,6 +46,7 @@ describe("a field the user cannot change", () => {
       [lineOf('aria-label="unknown spread without a value"'), "input", "unknown-spread"],
       [lineOf('aria-label="an app\'s own constraints"'), "input", "unknown-spread"],
       [lineOf('aria-label="constraints and no handler"'), "input", "no-handler"],
+      [lineOf('aria-label="own field spread"'), "input", "unknown-spread"],
     ]);
   });
 
@@ -64,6 +65,7 @@ describe("a field the user cannot change", () => {
       "ticked",
       "radio picked",
       "constraints",
+      "props spread",
       "default",
       "namespaced default",
       "default input",

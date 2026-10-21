@@ -227,3 +227,108 @@ describe("an uncontrolled input starts on its default and is the user's", () => 
     expect({ before, after: box.hasAttribute("checked") }).toEqual({ before: true, after: false });
   });
 });
+
+/** A default is written once, and a render that does not change it leaves the field alone. */
+describe("an uncontrolled input across a render", () => {
+  class Survey extends Component {
+    @state count = 0;
+    render() {
+      return (
+        <form>
+          <output id="count">{this.count}</output>
+          <input id="a" type="radio" name="size" value="a" defaultChecked />
+          <input id="b" type="radio" name="size" value="b" />
+          <input id="note" aria-label="Note" defaultValue="hi" />
+        </form>
+      );
+    }
+  }
+
+  test("a radio the user picked stays picked when the page renders for something else", async () => {
+    const app = await getDOM<Survey>(<Survey />);
+    await app.settle();
+    const a = app.container.querySelector("#a") as HTMLInputElement;
+    const b = app.container.querySelector("#b") as HTMLInputElement;
+    b.click();
+    app.instance.count++;
+    await app.settle();
+
+    expect({ count: app.container.querySelector("#count")?.textContent, a: a.checked, b: b.checked }).toEqual({
+      count: "1",
+      a: false,
+      b: true,
+    });
+  });
+
+  test("a render that leaves the defaults as they are writes no attribute of the fields", async () => {
+    const app = await getDOM<Survey>(<Survey />);
+    await app.settle();
+    const written: string[] = [];
+    const observer = new MutationObserver((records) => {
+      for (const record of records) written.push(`${(record.target as Element).id}.${record.attributeName}`);
+    });
+    for (const id of ["a", "b", "note"]) {
+      observer.observe(app.container.querySelector(`#${id}`) as Element, { attributes: true });
+    }
+    app.instance.count++;
+    await app.settle();
+    observer
+      .takeRecords()
+      .forEach((record) => written.push(`${(record.target as Element).id}.${record.attributeName}`));
+    observer.disconnect();
+
+    expect(written).toEqual([]);
+  });
+});
+
+/** Each handler written on an `<input>` is one of its own, as a listener is. */
+describe("an input's own handlers", () => {
+  class Both extends Component {
+    @state second = true;
+    calls: string[] = [];
+    a() {
+      this.calls.push("a");
+    }
+    b() {
+      this.calls.push("b");
+    }
+    render() {
+      return <input id="i" aria-label="Both" oninput={this.a} on:input={this.second ? this.b : undefined} />;
+    }
+  }
+
+  test("`oninput` and `on:input` both run, and taking one away leaves the other", async () => {
+    const app = await getDOM<Both>(<Both />);
+    await app.settle();
+    const field = app.container.querySelector("#i") as HTMLInputElement;
+    typeInto(field, "x");
+    app.instance.second = false;
+    await app.settle();
+    typeInto(field, "xy");
+
+    expect(app.instance.calls).toEqual(["a", "b", "a"]);
+  });
+
+  test("an uncontrolled input is heard only for the events it has a handler for", async () => {
+    const attached: string[] = [];
+    const original = HTMLInputElement.prototype.addEventListener;
+    HTMLInputElement.prototype.addEventListener = function (this: HTMLInputElement, type: string, ...rest: never[]) {
+      attached.push(type);
+      return original.call(this, type, ...rest);
+    } as typeof original;
+    try {
+      class Blurred extends Component {
+        left() {}
+        render() {
+          return <input aria-label="Blurred" defaultValue="x" onblur={this.left} />;
+        }
+      }
+      const app = await getDOM<Blurred>(<Blurred />);
+      await app.settle();
+    } finally {
+      HTMLInputElement.prototype.addEventListener = original;
+    }
+
+    expect(attached).toEqual(["blur"]);
+  });
+});

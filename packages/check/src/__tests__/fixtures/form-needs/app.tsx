@@ -120,6 +120,8 @@ class Page extends Component {
         <DefaultsInput field={this.form.fields.email.$} attrs={{ placeholder: "you@example.com" }} />
         <DefaultsInput field={this.form.fields.email.$} attrs={{ oninput: undefined }} />
         <DefaultsInput field={this.form.fields.email.$} attrs={bag} />
+        {/* ✗ a box whose type is written as an expression is still a box */}
+        <input aria-label="braced box" type={"checkbox"} checked={on} oninput={this.type} />
         {/* ✗ unreadable-component */}
         <Fancy label="x" />
         <Ambient />
@@ -148,6 +150,11 @@ class Loose extends Component {
       <div>
         <input aria-label="loose" value={value} oninput={this.type} />
         <StyledInput value={value} oninput={this.type} />
+        {/* ✗ what a spread carries is read everywhere: a value with no handler, and a bag unseen */}
+        <DefaultsInput field={this.type} attrs={{ value: "fixed" }} />
+        <DefaultsInput field={this.type} attrs={bag} />
+        {/* ✓ a value with its handler beside it */}
+        <DefaultsInput field={this.type} attrs={{ value: "x", oninput: this.type }} />
       </div>
     );
   }
