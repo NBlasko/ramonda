@@ -57,6 +57,7 @@ const EXPECTED_TYPES = [
   "ControlWithNoLabelIssue",
   "FormFieldWithoutWhatTheFormNeedsIssue",
   "TransformThatIsNotPureIssue",
+  "ResetTheModelDoesNotHearIssue",
   "ComputeTakesNoArgumentsIssue",
   "ContextIssue",
   "DecoratorThatAddsNothingIssue",

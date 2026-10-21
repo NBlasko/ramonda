@@ -490,13 +490,14 @@ Every rule publishes its own issue shape, named for the rule: `AccessKeyIssue`,
 `ParentWithAForeignChildIssue`, `PersistOfALossyValueIssue`, `PositiveTabIndexIssue`,
 `PresentationRoleOnFocusableIssue`, `PropsWrittenByTheReceiverIssue`,
 `RefBuiltWhereItCannotBeKeptIssue`, `ReferenceToAnIdThatIsNotThereIssue`, `RegionWithNoNameIssue`,
-`RoleMissingRequiredAriaIssue`, `RoleTakesNoNameIssue`, `RoleThatFightsTheTagIssue`,
-`RowReadsAPlainFieldIssue`, `RowWithoutAKeyIssue`, `ServerEnvInSharedCodeIssue`,
-`StateMutatedInPlaceIssue`, `StateWrittenWhileRenderingIssue`, `TableWithNoHeadersIssue`,
-`TagNeedsItsParentIssue`, `TransformThatIsNotPureIssue`, `UnexposedEnvReadIssue`,
-`UnguardedAsyncLifecycleIssue`, `UnkeyableMemoizedArgumentIssue`, `UnknownAriaAttributeIssue`,
-`UnknownRoleIssue`, `UnnamedFrameIssue`, `UnnamedImageIssue`, `UnserializableStateIssue`,
-`UnsplittableImportIssue`, `UnwatchedFieldIssue`, `WatchOfAPropThatIsNotThereIssue`.
+`ResetTheModelDoesNotHearIssue`, `RoleMissingRequiredAriaIssue`, `RoleTakesNoNameIssue`,
+`RoleThatFightsTheTagIssue`, `RowReadsAPlainFieldIssue`, `RowWithoutAKeyIssue`,
+`ServerEnvInSharedCodeIssue`, `StateMutatedInPlaceIssue`, `StateWrittenWhileRenderingIssue`,
+`TableWithNoHeadersIssue`, `TagNeedsItsParentIssue`, `TransformThatIsNotPureIssue`,
+`UnexposedEnvReadIssue`, `UnguardedAsyncLifecycleIssue`, `UnkeyableMemoizedArgumentIssue`,
+`UnknownAriaAttributeIssue`, `UnknownRoleIssue`, `UnnamedFrameIssue`, `UnnamedImageIssue`,
+`UnserializableStateIssue`, `UnsplittableImportIssue`, `UnwatchedFieldIssue`,
+`WatchOfAPropThatIsNotThereIssue`.
 
 [issues:end]: #
 

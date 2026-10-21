@@ -69,7 +69,8 @@ export class PluginTabs {
       return;
     }
 
-    this.tabs.get(id)?.reset();
+    const tab: PluginTab | undefined = this.tabs.get(id);
+    tab?.reset();
     this.render();
     if (this.timer !== undefined) return;
     // Twice a second. Faster buys nothing a human can read, and every tick reads a live source.

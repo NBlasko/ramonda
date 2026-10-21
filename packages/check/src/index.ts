@@ -24,6 +24,7 @@ export type {
   ControlWithNoLabelIssue,
   FormFieldWithoutWhatTheFormNeedsIssue,
   TransformThatIsNotPureIssue,
+  ResetTheModelDoesNotHearIssue,
   ComputeTakesNoArgumentsIssue,
   ContextIssue,
   DecoratorThatAddsNothingIssue,

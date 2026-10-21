@@ -48,6 +48,7 @@ import { referenceToAnIdThatIsNotThere } from "./reference-to-an-id-that-is-not-
 import { controlWithNoLabel } from "./control-with-no-label";
 import { formFieldWithoutWhatTheFormNeeds } from "./form-field-without-what-the-form-needs";
 import { transformThatIsNotPure } from "./transform-that-is-not-pure";
+import { resetTheModelDoesNotHear } from "./reset-the-model-does-not-hear";
 import { namedOnlyByAPlaceholder } from "./named-only-by-a-placeholder";
 import { ariaHiddenOnFocusable } from "./aria-hidden-on-focusable";
 import { presentationRoleOnFocusable } from "./presentation-role-on-focusable";
@@ -192,6 +193,7 @@ export {
   type FormFieldWithoutWhatTheFormNeedsIssue,
 } from "./form-field-without-what-the-form-needs";
 export { transformThatIsNotPure, type TransformThatIsNotPureIssue } from "./transform-that-is-not-pure";
+export { resetTheModelDoesNotHear, type ResetTheModelDoesNotHearIssue } from "./reset-the-model-does-not-hear";
 export { namedOnlyByAPlaceholder, type NamedOnlyByAPlaceholderIssue } from "./named-only-by-a-placeholder";
 export { couldExist, idTableFor, NAMES_AN_ID } from "./idTable";
 export { ariaHiddenOnFocusable, type AriaHiddenOnFocusableIssue } from "./aria-hidden-on-focusable";
@@ -323,6 +325,7 @@ export const CLASS_RULES = [
 /** Every rule that reads a FILE. Same arrangement, different subject. */
 export const MODULE_RULES = [
   unsplittableImport,
+  resetTheModelDoesNotHear,
   unexposedEnvRead,
   rowReadsAPlainField,
   devGuardAsAnExpression,
