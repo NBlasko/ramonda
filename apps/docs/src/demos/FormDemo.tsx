@@ -106,19 +106,39 @@ export class FormDemo extends Component {
         <form className="demo-form" onsubmit={this.form.submit}>
           <label>
             Email
-            <input {...email.bind} />
+            <input
+              name={email.name}
+              value={email.inputValue}
+              oninput={email.oninput}
+              onblur={email.onblur}
+              aria-invalid={email.invalid}
+            />
             {email.error ? <em className="demo-error">{email.error}</em> : null}
           </label>
 
           <label>
             Password
-            <input type="password" {...password.bind} />
+            <input
+              type="password"
+              name={password.name}
+              value={password.inputValue}
+              oninput={password.oninput}
+              onblur={password.onblur}
+              aria-invalid={password.invalid}
+            />
             {password.error ? <em className="demo-error">{password.error}</em> : null}
           </label>
 
           <label>
             Repeat it
-            <input type="password" {...confirm.bind} />
+            <input
+              type="password"
+              name={confirm.name}
+              value={confirm.inputValue}
+              oninput={confirm.oninput}
+              onblur={confirm.onblur}
+              aria-invalid={confirm.invalid}
+            />
             {confirm.error ? <em className="demo-error">{confirm.error}</em> : null}
           </label>
 
@@ -127,7 +147,14 @@ export class FormDemo extends Component {
             <ul className="demo-rows">
               {list(f.tags.$.rows, (row) => (
                 <li key={row.id}>
-                  <input {...row.field.$.bind} />
+                  <input
+                    aria-label={`Tag ${row.index + 1}`}
+                    name={row.field.$.name}
+                    value={row.field.$.inputValue}
+                    oninput={row.field.$.oninput}
+                    onblur={row.field.$.onblur}
+                    aria-invalid={row.field.$.invalid}
+                  />
                   <button type="button" onclick={this.moveTagUp(row.id)} disabled={row.index === 0}>
                     up
                   </button>

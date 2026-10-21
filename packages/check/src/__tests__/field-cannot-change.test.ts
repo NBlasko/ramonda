@@ -43,6 +43,9 @@ describe("a field the user cannot change", () => {
       [lineOf('aria-label="literal through a const"'), "TextArea", "literal"],
       [lineOf('aria-label="negative literal input"'), "input", "literal"],
       [lineOf('aria-label="unknown spread"'), "TextArea", "unknown-spread"],
+      [lineOf('aria-label="unknown spread without a value"'), "input", "unknown-spread"],
+      [lineOf('aria-label="an app\'s own constraints"'), "input", "unknown-spread"],
+      [lineOf('aria-label="constraints and no handler"'), "input", "no-handler"],
     ]);
   });
 
@@ -60,7 +63,7 @@ describe("a field the user cannot change", () => {
       "typed input",
       "ticked",
       "radio picked",
-      "bound",
+      "constraints",
       "default",
       "namespaced default",
       "default input",
@@ -72,6 +75,7 @@ describe("a field the user cannot change", () => {
       "disabled",
       "hidden",
       "submit",
+      "hidden with a spread",
       "null value",
       "undefined value",
       "action menu",
@@ -93,16 +97,5 @@ describe("a field the user cannot change", () => {
         .map(([rule]) => rule);
       expect(reported, label).toEqual([]);
     }
-  });
-
-  /**
-   * The mark is read off `@ramonda/form`'s own declaration, not a copy of it: a spread of the real
-   * `LeafApi.bind` is a field binding, so a controlled field carrying one is not reported.
-   */
-  test("@ramonda/form's own bind is a field binding", () => {
-    const real = analyzeProject(join(here, "fixtures", "field-binding-real", "tsconfig.json")).findings[
-      "field-the-user-cannot-change"
-    ];
-    expect(real ?? []).toEqual([]);
   });
 });

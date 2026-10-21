@@ -8,12 +8,11 @@ declare const bag: Record<string, unknown>;
 const EMPTY = "";
 const LOCKED = true;
 
-/** What `@ramonda/form` hands a control to be spread onto it, marked as a field binding. */
-interface LeafApi {
-  /** @ramondaFieldBinding */
-  readonly bind: { readonly value: string; readonly oninput: (event: Event) => void };
-}
-declare const field: { readonly $: LeafApi };
+import { htmlConstraints } from "@ramonda/form/bguard";
+import { htmlConstraints as lookalike } from "./mine";
+
+const html = htmlConstraints({});
+const fake = lookalike({});
 
 /** A wrapper whose caller may leave the handler out. */
 class Loose extends Component<{ value: string; oninput?: (event: Event) => void }> {
@@ -69,6 +68,9 @@ class App extends Component<{ text: string; rows: { text: string }[] }> {
         <input value={-1} oninput={this.type} aria-label="negative literal input" />
         {/* ✗ unknown-spread */}
         <TextArea value={value} {...bag} aria-label="unknown spread" />
+        <input {...bag} aria-label="unknown spread without a value" />
+        <input {...fake("nick")} value={value} oninput={this.type} aria-label="an app's own constraints" />
+        <input {...html("nick")} value={value} aria-label="constraints and no handler" />
 
         {/* ✓ a handler of its own */}
         <Select value={value} onchange={this.pick} aria-label="picked">
@@ -81,8 +83,8 @@ class App extends Component<{ text: string; rows: { text: string }[] }> {
         <input value={value} oninput={this.type} aria-label="typed input" />
         <input type="checkbox" checked={on} onchange={this.pick} aria-label="ticked" />
         <input type="radio" name="r" value="a" checked={on} oninput={this.pick} aria-label="radio picked" />
-        {/* ✓ a field binding carries the value and the handler */}
-        <input {...field.$.bind} aria-label="bound" />
+        {/* ✓ the schema's constraints carry nothing a field is written with */}
+        <input {...html("nick")} value={value} oninput={this.type} aria-label="constraints" />
         {/* ✓ the user's */}
         <TextArea defaultValue="x" aria-label="default" />
         <ui.Select defaultValue="a" aria-label="namespaced default">
@@ -100,6 +102,7 @@ class App extends Component<{ text: string; rows: { text: string }[] }> {
         </Select>
         <input type="hidden" value={value} aria-label="hidden" />
         <input type="submit" value="Send" aria-label="submit" />
+        <input type="hidden" {...bag} aria-label="hidden with a spread" />
         {/* ✓ no model as written */}
         <TextArea value={null} aria-label="null value" />
         <TextArea value={undefined} defaultValue="x" aria-label="undefined value" />

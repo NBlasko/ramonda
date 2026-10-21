@@ -516,6 +516,11 @@ export interface Resolver {
   (id: ts.Node): ts.Symbol | undefined;
   /** The name `@ramonda/core` exports this identifier under; `undefined` when it is not core's. */
   coreName(id: ts.Node): string | undefined;
+  /**
+   * Whether this identifier is `pkg`'s own binding — imported from it, through an alias or an app's
+   * re-export, and not an app's own of the same name. See `importedFromPackage`.
+   */
+  fromPackage(id: ts.Node, pkg: string): boolean;
 }
 
 /**

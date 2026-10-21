@@ -2,7 +2,8 @@
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
     "paths": {
-      "@ramonda/core": ["../framework.ts"]
+      "@ramonda/core": ["../framework.ts"],
+      "@ramonda/form/bguard": ["./bguard.ts"]
     }
   },
   "include": [".", "../framework.ts", "../jsx-runtime.ts"]

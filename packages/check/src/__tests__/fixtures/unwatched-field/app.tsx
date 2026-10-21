@@ -6,7 +6,7 @@ declare const defaultValues: unknown;
 /** THE FAULT: reads a field it was handed, and watches nothing. It will never re-render. */
 class Broken extends Component<{ of: any }> {
   render() {
-    return <input {...this.props.of.$.bind} />;
+    return <input value={this.props.of.$.inputValue} />;
   }
 }
 
@@ -27,7 +27,7 @@ class BrokenViaLocal extends Component<{ of: any }> {
 class Watched extends Component<{ of: any }> {
   f = this.use(Field<string>, () => ({ of: this.props.of }));
   render() {
-    return <input {...this.f.bind} />;
+    return <input value={this.f.inputValue} oninput={this.f.oninput} />;
   }
 }
 

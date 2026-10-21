@@ -259,14 +259,14 @@ Every field is reached by property access and its API sits behind `$`:
 | | |
 |---|---|
 | `FieldApi` | What every field has: `value` · `error` · `errors` · `touched` · `dirty` · `path` · `name` · `set(next)` · `reset()` · `at(key)`. |
-| `LeafApi` | A field holding a single value. Adds `bind`. [Binding an input](/forms/fields) |
+| `LeafApi` | A field holding a single value. Adds `inputValue`, `invalid`, `oninput` and `onblur`. [Writing a control](/forms/fields#writing-a-control) |
 | `ArrayApi` | A field holding a list. Adds `length` · `rows` · `append(item)` · `insert(at, item)` · `remove(at)` · `move(from, to)`. [Array fields](/forms/arrays) |
 | `Row` | One member of `rows`: `id` · `index` · `field`. The `id` is what keeps a row stable as it moves. |
 | `Field` | A **hook**, for a component that watches ONE field — `this.use(Field<string>, () => ({ of: this.props.of }))`. Answers everything `FieldApi` and `LeafApi` do, plus the list members. **Required** for a field in its own component: a field node is one cached object for the form's life, so without this the component's props never change and it never re-renders. Also what makes an edit wake one field rather than the form. [A field in its own component](/forms/fields#a-field-in-its-own-component) |
 | `FormState` | A **hook**, for a component that watches the FORM rather than a field — `this.use(FormState)`, no props. `isValid` · `isDirty` · `isSubmitting` · `submitCount` · `formErrors` · `submit(event?)` · `reset()`. Wakes only when a fact it reads actually MOVED, so a save button sleeps through typing that does not change the answer. The form publishes itself on the context, so it works at any depth. [A button that watches the form](/forms/fields#a-button-that-watches-the-form) |
 
 Types: `FieldNode` · `FieldTarget` · `LeafNode` · `ObjectNode` · `ArrayNode` · `FormProps` · `ValidateOn` ·
-`Bind` · `CommonBind` · `TextBind` · `NumberBind` · `CheckboxBind` · `DateBind` · `Collision` ·
+`InputValue` · `Collision` ·
 `InferIn` · `InferOut` · `StandardSchemaV1` · `StandardResult` · `StandardIssue`
 
 `StandardSchemaV1` is the [Standard Schema](https://standardschema.dev) interface, vendored so

@@ -41,7 +41,14 @@ cost every row its identity.
 <ul>
   {list(f.tags.$.rows, (row) => (
     <li key={row.id}>
-      <input {...row.field.$.bind} />
+      <input
+        aria-label="Tag"
+        name={row.field.$.name}
+        value={row.field.$.inputValue}
+        oninput={row.field.$.oninput}
+        onblur={row.field.$.onblur}
+        aria-invalid={row.field.$.invalid}
+      />
       {row.field.$.error ? <em>{row.field.$.error}</em> : null}
     </li>
   ))}
@@ -59,7 +66,7 @@ holding: the caret position, the selection, an open datalist. Writing `key={row.
 allowed and does no harm; it is simply not needed here.
 
 `row.field` is a field node like any other, so everything from [Fields](/forms/fields) applies:
-`$.value`, `$.error`, `$.bind`, and further property access when the row is an object.
+`$.value`, `$.error`, `$.inputValue`, `$.oninput`, and further property access when the row is an object.
 
 ## Rows of objects
 
@@ -73,8 +80,22 @@ interface Contact {
 ```tsx
 {list(f.contacts.$.rows, (row) => (
     <li key={row.id}>
-      <input {...row.field.kind.$.bind} />
-      <input {...row.field.value.$.bind} />
+      <input
+        aria-label="Kind"
+        name={row.field.kind.$.name}
+        value={row.field.kind.$.inputValue}
+        oninput={row.field.kind.$.oninput}
+        onblur={row.field.kind.$.onblur}
+        aria-invalid={row.field.kind.$.invalid}
+      />
+      <input
+        aria-label="Value"
+        name={row.field.value.$.name}
+        value={row.field.value.$.inputValue}
+        oninput={row.field.value.$.oninput}
+        onblur={row.field.value.$.onblur}
+        aria-invalid={row.field.value.$.invalid}
+      />
       {row.field.value.$.error ? <em>{row.field.value.$.error}</em> : null}
     </li>
   ))}

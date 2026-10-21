@@ -168,7 +168,7 @@ export class SignupPage extends Component {
         <h2>Sign up</h2>
         <p>
           Server-rendered, then hydrated. Every input carries a <code>name</code> — which is what a form that works
-          without JavaScript would post under — and almost none of them carries an <code>id</code>: `bind` supplies the
+          without JavaScript would post under — and almost none of them carries an <code>id</code>: each field gives its
           name, and a <code>&lt;label&gt;</code> wrapped around its input needs no id to be associated with it. The few
           ids below are here for `scripts/smoke.mjs` to aim at, not because a form needs them.
         </p>
@@ -176,36 +176,79 @@ export class SignupPage extends Component {
         <form id="signup" onsubmit={this.form.submit}>
           <label>
             Email
-            <input id="email" {...email.bind} />
+            <input
+              id="email"
+              name={email.name}
+              value={email.inputValue}
+              oninput={email.oninput}
+              onblur={email.onblur}
+              aria-invalid={email.invalid}
+            />
             {email.error ? <em className="err">{email.error}</em> : null}
           </label>
 
           <label>
             Password
-            <input type="password" {...password.bind} />
+            <input
+              type="password"
+              name={password.name}
+              value={password.inputValue}
+              oninput={password.oninput}
+              onblur={password.onblur}
+              aria-invalid={password.invalid}
+            />
             {password.error ? <em className="err">{password.error}</em> : null}
           </label>
 
           <label>
             Repeat it
-            <input type="password" {...confirm.bind} />
+            <input
+              type="password"
+              name={confirm.name}
+              value={confirm.inputValue}
+              oninput={confirm.oninput}
+              onblur={confirm.onblur}
+              aria-invalid={confirm.invalid}
+            />
             {/* The cross-field rule: editing PASSWORD has to re-answer this one. */}
             {confirm.error ? <em className="err">{confirm.error}</em> : null}
           </label>
 
           <label>
             Age
-            <input {...age.bind} />
+            <input
+              type="number"
+              name={age.name}
+              value={age.inputValue}
+              oninput={age.oninput}
+              onblur={age.onblur}
+              aria-invalid={age.invalid}
+            />
             {age.error ? <em className="err">{age.error}</em> : null}
           </label>
 
           <label>
             Born
-            <input {...born.bind} />
+            <input
+              type="date"
+              name={born.name}
+              value={born.inputValue}
+              oninput={born.oninput}
+              onblur={born.onblur}
+              aria-invalid={born.invalid}
+            />
           </label>
 
           <label className="inline">
-            <input {...terms.bind} /> I accept the terms
+            <input
+              type="checkbox"
+              name={terms.name}
+              checked={terms.value}
+              oninput={terms.oninput}
+              onblur={terms.onblur}
+              aria-invalid={terms.invalid}
+            />{" "}
+            I accept the terms
           </label>
           {terms.error ? <em className="err">{terms.error}</em> : null}
 
@@ -213,11 +256,23 @@ export class SignupPage extends Component {
             <legend>Address — a nested object</legend>
             <label>
               Street
-              <input {...street.bind} />
+              <input
+                name={street.name}
+                value={street.inputValue}
+                oninput={street.oninput}
+                onblur={street.onblur}
+                aria-invalid={street.invalid}
+              />
             </label>
             <label>
               City
-              <input {...city.bind} />
+              <input
+                name={city.name}
+                value={city.inputValue}
+                oninput={city.oninput}
+                onblur={city.onblur}
+                aria-invalid={city.invalid}
+              />
               {city.error ? <em className="err">{city.error}</em> : null}
             </label>
           </fieldset>
@@ -232,7 +287,15 @@ export class SignupPage extends Component {
             <ul id="tags">
               {list(f.tags.$.rows, (row) => (
                 <li>
-                  <input className="tag" {...row.field.$.bind} />
+                  <input
+                    aria-label={`Tag ${row.index + 1}`}
+                    className="tag"
+                    name={row.field.$.name}
+                    value={row.field.$.inputValue}
+                    oninput={row.field.$.oninput}
+                    onblur={row.field.$.onblur}
+                    aria-invalid={row.field.$.invalid}
+                  />
                   <button type="button" className="remove-tag ghost" onclick={this.removeTag(row.id)}>
                     remove
                   </button>
@@ -250,8 +313,22 @@ export class SignupPage extends Component {
             <ul>
               {list(f.contacts.$.rows, (row) => (
                 <li className="pair">
-                  <input {...row.field.kind.$.bind} />
-                  <input {...row.field.value.$.bind} />
+                  <input
+                    aria-label={`Contact kind ${row.index + 1}`}
+                    name={row.field.kind.$.name}
+                    value={row.field.kind.$.inputValue}
+                    oninput={row.field.kind.$.oninput}
+                    onblur={row.field.kind.$.onblur}
+                    aria-invalid={row.field.kind.$.invalid}
+                  />
+                  <input
+                    aria-label={`Contact ${row.index + 1}`}
+                    name={row.field.value.$.name}
+                    value={row.field.value.$.inputValue}
+                    oninput={row.field.value.$.oninput}
+                    onblur={row.field.value.$.onblur}
+                    aria-invalid={row.field.value.$.invalid}
+                  />
                   {row.field.value.$.error ? <em className="err">{row.field.value.$.error}</em> : null}
                 </li>
               ))}

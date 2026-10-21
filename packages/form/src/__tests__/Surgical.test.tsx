@@ -60,7 +60,14 @@ class TextField extends Component<{ of: FieldNode<string>; label: string; id: st
       <label className={this.f.error === undefined ? "field" : "field field--invalid"}>
         {[
           <span className="field__label">{this.props.label}</span>,
-          <input id={this.props.id} {...this.f.bind} />,
+          <input
+            id={this.props.id}
+            name={this.f.name}
+            value={this.f.inputValue}
+            oninput={this.f.oninput}
+            onblur={this.f.onblur}
+            aria-invalid={this.f.invalid}
+          />,
           <span id={`${this.props.id}-error`}>{this.f.error ?? ""}</span>,
         ]}
       </label>
@@ -76,7 +83,16 @@ class RowField extends Component<{ item: Row<{ v: string }> }> {
 
   render(): RamondaNode {
     count(`row:${this.props.item.id}`);
-    return <input id={`row-${this.props.item.index}`} {...this.f.bind} />;
+    return (
+      <input
+        id={`row-${this.props.item.index}`}
+        name={this.f.name}
+        value={this.f.inputValue}
+        oninput={this.f.oninput}
+        onblur={this.f.onblur}
+        aria-invalid={this.f.invalid}
+      />
+    );
   }
 }
 
@@ -282,7 +298,9 @@ describe("at three hundred rows", () => {
     render(): RamondaNode {
       count(`row:${this.props.item.id}`);
       const f = (this.props.item.field as FieldNode<{ v: string }>).v.$;
-      return <input {...f.bind} />;
+      return (
+        <input name={f.name} value={f.inputValue} oninput={f.oninput} onblur={f.onblur} aria-invalid={f.invalid} />
+      );
     }
   }
 

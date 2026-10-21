@@ -127,62 +127,45 @@ export interface FieldApi<T> {
   at<K extends keyof NonNullable<T> & string>(key: K): FieldNode<NonNullable<T>[K]>;
 }
 
-/* ------------------------------------------------------------------ *
- * bind — the attributes for the control this value belongs in.
- * ------------------------------------------------------------------ */
-
-export interface CommonBind {
-  readonly name: string;
-  readonly oninput: (event: Event) => void;
-  readonly onblur: (event: Event) => void;
-  readonly "aria-invalid": boolean | undefined;
-}
-
-export interface TextBind extends CommonBind {
-  readonly value: string;
-}
-export interface NumberBind extends CommonBind {
-  readonly value: number | string;
-  readonly type: "number";
-}
-export interface CheckboxBind extends CommonBind {
-  readonly checked: boolean;
-  readonly type: "checkbox";
-}
-export interface DateBind extends CommonBind {
-  readonly value: string;
-  readonly type: "date";
-}
-
 /**
- * The attributes for the value's own kind of control, so `checked` and `value` cannot be
- * mixed up: a boolean field gets `checked`, a number gets `type="number"`.
- *
- * `never` for objects and lists, because no single control holds one. Which element the
- * attributes are spread ONTO is not something a type can see — `<select {...bind} />`
- * type-checks — so that belongs to the `check` package as a lint rule rather than here.
+ * What a control's `value` attribute takes for a field of `T`: a date as `yyyy-mm-dd`, a number as
+ * itself — `""` for an emptied one — and text as text. A checkbox takes `checked={field.value}`.
  */
-export type Bind<T> = [NonNullable<T>] extends [boolean]
-  ? CheckboxBind
+export type InputValue<T> = [NonNullable<T>] extends [Date]
+  ? string
   : [NonNullable<T>] extends [number]
-    ? NumberBind
-    : [NonNullable<T>] extends [Date]
-      ? DateBind
-      : [NonNullable<T>] extends [string]
-        ? TextBind
-        : never;
+    ? number | ""
+    : string;
 
 /* ------------------------------------------------------------------ *
  * The three node kinds.
  * ------------------------------------------------------------------ */
 
+/**
+ * A field that one control holds, and what that control is written with — each attribute by name:
+ *
+ * ```tsx
+ * <input
+ *   name={email.name}
+ *   value={email.inputValue}
+ *   oninput={email.oninput}
+ *   onblur={email.onblur}
+ *   aria-invalid={email.invalid}
+ * />
+ * ```
+ *
+ * Named rather than handed over as one object to spread, so every one of them is written where the
+ * control is, and `@ramonda/check` can see that none is missing.
+ */
 export interface LeafApi<T> extends FieldApi<T> {
-  /**
-   * The attributes for this value's control, to spread onto it: its value and its own `oninput`.
-   *
-   * @ramondaFieldBinding — what `@ramonda/check` reads to know a spread carries the field's handler.
-   */
-  readonly bind: Bind<T>;
+  /** The value as the control shows it — see `InputValue`. */
+  readonly inputValue: InputValue<T>;
+  /** Whether the field has a message: the control's `aria-invalid`. */
+  readonly invalid: boolean;
+  /** The control's own `oninput`, which writes what it produced into the form. */
+  readonly oninput: (event: Event) => void;
+  /** The control's `onblur`, which marks the field touched. */
+  readonly onblur: (event: Event) => void;
 }
 
 /** One row of an array field, carrying the identity the row keeps across a splice. */

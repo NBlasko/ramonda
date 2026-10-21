@@ -46,22 +46,22 @@ function writtenAsItself(value: WrittenAttribute, resolve: ElementContext["resol
 }
 
 /**
- * The tag that marks a declaration as a FIELD BINDING: an object made to be spread onto a control,
- * which carries the control's value and its own `oninput`. `@ramonda/form` writes it on `$.bind`.
+ * Whether a spread is the schema's HTML constraints from `@ramonda/form/bguard`: `html(path)`, where
+ * `html` is a `const` made by `htmlConstraints(schema)`. Those carry only validation attributes —
+ * `required`, `minlength`, `maxlength`, `min`, `max`, `pattern`, `step`, `type` — and none a field is
+ * written with, so the spread cannot take a handler away or make a field controlled.
  *
- * A JSDoc tag, because this package asks the compiler where a name was declared and never what type
- * anything is — and a tag is part of the declaration, kept in a published `.d.ts` as in the source.
+ * One step, and both halves are questions about declarations: where `html` was declared, and where
+ * the function that made it was imported from.
  */
-export const FIELD_BINDING_TAG = "ramondaFieldBinding";
-
-/** Whether a spread's expression is a declaration marked as a field binding — see `FIELD_BINDING_TAG`. */
-function isFieldBinding(expression: ts.Expression, resolve: ElementContext["resolve"]): boolean {
+function isConstraints(expression: ts.Expression, resolve: ElementContext["resolve"]): boolean {
   const written = unwrap(expression);
-  const name = ts.isPropertyAccessExpression(written) ? written.name : ts.isIdentifier(written) ? written : undefined;
-  if (name === undefined) return false;
-  return (resolve(name)?.declarations ?? []).some((declaration) =>
-    ts.getJSDocTags(declaration).some((tag) => tag.tagName.text === FIELD_BINDING_TAG),
-  );
+  if (!ts.isCallExpression(written) || !ts.isIdentifier(written.expression)) return false;
+  const declaration = resolve(written.expression)?.declarations?.[0];
+  if (declaration === undefined || !ts.isVariableDeclaration(declaration)) return false;
+  const made = declaration.initializer === undefined ? undefined : unwrap(declaration.initializer);
+  if (made === undefined || !ts.isCallExpression(made) || !ts.isIdentifier(made.expression)) return false;
+  return resolve.fromPackage(made.expression, "@ramonda/form/bguard");
 }
 
 /** Whether a handler is read off a declaration marked optional — `oninput?:` on a wrapper's props. */
@@ -101,8 +101,9 @@ const NOT_EDITED = new Set(["hidden", "submit", "button", "reset", "image", "fil
  * - **A text field whose `value` is a literal** — `value=""`, `{-1}`, or a `const` holding one — which
  *   no handler can move. A `Select`'s literal is a pattern, an action menu that goes back to its
  *   placeholder once its handler acts, and is not reported.
- * - **A spread on a controlled field** that the source cannot say carries a handler: what it holds is
- *   not written down. A field binding is — `$.bind` from `@ramonda/form`, marked `@ramondaFieldBinding`.
+ * - **A spread on a field**, with a `value` written beside it or not: what it holds is not written
+ *   down, and it may carry a `value` without the handler. The one spread that says what it holds is
+ *   the schema's HTML constraints, `html(path)` from `@ramonda/form/bguard` — see `isConstraints`.
  * - **A handler that is an optional prop** — `oninput={this.props.oninput}` where the props declare
  *   `oninput?:` — whose caller may leave it out.
  *
@@ -156,7 +157,7 @@ export const fieldTheUserCannotChange = {
 
   /**
    * A spread is the one place a controlled field's handler can hide, so the rule reads the element
-   * with one — to accept a field binding, and to report any other spread on a controlled field.
+   * with one — to accept the schema's constraints, and to report any other spread on a field.
    */
   evenWhenSpreading: true,
 
@@ -178,8 +179,10 @@ export const fieldTheUserCannotChange = {
       attributes.find((attribute) => attribute.name === name && !writtenAsNothing(attribute));
     const model = said(box ? "checked" : "value");
     const spreads = opening.attributes.properties.filter(ts.isJsxSpreadAttribute);
-    const bound = spreads.some((spread) => isFieldBinding(spread.expression, resolve));
-    if (model === undefined && !bound) return [];
+    // Any spread but the schema's constraints may carry a `value` — which makes the field controlled —
+    // and nothing says whether it carries the handler too: reported whether or not a value is written.
+    const unknown = spreads.some((spread) => !isConstraints(spread.expression, resolve));
+    if (model === undefined && !unknown) return [];
 
     const at = positionOf(opening);
     if (said(box ? "defaultChecked" : "defaultValue") !== undefined) return [{ component, kind: "both", ...at }];
@@ -190,8 +193,7 @@ export const fieldTheUserCannotChange = {
     if (!pick && model !== undefined && writtenAsItself(model, resolve)) {
       return [{ component, kind: "literal", ...at }];
     }
-    if (bound) return [];
-    if (spreads.length > 0) return [{ component, kind: "unknown-spread", ...at }];
+    if (unknown) return [{ component, kind: "unknown-spread", ...at }];
 
     const own = (name: string) => attributes.find((attribute) => attribute.name === name);
     const writer = own("oninput") ?? (pick ? own("onchange") : undefined);

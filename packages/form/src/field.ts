@@ -2,7 +2,7 @@ import { created, destroyed, Hook, INSPECT, state, watchProp } from "@ramonda/co
 
 import { ASPECT, FIELD_TARGET, type FieldHandle, type Watcher } from "./fieldTree";
 import type { Path } from "./path";
-import type { Bind, FieldApi, FieldNode, Row } from "./types";
+import type { FieldApi, FieldNode, InputValue, Row } from "./types";
 
 /** What a component hands to `Field`: any field node, whatever kind it is. Every one has a `$`. */
 export interface FieldTarget<T> {
@@ -37,7 +37,13 @@ interface Watchable {
  *     return (
  *       <label className={this.f.error ? "field invalid" : "field"}>
  *         {this.props.label}
- *         <input {...this.f.bind} />
+ *         <input
+ *           name={this.f.name}
+ *           value={this.f.inputValue}
+ *           oninput={this.f.oninput}
+ *           onblur={this.f.onblur}
+ *           aria-invalid={this.f.invalid}
+ *         />
  *         {this.f.error}
  *       </label>
  *     );
@@ -56,7 +62,7 @@ interface Watchable {
  * - A hook's `@state` belongs to the component that used the hook, so the form's counter wakes the
  *   form's owner and nobody else. A child reading through the field tree is subscribed to nothing.
  * - And the child's props never change: a field node is ONE cached object for the life of the form,
- *   deliberately — a fresh one per access means a fresh `bind.oninput` per access, which RMD020
+ *   deliberately — a fresh one per access means a fresh `oninput` per access, which RMD020
  *   reports and which really does re-attach the listener on every render. So the props diff has
  *   nothing to notice, and the child is skipped entirely.
  *
@@ -105,7 +111,7 @@ export class Field<T> extends Hook<{ of: FieldTarget<T> }> implements Watcher {
    *
    * Not `props.of.$`, and that is the point: the handle behind a node reached through `form.fields`
    * subscribes its reader to the whole form on the first read, which would undo everything above.
-   * Same class, same `bind`, same stable handler identities — a different host.
+   * Same class, same stable handler identities — a different host.
    */
   private handle: FieldHandle | undefined;
   private form: Watchable | undefined;
@@ -261,10 +267,26 @@ export class Field<T> extends Hook<{ of: FieldTarget<T> }> implements Watcher {
     return this.live.name;
   }
 
-  /** The value and the messages both: `bind` carries `value` and `aria-invalid`. */
-  get bind(): Bind<T> {
-    this.reads |= ASPECT.value | ASPECT.messages | ASPECT.marks;
-    return this.live.bind as unknown as Bind<T>;
+  /** The value as the control shows it — see `InputValue`. */
+  get inputValue(): InputValue<T> {
+    this.reads |= ASPECT.value;
+    return this.live.inputValue as InputValue<T>;
+  }
+
+  /** Whether the field has a message: the control's `aria-invalid`. */
+  get invalid(): boolean {
+    this.reads |= ASPECT.messages;
+    return this.live.invalid;
+  }
+
+  /** The control's own `oninput` — the same bound function for the life of the field. */
+  get oninput(): (event: Event) => void {
+    return this.live.oninput;
+  }
+
+  /** The control's `onblur` — the same bound function for the life of the field. */
+  get onblur(): (event: Event) => void {
+    return this.live.onblur;
   }
 
   set(next: T): void {

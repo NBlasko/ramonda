@@ -54,7 +54,14 @@ class Signup extends Component {
     const email = this.form.fields.email.$;
     return (
       <form onsubmit={this.form.submit}>
-        <input {...email.bind} />
+        <input
+          aria-label="Email"
+          name={email.name}
+          value={email.inputValue}
+          oninput={email.oninput}
+          onblur={email.onblur}
+          aria-invalid={email.invalid}
+        />
         {email.error && <span>{email.error}</span>}
         <button disabled={this.form.isSubmitting}>Sign up</button>
       </form>

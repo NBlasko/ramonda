@@ -54,7 +54,14 @@ function mount(defaults: Values, order: (keyof Values)[] = ["email", "nick", "ag
       return (
         <form onsubmit={this.f.submit}>
           {order.map((name) => (
-            <input key={name} {...fields[name].$.bind} />
+            <input
+              key={name}
+              name={fields[name].$.name}
+              value={fields[name].$.inputValue}
+              oninput={fields[name].$.oninput}
+              onblur={fields[name].$.onblur}
+              aria-invalid={fields[name].$.invalid}
+            />
           ))}
         </form>
       );
@@ -155,8 +162,21 @@ describe("focus after a failed submit", () => {
         const fields = this.f.fields;
         return (
           <form onsubmit={this.f.submit}>
-            <input {...fields.email.$.bind} disabled />
-            <input {...fields.nick.$.bind} />
+            <input
+              name={fields.email.$.name}
+              value={fields.email.$.inputValue}
+              oninput={fields.email.$.oninput}
+              onblur={fields.email.$.onblur}
+              aria-invalid={fields.email.$.invalid}
+              disabled
+            />
+            <input
+              name={fields.nick.$.name}
+              value={fields.nick.$.inputValue}
+              oninput={fields.nick.$.oninput}
+              onblur={fields.nick.$.onblur}
+              aria-invalid={fields.nick.$.invalid}
+            />
           </form>
         );
       }
@@ -190,7 +210,14 @@ describe("focus after a failed submit", () => {
       render(): RamondaNode {
         return (
           <form id={this.props.id} onsubmit={this.form.submit}>
-            <input id={this.props.input} {...this.form.fields.email.$.bind} />
+            <input
+              id={this.props.input}
+              name={this.form.fields.email.$.name}
+              value={this.form.fields.email.$.inputValue}
+              oninput={this.form.fields.email.$.oninput}
+              onblur={this.form.fields.email.$.onblur}
+              aria-invalid={this.form.fields.email.$.invalid}
+            />
           </form>
         );
       }
@@ -255,7 +282,13 @@ describe("focus after a failed submit", () => {
       render(): RamondaNode {
         return (
           <form onsubmit={this.f.submit}>
-            <input {...this.f.fields.email.$.bind} />
+            <input
+              name={this.f.fields.email.$.name}
+              value={this.f.fields.email.$.inputValue}
+              oninput={this.f.fields.email.$.oninput}
+              onblur={this.f.fields.email.$.onblur}
+              aria-invalid={this.f.fields.email.$.invalid}
+            />
           </form>
         );
       }
@@ -308,8 +341,20 @@ describe("focus after a failed submit", () => {
       render(): RamondaNode {
         return (
           <form onsubmit={this.f.submit}>
-            <input {...this.f.fields.rows[0].$.bind} />
-            <input {...this.f.fields.rows[1].$.bind} />
+            <input
+              name={this.f.fields.rows[0].$.name}
+              value={this.f.fields.rows[0].$.inputValue}
+              oninput={this.f.fields.rows[0].$.oninput}
+              onblur={this.f.fields.rows[0].$.onblur}
+              aria-invalid={this.f.fields.rows[0].$.invalid}
+            />
+            <input
+              name={this.f.fields.rows[1].$.name}
+              value={this.f.fields.rows[1].$.inputValue}
+              oninput={this.f.fields.rows[1].$.oninput}
+              onblur={this.f.fields.rows[1].$.onblur}
+              aria-invalid={this.f.fields.rows[1].$.invalid}
+            />
           </form>
         );
       }

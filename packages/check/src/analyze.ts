@@ -5,7 +5,7 @@ import ts from "typescript";
 import { declarationEntryOf, fingerprint, loadFragment, packageRootOf } from "./fragment";
 import type { ComponentGraph, GraphEdge, GraphNode, Where } from "./graph";
 import { hookNamed, isThisUse, positionOf } from "./syntax";
-import { coreExportName } from "./rules/core-import";
+import { coreExportName, importedFromPackage } from "./rules/core-import";
 import type { Resolver, Silencer } from "./rules/rule";
 import {
   activate,
@@ -664,6 +664,7 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
    */
   const resolver: Resolver = Object.assign(resolve, {
     coreName: (id: ts.Node) => coreExportName(id, resolveLocal, resolveStep, resolve),
+    fromPackage: (id: ts.Node, pkg: string) => importedFromPackage(id, pkg, resolveLocal, resolveStep),
   });
 
   /** Symbol id → the context it belongs to, and which half of the pair it is. */
