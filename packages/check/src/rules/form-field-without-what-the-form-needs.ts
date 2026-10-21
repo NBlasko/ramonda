@@ -134,16 +134,29 @@ export const formFieldWithoutWhatTheFormNeeds = {
     // What the fields inside a form need from the components that write them.
     // `wants`: for a spread, what it must carry beside a `value` — nothing when the field writes its own
     // handler, `oninput` on a text field, whose `change` comes on blur, and either on a pick.
-    const queue: { owner: ts.ClassLikeDeclaration; name: string; bag: boolean; wants: Wants }[] = [];
+    const queue: {
+      owner: ts.ClassLikeDeclaration;
+      name: string;
+      bag: boolean;
+      wants: Wants;
+      // For a spread, what the field writes after it, which the spread cannot override.
+      shadowed: readonly string[];
+    }[] = [];
     const seen = new Set<string>();
     const ids = new Map<ts.ClassLikeDeclaration, number>();
-    const need = (owner: ts.ClassLikeDeclaration | undefined, name: string, bag: boolean, wants: Wants = "nothing") => {
+    const need = (
+      owner: ts.ClassLikeDeclaration | undefined,
+      name: string,
+      bag: boolean,
+      wants: Wants = "nothing",
+      shadowed: readonly string[] = [],
+    ) => {
       if (owner === undefined) return;
       if (!ids.has(owner)) ids.set(owner, ids.size);
-      const key = `${ids.get(owner)}|${name}|${bag}|${wants}`;
+      const key = `${ids.get(owner)}|${name}|${bag}|${wants}|${shadowed.join(",")}`;
       if (seen.has(key)) return;
       seen.add(key);
-      queue.push({ owner, name, bag, wants });
+      queue.push({ owner, name, bag, wants, shadowed });
     };
 
     for (const field of fields) {
@@ -163,10 +176,12 @@ export const formFieldWithoutWhatTheFormNeeds = {
       }
     }
     // A spread of props on a field, anywhere: what each use hands for it is read there.
-    for (const bag of bags) need(bag.owner, bag.prop, true, bag.handled ? "nothing" : bag.pick ? "either" : "oninput");
+    for (const bag of bags) {
+      need(bag.owner, bag.prop, true, bag.handled ? "nothing" : bag.pick ? "either" : "oninput", bag.shadowed);
+    }
 
     for (let next = queue.shift(); next !== undefined; next = queue.shift()) {
-      const { owner, name, bag, wants } = next;
+      const { owner, name, bag, wants, shadowed } = next;
       for (const site of sites) {
         // What a field needs from a form is asked inside one; what a spread on it carries, everywhere.
         if (site.target !== owner || (!bag && !inContext(site.owner, site.inForm))) continue;
@@ -178,7 +193,7 @@ export const formFieldWithoutWhatTheFormNeeds = {
         if (handed === undefined) continue;
         const prop = propRead(handed);
         if (prop !== undefined) {
-          need(site.owner, prop, bag, wants);
+          need(site.owner, prop, bag, wants, shadowed);
           continue;
         }
         if (!bag) {
@@ -186,7 +201,7 @@ export const formFieldWithoutWhatTheFormNeeds = {
             found.push({ kind: "not-passed", component: site.tag, detail: name, ...where(site) });
           continue;
         }
-        readBag(handed, site, name, wants, holdsNothing, found);
+        readBag(handed, site, name, wants, shadowed, holdsNothing, found);
       }
     }
 
@@ -200,6 +215,7 @@ function readBag(
   site: ComponentSite,
   name: string,
   wants: Wants,
+  shadowed: readonly string[],
   holdsNothing: (expression: ts.Expression) => boolean,
   found: FormFieldWithoutWhatTheFormNeedsIssue[],
 ): void {
@@ -220,7 +236,7 @@ function readBag(
     }
     // `{ oninput }` is `{ oninput: oninput }`, and the name is followed to what it holds.
     const held = ts.isPropertyAssignment(property) ? property.initializer : property.name;
-    if (FORM_KEYS.has(key) && holdsNothing(held)) {
+    if (FORM_KEYS.has(key) && !shadowed.includes(key) && holdsNothing(held)) {
       found.push({ kind: "bag-overrides", component: site.tag, detail: `${name}.${key}`, ...where(site) });
     }
   }
@@ -230,7 +246,10 @@ function readBag(
     ),
   );
   const carries = keys.has("oninput") || (wants === "either" && keys.has("onchange"));
-  if (wants !== "nothing" && (keys.has("value") || keys.has("checked")) && !carries) {
+  // A value the field writes after the spread is the field's, whatever the spread says.
+  const value =
+    (keys.has("value") && !shadowed.includes("value")) || (keys.has("checked") && !shadowed.includes("checked"));
+  if (wants !== "nothing" && value && !carries) {
     found.push({ kind: "bag-without-a-handler", component: site.tag, detail: name, ...where(site) });
   }
 }

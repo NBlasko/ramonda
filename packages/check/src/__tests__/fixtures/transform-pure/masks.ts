@@ -98,3 +98,14 @@ export const mappedWithAnArrow = mapped((c) => c);
 const GLOBAL_DIGITS = /^\d*$/g;
 /** Not pure: a `/g` expression keeps `lastIndex` from one call to the next. */
 export const globalDigits = (next: string, prev: string) => (GLOBAL_DIGITS.test(next) ? next : prev);
+
+/** Not pure: `Date()` called bare reads the clock. */
+export const dated = (next: string, prev: string) => (Date().endsWith("2026") ? next : prev);
+
+/** Changes the array it was handed — the caller's. */
+function emptied(list: string[]): string[] {
+  list.splice(0);
+  return list;
+}
+/** Not pure: a helper it calls changes what its parameter holds. */
+export const throughAHelperThatEmpties = (next: string) => (emptied([next]).length === 0 ? next : "");

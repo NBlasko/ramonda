@@ -41,6 +41,19 @@ describe("an attribute that does nothing", () => {
     }
   });
 
+  /**
+   * A rename is offered only where it does something: `defaultvalue` on an `<input>` becomes the
+   * `defaultValue` it meant; `defaultValue` on a `<div>` is already spelled so, and no spelling helps.
+   */
+  test("a default's rename is offered only where it works", () => {
+    const found = run().findings["attribute-that-does-nothing"];
+    const offer = (attribute: string) => found.find((issue) => issue.attribute === attribute)?.edit?.text;
+    expect({ input: offer("defaultvalue"), div: offer("defaultValue") }).toEqual({
+      input: "defaultValue",
+      div: undefined,
+    });
+  });
+
   /** A component's props are its own; only a host element writes to the document. */
   test("a component is not asked", () => {
     const found = run().findings["attribute-that-does-nothing"];

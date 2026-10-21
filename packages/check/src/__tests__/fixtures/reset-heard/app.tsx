@@ -61,6 +61,11 @@ class Resets extends Component<{ children?: unknown }> {
           <input aria-label="b" value={value} oninput={this.type} />
           <button type="reset">controlled reset</button>
         </form>
+        {/* ✗ a box whose type is written in capitals is a box */}
+        <form>
+          <input aria-label="capital box" type="Checkbox" checked={true} oninput={this.type} />
+          <button type="reset">capital reset</button>
+        </form>
         {/* ✗ controlled box */}
         <form>
           <input aria-label="c" type="checkbox" checked={true} oninput={this.type} />

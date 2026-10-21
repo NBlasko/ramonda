@@ -67,6 +67,8 @@ export interface SpreadBag extends Where {
   handled: boolean;
   /** A select, a checkbox or a radio, whose handler may be `onchange`; a text field's is `oninput`. */
   pick: boolean;
+  /** The attributes the field writes after the spread, which it therefore cannot override. */
+  shadowed: readonly string[];
 }
 
 export interface FormFacts {
@@ -216,6 +218,8 @@ export function formTableFor(sources: readonly ts.SourceFile[], resolve: Resolve
 
   /** Whether a form — or a component placing its children in one — encloses this, in the same render. */
   function insideAForm(node: ts.Node, throughChildren: boolean): boolean {
+    // A project with no `@ramonda/form` form asks nothing of any ancestor.
+    if (formElements.size === 0) return false;
     // The element that holds `node` — an expression's nearest one, or an element's own parent.
     let first: ts.Node | undefined = node.parent;
     while (first !== undefined && !ts.isJsxElement(first) && !ts.isJsxSelfClosingElement(first)) first = first.parent;
@@ -287,13 +291,19 @@ export function formTableFor(sources: readonly ts.SourceFile[], resolve: Resolve
     // Every `{...this.props.P}` on a field, controlled or not: it may carry a model, or take one away.
     // A text field's own handler is `oninput` — its `change` comes on blur; a pick's is either.
     const writes = pick ? ["oninput", "onchange", "on:input", "on:change"] : ["oninput", "on:input"];
-    for (const attribute of opening.attributes.properties) {
-      if (!ts.isJsxSpreadAttribute(attribute)) continue;
+    const properties = opening.attributes.properties;
+    properties.forEach((attribute, index) => {
+      if (!ts.isJsxSpreadAttribute(attribute)) return;
       const prop = propRead(attribute.expression);
+      if (prop === undefined) return;
       const handled = writes.some((name) => written.has(name));
-      if (prop !== undefined)
-        bags.push({ owner: enclosingClass(element), prop, handled, pick, ...positionOf(opening) });
-    }
+      // What is written AFTER the spread wins over it: the spread cannot override those.
+      const shadowed = properties
+        .slice(index + 1)
+        .filter((later): later is ts.JsxAttribute => ts.isJsxAttribute(later))
+        .map((later) => later.name.getText());
+      bags.push({ owner: enclosingClass(element), prop, handled, pick, shadowed, ...positionOf(opening) });
+    });
 
     const modelName = box ? "checked" : "value";
     const model = written.get(modelName);

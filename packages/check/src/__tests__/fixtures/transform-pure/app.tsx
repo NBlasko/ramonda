@@ -11,6 +11,8 @@ import {
   loose,
   handsOnAnArrow,
   globalDigits,
+  dated,
+  throughAHelperThatEmpties,
   mappedWithAnArrow,
   max20,
   maxLength,
@@ -65,6 +67,13 @@ class Fields extends Component<{ transform: (next: string, prev: string) => stri
         <input aria-label="loose factory" value={value} oninput={this.type} transform={loose} />
         <input aria-label="const arrow handed on" value={value} oninput={this.type} transform={handsOnAnArrow} />
         <input aria-label="factory handed a function" value={value} oninput={this.type} transform={mappedWithAnArrow} />
+        <input aria-label="bare date" value={value} oninput={this.type} transform={dated} />
+        <input
+          aria-label="helper empties its parameter"
+          value={value}
+          oninput={this.type}
+          transform={throughAHelperThatEmpties}
+        />
         <input aria-label="a global regex" value={value} oninput={this.type} transform={globalDigits} />
         <input aria-label="via helper" value={value} oninput={this.type} transform={viaHelper} />
         <input aria-label="hands on" value={value} oninput={this.type} transform={handsOn} />

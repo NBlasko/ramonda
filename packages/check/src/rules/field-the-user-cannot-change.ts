@@ -204,7 +204,10 @@ export const fieldTheUserCannotChange = {
 
     // `oninput` or `on:input`: both are the field's own handler, called by core after the edit is decided.
     const own = (name: string) =>
-      attributes.find((attribute) => attribute.name === name || attribute.name === `on:${name.slice(2)}`);
+      attributes.find(
+        (attribute) =>
+          (attribute.name === name || attribute.name === `on:${name.slice(2)}`) && !writtenAsNothing(attribute),
+      );
     const writer = own("oninput") ?? (pick ? own("onchange") : undefined);
     if (writer === undefined) {
       if (!pick && own("onchange") !== undefined) return [{ component, kind: "held-between-keystrokes", ...at }];

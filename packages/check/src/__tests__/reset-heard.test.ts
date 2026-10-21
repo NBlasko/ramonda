@@ -21,6 +21,7 @@ describe("a reset the model does not hear", () => {
     expect(found().map((issue) => [issue.line, issue.kind])).toEqual([
       [lineOf("(event.currentTarget as HTMLFormElement).reset()"), "browser-reset"],
       [lineOf('aria-label="b"'), "controlled-field"],
+      [lineOf('aria-label="capital box"'), "controlled-field"],
       [lineOf('aria-label="c"'), "controlled-field"],
       [lineOf("<Child />"), "unseen-content"],
       [lineOf("{this.props.children}"), "unseen-content"],

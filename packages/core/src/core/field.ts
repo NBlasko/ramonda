@@ -1,7 +1,7 @@
 import type { TransformInput } from "../types/commonTypes";
 import type { EnhancedHTMLNode } from "../types/vdom";
 import { writeValue } from "./Attribute";
-import { drainSync } from "./Task";
+import { drainUnlessDraining } from "./Task";
 
 /** The fields a controlled value can sit on. Told apart by tag name: a field in an iframe is another window's class. */
 type Field = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
@@ -190,7 +190,7 @@ function sameModel(a: unknown, b: unknown): boolean {
  * listener after this one reads it, and before the browser draws.
  */
 function show(control: FieldControl): void {
-  drainSync();
+  drainUnlessDraining();
   control.settle();
 }
 
@@ -241,6 +241,8 @@ function decide(control: FieldControl, event: Event): boolean {
  * itself ends with its `compositionend` or the next ordinary edit, answered as any edit.
  */
 export function answerEdit(control: FieldControl, event: Event): void {
+  // A field the tree took away answers nothing — a browser blurs a focused field as it is removed.
+  if (control.gone()) return;
   const state = stateOf(control.key);
   const field = event.currentTarget as Field | null;
 
@@ -259,7 +261,7 @@ export function answerEdit(control: FieldControl, event: Event): void {
     state.inBlur = true;
     try {
       control.own(event.type, event);
-      drainSync();
+      drainUnlessDraining();
     } finally {
       state.inBlur = false;
     }
@@ -269,24 +271,21 @@ export function answerEdit(control: FieldControl, event: Event): void {
     state.composing = false;
     state.blurred = false;
     const refused = decide(control, event);
-    let handed = false;
     try {
       control.own(event.type, event);
       // What `oncompositionend` rendered has run by now: it may have removed the field.
-      drainSync();
+      drainUnlessDraining();
       // A word the transform refused is no word: it is not handed over, and Firefox's `input` after
       // it, carrying the field as the refusal left it, reaches no handler either.
-      if (refused) handed = true;
-      else if (field !== null && !control.gone() && sameModel(control.model(), state.composedFrom)) {
-        handed = true;
+      if (!refused && field !== null && !control.gone() && sameModel(control.model(), state.composedFrom)) {
         control.own("input", event);
       }
     } finally {
       show(control);
     }
-    // What the field shows once the handler's model is in it — Firefox's `input` carries exactly that,
-    // whether the handler kept the word or rewrote it.
-    if (handed && field !== null) state.handedOver = field.value;
+    // What the field shows once the composition is over — the handler's word, a refusal, or a model the
+    // app moved: Firefox's `input` carries exactly that, and reaches no handler, however it ended.
+    if (field !== null) state.handedOver = field.value;
     return;
   }
 
@@ -420,11 +419,11 @@ function isRadio(input: HTMLInputElement): boolean {
  */
 function groupOf(input: HTMLInputElement): HTMLInputElement[] {
   if (input.name === "") return [input];
-  // Without a form, only the radios of that name, rather than every input on the page.
-  const named = `input[type="radio"][name="${input.name.replace(/["\\]/g, "\\$&")}"]`;
+  // Without a form, only the radios, rather than every input on the page — and the name compared here,
+  // so a name no selector can hold (a line break, from data) is a name like any other.
   const candidates = input.form
     ? Array.from(input.form.elements)
-    : Array.from((input.getRootNode() as ParentNode).querySelectorAll(named));
+    : Array.from((input.getRootNode() as ParentNode).querySelectorAll('input[type="radio"]'));
   // By tag, not `instanceof`: a field in an iframe is another window's `HTMLInputElement`.
   return (candidates as HTMLInputElement[]).filter(
     (other) =>

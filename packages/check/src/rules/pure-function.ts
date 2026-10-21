@@ -28,14 +28,16 @@ const PURE_GLOBALS = new Set([
   "isFinite",
   "NaN",
   "Infinity",
-  // Constructors: `new Map`, `new Set` and a dated `new Date(x)` make a value of their own — see `new`.
-  "Map",
-  "Set",
-  "Date",
   "undefined",
   "encodeURIComponent",
   "decodeURIComponent",
 ]);
+
+/**
+ * Constructors a pure function may name, only after `new`: `new Map`, `new Set` and a dated
+ * `new Date(x)` make a value of their own — see the `new` branch. `Date()` called bare reads the clock.
+ */
+const PURE_CONSTRUCTORS = new Set(["Map", "Set", "Date"]);
 
 /** Members of those globals that are not pure — they read the clock, chance or the environment. */
 const IMPURE_MEMBERS = new Set(["random", "now"]);
@@ -207,6 +209,14 @@ export function whyImpure(
     if (declared === undefined || !isInside(declared, fn)) return false;
     return written === root || !(ts.isParameter(declared) || ts.isBindingElement(declared));
   };
+  /** Whether what `expression` holds was made by `fn` — a parameter's contents are the caller's. */
+  const madeHere = (expression: ts.Expression): boolean => {
+    const root = rootOf(unwrap(expression));
+    if (!ts.isIdentifier(root)) return false;
+    const declared = resolve(root)?.declarations?.[0];
+    if (declared === undefined || !isInside(declared, fn)) return false;
+    return !(ts.isParameter(declared) || ts.isBindingElement(declared));
+  };
 
   const visit = (node: ts.Node): void => {
     if (found !== undefined) return;
@@ -242,7 +252,11 @@ export function whyImpure(
     if (ts.isIdentifier(node) && isRead(node)) {
       const declared = resolve(node)?.declarations?.[0];
       if (declared === undefined || fromThePlatform(declared)) {
-        if (!PURE_GLOBALS.has(node.text)) return fail(node, `it reads \`${node.text}\`, which the page owns`);
+        const constructed =
+          PURE_CONSTRUCTORS.has(node.text) && ts.isNewExpression(node.parent) && node.parent.expression === node;
+        if (!PURE_GLOBALS.has(node.text) && !constructed) {
+          return fail(node, `it reads \`${node.text}\`, which the page owns`);
+        }
       } else if (!isInside(declared, fn)) {
         // A function named as a value — `map(toDigit)` — runs too, so it is read like one that is called,
         // wherever it is declared: a `const` holding an arrow is followed as a `function` is. One of
@@ -282,7 +296,8 @@ export function whyImpure(
     }
     if (ts.isPropertyAccessExpression(callee)) {
       if (MUTATING_METHODS.has(name.text)) {
-        return isLocal(callee.expression) ? undefined : `it changes \`${callee.expression.getText()}\``;
+        // `list.splice(0)` changes what `list` holds, as `list.length = 0` does: the caller's, for a parameter.
+        return madeHere(callee.expression) ? undefined : `it changes \`${callee.expression.getText()}\``;
       }
       if (PURE_METHODS.has(name.text) && fromThePlatform(declared)) return undefined;
     }

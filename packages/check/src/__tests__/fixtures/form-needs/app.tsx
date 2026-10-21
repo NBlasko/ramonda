@@ -58,6 +58,24 @@ class BareInput extends Component<{ attrs?: Record<string, unknown> }> {
   }
 }
 
+/** Spreads FIRST: everything written after it is the field's, and no spread can override it. */
+class EarlySpread extends Component<{ field: any; attrs?: Record<string, unknown> }> {
+  render() {
+    const f = this.props.field;
+    return (
+      <input
+        {...this.props.attrs}
+        aria-label="early"
+        name={f.name}
+        value={f.inputValue}
+        oninput={f.oninput}
+        onblur={f.onblur}
+        aria-invalid={f.invalid}
+      />
+    );
+  }
+}
+
 /** Writes its handler by name and lets a caller spread the rest, a value included. */
 class HandledInput extends Component<{ oninput: (event: Event) => void; attrs?: Record<string, unknown> }> {
   render() {
@@ -174,6 +192,8 @@ class Loose extends Component {
         <HandledInput oninput={this.type} attrs={{ value: "x" }} />
         {/* ✗ a shorthand holding nothing overrides the form's handler as surely as `oninput: undefined` */}
         <DefaultsInput field={this.type} attrs={{ oninput }} />
+        {/* ✓ a spread written first cannot override what is written after it */}
+        <EarlySpread field={this.type} attrs={{ value: undefined, oninput: undefined }} />
         {/* ✓ a value with its handler beside it */}
         <DefaultsInput field={this.type} attrs={{ value: "x", oninput: this.type }} />
       </div>

@@ -671,3 +671,158 @@ describe("what a controlled input shows, past a number's spelling, a rewritten w
     expect({ model: app.instance.text, shown: field.value }).toEqual({ model: "", shown: "" });
   });
 });
+
+/** Round 33: a field answering an event fired from inside a drain. */
+describe("a field blurred in the middle of a commit", () => {
+  test("a dialog whose @mounted takes the focus does not spin the drain", async () => {
+    const { mounted, createRef } = await import("../index");
+    class Dialog extends Component {
+      field = createRef<HTMLInputElement>();
+      @mounted
+      focusIt() {
+        this.field.current?.focus();
+      }
+      render() {
+        return <input id="d" aria-label="Dialog" ref={this.field} />;
+      }
+    }
+    class Other extends Component {
+      @mounted
+      noted() {}
+      render() {
+        return <span>other</span>;
+      }
+    }
+    class Page extends Component {
+      @state query = "";
+      @state open = false;
+      blurs = 0;
+      typed(event: EventOn<HTMLInputElement>) {
+        this.query = event.currentTarget.value;
+      }
+      left() {
+        this.blurs++;
+      }
+      render() {
+        return (
+          <div>
+            <input id="q" aria-label="Search" value={this.query} oninput={this.typed} onblur={this.left} />
+            {this.open ? <Dialog /> : null}
+            {this.open ? <Other /> : null}
+          </div>
+        );
+      }
+    }
+    const app = await getDOM<Page>(<Page />);
+    await app.settle();
+    const search = app.container.querySelector("#q") as HTMLInputElement;
+    search.focus();
+    app.instance.open = true;
+    await app.settle();
+
+    expect({ focused: document.activeElement?.id, blurs: app.instance.blurs }).toEqual({ focused: "d", blurs: 1 });
+  });
+
+  /** A browser blurs a focused field as it is removed: the field's own handler is not called for it. */
+  test("a field the tree removed answers its blur with nothing", async () => {
+    class Page extends Component {
+      @state open = true;
+      @state text = "";
+      blurs = 0;
+      typed(event: EventOn<HTMLInputElement>) {
+        this.text = event.currentTarget.value;
+      }
+      left() {
+        this.blurs++;
+      }
+      render() {
+        return (
+          <div>
+            {this.open ? (
+              <input id="i" aria-label="Gone" value={this.text} oninput={this.typed} onblur={this.left} />
+            ) : null}
+          </div>
+        );
+      }
+    }
+    const app = await getDOM<Page>(<Page />);
+    await app.settle();
+    const field = app.container.querySelector("#i") as HTMLInputElement;
+    app.instance.open = false;
+    await app.settle();
+    field.dispatchEvent(new FocusEvent("blur"));
+
+    expect(app.instance.blurs).toBe(0);
+  });
+
+  /** A chat sends and clears in the middle of a word: Firefox's `input` after its end changes nothing. */
+  test("after a word the app's write won over, Firefox's input reaches no handler", async () => {
+    class Chat extends Component {
+      @state text = "";
+      heard: string[] = [];
+      typed(event: EventOn<HTMLInputElement>) {
+        this.heard.push(event.currentTarget.value);
+        this.text = event.currentTarget.value;
+      }
+      render() {
+        return <input id="i" aria-label="Chat" value={this.text} oninput={this.typed} />;
+      }
+    }
+    const app = await getDOM<Chat>(<Chat />);
+    await app.settle();
+    const field = app.container.querySelector("#i") as HTMLInputElement;
+    field.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+    field.value = "日本";
+    field.dispatchEvent(new InputEvent("input", { bubbles: true, isComposing: true, data: "日本" }));
+    app.instance.text = "sent";
+    await app.settle();
+    field.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "日本" }));
+    field.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertCompositionText", data: "日本" }));
+    await app.settle();
+
+    expect({ heard: app.instance.heard, model: app.instance.text, shown: field.value }).toEqual({
+      heard: [],
+      model: "sent",
+      shown: "sent",
+    });
+  });
+});
+
+/** A radio group's name comes from data: a line break in it is a name like any other. */
+test("a form-less radio group whose name holds a line break is put back", async () => {
+  class Odd extends Component {
+    @state pick = "a";
+    kept() {}
+    render() {
+      return (
+        <div>
+          <input
+            id="a"
+            type="radio"
+            aria-label="a"
+            name={"x\ny"}
+            value="a"
+            checked={this.pick === "a"}
+            onchange={this.kept}
+          />
+          <input
+            id="b"
+            type="radio"
+            aria-label="b"
+            name={"x\ny"}
+            value="b"
+            checked={this.pick === "b"}
+            onchange={this.kept}
+          />
+        </div>
+      );
+    }
+  }
+  const app = await getDOM<Odd>(<Odd />);
+  await app.settle();
+  const a = app.container.querySelector("#a") as HTMLInputElement;
+  const b = app.container.querySelector("#b") as HTMLInputElement;
+  b.click();
+
+  expect([a.checked, b.checked]).toEqual([true, false]);
+});

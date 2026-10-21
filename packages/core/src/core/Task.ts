@@ -261,7 +261,21 @@ function resumeIfWorkRemains(): void {
   queueMicrotask(processTask);
 }
 
+/** A drain is running: its builds, its post-commit work, or something they called. */
+let processing = false;
+
+/**
+ * `drainSync`, unless a drain is already running — a field answering an event fired from inside one:
+ * a blur from a `focus()` in `@mounted`, a field a reconcile removes. That drain runs what the event
+ * scheduled before it returns; a second one nested in it would find the commit mid-flush and spin.
+ */
+export function drainUnlessDraining(): void {
+  if (!processing) drainSync();
+}
+
 function processTask() {
+  const outer = !processing;
+  processing = true;
   if (__DEV__) startDrain();
   // One drain is one commit: what the app actually waited for. Timing builds alone would leave out
   // the diff, the DOM and the post-commit flush, which is the part that hurts.
@@ -300,6 +314,7 @@ function processTask() {
       notifyComponentUpdate();
     }
 
+    if (outer) processing = false;
     resumeIfWorkRemains();
   }
 

@@ -49,7 +49,8 @@ function controlledField(element: JsxElementLike, resolve: Resolver): boolean {
   const type = attributeOf(element, "type")?.initializer;
   // A reset, a submit or a hidden value is not edited, and a reset does not move it.
   if (type !== undefined && ts.isStringLiteral(type) && NOT_EDITED.has(type.text.toLowerCase())) return false;
-  const box = type !== undefined && ts.isStringLiteral(type) && (type.text === "checkbox" || type.text === "radio");
+  const typed = type !== undefined && ts.isStringLiteral(type) ? type.text.toLowerCase() : undefined;
+  const box = typed === "checkbox" || typed === "radio";
   const model = attributeOf(element, box ? "checked" : "value");
   if (model === undefined) return false;
   const value = model.initializer;

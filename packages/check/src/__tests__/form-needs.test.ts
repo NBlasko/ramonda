@@ -58,6 +58,7 @@ describe("a field inside a @ramonda/form form", () => {
       lineOf("<StyledInput value={value} oninput={this.type} />"),
       lineOf('attrs={{ value: "x", oninput: this.type }}'),
       lineOf('<HandledInput oninput={this.type} attrs={{ value: "x" }} />'),
+      lineOf("<EarlySpread"),
       lineOf('aria-label="own form field"'),
       lineOf("class OwnForm"),
     ]) {

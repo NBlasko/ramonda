@@ -182,8 +182,17 @@ export const attributeThatDoesNothing = {
        * children would be writing JSX out of a string it never read.
        */
       const name = ts.isJsxAttribute(attribute.at) ? attribute.at.name : undefined;
+      // A rename only where it does something: a different spelling, on an element that takes the
+      // name — `defaultValue` on a field, `defaultChecked` on an `<input>`. Offered anywhere else it
+      // would change nothing, and the next run would offer it again.
+      const takes =
+        dead.rename === "defaultValue"
+          ? tag === "input" || tag === "select" || tag === "textarea"
+          : dead.rename === "defaultChecked"
+            ? tag === "input"
+            : true;
       const edit =
-        dead.rename === undefined || name === undefined
+        dead.rename === undefined || name === undefined || written === dead.rename || !takes
           ? undefined
           : {
               from: name.getStart(),
