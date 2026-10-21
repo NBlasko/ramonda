@@ -49,7 +49,6 @@ class App extends Component<{ text: string; rows: { text: string }[]; attrs?: Re
           <ui.TextArea value={row.text} aria-label="a namespaced row from props" />
         ))}
         <TextArea value={value} onkeydown={this.type} aria-label="keydown only" />
-        <TextArea value={value} on:input={this.type} aria-label="typed colon" />
         <TextArea value={value} readOnly={viewing} aria-label="maybe read only" />
         <input value={value} aria-label="held input" />
         <input type="checkbox" checked={on} aria-label="held box" />
@@ -89,6 +88,8 @@ class App extends Component<{ text: string; rows: { text: string }[]; attrs?: Re
         <input {...html("nick")} value={value} oninput={this.type} aria-label="constraints" />
         {/* ✓ a spread of props is read where the component is used, by the form rule */}
         <input value={value} oninput={this.type} {...this.props.attrs} aria-label="props spread" />
+        {/* ✓ `on:input` is the field's own handler, as `oninput` is */}
+        <TextArea value={value} on:input={this.type} aria-label="typed colon" />
         {/* ✓ the user's */}
         <TextArea defaultValue="x" aria-label="default" />
         <ui.Select defaultValue="a" aria-label="namespaced default">

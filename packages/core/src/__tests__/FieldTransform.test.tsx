@@ -490,3 +490,105 @@ describe("a refused edit leaves the field as the edit found it", () => {
     expect({ calls: app.instance.calls, checked: box.checked }).toEqual({ calls: [], checked: false });
   });
 });
+
+/** Round 31: `on:input` is a field's own handler on a `Select` and a `TextArea`, as on an `<input>`. */
+describe("a handler written `on:input`", () => {
+  test("on a TextArea, never hears an edit the transform refuses", async () => {
+    class Short extends Component {
+      @state text = "abc";
+      heard: string[] = [];
+      typed(event: EventOn<HTMLTextAreaElement>) {
+        this.heard.push(event.currentTarget.value);
+        this.text = event.currentTarget.value;
+      }
+      max3(next: string, prev: string): string {
+        return next.length <= 3 ? next : prev;
+      }
+      render() {
+        return <TextArea id="t" aria-label="Short" value={this.text} on:input={this.typed} transform={this.max3} />;
+      }
+    }
+    const app = await getDOM<Short>(<Short />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+    field.value = "abcd";
+    field.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText" }));
+    await app.settle();
+    field.value = "ab";
+    field.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "deleteContentBackward" }));
+    await app.settle();
+
+    expect({ heard: app.instance.heard, model: app.instance.text, shown: field.value }).toEqual({
+      heard: ["ab"],
+      model: "ab",
+      shown: "ab",
+    });
+  });
+
+  test("on a Select, never hears a pick the transform refuses", async () => {
+    class Sizes extends Component {
+      @state size = "m";
+      heard: string[] = [];
+      picked(event: EventOn<HTMLSelectElement>) {
+        this.heard.push(event.currentTarget.value);
+        this.size = event.currentTarget.value;
+      }
+      inStock(next: string, prev: string): string {
+        return next === "l" ? prev : next;
+      }
+      render() {
+        return (
+          <Select id="s" aria-label="Size" value={this.size} on:input={this.picked} transform={this.inStock}>
+            <option value="m">m</option>
+            <option value="l">l</option>
+          </Select>
+        );
+      }
+    }
+    const app = await getDOM<Sizes>(<Sizes />);
+    await app.settle();
+    const select = app.container.querySelector("#s") as HTMLSelectElement;
+    select.value = "l";
+    select.dispatchEvent(new Event("input", { bubbles: true }));
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+    await app.settle();
+
+    expect({ heard: app.instance.heard, model: app.instance.size, shown: select.value }).toEqual({
+      heard: [],
+      model: "m",
+      shown: "m",
+    });
+  });
+
+  /** The model's choices in another order are the same choice: refused, and no handler hears it. */
+  test("a multiple select refused in another order than the model's is still refused", async () => {
+    class Tags extends Component {
+      @state tags = ["b", "a"];
+      picks = 0;
+      pick(event: EventOn<HTMLSelectElement>) {
+        this.picks++;
+        this.tags = Array.from(event.currentTarget.selectedOptions, (option) => option.value);
+      }
+      onlyAB(next: string[]): string[] {
+        return next.filter((tag) => tag === "a" || tag === "b");
+      }
+      render() {
+        return (
+          <Select id="s" aria-label="Tags" multiple value={this.tags} onchange={this.pick} transform={this.onlyAB}>
+            <option value="a">a</option>
+            <option value="b">b</option>
+            <option value="c">c</option>
+          </Select>
+        );
+      }
+    }
+    const app = await getDOM<Tags>(<Tags />);
+    await app.settle();
+    const select = app.container.querySelector("#s") as HTMLSelectElement;
+    for (const option of Array.from(select.options)) option.selected = true;
+    select.dispatchEvent(new Event("input", { bubbles: true }));
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+
+    expect({ picks: app.instance.picks, tags: app.instance.tags }).toEqual({ picks: 0, tags: ["b", "a"] });
+  });
+});

@@ -6,7 +6,8 @@
 
 A field with a `value` — a `Select`, a `TextArea`, an `<input>`; `checked` on a checkbox or a radio —
 shows the model, and only the handler written on the field writes it. Reported, each provable from the
-source: no handler on the field (`oninput`, or for a pick `oninput` or `onchange`); a text field with
+source: no handler on the field (`oninput`, or for a pick `oninput` or `onchange`, either also written
+`on:input`, `on:change`); a text field with
 only `onchange`, which comes on blur, so every keystroke is undone before it; `value` beside
 `defaultValue`, or `checked` beside `defaultChecked`; a text field whose `value` is a literal, or a
 `const` holding one; a spread on a controlled field, except the schema's constraints, `html(path)` from

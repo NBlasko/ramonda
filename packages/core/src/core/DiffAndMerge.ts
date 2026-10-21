@@ -66,6 +66,7 @@ import { snapshotOwnProps, lintUnpersistedState } from "../hydration/lint";
 import { lintChildKeys } from "../debug/lintChildren";
 import { timerOwner } from "../debug/timerGuard";
 import type { Runtime } from "./runtime";
+import { inputRemoved } from "./field";
 
 type PropsGate = (self: unknown, previous: unknown, next: unknown) => boolean;
 
@@ -1923,6 +1924,7 @@ export function unmountNodeInPlace(node: EnhancedChildNode): void {
 
   releaseRef(node);
   releaseChildRecord(node);
+  releaseField(node);
 }
 
 function loopThroughSoonToBeRemovedNodes(childNodes: NodeListOf<EnhancedChildNode>) {
@@ -1933,7 +1935,13 @@ function loopThroughSoonToBeRemovedNodes(childNodes: NodeListOf<EnhancedChildNod
 
     releaseRef(child);
     releaseChildRecord(child);
+    releaseField(child);
   }
+}
+
+/** An `<input>` the tree takes away answers no more of its own edits — see `inputRemoved`. */
+function releaseField(node: EnhancedChildNode): void {
+  if (node.nodeName === "INPUT") inputRemoved(node as unknown as HTMLInputElement);
 }
 
 /**

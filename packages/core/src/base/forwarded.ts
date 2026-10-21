@@ -54,10 +54,11 @@ export function forwarded(component: Component<any>, consumed: readonly string[]
  * What a field's element is given, and the names of the app's handlers that moves.
  *
  * A CONTROLLED field — one with a `value` — gets `listener` on each event in `answered`, calling the
- * app's own through `answer`. A handler spelled another way (`onInput`, `on:input`) is a listener of
- * its own beside it, which is the same thing, since the field is settled after the whole event
- * either way. A field without a `value` is the page's: it gets `uncontrolled` on the same events when
- * it needs to hear them — a `Select` notes the user's pick — and nothing otherwise.
+ * app's own through `answer`. A handler written `on:input` is the field's own as much as `oninput`
+ * is, as on a plain `<input>`: it is taken off the element too and called by the field, after the
+ * edit is decided — so a refused edit reaches neither. A field without a `value` is the page's: it
+ * gets `uncontrolled` on the same events when it needs to hear them — a `Select` notes the user's
+ * pick — and nothing otherwise.
  */
 export function controlled(
   // biome-ignore lint/suspicious/noExplicitAny: any component, whatever its props
@@ -83,7 +84,9 @@ export function controlled(
     onblur: listener,
   };
   for (const name of answered) listeners[name] = listener;
-  return { replaced: Object.keys(listeners), listeners };
+  // `on:input` beside `oninput`, and so on: each is called by `answer`, none is attached.
+  const replaced = Object.keys(listeners).flatMap((name) => [name, `on:${name.slice(2)}`]);
+  return { replaced, listeners };
 }
 
 /** The app's own handler for this event, called as a listener would be — see `callHandler`. */
@@ -140,7 +143,11 @@ export function answer(component: Component<any> & { settle(): void }, event: Ev
         const transform = runtime.rawProps.transform;
         return typeof transform === "function" ? (transform as Transform) : undefined;
       },
-      own: (type, own) => callHandler(runtime.rawProps[`on${type}`], own),
+      own: (type, own) => {
+        // Both spellings, in the order a listener would be: `oninput`, then `on:input`.
+        callHandler(runtime.rawProps[`on${type}`], own);
+        callHandler(runtime.rawProps[`on:${type}`], own);
+      },
       settle: () => component.settle(),
       gone: () => runtime.isDestroyed === true,
     },

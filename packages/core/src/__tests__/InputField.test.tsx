@@ -494,3 +494,85 @@ describe("a controlled input keeps its model", () => {
     expect([a.checked, b.checked]).toEqual([false, true]);
   });
 });
+
+/** Round 31. */
+describe("a field's own handlers, its defaults and its end", () => {
+  test("a box whose model turns off, with a default written as undefined beside it, stays off", async () => {
+    class Wrapped extends Component {
+      @state on = true;
+      kept() {}
+      render() {
+        return (
+          <input
+            id="c"
+            type="checkbox"
+            aria-label="Wrapped"
+            checked={this.on}
+            defaultChecked={undefined}
+            onchange={this.kept}
+          />
+        );
+      }
+    }
+    const app = await getDOM<Wrapped>(<Wrapped />);
+    await app.settle();
+    const box = app.container.querySelector("#c") as HTMLInputElement;
+    app.instance.on = false;
+    await app.settle();
+    const attribute = box.hasAttribute("checked");
+    // The handler leaves the model off: the box shows the model.
+    box.click();
+
+    expect({ attribute, checked: box.checked }).toEqual({ attribute: false, checked: false });
+  });
+
+  /** Enter closes the dialog the field was in: the word's end removes the field. */
+  test.each([false, true])(
+    "a composition whose end removes the field hands the word to nobody (inside what is removed: %s)",
+    async (wrapped) => {
+      class Dialog extends Component<{ wrapped: boolean }> {
+        @state open = true;
+        @state text = "";
+        taken: string[] = [];
+        take(event: EventOn<HTMLInputElement, InputEvent>) {
+          if (event.isComposing) return;
+          this.taken.push(event.currentTarget.value);
+          this.text = event.currentTarget.value;
+        }
+        close() {
+          this.open = false;
+        }
+        render() {
+          return (
+            <div>
+              {this.open && !this.props.wrapped ? (
+                <input id="i" aria-label="Dialog" value={this.text} oninput={this.take} oncompositionend={this.close} />
+              ) : null}
+              {this.open && this.props.wrapped ? (
+                <section>
+                  <input
+                    id="i"
+                    aria-label="Dialog"
+                    value={this.text}
+                    oninput={this.take}
+                    oncompositionend={this.close}
+                  />
+                </section>
+              ) : null}
+            </div>
+          );
+        }
+      }
+      const app = await getDOM<Dialog>(<Dialog wrapped={wrapped} />);
+      await app.settle();
+      const field = app.container.querySelector("#i") as HTMLInputElement;
+      field.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+      field.value = "日本";
+      field.dispatchEvent(new InputEvent("input", { bubbles: true, isComposing: true, data: "日本" }));
+      field.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "日本" }));
+      await app.settle();
+
+      expect({ removed: !field.isConnected, taken: app.instance.taken }).toEqual({ removed: true, taken: [] });
+    },
+  );
+});

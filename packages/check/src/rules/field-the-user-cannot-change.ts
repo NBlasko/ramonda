@@ -93,8 +93,7 @@ const NOT_EDITED = new Set(["hidden", "submit", "button", "reset", "image", "fil
  * What is reported, each provable from the source:
  *
  * - **No handler on the field** — no `oninput` (for a select, a checkbox or a radio, no `oninput` or
- *   `onchange`), spelled so: the field's handler is the one core calls, and `on:input` is a listener
- *   of its own.
+ *   `onchange`), or the same written `on:input`, which core calls as the field's own on every field.
  * - **A text field with only `onchange`** — `change` comes on blur, so every keystroke before it is
  *   undone.
  * - **`value` beside `defaultValue`**, or `checked` beside `defaultChecked` — the first wins and the
@@ -201,7 +200,9 @@ export const fieldTheUserCannotChange = {
     }
     if (unknown) return [{ component, kind: "unknown-spread", ...at }];
 
-    const own = (name: string) => attributes.find((attribute) => attribute.name === name);
+    // `oninput` or `on:input`: both are the field's own handler, called by core after the edit is decided.
+    const own = (name: string) =>
+      attributes.find((attribute) => attribute.name === name || attribute.name === `on:${name.slice(2)}`);
     const writer = own("oninput") ?? (pick ? own("onchange") : undefined);
     if (writer === undefined) {
       if (!pick && own("onchange") !== undefined) return [{ component, kind: "held-between-keystrokes", ...at }];

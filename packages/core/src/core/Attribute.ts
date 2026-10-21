@@ -591,8 +591,9 @@ function removePreviousFromenhancedNode(
  */
 function heldAsADefault(enhancedNode: EnhancedHTMLNode, name: string, nextAttributes: NodeAttributes): boolean {
   if (enhancedNode.nodeName !== "INPUT") return false;
-  if (name === "value") return "defaultValue" in nextAttributes;
-  if (name === "checked") return "defaultChecked" in nextAttributes;
+  // Exactly when `writeDefaults` writes it: a default beside the model's `value` or `checked` is not.
+  if (name === "value") return "defaultValue" in nextAttributes && nextAttributes.value == null;
+  if (name === "checked") return "defaultChecked" in nextAttributes && typeof nextAttributes.checked !== "boolean";
   return false;
 }
 

@@ -43,4 +43,6 @@ the middle of a word keeps the composition going until its `compositionend` or t
 when it is sent. It is written as the field's default — the `value` attribute, the `checked`
 attribute, the option's `selected` — so a served page shows it before any script runs, and a form's
 reset returns to it. A `value` of `null` or `undefined` is no value. The field's handler is called as a
-listener is, with the element as `this`, and may be a function or a listener object.
+listener is, with the element as `this`, and may be a function or a listener object; one written
+`on:input` is the field's own as much as `oninput`, called after it and refused with it. A field the
+end of a composition removes — Enter closing its dialog — hands the word to no handler.

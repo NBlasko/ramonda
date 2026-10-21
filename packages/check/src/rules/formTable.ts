@@ -274,7 +274,7 @@ export function formTableFor(sources: readonly ts.SourceFile[], resolve: Resolve
     for (const attribute of opening.attributes.properties) {
       if (!ts.isJsxSpreadAttribute(attribute)) continue;
       const prop = propRead(attribute.expression);
-      const handled = written.has("oninput") || written.has("onchange");
+      const handled = ["oninput", "onchange", "on:input", "on:change"].some((name) => written.has(name));
       if (prop !== undefined) bags.push({ owner: enclosingClass(element), prop, handled, ...positionOf(opening) });
     }
 
@@ -303,7 +303,12 @@ export function formTableFor(sources: readonly ts.SourceFile[], resolve: Resolve
       if (value !== undefined && isNothing(value)) return { kind: "missing" };
       return { kind: "written" };
     };
-    const writer = written.has("oninput") || !pick ? sourceOf("oninput") : sourceOf("onchange");
+    // `on:input` is as much the field's own as `oninput`.
+    const spelled = (name: string) => (written.has(name) ? name : `on:${name.slice(2)}`);
+    const writer =
+      written.has("oninput") || written.has("on:input") || !pick
+        ? sourceOf(spelled("oninput"))
+        : sourceOf(spelled("onchange"));
 
     fields.push({
       owner: enclosingClass(element),

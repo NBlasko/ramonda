@@ -95,7 +95,8 @@ export function decideEdit(field: Field, transform: Transform, prev: FieldValue,
   };
   const kept = transform(next as never, prev as never, input) as FieldValue;
   if (sameValue(kept, next)) return false;
-  const refused = sameValue(kept, prev);
+  // As the model is compared: a multiple select's answer in another order is the same choice.
+  const refused = sameModel(kept, prev);
 
   if (isBox(field)) {
     field.checked = Boolean(kept);
@@ -363,6 +364,7 @@ const TRANSFORM = Symbol("ramonda.input.transform");
 const CONTROLLED = Symbol("ramonda.input.controlled");
 const HEARD = Symbol("ramonda.input.heard");
 const CONTROL = Symbol("ramonda.input.control");
+const GONE = Symbol("ramonda.input.gone");
 
 type Kept = HTMLInputElement & {
   /** By event type, then by the name the handler was written under — `oninput`, `on:input`. */
@@ -372,7 +374,17 @@ type Kept = HTMLInputElement & {
   /** The event types the field listener is attached for. */
   [HEARD]?: Set<string>;
   [CONTROL]?: FieldControl;
+  [GONE]?: true;
 };
+
+/**
+ * The tree took this `<input>` away. A composition whose end removed it — Enter closing the dialog
+ * it was in — hands its word to nobody, as a `Select` or `TextArea` whose component was destroyed.
+ */
+export function inputRemoved(input: HTMLInputElement): void {
+  (input as Kept)[GONE] = true;
+  forgetField(input);
+}
 
 /** The events an `<input>`'s own handlers are called on by its field listener, rather than attached. */
 export const INPUT_OWN_EVENTS = new Set(["input", "change", "compositionstart", "compositionend", "blur"]);
@@ -408,9 +420,11 @@ function isRadio(input: HTMLInputElement): boolean {
  */
 function groupOf(input: HTMLInputElement): HTMLInputElement[] {
   if (input.name === "") return [input];
+  // Without a form, only the radios of that name, rather than every input on the page.
+  const named = `input[type="radio"][name="${input.name.replace(/["\\]/g, "\\$&")}"]`;
   const candidates = input.form
     ? Array.from(input.form.elements)
-    : Array.from((input.getRootNode() as ParentNode).querySelectorAll("input"));
+    : Array.from((input.getRootNode() as ParentNode).querySelectorAll(named));
   // By tag, not `instanceof`: a field in an iframe is another window's `HTMLInputElement`.
   return (candidates as HTMLInputElement[]).filter(
     (other) =>
@@ -425,7 +439,7 @@ function groupOf(input: HTMLInputElement): HTMLInputElement[] {
 function controlOf(input: Kept): FieldControl {
   const existing = input[CONTROL];
   if (existing !== undefined) return existing;
-  const isBoxNow = () => input.type === "checkbox" || isRadio(input);
+  const isBoxNow = () => isBox(input);
   const model = () => (isBoxNow() ? input.hasAttribute("checked") : (input.getAttribute("value") ?? ""));
   const control: FieldControl = {
     key: input,
@@ -453,7 +467,7 @@ function controlOf(input: Kept): FieldControl {
         if (input.value !== model) writeValue(input as unknown as EnhancedHTMLNode, model, false);
       }
     },
-    gone: () => false,
+    gone: () => input[GONE] === true,
   };
   input[CONTROL] = control;
   return control;
@@ -492,7 +506,7 @@ function listen(input: Kept, types: Iterable<string>): void {
  */
 export function controlInput(input: HTMLInputElement, attributes: Record<string, unknown>): void {
   const kept = input as Kept;
-  const box = input.type === "checkbox" || isRadio(input);
+  const box = isBox(input);
   const controlled = box ? typeof attributes.checked === "boolean" : attributes.value != null;
   if (!controlled && kept[CONTROLLED]) forgetField(input);
   kept[CONTROLLED] = controlled;
