@@ -5,7 +5,7 @@
  * compose in Firefox, so this drives Firefox's own `TextInputProcessor` — the API Mozilla's tests
  * use to type through an input method — over Marionette, from privileged code. The composition goes
  * through the same path a real input method does: measured, Firefox then sends `compositionend` and
- * an ordinary `input` with the word, which is why core sends nothing there.
+ * an ordinary `input` with the word, which the field recognises as the word it already handed over.
  *
  * It is Playwright's own Firefox, so there is nothing more to install. It runs against `dist`, like
  * the spec: build first.
@@ -26,6 +26,8 @@ const EXPECTED = {
   // Firefox's own events: the last composing `input` and the ordinary one after it both carry the
   // word. Core adds nothing, which is the claim.
   takes: '["n","に","日本","日本"]',
+  "skips-input": '["日本"]',
+  "takes-input": '["n","に","日本","日本"]',
 };
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -178,7 +180,7 @@ try {
     await session.send("WebDriver:ExecuteScript", { script: COMPOSE, args: [] });
     await session.send("Marionette:SetContext", { value: "content" });
     // Read until the answer is in, rather than after a fixed pause a loaded runner may outlast: the
-    // settle runs a task after the composition, and the readout a render after that.
+    // readout is a render after the composition.
     let field = "";
     let taken = "";
     for (let attempt = 0; attempt < 50; attempt++) {

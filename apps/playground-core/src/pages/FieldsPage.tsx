@@ -8,17 +8,18 @@ const readout = { display: "block", margin: "0.5rem 0 0", fontFamily: "monospace
  * A word typed through an input method, into a field the model holds.
  *
  * Two handlers, the two ways one is written. `skips` leaves on composing input, the usual way, and
- * takes the word from the ordinary `input` after the composition — which Firefox sends and Chromium
- * does not, so core sends it there. `takes` reads every input, composing or not, and has the word
- * already. Each readout lists what its handler took: the word must be there, and once.
+ * takes the word when the composition ends — handed to it then, in every browser, while its model
+ * lacks the word. `takes` reads every input, composing or not, and has the word already. Each
+ * readout lists what its handler took: the word must be there, and once. The same two are written
+ * on a `TextArea` and on an `<input>`, which reach the field by different paths.
  */
-class Composed extends Component<{ id: string; title: string; skipsComposing: boolean }> {
+class Composed extends Component<{ id: string; title: string; skipsComposing: boolean; field: "textarea" | "input" }> {
   @state text = "";
   @state taken: string[] = [];
 
-  onInput(event: InputEvent) {
+  onInput(event: EventOn<HTMLTextAreaElement | HTMLInputElement, InputEvent>) {
     if (this.props.skipsComposing && event.isComposing) return;
-    this.text = (event.target as HTMLTextAreaElement).value;
+    this.text = event.currentTarget.value;
     this.taken = [...this.taken, this.text];
   }
 
@@ -30,7 +31,11 @@ class Composed extends Component<{ id: string; title: string; skipsComposing: bo
           Switch to a Japanese input method, type <code>nihon</code>, Space, Enter. The field keeps 日本, and the last
           line below is 日本 — once.
         </p>
-        <TextArea id={this.props.id} aria-label={this.props.title} value={this.text} oninput={this.onInput} />
+        {this.props.field === "textarea" ? (
+          <TextArea id={this.props.id} aria-label={this.props.title} value={this.text} oninput={this.onInput} />
+        ) : (
+          <input id={this.props.id} aria-label={this.props.title} value={this.text} oninput={this.onInput} />
+        )}
         <output id={`${this.props.id}-taken`} style={readout}>
           {JSON.stringify(this.taken)}
         </output>
@@ -186,17 +191,92 @@ class Refused extends Component {
   }
 }
 
+/**
+ * The same refusals on an `<input>`, whose own handlers core holds on the element: a keystroke the
+ * `transform` refuses, one the handler refuses, a box the handler will not tick, and a radio the
+ * handler will not pick — the group is put back whole, so `m` stays the one that is on.
+ */
+class RefusedInput extends Component {
+  @state text = "abc";
+  @state handled = "abc";
+  @state ticked = false;
+  @state size = "m";
+
+  max3(next: string, prev: string): string {
+    return next.length <= 3 ? next : prev;
+  }
+
+  typed(event: EventOn<HTMLInputElement>) {
+    this.text = event.currentTarget.value;
+  }
+
+  /** The handler refuses on its own: past three characters, it leaves the model where it was. */
+  typedByHand(event: EventOn<HTMLInputElement>) {
+    const wanted = event.currentTarget.value;
+    if (wanted.length <= 3) this.handled = wanted;
+  }
+
+  /** Never ticks: the terms are not ready to be accepted yet. */
+  ticks(_event: EventOn<HTMLInputElement>) {
+    this.ticked = false;
+  }
+
+  picks(event: EventOn<HTMLInputElement>) {
+    if (event.currentTarget.value !== "l") this.size = event.currentTarget.value;
+  }
+
+  render() {
+    return (
+      <section style={box}>
+        <h3 style={{ margin: "0 0 0.25rem" }}>5 — the same, on an input</h3>
+        <p style={hint}>Type a fourth character, tick the box, pick l: none of them shows, even for a frame.</p>
+        <input
+          id="refused-input"
+          aria-label="Three at most, by transform"
+          value={this.text}
+          oninput={this.typed}
+          transform={this.max3}
+        />
+        <input
+          id="refused-input-by-hand"
+          aria-label="Three at most, by the handler"
+          value={this.handled}
+          oninput={this.typedByHand}
+        />
+        <label>
+          <input id="refused-box" type="checkbox" checked={this.ticked} oninput={this.ticks} /> Accept
+        </label>
+        <fieldset>
+          <legend>Size</legend>
+          <label>
+            <input id="radio-m" type="radio" name="size" value="m" checked={this.size === "m"} oninput={this.picks} /> m
+          </label>
+          <label>
+            <input id="radio-l" type="radio" name="size" value="l" checked={this.size === "l"} oninput={this.picks} /> l
+          </label>
+        </fieldset>
+        <output id="refused-input-model" style={readout}>
+          {JSON.stringify({ text: this.text, handled: this.handled, ticked: this.ticked, size: this.size })}
+        </output>
+      </section>
+    );
+  }
+}
+
 /** Fields whose behaviour only a browser settles — see `browser/fields.spec.ts`. */
 export class FieldsPage extends Component {
   render() {
     return (
       <div>
         <h2>Fields in a browser</h2>
-        <Composed id="skips" title="1 — a handler that skips composing input" skipsComposing={true} />
-        <Composed id="takes" title="2 — a handler that takes every input" skipsComposing={false} />
+        <Composed id="skips" title="1 — a handler that skips composing input" skipsComposing={true} field="textarea" />
+        <Composed id="takes" title="2 — a handler that takes every input" skipsComposing={false} field="textarea" />
+        <Composed id="skips-input" title="1 — the same, on an input" skipsComposing={true} field="input" />
+        <Composed id="takes-input" title="2 — the same, on an input" skipsComposing={false} field="input" />
         <Sized />
         <Between />
         <Refused />
+        <RefusedInput />
       </div>
     );
   }

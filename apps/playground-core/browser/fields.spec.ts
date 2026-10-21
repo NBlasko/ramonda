@@ -1,14 +1,15 @@
 import { expect, test } from "@playwright/test";
 
 /**
- * Two things about a field that jsdom cannot settle, because both are the browser's own.
+ * What a field does that jsdom cannot settle, because it is the browser's own.
  *
  * - **A word typed through an input method.** Chromium sends no ordinary `input` after a
  *   composition — its last `input` still says `isComposing` — so a handler that skips composing
- *   input never took the word, and core sends that `input` itself (`forwarded.ts`, "When it ends").
- *   The composition is driven through the DevTools protocol's IME, which goes through the same path
- *   a real input method does. Firefox, which sends the `input` itself, is checked by
- *   `firefox-composition.mjs`: Playwright cannot compose in it.
+ *   input would never take the word; the field hands it over at `compositionend` (`field.ts`, "When
+ *   it ends"), on a `TextArea` and on an `<input>` alike. The composition is driven through the
+ *   DevTools protocol's IME, which goes through the same path a real input method does. Firefox,
+ *   which sends that `input` itself, is checked by `firefox-composition.mjs`: Playwright cannot
+ *   compose in it.
  * - **A form's reset.** It returns a select to the option whose `selected` ATTRIBUTE is set, which is
  *   where `Select` writes its `defaultValue`. jsdom was measured to move a choice where browsers do
  *   not, so this is asked of a browser.
@@ -32,18 +33,23 @@ test.describe("fields only a browser settles", () => {
     await session.send("Input.insertText", { text: "日本" });
   }
 
-  test("a handler that skips composing input takes the word, once", async ({ page }) => {
-    await compose(page, "#skips");
-    await expect(page.locator("#skips-taken")).toHaveText('["日本"]');
-    await expect(page.locator("#skips")).toHaveValue("日本");
-  });
+  for (const [suffix, on] of [
+    ["", "a TextArea"],
+    ["-input", "an <input>"],
+  ]) {
+    test(`a handler that skips composing input takes the word, once — on ${on}`, async ({ page }) => {
+      await compose(page, `#skips${suffix}`);
+      await expect(page.locator(`#skips${suffix}-taken`)).toHaveText('["日本"]');
+      await expect(page.locator(`#skips${suffix}`)).toHaveValue("日本");
+    });
 
-  /** It had the word from the last composing `input`, so core sends nothing more. */
-  test("a handler that takes every input is not called again for the word", async ({ page }) => {
-    await compose(page, "#takes");
-    await expect(page.locator("#takes-taken")).toHaveText('["n","に","日本"]');
-    await expect(page.locator("#takes")).toHaveValue("日本");
-  });
+    /** It had the word from the last composing `input`, so the field hands over nothing more. */
+    test(`a handler that takes every input is not called again for the word — on ${on}`, async ({ page }) => {
+      await compose(page, `#takes${suffix}`);
+      await expect(page.locator(`#takes${suffix}-taken`)).toHaveText('["n","に","日本"]');
+      await expect(page.locator(`#takes${suffix}`)).toHaveValue("日本");
+    });
+  }
 
   /**
    * A render between the listeners of one event — the form around the fields flips its "Save" button
@@ -72,20 +78,27 @@ test.describe("fields only a browser settles", () => {
    * animation-frame callback of the frame, so it sees what the answer left. A probe resized every
    * frame makes it run on each.
    */
-  async function watchFrames(page: import("@playwright/test").Page, selector: string) {
-    await page.evaluate((selector) => {
-      const field = document.querySelector(selector) as HTMLSelectElement | HTMLTextAreaElement;
-      const probe = document.body.appendChild(document.createElement("div"));
-      probe.style.cssText = "width:1px;height:1px";
-      const w = window as unknown as { drawn: string[] };
-      w.drawn = [];
-      new ResizeObserver(() => w.drawn.push(field.value)).observe(probe);
-      const tick = () => {
-        probe.style.width = probe.style.width === "1px" ? "2px" : "1px";
+  async function watchFrames(
+    page: import("@playwright/test").Page,
+    selector: string,
+    read: "value" | "checked" = "value",
+  ) {
+    await page.evaluate(
+      ([selector, read]) => {
+        const field = document.querySelector(selector) as HTMLInputElement;
+        const probe = document.body.appendChild(document.createElement("div"));
+        probe.style.cssText = "width:1px;height:1px";
+        const w = window as unknown as { drawn: string[] };
+        w.drawn = [];
+        new ResizeObserver(() => w.drawn.push(String(field[read]))).observe(probe);
+        const tick = () => {
+          probe.style.width = probe.style.width === "1px" ? "2px" : "1px";
+          requestAnimationFrame(tick);
+        };
         requestAnimationFrame(tick);
-      };
-      requestAnimationFrame(tick);
-    }, selector);
+      },
+      [selector, read] as const,
+    );
   }
 
   const drawn = (page: import("@playwright/test").Page) =>
@@ -132,5 +145,53 @@ test.describe("fields only a browser settles", () => {
     const frames = await drawn(page);
     expect(frames.length).toBeGreaterThan(20);
     expect(frames).not.toContain("l");
+  });
+
+  for (const [id, by] of [
+    ["refused-input", "its transform"],
+    ["refused-input-by-hand", "its handler"],
+  ]) {
+    test(`a keystroke ${by} refuses is never drawn — on an <input>`, async ({ page }) => {
+      await watchFrames(page, `#${id}`);
+      await page.locator(`#${id}`).click();
+      await page.keyboard.press("End");
+      for (let i = 0; i < 20; i++) {
+        await page.keyboard.type("d");
+        await page.waitForTimeout(40);
+      }
+      await expect(page.locator(`#${id}`)).toHaveValue("abc");
+      const frames = await drawn(page);
+      expect(frames.length).toBeGreaterThan(20);
+      expect(frames.filter((value) => value.length > 3)).toEqual([]);
+    });
+  }
+
+  test("a box the handler will not tick is never drawn ticked", async ({ page }) => {
+    await watchFrames(page, "#refused-box", "checked");
+    for (let i = 0; i < 20; i++) {
+      await page.locator("#refused-box").click();
+      await page.waitForTimeout(40);
+    }
+    await expect(page.locator("#refused-box")).not.toBeChecked();
+    const frames = await drawn(page);
+    expect(frames.length).toBeGreaterThan(20);
+    expect(frames).not.toContain("true");
+  });
+
+  /** The refused radio is put back with its group: `m` is on again, and `l` never shows on. */
+  test("a radio the handler will not pick is never drawn picked, and the group keeps its own", async ({ page }) => {
+    await watchFrames(page, "#radio-l", "checked");
+    for (let i = 0; i < 20; i++) {
+      await page.locator("#radio-l").click();
+      await page.waitForTimeout(40);
+    }
+    await expect(page.locator("#radio-m")).toBeChecked();
+    await expect(page.locator("#radio-l")).not.toBeChecked();
+    await expect(page.locator("#refused-input-model")).toHaveText(
+      '{"text":"abc","handled":"abc","ticked":false,"size":"m"}',
+    );
+    const frames = await drawn(page);
+    expect(frames.length).toBeGreaterThan(20);
+    expect(frames).not.toContain("true");
   });
 });
