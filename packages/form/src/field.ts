@@ -273,9 +273,9 @@ export class Field<T> extends Hook<{ of: FieldTarget<T> }> implements Watcher {
     return this.live.inputValue as InputValue<T>;
   }
 
-  /** Whether the field has a message: the control's `aria-invalid`. */
+  /** Whether the field has a message: the control's `aria-invalid`. Held back as `error` is — see there. */
   get invalid(): boolean {
-    this.reads |= ASPECT.messages;
+    this.reads |= ASPECT.messages | ASPECT.marks;
     return this.live.invalid;
   }
 

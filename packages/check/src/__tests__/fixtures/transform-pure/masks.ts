@@ -78,3 +78,19 @@ export const frozen = (next: string, prev: string) => (next.length <= LIMITS.max
 let current = 20;
 /** Not pure: made from a value that may change, which the function then reads. */
 export const loose = maxLength(current);
+
+let seen = 0;
+/** A helper held in a `const`, not pure: it counts. */
+const countedArrow = (c: string) => {
+  seen++;
+  return c;
+};
+/** Not pure: hands on a `const` arrow that counts. */
+export const handsOnAnArrow = (next: string) => next.split("").map(countedArrow).join("");
+
+/** A factory handed a function, which its function then hands on. */
+export function mapped(each: (c: string) => string) {
+  return (next: string) => next.split("").map(each).join("");
+}
+/** Not pure: the factory was handed a function, which is not a fixed value. */
+export const mappedWithAnArrow = mapped((c) => c);

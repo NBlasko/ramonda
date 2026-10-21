@@ -1,7 +1,7 @@
 import type { EnhancedHTMLNode } from "../types/vdom";
 import { IS_SVG, KEY_SYM, STYLE_SYM, REF_SYM, BOOLEAN_ATTRIBUTES, keptInAProperty } from "../helpers/constants";
 import { checkBooleanAttribute } from "../debug/booleanAttribute";
-import { INPUT_OWN_EVENTS, controlInput, keepOwnHandler } from "./field";
+import { INPUT_OWN_EVENTS, composingIn, controlInput, keepOwnHandler } from "./field";
 type NodeAttributes = Record<string, any>;
 
 /**
@@ -45,12 +45,14 @@ export function applyChangesOnAttributes(enhancedNode: ChildNode, rawNextAttribu
  * diff to read back, so a default taken away — `defaultChecked` turned `false` — would never be seen.
  */
 function writeDefaults(input: HTMLInputElement, attributes: NodeAttributes): void {
-  if ("defaultValue" in attributes) {
+  // A field with a `value` (`checked`) is the model's, and so is that attribute: a default written
+  // beside it — even as `undefined`, passed straight through by a wrapper — does not touch it.
+  if ("defaultValue" in attributes && attributes.value == null) {
     const value = attributes.defaultValue;
     if (value == null) input.removeAttribute("value");
     else if (input.getAttribute("value") !== String(value)) input.setAttribute("value", String(value));
   }
-  if ("defaultChecked" in attributes) {
+  if ("defaultChecked" in attributes && typeof attributes.checked !== "boolean") {
     const on = attributes.defaultChecked === true;
     if (input.hasAttribute("checked") !== on) input.toggleAttribute("checked", on);
   }
@@ -326,8 +328,9 @@ function setNextOnenhancedNode(enhancedNode: EnhancedHTMLNode, name: string, val
   if (name === "value") {
     // Both, because they say different things about the same element: the property is the value NOW,
     // and the attribute is the one it started with — which is also the only half a server render can
-    // serialize.
-    writeValue(enhancedNode, value, onServer);
+    // serialize. Not the property while an input method is composing in the field: writing it would
+    // cancel the word, and the field shows the model once the word ends — see `composingIn`.
+    if (enhancedNode.nodeName !== "INPUT" || !composingIn(enhancedNode)) writeValue(enhancedNode, value, onServer);
     enhancedNode.setAttribute(name, value);
     return;
   }

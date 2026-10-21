@@ -337,3 +337,160 @@ describe("an input's own handlers", () => {
     expect(attached).toEqual(["blur"]);
   });
 });
+
+/** Round 30: what a controlled `<input>` keeps, whatever is written beside it or happens around it. */
+describe("a controlled input keeps its model", () => {
+  /** A wrapper passing `defaultValue` straight through hands `undefined` beside the model's `value`. */
+  test("a default written as undefined beside `value` leaves the model's attribute", async () => {
+    class Wrapped extends Component {
+      @state text = "abc";
+      typed(event: EventOn<HTMLInputElement>) {
+        this.text = event.currentTarget.value;
+      }
+      render() {
+        return <input id="i" aria-label="Wrapped" value={this.text} defaultValue={undefined} oninput={this.typed} />;
+      }
+    }
+    const app = await getDOM<Wrapped>(<Wrapped />);
+    await app.settle();
+    const field = app.container.querySelector("#i") as HTMLInputElement;
+    typeInto(field, "abcd");
+    await app.settle();
+
+    expect({ attribute: field.getAttribute("value"), shown: field.value }).toEqual({
+      attribute: "abcd",
+      shown: "abcd",
+    });
+    expect(await renderToString(<Wrapped />)).toContain('value="abc"');
+  });
+
+  test("a default written as undefined beside `checked` leaves the model's attribute", async () => {
+    class Boxed extends Component {
+      kept() {}
+      render() {
+        return (
+          <input
+            id="c"
+            type="checkbox"
+            aria-label="Boxed"
+            checked={true}
+            defaultChecked={undefined}
+            onchange={this.kept}
+          />
+        );
+      }
+    }
+    const app = await getDOM<Boxed>(<Boxed />);
+    await app.settle();
+    const box = app.container.querySelector("#c") as HTMLInputElement;
+    box.click();
+
+    expect({ attribute: box.hasAttribute("checked"), checked: box.checked }).toEqual({
+      attribute: true,
+      checked: true,
+    });
+  });
+
+  /** An autosave flipping a class on every `input` renders the field in the middle of a word. */
+  test("a render in the middle of a composition does not write the field", async () => {
+    class Saving extends Component {
+      @state text = "";
+      @state tick = 0;
+      typed(event: EventOn<HTMLInputElement, InputEvent>) {
+        if (event.isComposing) return;
+        this.text = event.currentTarget.value;
+      }
+      saved() {
+        this.tick++;
+      }
+      render() {
+        return (
+          <form oninput={this.saved}>
+            <input id="i" aria-label="Saving" className={`t${this.tick}`} value={this.text} oninput={this.typed} />
+          </form>
+        );
+      }
+    }
+    const app = await getDOM<Saving>(<Saving />);
+    await app.settle();
+    const field = app.container.querySelector("#i") as HTMLInputElement;
+    field.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+    field.value = "に";
+    field.dispatchEvent(new InputEvent("input", { bubbles: true, isComposing: true, data: "に" }));
+    await app.settle();
+
+    expect({ rendered: field.className, shown: field.value }).toEqual({ rendered: "t1", shown: "に" });
+  });
+
+  /** Chromium sends nothing after a composition; the next real edit, leaving the same text, is still heard. */
+  test("after a composition, an edit that leaves the same text still reaches the handler", async () => {
+    class Words extends Component {
+      @state text = "";
+      heard: string[] = [];
+      typed(event: EventOn<HTMLInputElement, InputEvent>) {
+        if (event.isComposing) return;
+        this.heard.push(event.currentTarget.value);
+        this.text = event.currentTarget.value;
+      }
+      render() {
+        return <input id="i" aria-label="Words" value={this.text} oninput={this.typed} />;
+      }
+    }
+    const app = await getDOM<Words>(<Words />);
+    await app.settle();
+    const field = app.container.querySelector("#i") as HTMLInputElement;
+    field.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+    field.value = "日本";
+    field.dispatchEvent(new InputEvent("input", { bubbles: true, isComposing: true, data: "日本" }));
+    field.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "日本" }));
+    await app.settle();
+    // Select-all and paste the same word: a real edit, as Chromium sends it.
+    field.value = "日本";
+    field.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertFromPaste" }));
+
+    expect(app.instance.heard).toEqual(["日本", "日本"]);
+  });
+
+  /** A radio tied to its form by `form="id"`, from outside the element, is of its group all the same. */
+  test("a refused pick puts back a radio of the group that sits outside the form element", async () => {
+    class Outside extends Component {
+      @state size = "b";
+      kept() {}
+      render() {
+        return (
+          <div>
+            <form id="f">
+              <input
+                id="a"
+                type="radio"
+                name="x"
+                value="a"
+                aria-label="a"
+                checked={this.size === "a"}
+                onchange={this.kept}
+              />
+            </form>
+            <input
+              id="b"
+              type="radio"
+              name="x"
+              value="b"
+              aria-label="b"
+              form="f"
+              checked={this.size === "b"}
+              onchange={this.kept}
+            />
+          </div>
+        );
+      }
+    }
+    const app = await getDOM<Outside>(<Outside />);
+    await app.settle();
+    const a = app.container.querySelector("#a") as HTMLInputElement;
+    const b = app.container.querySelector("#b") as HTMLInputElement;
+    // The model holds `b`, outside the form element; `a`, inside, is clicked and refused.
+    a.click();
+
+    expect([a.checked, b.checked]).toEqual([false, true]);
+  });
+});

@@ -63,9 +63,16 @@ export interface FormHolder extends Where {
 export interface SpreadBag extends Where {
   owner: ts.ClassLikeDeclaration | undefined;
   prop: string;
+  /** Whether the field writes its own `oninput` or `onchange` by name, so a `value` in the spread has one. */
+  handled: boolean;
 }
 
 export interface FormFacts {
+  /**
+   * Whether an expression holds nothing — `null`, `undefined`, or a `const` holding one — so a
+   * shorthand `{ oninput }` is read as `{ oninput: undefined }` is.
+   */
+  holdsNothing(expression: ts.Expression): boolean;
   fields: FormField[];
   bags: SpreadBag[];
   sites: ComponentSite[];
@@ -267,7 +274,8 @@ export function formTableFor(sources: readonly ts.SourceFile[], resolve: Resolve
     for (const attribute of opening.attributes.properties) {
       if (!ts.isJsxSpreadAttribute(attribute)) continue;
       const prop = propRead(attribute.expression);
-      if (prop !== undefined) bags.push({ owner: enclosingClass(element), prop, ...positionOf(opening) });
+      const handled = written.has("oninput") || written.has("onchange");
+      if (prop !== undefined) bags.push({ owner: enclosingClass(element), prop, handled, ...positionOf(opening) });
     }
 
     // `type="checkbox"` or `type={"checkbox"}`.
@@ -318,5 +326,16 @@ export function formTableFor(sources: readonly ts.SourceFile[], resolve: Resolve
   };
   for (const file of sources) secondPass(file);
 
-  return { fields, bags, sites, holders };
+  const holdsNothing = (expression: ts.Expression, depth = 0): boolean => {
+    const value = unwrap(expression);
+    if (isNothing(value)) return true;
+    if (!ts.isIdentifier(value) || depth > 8) return false;
+    const declared = resolve(value)?.declarations?.[0];
+    if (declared === undefined || !ts.isVariableDeclaration(declared) || declared.initializer === undefined)
+      return false;
+    if ((ts.getCombinedNodeFlags(declared) & ts.NodeFlags.Const) === 0) return false;
+    return holdsNothing(declared.initializer, depth + 1);
+  };
+
+  return { holdsNothing, fields, bags, sites, holders };
 }

@@ -1,5 +1,4 @@
 import ts from "typescript";
-import { isNothing } from "./element";
 import { unwrap } from "./follow-value";
 import { FORM_ATTRIBUTES, propRead, type ComponentSite } from "./formTable";
 import type { ProjectRule } from "./rule";
@@ -50,7 +49,8 @@ const FORM_KEYS = new Set(["name", "value", "checked", "oninput", "onchange", "o
  * those props. A spread of a prop on a field, `{...this.props.attrs}` — the usual way to let a caller
  * overwrite a default — is checked at every use, inside a form or not: each hands it as an object
  * written there, sets none of the form's attributes to nothing, and hands no `value` (`checked`)
- * without an `oninput` or `onchange` beside it.
+ * without an `oninput` or `onchange` beside it, unless the field writes its own by name. A shorthand,
+ * `{ oninput }`, is followed to the `const` it names.
  *
  * Reported as well, since a form this cannot recognise is a form whose fields this cannot check: a
  * component that holds a `Form` and renders no `<form onsubmit={this.X.submit}>` for it, a hook that
@@ -99,7 +99,7 @@ export const formFieldWithoutWhatTheFormNeeds = {
   },
 
   read(project) {
-    const { fields, bags, sites, holders } = project.forms;
+    const { fields, bags, sites, holders, holdsNothing } = project.forms;
     const found: FormFieldWithoutWhatTheFormNeedsIssue[] = [];
 
     for (const holder of holders) {
@@ -129,16 +129,17 @@ export const formFieldWithoutWhatTheFormNeeds = {
     }
 
     // What the fields inside a form need from the components that write them.
-    const queue: { owner: ts.ClassLikeDeclaration; name: string; bag: boolean }[] = [];
+    // `handled`: for a spread, whether the field writes its own handler — then a `value` in it has one.
+    const queue: { owner: ts.ClassLikeDeclaration; name: string; bag: boolean; handled: boolean }[] = [];
     const seen = new Set<string>();
     const ids = new Map<ts.ClassLikeDeclaration, number>();
-    const need = (owner: ts.ClassLikeDeclaration | undefined, name: string, bag: boolean) => {
+    const need = (owner: ts.ClassLikeDeclaration | undefined, name: string, bag: boolean, handled = false) => {
       if (owner === undefined) return;
       if (!ids.has(owner)) ids.set(owner, ids.size);
-      const key = `${ids.get(owner)}|${name}|${bag}`;
+      const key = `${ids.get(owner)}|${name}|${bag}|${handled}`;
       if (seen.has(key)) return;
       seen.add(key);
-      queue.push({ owner, name, bag });
+      queue.push({ owner, name, bag, handled });
     };
 
     for (const field of fields) {
@@ -158,10 +159,10 @@ export const formFieldWithoutWhatTheFormNeeds = {
       }
     }
     // A spread of props on a field, anywhere: what each use hands for it is read there.
-    for (const bag of bags) need(bag.owner, bag.prop, true);
+    for (const bag of bags) need(bag.owner, bag.prop, true, bag.handled);
 
     for (let next = queue.shift(); next !== undefined; next = queue.shift()) {
-      const { owner, name, bag } = next;
+      const { owner, name, bag, handled } = next;
       for (const site of sites) {
         // What a field needs from a form is asked inside one; what a spread on it carries, everywhere.
         if (site.target !== owner || (!bag && !inContext(site.owner, site.inForm))) continue;
@@ -173,14 +174,15 @@ export const formFieldWithoutWhatTheFormNeeds = {
         if (handed === undefined) continue;
         const prop = propRead(handed);
         if (prop !== undefined) {
-          need(site.owner, prop, bag);
+          need(site.owner, prop, bag, handled);
           continue;
         }
         if (!bag) {
-          if (isNothing(handed)) found.push({ kind: "not-passed", component: site.tag, detail: name, ...where(site) });
+          if (holdsNothing(handed))
+            found.push({ kind: "not-passed", component: site.tag, detail: name, ...where(site) });
           continue;
         }
-        readBag(handed, site, name, found);
+        readBag(handed, site, name, handled, holdsNothing, found);
       }
     }
 
@@ -193,6 +195,8 @@ function readBag(
   handed: ts.Expression,
   site: ComponentSite,
   name: string,
+  handled: boolean,
+  holdsNothing: (expression: ts.Expression) => boolean,
   found: FormFieldWithoutWhatTheFormNeedsIssue[],
 ): void {
   const written = unwrap(handed);
@@ -210,7 +214,9 @@ function readBag(
       found.push({ kind: "bag-unreadable", component: site.tag, detail: name, ...where(site) });
       return;
     }
-    if (FORM_KEYS.has(key) && ts.isPropertyAssignment(property) && isNothing(property.initializer)) {
+    // `{ oninput }` is `{ oninput: oninput }`, and the name is followed to what it holds.
+    const held = ts.isPropertyAssignment(property) ? property.initializer : property.name;
+    if (FORM_KEYS.has(key) && holdsNothing(held)) {
       found.push({ kind: "bag-overrides", component: site.tag, detail: `${name}.${key}`, ...where(site) });
     }
   }
@@ -219,7 +225,7 @@ function readBag(
       p.name !== undefined && (ts.isIdentifier(p.name) || ts.isStringLiteral(p.name)) ? p.name.text : "",
     ),
   );
-  if ((keys.has("value") || keys.has("checked")) && !keys.has("oninput") && !keys.has("onchange")) {
+  if (!handled && (keys.has("value") || keys.has("checked")) && !keys.has("oninput") && !keys.has("onchange")) {
     found.push({ kind: "bag-without-a-handler", component: site.tag, detail: name, ...where(site) });
   }
 }

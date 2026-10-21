@@ -9,6 +9,8 @@ import {
   configured,
   frozen,
   loose,
+  handsOnAnArrow,
+  mappedWithAnArrow,
   max20,
   maxLength,
   phoneMask,
@@ -54,6 +56,8 @@ class Fields extends Component<{ transform: (next: string, prev: string) => stri
         <input aria-label="blocked set" value={value} oninput={this.type} transform={noBlocked} />
         <input aria-label="plain config" value={value} oninput={this.type} transform={configured} />
         <input aria-label="loose factory" value={value} oninput={this.type} transform={loose} />
+        <input aria-label="const arrow handed on" value={value} oninput={this.type} transform={handsOnAnArrow} />
+        <input aria-label="factory handed a function" value={value} oninput={this.type} transform={mappedWithAnArrow} />
         <input aria-label="via helper" value={value} oninput={this.type} transform={viaHelper} />
         <input aria-label="hands on" value={value} oninput={this.type} transform={handsOn} />
         <input aria-label="marks input" value={value} oninput={this.type} transform={marks} />

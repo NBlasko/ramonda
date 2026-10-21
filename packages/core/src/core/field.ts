@@ -310,9 +310,19 @@ export function answerEdit(control: FieldControl, event: Event): void {
   }
 
   // Firefox's `input` after a composition, with the word the handler was handed or what a refusal left.
+  // Only Firefox sends it, as `insertCompositionText`; Chromium sends nothing, so whatever comes next
+  // clears the slot, and a real edit that leaves the same text is never taken for it.
   const handed = state.handedOver;
   state.handedOver = undefined;
-  if (event.type === "input" && handed !== undefined && field !== null && field.value === handed) return;
+  if (
+    event.type === "input" &&
+    (event as InputEvent).inputType === "insertCompositionText" &&
+    handed !== undefined &&
+    field !== null &&
+    field.value === handed
+  ) {
+    return;
+  }
 
   if (control.pick && event.type === "change" && state.picked) {
     state.picked = false;
@@ -392,12 +402,19 @@ function isRadio(input: HTMLInputElement): boolean {
   return input.type === "radio";
 }
 
-/** The radios of `input`'s group: the same `name` in the same form, or in the same root without one. */
+/**
+ * The radios of `input`'s group: the same `name` in the same form — its `elements`, which hold a radio
+ * tied to it by `form="id"` from outside the element too — or in the same root without one.
+ */
 function groupOf(input: HTMLInputElement): HTMLInputElement[] {
   if (input.name === "") return [input];
-  const root = input.form ?? (input.getRootNode() as ParentNode);
-  return Array.from(root.querySelectorAll<HTMLInputElement>('input[type="radio"]')).filter(
-    (other) => other.name === input.name && other.form === input.form,
+  const candidates = input.form
+    ? Array.from(input.form.elements)
+    : Array.from((input.getRootNode() as ParentNode).querySelectorAll("input"));
+  // By tag, not `instanceof`: a field in an iframe is another window's `HTMLInputElement`.
+  return (candidates as HTMLInputElement[]).filter(
+    (other) =>
+      other.tagName === "INPUT" && other.type === "radio" && other.name === input.name && other.form === input.form,
   );
 }
 

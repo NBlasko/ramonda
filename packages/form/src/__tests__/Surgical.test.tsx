@@ -505,3 +505,50 @@ describe("a watcher hears only about what it reads", () => {
     }
   });
 });
+
+/**
+ * `invalid` is held back as `error` is — until the field is touched or edited — so a blur that only
+ * marks the field changes what it answers, and a component reading `invalid` alone hears it.
+ */
+describe("a component that reads only `invalid`", () => {
+  class Flagged extends Component<{ of: FieldNode<string> }> {
+    f = this.use(Field<string>, () => ({ of: this.props.of }));
+    render(): RamondaNode {
+      return (
+        <input
+          id="flagged"
+          aria-label="Flagged"
+          name={this.f.name}
+          value={this.f.inputValue}
+          oninput={this.f.oninput}
+          onblur={this.f.onblur}
+          aria-invalid={this.f.invalid}
+        />
+      );
+    }
+  }
+
+  test("is told when a blur lets its message through", async () => {
+    class Page extends Component {
+      private f = this.use(Form<typeof schema>, () => ({ schema, defaultValues: EMPTY, onSubmit: () => {} }));
+      render(): RamondaNode {
+        return (
+          <form onsubmit={this.f.submit}>
+            <Flagged of={this.f.fields.a} />
+          </form>
+        );
+      }
+    }
+    const { container, unmount } = render((<Page />) as never);
+    try {
+      const field = container.querySelector("#flagged") as HTMLInputElement;
+      // `a` is empty from the start, so its message is there and held back: nothing has touched it.
+      const before = field.getAttribute("aria-invalid");
+      await act(async () => field.dispatchEvent(new FocusEvent("blur")));
+
+      expect({ before, after: field.getAttribute("aria-invalid") }).toEqual({ before: "false", after: "true" });
+    } finally {
+      unmount();
+    }
+  });
+});

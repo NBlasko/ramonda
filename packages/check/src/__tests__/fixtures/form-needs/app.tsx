@@ -6,6 +6,7 @@ import { Fancy } from "./ui";
 declare const value: string;
 declare const on: boolean;
 declare const bag: Record<string, unknown>;
+const oninput = undefined;
 /** A class with no render to read, written in this very file. */
 declare class Ambient extends Component {}
 
@@ -47,6 +48,20 @@ class DefaultsInput extends Component<{ field: any; attrs?: Record<string, unkno
         {...this.props.attrs}
       />
     );
+  }
+}
+
+/** Writes nothing of its own: whatever reaches the field is in the spread. */
+class BareInput extends Component<{ attrs?: Record<string, unknown> }> {
+  render() {
+    return <input aria-label="bare" {...this.props.attrs} />;
+  }
+}
+
+/** Writes its handler by name and lets a caller spread the rest, a value included. */
+class HandledInput extends Component<{ oninput: (event: Event) => void; attrs?: Record<string, unknown> }> {
+  render() {
+    return <input aria-label="handled" oninput={this.props.oninput} {...this.props.attrs} />;
   }
 }
 
@@ -151,8 +166,12 @@ class Loose extends Component {
         <input aria-label="loose" value={value} oninput={this.type} />
         <StyledInput value={value} oninput={this.type} />
         {/* ✗ what a spread carries is read everywhere: a value with no handler, and a bag unseen */}
-        <DefaultsInput field={this.type} attrs={{ value: "fixed" }} />
+        <BareInput attrs={{ value: "fixed" }} />
         <DefaultsInput field={this.type} attrs={bag} />
+        {/* ✓ a value in the spread, and the field's own handler written by name */}
+        <HandledInput oninput={this.type} attrs={{ value: "x" }} />
+        {/* ✗ a shorthand holding nothing overrides the form's handler as surely as `oninput: undefined` */}
+        <DefaultsInput field={this.type} attrs={{ oninput }} />
         {/* ✓ a value with its handler beside it */}
         <DefaultsInput field={this.type} attrs={{ value: "x", oninput: this.type }} />
       </div>

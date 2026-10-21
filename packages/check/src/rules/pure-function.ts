@@ -239,15 +239,17 @@ export function whyImpure(
       const declared = resolve(node)?.declarations?.[0];
       if (declared === undefined || fromThePlatform(declared)) {
         if (!PURE_GLOBALS.has(node.text)) return fail(node, `it reads \`${node.text}\`, which the page owns`);
-      } else if (!unchanging(declared)) {
-        // A function named as a value — `map(toDigit)` — runs too, so it is read like one that is called.
-        const reached =
-          ts.isCallExpression(node.parent) && node.parent.expression === node ? undefined : reach(declared, resolve);
+      } else if (!isInside(declared, fn)) {
+        // A function named as a value — `map(toDigit)` — runs too, so it is read like one that is called,
+        // wherever it is declared: a `const` holding an arrow is followed as a `function` is. One of
+        // `fn`'s own is part of `fn`'s body, and was read with it.
+        const callee = ts.isCallExpression(node.parent) && node.parent.expression === node;
+        const reached = callee ? undefined : reach(declared, resolve);
         const named = reached?.fn;
         if (named !== undefined && !named.getSourceFile().isDeclarationFile && named.body !== undefined) {
           const inner = whyImpure(named, resolve, depth + 1, seen, reached?.fixedFactory);
           if (inner !== undefined) return fail(node, `it hands on \`${node.text}\`, and ${inner.why}`);
-        } else if (!ts.isFunctionLike(declared) && !isImportOfAFunction(declared)) {
+        } else if (!unchanging(declared) && !ts.isFunctionLike(declared) && !isImportOfAFunction(declared)) {
           return fail(node, `it reads \`${node.text}\`, which may change`);
         }
       }
@@ -365,9 +367,10 @@ export function reach(declaration: ts.Node, resolve: Resolver): Reached | undefi
 }
 
 /**
- * A value nothing can change: a literal — string, number, `true`, `null`, a regular expression — a
- * function, `Object.freeze` of an array or object of fixed values, or a `const` holding one. A `Set`, a
- * `Map` or a plain object held in a `const` is not: whatever else holds it may change it.
+ * A value nothing can change: a literal — string, number, `true`, `null`, a regular expression —
+ * `Object.freeze` of an array or object of fixed values, or a `const` holding one. A `Set`, a `Map` or a
+ * plain object held in a `const` is not: whatever else holds it may change it. Nor is a function: what
+ * it does is a question of its own, asked by following it — see `whyImpure`.
  */
 export function isFixed(expression: ts.Expression, resolve: Resolver, depth = 0): boolean {
   if (depth > 8) return false;
@@ -379,9 +382,7 @@ export function isFixed(expression: ts.Expression, resolve: Resolver, depth = 0)
     ts.isRegularExpressionLiteral(value) ||
     value.kind === ts.SyntaxKind.TrueKeyword ||
     value.kind === ts.SyntaxKind.FalseKeyword ||
-    value.kind === ts.SyntaxKind.NullKeyword ||
-    ts.isArrowFunction(value) ||
-    ts.isFunctionExpression(value)
+    value.kind === ts.SyntaxKind.NullKeyword
   ) {
     return true;
   }
@@ -390,7 +391,6 @@ export function isFixed(expression: ts.Expression, resolve: Resolver, depth = 0)
     if (value.text === "undefined" || value.text === "NaN" || value.text === "Infinity") return true;
     const declared = resolve(value)?.declarations?.[0];
     if (declared === undefined) return false;
-    if (ts.isFunctionDeclaration(declared)) return true;
     return (
       ts.isVariableDeclaration(declared) &&
       isConst(declared) &&

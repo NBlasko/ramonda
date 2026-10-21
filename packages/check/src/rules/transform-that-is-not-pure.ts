@@ -51,9 +51,11 @@ function transformOf(
  * imported from — `transform={phoneMask}` from `./masks`, or `max20` made once by `maxLength(20)`.
  *
  * Reported: a function that reads `this`, the page (`document`, `fetch`, the clock, chance), a `let`,
- * or a `const` holding anything but a fixed value — a literal, a regular expression, a function,
- * `Object.freeze` of fixed values; a `Set`, a `Map` or a plain object may be changed by whatever else
- * holds it — or a factory's parameter when the call that made it handed something else; one that writes anything it did not make, or waits; one that calls a function whose body
+ * or a `const` holding anything but a fixed value — a literal, a regular expression, `Object.freeze`
+ * of fixed values; a `Set`, a `Map` or a plain object may be changed by whatever else holds it — or a
+ * factory's parameter when the call that made it handed something else; a function it calls or hands
+ * on that is not pure, wherever it is declared; one that writes anything it did not make, or waits;
+ * one that calls a function whose body
  * cannot be read; a `transform` whose own body cannot be read — handed down as a prop, or from a
  * package's declarations; one made by a call in the markup, a new function every render; and one on a
  * field with no `value`, which has no model to decide against.
