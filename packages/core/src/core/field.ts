@@ -80,9 +80,10 @@ function sameValue(a: FieldValue, b: FieldValue): boolean {
  * so the offset before the edit means what it meant. A rewrite of the same length keeps the caret
  * through `writeValue`; any other rewrite is the app's to place, as `writeValue` explains.
  *
- * Returns whether it refused the pick of a checkbox or a radio: then nothing was picked, and no
- * handler of the field is called. A radio's `value` is the same whether it is on or off, so a handler
- * that read it would write the refused pick into the model.
+ * Returns whether it REFUSED the edit — the edit changed the field and the answer is `prev`. A refused
+ * edit is no edit: the field's `oninput` and `onchange` are not called, for any field. One rule, so a
+ * handler never has to tell a refused edit from a real one — a radio's `value` is the same on or off,
+ * and a handler that read it would write the refused pick into the model.
  */
 export function decideEdit(field: Field, transform: Transform, prev: FieldValue, event: Event): boolean {
   const next = valueOf(field);
@@ -94,19 +95,20 @@ export function decideEdit(field: Field, transform: Transform, prev: FieldValue,
   };
   const kept = transform(next as never, prev as never, input) as FieldValue;
   if (sameValue(kept, next)) return false;
+  const refused = sameValue(kept, prev);
 
   if (isBox(field)) {
     field.checked = Boolean(kept);
-    return Boolean(kept) === prev;
+    return refused;
   }
   if (isMultiple(field)) {
     const wanted = new Set((kept as string[]).map(String));
     for (let i = 0; i < field.options.length; i++) field.options[i].selected = wanted.has(field.options[i].value);
-    return false;
+    return refused;
   }
   if (text === null) {
     field.value = String(kept);
-    return false;
+    return refused;
   }
   const caret = text.selectionStart;
   writeValue(text as unknown as EnhancedHTMLNode, String(kept), false);
@@ -118,7 +120,7 @@ export function decideEdit(field: Field, transform: Transform, prev: FieldValue,
     const back = Math.max(0, Math.min(prev.length, caret - moved));
     text.setSelectionRange(back, back);
   }
-  return false;
+  return refused;
 }
 
 /** What one controlled field is in the middle of: a composition, or a pick. */
@@ -130,7 +132,10 @@ interface FieldState {
   /** What the model held when the composition began, and whether it has left it since. */
   composedFrom?: unknown;
   composedMoved: boolean;
-  /** The word the field's handler was handed when its composition ended — see "When it ends" on `answerEdit`. */
+  /**
+   * What the field held when its composition ended — the word its handler was handed, or what a
+   * refusal left — so Firefox's `input` after it reaches no handler. See "When it ends" on `answerEdit`.
+   */
   handedOver?: string;
   /** A pick was answered on its `input`, so its `change` has nothing left to do. */
   picked: boolean;
@@ -205,7 +210,7 @@ function show(control: FieldControl): void {
   control.settle();
 }
 
-/** Decides the edit; whether it refused a box's pick, which then reaches no handler — see `decideEdit`. */
+/** Decides the edit; whether it refused it, which then reaches no handler of the field — see `decideEdit`. */
 function decide(control: FieldControl, event: Event): boolean {
   const transform = control.transform();
   const field = event.currentTarget as Field | null;
@@ -216,8 +221,9 @@ function decide(control: FieldControl, event: Event): boolean {
  * The field's `transform`, its own handler, and then the model — all in the field's own listener.
  *
  * A field with a `value` (or `checked`) shows what the model says, and its own handler is what
- * writes the model. So, on every edit and in this order: the edit is decided (`decideEdit`); the
- * handler the app wrote on the field runs, as a listener would, with the element as `this`; the
+ * writes the model. So, on every edit and in this order: the edit is decided (`decideEdit`), and an
+ * edit it refused ends there, with the field showing the model; the handler the app wrote on the
+ * field runs, as a listener would, with the element as `this`; the
  * renders it caused run at once; and the field is made to show the model (`show`). All before the
  * event bubbles to anything around the field — a form's `oninput`, a library listening on the
  * document — and before the browser draws. So every reader reads the same value, and a handler that
@@ -269,12 +275,15 @@ export function answerEdit(control: FieldControl, event: Event): void {
   if (event.type === "compositionend") {
     state.composing = false;
     state.blurred = false;
-    decide(control, event);
+    const refused = decide(control, event);
     try {
       control.own(event.type, event);
       // What the handler took during the composition has been rendered by now, so the model says it.
       drainSync();
-      if (field !== null && lacksTheWord(control, state)) {
+      // A word the transform refused is no word: it is not handed over, and Firefox's `input` after
+      // it, carrying the field as the refusal left it, reaches no handler either.
+      if (refused && field !== null) state.handedOver = field.value;
+      else if (field !== null && lacksTheWord(control, state)) {
         state.handedOver = field.value;
         control.own("input", event);
       }
@@ -300,7 +309,7 @@ export function answerEdit(control: FieldControl, event: Event): void {
     return;
   }
 
-  // Firefox's `input` after a composition, with the word the handler was already handed.
+  // Firefox's `input` after a composition, with the word the handler was handed or what a refusal left.
   const handed = state.handedOver;
   state.handedOver = undefined;
   if (event.type === "input" && handed !== undefined && field !== null && field.value === handed) return;
@@ -311,7 +320,7 @@ export function answerEdit(control: FieldControl, event: Event): void {
   }
 
   if (decide(control, event)) {
-    // A refused pick is no pick: its `change`, coming next, finds nothing to do either.
+    // A refused edit is no edit: a pick's `change`, coming next, finds nothing to do either.
     if (control.pick && event.type === "input") state.picked = true;
     show(control);
     return;

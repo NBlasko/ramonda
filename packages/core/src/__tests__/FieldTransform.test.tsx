@@ -17,7 +17,7 @@ describe("a field's transform decides the edit before anyone reads it", () => {
     field.dispatchEvent(new InputEvent("input", { bubbles: true, inputType }));
   }
 
-  test("a refused keystroke is gone before the handler reads the field", () => {
+  test("a refused keystroke never reaches the handler, and is gone from the field", () => {
     const read: string[] = [];
     class Short extends Component {
       @state text = "abc";
@@ -37,7 +37,7 @@ describe("a field's transform decides the edit before anyone reads it", () => {
       const field = app.container.querySelector("#t") as HTMLTextAreaElement;
       edit(field, "abcd");
 
-      expect({ read, shown: field.value }).toEqual({ read: ["abc"], shown: "abc" });
+      expect({ read, shown: field.value }).toEqual({ read: [], shown: "abc" });
     });
   });
 
@@ -138,8 +138,10 @@ describe("a field's transform decides the edit before anyone reads it", () => {
     async (browser) => {
       class Short extends Component {
         @state text = "abc";
+        taken: string[] = [];
         typed(event: EventOn<HTMLTextAreaElement>) {
           if ((event as unknown as InputEvent).isComposing) return;
+          this.taken.push(event.currentTarget.value);
           this.text = event.currentTarget.value;
         }
         max3(next: string, prev: string): string {
@@ -154,12 +156,16 @@ describe("a field's transform decides the edit before anyone reads it", () => {
       const field = app.container.querySelector("#t") as HTMLTextAreaElement;
       const during = compose(field, "日本", browser);
 
-      // The word is whole while it is typed, and refused once it is.
-      expect({ during, shown: field.value }).toEqual({ during: "abc日本", shown: "abc" });
+      // The word is whole while it is typed, and refused once it is — and a refused word is not handed over.
+      expect({ during, shown: field.value, taken: app.instance.taken }).toEqual({
+        during: "abc日本",
+        shown: "abc",
+        taken: [],
+      });
     },
   );
 
-  test("a refused pick is gone before the handler reads the select", async () => {
+  test("a refused pick never reaches the select's handler, and is gone from the select", async () => {
     const read: string[] = [];
     class Shop extends Component {
       @state size = "m";
@@ -187,13 +193,15 @@ describe("a field's transform decides the edit before anyone reads it", () => {
     select.dispatchEvent(new Event("input", { bubbles: true }));
     select.dispatchEvent(new Event("change", { bubbles: true }));
 
-    expect({ read, shown: select.value }).toEqual({ read: ["m"], shown: "m" });
+    expect({ read, shown: select.value }).toEqual({ read: [], shown: "m" });
   });
 
   test("a multiple select is decided as the list of chosen values", async () => {
     class Tags extends Component {
       @state tags = ["a"];
+      picks = 0;
       pick(event: EventOn<HTMLSelectElement>) {
+        this.picks++;
         this.tags = Array.from(event.currentTarget.selectedOptions, (option) => option.value);
       }
       atMostTwo(next: string[], prev: string[]): string[] {
@@ -216,7 +224,12 @@ describe("a field's transform decides the edit before anyone reads it", () => {
     select.dispatchEvent(new Event("input", { bubbles: true }));
     select.dispatchEvent(new Event("change", { bubbles: true }));
 
-    expect(Array.from(select.selectedOptions, (option) => option.value)).toEqual(["a"]);
+    expect({ chosen: Array.from(select.selectedOptions, (option) => option.value), picks: app.instance.picks }).toEqual(
+      {
+        chosen: ["a"],
+        picks: 0,
+      },
+    );
   });
 });
 
@@ -247,13 +260,13 @@ describe("an input's transform decides the edit before anyone reads it", () => {
     }
   }
 
-  test("a refused keystroke is gone before the handler reads the field, whatever the attribute order", async () => {
+  test("a refused keystroke never reaches the handler, whatever the attribute order", async () => {
     const app = await getDOM<Phone>(<Phone />);
     await app.settle();
     const field = app.container.querySelector("#i") as HTMLInputElement;
     edit(field, "064a");
 
-    expect({ read: app.instance.read, shown: field.value }).toEqual({ read: ["064"], shown: "064" });
+    expect({ read: app.instance.read, shown: field.value }).toEqual({ read: [], shown: "064" });
   });
 
   test("a refused keystroke in the middle puts the caret back where it was", async () => {

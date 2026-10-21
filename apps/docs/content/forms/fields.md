@@ -161,8 +161,9 @@ to it.
 A `transform(next, prev, input)` on an `<input>`, a `Select` or a `TextArea` decides each edit before
 the field's handler runs: `next` is what the edit left in the field, `prev` what the model holds, and
 what it returns is what the field keeps. Return `next` to take the edit, `prev` to refuse it, or
-anything else to rewrite it. A refused keystroke is never drawn, and the caret stays where the edit
-found it.
+anything else to rewrite it. A refused edit is no edit: it is never drawn, the caret stays where the
+edit found it, and neither `oninput` nor `onchange` of the field runs — a handler only ever hears an
+edit the field keeps.
 
 ```tsx
 import { Component, state, type EventOn } from "@ramonda/core";
@@ -186,9 +187,8 @@ class Phone extends Component {
 
 `input` says what the edit was — `inputType` (`insertText`, `deleteContentBackward`, `insertFromPaste`)
 and the caret's `selectionStart` and `selectionEnd` — which is what a mask needs. On a checkbox or a
-radio, `next` and `prev` are whether it is checked; a refused pick is no pick, so neither `oninput`
-nor `onchange` of the field runs. During an input method's composition the word is decided once it
-ends.
+radio, `next` and `prev` are whether it is checked. During an input method's composition the word is
+decided once it ends.
 
 A `transform` is pure — its answer depends on what it is given and on fixed values, and it changes
 nothing — and [`transform-that-is-not-pure`](/reference/check) proves it from the source, following the
