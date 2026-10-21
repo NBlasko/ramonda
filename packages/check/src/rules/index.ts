@@ -47,6 +47,7 @@ import { fragmentLinkToNowhere } from "./fragment-link-to-nowhere";
 import { referenceToAnIdThatIsNotThere } from "./reference-to-an-id-that-is-not-there";
 import { controlWithNoLabel } from "./control-with-no-label";
 import { formFieldWithoutWhatTheFormNeeds } from "./form-field-without-what-the-form-needs";
+import { transformThatIsNotPure } from "./transform-that-is-not-pure";
 import { namedOnlyByAPlaceholder } from "./named-only-by-a-placeholder";
 import { ariaHiddenOnFocusable } from "./aria-hidden-on-focusable";
 import { presentationRoleOnFocusable } from "./presentation-role-on-focusable";
@@ -190,6 +191,7 @@ export {
   formFieldWithoutWhatTheFormNeeds,
   type FormFieldWithoutWhatTheFormNeedsIssue,
 } from "./form-field-without-what-the-form-needs";
+export { transformThatIsNotPure, type TransformThatIsNotPureIssue } from "./transform-that-is-not-pure";
 export { namedOnlyByAPlaceholder, type NamedOnlyByAPlaceholderIssue } from "./named-only-by-a-placeholder";
 export { couldExist, idTableFor, NAMES_AN_ID } from "./idTable";
 export { ariaHiddenOnFocusable, type AriaHiddenOnFocusableIssue } from "./aria-hidden-on-focusable";
@@ -353,6 +355,7 @@ export const ELEMENT_RULES = [
   elementHtmlRemoved,
   optionThatCannotChoose,
   fieldTheUserCannotChange,
+  transformThatIsNotPure,
   ariaValue,
   ariaWithNoSubject,
   emptyHeadingOrLink,

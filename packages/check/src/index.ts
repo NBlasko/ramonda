@@ -23,6 +23,7 @@ export type {
   ContextConsumedAboveItsProviderIssue,
   ControlWithNoLabelIssue,
   FormFieldWithoutWhatTheFormNeedsIssue,
+  TransformThatIsNotPureIssue,
   ComputeTakesNoArgumentsIssue,
   ContextIssue,
   DecoratorThatAddsNothingIssue,

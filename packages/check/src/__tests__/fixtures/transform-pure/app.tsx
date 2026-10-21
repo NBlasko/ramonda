@@ -1,0 +1,57 @@
+import { Component, Select, TextArea } from "@ramonda/core";
+import { counted, fetched, handsOn, marks, viaHelper, max20, maxLength, phoneMask, rebinds, stamped } from "./masks";
+import { fromAPackage } from "./lib";
+
+declare const value: string;
+
+class Fields extends Component<{ transform: (next: string, prev: string) => string }> {
+  limit = 3;
+  type(_event: Event) {}
+  upper(next: string): string {
+    return next.toUpperCase();
+  }
+  capped(next: string, prev: string): string {
+    return next.length <= this.limit ? next : prev;
+  }
+  logged(next: string): string {
+    console.log(next);
+    return next;
+  }
+  render() {
+    return (
+      <form>
+        {/* ✓ pure */}
+        <input aria-label="method" value={value} oninput={this.type} transform={this.upper} />
+        <input aria-label="imported" value={value} oninput={this.type} transform={phoneMask} />
+        <input aria-label="factory const" value={value} oninput={this.type} transform={max20} />
+        <input aria-label="rebinds" value={value} oninput={this.type} transform={rebinds} />
+        <TextArea aria-label="arrow" value={value} oninput={this.type} transform={(next: string) => next.trim()} />
+        <Select aria-label="select" value={value} onchange={this.type} transform={this.upper}>
+          <option value="a">a</option>
+        </Select>
+        {/* ✗ impure */}
+        <input aria-label="reads this" value={value} oninput={this.type} transform={this.capped} />
+        <input aria-label="logs" value={value} oninput={this.type} transform={this.logged} />
+        <input aria-label="counts" value={value} oninput={this.type} transform={counted} />
+        <input aria-label="clock" value={value} oninput={this.type} transform={stamped} />
+        <input aria-label="network" value={value} oninput={this.type} transform={fetched} />
+        <input aria-label="via helper" value={value} oninput={this.type} transform={viaHelper} />
+        <input aria-label="hands on" value={value} oninput={this.type} transform={handsOn} />
+        <input aria-label="marks input" value={value} oninput={this.type} transform={marks} />
+        {/* ✗ unreadable */}
+        <input aria-label="from a package" value={value} oninput={this.type} transform={fromAPackage} />
+        <input aria-label="from props" value={value} oninput={this.type} transform={this.props.transform} />
+        {/* ✗ built-in-render */}
+        <input aria-label="made in render" value={value} oninput={this.type} transform={maxLength(20)} />
+        {/* ✗ uncontrolled */}
+        <input aria-label="uncontrolled" defaultValue="x" transform={this.upper} />
+        {/* ✓ an SVG transform is an attribute, and not this rule's */}
+        <svg aria-hidden="true">
+          <g transform="translate(10, 0)" />
+        </svg>
+      </form>
+    );
+  }
+}
+
+export { Fields };

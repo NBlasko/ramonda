@@ -1,0 +1,114 @@
+import ts from "typescript";
+import { positionOf } from "../syntax";
+import { coreElementTag } from "./coreElements";
+import { isNothing, openingOf } from "./element";
+import { unwrap } from "./follow-value";
+import { functionOf, whyImpure, type FunctionBody } from "./pure-function";
+import type { ElementContext, ElementRule } from "./rule";
+
+export interface TransformThatIsNotPureIssue {
+  component: "Select" | "TextArea" | "input";
+  /**
+   * `impure` — the function reads or changes something besides its parameters and constants;
+   * `unreadable` — its body cannot be read: a prop, a package's declaration, a value this cannot name;
+   * `built-in-render` — a call in the markup makes a new function on every render;
+   * `uncontrolled` — the field has no `value` (`checked`), so there is no model for it to decide against.
+   */
+  kind: "impure" | "unreadable" | "built-in-render" | "uncontrolled";
+  /** Why, for `impure`; what was written, otherwise. */
+  detail: string;
+  file: string;
+  line: number;
+  column: number;
+}
+
+/** The function a `transform` attribute names, or why there is none this can read. */
+function transformOf(
+  value: ts.Expression | undefined,
+  resolve: ElementContext["resolve"],
+): FunctionBody | "unreadable" | "built-in-render" {
+  if (value === undefined) return "unreadable";
+  const written = unwrap(value);
+  if (ts.isArrowFunction(written) || ts.isFunctionExpression(written)) return written;
+  if (ts.isCallExpression(written)) return "built-in-render";
+  const name = ts.isPropertyAccessExpression(written) ? written.name : ts.isIdentifier(written) ? written : undefined;
+  if (name === undefined) return "unreadable";
+  const declared = resolve(name)?.declarations?.[0];
+  const fn = declared === undefined ? undefined : functionOf(declared, resolve);
+  if (fn === undefined || fn.body === undefined || fn.getSourceFile().isDeclarationFile) return "unreadable";
+  return fn;
+}
+
+/**
+ * A field's `transform` that is not a pure function this can read.
+ *
+ * `transform(next, prev, input)` decides an edit before any handler reads it, and it is the one place
+ * a field's value is refused or rewritten — so what it returns has to depend on what it is given and
+ * on constants, and it has to change nothing. That is provable from source, and this proves it: the
+ * function is read, and so is every function it calls that is written in the project, wherever it is
+ * imported from — `transform={phoneMask}` from `./masks`, or `max20` made once by `maxLength(20)`.
+ *
+ * Reported: a function that reads `this`, the page (`document`, `fetch`, the clock, chance) or a
+ * `let`; one that writes anything it did not make, or waits; one that calls a function whose body
+ * cannot be read; a `transform` whose own body cannot be read — handed down as a prop, or from a
+ * package's declarations; one made by a call in the markup, a new function every render; and one on a
+ * field with no `value`, which has no model to decide against.
+ */
+export const transformThatIsNotPure = {
+  id: "transform-that-is-not-pure",
+
+  report: {
+    severity: "error",
+    reportedWhen:
+      "a field's `transform` reads or changes anything besides its parameters and constants, cannot be read, " +
+      "is made by a call in the markup, or sits on a field with no `value`",
+    heading: (found) => `${found.length} transform(s) that are not a pure function this can read:`,
+    lines: (issue) => [
+      `  ${issue.file}:${issue.line}:${issue.column}`,
+      `    <${issue.component} transform> ${
+        {
+          impure: `is not pure: ${issue.detail}.`,
+          unreadable: `is \`${issue.detail}\`, whose body cannot be read.`,
+          "built-in-render": `is \`${issue.detail}\`, a new function made on every render.`,
+          uncontrolled: "is on a field with no `value`, so there is no model for it to decide against.",
+        }[issue.kind]
+      }`,
+    ],
+    advice:
+      "A transform depends on what it is given, and changes nothing:\n\n" +
+      "```tsx\n" +
+      "onlyDigits(next: string, prev: string): string {\n" +
+      "  return /^\\d*$/.test(next) ? next : prev;\n" +
+      "}\n\n" +
+      '<input aria-label="Phone" value={this.phone} oninput={this.typed} transform={this.onlyDigits} />\n' +
+      "```\n\n" +
+      "One made by a factory is made ONCE, at the top of a module — `export const max20 = maxLength(20)` —\n" +
+      "and named in the markup.\n\n",
+  },
+
+  read(element, { resolve, attributes, attr }) {
+    const opening = openingOf(element);
+    const core = coreElementTag(opening.tagName, resolve);
+    const host = ts.isIdentifier(opening.tagName) && opening.tagName.text === "input" ? "input" : undefined;
+    const tag = core ?? host;
+    if (tag !== "select" && tag !== "textarea" && tag !== "input") return [];
+    const transform = attributes.find((attribute) => attribute.name === "transform");
+    if (transform === undefined) return [];
+    const component = tag === "select" ? "Select" : tag === "textarea" ? "TextArea" : "input";
+    const at = positionOf(transform.at);
+
+    const type = tag === "input" ? attr("type")?.toLowerCase() : undefined;
+    const model = attributes.find(
+      (attribute) =>
+        attribute.name === (type === "checkbox" || type === "radio" ? "checked" : "value") &&
+        !(attribute.value !== undefined && isNothing(attribute.value)),
+    );
+    if (model === undefined) return [{ component, kind: "uncontrolled", detail: "", ...at }];
+
+    const fn = transformOf(transform.value, resolve);
+    const written = transform.value?.getText() ?? "transform";
+    if (fn === "unreadable" || fn === "built-in-render") return [{ component, kind: fn, detail: written, ...at }];
+    const impurity = whyImpure(fn, resolve);
+    return impurity === undefined ? [] : [{ component, kind: "impure", detail: impurity.why, ...at }];
+  },
+} as const satisfies ElementRule<TransformThatIsNotPureIssue>;
