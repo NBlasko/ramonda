@@ -580,3 +580,94 @@ describe("a field's own handlers, its defaults and its end", () => {
     },
   );
 });
+
+/** Round 32. */
+describe("what a controlled input shows, past a number's spelling, a rewritten word and a lost one", () => {
+  /** `1.50` is the model's 1.5: the field keeps the half-typed text, on the edit and on a later render. */
+  test("a number field keeps a spelling of the model's number while it is typed", async () => {
+    class Amount extends Component {
+      @state amount = 1.5;
+      @state other = 0;
+      typed(event: EventOn<HTMLInputElement>) {
+        this.amount = Number(event.currentTarget.value);
+      }
+      render() {
+        return (
+          <input
+            id="n"
+            type="number"
+            aria-label="Amount"
+            className={`o${this.other}`}
+            value={this.amount}
+            oninput={this.typed}
+          />
+        );
+      }
+    }
+    const app = await getDOM<Amount>(<Amount />);
+    await app.settle();
+    const field = app.container.querySelector("#n") as HTMLInputElement;
+    typeInto(field, "1.50");
+    await app.settle();
+    const afterEdit = field.value;
+    app.instance.other++;
+    await app.settle();
+
+    expect({ afterEdit, afterRender: field.value }).toEqual({ afterEdit: "1.50", afterRender: "1.50" });
+  });
+
+  /** Firefox's `input` after the word carries what the field shows — the handler's rewrite of it. */
+  test("a word the handler rewrites is still heard once, with Firefox's input after it", async () => {
+    class Shouting extends Component {
+      @state text = "";
+      heard: string[] = [];
+      typed(event: EventOn<HTMLInputElement>) {
+        this.heard.push(event.currentTarget.value);
+        this.text = event.currentTarget.value.toUpperCase();
+      }
+      render() {
+        return <input id="i" aria-label="Shouting" value={this.text} oninput={this.typed} />;
+      }
+    }
+    const app = await getDOM<Shouting>(<Shouting />);
+    await app.settle();
+    const field = app.container.querySelector("#i") as HTMLInputElement;
+    field.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+    field.value = "é";
+    field.dispatchEvent(new InputEvent("input", { bubbles: true, isComposing: true, data: "é" }));
+    field.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "é" }));
+    field.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertCompositionText", data: "é" }));
+    await app.settle();
+
+    expect({ heard: app.instance.heard, shown: field.value }).toEqual({ heard: ["é"], shown: "É" });
+  });
+
+  /** A browser that sends no `compositionend` after a blur: the field still follows the app's model. */
+  test("after a blur in the middle of a word, a model the app clears is shown", async () => {
+    class Search extends Component {
+      @state text = "";
+      typed(event: EventOn<HTMLInputElement>) {
+        this.text = event.currentTarget.value;
+      }
+      clear() {
+        this.text = "";
+      }
+      render() {
+        return <input id="i" aria-label="Search" value={this.text} oninput={this.typed} />;
+      }
+    }
+    const app = await getDOM<Search>(<Search />);
+    await app.settle();
+    const field = app.container.querySelector("#i") as HTMLInputElement;
+    typeInto(field, "a");
+    await app.settle();
+    field.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+    field.value = "aに";
+    field.dispatchEvent(new InputEvent("input", { bubbles: true, isComposing: true, data: "に" }));
+    field.dispatchEvent(new FocusEvent("blur"));
+    app.instance.clear();
+    await app.settle();
+
+    expect({ model: app.instance.text, shown: field.value }).toEqual({ model: "", shown: "" });
+  });
+});

@@ -167,6 +167,8 @@ class Loose extends Component {
         <StyledInput value={value} oninput={this.type} />
         {/* ✗ what a spread carries is read everywhere: a value with no handler, and a bag unseen */}
         <BareInput attrs={{ value: "fixed" }} />
+        {/* ✗ a text field's change comes on blur: `onchange` alone is no handler beside its value */}
+        <BareInput attrs={{ value: "x", onchange: this.type }} />
         <DefaultsInput field={this.type} attrs={bag} />
         {/* ✓ a value in the spread, and the field's own handler written by name */}
         <HandledInput oninput={this.type} attrs={{ value: "x" }} />

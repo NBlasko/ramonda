@@ -46,6 +46,7 @@ describe("a field the user cannot change", () => {
       [lineOf('aria-label="an app\'s own constraints"'), "input", "unknown-spread"],
       [lineOf('aria-label="constraints and no handler"'), "input", "no-handler"],
       [lineOf('aria-label="own field spread"'), "input", "unknown-spread"],
+      [lineOf('aria-label="a spread and a default"'), "input", "unknown-spread"],
     ]);
   });
 

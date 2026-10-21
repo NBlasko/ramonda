@@ -94,3 +94,7 @@ export function mapped(each: (c: string) => string) {
 }
 /** Not pure: the factory was handed a function, which is not a fixed value. */
 export const mappedWithAnArrow = mapped((c) => c);
+
+const GLOBAL_DIGITS = /^\d*$/g;
+/** Not pure: a `/g` expression keeps `lastIndex` from one call to the next. */
+export const globalDigits = (next: string, prev: string) => (GLOBAL_DIGITS.test(next) ? next : prev);

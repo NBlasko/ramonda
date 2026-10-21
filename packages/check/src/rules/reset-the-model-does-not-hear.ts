@@ -6,6 +6,7 @@ import { unwrap } from "./follow-value";
 import { enclosingElement } from "./html";
 import type { JsxElementLike, ModuleRule, Resolver } from "./rule";
 import { fromThePlatform } from "./pure-function";
+import { NOT_EDITED } from "./formTable";
 
 export interface ResetTheModelDoesNotHearIssue {
   /**
@@ -46,6 +47,8 @@ function controlledField(element: JsxElementLike, resolve: Resolver): boolean {
   const tag = tagOf(element) ?? coreElementTag(openingOf(element).tagName, resolve);
   if (tag !== "input" && tag !== "select" && tag !== "textarea") return false;
   const type = attributeOf(element, "type")?.initializer;
+  // A reset, a submit or a hidden value is not edited, and a reset does not move it.
+  if (type !== undefined && ts.isStringLiteral(type) && NOT_EDITED.has(type.text.toLowerCase())) return false;
   const box = type !== undefined && ts.isStringLiteral(type) && (type.text === "checkbox" || type.text === "radio");
   const model = attributeOf(element, box ? "checked" : "value");
   if (model === undefined) return false;

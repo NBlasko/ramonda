@@ -49,6 +49,13 @@ class Resets extends Component<{ children?: unknown }> {
           {value ? <span>yes</span> : null}
           <button type="reset">ok reset</button>
         </form>
+        {/* ✓ a reset button, a submit and a hidden value: none of them is edited */}
+        <form>
+          <input aria-label="q" name="q" defaultValue="" />
+          <input type="hidden" name="csrf" value={value} />
+          <input type="submit" value="Send" />
+          <input type="reset" value="Start over" />
+        </form>
         {/* ✗ controlled field */}
         <form>
           <input aria-label="b" value={value} oninput={this.type} />

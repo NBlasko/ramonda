@@ -63,8 +63,10 @@ export interface FormHolder extends Where {
 export interface SpreadBag extends Where {
   owner: ts.ClassLikeDeclaration | undefined;
   prop: string;
-  /** Whether the field writes its own `oninput` or `onchange` by name, so a `value` in the spread has one. */
+  /** Whether the field writes its own handler by name, so a `value` in the spread has one. */
   handled: boolean;
+  /** A select, a checkbox or a radio, whose handler may be `onchange`; a text field's is `oninput`. */
+  pick: boolean;
 }
 
 export interface FormFacts {
@@ -79,7 +81,8 @@ export interface FormFacts {
   holders: FormHolder[];
 }
 
-const NOT_EDITED = new Set(["hidden", "submit", "button", "reset", "image", "file"]);
+/** The `<input>` types no one edits, which no rule about a field's model asks about. */
+export const NOT_EDITED: ReadonlySet<string> = new Set(["hidden", "submit", "button", "reset", "image", "file"]);
 
 /** `this.use(Form, …)` or `this.use(Form<typeof schema>, …)`, with `Form` imported from `@ramonda/form`. */
 function isFormHook(initializer: ts.Expression | undefined, resolve: Resolver): boolean {
@@ -270,14 +273,6 @@ export function formTableFor(sources: readonly ts.SourceFile[], resolve: Resolve
     for (const attribute of opening.attributes.properties) {
       if (ts.isJsxAttribute(attribute)) written.set(attribute.name.getText(), attribute);
     }
-    // Every `{...this.props.P}` on a field, controlled or not: it may carry a model, or take one away.
-    for (const attribute of opening.attributes.properties) {
-      if (!ts.isJsxSpreadAttribute(attribute)) continue;
-      const prop = propRead(attribute.expression);
-      const handled = ["oninput", "onchange", "on:input", "on:change"].some((name) => written.has(name));
-      if (prop !== undefined) bags.push({ owner: enclosingClass(element), prop, handled, ...positionOf(opening) });
-    }
-
     // `type="checkbox"` or `type={"checkbox"}`.
     const typeAttribute = written.get("type");
     const typeValue = typeAttribute === undefined ? undefined : valueOf(typeAttribute);
@@ -288,6 +283,17 @@ export function formTableFor(sources: readonly ts.SourceFile[], resolve: Resolve
     if (type !== undefined && NOT_EDITED.has(type)) return;
     const box = type === "checkbox" || type === "radio";
     const pick = tag === "select" || box;
+
+    // Every `{...this.props.P}` on a field, controlled or not: it may carry a model, or take one away.
+    // A text field's own handler is `oninput` — its `change` comes on blur; a pick's is either.
+    const writes = pick ? ["oninput", "onchange", "on:input", "on:change"] : ["oninput", "on:input"];
+    for (const attribute of opening.attributes.properties) {
+      if (!ts.isJsxSpreadAttribute(attribute)) continue;
+      const prop = propRead(attribute.expression);
+      const handled = writes.some((name) => written.has(name));
+      if (prop !== undefined)
+        bags.push({ owner: enclosingClass(element), prop, handled, pick, ...positionOf(opening) });
+    }
 
     const modelName = box ? "checked" : "value";
     const model = written.get(modelName);

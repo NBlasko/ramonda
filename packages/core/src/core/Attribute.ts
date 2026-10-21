@@ -1,7 +1,7 @@
 import type { EnhancedHTMLNode } from "../types/vdom";
 import { IS_SVG, KEY_SYM, STYLE_SYM, REF_SYM, BOOLEAN_ATTRIBUTES, keptInAProperty } from "../helpers/constants";
 import { checkBooleanAttribute } from "../debug/booleanAttribute";
-import { INPUT_OWN_EVENTS, composingIn, controlInput, keepOwnHandler } from "./field";
+import { INPUT_OWN_EVENTS, composingIn, controlInput, keepOwnHandler, showsTheModel } from "./field";
 type NodeAttributes = Record<string, any>;
 
 /**
@@ -506,6 +506,8 @@ function formPropertyDiverged(enhancedNode: EnhancedHTMLNode, name: string, next
   // A boolean attribute is on when it is PRESENT, so any visible value means a
   // ticked box — `checked=""` and the mistaken `checked="false"` (RMD029) both.
   if (name === "checked") return live !== true;
+  // A number field's `1.50` already shows the model's 1.5 — see `showsTheModel`.
+  if (enhancedNode.nodeName === "INPUT") return !showsTheModel(enhancedNode as unknown as HTMLInputElement, next);
   return !attributesEqual(next, live);
 }
 

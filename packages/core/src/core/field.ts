@@ -132,6 +132,8 @@ interface FieldState {
   blurred: boolean;
   /** What the model held when the composition began: a model the app moves in the middle of a word wins. */
   composedFrom?: unknown;
+  /** The blur's own listener is running: what it renders leaves a word the browser may still commit. */
+  inBlur?: boolean;
   /**
    * What the field held when its composition ended — the word its handler was handed, or what a
    * refusal left — so Firefox's `input` after it reaches no handler. See "When it ends" on `answerEdit`.
@@ -163,7 +165,10 @@ export function forgetField(key: object): void {
  * typed. Asked by the field when a render reaches it.
  */
 export function composingIn(key: object): boolean {
-  return fields.get(key)?.composing === true;
+  const state = fields.get(key);
+  // A word lost to a blur holds the field only while the blur's own listener runs: past it, a model
+  // the app moves — a Clear button, a reset — is shown, even if no `compositionend` ever comes.
+  return state?.composing === true && (!state.blurred || state.inBlur === true);
 }
 
 /**
@@ -229,10 +234,11 @@ function decide(control: FieldControl, event: Event): boolean {
  * write wins, and the field shows it. Every other listener hears what the browser sent.
  *
  * **A composition lost.** A field that loses the focus mid-word may get no `compositionend` at all, or
- * get it after the blur. The blur is noted and the composition goes on, so a render the blur causes —
- * an `onblur` that moves the model — does not write over the word a browser is committing; its
- * `compositionend` hands the word over as any. One that never comes leaves the field as it is until
- * the next ordinary edit, which ends the composition and is answered as any edit.
+ * get it after the blur. The blur is noted, and what its own listener renders — an `onblur` that moves
+ * the model — does not write over the word a browser may still commit; its `compositionend` hands the
+ * word over as any. Past the blur the field follows the model again, so a model the app moves after
+ * it — a Clear button, a reset — is shown even when no `compositionend` ever comes. The composition
+ * itself ends with its `compositionend` or the next ordinary edit, answered as any edit.
  */
 export function answerEdit(control: FieldControl, event: Event): void {
   const state = stateOf(control.key);
@@ -248,27 +254,39 @@ export function answerEdit(control: FieldControl, event: Event): void {
   }
   if (event.type === "blur") {
     if (state.composing) state.blurred = true;
-    control.own(event.type, event);
+    // The blur's own renders leave the word alone; after it, the field follows the model again — see
+    // `composingIn` and "A composition lost".
+    state.inBlur = true;
+    try {
+      control.own(event.type, event);
+      drainSync();
+    } finally {
+      state.inBlur = false;
+    }
     return;
   }
   if (event.type === "compositionend") {
     state.composing = false;
     state.blurred = false;
     const refused = decide(control, event);
+    let handed = false;
     try {
       control.own(event.type, event);
       // What `oncompositionend` rendered has run by now: it may have removed the field.
       drainSync();
       // A word the transform refused is no word: it is not handed over, and Firefox's `input` after
       // it, carrying the field as the refusal left it, reaches no handler either.
-      if (refused && field !== null) state.handedOver = field.value;
+      if (refused) handed = true;
       else if (field !== null && !control.gone() && sameModel(control.model(), state.composedFrom)) {
-        state.handedOver = field.value;
+        handed = true;
         control.own("input", event);
       }
     } finally {
       show(control);
     }
+    // What the field shows once the handler's model is in it — Firefox's `input` carries exactly that,
+    // whether the handler kept the word or rewrote it.
+    if (handed && field !== null) state.handedOver = field.value;
     return;
   }
 
@@ -315,6 +333,18 @@ export function answerEdit(control: FieldControl, event: Event): void {
   } finally {
     show(control);
   }
+}
+
+/**
+ * Whether the field already shows the model. A number field shows the same NUMBER in more than one
+ * text — `1.50` is the model's 1.5 while the user types toward `1.505` — and rewriting it would take
+ * the half-typed text away; every other field shows the model only as its exact text.
+ */
+export function showsTheModel(field: { type?: string; value: string }, model: unknown): boolean {
+  const text = String(model ?? "");
+  if (field.value === text) return true;
+  if (field.type !== "number" || field.value === "" || text === "") return false;
+  return Number(field.value) === Number(text);
 }
 
 /** Calls a handler as a listener would be: a function with the element as `this`, or `handleEvent`. */
@@ -434,7 +464,7 @@ function controlOf(input: Kept): FieldControl {
         if (input.checked !== on) input.checked = on;
       } else {
         const model = input.getAttribute("value") ?? "";
-        if (input.value !== model) writeValue(input as unknown as EnhancedHTMLNode, model, false);
+        if (!showsTheModel(input, model)) writeValue(input as unknown as EnhancedHTMLNode, model, false);
       }
     },
     gone: () => input[GONE] === true,

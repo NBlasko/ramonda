@@ -31,6 +31,9 @@ export interface FormFieldWithoutWhatTheFormNeedsIssue {
   column: number;
 }
 
+/** What a spread must carry beside a `value`: nothing, an `oninput`, or either handler (a pick's). */
+type Wants = "nothing" | "oninput" | "either";
+
 /** The names a field's form attributes may be handed under, in a spread written last on it. */
 const FORM_KEYS = new Set(["name", "value", "checked", "oninput", "onchange", "onblur", "aria-invalid"]);
 
@@ -129,17 +132,18 @@ export const formFieldWithoutWhatTheFormNeeds = {
     }
 
     // What the fields inside a form need from the components that write them.
-    // `handled`: for a spread, whether the field writes its own handler — then a `value` in it has one.
-    const queue: { owner: ts.ClassLikeDeclaration; name: string; bag: boolean; handled: boolean }[] = [];
+    // `wants`: for a spread, what it must carry beside a `value` — nothing when the field writes its own
+    // handler, `oninput` on a text field, whose `change` comes on blur, and either on a pick.
+    const queue: { owner: ts.ClassLikeDeclaration; name: string; bag: boolean; wants: Wants }[] = [];
     const seen = new Set<string>();
     const ids = new Map<ts.ClassLikeDeclaration, number>();
-    const need = (owner: ts.ClassLikeDeclaration | undefined, name: string, bag: boolean, handled = false) => {
+    const need = (owner: ts.ClassLikeDeclaration | undefined, name: string, bag: boolean, wants: Wants = "nothing") => {
       if (owner === undefined) return;
       if (!ids.has(owner)) ids.set(owner, ids.size);
-      const key = `${ids.get(owner)}|${name}|${bag}|${handled}`;
+      const key = `${ids.get(owner)}|${name}|${bag}|${wants}`;
       if (seen.has(key)) return;
       seen.add(key);
-      queue.push({ owner, name, bag, handled });
+      queue.push({ owner, name, bag, wants });
     };
 
     for (const field of fields) {
@@ -159,10 +163,10 @@ export const formFieldWithoutWhatTheFormNeeds = {
       }
     }
     // A spread of props on a field, anywhere: what each use hands for it is read there.
-    for (const bag of bags) need(bag.owner, bag.prop, true, bag.handled);
+    for (const bag of bags) need(bag.owner, bag.prop, true, bag.handled ? "nothing" : bag.pick ? "either" : "oninput");
 
     for (let next = queue.shift(); next !== undefined; next = queue.shift()) {
-      const { owner, name, bag, handled } = next;
+      const { owner, name, bag, wants } = next;
       for (const site of sites) {
         // What a field needs from a form is asked inside one; what a spread on it carries, everywhere.
         if (site.target !== owner || (!bag && !inContext(site.owner, site.inForm))) continue;
@@ -174,7 +178,7 @@ export const formFieldWithoutWhatTheFormNeeds = {
         if (handed === undefined) continue;
         const prop = propRead(handed);
         if (prop !== undefined) {
-          need(site.owner, prop, bag, handled);
+          need(site.owner, prop, bag, wants);
           continue;
         }
         if (!bag) {
@@ -182,7 +186,7 @@ export const formFieldWithoutWhatTheFormNeeds = {
             found.push({ kind: "not-passed", component: site.tag, detail: name, ...where(site) });
           continue;
         }
-        readBag(handed, site, name, handled, holdsNothing, found);
+        readBag(handed, site, name, wants, holdsNothing, found);
       }
     }
 
@@ -195,7 +199,7 @@ function readBag(
   handed: ts.Expression,
   site: ComponentSite,
   name: string,
-  handled: boolean,
+  wants: Wants,
   holdsNothing: (expression: ts.Expression) => boolean,
   found: FormFieldWithoutWhatTheFormNeedsIssue[],
 ): void {
@@ -225,7 +229,8 @@ function readBag(
       p.name !== undefined && (ts.isIdentifier(p.name) || ts.isStringLiteral(p.name)) ? p.name.text : "",
     ),
   );
-  if (!handled && (keys.has("value") || keys.has("checked")) && !keys.has("oninput") && !keys.has("onchange")) {
+  const carries = keys.has("oninput") || (wants === "either" && keys.has("onchange"));
+  if (wants !== "nothing" && (keys.has("value") || keys.has("checked")) && !carries) {
     found.push({ kind: "bag-without-a-handler", component: site.tag, detail: name, ...where(site) });
   }
 }

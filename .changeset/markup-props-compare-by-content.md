@@ -18,12 +18,9 @@ the app builds is compared by reference, including an object or an array that ho
 (`slots={{ header: <Header /> }}`): the app may change it in place, and a copy of something changed in
 place compares equal to the original, so the change would never be shown. Such a slots prop is
 declared on the child with `@StableProps("slots")`. Markup built by a different component, a `list()`
-whose callback changed, markup holding a host `<input>` the user can change with a `value` or `checked` (what it
-shows is also what the user did to it, and the render is what puts the model's value back — a submit
-button's label, a hidden value, a `readonly` text field settle like any markup — `readonly` does not
-stop a checkbox, a radio, a file, range or color input, so those still count), and markup past a
-budget of 500 values for its key are all called different — the child
-renders, as it did before.
+whose callback changed, and markup past a budget of 500 values for its key are all called
+different — the child renders, as it did before. Markup holding a form field settles like any other:
+a field answers its own edits in its own listener, so the render around it adds nothing.
 
 `Portal` now watches its `target` together with its `children`, and reconciles once when both
 change. It used to notice a new target through `children`, which a props factory rebuilt on every

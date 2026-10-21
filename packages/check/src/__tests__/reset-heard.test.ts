@@ -32,7 +32,14 @@ describe("a reset the model does not hear", () => {
 
   test("a form of uncontrolled fields, a declared reset and a hook's reset are silent", () => {
     const lines = new Set(found().map((issue) => issue.line));
-    for (const text of ["ok reset", "this.counter.reset()", "this.form.reset()", "city.reset()"]) {
+    for (const text of [
+      "ok reset",
+      'value="Start over"',
+      'name="csrf"',
+      "this.counter.reset()",
+      "this.form.reset()",
+      "city.reset()",
+    ]) {
       expect(lines.has(lineOf(text)), text).toBe(false);
     }
   });

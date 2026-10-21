@@ -72,6 +72,7 @@ class App extends Component<{ text: string; rows: { text: string }[]; attrs?: Re
         <input {...fake("nick")} value={value} oninput={this.type} aria-label="an app's own constraints" />
         <input {...html("nick")} value={value} aria-label="constraints and no handler" />
         <input value={value} oninput={this.type} {...this.overrides} aria-label="own field spread" />
+        <input {...this.overrides} defaultValue="saved" aria-label="a spread and a default" />
 
         {/* ✓ a handler of its own */}
         <Select value={value} onchange={this.pick} aria-label="picked">

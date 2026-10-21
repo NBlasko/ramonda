@@ -4,7 +4,7 @@ import { coreElementTag } from "./coreElements";
 import { openingOf, writtenAsNothing } from "./element";
 import { follow, unwrap, type Looking } from "./follow-value";
 import type { ElementContext, ElementRule, WrittenAttribute } from "./rule";
-import { propRead } from "./formTable";
+import { NOT_EDITED, propRead } from "./formTable";
 
 export interface FieldTheUserCannotChangeIssue {
   component: "Select" | "TextArea" | "input";
@@ -79,7 +79,6 @@ function declaredOptional(expression: ts.Expression | undefined, resolve: Elemen
 }
 
 /** `<input>` types whose `value` is not something the user edits: a label, a hidden value, a file list. */
-const NOT_EDITED = new Set(["hidden", "submit", "button", "reset", "image", "file"]);
 
 /**
  * A controlled field the page can never change.
@@ -190,7 +189,10 @@ export const fieldTheUserCannotChange = {
     if (model === undefined && !unknown) return [];
 
     const at = positionOf(opening);
-    if (said(box ? "defaultChecked" : "defaultValue") !== undefined) return [{ component, kind: "both", ...at }];
+    // `both` only where a model is written: beside a spread alone, a default is the spread's question.
+    if (model !== undefined && said(box ? "defaultChecked" : "defaultValue") !== undefined) {
+      return [{ component, kind: "both", ...at }];
+    }
 
     // `readonly` takes the input away from a text field, and does nothing to a pick.
     const still = pick ? ["disabled"] : ["readonly", "readOnly", "disabled"];

@@ -81,48 +81,12 @@ function isOpenable(key: string, value: unknown): boolean {
   return isMarkupNode(value) || isListNode(value) || (key === "children" && isJsxChildren(value));
 }
 
-/** `<input>` types whose value the user does not change: a button's label, a hidden value. */
-const UNCHANGED_BY_THE_USER: ReadonlySet<string> = new Set(["hidden", "submit", "reset", "button", "image"]);
-
-/** `<input>` types `readonly` does not stop — HTML ignores it on them, and a click still changes them. */
-const READONLY_IGNORED: ReadonlySet<string> = new Set(["checkbox", "radio", "file", "range", "color"]);
-
-/**
- * A host `<input>` the user can change, holding a `value` or a `checked`, is never the same markup.
- * What it SHOWS is also what the user did to it, and the render that diffs it is what puts the
- * model's value back: settled, a field whose handler refused a keystroke kept showing it, because the
- * child holding it no longer rendered. Measured against main, where that child rendered on every new
- * `children`.
- *
- * `<input>` only: a host `<textarea>` or `<select>` is refused by the JSX types, and core's `TextArea`
- * and `Select` settle the field themselves. A form field's value is the one state core holds for the
- * model; a `<details open>` or a `<video muted>` is where it STARTS, and settled markup keeps what the
- * user did to it — written back on every render, a FAQ opened as written could never be closed. One
- * the user cannot change — a button's label, a hidden value, `disabled` as written, `readonly` where
- * HTML honours it, a `value` that is `undefined` or `null` (no value, as everywhere in core) — is
- * markup like any other. `readonly` does not stop a checkbox, radio, file, range or color input.
- */
-function holdsAFieldValue(node: MarkupNode): boolean {
-  if (typeof node.name !== "string") return false;
-  // A host tag's name is kept as the DOM spells it, upper case.
-  const tag = node.name.toLowerCase();
-  if (tag !== "input") return false;
-  const attributes = (node.attributes ?? {}) as Record<string, unknown>;
-  const type = typeof attributes["type"] === "string" ? (attributes["type"] as string).toLowerCase() : "text";
-  if (UNCHANGED_BY_THE_USER.has(type)) return false;
-  if (attributes["disabled"] === true) return false;
-  const readonly = attributes["readonly"] === true || attributes["readOnly"] === true;
-  if (readonly && !READONLY_IGNORED.has(type)) return false;
-  return attributes["value"] != null || attributes["checked"] != null;
-}
-
 function same(a: unknown, b: unknown, walk: Walk): boolean {
   if (Object.is(a, b)) return true;
   if (--walk.budget < 0) return false;
 
   if (isMarkupNode(a)) {
     if (!isMarkupNode(b) || a.type !== b.type || a.name !== b.name) return false;
-    if (holdsAFieldValue(a)) return false;
     // The component that rendered it: a node is reused only for a vnode built where it was
     // (`areSimilarNodes`), so the same markup from another builder renders as something else.
     if (a[ORIGIN_SYM] !== b[ORIGIN_SYM]) return false;

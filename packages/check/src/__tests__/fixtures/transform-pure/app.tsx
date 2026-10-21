@@ -10,6 +10,7 @@ import {
   frozen,
   loose,
   handsOnAnArrow,
+  globalDigits,
   mappedWithAnArrow,
   max20,
   maxLength,
@@ -43,6 +44,12 @@ class Fields extends Component<{ transform: (next: string, prev: string) => stri
         <input aria-label="factory const" value={value} oninput={this.type} transform={max20} />
         <input aria-label="rebinds" value={value} oninput={this.type} transform={rebinds} />
         <input aria-label="frozen" value={value} oninput={this.type} transform={frozen} />
+        <input
+          aria-label="a set it makes"
+          value={value}
+          oninput={this.type}
+          transform={(next: string, prev: string) => (new Set(next).size <= 3 ? next : prev)}
+        />
         <TextArea aria-label="arrow" value={value} oninput={this.type} transform={(next: string) => next.trim()} />
         <Select aria-label="select" value={value} onchange={this.type} transform={this.upper}>
           <option value="a">a</option>
@@ -58,6 +65,7 @@ class Fields extends Component<{ transform: (next: string, prev: string) => stri
         <input aria-label="loose factory" value={value} oninput={this.type} transform={loose} />
         <input aria-label="const arrow handed on" value={value} oninput={this.type} transform={handsOnAnArrow} />
         <input aria-label="factory handed a function" value={value} oninput={this.type} transform={mappedWithAnArrow} />
+        <input aria-label="a global regex" value={value} oninput={this.type} transform={globalDigits} />
         <input aria-label="via helper" value={value} oninput={this.type} transform={viaHelper} />
         <input aria-label="hands on" value={value} oninput={this.type} transform={handsOn} />
         <input aria-label="marks input" value={value} oninput={this.type} transform={marks} />

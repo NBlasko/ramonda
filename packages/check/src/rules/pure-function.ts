@@ -28,6 +28,10 @@ const PURE_GLOBALS = new Set([
   "isFinite",
   "NaN",
   "Infinity",
+  // Constructors: `new Map`, `new Set` and a dated `new Date(x)` make a value of their own — see `new`.
+  "Map",
+  "Set",
+  "Date",
   "undefined",
   "encodeURIComponent",
   "decodeURIComponent",
@@ -379,7 +383,8 @@ export function isFixed(expression: ts.Expression, resolve: Resolver, depth = 0)
     ts.isStringLiteralLike(value) ||
     ts.isNumericLiteral(value) ||
     ts.isBigIntLiteral(value) ||
-    ts.isRegularExpressionLiteral(value) ||
+    // A `/g` or `/y` expression is state: `test` and `exec` move its `lastIndex`, call after call.
+    (ts.isRegularExpressionLiteral(value) && !/\/[a-z]*[gy][a-z]*$/.test(value.text)) ||
     value.kind === ts.SyntaxKind.TrueKeyword ||
     value.kind === ts.SyntaxKind.FalseKeyword ||
     value.kind === ts.SyntaxKind.NullKeyword

@@ -370,12 +370,45 @@ describe("markup handed down settles when it says the same", () => {
 });
 
 /**
- * A host `<input>` the user can change, holding a `value` or a `checked`, is never the same markup:
- * what it shows depends on what the user did to it, and the render that puts the model's value back is
- * the one that diffs it. Settled, a field whose handler refused a keystroke kept showing it. One the
- * user cannot change — a submit button's label, a hidden value — is markup like any other.
+ * Markup holding a form field is markup like any other: a field answers its own edits in its own
+ * listener — it shows the model again there — so the render of the component around it adds nothing,
+ * and an unchanged child holding one is not rendered.
  */
 describe("markup holding a form field's value", () => {
+  test("a controlled input in an unchanged child does not render the child", async () => {
+    let renders = 0;
+    class Card extends Component<{ children?: unknown }> {
+      render() {
+        renders++;
+        return <section>{this.props.children as never}</section>;
+      }
+    }
+    class Form extends Component {
+      @state tick = 0;
+      @state name = "a";
+      typed(event: Event) {
+        this.name = (event.currentTarget as HTMLInputElement).value;
+      }
+      render() {
+        return (
+          <div>
+            <Card>
+              <input aria-label="Name" value={this.name} oninput={this.typed} />
+              <input type="checkbox" aria-label="Kept" checked={true} onchange={this.typed} />
+            </Card>
+            <p>{this.tick}</p>
+          </div>
+        );
+      }
+    }
+    const app = await getDOM<Form>(<Form />);
+    renders = 0;
+    app.instance.tick = 1;
+    await app.settle();
+
+    expect(renders).toBe(0);
+  });
+
   test("an input the user cannot change is settled as before", async () => {
     let renders = 0;
     class Card extends Component<{ children?: unknown }> {
@@ -476,7 +509,7 @@ describe("markup holding a form field's value", () => {
     expect(details.open).toBe(false);
   });
 
-  test("is not settled, so the field shows the model again", async () => {
+  test("settled, the field still shows the model again: it answers its own edits", async () => {
     class Card extends Component<{ children?: unknown }> {
       render() {
         return <section>{this.props.children as never}</section>;
