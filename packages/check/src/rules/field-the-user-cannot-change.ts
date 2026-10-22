@@ -199,9 +199,8 @@ export const fieldTheUserCannotChange = {
     const said = (name: string) =>
       attributes.find((attribute) => attribute.name === name && !writtenAsNothing(attribute));
 
-    // What its `type` makes it — see `fieldKind`; one whose type cannot be read is a box when it is
-    // written with `checked`, and a text field otherwise.
-    // Every string its `type` can be, read once, for its kind and, below, whether it is a picker.
+    // Every string its `type` can be, read once, for its kind (see `kindOfLiterals`) and, below, whether
+    // it is a picker. One whose type cannot be read is a box when it is written with `checked`.
     const typeAttribute = tag === "input" ? typeAttributeOf(element) : undefined;
     const types = typeAttribute === undefined ? undefined : attributeLiterals(typeAttribute, resolve);
     const kind = typeAttribute === undefined ? "text" : kindOfLiterals(types);

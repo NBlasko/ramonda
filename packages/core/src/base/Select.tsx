@@ -174,16 +174,13 @@ export class Select extends Component<SelectProps> {
   private start(select: HTMLSelectElement, chosen: string | number | readonly (string | number)[]): boolean {
     const wanted = wantedOf(chosen);
     const options = select.options;
-    let named = false;
-    for (let i = 0; i < options.length && !named; i++) named = wanted.has(options[i].value);
-    // A default that names no option yet takes the old one's attribute off — a reset must not go back
-    // to a choice the model no longer says — and is written once its option arrives.
     // A single select starts on the FIRST option of that value, as `select.value` would pick it: a later
     // one sharing it — a disabled separator — is not marked too, or the last marked would win.
     let wrote = false;
     let marked = false;
     for (let i = 0; i < options.length; i++) {
-      const on = named && wanted.has(options[i].value) && (select.multiple || !marked);
+      // `multiple` read off the attribute: the server's DOM has no property for it.
+      const on = wanted.has(options[i].value) && (select.hasAttribute("multiple") || !marked);
       if (on) marked = true;
       wrote = markDefault(options[i], on) || wrote;
     }

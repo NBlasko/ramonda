@@ -99,7 +99,12 @@ export function decideEdit(
   const text = caretOf(field);
   const input: TransformInput = {
     // The word an input method commits is decided at `compositionend`, as the edit it is.
-    inputType: event.type === "compositionend" ? "insertCompositionText" : ((event as InputEvent).inputType ?? ""),
+    inputType:
+      event.type === "compositionend"
+        ? "insertCompositionText"
+        : event.type === "change"
+          ? "insertReplacementText"
+          : ((event as InputEvent).inputType ?? ""),
     selectionStart: text?.selectionStart ?? null,
     selectionEnd: text?.selectionEnd ?? null,
   };
@@ -167,10 +172,13 @@ interface FieldState {
    */
   handedOver?: string;
   /**
-   * What a text field showed once its last `input` was answered: the `change` that follows — on blur,
-   * or right after a date's `input` — carries it, and is that edit's tail, settled or not.
+   * While a running commit holds the field's settle back: what the field showed once its last edit
+   * was answered, which the `change` right after it — a date's, a range's — carries as that edit's
+   * tail. Outside that moment a tail is simply a field that shows its model.
    */
   answeredWith?: string;
+  /** A settle is waiting for a running commit to return — see `show`. */
+  settlePending?: boolean;
   /** A pick was answered on its `input`, so its `change` has nothing left to do. */
   picked: boolean;
   /** The text and the selection the next edit starts from, recorded at its `beforeinput`. */
@@ -242,7 +250,11 @@ function show(control: FieldControl, after?: () => void): void {
     // Once the running work has returned — the renders the handler queued run in a pass after it,
     // so settling at the end of this commit would still show the model as it was. A microtask is
     // still before the browser draws.
+    const state = stateOf(control.key);
+    state.settlePending = true;
     queueMicrotask(() => {
+      state.settlePending = false;
+      state.answeredWith = undefined;
       if (!drainingNow()) drainSync();
       control.settle();
       after?.();
@@ -399,8 +411,9 @@ export function answerEdit(control: FieldControl, event: Event): void {
       // What the field shows once the composition is over and it is settled — the handler's word, a
       // refusal, or a model the app moved: Firefox's `input` carries exactly that, and reaches no
       // handler, however it ended; recorded after the settle, even one a running commit holds back.
+      // Only while it waits: Firefox's `input` may have come and used it already.
       () => {
-        if (field !== null) state.handedOver = field.value;
+        if (field !== null && state.handedOver !== undefined) state.handedOver = field.value;
       },
     );
     return;
@@ -440,15 +453,15 @@ export function answerEdit(control: FieldControl, event: Event): void {
     return;
   }
 
-  // A text field's `change` that follows an `input` the field already answered — on blur, or after a
-  // date's or a range's `input` — is no edit: the field shows the model, its `onchange` runs, and
-  // nothing is decided again, as a TextArea leaves its `change` alone. One that brings a value no
-  // `input` carried — an autofill, a change dispatched alone — is an edit, and is decided as one.
+  // A `change` is either the tail of the edit the field just answered, or an edit of its own.
+  // A text field's tail — on blur, or right after a date's `input` — carries what the field shows: the
+  // model, or, while a running commit holds the settle back, what the field showed once the edit was
+  // answered. Its `onchange` runs, and nothing is decided again. (A pick's tail is marked above.)
   if (
     !control.pick &&
     event.type === "change" &&
     field !== null &&
-    (field.value === state.answeredWith || showsTheModel(field, control.model()))
+    (showsTheModel(field, control.model()) || (state.settlePending === true && field.value === state.answeredWith))
   ) {
     answered(control, () => control.own("change", event));
     return;
@@ -464,10 +477,13 @@ export function answerEdit(control: FieldControl, event: Event): void {
     return;
   }
   answered(control, () => {
-    // A `change` that is an edit of its own reaches the field's edit handler first, as an `input` —
-    // `oninput` is what writes a text field's model — and then `onchange`, as the change it is.
-    if (!control.pick && event.type === "change") {
-      control.own("input", as(event, "input", { inputType: "insertReplacementText" }));
+    // A `change` that is an edit of its own — an autofill, a change dispatched alone, on any field —
+    // reaches the field's edit handler first, as the `input` it is promised (`insertReplacementText`,
+    // what the transform was told), and then `onchange`, as the change it is. What `oninput` stops or
+    // prevents is asked of an `input` that never was, and leaves the real `change` alone.
+    if (event.type === "change") {
+      const unasked: Asked = { propagation: false, immediate: false, prevented: false };
+      control.own("input", as(event, "input", { inputType: "insertReplacementText" }, unasked));
     }
     control.own(event.type, event);
     if (control.pick && event.type === "input") {

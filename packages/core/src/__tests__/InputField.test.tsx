@@ -1,7 +1,7 @@
 import { describe, test, expect } from "vitest";
 import { getDOM } from "../test/setup";
 import { state } from "../base/decorators";
-import { Component, type EventOn } from "../index";
+import { Component, type EventOn, type TransformInput } from "../index";
 import { renderToString } from "../hydration/ssr";
 
 /** An edit as a browser makes it: the field changes first, then `input` says so. */
@@ -1502,4 +1502,198 @@ test("a select's default shared by two options starts on the first", async () =>
   const select = app.container.querySelector("#s") as HTMLSelectElement;
 
   expect([select.selectedIndex, select.options[2].hasAttribute("selected")]).toEqual([0, false]);
+});
+
+/** Round 44: one rule for a `change` — the tail of an answered edit, or an edit of its own. */
+describe("a change, on every field", () => {
+  /** Typed, then cleared by the app, then autofilled with the same text: the autofill is an edit. */
+  test("an old answered edit does not make a later change its tail", async () => {
+    class Named extends Component {
+      @state name = "";
+      typed(event: EventOn<HTMLInputElement>) {
+        this.name = event.currentTarget.value;
+      }
+      render() {
+        return <input id="i" aria-label="Named" value={this.name} oninput={this.typed} />;
+      }
+    }
+    const app = await getDOM<Named>(<Named />);
+    await app.settle();
+    const field = app.container.querySelector("#i") as HTMLInputElement;
+    typeInto(field, "abc");
+    await app.settle();
+    app.instance.name = "";
+    await app.settle();
+    field.value = "abc";
+    field.dispatchEvent(new Event("change", { bubbles: true }));
+    await app.settle();
+
+    expect({ model: app.instance.name, shown: field.value }).toEqual({ model: "abc", shown: "abc" });
+  });
+
+  /** `fireEvent.change` on a select written with `oninput` alone: the pick reaches it. */
+  test("a select's change with no input before it reaches oninput", async () => {
+    const { Select } = await import("../index");
+    class Sizes extends Component {
+      @state size = "a";
+      picked(event: EventOn<HTMLSelectElement>) {
+        this.size = event.currentTarget.value;
+      }
+      render() {
+        return (
+          <Select id="s" aria-label="Size" value={this.size} oninput={this.picked}>
+            <option value="a">a</option>
+            <option value="b">b</option>
+          </Select>
+        );
+      }
+    }
+    const app = await getDOM<Sizes>(<Sizes />);
+    await app.settle();
+    const select = app.container.querySelector("#s") as HTMLSelectElement;
+    select.value = "b";
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+    await app.settle();
+
+    expect({ model: app.instance.size, shown: select.value }).toEqual({ model: "b", shown: "b" });
+  });
+
+  test("a TextArea's change with no input before it reaches oninput", async () => {
+    const { TextArea } = await import("../index");
+    class Notes extends Component {
+      @state text = "";
+      typed(event: EventOn<HTMLTextAreaElement>) {
+        this.text = event.currentTarget.value;
+      }
+      render() {
+        return <TextArea id="t" aria-label="Notes" value={this.text} oninput={this.typed} />;
+      }
+    }
+    const app = await getDOM<Notes>(<Notes />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+    field.value = "filled";
+    field.dispatchEvent(new Event("change", { bubbles: true }));
+    await app.settle();
+
+    expect({ model: app.instance.text, shown: field.value }).toEqual({ model: "filled", shown: "filled" });
+  });
+
+  /** One edit, one kind: the transform and the handler are told the same `inputType`. */
+  test("a change that is an edit is the same kind of edit to the transform and to oninput", async () => {
+    class Named extends Component {
+      @state name = "";
+      kinds: string[] = [];
+      typed(event: EventOn<HTMLInputElement, InputEvent>) {
+        this.kinds.push(`handler:${event.inputType}`);
+        this.name = event.currentTarget.value;
+      }
+      keep(next: string, _prev: string, input: TransformInput): string {
+        this.kinds.push(`transform:${input.inputType}`);
+        return next;
+      }
+      render() {
+        return <input id="i" aria-label="Named" value={this.name} oninput={this.typed} transform={this.keep} />;
+      }
+    }
+    const app = await getDOM<Named>(<Named />);
+    await app.settle();
+    const field = app.container.querySelector("#i") as HTMLInputElement;
+    field.value = "filled";
+    field.dispatchEvent(new Event("change", { bubbles: true }));
+
+    expect(app.instance.kinds).toEqual(["transform:insertReplacementText", "handler:insertReplacementText"]);
+  });
+
+  /** What `oninput` stops is asked of an `input` that never was: the real `change` still bubbles. */
+  test("oninput stopping its view of a change-edit leaves the real change alone", async () => {
+    class Named extends Component {
+      @state name = "";
+      formHeard = 0;
+      typed(event: EventOn<HTMLInputElement>) {
+        event.stopPropagation();
+        this.name = event.currentTarget.value;
+      }
+      heard() {
+        this.formHeard++;
+      }
+      render() {
+        return (
+          <form onchange={this.heard}>
+            <input id="i" aria-label="Named" value={this.name} oninput={this.typed} />
+          </form>
+        );
+      }
+    }
+    const app = await getDOM<Named>(<Named />);
+    await app.settle();
+    const field = app.container.querySelector("#i") as HTMLInputElement;
+    field.value = "filled";
+    field.dispatchEvent(new Event("change", { bubbles: true }));
+
+    expect(app.instance.formHeard).toBe(1);
+  });
+});
+
+/** A multiple select's default, served: the server's DOM has no `multiple` property, the attribute is read. */
+test("a served multiple select keeps every default option", async () => {
+  const { Select } = await import("../index");
+  class Tags extends Component {
+    render() {
+      return (
+        <Select aria-label="Tags" multiple defaultValue={["a", "b"]}>
+          <option value="a">a</option>
+          <option value="b">b</option>
+          <option value="c">c</option>
+        </Select>
+      );
+    }
+  }
+  // The server's DOM (linkedom) has no `multiple` property on a select — measured, 0.18.13 — so it is
+  // taken away here for the render, as the server has it.
+  const own = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "multiple");
+  Object.defineProperty(HTMLSelectElement.prototype, "multiple", { get: () => undefined, configurable: true });
+  let html: string;
+  try {
+    html = await renderToString(<Tags />);
+  } finally {
+    if (own !== undefined) Object.defineProperty(HTMLSelectElement.prototype, "multiple", own);
+  }
+  const marked = html.match(/<option[^>]*selected[^>]*>/g) ?? [];
+
+  expect(marked.length).toBe(2);
+});
+
+/** Firefox's `input` used the recorded word inside the commit: the settle after it does not record it again. */
+test("a word's record used inside a commit is not put back by the settle", async () => {
+  const { mounted, createRef } = await import("../index");
+  class Words extends Component {
+    @state text = "";
+    heard: string[] = [];
+    field = createRef<HTMLInputElement>();
+    typed(event: EventOn<HTMLInputElement>) {
+      this.heard.push(event.currentTarget.value);
+      this.text = event.currentTarget.value;
+    }
+    @mounted
+    composeNow() {
+      const field = this.field.current as HTMLInputElement;
+      field.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+      field.value = "日本";
+      field.dispatchEvent(new InputEvent("input", { bubbles: true, isComposing: true, data: "日本" }));
+      field.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "日本" }));
+      field.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertCompositionText", data: "日本" }));
+    }
+    render() {
+      return <input id="i" aria-label="Words" ref={this.field} value={this.text} oninput={this.typed} />;
+    }
+  }
+  const app = await getDOM<Words>(<Words />);
+  await app.settle();
+  const field = app.container.querySelector("#i") as HTMLInputElement;
+  // A later edit that happens to carry the same text, as a replayed `insertCompositionText` would.
+  field.value = "日本";
+  field.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertCompositionText", data: "日本" }));
+
+  expect(app.instance.heard).toEqual(["日本", "日本"]);
 });

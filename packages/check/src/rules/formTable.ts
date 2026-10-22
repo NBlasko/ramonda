@@ -367,7 +367,7 @@ export function formTableFor(sources: readonly ts.SourceFile[], resolve: Resolve
     }
     // What its `type` makes it — see `fieldKind`. One whose type cannot be read is a box when it is
     // written with `checked`, and a text field otherwise.
-    const kind = tag === "input" ? fieldKind(written.get("type"), resolve) : "text";
+    const kind = tag === "input" ? fieldKind(typeAttributeOf(element), resolve) : "text";
     if (kind === "unedited") return;
     const box = kind === "box" || (kind === "unread" && written.has("checked") && !written.has("value"));
     const pick = tag === "select" || box;

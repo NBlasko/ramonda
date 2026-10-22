@@ -61,3 +61,7 @@ edit.
 A `file`, `hidden`, `submit`, `reset`, `button` or `image` input holds no model, whatever its `value`;
 and when a field's handler throws, its error is the one thrown, and the error of the render of what it
 half wrote is reported as an uncaught one; a `transform` that throws leaves the field showing the model.
+A `change` is the tail of the edit the field just answered when the field shows its model — it runs
+`onchange` and decides nothing again — or an edit of its own: an autofill, or a change dispatched
+alone, on any field, a `TextArea` included. That edit is decided by the `transform` and handed to
+`oninput` as an `insertReplacementText` input, then to `onchange` as the change.
