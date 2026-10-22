@@ -166,6 +166,11 @@ interface FieldState {
    * refusal left — so Firefox's `input` after it reaches no handler. See "When it ends" on `answerEdit`.
    */
   handedOver?: string;
+  /**
+   * What a text field showed once its last `input` was answered: the `change` that follows — on blur,
+   * or right after a date's `input` — carries it, and is that edit's tail, settled or not.
+   */
+  answeredWith?: string;
   /** A pick was answered on its `input`, so its `change` has nothing left to do. */
   picked: boolean;
   /** The text and the selection the next edit starts from, recorded at its `beforeinput`. */
@@ -257,7 +262,7 @@ function decideOrShow(control: FieldControl, event: Event): boolean {
   try {
     return decide(control, event);
   } catch (error) {
-    // A pick whose `input` threw is over: its `change`, coming next, is not a pick of its own.
+    // A pick is already marked answered — see `answerEdit` — so its `change` finds nothing to do.
     try {
       control.settle();
     } catch {
@@ -387,6 +392,9 @@ export function answerEdit(control: FieldControl, event: Event): void {
           // An `input`, as `oninput` is promised: the word, one edit, `insertCompositionText`.
           control.own("input", as(event, "input", { inputType: "insertCompositionText", isComposing: false }));
         }
+        // What the field shows now, before any settle: a running commit holds the settle back, and
+        // Firefox's `input` may come first. The settle records what it leaves, below.
+        if (field !== null) state.handedOver = field.value;
       },
       // What the field shows once the composition is over and it is settled — the handler's word, a
       // refusal, or a model the app moved: Firefox's `input` carries exactly that, and reaches no
@@ -436,7 +444,12 @@ export function answerEdit(control: FieldControl, event: Event): void {
   // date's or a range's `input` — is no edit: the field shows the model, its `onchange` runs, and
   // nothing is decided again, as a TextArea leaves its `change` alone. One that brings a value no
   // `input` carried — an autofill, a change dispatched alone — is an edit, and is decided as one.
-  if (!control.pick && event.type === "change" && field !== null && showsTheModel(field, control.model())) {
+  if (
+    !control.pick &&
+    event.type === "change" &&
+    field !== null &&
+    (field.value === state.answeredWith || showsTheModel(field, control.model()))
+  ) {
     answered(control, () => control.own("change", event));
     return;
   }
@@ -444,11 +457,18 @@ export function answerEdit(control: FieldControl, event: Event): void {
   // handler that throws: the `change` after it finds the pick answered. Marked once, before anything
   // can leave this function.
   if (control.pick && event.type === "input") state.picked = true;
-  if (decideOrShow(control, event)) {
+  const refusedHere = decideOrShow(control, event);
+  if (!control.pick && event.type === "input" && field !== null) state.answeredWith = field.value;
+  if (refusedHere) {
     show(control);
     return;
   }
   answered(control, () => {
+    // A `change` that is an edit of its own reaches the field's edit handler first, as an `input` —
+    // `oninput` is what writes a text field's model — and then `onchange`, as the change it is.
+    if (!control.pick && event.type === "change") {
+      control.own("input", as(event, "input", { inputType: "insertReplacementText" }));
+    }
     control.own(event.type, event);
     if (control.pick && event.type === "input") {
       // A `change`, as `onchange` is promised; what it stops or prevents is done to the real one.

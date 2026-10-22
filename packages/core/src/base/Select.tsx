@@ -178,9 +178,14 @@ export class Select extends Component<SelectProps> {
     for (let i = 0; i < options.length && !named; i++) named = wanted.has(options[i].value);
     // A default that names no option yet takes the old one's attribute off — a reset must not go back
     // to a choice the model no longer says — and is written once its option arrives.
+    // A single select starts on the FIRST option of that value, as `select.value` would pick it: a later
+    // one sharing it — a disabled separator — is not marked too, or the last marked would win.
     let wrote = false;
+    let marked = false;
     for (let i = 0; i < options.length; i++) {
-      wrote = markDefault(options[i], named && wanted.has(options[i].value)) || wrote;
+      const on = named && wanted.has(options[i].value) && (select.multiple || !marked);
+      if (on) marked = true;
+      wrote = markDefault(options[i], on) || wrote;
     }
     return wrote;
   }

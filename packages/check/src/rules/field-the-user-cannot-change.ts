@@ -4,7 +4,7 @@ import { coreElementTag } from "./coreElements";
 import { openingOf, writtenAsNothing } from "./element";
 import { follow, unwrap, type Looking } from "./follow-value";
 import type { ElementContext, ElementRule, WrittenAttribute } from "./rule";
-import { attributeLiterals, fieldKind, propRead, typeAttributeOf } from "./formTable";
+import { attributeLiterals, kindOfLiterals, propRead, typeAttributeOf } from "./formTable";
 
 export interface FieldTheUserCannotChangeIssue {
   component: "Select" | "TextArea" | "input";
@@ -201,8 +201,10 @@ export const fieldTheUserCannotChange = {
 
     // What its `type` makes it — see `fieldKind`; one whose type cannot be read is a box when it is
     // written with `checked`, and a text field otherwise.
+    // Every string its `type` can be, read once, for its kind and, below, whether it is a picker.
     const typeAttribute = tag === "input" ? typeAttributeOf(element) : undefined;
-    const kind = tag === "input" ? fieldKind(typeAttribute, resolve) : "text";
+    const types = typeAttribute === undefined ? undefined : attributeLiterals(typeAttribute, resolve);
+    const kind = typeAttribute === undefined ? "text" : kindOfLiterals(types);
     if (kind === "unedited") return [];
     const box = kind === "box" || (kind === "unread" && said("checked") !== undefined && said("value") === undefined);
     const pick = tag === "select" || box;
@@ -242,7 +244,6 @@ export const fieldTheUserCannotChange = {
         // A date, a time, a color or a range sends `input` and then `change` for one pick: the field
         // answers the `input`, and `onchange` reads what it already showed again.
         // Every type the field can be is a picker: `withTime ? "datetime-local" : "date"` is one.
-        const types = typeAttribute === undefined ? undefined : attributeLiterals(typeAttribute, resolve);
         if (types !== undefined && types.every((one) => PICKED_AT_ONCE.has(one.toLowerCase()))) {
           return [{ component, kind: "change-after-its-input", ...at }];
         }

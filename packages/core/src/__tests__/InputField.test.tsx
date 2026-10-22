@@ -1374,3 +1374,132 @@ describe("a pick whose handler threw, and a change no input carried", () => {
     expect({ model: app.instance.text, shown: field.value }).toEqual({ model: "", shown: "" });
   });
 });
+
+/** Round 43: the end of a text field's edit, wherever it comes from. */
+describe("a change that is an edit, a change that is a tail, and a word inside a commit", () => {
+  /** `fireEvent.change`, a password manager: only `change`, and the field's handler is `oninput`. */
+  test("a change no input carried reaches oninput, as the field's edit", async () => {
+    class Named extends Component {
+      @state name = "";
+      typed(event: EventOn<HTMLInputElement>) {
+        this.name = event.currentTarget.value;
+      }
+      render() {
+        return <input id="i" aria-label="Named" value={this.name} oninput={this.typed} />;
+      }
+    }
+    const app = await getDOM<Named>(<Named />);
+    await app.settle();
+    const field = app.container.querySelector("#i") as HTMLInputElement;
+    field.value = "filled";
+    field.dispatchEvent(new Event("change", { bubbles: true }));
+    await app.settle();
+
+    expect({ model: app.instance.name, shown: field.value }).toEqual({ model: "filled", shown: "filled" });
+  });
+
+  /** A date's `input` and `change` come together, here from inside a commit: the change is its tail. */
+  test("a picker's change right after its input, inside a commit, is the input's tail", async () => {
+    const { mounted, createRef } = await import("../index");
+    class Day extends Component {
+      @state day = "2026-01-01";
+      field = createRef<HTMLInputElement>();
+      decided = 0;
+      changes = 0;
+      picked(event: EventOn<HTMLInputElement>) {
+        this.day = event.currentTarget.value;
+      }
+      changed() {
+        this.changes++;
+      }
+      keep(next: string): string {
+        this.decided++;
+        return next;
+      }
+      @mounted
+      pickNow() {
+        const field = this.field.current as HTMLInputElement;
+        field.value = "2026-02-02";
+        field.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertReplacementText" }));
+        field.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+      render() {
+        return (
+          <input
+            id="d"
+            type="date"
+            aria-label="Day"
+            ref={this.field}
+            value={this.day}
+            oninput={this.picked}
+            onchange={this.changed}
+            transform={this.keep}
+          />
+        );
+      }
+    }
+    const app = await getDOM<Day>(<Day />);
+    await app.settle();
+
+    expect({ decided: app.instance.decided, changes: app.instance.changes, day: app.instance.day }).toEqual({
+      decided: 1,
+      changes: 1,
+      day: "2026-02-02",
+    });
+  });
+
+  /** Firefox's `input` after the word, sent before a running commit's settle: it is still the word's. */
+  test("a word that ends inside a commit is heard once, with Firefox's input right after it", async () => {
+    const { mounted, createRef } = await import("../index");
+    class Words extends Component {
+      @state text = "";
+      heard: string[] = [];
+      field = createRef<HTMLInputElement>();
+      typed(event: EventOn<HTMLInputElement>) {
+        this.heard.push(event.currentTarget.value);
+        this.text = event.currentTarget.value;
+      }
+      @mounted
+      composeNow() {
+        const field = this.field.current as HTMLInputElement;
+        field.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+        field.value = "日本";
+        field.dispatchEvent(new InputEvent("input", { bubbles: true, isComposing: true, data: "日本" }));
+        field.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "日本" }));
+        field.dispatchEvent(
+          new InputEvent("input", { bubbles: true, inputType: "insertCompositionText", data: "日本" }),
+        );
+      }
+      render() {
+        return <input id="i" aria-label="Words" ref={this.field} value={this.text} oninput={this.typed} />;
+      }
+    }
+    const app = await getDOM<Words>(<Words />);
+    await app.settle();
+
+    expect(app.instance.heard).toEqual(["日本"]);
+  });
+});
+
+/** A single select whose default two options share: it starts on the first, as `select.value` would. */
+test("a select's default shared by two options starts on the first", async () => {
+  const { Select } = await import("../index");
+  class Pick extends Component {
+    render() {
+      return (
+        <Select id="s" aria-label="Pick" defaultValue="">
+          <option value="">Choose…</option>
+          <option value="a">a</option>
+          <option value="" disabled>
+            ──
+          </option>
+        </Select>
+      );
+    }
+  }
+  const app = await getDOM<Pick>(<Pick />);
+  await app.settle();
+  const select = app.container.querySelector("#s") as HTMLSelectElement;
+
+  expect([select.selectedIndex, select.options[2].hasAttribute("selected")]).toEqual([0, false]);
+});

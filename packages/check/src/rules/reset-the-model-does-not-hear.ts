@@ -37,9 +37,7 @@ function resetsItsForm(element: JsxElementLike, resolve: Resolver): "reset" | "m
   const tag = tagOf(element);
   if (tag !== "button" && tag !== "input") return undefined;
   const opening = openingOf(element);
-  const type = opening.attributes.properties.find(
-    (p): p is ts.JsxAttribute => ts.isJsxAttribute(p) && p.name.getText().toLowerCase() === "type",
-  );
+  const type = typeAttributeOf(element);
   // Every string the `type` can be, as written — `busy ? "button" : "submit"` is never a reset.
   const literals = type === undefined ? undefined : attributeLiterals(type, resolve);
   if (literals !== undefined) {

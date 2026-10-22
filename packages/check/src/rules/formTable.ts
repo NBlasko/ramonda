@@ -156,8 +156,11 @@ export function typeAttributeOf(element: ts.JsxElement | ts.JsxSelfClosingElemen
  * `const` as much as written in place. A `type` that can be either kind, or cannot be read, is `unread`.
  */
 export function fieldKind(typeAttribute: ts.JsxAttribute | undefined, resolve: Resolver): FieldKind {
-  if (typeAttribute === undefined) return "text";
-  const literals = attributeLiterals(typeAttribute, resolve);
+  return typeAttribute === undefined ? "text" : kindOfLiterals(attributeLiterals(typeAttribute, resolve));
+}
+
+/** The kind of field the strings a `type` can be make it — `unread` when they disagree or are unknown. */
+export function kindOfLiterals(literals: readonly string[] | undefined): FieldKind {
   if (literals === undefined) return "unread";
   const kinds = new Set(literals.map(kindOfType));
   return kinds.size === 1 ? [...kinds][0] : "unread";
