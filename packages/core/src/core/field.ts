@@ -85,7 +85,13 @@ function sameValue(a: FieldValue, b: FieldValue): boolean {
  * handler never has to tell a refused edit from a real one — a radio's `value` is the same on or off,
  * and a handler that read it would write the refused pick into the model.
  */
-export function decideEdit(field: Field, transform: Transform, prev: FieldValue, event: Event): boolean {
+export function decideEdit(
+  field: Field,
+  transform: Transform,
+  prev: FieldValue,
+  event: Event,
+  before?: Selected,
+): boolean {
   const next = valueOf(field);
   const text = caretOf(field);
   const input: TransformInput = {
@@ -117,26 +123,10 @@ export function decideEdit(field: Field, transform: Transform, prev: FieldValue,
   const caret = text.selectionStart;
   writeValue(text as unknown as EnhancedHTMLNode, String(kept), false);
   if (caret !== null && typeof next === "string" && typeof prev === "string" && String(kept) === prev) {
-    // An insert replaced what was selected, and that selection is put back — `hello` selected and
-    // pasted over is `hello` selected again. What follows the caret now followed the selection then,
-    // so its end is exact; its start is where the inserted text began, which the event says (`data`,
-    // a paste's `dataTransfer`), and the text the two share only when it does not.
-    if (input.inputType.startsWith("insert")) {
-      const to = Math.max(0, Math.min(prev.length, prev.length - (next.length - caret)));
-      const typed = event as InputEvent;
-      const inserted = typed.data ?? typed.dataTransfer?.getData("text/plain") ?? undefined;
-      const from = Math.max(
-        0,
-        Math.min(inserted !== undefined ? caret - inserted.length : sharedStart(prev, next), to),
-      );
-      text.setSelectionRange(from, to);
-      return refused;
-    }
-    // A cut, or a delete that took more than one character, took a selection: it starts at the caret,
-    // and is put back whole.
-    const deleted = prev.length - next.length;
-    if (input.inputType === "deleteByCut" || (deleted > 1 && input.inputType.startsWith("deleteContent"))) {
-      text.setSelectionRange(caret, Math.min(prev.length, caret + deleted));
+    // The selection the edit found, as `beforeinput` saw it — the one exact record of it — when the
+    // field showed the model then: a paste over `hello` selected is `hello` selected again.
+    if (before !== undefined && before.text === prev && before.start !== null && before.end !== null) {
+      text.setSelectionRange(before.start, before.end);
       return refused;
     }
     // What a delete forward took was after the caret, so the caret is where the edit found it; any
@@ -149,11 +139,11 @@ export function decideEdit(field: Field, transform: Transform, prev: FieldValue,
   return refused;
 }
 
-/** How much `prev` and `next` share at the start. */
-function sharedStart(prev: string, next: string): number {
-  let start = 0;
-  while (start < prev.length && start < next.length && prev[start] === next[start]) start++;
-  return start;
+/** A text field as `beforeinput` found it: its text and its selection, the moment before an edit. */
+interface Selected {
+  text: string;
+  start: number | null;
+  end: number | null;
 }
 
 /** What one controlled field is in the middle of: a composition, or a pick. */
@@ -173,6 +163,8 @@ interface FieldState {
   handedOver?: string;
   /** A pick was answered on its `input`, so its `change` has nothing left to do. */
   picked: boolean;
+  /** The text and the selection the next edit starts from, recorded at its `beforeinput`. */
+  before?: Selected;
   /** What the field's `onchange`, called on the pick's `input`, asked of the `change` it was told it had. */
   pickAsked?: Asked;
 }
@@ -256,7 +248,10 @@ function show(control: FieldControl, after?: () => void): void {
 function decide(control: FieldControl, event: Event): boolean {
   const transform = control.transform();
   const field = event.currentTarget as Field | null;
-  return transform !== undefined && field !== null && decideEdit(field, transform, control.prev(), event);
+  const state = stateOf(control.key);
+  const before = state.before;
+  state.before = undefined;
+  return transform !== undefined && field !== null && decideEdit(field, transform, control.prev(), event, before);
 }
 
 /**
@@ -310,6 +305,14 @@ export function answerEdit(control: FieldControl, event: Event): void {
   }
   const field = event.currentTarget as Field | null;
 
+  // The moment before an edit, the one time the field's selection is still the user's: kept for a
+  // refusal to put back.
+  if (event.type === "beforeinput") {
+    const text = field === null ? null : caretOf(field);
+    state.before = text === null ? undefined : { text: text.value, start: text.selectionStart, end: text.selectionEnd };
+    control.own(event.type, event);
+    return;
+  }
   if (event.type === "compositionstart") {
     state.composing = true;
     state.blurred = false;
@@ -507,7 +510,14 @@ export function inputRemoved(input: HTMLInputElement): void {
 }
 
 /** The events an `<input>`'s own handlers are called on by its field listener, rather than attached. */
-export const INPUT_OWN_EVENTS = new Set(["input", "change", "compositionstart", "compositionend", "blur"]);
+export const INPUT_OWN_EVENTS = new Set([
+  "beforeinput",
+  "input",
+  "change",
+  "compositionstart",
+  "compositionend",
+  "blur",
+]);
 
 /**
  * An `<input>`'s own handler for `type`, written as `name`, kept on the element instead of attached to

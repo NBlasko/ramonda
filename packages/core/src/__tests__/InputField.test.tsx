@@ -938,3 +938,45 @@ test("a word that ends inside a commit is heard once, with Firefox's input after
 
   expect({ heard: app.instance.heard, shown: field.value }).toEqual({ heard: ["é"], shown: "É" });
 });
+
+/** An `<input>` reads the selection at `beforeinput` as a TextArea does, and the app's own handler still runs. */
+test("an input puts back the selection a refused paste replaced, and calls the app's onbeforeinput", async () => {
+  class Locked extends Component {
+    @state text = "hello";
+    seen: string[] = [];
+    typed(event: EventOn<HTMLInputElement>) {
+      this.text = event.currentTarget.value;
+    }
+    about(event: EventOn<HTMLInputElement, InputEvent>) {
+      this.seen.push(event.inputType);
+    }
+    refuse(_next: string, prev: string): string {
+      return prev;
+    }
+    render() {
+      return (
+        <input
+          id="i"
+          aria-label="Locked"
+          value={this.text}
+          oninput={this.typed}
+          onbeforeinput={this.about}
+          transform={this.refuse}
+        />
+      );
+    }
+  }
+  const app = await getDOM<Locked>(<Locked />);
+  await app.settle();
+  const field = app.container.querySelector("#i") as HTMLInputElement;
+  field.setSelectionRange(1, 4);
+  field.dispatchEvent(new InputEvent("beforeinput", { bubbles: true, inputType: "insertFromPaste" }));
+  field.value = "hXo";
+  field.setSelectionRange(2, 2);
+  field.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertFromPaste" }));
+
+  expect({
+    shown: [field.value, field.selectionStart, field.selectionEnd],
+    seen: app.instance.seen,
+  }).toEqual({ shown: ["hello", 1, 4], seen: ["insertFromPaste"] });
+});

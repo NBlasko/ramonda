@@ -131,11 +131,10 @@ export interface FieldApi<T> {
  * What a control's `value` attribute takes for a field of `T`: a date as `yyyy-mm-dd`, a number as
  * itself — `""` for an emptied one — and text as text. A checkbox takes `checked={field.value}`.
  */
-export type InputValue<T> = [NonNullable<T>] extends [Date]
-  ? string
-  : [NonNullable<T>] extends [number]
-    ? number | ""
-    : string;
+export type InputValue<T> = InputValueOf<NonNullable<T>>;
+
+/** Each member of the value's union on its own: a `string | number` field shows a string or a number. */
+type InputValueOf<U> = U extends Date ? string : U extends number ? number | "" : string;
 
 /* ------------------------------------------------------------------ *
  * The three node kinds.

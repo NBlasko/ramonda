@@ -78,7 +78,9 @@ export function controlled(
   }
   // The composition's start and end too: a settle set before a composition began must not land in it.
   // And the blur, which a composition can be lost to with no end of its own.
+  // And `beforeinput`, where the selection an edit found is read, for a refusal to put back.
   const listeners: Record<string, (event: Event) => void> = {
+    onbeforeinput: listener,
     oncompositionstart: listener,
     oncompositionend: listener,
     onblur: listener,

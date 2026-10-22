@@ -3,7 +3,7 @@ import { positionOf } from "../syntax";
 import { coreElementTag } from "./coreElements";
 import { isNothing, openingOf } from "./element";
 import { unwrap } from "./follow-value";
-import { reach, whyImpure, type Reached } from "./pure-function";
+import { implementationOf, reach, whyImpure, type Reached } from "./pure-function";
 import type { ElementContext, ElementRule } from "./rule";
 
 export interface TransformThatIsNotPureIssue {
@@ -33,7 +33,7 @@ function transformOf(
   if (ts.isCallExpression(written)) return "built-in-render";
   const name = ts.isPropertyAccessExpression(written) ? written.name : ts.isIdentifier(written) ? written : undefined;
   if (name === undefined) return "unreadable";
-  const declared = resolve(name)?.declarations?.[0];
+  const declared = implementationOf(resolve(name));
   const reached = declared === undefined ? undefined : reach(declared, resolve);
   if (reached === undefined) return "unreadable";
   const fn = reached.fn;

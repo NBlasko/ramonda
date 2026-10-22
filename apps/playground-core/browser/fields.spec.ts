@@ -194,4 +194,20 @@ test.describe("fields only a browser settles", () => {
     expect(frames.length).toBeGreaterThan(20);
     expect(frames).not.toContain("true");
   });
+
+  /** The selection a refused paste replaced is put back as the browser had it, read at `beforeinput`. */
+  test("a refused paste over a selection puts the selection back", async ({ page }) => {
+    const field = page.locator("#refused-text");
+    await field.click();
+    await field.evaluate((element: HTMLTextAreaElement) => element.setSelectionRange(1, 2));
+    await page.keyboard.insertText("12");
+
+    expect(
+      await field.evaluate((element: HTMLTextAreaElement) => [
+        element.value,
+        element.selectionStart,
+        element.selectionEnd,
+      ]),
+    ).toEqual(["abc", 1, 2]);
+  });
 });

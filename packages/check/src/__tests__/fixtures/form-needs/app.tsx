@@ -194,6 +194,8 @@ class Loose extends Component {
         <BareInput attrs={{ value: "fixed" }} />
         {/* ✓ a box's value is what the form sends; ✗ its checked is a model with no handler */}
         <BoxInput attrs={{ value: "yes" }} />
+        {/* ✓ `on:input` in the spread is the field's own handler */}
+        <BareInput attrs={{ value: "x", "on:input": this.type }} />
         <BoxInput attrs={{ checked: true }} />
         {/* ✗ a text field's change comes on blur: `onchange` alone is no handler beside its value */}
         <BareInput attrs={{ value: "x", onchange: this.type }} />

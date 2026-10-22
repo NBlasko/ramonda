@@ -129,3 +129,12 @@ export const pushesThroughAnArm = (next: string[], prev: string[]) => {
   list.push(next[0]);
   return list;
 };
+
+/** Overloaded: the first declaration is a signature with no body; the third is the implementation. */
+function toDigit(c: string): string;
+function toDigit(c: number): string;
+function toDigit(c: string | number): string {
+  return String(c).replace(/\D/g, "");
+}
+/** Pure: hands on an overloaded function, whose implementation is read. */
+export const overloadedHandOn = (next: string) => next.split("").map(toDigit).join("");

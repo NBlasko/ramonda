@@ -26,7 +26,8 @@ run on the `input`, and the `change` after it finds nothing left to do. A radio 
 put back with its whole group.
 
 `transform(next, prev, input)` on any of the three decides an edit before the handler reads it, and is
-pure: returning `prev` refuses the edit and puts the caret back where it was; `input` gives the edit's
+pure: returning `prev` refuses the edit and puts back the
+selection the edit found, read at its `beforeinput`; `input` gives the edit's
 `inputType` and the caret, for a mask. A refused edit is no edit, on every field: neither `oninput` nor
 `onchange` of the field runs, so no handler has to tell a refused edit from a real one — a radio's
 `value` is the same on or off, and a handler reading it never writes the pick it refused. On a

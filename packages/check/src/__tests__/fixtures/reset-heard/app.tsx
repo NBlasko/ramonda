@@ -55,6 +55,7 @@ class Resets extends Component<{ children?: unknown }> {
           <input type="hidden" name="csrf" value={value} />
           <input type="submit" value="Send" />
           <input type="reset" value="Start over" />
+          <input type="hidden" {...this.props} />
         </form>
         {/* ✗ controlled field */}
         <form>

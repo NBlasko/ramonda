@@ -14,6 +14,7 @@ import {
   dated,
   throughAnAlias,
   pushesThroughAnArm,
+  overloadedHandOn,
   deleting,
   throughAHelperThatEmpties,
   mappedWithAnArrow,
@@ -54,6 +55,7 @@ class Fields extends Component<{ transform: (next: string, prev: string) => stri
         <input aria-label="factory const" value={value} oninput={this.type} transform={max20} />
         <input aria-label="rebinds" value={value} oninput={this.type} transform={rebinds} />
         <input aria-label="frozen" value={value} oninput={this.type} transform={frozen} />
+        <input aria-label="an overload" value={value} oninput={this.type} transform={overloadedHandOn} />
         <input
           aria-label="a set it makes"
           value={value}

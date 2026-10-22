@@ -762,7 +762,10 @@ describe("a field's edits, past a selection, a lone input, the old spellings and
     const app = await getDOM<Locked>(<Locked />);
     await app.settle();
     const field = app.container.querySelector("#t") as HTMLTextAreaElement;
-    // `hello`, all of it selected, pasted over with `abc`: the caret is after the paste.
+    // `hello`, all of it selected, pasted over with `abc` — as a browser sends it: `beforeinput` while
+    // the selection is still there, then the edit and its `input`.
+    field.setSelectionRange(0, 5);
+    field.dispatchEvent(new InputEvent("beforeinput", { bubbles: true, inputType: "insertFromPaste" }));
     field.value = "abc";
     field.setSelectionRange(3, 3);
     field.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertFromPaste" }));
@@ -888,6 +891,8 @@ describe("the selection a refused edit took", () => {
     const app = await getDOM<Locked>(<Locked />);
     await app.settle();
     const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+    field.setSelectionRange(6, 11);
+    field.dispatchEvent(new InputEvent("beforeinput", { bubbles: true, inputType: "insertText", data: "w" }));
     field.value = "hello w";
     field.setSelectionRange(7, 7);
     field.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: "w" }));
@@ -900,10 +905,44 @@ describe("the selection a refused edit took", () => {
     const app = await getDOM<Locked>(<Locked />);
     await app.settle();
     const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+    field.setSelectionRange(1, 5);
+    field.dispatchEvent(new InputEvent("beforeinput", { bubbles: true, inputType: "deleteContentBackward" }));
     field.value = "h world";
     field.setSelectionRange(1, 1);
     field.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "deleteContentBackward" }));
 
     expect([field.value, field.selectionStart, field.selectionEnd]).toEqual(["hello world", 1, 5]);
+  });
+
+  /** Backspace after an emoji takes two units and no selection: the caret goes back after it. */
+  test("a refused Backspace after an emoji puts the caret back, selecting nothing", async () => {
+    const app = await getDOM<Locked>(<Locked />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+    app.instance.text = "hi👍";
+    await app.settle();
+    field.setSelectionRange(4, 4);
+    field.dispatchEvent(new InputEvent("beforeinput", { bubbles: true, inputType: "deleteContentBackward" }));
+    field.value = "hi";
+    field.setSelectionRange(2, 2);
+    field.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "deleteContentBackward" }));
+
+    expect([field.value, field.selectionStart, field.selectionEnd]).toEqual(["hi👍", 4, 4]);
+  });
+
+  /** `maxlength` takes part of a paste: what was selected is what the field had then, not a sum. */
+  test("a refused paste the field cut short puts back the caret it had", async () => {
+    const app = await getDOM<Locked>(<Locked />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+    app.instance.text = "abc";
+    await app.settle();
+    field.setSelectionRange(3, 3);
+    field.dispatchEvent(new InputEvent("beforeinput", { bubbles: true, inputType: "insertFromPaste" }));
+    field.value = "abc12";
+    field.setSelectionRange(5, 5);
+    field.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertFromPaste" }));
+
+    expect([field.value, field.selectionStart, field.selectionEnd]).toEqual(["abc", 3, 3]);
   });
 });

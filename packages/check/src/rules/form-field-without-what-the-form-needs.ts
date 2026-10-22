@@ -252,7 +252,11 @@ function readBag(
       p.name !== undefined && (ts.isIdentifier(p.name) || ts.isStringLiteral(p.name)) ? p.name.text : "",
     ),
   );
-  const carries = keys.has("oninput") || (wants !== "text" && keys.has("onchange"));
+  // `on:input` is the field's own handler as `oninput` is, however it reaches the field.
+  const carries =
+    keys.has("oninput") ||
+    keys.has("on:input") ||
+    (wants !== "text" && (keys.has("onchange") || keys.has("on:change")));
   // A value the field writes after the spread is the field's, whatever the spread says.
   // The model key the spread may set: `checked` on a box, `value` on anything else — and only when the
   // field does not write it after the spread.

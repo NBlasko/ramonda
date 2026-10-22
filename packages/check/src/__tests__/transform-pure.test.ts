@@ -63,6 +63,8 @@ describe("a transform that is not pure", () => {
       "rebinds",
       "frozen",
       "a set it makes",
+      "a box of a type unread",
+      "an overload",
       "arrow",
       "select",
     ]) {

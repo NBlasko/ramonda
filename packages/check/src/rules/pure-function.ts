@@ -279,7 +279,7 @@ export function whyImpure(
     }
 
     if (ts.isIdentifier(node) && isRead(node)) {
-      const declared = resolve(node)?.declarations?.[0];
+      const declared = implementationOf(resolve(node));
       if (declared === undefined || fromThePlatform(declared)) {
         const constructed =
           PURE_CONSTRUCTORS.has(node.text) && ts.isNewExpression(node.parent) && node.parent.expression === node;
@@ -320,7 +320,7 @@ export function whyImpure(
     const name = ts.isPropertyAccessExpression(callee) ? callee.name : ts.isIdentifier(callee) ? callee : undefined;
     if (name === undefined) return "it calls something this cannot name";
 
-    const declared = resolve(name)?.declarations?.[0];
+    const declared = implementationOf(resolve(name));
     const reached = declared === undefined ? undefined : reach(declared, resolve);
     const body = reached?.fn;
     if (body !== undefined && !body.getSourceFile().isDeclarationFile && body.body !== undefined) {
@@ -347,6 +347,15 @@ export function whyImpure(
  * one of TypeScript's lib files, which a program with a lib resolves it to. Both answer the same, so
  * a rule says the same thing whichever program it is handed.
  */
+/**
+ * The declaration a name's body is in: an overloaded function's implementation rather than its first
+ * signature, which has none. Anything else, its first declaration.
+ */
+export function implementationOf(symbol: ts.Symbol | undefined): ts.Declaration | undefined {
+  const all = symbol?.declarations ?? [];
+  return all.find((d) => ts.isFunctionLike(d) && (d as ts.FunctionLikeDeclaration).body !== undefined) ?? all[0];
+}
+
 export function fromThePlatform(declared: ts.Declaration | undefined): boolean {
   if (declared === undefined) return true;
   return TYPESCRIPT_LIB.test(declared.getSourceFile().fileName);
@@ -473,7 +482,7 @@ export function isFixed(expression: ts.Expression, resolve: Resolver, depth = 0)
 function returnedBy(call: ts.CallExpression, resolve: Resolver): Reached | undefined {
   const callee = unwrap(call.expression);
   if (!ts.isIdentifier(callee)) return undefined;
-  const declared = resolve(callee)?.declarations?.[0];
+  const declared = implementationOf(resolve(callee));
   const factory = declared === undefined ? undefined : functionOf(declared, resolve);
   if (factory === undefined || factory.body === undefined) return undefined;
   const fixed = call.arguments.every((argument) => isFixed(argument, resolve));

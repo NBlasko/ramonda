@@ -75,9 +75,16 @@ function firstProblem(
     if (found !== undefined) return;
     const opening = openingOf(node);
     const fieldTag = tagOf(node) ?? coreElementTag(opening.tagName, resolve);
-    // A spread on a field may carry its `value`, and nothing here can read whether it does.
+    // A spread on a field may carry its `value`, and nothing here can read whether it does — unless
+    // the field is one no one edits (`hidden`, `submit`, `reset`), which a reset does not move.
+    const typeWritten = attributeOf(node, "type")?.initializer;
+    const typeHeld =
+      typeWritten !== undefined && ts.isJsxExpression(typeWritten) ? typeWritten.expression : typeWritten;
+    const notEdited =
+      typeHeld !== undefined && ts.isStringLiteralLike(typeHeld) && NOT_EDITED.has(typeHeld.text.toLowerCase());
     if (
       (fieldTag === "input" || fieldTag === "select" || fieldTag === "textarea") &&
+      !notEdited &&
       opening.attributes.properties.some(ts.isJsxSpreadAttribute)
     ) {
       found = { kind: "unseen-content", at: opening, detail: `a spread on <${opening.tagName.getText()}>` };
