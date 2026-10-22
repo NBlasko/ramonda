@@ -311,14 +311,15 @@ function processTask() {
     // `ErrorBoundary` above it rethrows out of `errorHandler`, straight through
     // this function. See `resumeIfWorkRemains` for what that used to cost, and
     // `endCommit` because a profiler left mid-commit reports nonsense forever
-    // after.
+    // after. `processing` first: a DEV hook that throws below must not leave every
+    // field believing a drain is running.
+    if (outer) processing = false;
     if (__DEV__) {
       endCommit();
       // Cheap, gated ping — no-op unless the devtools is actively watching.
       notifyComponentUpdate();
     }
 
-    if (outer) processing = false;
     resumeIfWorkRemains();
   }
 

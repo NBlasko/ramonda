@@ -1697,3 +1697,41 @@ test("an edit after a word that ended inside a commit is heard", async () => {
 
   expect(app.instance.heard).toEqual(["日本", "日本語"]);
 });
+
+/** A word the app's own write overtook is no edit: the `change` after it reaches nothing either. */
+test("a word not handed over leaves its change with nothing to end", async () => {
+  class Chat extends Component {
+    @state text = "x";
+    heard: string[] = [];
+    typed(event: EventOn<HTMLInputElement>) {
+      this.heard.push(`input ${event.currentTarget.value}`);
+      this.text = event.currentTarget.value;
+    }
+    changed(event: EventOn<HTMLInputElement>) {
+      this.heard.push(`change ${event.currentTarget.value}`);
+    }
+    render() {
+      return <input id="i" aria-label="Chat" value={this.text} oninput={this.typed} onchange={this.changed} />;
+    }
+  }
+  const app = await getDOM<Chat>(<Chat />);
+  await app.settle();
+  const field = app.container.querySelector("#i") as HTMLInputElement;
+  field.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+  field.value = "x日";
+  field.dispatchEvent(
+    new InputEvent("input", { bubbles: true, isComposing: true, inputType: "insertCompositionText" }),
+  );
+  app.instance.text = "";
+  await app.settle();
+  field.value = "x日本";
+  field.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "日本" }));
+  field.dispatchEvent(new Event("change", { bubbles: true }));
+  await app.settle();
+
+  expect({ heard: app.instance.heard, model: app.instance.text, shown: field.value }).toEqual({
+    heard: [],
+    model: "",
+    shown: "",
+  });
+});

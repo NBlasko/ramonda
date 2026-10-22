@@ -63,11 +63,6 @@ export function valueOf(field: Field): FieldValue {
   return field.value;
 }
 
-function sameValue(a: FieldValue, b: FieldValue): boolean {
-  if (Array.isArray(a) && Array.isArray(b)) return a.length === b.length && a.every((value, i) => value === b[i]);
-  return a === b;
-}
-
 /**
  * The app's `transform(next, prev, input)`, applied to the field before its handler reads it.
  *
@@ -111,8 +106,8 @@ export function decideEdit(
   // A transform that answers nothing — a path with no `return`, past the types — refuses the edit,
   // rather than writing the text "undefined" into the field and the model.
   const kept = (transform(next as never, prev as never, input) ?? prev) as FieldValue;
-  if (sameValue(kept, next)) return false;
   // As the model is compared: a multiple select's answer in another order is the same choice.
+  if (sameModel(kept, next)) return false;
   const refused = sameModel(kept, prev);
 
   if (isBox(field)) {
@@ -175,7 +170,7 @@ interface FieldState {
    */
   pending?: FieldValue;
   /**
-   * An edit of a text field was taken since its last `change`, so the `change` that ends them reaches
+   * An edit of a text field was taken since its last `change` or blur, so the `change` that ends them reaches
    * `onchange`. Edits that were all refused are no edit, and their `change` reaches nothing.
    */
   taken: boolean;
@@ -363,8 +358,8 @@ function decide(control: FieldControl, event: Event): boolean {
  *
  * **A `change` ends the edits before it, or is an edit of its own.** On a text field it comes on blur;
  * on a date, a color or a range right after the `input` it ends. When the field shows what it holds,
- * the `change` brings nothing new: it reaches `onchange` if an edit since the last `change` was taken,
- * and nothing if every one was refused. When the field shows something else — an autofill, a
+ * the `change` brings nothing new: it reaches `onchange` if an edit since the last `change` or blur was
+ * taken, and nothing if every one was refused. When the field shows something else — an autofill, a
  * `fireEvent.change` — it is an edit, decided as one, that reaches `oninput` as the `input` it is
  * promised and then `onchange`. A pick's `change` right after its `input` has nothing left to do.
  */
@@ -400,6 +395,9 @@ export function answerEdit(control: FieldControl, event: Event): void {
   }
   if (event.type === "blur") {
     if (state.composing) state.blurred = true;
+    // The `change` that ends the edits comes before the blur, or not at all — a browser sends none
+    // when the text is back to what it was — so the next edits start counting afresh.
+    state.taken = false;
     // The blur's own renders leave the word alone; after it, the field follows the model again — see
     // `composingIn` and "A composition lost".
     state.inBlur = true;
@@ -415,14 +413,15 @@ export function answerEdit(control: FieldControl, event: Event): void {
     state.composing = false;
     state.blurred = false;
     const refused = decideOrShow(control, event);
-    if (!refused) state.taken = true;
     answered(control, field, () => {
       control.own(event.type, event);
       // What `oncompositionend` rendered has run by now: it may have removed the field.
       runRenders();
       // A word the transform refused is no word: it is not handed over.
       if (!refused && field !== null && !control.gone() && sameModel(control.model(), state.composedFrom)) {
-        // An `input`, as `oninput` is promised: the word, one edit, `insertCompositionText`.
+        // An `input`, as `oninput` is promised: the word, one edit, `insertCompositionText`. A word not
+        // handed over is no edit, and the `change` after it reaches nothing.
+        state.taken = true;
         control.own("input", as(event, "input", { inputType: "insertCompositionText", isComposing: false }));
       }
     });
@@ -457,9 +456,9 @@ export function answerEdit(control: FieldControl, event: Event): void {
     !control.pick &&
     field !== null &&
     (event as InputEvent).inputType === "insertCompositionText" &&
-    showsWhatItHolds(control, field)
+    sameModel(valueOf(field), heldBy(control, field))
   ) {
-    // Firefox's `input` after a word: the field already shows what the word left.
+    // Firefox's `input` after a word: the field already shows exactly what the word left.
     return;
   }
 
