@@ -3,6 +3,8 @@ import { Form } from "@ramonda/form";
 
 declare const value: string;
 declare const rows: string[];
+declare const kind: string;
+declare const busy: boolean;
 
 class Child extends Component {
   render() {
@@ -120,6 +122,16 @@ class Resets extends Component<{ children?: unknown }> {
         <form>
           <input aria-label="spread button field" value={value} oninput={this.type} />
           <button {...this.props}>spread button</button>
+        </form>
+        {/* ✗ a box whose type cannot be read, with its `checked` */}
+        <form>
+          <input aria-label="unread box" type={kind} checked={true} onchange={this.type} />
+          <button type="reset">unread box reset</button>
+        </form>
+        {/* ✓ a button that is a button or a submit, never a reset, over a controlled field */}
+        <form>
+          <input aria-label="toggled submit field" value={value} oninput={this.type} />
+          <button type={busy ? "button" : "submit"}>toggled submit</button>
         </form>
         {/* ✗ a spread on a field may carry its value */}
         <form>

@@ -324,5 +324,8 @@ test("a field of a union shows each member as its control would", () => {
   assertType<Equals<InputValue<string | number>, string | number>>();
   assertType<Equals<InputValue<number | undefined>, number | "">>();
   assertType<Equals<InputValue<Date>, string>>();
+  assertType<Equals<InputValue<boolean>, never>>();
+  assertType<Equals<InputValue<File>, never>>();
+  assertType<Equals<InputValue<"s" | "m">, string>>();
   expect(true).toBe(true);
 });

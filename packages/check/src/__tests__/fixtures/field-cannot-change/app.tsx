@@ -5,6 +5,7 @@ declare const value: string;
 declare const on: boolean;
 declare const viewing: boolean;
 declare const bag: Record<string, unknown>;
+declare const kind: string;
 const EMPTY = "";
 const LOCKED = true;
 
@@ -76,6 +77,7 @@ class App extends Component<{ text: string; rows: { text: string }[]; attrs?: Re
         <input value={value} oninput={undefined} aria-label="a handler written as nothing" />
         <input type="checkbox" checked={true} onclick={this.type} aria-label="a box picked by click" />
         <input type="date" value={value} onchange={this.type} aria-label="a date on change" />
+        <input type={kind} checked={on} aria-label="a box of a type unread" />
 
         {/* ✓ a handler of its own */}
         <Select value={value} onchange={this.pick} aria-label="picked">

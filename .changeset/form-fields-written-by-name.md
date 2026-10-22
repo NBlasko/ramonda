@@ -27,3 +27,5 @@ control as written: `type="number"` writes a number and `type="date"` a day, so 
 written `type="number"`, as a box is written `type="checkbox"` — the `type` `bind` used to write. `invalid` is `true` or `false`, so a
 valid control is written `aria-invalid="false"` where `bind` wrote no attribute — the same thing to a
 screen reader, and a line more in the markup.
+`inputValue` is typed per member of the value's union, and `never` for a value a control's `value`
+cannot show — a boolean (a box takes `checked`), a file, a bigint.

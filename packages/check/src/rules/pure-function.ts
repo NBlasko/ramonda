@@ -125,6 +125,23 @@ const PURE_METHODS = new Set([
   "get",
 ]);
 
+/** Platform methods that return a NEW array, which the caller may then change as its own. */
+const FRESH_ARRAYS = new Set([
+  "split",
+  "slice",
+  "map",
+  "filter",
+  "concat",
+  "flat",
+  "flatMap",
+  "toSorted",
+  "toReversed",
+  "toSpliced",
+  "with",
+  "from",
+  "of",
+]);
+
 /** Methods that change the array they are called on — pure only on an array the function made itself. */
 const MUTATING_METHODS = new Set([
   "push",
@@ -236,7 +253,16 @@ export function whyImpure(
   };
   /** Whether what `expression` holds was made by `fn` — a parameter's contents are the caller's. */
   const madeHere = (expression: ts.Expression): boolean => {
-    const root = rootOf(unwrap(expression));
+    // A new array made right there — `[...x]`, `next.split("")`, `Array.from(x)` — is the function's.
+    const value = unwrap(expression);
+    if (ts.isArrayLiteralExpression(value)) return true;
+    if (ts.isCallExpression(value)) {
+      const callee = unwrap(value.expression);
+      if (ts.isPropertyAccessExpression(callee) && FRESH_ARRAYS.has(callee.name.text)) {
+        return fromThePlatform(implementationOf(resolve(callee.name)));
+      }
+    }
+    const root = rootOf(value);
     if (!ts.isIdentifier(root)) return false;
     const declared = resolve(root)?.declarations?.[0];
     if (declared === undefined || !isInside(declared, fn)) return false;

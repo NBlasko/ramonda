@@ -6,6 +6,7 @@ import { Fancy } from "./ui";
 declare const value: string;
 declare const on: boolean;
 declare const bag: Record<string, unknown>;
+declare const kind: string;
 const oninput = undefined;
 /** A class with no render to read, written in this very file. */
 declare class Ambient extends Component {}
@@ -160,6 +161,8 @@ class Page extends Component {
         <DefaultsInput field={this.form.fields.email.$} attrs={{ placeholder: "you@example.com" }} />
         <DefaultsInput field={this.form.fields.email.$} attrs={{ oninput: undefined }} />
         <DefaultsInput field={this.form.fields.email.$} attrs={bag} />
+        {/* ✗ a box whose type cannot be read, written with `checked`, is a field of the form */}
+        <input aria-label="unread box in form" type={kind} checked={on} oninput={this.type} />
         {/* ✗ a box whose type is written as an expression is still a box */}
         <input aria-label="braced box" type={"checkbox"} checked={on} oninput={this.type} />
         {/* ✗ unreadable-component */}

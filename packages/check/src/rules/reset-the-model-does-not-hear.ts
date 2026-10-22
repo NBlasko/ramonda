@@ -6,7 +6,7 @@ import { unwrap } from "./follow-value";
 import { enclosingElement } from "./html";
 import type { JsxElementLike, ModuleRule, Resolver } from "./rule";
 import { fromThePlatform } from "./pure-function";
-import { NOT_EDITED } from "./formTable";
+import { attributeLiterals, fieldKind, modelNames } from "./formTable";
 
 export interface ResetTheModelDoesNotHearIssue {
   /**
@@ -40,12 +40,16 @@ function resetsItsForm(element: JsxElementLike): "reset" | "maybe" | undefined {
   const type = opening.attributes.properties.find(
     (p): p is ts.JsxAttribute => ts.isJsxAttribute(p) && p.name.getText().toLowerCase() === "type",
   );
-  const written = type?.initializer;
-  const value = written !== undefined && ts.isJsxExpression(written) ? written.expression : written;
-  if (value !== undefined && ts.isStringLiteralLike(value))
-    return value.text.toLowerCase() === "reset" ? "reset" : undefined;
+  // Every string the `type` can be, as written — `busy ? "button" : "submit"` is never a reset.
+  const literals = type === undefined ? undefined : attributeLiterals(type);
+  if (literals !== undefined) {
+    const resets = literals.filter((literal) => literal.toLowerCase() === "reset").length;
+    if (resets === 0) return undefined;
+    return resets === literals.length ? "reset" : tag === "button" ? "maybe" : undefined;
+  }
   if (tag !== "button") return undefined;
-  if (value !== undefined) return "maybe";
+  // A button's `type` that cannot be read, or that a spread may carry.
+  if (type !== undefined) return "maybe";
   return opening.attributes.properties.some(ts.isJsxSpreadAttribute) ? "maybe" : undefined;
 }
 
@@ -59,14 +63,12 @@ function attributeOf(element: JsxElementLike, name: string): ts.JsxAttribute | u
 function controlledField(element: JsxElementLike, resolve: Resolver): boolean {
   const tag = tagOf(element) ?? coreElementTag(openingOf(element).tagName, resolve);
   if (tag !== "input" && tag !== "select" && tag !== "textarea") return false;
-  // `type="checkbox"` or `type={"checkbox"}`.
-  const written = attributeOf(element, "type")?.initializer;
-  const type = written !== undefined && ts.isJsxExpression(written) ? written.expression : written;
-  const typed = type !== undefined && ts.isStringLiteralLike(type) ? type.text.toLowerCase() : undefined;
-  // A reset, a submit or a hidden value is not edited, and a reset does not move it.
-  if (typed !== undefined && NOT_EDITED.has(typed)) return false;
-  const box = typed === "checkbox" || typed === "radio";
-  const model = attributeOf(element, box ? "checked" : "value");
+  // What its `type` makes it — see `fieldKind`. A reset, a submit or a hidden value is not edited, and
+  // a reset does not move it; one whose type cannot be read is asked about both models.
+  const kind = tag === "input" ? fieldKind(attributeOf(element, "type")) : "text";
+  const model = modelNames(kind)
+    .map((name) => attributeOf(element, name))
+    .find((attribute) => attribute !== undefined);
   if (model === undefined) return false;
   const value = model.initializer;
   if (value === undefined) return true;
@@ -90,11 +92,7 @@ function firstProblem(
     const fieldTag = tagOf(node) ?? coreElementTag(opening.tagName, resolve);
     // A spread on a field may carry its `value`, and nothing here can read whether it does — unless
     // the field is one no one edits (`hidden`, `submit`, `reset`), which a reset does not move.
-    const typeWritten = attributeOf(node, "type")?.initializer;
-    const typeHeld =
-      typeWritten !== undefined && ts.isJsxExpression(typeWritten) ? typeWritten.expression : typeWritten;
-    const notEdited =
-      typeHeld !== undefined && ts.isStringLiteralLike(typeHeld) && NOT_EDITED.has(typeHeld.text.toLowerCase());
+    const notEdited = fieldTag === "input" && fieldKind(attributeOf(node, "type")) === "unedited";
     if (
       (fieldTag === "input" || fieldTag === "select" || fieldTag === "textarea") &&
       !notEdited &&

@@ -72,5 +72,7 @@ describe("a transform that is not pure", () => {
       expect(lines.has(lineOf(`aria-label="${label}"`)), label).toBe(false);
     }
     expect(lines.has(lineOf("<g transform"))).toBe(false);
+    // A multi-line element is reported at its `transform`, not at its label.
+    expect(lines.has(lineOf('transform={(next: string) => next.split("").sort().join("")}'))).toBe(false);
   });
 });

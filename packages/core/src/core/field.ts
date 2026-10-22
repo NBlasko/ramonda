@@ -1,3 +1,4 @@
+import { UNEDITED_INPUT_TYPES } from "@ramonda/dom-facts";
 import type { TransformInput } from "../types/commonTypes";
 import type { EnhancedHTMLNode } from "../types/vdom";
 import { writeValue } from "./Attribute";
@@ -256,6 +257,8 @@ function decideOrShow(control: FieldControl, event: Event): boolean {
   try {
     return decide(control, event);
   } catch (error) {
+    // A pick whose `input` threw is over: its `change`, coming next, is not a pick of its own.
+    if (control.pick && event.type === "input") stateOf(control.key).picked = true;
     try {
       control.settle();
     } catch {
@@ -430,6 +433,13 @@ export function answerEdit(control: FieldControl, event: Event): void {
     return;
   }
 
+  // A text field's `change` — on blur, or after the `input` a date or a range already sent — is no
+  // edit: the field answered the edit on its `input`. Its `onchange` runs, and nothing is decided
+  // again, as a TextArea leaves its `change` alone.
+  if (!control.pick && event.type === "change") {
+    answered(control, () => control.own("change", event));
+    return;
+  }
   if (decideOrShow(control, event)) {
     // A refused edit is no edit: a pick's `change`, coming next, finds nothing to do either.
     if (control.pick && event.type === "input") state.picked = true;
@@ -714,9 +724,6 @@ function listen(input: Kept, types: Iterable<string>): void {
   }
 }
 
-/** `<input>` types whose `value` no one edits: a file list, a button's label, a hidden value. */
-const UNEDITED: ReadonlySet<string> = new Set(["file", "hidden", "submit", "reset", "button", "image"]);
-
 /**
  * After an `<input>`'s attribute pass: whether it is controlled — a `value`, or a `checked` that is
  * `true` or `false` — and its `transform`, which a controlled field alone takes.
@@ -726,7 +733,7 @@ export function controlInput(input: HTMLInputElement, attributes: Record<string,
   const box = isBox(input);
   // A file, a button, a hidden value: no one edits its `value`, so it holds no model to show.
   const controlled =
-    !UNEDITED.has(input.type) && (box ? typeof attributes.checked === "boolean" : attributes.value != null);
+    !UNEDITED_INPUT_TYPES.has(input.type) && (box ? typeof attributes.checked === "boolean" : attributes.value != null);
   if (!controlled && kept[CONTROLLED]) forgetField(input);
   kept[CONTROLLED] = controlled;
   const transform = attributes.transform;

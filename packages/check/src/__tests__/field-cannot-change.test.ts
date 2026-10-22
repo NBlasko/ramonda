@@ -50,6 +50,7 @@ describe("a field the user cannot change", () => {
       [lineOf('aria-label="a handler written as nothing"'), "input", "no-handler"],
       [lineOf('aria-label="a box picked by click"'), "input", "pick-through-click"],
       [lineOf('aria-label="a date on change"'), "input", "change-after-its-input"],
+      [lineOf('aria-label="a box of a type unread"'), "input", "no-handler"],
     ]);
   });
 

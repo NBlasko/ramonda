@@ -1214,3 +1214,84 @@ describe("a field when the app's code throws, or an edit is not the one announce
     expect([field.value, field.selectionStart]).toEqual(["hello world", 11]);
   });
 });
+
+/** Round 41. */
+describe("a pick that threw, and a text field's change", () => {
+  /** An out-of-stock size makes the transform throw: the `change` after it is no pick of its own. */
+  test("a pick whose transform threw does not reach onchange on its change", async () => {
+    const { Select } = await import("../index");
+    class Sizes extends Component {
+      @state size = "m";
+      saved: string[] = [];
+      save(event: EventOn<HTMLSelectElement>) {
+        this.saved.push(event.currentTarget.value);
+        this.size = event.currentTarget.value;
+      }
+      inStock(next: string): string {
+        if (next === "l") throw new Error("out of stock");
+        return next;
+      }
+      render() {
+        return (
+          <Select id="s" aria-label="Size" value={this.size} onchange={this.save} transform={this.inStock}>
+            <option value="m">m</option>
+            <option value="l">l</option>
+          </Select>
+        );
+      }
+    }
+    const app = await getDOM<Sizes>(<Sizes />);
+    await app.settle();
+    const select = app.container.querySelector("#s") as HTMLSelectElement;
+    const listener = (event: ErrorEvent) => event.preventDefault();
+    window.addEventListener("error", listener);
+    try {
+      select.value = "l";
+      select.dispatchEvent(new Event("input", { bubbles: true }));
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    } finally {
+      window.removeEventListener("error", listener);
+    }
+
+    expect({ saved: app.instance.saved, shown: select.value }).toEqual({ saved: [], shown: "m" });
+  });
+
+  /** A text field's `change` on blur: its `onchange` runs, and the transform is not asked again. */
+  test("a text input's change calls onchange and decides nothing again", async () => {
+    class Named extends Component {
+      @state text = "";
+      decided = 0;
+      changed = 0;
+      typed(event: EventOn<HTMLInputElement>) {
+        this.text = event.currentTarget.value;
+      }
+      left() {
+        this.changed++;
+      }
+      keep(next: string): string {
+        this.decided++;
+        return next;
+      }
+      render() {
+        return (
+          <input
+            id="i"
+            aria-label="Named"
+            value={this.text}
+            oninput={this.typed}
+            onchange={this.left}
+            transform={this.keep}
+          />
+        );
+      }
+    }
+    const app = await getDOM<Named>(<Named />);
+    await app.settle();
+    const field = app.container.querySelector("#i") as HTMLInputElement;
+    typeInto(field, "a");
+    await app.settle();
+    field.dispatchEvent(new Event("change", { bubbles: true }));
+
+    expect({ decided: app.instance.decided, changed: app.instance.changed }).toEqual({ decided: 1, changed: 1 });
+  });
+});

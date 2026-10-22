@@ -35,6 +35,7 @@ describe("a field inside a @ramonda/form form", () => {
         [lineOf("attrs={bag}"), "bag-unreadable", "attrs"],
         [lineOf("<Fancy"), "unreadable-component", "Fancy"],
         [lineOf("<Ambient"), "unreadable-component", "Ambient"],
+        [lineOf('aria-label="unread box in form"'), "missing", "`name`, `onblur`, `aria-invalid`"],
         [lineOf('aria-label="braced box"'), "missing", "`name`, `onblur`, `aria-invalid`"],
         [lineOf('attrs={{ value: "fixed" }}'), "bag-without-a-handler", "attrs"],
         [lineOf("<BoxInput attrs={{ checked: true }} />"), "bag-without-a-handler", "attrs"],
@@ -45,7 +46,7 @@ describe("a field inside a @ramonda/form form", () => {
         [lineOf("class SignupForm"), "form-in-a-hook", "form"],
       ]),
     );
-    expect(issues).toHaveLength(18);
+    expect(issues).toHaveLength(19);
   });
 
   test("a complete field, a wrapper handed everything, a harmless bag, a field outside a form and an app's own Form are silent", () => {

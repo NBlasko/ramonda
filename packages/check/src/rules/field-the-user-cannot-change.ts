@@ -4,7 +4,7 @@ import { coreElementTag } from "./coreElements";
 import { openingOf, writtenAsNothing } from "./element";
 import { follow, unwrap, type Looking } from "./follow-value";
 import type { ElementContext, ElementRule, WrittenAttribute } from "./rule";
-import { NOT_EDITED, propRead } from "./formTable";
+import { fieldKind, propRead } from "./formTable";
 
 export interface FieldTheUserCannotChangeIssue {
   component: "Select" | "TextArea" | "input";
@@ -195,14 +195,20 @@ export const fieldTheUserCannotChange = {
     if (tag !== "select" && tag !== "textarea" && tag !== "input") return [];
     const component = tag === "select" ? "Select" : tag === "textarea" ? "TextArea" : "input";
 
-    const type = tag === "input" ? attr("type")?.toLowerCase() : undefined;
-    if (type !== undefined && NOT_EDITED.has(type)) return [];
-    const box = type === "checkbox" || type === "radio";
-    const pick = tag === "select" || box;
-
     // `{null}` and `{undefined}` — data still loading — are no value: the field is the user's.
     const said = (name: string) =>
       attributes.find((attribute) => attribute.name === name && !writtenAsNothing(attribute));
+
+    // What its `type` makes it — see `fieldKind`; one whose type cannot be read is a box when it is
+    // written with `checked`, and a text field otherwise.
+    const type = tag === "input" ? attr("type")?.toLowerCase() : undefined;
+    const typeAttribute = opening.attributes.properties.find(
+      (p): p is ts.JsxAttribute => ts.isJsxAttribute(p) && p.name.getText() === "type",
+    );
+    const kind = tag === "input" ? fieldKind(typeAttribute, type) : "text";
+    if (kind === "unedited") return [];
+    const box = kind === "box" || (kind === "unread" && said("checked") !== undefined && said("value") === undefined);
+    const pick = tag === "select" || box;
     const model = said(box ? "checked" : "value");
     const spreads = opening.attributes.properties.filter(ts.isJsxSpreadAttribute);
     // Any spread but the schema's constraints may carry a `value` — which makes the field controlled —

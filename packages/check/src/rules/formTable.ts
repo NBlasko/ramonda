@@ -1,3 +1,4 @@
+import { UNEDITED_INPUT_TYPES } from "@ramonda/dom-facts";
 import ts from "typescript";
 import { positionOf } from "../syntax";
 import { coreElementTag } from "./coreElements";
@@ -85,8 +86,74 @@ export interface FormFacts {
   holders: FormHolder[];
 }
 
-/** The `<input>` types no one edits, which no rule about a field's model asks about. */
-export const NOT_EDITED: ReadonlySet<string> = new Set(["hidden", "submit", "button", "reset", "image", "file"]);
+/** The `<input>` types no one edits, which no rule about a field's model asks about — shared with core. */
+export const NOT_EDITED: ReadonlySet<string> = UNEDITED_INPUT_TYPES;
+
+/**
+ * What an `<input>`'s `type` makes the field: a `box` (its model is `checked`), a `text` field (`value`),
+ * one no one edits, or one whose type cannot be read — and then either may be its model. One reading
+ * for every rule, so no two of them decide the same field differently.
+ */
+export type FieldKind = "box" | "text" | "unedited" | "unread";
+
+function kindOfType(type: string): FieldKind {
+  const lower = type.toLowerCase();
+  if (lower === "checkbox" || lower === "radio") return "box";
+  return NOT_EDITED.has(lower) ? "unedited" : "text";
+}
+
+/**
+ * The strings an expression can be, as written: a literal, or every arm of `?:`, `??` and `||` —
+ * `type={busy ? "button" : "submit"}` is one of two. `undefined` when any of them cannot be read.
+ */
+export function literalsOf(expression: ts.Expression | undefined): string[] | undefined {
+  if (expression === undefined) return undefined;
+  const value = unwrap(expression);
+  if (ts.isStringLiteralLike(value)) return [value.text];
+  if (ts.isConditionalExpression(value)) {
+    const yes = literalsOf(value.whenTrue);
+    const no = literalsOf(value.whenFalse);
+    return yes === undefined || no === undefined ? undefined : [...yes, ...no];
+  }
+  if (
+    ts.isBinaryExpression(value) &&
+    (value.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken ||
+      value.operatorToken.kind === ts.SyntaxKind.BarBarToken)
+  ) {
+    const left = literalsOf(value.left);
+    const right = literalsOf(value.right);
+    return left === undefined || right === undefined ? undefined : [...left, ...right];
+  }
+  return undefined;
+}
+
+/** The strings a JSX attribute holds as written — see `literalsOf`. A bare attribute holds none. */
+export function attributeLiterals(attribute: ts.JsxAttribute | undefined): string[] | undefined {
+  const written = attribute?.initializer;
+  if (written === undefined) return undefined;
+  return literalsOf(ts.isJsxExpression(written) ? written.expression : written);
+}
+
+/**
+ * The kind of field an `<input>` is, by its `type` attribute — `known` is the type when the caller has
+ * already read it (through a `const`, say). A `type` that can be either kind is `unread`.
+ */
+export function fieldKind(typeAttribute: ts.JsxAttribute | undefined, known?: string): FieldKind {
+  if (known !== undefined) return kindOfType(known);
+  if (typeAttribute === undefined) return "text";
+  const literals = attributeLiterals(typeAttribute);
+  if (literals === undefined) return "unread";
+  const kinds = new Set(literals.map(kindOfType));
+  return kinds.size === 1 ? [...kinds][0] : "unread";
+}
+
+/** The attribute that is a field's model, for its kind: both when its kind cannot be read. */
+export function modelNames(kind: FieldKind): readonly string[] {
+  if (kind === "box") return ["checked"];
+  if (kind === "text") return ["value"];
+  if (kind === "unread") return ["value", "checked"];
+  return [];
+}
 
 /** `this.use(Form, …)` or `this.use(Form<typeof schema>, …)`, with `Form` imported from `@ramonda/form`. */
 function isFormHook(initializer: ts.Expression | undefined, resolve: Resolver): boolean {
@@ -279,15 +346,11 @@ export function formTableFor(sources: readonly ts.SourceFile[], resolve: Resolve
     for (const attribute of opening.attributes.properties) {
       if (ts.isJsxAttribute(attribute)) written.set(attribute.name.getText(), attribute);
     }
-    // `type="checkbox"` or `type={"checkbox"}`.
-    const typeAttribute = written.get("type");
-    const typeValue = typeAttribute === undefined ? undefined : valueOf(typeAttribute);
-    const type =
-      typeValue !== undefined && ts.isStringLiteralLike(unwrap(typeValue))
-        ? (unwrap(typeValue) as ts.StringLiteralLike).text.toLowerCase()
-        : undefined;
-    if (type !== undefined && NOT_EDITED.has(type)) return;
-    const box = type === "checkbox" || type === "radio";
+    // What its `type` makes it — see `fieldKind`. One whose type cannot be read is a box when it is
+    // written with `checked`, and a text field otherwise.
+    const kind = tag === "input" ? fieldKind(written.get("type")) : "text";
+    if (kind === "unedited") return;
+    const box = kind === "box" || (kind === "unread" && written.has("checked") && !written.has("value"));
     const pick = tag === "select" || box;
 
     // Every `{...this.props.P}` on a field, controlled or not: it may carry a model, or take one away.

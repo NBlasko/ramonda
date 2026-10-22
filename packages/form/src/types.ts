@@ -133,8 +133,12 @@ export interface FieldApi<T> {
  */
 export type InputValue<T> = InputValueOf<NonNullable<T>>;
 
-/** Each member of the value's union on its own: a `string | number` field shows a string or a number. */
-type InputValueOf<U> = U extends Date ? string : U extends number ? number | "" : string;
+/**
+ * Each member of the value's union on its own: a `string | number` field shows a string or a number.
+ * A value a control's `value` cannot show — a boolean, a file, a bigint — is `never`: a box takes
+ * `checked={field.value}`, and the type refuses `value={…}` on it.
+ */
+type InputValueOf<U> = U extends Date ? string : U extends number ? number | "" : U extends string ? string : never;
 
 /* ------------------------------------------------------------------ *
  * The three node kinds.

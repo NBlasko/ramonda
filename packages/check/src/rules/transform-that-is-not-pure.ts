@@ -5,7 +5,7 @@ import { isNothing, openingOf } from "./element";
 import { unwrap } from "./follow-value";
 import { implementationOf, reach, whyImpure, type Reached } from "./pure-function";
 import type { ElementContext, ElementRule } from "./rule";
-import { NOT_EDITED } from "./formTable";
+import { fieldKind, modelNames } from "./formTable";
 
 export interface TransformThatIsNotPureIssue {
   component: "Select" | "TextArea" | "input";
@@ -106,13 +106,13 @@ export const transformThatIsNotPure = {
     const component = tag === "select" ? "Select" : tag === "textarea" ? "TextArea" : "input";
     const at = positionOf(transform.at);
 
-    const type = tag === "input" ? attr("type")?.toLowerCase() : undefined;
-    // A file, a hidden value, a button: no one edits it, so it holds no model, and core runs no
-    // transform on it.
-    if (type !== undefined && NOT_EDITED.has(type)) return [{ component, kind: "uncontrolled", detail: "", ...at }];
-    // A `type` this cannot read may be a box or not: its model is whichever of the two is written.
-    const unread = tag === "input" && type === undefined && attributes.some((attribute) => attribute.name === "type");
-    const names = unread ? ["value", "checked"] : type === "checkbox" || type === "radio" ? ["checked"] : ["value"];
+    // What its `type` makes it — see `fieldKind`. A file, a hidden value, a button holds no model, and
+    // core runs no transform on it; one whose type cannot be read has either model.
+    const typeAttribute = openingOf(element).attributes.properties.find(
+      (p): p is ts.JsxAttribute => ts.isJsxAttribute(p) && p.name.getText() === "type",
+    );
+    const kind = tag === "input" ? fieldKind(typeAttribute, attr("type")) : "text";
+    const names = modelNames(kind);
     const model = attributes.find(
       (attribute) => names.includes(attribute.name) && !(attribute.value !== undefined && isNothing(attribute.value)),
     );

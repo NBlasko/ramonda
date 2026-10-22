@@ -57,6 +57,12 @@ class Fields extends Component<{ transform: (next: string, prev: string) => stri
         <input aria-label="frozen" value={value} oninput={this.type} transform={frozen} />
         <input aria-label="an overload" value={value} oninput={this.type} transform={overloadedHandOn} />
         <input
+          aria-label="sorts what it split"
+          value={value}
+          oninput={this.type}
+          transform={(next: string) => next.split("").sort().join("")}
+        />
+        <input
           aria-label="a set it makes"
           value={value}
           oninput={this.type}
