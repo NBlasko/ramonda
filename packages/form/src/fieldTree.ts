@@ -372,12 +372,8 @@ function sameIds(a: readonly string[] | undefined, b: readonly string[]): boolea
  * Read from the element's own `type` rather than guessed from the text: the control says what it
  * is, so the two cannot disagree. A number input hands back a number, and an empty one hands back
  * `""` rather than `NaN`, which is a value a schema can report on ("expected a number") instead of
- * one that quietly poisons arithmetic.
- */
-/**
- * What a control's edit writes, read off the control as it is written: `type="checkbox"` writes
- * whether it is ticked, `type="number"` a number, `type="date"` the day — and any other control its
- * text. A number field is written `type="number"`, as a box is written `type="checkbox"`.
+ * one that quietly poisons arithmetic. Any other control hands back its text, so a number field is
+ * written `type="number"`, as a box is written `type="checkbox"`.
  */
 function fromControl(target: EventTarget | null, current: unknown): unknown {
   const element = target as (HTMLInputElement & { type?: string }) | null;

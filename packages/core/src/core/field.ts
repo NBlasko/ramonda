@@ -119,11 +119,24 @@ export function decideEdit(field: Field, transform: Transform, prev: FieldValue,
   if (caret !== null && typeof next === "string" && typeof prev === "string" && String(kept) === prev) {
     // An insert replaced what was selected, and that selection is put back — `hello` selected and
     // pasted over is `hello` selected again. What follows the caret now followed the selection then,
-    // so its end is exact; its start is where the inserted text began, no further than that end.
+    // so its end is exact; its start is where the inserted text began, which the event says (`data`,
+    // a paste's `dataTransfer`), and the text the two share only when it does not.
     if (input.inputType.startsWith("insert")) {
       const to = Math.max(0, Math.min(prev.length, prev.length - (next.length - caret)));
-      const from = Math.min(sharedStart(prev, next), to);
+      const typed = event as InputEvent;
+      const inserted = typed.data ?? typed.dataTransfer?.getData("text/plain") ?? undefined;
+      const from = Math.max(
+        0,
+        Math.min(inserted !== undefined ? caret - inserted.length : sharedStart(prev, next), to),
+      );
       text.setSelectionRange(from, to);
+      return refused;
+    }
+    // A cut, or a delete that took more than one character, took a selection: it starts at the caret,
+    // and is put back whole.
+    const deleted = prev.length - next.length;
+    if (input.inputType === "deleteByCut" || (deleted > 1 && input.inputType.startsWith("deleteContent"))) {
+      text.setSelectionRange(caret, Math.min(prev.length, caret + deleted));
       return refused;
     }
     // What a delete forward took was after the caret, so the caret is where the edit found it; any

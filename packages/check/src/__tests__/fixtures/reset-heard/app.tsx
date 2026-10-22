@@ -81,6 +81,16 @@ class Resets extends Component<{ children?: unknown }> {
           {this.props.children}
           <button type="reset">children reset</button>
         </form>
+        {/* ✗ a spread on a field may carry its value */}
+        <form>
+          <input aria-label="spread field" {...this.props} />
+          <button type="reset">spread reset</button>
+        </form>
+        {/* ✗ a box whose type is written in braces is a box */}
+        <form>
+          <input aria-label="braced box" type={"checkbox"} checked={true} onchange={this.type} />
+          <button type="reset">braced reset</button>
+        </form>
         {/* ✗ what `??` renders first is its left side */}
         <form>
           {this.props.children ?? <p>None</p>}

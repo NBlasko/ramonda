@@ -26,10 +26,15 @@ import {
 import { fromAPackage } from "./lib";
 
 declare const value: string;
+declare const kind: string;
+declare const on: boolean;
 
 class Fields extends Component<{ transform: (next: string, prev: string) => string }> {
   limit = 3;
   type(_event: Event) {}
+  box(next: boolean): boolean {
+    return next;
+  }
   upper(next: string): string {
     return next.toUpperCase();
   }
@@ -73,6 +78,13 @@ class Fields extends Component<{ transform: (next: string, prev: string) => stri
         <input aria-label="loose factory" value={value} oninput={this.type} transform={loose} />
         <input aria-label="const arrow handed on" value={value} oninput={this.type} transform={handsOnAnArrow} />
         <input aria-label="factory handed a function" value={value} oninput={this.type} transform={mappedWithAnArrow} />
+        <input
+          aria-label="hands on a package's function"
+          value={value}
+          oninput={this.type}
+          transform={(next: string) => [next].map(fromAPackage).join("")}
+        />
+        <input aria-label="a box of a type unread" type={kind} checked={on} onchange={this.type} transform={this.box} />
         <input aria-label="an alias" value={value} oninput={this.type} transform={throughAnAlias} />
         <input aria-label="a delete" value={value} oninput={this.type} transform={deleting} />
         <input aria-label="bare date" value={value} oninput={this.type} transform={dated} />

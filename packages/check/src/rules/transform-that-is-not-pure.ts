@@ -104,10 +104,11 @@ export const transformThatIsNotPure = {
     const at = positionOf(transform.at);
 
     const type = tag === "input" ? attr("type")?.toLowerCase() : undefined;
+    // A `type` this cannot read may be a box or not: its model is whichever of the two is written.
+    const unread = tag === "input" && type === undefined && attributes.some((attribute) => attribute.name === "type");
+    const names = unread ? ["value", "checked"] : type === "checkbox" || type === "radio" ? ["checked"] : ["value"];
     const model = attributes.find(
-      (attribute) =>
-        attribute.name === (type === "checkbox" || type === "radio" ? "checked" : "value") &&
-        !(attribute.value !== undefined && isNothing(attribute.value)),
+      (attribute) => names.includes(attribute.name) && !(attribute.value !== undefined && isNothing(attribute.value)),
     );
     if (model === undefined) return [{ component, kind: "uncontrolled", detail: "", ...at }];
 

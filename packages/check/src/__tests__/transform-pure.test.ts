@@ -30,6 +30,7 @@ describe("a transform that is not pure", () => {
       [lineOf('aria-label="loose factory"'), "impure"],
       [lineOf('aria-label="const arrow handed on"'), "impure"],
       [lineOf('aria-label="factory handed a function"'), "impure"],
+      [lineOf('transform={(next: string) => [next].map(fromAPackage).join("")}'), "impure"],
       [lineOf('aria-label="an alias"'), "impure"],
       [lineOf('aria-label="a delete"'), "impure"],
       [lineOf('aria-label="bare date"'), "impure"],

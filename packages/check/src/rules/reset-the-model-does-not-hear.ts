@@ -46,17 +46,19 @@ function attributeOf(element: JsxElementLike, name: string): ts.JsxAttribute | u
 function controlledField(element: JsxElementLike, resolve: Resolver): boolean {
   const tag = tagOf(element) ?? coreElementTag(openingOf(element).tagName, resolve);
   if (tag !== "input" && tag !== "select" && tag !== "textarea") return false;
-  const type = attributeOf(element, "type")?.initializer;
+  // `type="checkbox"` or `type={"checkbox"}`.
+  const written = attributeOf(element, "type")?.initializer;
+  const type = written !== undefined && ts.isJsxExpression(written) ? written.expression : written;
+  const typed = type !== undefined && ts.isStringLiteralLike(type) ? type.text.toLowerCase() : undefined;
   // A reset, a submit or a hidden value is not edited, and a reset does not move it.
-  if (type !== undefined && ts.isStringLiteral(type) && NOT_EDITED.has(type.text.toLowerCase())) return false;
-  const typed = type !== undefined && ts.isStringLiteral(type) ? type.text.toLowerCase() : undefined;
+  if (typed !== undefined && NOT_EDITED.has(typed)) return false;
   const box = typed === "checkbox" || typed === "radio";
   const model = attributeOf(element, box ? "checked" : "value");
   if (model === undefined) return false;
   const value = model.initializer;
   if (value === undefined) return true;
-  const written = ts.isJsxExpression(value) ? value.expression : value;
-  return written !== undefined && !isNothing(written);
+  const held = ts.isJsxExpression(value) ? value.expression : value;
+  return held !== undefined && !isNothing(held);
 }
 
 /**
@@ -72,6 +74,15 @@ function firstProblem(
   const element = (node: JsxElementLike): void => {
     if (found !== undefined) return;
     const opening = openingOf(node);
+    const fieldTag = tagOf(node) ?? coreElementTag(opening.tagName, resolve);
+    // A spread on a field may carry its `value`, and nothing here can read whether it does.
+    if (
+      (fieldTag === "input" || fieldTag === "select" || fieldTag === "textarea") &&
+      opening.attributes.properties.some(ts.isJsxSpreadAttribute)
+    ) {
+      found = { kind: "unseen-content", at: opening, detail: `a spread on <${opening.tagName.getText()}>` };
+      return;
+    }
     if (controlledField(node, resolve)) {
       found = { kind: "controlled-field", at: opening, detail: opening.tagName.getText() };
       return;

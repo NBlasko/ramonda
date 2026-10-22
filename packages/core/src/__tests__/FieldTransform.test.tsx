@@ -867,3 +867,43 @@ test("a refused keystroke beside the same letter puts the caret back where it wa
 
   expect([field.value, field.selectionStart, field.selectionEnd]).toEqual(["hello", 2, 2]);
 });
+
+/** Round 37: the selection a refused edit took is put back exactly. */
+describe("the selection a refused edit took", () => {
+  class Locked extends Component {
+    @state text = "hello world";
+    typed(event: EventOn<HTMLTextAreaElement>) {
+      this.text = event.currentTarget.value;
+    }
+    refuse(_next: string, prev: string): string {
+      return prev;
+    }
+    render() {
+      return <TextArea id="t" aria-label="Locked" value={this.text} oninput={this.typed} transform={this.refuse} />;
+    }
+  }
+
+  /** `world` selected and typed over with `w`: the inserted letter is the one the selection began with. */
+  test("an insert beginning like the selection it replaced puts the whole selection back", async () => {
+    const app = await getDOM<Locked>(<Locked />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+    field.value = "hello w";
+    field.setSelectionRange(7, 7);
+    field.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: "w" }));
+
+    expect([field.value, field.selectionStart, field.selectionEnd]).toEqual(["hello world", 6, 11]);
+  });
+
+  /** `ello` selected and deleted: the caret is where the selection began, and the selection comes back. */
+  test("a delete over a selection puts the selection back", async () => {
+    const app = await getDOM<Locked>(<Locked />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+    field.value = "h world";
+    field.setSelectionRange(1, 1);
+    field.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "deleteContentBackward" }));
+
+    expect([field.value, field.selectionStart, field.selectionEnd]).toEqual(["hello world", 1, 5]);
+  });
+});

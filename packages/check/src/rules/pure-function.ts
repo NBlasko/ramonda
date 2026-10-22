@@ -170,7 +170,6 @@ export function whyImpure(
   if (depth > DEPTH) return { at: fn, why: "it calls further than this follows" };
   if (fn.body === undefined) return { at: fn, why: "its body cannot be read" };
 
-  /** Whether a name is declared inside `fn` — a parameter or a local — or inside a function enclosing it. */
   /**
    * Whether reading `declaration` from inside `fn` reads something that cannot change: one of `fn`'s
    * own names; a parameter of the factory that made `fn`, when the call that made it handed fixed
@@ -198,10 +197,6 @@ export function whyImpure(
     return at;
   };
   /**
-   * Whether writing to `expression` changes only what `fn` made. A parameter may be pointed elsewhere,
-   * but what it holds belongs to the caller — so `next = …` is local and `input.x = …` is not.
-   */
-  /**
    * Whether what a name holds belongs to the caller: a parameter, or a local that holds one under
    * another name — `const i = input` writes into `input` when it writes into `i`.
    */
@@ -227,6 +222,10 @@ export function whyImpure(
     const origin = resolve(value)?.declarations?.[0];
     return origin !== undefined && isInside(origin, fn) && holdsTheCallers(origin, depth + 1);
   };
+  /**
+   * Whether writing to `expression` changes only what `fn` made. A parameter may be pointed elsewhere,
+   * but what it holds belongs to the caller — so `next = …` is local and `input.x = …` is not.
+   */
   const isLocal = (expression: ts.Expression): boolean => {
     const written = unwrap(expression);
     const root = rootOf(written);
@@ -297,7 +296,11 @@ export function whyImpure(
         if (named !== undefined && !named.getSourceFile().isDeclarationFile && named.body !== undefined) {
           const inner = whyImpure(named, resolve, depth + 1, seen, reached?.fixedFactory);
           if (inner !== undefined) return fail(node, `it hands on \`${node.text}\`, and ${inner.why}`);
-        } else if (!unchanging(declared) && !ts.isFunctionLike(declared) && !isImportOfAFunction(declared)) {
+        } else if (named !== undefined || ts.isFunctionLike(declared) || isImportOfAFunction(declared)) {
+          // A function handed on whose body cannot be read — a package's `.d.ts`, a `declare
+          // function` — is as unprovable as one called: it runs all the same.
+          if (!callee) return fail(node, `it hands on \`${node.text}\`, whose body cannot be read`);
+        } else if (!unchanging(declared)) {
           return fail(node, `it reads \`${node.text}\`, which may change`);
         }
       }
