@@ -109,3 +109,16 @@ function emptied(list: string[]): string[] {
 }
 /** Not pure: a helper it calls changes what its parameter holds. */
 export const throughAHelperThatEmpties = (next: string) => (emptied([next]).length === 0 ? next : "");
+
+/** Not pure: writes into what it was handed, under another name. */
+export const throughAnAlias = (next: string, _prev: string, input: { selectionStart: number | null }) => {
+  const i = input;
+  i.selectionStart = 0;
+  return next;
+};
+
+/** Not pure: deletes from what it was handed. */
+export const deleting = (next: string, _prev: string, input: { inputType?: string }) => {
+  delete input.inputType;
+  return next;
+};

@@ -9,6 +9,8 @@ export interface FormFieldWithoutWhatTheFormNeedsIssue {
    * form needs; `not-passed` — a component used inside such a form is not handed a prop a field in
    * it is written with; `bag-overrides` — what is handed for a spread written last on a field sets
    * one of those attributes to nothing; `bag-unreadable` — what is handed for it cannot be read;
+   * `bag-without-a-handler` — what is handed for it carries a `value` (`checked`) and no handler, on
+   * a field that writes none of its own;
    * `unreadable-component` — a component used inside such a form whose render this cannot read;
    * `form-not-attached` — a component holds a `Form` and renders no `<form onsubmit={this.X.submit}>`
    * for it; `form-in-a-hook` — a hook holds a `Form`, which no form can be recognised through.

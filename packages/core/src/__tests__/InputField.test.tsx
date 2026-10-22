@@ -906,3 +906,35 @@ describe("a field answering inside a commit", () => {
     expect({ read, model: app.instance.on, shown: box.checked }).toEqual({ read: [true], model: true, shown: true });
   });
 });
+
+/** A word ending inside a running commit: Firefox's input after it is matched against the settled field. */
+test("a word that ends inside a commit is heard once, with Firefox's input after it", async () => {
+  const { mounted, createRef } = await import("../index");
+  class Shouting extends Component {
+    @state text = "";
+    heard: string[] = [];
+    field = createRef<HTMLInputElement>();
+    typed(event: EventOn<HTMLInputElement>) {
+      this.heard.push(event.currentTarget.value);
+      this.text = event.currentTarget.value.toUpperCase();
+    }
+    @mounted
+    composeNow() {
+      const field = this.field.current as HTMLInputElement;
+      field.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+      field.value = "é";
+      field.dispatchEvent(new InputEvent("input", { bubbles: true, isComposing: true, data: "é" }));
+      field.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "é" }));
+    }
+    render() {
+      return <input id="i" aria-label="Shouting" ref={this.field} value={this.text} oninput={this.typed} />;
+    }
+  }
+  const app = await getDOM<Shouting>(<Shouting />);
+  await app.settle();
+  const field = app.container.querySelector("#i") as HTMLInputElement;
+  field.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertCompositionText", data: "é" }));
+  await app.settle();
+
+  expect({ heard: app.instance.heard, shown: field.value }).toEqual({ heard: ["é"], shown: "É" });
+});

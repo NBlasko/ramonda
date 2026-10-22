@@ -289,6 +289,16 @@ describe("the field tree", () => {
     expect({ typed, again: (h.values as Shape).age }).toEqual({ typed: 42, again: 7 });
   });
 
+  /** A boolean field is set by a radio pair or a select through its `value`: "No" is picked as "false". */
+  test("a radio of a boolean field writes its own value, not whether it is checked", () => {
+    const { h, fields } = tree(SEED);
+
+    fields.agree.$.oninput(inputEvent("checkbox", { checked: true }));
+    fields.agree.$.oninput(inputEvent("radio", { value: "false", checked: true }));
+
+    expect((h.values as Shape).agree).toBe("false");
+  });
+
   test("a cleared date field shows nothing", () => {
     const { fields } = tree(SEED);
 

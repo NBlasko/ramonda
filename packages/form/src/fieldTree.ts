@@ -201,7 +201,7 @@ export class FieldHandle {
   /** The control's `onblur`: the field is touched, which is what decides whether its message shows. */
   readonly onblur: (event: Event) => void;
   /**
-   * What the field holds when it holds something: a number, a date, a box. Kept because an emptied
+   * What the field holds when it holds something: a number or a date. Kept because an emptied
    * number field holds `""`, and what the next keystroke writes is still a number.
    */
   private kind: Kind | undefined;
@@ -383,12 +383,16 @@ function sameIds(a: readonly string[] | undefined, b: readonly string[]): boolea
  * `""` rather than `NaN`, which is a value a schema can report on ("expected a number") instead of
  * one that quietly poisons arithmetic.
  */
-type Kind = "number" | "date" | "boolean";
+/**
+ * What a field holds, for a control that does not say: a number, or a date. A box is said by its
+ * `type="checkbox"` and nothing else — a radio pair or a select on a boolean field writes its own
+ * `value`, as it always has.
+ */
+type Kind = "number" | "date";
 
 function kindOf(value: unknown): Kind | undefined {
   if (typeof value === "number") return "number";
   if (value instanceof Date) return "date";
-  if (typeof value === "boolean") return "boolean";
   return undefined;
 }
 
@@ -401,7 +405,7 @@ function fromControl(target: EventTarget | null, current: unknown, kind: Kind | 
   const element = target as (HTMLInputElement & { type?: string }) | null;
   if (element === null) return current;
 
-  if (element.type === "checkbox" || kind === "boolean") return element.checked;
+  if (element.type === "checkbox") return element.checked;
   if (element.type === "number" || kind === "number") return element.value === "" ? "" : Number(element.value);
   if ((element.type === "date" || kind === "date") && current instanceof Date) {
     return fromDateInput(element.value, current) ?? element.value;

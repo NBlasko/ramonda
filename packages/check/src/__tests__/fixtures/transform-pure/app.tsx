@@ -12,6 +12,8 @@ import {
   handsOnAnArrow,
   globalDigits,
   dated,
+  throughAnAlias,
+  deleting,
   throughAHelperThatEmpties,
   mappedWithAnArrow,
   max20,
@@ -67,6 +69,8 @@ class Fields extends Component<{ transform: (next: string, prev: string) => stri
         <input aria-label="loose factory" value={value} oninput={this.type} transform={loose} />
         <input aria-label="const arrow handed on" value={value} oninput={this.type} transform={handsOnAnArrow} />
         <input aria-label="factory handed a function" value={value} oninput={this.type} transform={mappedWithAnArrow} />
+        <input aria-label="an alias" value={value} oninput={this.type} transform={throughAnAlias} />
+        <input aria-label="a delete" value={value} oninput={this.type} transform={deleting} />
         <input aria-label="bare date" value={value} oninput={this.type} transform={dated} />
         <input
           aria-label="helper empties its parameter"

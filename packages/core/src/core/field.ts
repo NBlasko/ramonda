@@ -2,7 +2,6 @@ import type { TransformInput } from "../types/commonTypes";
 import type { EnhancedHTMLNode } from "../types/vdom";
 import { writeValue } from "./Attribute";
 import { drainSync, drainingNow } from "./Task";
-import { queueAfterCommit } from "./commit";
 
 /** The fields a controlled value can sit on. Told apart by tag name: a field in an iframe is another window's class. */
 type Field = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
@@ -118,6 +117,14 @@ export function decideEdit(field: Field, transform: Transform, prev: FieldValue,
   const caret = text.selectionStart;
   writeValue(text as unknown as EnhancedHTMLNode, String(kept), false);
   if (caret !== null && typeof next === "string" && typeof prev === "string" && String(kept) === prev) {
+    // An insert replaced what was selected: the text both share at the start and at the end leaves
+    // exactly what it replaced, and that selection is put back — `hello` selected and pasted over is
+    // `hello` selected again.
+    if (input.inputType.startsWith("insert")) {
+      const [from, to] = replacedIn(prev, next);
+      text.setSelectionRange(from, to);
+      return refused;
+    }
     // What a delete forward took was after the caret, so the caret is where the edit found it; any
     // other edit moved it by what it added or took before it.
     const forward = input.inputType.startsWith("delete") && input.inputType.endsWith("Forward");
@@ -126,6 +133,24 @@ export function decideEdit(field: Field, transform: Transform, prev: FieldValue,
     text.setSelectionRange(back, back);
   }
   return refused;
+}
+
+/**
+ * The part of `prev` an insert replaced to make `next`: the text the two share at the start, and at
+ * the end, is what it left alone. A plain insert replaced nothing, and the range is the caret.
+ */
+function replacedIn(prev: string, next: string): [number, number] {
+  let start = 0;
+  while (start < prev.length && start < next.length && prev[start] === next[start]) start++;
+  let end = 0;
+  while (
+    end < prev.length - start &&
+    end < next.length - start &&
+    prev[prev.length - 1 - end] === next[next.length - 1 - end]
+  ) {
+    end++;
+  }
+  return [start, prev.length - end];
 }
 
 /** What one controlled field is in the middle of: a composition, or a pick. */
@@ -204,19 +229,24 @@ function runRenders(): void {
  * listener after this one reads it, and before the browser draws.
  *
  * Inside running rendering work the handler's renders have not happened yet, so settling now would
- * show the model as it was: the field is settled once that commit is done instead.
+ * show the model as it was: the field is settled in a microtask instead, once that work has returned
+ * and the renders it queued have run — still before the browser draws. `after` runs after the settle.
  */
-function show(control: FieldControl): void {
+function show(control: FieldControl, after?: () => void): void {
   if (drainingNow()) {
-    queueAfterCommit(() => control.settle());
-    // A commit flushed without a drain (`bootstrap`, a hydration) may end before reaching it.
+    // Once the running work has returned — the renders the handler queued run in a pass after it,
+    // so settling at the end of this commit would still show the model as it was. A microtask is
+    // still before the browser draws.
     queueMicrotask(() => {
       if (!drainingNow()) drainSync();
+      control.settle();
+      after?.();
     });
     return;
   }
   drainSync();
   control.settle();
+  after?.();
 }
 
 /** Decides the edit; whether it refused it, which then reaches no handler of the field — see `decideEdit`. */
@@ -269,6 +299,12 @@ export function answerEdit(control: FieldControl, event: Event): void {
   // A field the tree took away answers nothing — a browser blurs a focused field as it is removed.
   if (control.gone()) return;
   const state = stateOf(control.key);
+  // A pick's `change` follows its `input` at once; any other event in between means it is not coming —
+  // an `input` dispatched alone — so a later, unrelated `change` is answered as its own.
+  if (control.pick && event.type !== "change") {
+    state.picked = false;
+    state.pickAsked = undefined;
+  }
   const field = event.currentTarget as Field | null;
 
   if (event.type === "compositionstart") {
@@ -307,11 +343,13 @@ export function answerEdit(control: FieldControl, event: Event): void {
         control.own("input", as(event, "input", { inputType: "insertCompositionText", isComposing: false }));
       }
     } finally {
-      show(control);
+      // What the field shows once the composition is over and it is settled — the handler's word, a
+      // refusal, or a model the app moved: Firefox's `input` carries exactly that, and reaches no
+      // handler, however it ended; recorded after the settle, even one a running commit holds back.
+      show(control, () => {
+        if (field !== null) state.handedOver = field.value;
+      });
     }
-    // What the field shows once the composition is over — the handler's word, a refusal, or a model the
-    // app moved: Firefox's `input` carries exactly that, and reaches no handler, however it ended.
-    if (field !== null) state.handedOver = field.value;
     return;
   }
 
@@ -392,8 +430,9 @@ interface Asked {
  * `event` as a handler of the field is promised it: `oninput` an `input`, `onchange` a `change` —
  * when the field answers the edit on another event (a pick on its `input`, a word on its
  * `compositionend`). Everything else is the event itself, `currentTarget` included. What the handler
- * stops or prevents is recorded in `asked`, for the event it was told about; without `asked` it
- * reaches the event itself.
+ * stops or prevents — by method, or by `cancelBubble` and `returnValue` — is recorded in `asked`, for
+ * the event it was told about; without `asked` it reaches the event itself. It is a view, not an
+ * event: dispatching it again is the one thing it cannot do.
  */
 function as(event: Event, type: string, own: Record<string, unknown>, asked?: Asked): Event {
   return new Proxy(event, {
@@ -404,9 +443,23 @@ function as(event: Event, type: string, own: Record<string, unknown>, asked?: As
         if (key === "stopPropagation") return () => void (asked.propagation = true);
         if (key === "stopImmediatePropagation") return () => void (asked.immediate = true);
         if (key === "preventDefault") return () => void (asked.prevented = true);
+        if (key === "defaultPrevented") return asked.prevented;
+        if (key === "cancelBubble") return asked.propagation || asked.immediate;
       }
       const value = Reflect.get(target, key, target);
       return typeof value === "function" ? (value as (...args: unknown[]) => unknown).bind(target) : value;
+    },
+    // The old spellings of the same three asks, `cancelBubble = true` and `returnValue = false`.
+    set(target, key, value) {
+      if (asked !== undefined && key === "cancelBubble") {
+        if (value === true) asked.propagation = true;
+        return true;
+      }
+      if (asked !== undefined && key === "returnValue") {
+        if (value === false) asked.prevented = true;
+        return true;
+      }
+      return Reflect.set(target, key, value, target);
     },
   });
 }

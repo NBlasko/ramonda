@@ -201,13 +201,25 @@ export function whyImpure(
    * Whether writing to `expression` changes only what `fn` made. A parameter may be pointed elsewhere,
    * but what it holds belongs to the caller — so `next = …` is local and `input.x = …` is not.
    */
+  /**
+   * Whether what a name holds belongs to the caller: a parameter, or a local that holds one under
+   * another name — `const i = input` writes into `input` when it writes into `i`.
+   */
+  const holdsTheCallers = (declared: ts.Node, depth = 0): boolean => {
+    if (ts.isParameter(declared) || ts.isBindingElement(declared)) return true;
+    if (depth > 8 || !ts.isVariableDeclaration(declared) || declared.initializer === undefined) return false;
+    const held = unwrap(declared.initializer);
+    if (!ts.isIdentifier(held)) return false;
+    const origin = resolve(held)?.declarations?.[0];
+    return origin !== undefined && isInside(origin, fn) && holdsTheCallers(origin, depth + 1);
+  };
   const isLocal = (expression: ts.Expression): boolean => {
     const written = unwrap(expression);
     const root = rootOf(written);
     if (!ts.isIdentifier(root)) return false;
     const declared = resolve(root)?.declarations?.[0];
     if (declared === undefined || !isInside(declared, fn)) return false;
-    return written === root || !(ts.isParameter(declared) || ts.isBindingElement(declared));
+    return written === root || !holdsTheCallers(declared);
   };
   /** Whether what `expression` holds was made by `fn` — a parameter's contents are the caller's. */
   const madeHere = (expression: ts.Expression): boolean => {
@@ -215,7 +227,7 @@ export function whyImpure(
     if (!ts.isIdentifier(root)) return false;
     const declared = resolve(root)?.declarations?.[0];
     if (declared === undefined || !isInside(declared, fn)) return false;
-    return !(ts.isParameter(declared) || ts.isBindingElement(declared));
+    return !holdsTheCallers(declared);
   };
 
   const visit = (node: ts.Node): void => {
@@ -224,6 +236,10 @@ export function whyImpure(
     if (ts.isTypeNode(node)) return;
     if (node.kind === ts.SyntaxKind.ThisKeyword) return fail(node, "it reads `this`");
     if (ts.isAwaitExpression(node) || ts.isYieldExpression(node)) return fail(node, "it waits");
+    // `delete x.y` changes `x`, as `x.y = …` does.
+    if (ts.isDeleteExpression(node) && !isLocal(node.expression)) {
+      return fail(node, `it deletes from \`${node.expression.getText()}\`, which it did not make`);
+    }
 
     if (ts.isBinaryExpression(node) && isAssignment(node.operatorToken.kind) && !isLocal(node.left)) {
       return fail(node, `it writes \`${node.left.getText()}\`, which it did not make`);

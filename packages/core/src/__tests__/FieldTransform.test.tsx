@@ -743,3 +743,103 @@ test("a transform that returns nothing refuses the edit", async () => {
     shown: "12",
   });
 });
+
+/** Round 35. */
+describe("a field's edits, past a selection, a lone input, the old spellings and a commit", () => {
+  test("a refused paste over a selection puts the selection back", async () => {
+    class Locked extends Component {
+      @state text = "hello";
+      typed(event: EventOn<HTMLTextAreaElement>) {
+        this.text = event.currentTarget.value;
+      }
+      refuse(_next: string, prev: string): string {
+        return prev;
+      }
+      render() {
+        return <TextArea id="t" aria-label="Locked" value={this.text} oninput={this.typed} transform={this.refuse} />;
+      }
+    }
+    const app = await getDOM<Locked>(<Locked />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+    // `hello`, all of it selected, pasted over with `abc`: the caret is after the paste.
+    field.value = "abc";
+    field.setSelectionRange(3, 3);
+    field.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertFromPaste" }));
+
+    expect([field.value, field.selectionStart, field.selectionEnd]).toEqual(["hello", 0, 5]);
+  });
+
+  /** An `input` dispatched alone — a test, a script — does not take the next, unrelated `change`. */
+  test("a pick's input with no change after it leaves the next change its own", async () => {
+    class Sizes extends Component {
+      @state size = "m";
+      changes = 0;
+      picked(event: EventOn<HTMLSelectElement>) {
+        this.changes++;
+        this.size = event.currentTarget.value;
+      }
+      render() {
+        return (
+          <Select id="s" aria-label="Size" value={this.size} onchange={this.picked}>
+            <option value="m">m</option>
+            <option value="l">l</option>
+            <option value="s">s</option>
+          </Select>
+        );
+      }
+    }
+    const app = await getDOM<Sizes>(<Sizes />);
+    await app.settle();
+    const select = app.container.querySelector("#s") as HTMLSelectElement;
+    select.value = "l";
+    select.dispatchEvent(new Event("input", { bubbles: true }));
+    await app.settle();
+    select.dispatchEvent(new FocusEvent("blur"));
+    select.value = "s";
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+    await app.settle();
+
+    expect({ changes: app.instance.changes, size: app.instance.size }).toEqual({ changes: 2, size: "s" });
+  });
+
+  /** `cancelBubble = true` and `returnValue = false` ask what the methods ask, of the `change` promised. */
+  test("a pick's onchange stops its change through cancelBubble, and reads its own preventDefault", async () => {
+    class Sizes extends Component {
+      @state size = "m";
+      formHeard = 0;
+      prevented: boolean[] = [];
+      picked(event: EventOn<HTMLSelectElement>) {
+        event.cancelBubble = true;
+        event.preventDefault();
+        this.prevented.push(event.defaultPrevented, event.cancelBubble);
+        this.size = event.currentTarget.value;
+      }
+      dirty() {
+        this.formHeard++;
+      }
+      render() {
+        return (
+          <form onchange={this.dirty}>
+            <Select id="s" aria-label="Size" value={this.size} onchange={this.picked}>
+              <option value="m">m</option>
+              <option value="l">l</option>
+            </Select>
+          </form>
+        );
+      }
+    }
+    const app = await getDOM<Sizes>(<Sizes />);
+    await app.settle();
+    const select = app.container.querySelector("#s") as HTMLSelectElement;
+    select.value = "l";
+    select.dispatchEvent(new Event("input", { bubbles: true }));
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+    await app.settle();
+
+    expect({ formHeard: app.instance.formHeard, prevented: app.instance.prevented }).toEqual({
+      formHeard: 0,
+      prevented: [true, true],
+    });
+  });
+});
