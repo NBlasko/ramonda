@@ -58,3 +58,6 @@ Each handler is handed the event it is promised: `oninput` an `input` — the wo
 commits arrives as one, `insertCompositionText` — and a pick's `onchange` a `change`, whose
 `stopPropagation()` stops the browser's own `change`. A transform that answers nothing refuses the
 edit.
+A `file`, `hidden`, `submit`, `reset`, `button` or `image` input holds no model, whatever its `value`;
+and when a field's handler throws, its error is the one the app sees, not one from the render of
+what it half wrote.

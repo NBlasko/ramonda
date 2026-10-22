@@ -82,6 +82,20 @@ class Resets extends Component<{ children?: unknown }> {
           {this.props.children}
           <button type="reset">children reset</button>
         </form>
+        {/* ✗ a reset written in braces, and one whose type cannot be read, over a controlled field */}
+        <form>
+          <input aria-label="braced reset field" value={value} oninput={this.type} />
+          <button type={"reset"}>braced reset button</button>
+        </form>
+        <form>
+          <input aria-label="unread reset field" value={value} oninput={this.type} />
+          <button type={this.label as "reset"}>unread reset button</button>
+        </form>
+        {/* ✓ a button of an unread type over uncontrolled fields */}
+        <form>
+          <input aria-label="unread ok field" defaultValue="x" />
+          <button type={this.label as "button"}>unread ok button</button>
+        </form>
         {/* ✗ a spread on a field may carry its value */}
         <form>
           <input aria-label="spread field" {...this.props} />

@@ -149,7 +149,10 @@ function controlFor(component: Component<any> & { settle(): void }, pick: boolea
     model: () => runtime.rawProps.value,
     prev: () => {
       const model = runtime.rawProps.value;
-      return Array.isArray(model) ? model.map(String) : String(model ?? "");
+      if (Array.isArray(model)) return model.map(String);
+      // A `multiple` select is decided as a list, a model of one value included.
+      if (runtime.rawProps.multiple) return model == null ? [] : [String(model)];
+      return String(model ?? "");
     },
     transform: () => {
       const transform = runtime.rawProps.transform;

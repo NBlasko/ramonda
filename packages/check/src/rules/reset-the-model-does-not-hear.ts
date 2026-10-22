@@ -32,8 +32,13 @@ function isResetButton(element: JsxElementLike): boolean {
   const type = openingOf(element).attributes.properties.find(
     (p): p is ts.JsxAttribute => ts.isJsxAttribute(p) && p.name.getText().toLowerCase() === "type",
   );
-  const value = type?.initializer;
-  return value !== undefined && ts.isStringLiteral(value) && value.text.toLowerCase() === "reset";
+  // `type="reset"` or `type={"reset"}` — and a `type` this cannot read may be a reset, so its form is
+  // asked the same: it is reported only when that form has something a reset would undo.
+  const written = type?.initializer;
+  if (written === undefined) return false;
+  const value = ts.isJsxExpression(written) ? written.expression : written;
+  if (value === undefined) return false;
+  return !ts.isStringLiteralLike(value) || value.text.toLowerCase() === "reset";
 }
 
 function attributeOf(element: JsxElementLike, name: string): ts.JsxAttribute | undefined {

@@ -11,7 +11,8 @@ export interface TransformThatIsNotPureIssue {
   /**
    * `impure` — the function reads or changes something besides its parameters and constants;
    * `unreadable` — its body cannot be read: a prop, a package's declaration, a value this cannot name;
-   * `built-in-render` — a call in the markup makes a new function on every render;
+   * `built-in-render` — made by a call in the markup, which runs on every render and is not the
+   *   transform this can read: whatever the factory does, it does each render;
    * `uncontrolled` — the field has no `value` (`checked`), so there is no model for it to decide against.
    */
   kind: "impure" | "unreadable" | "built-in-render" | "uncontrolled";
@@ -57,7 +58,7 @@ function transformOf(
  * on that is not pure, wherever it is declared; one that writes anything it did not make, or waits;
  * one that calls a function whose body
  * cannot be read; a `transform` whose own body cannot be read — handed down as a prop, or from a
- * package's declarations; one made by a call in the markup, a new function every render; and one on a
+ * package's declarations; one made by a call in the markup, whose factory runs on every render; and one on a
  * field with no `value`, which has no model to decide against.
  */
 export const transformThatIsNotPure = {
@@ -75,7 +76,7 @@ export const transformThatIsNotPure = {
         {
           impure: `is not pure: ${issue.detail}.`,
           unreadable: `is \`${issue.detail}\`, whose body cannot be read.`,
-          "built-in-render": `is \`${issue.detail}\`, a new function made on every render.`,
+          "built-in-render": `is \`${issue.detail}\`, a call that runs its factory on every render — make it once, at the top of a module.`,
           uncontrolled: "is on a field with no `value`, so there is no model for it to decide against.",
         }[issue.kind]
       }`,

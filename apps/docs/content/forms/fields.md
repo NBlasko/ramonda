@@ -215,7 +215,13 @@ runs, and it passes everything else through to the element.
 the client and a server-rendered page cannot carry it:
 
 ```tsx
-<input type="checkbox" checked={this.all} indeterminate={this.some && !this.all} />
+<input
+  type="checkbox"
+  aria-label="Select all"
+  checked={this.all}
+  indeterminate={this.some && !this.all}
+  oninput={this.toggleAll}
+/>
 ```
 
 The box arrives unchecked and becomes mixed when the page hydrates. There is no way around that; it

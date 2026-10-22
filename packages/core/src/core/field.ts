@@ -297,6 +297,9 @@ export function answerEdit(control: FieldControl, event: Event): void {
   // A field the tree took away answers nothing — a browser blurs a focused field as it is removed.
   if (control.gone()) return;
   const state = stateOf(control.key);
+  // The selection `beforeinput` recorded belongs to the `input` right after it; anything else in
+  // between — a cancelled edit sends none — and it is no longer the edit's.
+  if (event.type !== "beforeinput" && event.type !== "input") state.before = undefined;
   // A pick's `change` follows its `input` at once; any other event in between means it is not coming —
   // an `input` dispatched alone — so a later, unrelated `change` is answered as its own.
   if (control.pick && event.type !== "change") {
@@ -338,24 +341,26 @@ export function answerEdit(control: FieldControl, event: Event): void {
     state.composing = false;
     state.blurred = false;
     const refused = decide(control, event);
-    try {
-      control.own(event.type, event);
-      // What `oncompositionend` rendered has run by now: it may have removed the field.
-      runRenders();
-      // A word the transform refused is no word: it is not handed over, and Firefox's `input` after
-      // it, carrying the field as the refusal left it, reaches no handler either.
-      if (!refused && field !== null && !control.gone() && sameModel(control.model(), state.composedFrom)) {
-        // An `input`, as `oninput` is promised: the word, one edit, `insertCompositionText`.
-        control.own("input", as(event, "input", { inputType: "insertCompositionText", isComposing: false }));
-      }
-    } finally {
+    answered(
+      control,
+      () => {
+        control.own(event.type, event);
+        // What `oncompositionend` rendered has run by now: it may have removed the field.
+        runRenders();
+        // A word the transform refused is no word: it is not handed over, and Firefox's `input` after
+        // it, carrying the field as the refusal left it, reaches no handler either.
+        if (!refused && field !== null && !control.gone() && sameModel(control.model(), state.composedFrom)) {
+          // An `input`, as `oninput` is promised: the word, one edit, `insertCompositionText`.
+          control.own("input", as(event, "input", { inputType: "insertCompositionText", isComposing: false }));
+        }
+      },
       // What the field shows once the composition is over and it is settled — the handler's word, a
       // refusal, or a model the app moved: Firefox's `input` carries exactly that, and reaches no
       // handler, however it ended; recorded after the settle, even one a running commit holds back.
-      show(control, () => {
+      () => {
         if (field !== null) state.handedOver = field.value;
-      });
-    }
+      },
+    );
     return;
   }
 
@@ -399,7 +404,7 @@ export function answerEdit(control: FieldControl, event: Event): void {
     show(control);
     return;
   }
-  try {
+  answered(control, () => {
     control.own(event.type, event);
     if (control.pick && event.type === "input") {
       state.picked = true;
@@ -408,9 +413,30 @@ export function answerEdit(control: FieldControl, event: Event): void {
       state.pickAsked = asked;
       control.own("change", as(event, "change", {}, asked));
     }
-  } finally {
-    show(control);
+  });
+}
+
+/**
+ * The app's handlers, then the field shown the model — and when a handler threw, its error is the one
+ * the app sees: the render of the state it half wrote may throw as well, and must not take its place.
+ */
+function answered(control: FieldControl, handlers: () => void, after?: () => void): void {
+  let thrown: { error: unknown } | undefined;
+  try {
+    handlers();
+  } catch (error) {
+    thrown = { error };
   }
+  if (thrown === undefined) {
+    show(control, after);
+    return;
+  }
+  try {
+    show(control, after);
+  } catch {
+    // The handler's error is the cause; what its half-written state did next is not.
+  }
+  throw thrown.error;
 }
 
 /**
@@ -630,6 +656,9 @@ function listen(input: Kept, types: Iterable<string>): void {
   }
 }
 
+/** `<input>` types whose `value` no one edits: a file list, a button's label, a hidden value. */
+const UNEDITED: ReadonlySet<string> = new Set(["file", "hidden", "submit", "reset", "button", "image"]);
+
 /**
  * After an `<input>`'s attribute pass: whether it is controlled — a `value`, or a `checked` that is
  * `true` or `false` — and its `transform`, which a controlled field alone takes.
@@ -637,7 +666,9 @@ function listen(input: Kept, types: Iterable<string>): void {
 export function controlInput(input: HTMLInputElement, attributes: Record<string, unknown>): void {
   const kept = input as Kept;
   const box = isBox(input);
-  const controlled = box ? typeof attributes.checked === "boolean" : attributes.value != null;
+  // A file, a button, a hidden value: no one edits its `value`, so it holds no model to show.
+  const controlled =
+    !UNEDITED.has(input.type) && (box ? typeof attributes.checked === "boolean" : attributes.value != null);
   if (!controlled && kept[CONTROLLED]) forgetField(input);
   kept[CONTROLLED] = controlled;
   const transform = attributes.transform;

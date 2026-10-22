@@ -946,3 +946,37 @@ describe("the selection a refused edit took", () => {
     expect([field.value, field.selectionStart, field.selectionEnd]).toEqual(["abc", 3, 3]);
   });
 });
+
+/** A `multiple` select with a model of one value: its transform is handed lists, and a refusal is one. */
+test("a multiple select whose model is one value is decided as a list", async () => {
+  class Tags extends Component {
+    @state tag = "a";
+    told: unknown[] = [];
+    pick(event: EventOn<HTMLSelectElement>) {
+      this.tag = event.currentTarget.value;
+    }
+    atMostOne(next: string[], prev: string[]): string[] {
+      this.told.push(prev);
+      return next.length > 1 ? prev : next;
+    }
+    render() {
+      return (
+        <Select id="s" aria-label="Tags" multiple value={this.tag} onchange={this.pick} transform={this.atMostOne}>
+          <option value="a">a</option>
+          <option value="b">b</option>
+        </Select>
+      );
+    }
+  }
+  const app = await getDOM<Tags>(<Tags />);
+  await app.settle();
+  const select = app.container.querySelector("#s") as HTMLSelectElement;
+  for (const option of Array.from(select.options)) option.selected = true;
+  select.dispatchEvent(new Event("input", { bubbles: true }));
+  select.dispatchEvent(new Event("change", { bubbles: true }));
+
+  expect({
+    told: app.instance.told,
+    chosen: Array.from(select.selectedOptions, (option) => option.value),
+  }).toEqual({ told: [["a"]], chosen: ["a"] });
+});

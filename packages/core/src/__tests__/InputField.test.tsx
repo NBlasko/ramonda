@@ -980,3 +980,96 @@ test("an input puts back the selection a refused paste replaced, and calls the a
     seen: app.instance.seen,
   }).toEqual({ shown: ["hello", 1, 4], seen: ["insertFromPaste"] });
 });
+
+/** Round 39. */
+describe("what a field answers, and what it does not", () => {
+  /** `value=""` on a file input lets the same file be picked again; it is no model to show. */
+  test("a file input with a value is not a controlled field", async () => {
+    const attached: string[] = [];
+    const original = HTMLInputElement.prototype.addEventListener;
+    HTMLInputElement.prototype.addEventListener = function (
+      this: HTMLInputElement,
+      type: string,
+      listener: EventListenerOrEventListenerObject,
+      options?: boolean | AddEventListenerOptions,
+    ) {
+      attached.push(type);
+      return original.call(this, type, listener, options);
+    } as typeof original;
+    try {
+      class Upload extends Component {
+        upload() {}
+        render() {
+          return <input id="f" type="file" aria-label="Upload" value="" onchange={this.upload} />;
+        }
+      }
+      const app = await getDOM<Upload>(<Upload />);
+      await app.settle();
+    } finally {
+      HTMLInputElement.prototype.addEventListener = original;
+    }
+
+    // Heard for its own `change` only, as any uncontrolled field: nothing answers its edits.
+    expect(attached).toEqual(["change"]);
+  });
+
+  /** A `beforeinput` whose edit never came — cancelled — does not hand its selection to a later edit. */
+  test("a cancelled edit's selection is not put back by a later refusal", async () => {
+    class Locked extends Component {
+      @state text = "hello world";
+      typed(event: EventOn<HTMLInputElement>) {
+        this.text = event.currentTarget.value;
+      }
+      refuse(_next: string, prev: string): string {
+        return prev;
+      }
+      render() {
+        return <input id="i" aria-label="Locked" value={this.text} oninput={this.typed} transform={this.refuse} />;
+      }
+    }
+    const app = await getDOM<Locked>(<Locked />);
+    await app.settle();
+    const field = app.container.querySelector("#i") as HTMLInputElement;
+    field.setSelectionRange(2, 2);
+    field.dispatchEvent(new InputEvent("beforeinput", { bubbles: true, inputType: "insertText", cancelable: true }));
+    // The edit was cancelled: no input. The user moves on, and leaves the field.
+    field.dispatchEvent(new FocusEvent("blur"));
+    field.value = "hello worldX";
+    field.setSelectionRange(12, 12);
+    field.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertReplacementText" }));
+
+    expect([field.value, field.selectionStart]).toEqual(["hello world", 11]);
+  });
+
+  /** A handler that throws is the error the app sees, even when the render after it throws too. */
+  test("a handler's error is not replaced by the render of what it half wrote", async () => {
+    class Broken extends Component {
+      @state text = "";
+      typed(event: EventOn<HTMLInputElement>) {
+        this.text = event.currentTarget.value;
+        throw new Error("the handler's own");
+      }
+      render() {
+        if (this.text === "boom") throw new Error("the render's");
+        return <input id="i" aria-label="Broken" value={this.text} oninput={this.typed} />;
+      }
+    }
+    const app = await getDOM<Broken>(<Broken />);
+    await app.settle();
+    const field = app.container.querySelector("#i") as HTMLInputElement;
+    const seen: string[] = [];
+    const listener = (event: ErrorEvent) => {
+      seen.push(event.error?.message);
+      event.preventDefault();
+    };
+    window.addEventListener("error", listener);
+    try {
+      field.value = "boom";
+      field.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText" }));
+    } finally {
+      window.removeEventListener("error", listener);
+    }
+
+    expect(seen[0]).toBe("the handler's own");
+  });
+});

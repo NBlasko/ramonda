@@ -13,5 +13,5 @@ holds it) — or a factory's parameter when the call that made it handed somethi
 among them;
 one that writes anything it did not make, including what its parameters hold, or
 waits; one that calls, or hands on, a function whose body cannot be read; one whose own body cannot be read — a prop,
-or a package's declaration; one made by a call in the markup, a new function on every render; and one
+or a package's declaration; one made by a call in the markup, whose factory runs on every render; and one
 on a field with no `value` (`checked`), which has no model to decide against.
