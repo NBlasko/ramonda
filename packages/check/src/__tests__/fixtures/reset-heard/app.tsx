@@ -5,6 +5,7 @@ declare const value: string;
 declare const rows: string[];
 declare const kind: string;
 declare const busy: boolean;
+const HIDDEN = "hidden";
 
 class Child extends Component {
   render() {
@@ -127,6 +128,16 @@ class Resets extends Component<{ children?: unknown }> {
         <form>
           <input aria-label="unread box" type={kind} checked={true} onchange={this.type} />
           <button type="reset">unread box reset</button>
+        </form>
+        {/* ✓ a hidden value through a const is not edited */}
+        <form>
+          <input aria-label="hidden const" type={HIDDEN} name="id" value={value} />
+          <button type="reset">hidden const reset</button>
+        </form>
+        {/* ✗ an unread type with `value` written as nothing and a `checked` that holds the model */}
+        <form>
+          <input aria-label="nothing then checked" type={kind} value={undefined} checked={true} onchange={this.type} />
+          <button type="reset">nothing then checked reset</button>
         </form>
         {/* ✓ a button that is a button or a submit, never a reset, over a controlled field */}
         <form>

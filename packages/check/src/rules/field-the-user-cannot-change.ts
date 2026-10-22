@@ -4,7 +4,7 @@ import { coreElementTag } from "./coreElements";
 import { openingOf, writtenAsNothing } from "./element";
 import { follow, unwrap, type Looking } from "./follow-value";
 import type { ElementContext, ElementRule, WrittenAttribute } from "./rule";
-import { fieldKind, propRead } from "./formTable";
+import { attributeLiterals, fieldKind, propRead, typeAttributeOf } from "./formTable";
 
 export interface FieldTheUserCannotChangeIssue {
   component: "Select" | "TextArea" | "input";
@@ -187,7 +187,7 @@ export const fieldTheUserCannotChange = {
    */
   evenWhenSpreading: true,
 
-  read(element, { resolve, truth, attributes, attr }) {
+  read(element, { resolve, truth, attributes }) {
     const opening = openingOf(element);
     const core = coreElementTag(opening.tagName, resolve);
     const host = ts.isIdentifier(opening.tagName) && opening.tagName.text === "input" ? "input" : undefined;
@@ -201,11 +201,8 @@ export const fieldTheUserCannotChange = {
 
     // What its `type` makes it — see `fieldKind`; one whose type cannot be read is a box when it is
     // written with `checked`, and a text field otherwise.
-    const type = tag === "input" ? attr("type")?.toLowerCase() : undefined;
-    const typeAttribute = opening.attributes.properties.find(
-      (p): p is ts.JsxAttribute => ts.isJsxAttribute(p) && p.name.getText() === "type",
-    );
-    const kind = tag === "input" ? fieldKind(typeAttribute, type) : "text";
+    const typeAttribute = tag === "input" ? typeAttributeOf(element) : undefined;
+    const kind = tag === "input" ? fieldKind(typeAttribute, resolve) : "text";
     if (kind === "unedited") return [];
     const box = kind === "box" || (kind === "unread" && said("checked") !== undefined && said("value") === undefined);
     const pick = tag === "select" || box;
@@ -244,8 +241,11 @@ export const fieldTheUserCannotChange = {
       if (!pick && own("onchange") !== undefined) {
         // A date, a time, a color or a range sends `input` and then `change` for one pick: the field
         // answers the `input`, and `onchange` reads what it already showed again.
-        if (type !== undefined && PICKED_AT_ONCE.has(type))
+        // Every type the field can be is a picker: `withTime ? "datetime-local" : "date"` is one.
+        const types = typeAttribute === undefined ? undefined : attributeLiterals(typeAttribute, resolve);
+        if (types !== undefined && types.every((one) => PICKED_AT_ONCE.has(one.toLowerCase()))) {
           return [{ component, kind: "change-after-its-input", ...at }];
+        }
         return [{ component, kind: "held-between-keystrokes", ...at }];
       }
       // `onclick` on a box writes the model before the field decides the pick — around its `transform`.

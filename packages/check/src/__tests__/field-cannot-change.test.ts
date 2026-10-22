@@ -51,6 +51,9 @@ describe("a field the user cannot change", () => {
       [lineOf('aria-label="a box picked by click"'), "input", "pick-through-click"],
       [lineOf('aria-label="a date on change"'), "input", "change-after-its-input"],
       [lineOf('aria-label="a box of a type unread"'), "input", "no-handler"],
+      [lineOf('aria-label="a box through a const"'), "input", "no-handler"],
+      // A multi-line element is reported at its opening, the line above its `type`.
+      [lineOf("type={withTime") - 1, "input", "change-after-its-input"],
     ]);
   });
 

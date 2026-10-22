@@ -1295,3 +1295,82 @@ describe("a pick that threw, and a text field's change", () => {
     expect({ decided: app.instance.decided, changed: app.instance.changed }).toEqual({ decided: 1, changed: 1 });
   });
 });
+
+/** Round 42. */
+describe("a pick whose handler threw, and a change no input carried", () => {
+  test("a box whose oninput threw is not picked by its change", async () => {
+    class Terms extends Component {
+      @state on = false;
+      changes = 0;
+      fails() {
+        throw new Error("the handler's own");
+      }
+      flip() {
+        this.changes++;
+        this.on = !this.on;
+      }
+      render() {
+        return (
+          <input
+            id="c"
+            type="checkbox"
+            aria-label="Terms"
+            checked={this.on}
+            oninput={this.fails}
+            onchange={this.flip}
+          />
+        );
+      }
+    }
+    const app = await getDOM<Terms>(<Terms />);
+    await app.settle();
+    const box = app.container.querySelector("#c") as HTMLInputElement;
+    const listener = (event: ErrorEvent) => event.preventDefault();
+    window.addEventListener("error", listener);
+    try {
+      box.click();
+      await app.settle();
+    } finally {
+      window.removeEventListener("error", listener);
+    }
+
+    expect({ changes: app.instance.changes, on: app.instance.on, shown: box.checked }).toEqual({
+      changes: 0,
+      on: false,
+      shown: false,
+    });
+  });
+
+  /** An autofill sets the value and sends only `change`: the transform decides it, as any edit. */
+  test("a change that brings a value no input carried goes through the transform", async () => {
+    class Short extends Component {
+      @state text = "";
+      typed(event: EventOn<HTMLInputElement>) {
+        this.text = event.currentTarget.value;
+      }
+      max3(next: string, prev: string): string {
+        return next.length <= 3 ? next : prev;
+      }
+      render() {
+        return (
+          <input
+            id="i"
+            aria-label="Short"
+            value={this.text}
+            oninput={this.typed}
+            onchange={this.typed}
+            transform={this.max3}
+          />
+        );
+      }
+    }
+    const app = await getDOM<Short>(<Short />);
+    await app.settle();
+    const field = app.container.querySelector("#i") as HTMLInputElement;
+    field.value = "abcdef";
+    field.dispatchEvent(new Event("change", { bubbles: true }));
+    await app.settle();
+
+    expect({ model: app.instance.text, shown: field.value }).toEqual({ model: "", shown: "" });
+  });
+});

@@ -6,7 +6,7 @@ import { unwrap } from "./follow-value";
 import { enclosingElement } from "./html";
 import type { JsxElementLike, ModuleRule, Resolver } from "./rule";
 import { fromThePlatform } from "./pure-function";
-import { attributeLiterals, fieldKind, modelNames } from "./formTable";
+import { attributeLiterals, fieldKind, modelNames, typeAttributeOf } from "./formTable";
 
 export interface ResetTheModelDoesNotHearIssue {
   /**
@@ -33,7 +33,7 @@ export interface ResetTheModelDoesNotHearIssue {
  * holds something a reset would undo. An `<input>` whose `type` cannot be read is a text field
  * switching to a password and back, not a button.
  */
-function resetsItsForm(element: JsxElementLike): "reset" | "maybe" | undefined {
+function resetsItsForm(element: JsxElementLike, resolve: Resolver): "reset" | "maybe" | undefined {
   const tag = tagOf(element);
   if (tag !== "button" && tag !== "input") return undefined;
   const opening = openingOf(element);
@@ -41,7 +41,7 @@ function resetsItsForm(element: JsxElementLike): "reset" | "maybe" | undefined {
     (p): p is ts.JsxAttribute => ts.isJsxAttribute(p) && p.name.getText().toLowerCase() === "type",
   );
   // Every string the `type` can be, as written — `busy ? "button" : "submit"` is never a reset.
-  const literals = type === undefined ? undefined : attributeLiterals(type);
+  const literals = type === undefined ? undefined : attributeLiterals(type, resolve);
   if (literals !== undefined) {
     const resets = literals.filter((literal) => literal.toLowerCase() === "reset").length;
     if (resets === 0) return undefined;
@@ -65,15 +65,17 @@ function controlledField(element: JsxElementLike, resolve: Resolver): boolean {
   if (tag !== "input" && tag !== "select" && tag !== "textarea") return false;
   // What its `type` makes it — see `fieldKind`. A reset, a submit or a hidden value is not edited, and
   // a reset does not move it; one whose type cannot be read is asked about both models.
-  const kind = tag === "input" ? fieldKind(attributeOf(element, "type")) : "text";
-  const model = modelNames(kind)
-    .map((name) => attributeOf(element, name))
-    .find((attribute) => attribute !== undefined);
-  if (model === undefined) return false;
-  const value = model.initializer;
-  if (value === undefined) return true;
-  const held = ts.isJsxExpression(value) ? value.expression : value;
-  return held !== undefined && !isNothing(held);
+  const kind = tag === "input" ? fieldKind(typeAttributeOf(element), resolve) : "text";
+  // Controlled when any of its models holds something: for a type that cannot be read, `value` and
+  // `checked` each — a `value={undefined}` beside a `checked` hides nothing.
+  return modelNames(kind).some((name) => {
+    const model = attributeOf(element, name);
+    if (model === undefined) return false;
+    const value = model.initializer;
+    if (value === undefined) return true;
+    const held = ts.isJsxExpression(value) ? value.expression : value;
+    return held !== undefined && !isNothing(held);
+  });
 }
 
 /**
@@ -92,7 +94,7 @@ function firstProblem(
     const fieldTag = tagOf(node) ?? coreElementTag(opening.tagName, resolve);
     // A spread on a field may carry its `value`, and nothing here can read whether it does — unless
     // the field is one no one edits (`hidden`, `submit`, `reset`), which a reset does not move.
-    const notEdited = fieldTag === "input" && fieldKind(attributeOf(node, "type")) === "unedited";
+    const notEdited = fieldTag === "input" && fieldKind(typeAttributeOf(node), resolve) === "unedited";
     if (
       (fieldTag === "input" || fieldTag === "select" || fieldTag === "textarea") &&
       !notEdited &&
@@ -279,7 +281,8 @@ export const resetTheModelDoesNotHear = {
   read(file, { resolve }) {
     const found: ResetTheModelDoesNotHearIssue[] = [];
     const visit = (node: ts.Node): void => {
-      const resets = ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node) ? resetsItsForm(node) : undefined;
+      const resets =
+        ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node) ? resetsItsForm(node, resolve) : undefined;
       if (resets !== undefined && (ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node))) {
         const at = positionOf(openingOf(node));
         let form: JsxElementLike | undefined = enclosingElement(node);

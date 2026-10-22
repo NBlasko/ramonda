@@ -278,12 +278,6 @@ export function drainingNow(): boolean {
 
 function processTask() {
   const outer = !processing;
-  processing = true;
-  if (__DEV__) startDrain();
-  // One drain is one commit: what the app actually waited for. Timing builds alone would leave out
-  // the diff, the DOM and the post-commit flush, which is the part that hurts.
-  if (__DEV__) beginCommit();
-
   let builds = 0;
   // One drain covers builds AND the post-commit work they queue, alternating
   // until neither has anything left.
@@ -297,6 +291,13 @@ function processTask() {
   // which is exactly what happened when effects first moved to the queue — the
   // RMD009 test was the only thing that noticed.
   try {
+    // Inside the `try`, so the `finally` that clears it runs whatever throws — a DEV hook included —
+    // and a drain that failed to start does not leave every field believing one is running.
+    processing = true;
+    if (__DEV__) startDrain();
+    // One drain is one commit: what the app actually waited for. Timing builds alone would leave out
+    // the diff, the DOM and the post-commit flush, which is the part that hurts.
+    if (__DEV__) beginCommit();
     do {
       drainBuilds();
       flushPostCommit();

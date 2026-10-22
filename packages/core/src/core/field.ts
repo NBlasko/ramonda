@@ -258,7 +258,6 @@ function decideOrShow(control: FieldControl, event: Event): boolean {
     return decide(control, event);
   } catch (error) {
     // A pick whose `input` threw is over: its `change`, coming next, is not a pick of its own.
-    if (control.pick && event.type === "input") stateOf(control.key).picked = true;
     try {
       control.settle();
     } catch {
@@ -433,23 +432,25 @@ export function answerEdit(control: FieldControl, event: Event): void {
     return;
   }
 
-  // A text field's `change` — on blur, or after the `input` a date or a range already sent — is no
-  // edit: the field answered the edit on its `input`. Its `onchange` runs, and nothing is decided
-  // again, as a TextArea leaves its `change` alone.
-  if (!control.pick && event.type === "change") {
+  // A text field's `change` that follows an `input` the field already answered — on blur, or after a
+  // date's or a range's `input` — is no edit: the field shows the model, its `onchange` runs, and
+  // nothing is decided again, as a TextArea leaves its `change` alone. One that brings a value no
+  // `input` carried — an autofill, a change dispatched alone — is an edit, and is decided as one.
+  if (!control.pick && event.type === "change" && field !== null && showsTheModel(field, control.model())) {
     answered(control, () => control.own("change", event));
     return;
   }
+  // A pick is one move from its `input` on, whatever happens to it — refused, or a transform or a
+  // handler that throws: the `change` after it finds the pick answered. Marked once, before anything
+  // can leave this function.
+  if (control.pick && event.type === "input") state.picked = true;
   if (decideOrShow(control, event)) {
-    // A refused edit is no edit: a pick's `change`, coming next, finds nothing to do either.
-    if (control.pick && event.type === "input") state.picked = true;
     show(control);
     return;
   }
   answered(control, () => {
     control.own(event.type, event);
     if (control.pick && event.type === "input") {
-      state.picked = true;
       // A `change`, as `onchange` is promised; what it stops or prevents is done to the real one.
       const asked: Asked = { propagation: false, immediate: false, prevented: false };
       state.pickAsked = asked;

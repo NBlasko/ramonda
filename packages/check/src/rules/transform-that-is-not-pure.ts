@@ -5,7 +5,7 @@ import { isNothing, openingOf } from "./element";
 import { unwrap } from "./follow-value";
 import { implementationOf, reach, whyImpure, type Reached } from "./pure-function";
 import type { ElementContext, ElementRule } from "./rule";
-import { fieldKind, modelNames } from "./formTable";
+import { fieldKind, modelNames, typeAttributeOf } from "./formTable";
 
 export interface TransformThatIsNotPureIssue {
   component: "Select" | "TextArea" | "input";
@@ -95,7 +95,7 @@ export const transformThatIsNotPure = {
       "and named in the markup.\n\n",
   },
 
-  read(element, { resolve, attributes, attr }) {
+  read(element, { resolve, attributes }) {
     const opening = openingOf(element);
     const core = coreElementTag(opening.tagName, resolve);
     const host = ts.isIdentifier(opening.tagName) && opening.tagName.text === "input" ? "input" : undefined;
@@ -108,10 +108,7 @@ export const transformThatIsNotPure = {
 
     // What its `type` makes it — see `fieldKind`. A file, a hidden value, a button holds no model, and
     // core runs no transform on it; one whose type cannot be read has either model.
-    const typeAttribute = openingOf(element).attributes.properties.find(
-      (p): p is ts.JsxAttribute => ts.isJsxAttribute(p) && p.name.getText() === "type",
-    );
-    const kind = tag === "input" ? fieldKind(typeAttribute, attr("type")) : "text";
+    const kind = tag === "input" ? fieldKind(typeAttributeOf(element), resolve) : "text";
     const names = modelNames(kind);
     const model = attributes.find(
       (attribute) => names.includes(attribute.name) && !(attribute.value !== undefined && isNothing(attribute.value)),

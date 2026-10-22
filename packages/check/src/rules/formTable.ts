@@ -86,9 +86,6 @@ export interface FormFacts {
   holders: FormHolder[];
 }
 
-/** The `<input>` types no one edits, which no rule about a field's model asks about — shared with core. */
-export const NOT_EDITED: ReadonlySet<string> = UNEDITED_INPUT_TYPES;
-
 /**
  * What an `<input>`'s `type` makes the field: a `box` (its model is `checked`), a `text` field (`value`),
  * one no one edits, or one whose type cannot be read — and then either may be its model. One reading
@@ -99,20 +96,33 @@ export type FieldKind = "box" | "text" | "unedited" | "unread";
 function kindOfType(type: string): FieldKind {
   const lower = type.toLowerCase();
   if (lower === "checkbox" || lower === "radio") return "box";
-  return NOT_EDITED.has(lower) ? "unedited" : "text";
+  return UNEDITED_INPUT_TYPES.has(lower) ? "unedited" : "text";
 }
 
 /**
  * The strings an expression can be, as written: a literal, or every arm of `?:`, `??` and `||` —
  * `type={busy ? "button" : "submit"}` is one of two. `undefined` when any of them cannot be read.
  */
-export function literalsOf(expression: ts.Expression | undefined): string[] | undefined {
-  if (expression === undefined) return undefined;
+export function literalsOf(expression: ts.Expression | undefined, resolve: Resolver, depth = 0): string[] | undefined {
+  if (expression === undefined || depth > 8) return undefined;
   const value = unwrap(expression);
   if (ts.isStringLiteralLike(value)) return [value.text];
+  // A `const` holding one: `const HIDDEN = "hidden"`.
+  if (ts.isIdentifier(value)) {
+    const declared = resolve(value)?.declarations?.[0];
+    if (
+      declared === undefined ||
+      !ts.isVariableDeclaration(declared) ||
+      declared.initializer === undefined ||
+      (ts.getCombinedNodeFlags(declared) & ts.NodeFlags.Const) === 0
+    ) {
+      return undefined;
+    }
+    return literalsOf(declared.initializer, resolve, depth + 1);
+  }
   if (ts.isConditionalExpression(value)) {
-    const yes = literalsOf(value.whenTrue);
-    const no = literalsOf(value.whenFalse);
+    const yes = literalsOf(value.whenTrue, resolve, depth + 1);
+    const no = literalsOf(value.whenFalse, resolve, depth + 1);
     return yes === undefined || no === undefined ? undefined : [...yes, ...no];
   }
   if (
@@ -120,28 +130,34 @@ export function literalsOf(expression: ts.Expression | undefined): string[] | un
     (value.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken ||
       value.operatorToken.kind === ts.SyntaxKind.BarBarToken)
   ) {
-    const left = literalsOf(value.left);
-    const right = literalsOf(value.right);
+    const left = literalsOf(value.left, resolve, depth + 1);
+    const right = literalsOf(value.right, resolve, depth + 1);
     return left === undefined || right === undefined ? undefined : [...left, ...right];
   }
   return undefined;
 }
 
 /** The strings a JSX attribute holds as written — see `literalsOf`. A bare attribute holds none. */
-export function attributeLiterals(attribute: ts.JsxAttribute | undefined): string[] | undefined {
+export function attributeLiterals(attribute: ts.JsxAttribute | undefined, resolve: Resolver): string[] | undefined {
   const written = attribute?.initializer;
   if (written === undefined) return undefined;
-  return literalsOf(ts.isJsxExpression(written) ? written.expression : written);
+  return literalsOf(ts.isJsxExpression(written) ? written.expression : written, resolve);
+}
+
+/** An element's `type` attribute, as written. */
+export function typeAttributeOf(element: ts.JsxElement | ts.JsxSelfClosingElement): ts.JsxAttribute | undefined {
+  return openingOf(element).attributes.properties.find(
+    (p): p is ts.JsxAttribute => ts.isJsxAttribute(p) && p.name.getText().toLowerCase() === "type",
+  );
 }
 
 /**
- * The kind of field an `<input>` is, by its `type` attribute — `known` is the type when the caller has
- * already read it (through a `const`, say). A `type` that can be either kind is `unread`.
+ * The kind of field an `<input>` is, by its `type` attribute — every string it can be, through a
+ * `const` as much as written in place. A `type` that can be either kind, or cannot be read, is `unread`.
  */
-export function fieldKind(typeAttribute: ts.JsxAttribute | undefined, known?: string): FieldKind {
-  if (known !== undefined) return kindOfType(known);
+export function fieldKind(typeAttribute: ts.JsxAttribute | undefined, resolve: Resolver): FieldKind {
   if (typeAttribute === undefined) return "text";
-  const literals = attributeLiterals(typeAttribute);
+  const literals = attributeLiterals(typeAttribute, resolve);
   if (literals === undefined) return "unread";
   const kinds = new Set(literals.map(kindOfType));
   return kinds.size === 1 ? [...kinds][0] : "unread";
@@ -348,7 +364,7 @@ export function formTableFor(sources: readonly ts.SourceFile[], resolve: Resolve
     }
     // What its `type` makes it — see `fieldKind`. One whose type cannot be read is a box when it is
     // written with `checked`, and a text field otherwise.
-    const kind = tag === "input" ? fieldKind(written.get("type")) : "text";
+    const kind = tag === "input" ? fieldKind(written.get("type"), resolve) : "text";
     if (kind === "unedited") return;
     const box = kind === "box" || (kind === "unread" && written.has("checked") && !written.has("value"));
     const pick = tag === "select" || box;

@@ -62,6 +62,7 @@ describe("a field inside a @ramonda/form form", () => {
       lineOf('<HandledInput oninput={this.type} attrs={{ value: "x" }} />'),
       lineOf("<EarlySpread"),
       lineOf('<BoxInput attrs={{ value: "yes" }} />'),
+      lineOf('aria-label="hidden const in form"'),
       lineOf('"on:input": this.type'),
       lineOf('aria-label="own form field"'),
       lineOf("class OwnForm"),

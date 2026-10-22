@@ -6,6 +6,8 @@ declare const on: boolean;
 declare const viewing: boolean;
 declare const bag: Record<string, unknown>;
 declare const kind: string;
+declare const withTime: boolean;
+const BOX = "checkbox";
 const EMPTY = "";
 const LOCKED = true;
 
@@ -78,6 +80,13 @@ class App extends Component<{ text: string; rows: { text: string }[]; attrs?: Re
         <input type="checkbox" checked={true} onclick={this.type} aria-label="a box picked by click" />
         <input type="date" value={value} onchange={this.type} aria-label="a date on change" />
         <input type={kind} checked={on} aria-label="a box of a type unread" />
+        <input type={BOX} checked={on} aria-label="a box through a const" />
+        <input
+          type={withTime ? "datetime-local" : "date"}
+          value={value}
+          onchange={this.type}
+          aria-label="a picker either way"
+        />
 
         {/* ✓ a handler of its own */}
         <Select value={value} onchange={this.pick} aria-label="picked">
