@@ -1664,8 +1664,8 @@ test("a served multiple select keeps every default option", async () => {
   expect(marked.length).toBe(2);
 });
 
-/** Firefox's `input` used the recorded word inside the commit: the settle after it does not record it again. */
-test("a word's record used inside a commit is not put back by the settle", async () => {
+/** Firefox's `input` after a word inside a commit reaches nothing; a later edit with new text is heard. */
+test("an edit after a word that ended inside a commit is heard", async () => {
   const { mounted, createRef } = await import("../index");
   class Words extends Component {
     @state text = "";
@@ -1691,9 +1691,9 @@ test("a word's record used inside a commit is not put back by the settle", async
   const app = await getDOM<Words>(<Words />);
   await app.settle();
   const field = app.container.querySelector("#i") as HTMLInputElement;
-  // A later edit that happens to carry the same text, as a replayed `insertCompositionText` would.
-  field.value = "日本";
-  field.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertCompositionText", data: "日本" }));
+  // A later edit of the same kind, which leaves new text in the field.
+  field.value = "日本語";
+  field.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertCompositionText", data: "語" }));
 
-  expect(app.instance.heard).toEqual(["日本", "日本"]);
+  expect(app.instance.heard).toEqual(["日本", "日本語"]);
 });

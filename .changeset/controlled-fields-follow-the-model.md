@@ -61,7 +61,11 @@ edit.
 A `file`, `hidden`, `submit`, `reset`, `button` or `image` input holds no model, whatever its `value`;
 and when a field's handler throws, its error is the one thrown, and the error of the render of what it
 half wrote is reported as an uncaught one; a `transform` that throws leaves the field showing the model.
-A `change` is the tail of the edit the field just answered when the field shows its model — it runs
-`onchange` and decides nothing again — or an edit of its own: an autofill, or a change dispatched
-alone, on any field, a `TextArea` included. That edit is decided by the `transform` and handed to
-`oninput` as an `insertReplacementText` input, then to `onchange` as the change.
+A `change` ends the edits before it — on blur, or right after a date's, a color's or a range's
+`input` — or is an edit of its own. When the field shows its model, the `change` brings nothing new:
+it runs `onchange` when an edit since the last `change` was kept, decides nothing again, and reaches
+no handler when every edit was refused or there was none. When the field shows something else — an
+autofill, or a change dispatched alone, on any field, a `TextArea` included — it is an edit, decided
+by the `transform` and handed to `oninput` as an `insertReplacementText` input, then to `onchange` as
+the change. An event sent while a commit is running is answered against what the field showed after
+the last event in it, since the render that writes the model has not run yet.
