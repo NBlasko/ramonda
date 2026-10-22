@@ -67,6 +67,8 @@ export interface SpreadBag extends Where {
   handled: boolean;
   /** A select, a checkbox or a radio, whose handler may be `onchange`; a text field's is `oninput`. */
   pick: boolean;
+  /** A checkbox or a radio, whose model is `checked`; a `value` on it is only what the form sends. */
+  box: boolean;
   /** The attributes the field writes after the spread, which it therefore cannot override. */
   shadowed: readonly string[];
 }
@@ -302,7 +304,7 @@ export function formTableFor(sources: readonly ts.SourceFile[], resolve: Resolve
         .slice(index + 1)
         .filter((later): later is ts.JsxAttribute => ts.isJsxAttribute(later))
         .map((later) => later.name.getText());
-      bags.push({ owner: enclosingClass(element), prop, handled, pick, shadowed, ...positionOf(opening) });
+      bags.push({ owner: enclosingClass(element), prop, handled, pick, box, shadowed, ...positionOf(opening) });
     });
 
     const modelName = box ? "checked" : "value";

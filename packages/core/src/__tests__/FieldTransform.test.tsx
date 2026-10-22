@@ -843,3 +843,27 @@ describe("a field's edits, past a selection, a lone input, the old spellings and
     });
   });
 });
+
+/** Typed beside the same letter — `l` into `he|llo` — the caret goes back to where it was, not past the pair. */
+test("a refused keystroke beside the same letter puts the caret back where it was", async () => {
+  class Full extends Component {
+    @state text = "hello";
+    typed(event: EventOn<HTMLTextAreaElement>) {
+      this.text = event.currentTarget.value;
+    }
+    max5(next: string, prev: string): string {
+      return next.length <= 5 ? next : prev;
+    }
+    render() {
+      return <TextArea id="t" aria-label="Full" value={this.text} oninput={this.typed} transform={this.max5} />;
+    }
+  }
+  const app = await getDOM<Full>(<Full />);
+  await app.settle();
+  const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+  field.value = "helllo";
+  field.setSelectionRange(3, 3);
+  field.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText" }));
+
+  expect([field.value, field.selectionStart, field.selectionEnd]).toEqual(["hello", 2, 2]);
+});

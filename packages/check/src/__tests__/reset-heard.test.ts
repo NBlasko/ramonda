@@ -25,6 +25,8 @@ describe("a reset the model does not hear", () => {
       [lineOf('aria-label="c"'), "controlled-field"],
       [lineOf("<Child />"), "unseen-content"],
       [lineOf("{this.props.children}"), "unseen-content"],
+      [lineOf("{this.props.children ?? <p>None</p>}"), "unseen-content"],
+      [lineOf('<form id="joined">'), "unseen-content"],
       [lineOf("{this.label}"), "unseen-content"],
       [lineOf("loose reset"), "no-form"],
       [lineOf('form="other"'), "elsewhere"],

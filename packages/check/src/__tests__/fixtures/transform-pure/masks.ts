@@ -122,3 +122,10 @@ export const deleting = (next: string, _prev: string, input: { inputType?: strin
   delete input.inputType;
   return next;
 };
+
+/** Not pure: an arm of a conditional is the caller's array, and it pushes into it. */
+export const pushesThroughAnArm = (next: string[], prev: string[]) => {
+  const list = prev.length ? prev : [];
+  list.push(next[0]);
+  return list;
+};

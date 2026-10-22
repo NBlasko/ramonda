@@ -200,11 +200,6 @@ export class FieldHandle {
   readonly oninput: (event: Event) => void;
   /** The control's `onblur`: the field is touched, which is what decides whether its message shows. */
   readonly onblur: (event: Event) => void;
-  /**
-   * What the field holds when it holds something: a number or a date. Kept because an emptied
-   * number field holds `""`, and what the next keystroke writes is still a number.
-   */
-  private kind: Kind | undefined;
 
   constructor(
     private readonly host: FieldHost,
@@ -213,11 +208,7 @@ export class FieldHandle {
   ) {
     this.path = pathToString(at_);
     this.name = this.path;
-    this.oninput = (event: Event) => {
-      const current = this.host.read(this.at_);
-      this.kind = kindOf(current) ?? this.kind;
-      this.host.write(this.at_, fromControl(event.target, current, this.kind));
-    };
+    this.oninput = (event: Event) => this.host.write(this.at_, fromControl(event.target, this.host.read(this.at_)));
     this.onblur = () => this.host.touch(this.at_);
   }
 
@@ -384,30 +375,17 @@ function sameIds(a: readonly string[] | undefined, b: readonly string[]): boolea
  * one that quietly poisons arithmetic.
  */
 /**
- * What a field holds, for a control that does not say: a number, or a date. A box is said by its
- * `type="checkbox"` and nothing else — a radio pair or a select on a boolean field writes its own
- * `value`, as it always has.
+ * What a control's edit writes, read off the control as it is written: `type="checkbox"` writes
+ * whether it is ticked, `type="number"` a number, `type="date"` the day — and any other control its
+ * text. A number field is written `type="number"`, as a box is written `type="checkbox"`.
  */
-type Kind = "number" | "date";
-
-function kindOf(value: unknown): Kind | undefined {
-  if (typeof value === "number") return "number";
-  if (value instanceof Date) return "date";
-  return undefined;
-}
-
-/**
- * What a control's edit writes, decided by what the field HOLDS as much as by the control's `type`:
- * a number field written without `type="number"` still writes numbers, as `bind` once made sure by
- * writing the `type` itself.
- */
-function fromControl(target: EventTarget | null, current: unknown, kind: Kind | undefined): unknown {
+function fromControl(target: EventTarget | null, current: unknown): unknown {
   const element = target as (HTMLInputElement & { type?: string }) | null;
   if (element === null) return current;
 
   if (element.type === "checkbox") return element.checked;
-  if (element.type === "number" || kind === "number") return element.value === "" ? "" : Number(element.value);
-  if ((element.type === "date" || kind === "date") && current instanceof Date) {
+  if (element.type === "number") return element.value === "" ? "" : Number(element.value);
+  if (element.type === "date" && current instanceof Date) {
     return fromDateInput(element.value, current) ?? element.value;
   }
 

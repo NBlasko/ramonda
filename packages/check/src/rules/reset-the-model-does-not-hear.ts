@@ -122,6 +122,9 @@ function firstProblem(
         op === ts.SyntaxKind.BarBarToken ||
         op === ts.SyntaxKind.QuestionQuestionToken
       ) {
+        // `a || b` and `a ?? b` render `a` when it holds something; `a && b` renders `b`, or a falsy
+        // `a` that is no markup.
+        if (op !== ts.SyntaxKind.AmpersandAmpersandToken) expression(written.left);
         expression(written.right);
         return;
       }
@@ -254,7 +257,17 @@ export const resetTheModelDoesNotHear = {
         if (attributeOf(node, "form") !== undefined) found.push({ kind: "elsewhere", detail: "", ...at });
         else if (form === undefined) found.push({ kind: "no-form", detail: "", ...at });
         else {
-          const problem = firstProblem(form, resolve);
+          // A form with an `id` takes fields from anywhere that names it — `<input form="id">` — and
+          // those cannot be read from here.
+          const named = attributeOf(form, "id");
+          const problem =
+            named !== undefined
+              ? {
+                  kind: "unseen-content" as const,
+                  at: openingOf(form),
+                  detail: "a form any field may join by its `id`",
+                }
+              : firstProblem(form, resolve);
           if (problem !== undefined)
             found.push({ kind: problem.kind, detail: problem.detail, ...positionOf(problem.at) });
         }

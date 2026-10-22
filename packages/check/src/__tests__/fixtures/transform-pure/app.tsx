@@ -13,6 +13,7 @@ import {
   globalDigits,
   dated,
   throughAnAlias,
+  pushesThroughAnArm,
   deleting,
   throughAHelperThatEmpties,
   mappedWithAnArrow,
@@ -55,6 +56,9 @@ class Fields extends Component<{ transform: (next: string, prev: string) => stri
           transform={(next: string, prev: string) => (new Set(next).size <= 3 ? next : prev)}
         />
         <TextArea aria-label="arrow" value={value} oninput={this.type} transform={(next: string) => next.trim()} />
+        <Select aria-label="arm select" multiple value={[value]} onchange={this.type} transform={pushesThroughAnArm}>
+          <option value="a">a</option>
+        </Select>
         <Select aria-label="select" value={value} onchange={this.type} transform={this.upper}>
           <option value="a">a</option>
         </Select>

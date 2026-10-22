@@ -15,7 +15,8 @@ export interface FieldTheUserCannotChangeIssue {
    * `literal` — a text field's `value` written as itself, `value=""`, which no handler can move;
    * `unknown-spread` — a spread on a controlled field that the source cannot say carries a handler;
    * `handler-may-be-missing` — the field's handler is a prop declared optional, `oninput?:`;
-   * `pick-through-click` — a box picked through `onclick`, which runs before the field decides the pick.
+   * `pick-through-click` — a box picked through `onclick`, which runs before the field decides the pick;
+   * `change-after-its-input` — a date, time, color or range with only `onchange`, after its `input`.
    */
   kind:
     | "no-handler"
@@ -24,7 +25,8 @@ export interface FieldTheUserCannotChangeIssue {
     | "literal"
     | "unknown-spread"
     | "handler-may-be-missing"
-    | "pick-through-click";
+    | "pick-through-click"
+    | "change-after-its-input";
   file: string;
   line: number;
   column: number;
@@ -86,6 +88,17 @@ function declaredOptional(expression: ts.Expression | undefined, resolve: Elemen
   );
 }
 
+/** `<input>` types whose pick sends `input` and then `change` at once, with no typing between. */
+const PICKED_AT_ONCE: ReadonlySet<string> = new Set([
+  "date",
+  "time",
+  "month",
+  "week",
+  "datetime-local",
+  "color",
+  "range",
+]);
+
 /**
  * A controlled field the page can never change.
  *
@@ -143,6 +156,8 @@ export const fieldTheUserCannotChange = {
           literal: "has a value written as itself — no handler can move it, so every edit is undone.",
           "unknown-spread": "is controlled, and a spread on it may or may not carry its handler — nothing says which.",
           "handler-may-be-missing": "takes its handler from a prop declared optional — a caller may leave it out.",
+          "change-after-its-input":
+            "has a value and only `onchange`, which comes after the `input` the field already answered — write it as `oninput`.",
           "pick-through-click":
             "takes its pick through `onclick`, which runs before the field decides it — write it as `onchange`.",
         }[issue.kind]
@@ -220,7 +235,13 @@ export const fieldTheUserCannotChange = {
       );
     const writer = own("oninput") ?? (pick ? own("onchange") : undefined);
     if (writer === undefined) {
-      if (!pick && own("onchange") !== undefined) return [{ component, kind: "held-between-keystrokes", ...at }];
+      if (!pick && own("onchange") !== undefined) {
+        // A date, a time, a color or a range sends `input` and then `change` for one pick: the field
+        // answers the `input`, and `onchange` reads what it already showed again.
+        if (type !== undefined && PICKED_AT_ONCE.has(type))
+          return [{ component, kind: "change-after-its-input", ...at }];
+        return [{ component, kind: "held-between-keystrokes", ...at }];
+      }
       // `onclick` on a box writes the model before the field decides the pick — around its `transform`.
       const click = attributes.find((attribute) => attribute.name === "onclick" && !writtenAsNothing(attribute));
       if (pick && click !== undefined) return [{ component, kind: "pick-through-click", ...at }];

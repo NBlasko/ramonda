@@ -117,11 +117,12 @@ export function decideEdit(field: Field, transform: Transform, prev: FieldValue,
   const caret = text.selectionStart;
   writeValue(text as unknown as EnhancedHTMLNode, String(kept), false);
   if (caret !== null && typeof next === "string" && typeof prev === "string" && String(kept) === prev) {
-    // An insert replaced what was selected: the text both share at the start and at the end leaves
-    // exactly what it replaced, and that selection is put back — `hello` selected and pasted over is
-    // `hello` selected again.
+    // An insert replaced what was selected, and that selection is put back — `hello` selected and
+    // pasted over is `hello` selected again. What follows the caret now followed the selection then,
+    // so its end is exact; its start is where the inserted text began, no further than that end.
     if (input.inputType.startsWith("insert")) {
-      const [from, to] = replacedIn(prev, next);
+      const to = Math.max(0, Math.min(prev.length, prev.length - (next.length - caret)));
+      const from = Math.min(sharedStart(prev, next), to);
       text.setSelectionRange(from, to);
       return refused;
     }
@@ -135,22 +136,11 @@ export function decideEdit(field: Field, transform: Transform, prev: FieldValue,
   return refused;
 }
 
-/**
- * The part of `prev` an insert replaced to make `next`: the text the two share at the start, and at
- * the end, is what it left alone. A plain insert replaced nothing, and the range is the caret.
- */
-function replacedIn(prev: string, next: string): [number, number] {
+/** How much `prev` and `next` share at the start. */
+function sharedStart(prev: string, next: string): number {
   let start = 0;
   while (start < prev.length && start < next.length && prev[start] === next[start]) start++;
-  let end = 0;
-  while (
-    end < prev.length - start &&
-    end < next.length - start &&
-    prev[prev.length - 1 - end] === next[next.length - 1 - end]
-  ) {
-    end++;
-  }
-  return [start, prev.length - end];
+  return start;
 }
 
 /** What one controlled field is in the middle of: a composition, or a pick. */

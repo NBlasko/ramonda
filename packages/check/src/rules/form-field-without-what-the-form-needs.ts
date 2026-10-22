@@ -33,8 +33,12 @@ export interface FormFieldWithoutWhatTheFormNeedsIssue {
   column: number;
 }
 
-/** What a spread must carry beside a `value`: nothing, an `oninput`, or either handler (a pick's). */
-type Wants = "nothing" | "oninput" | "either";
+/**
+ * What a spread must carry beside its model: `nothing` when the field writes its own handler; on a
+ * `text` field an `oninput` beside a `value`; on a `pick` (a select) either handler beside a `value`;
+ * on a `box` either handler beside a `checked` — its `value` is only what the form sends.
+ */
+type Wants = "nothing" | "text" | "pick" | "box";
 
 /** The names a field's form attributes may be handed under, in a spread written last on it. */
 const FORM_KEYS = new Set(["name", "value", "checked", "oninput", "onchange", "onblur", "aria-invalid"]);
@@ -179,7 +183,8 @@ export const formFieldWithoutWhatTheFormNeeds = {
     }
     // A spread of props on a field, anywhere: what each use hands for it is read there.
     for (const bag of bags) {
-      need(bag.owner, bag.prop, true, bag.handled ? "nothing" : bag.pick ? "either" : "oninput", bag.shadowed);
+      const wants: Wants = bag.handled ? "nothing" : bag.box ? "box" : bag.pick ? "pick" : "text";
+      need(bag.owner, bag.prop, true, wants, bag.shadowed);
     }
 
     for (let next = queue.shift(); next !== undefined; next = queue.shift()) {
@@ -247,10 +252,12 @@ function readBag(
       p.name !== undefined && (ts.isIdentifier(p.name) || ts.isStringLiteral(p.name)) ? p.name.text : "",
     ),
   );
-  const carries = keys.has("oninput") || (wants === "either" && keys.has("onchange"));
+  const carries = keys.has("oninput") || (wants !== "text" && keys.has("onchange"));
   // A value the field writes after the spread is the field's, whatever the spread says.
-  const value =
-    (keys.has("value") && !shadowed.includes("value")) || (keys.has("checked") && !shadowed.includes("checked"));
+  // The model key the spread may set: `checked` on a box, `value` on anything else — and only when the
+  // field does not write it after the spread.
+  const model = wants === "box" ? "checked" : "value";
+  const value = keys.has(model) && !shadowed.includes(model);
   if (wants !== "nothing" && value && !carries) {
     found.push({ kind: "bag-without-a-handler", component: site.tag, detail: name, ...where(site) });
   }

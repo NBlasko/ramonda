@@ -51,6 +51,13 @@ class DefaultsInput extends Component<{ field: any; attrs?: Record<string, unkno
   }
 }
 
+/** A box that writes nothing of its own: `value` on it is what the form sends, `checked` its model. */
+class BoxInput extends Component<{ attrs?: Record<string, unknown> }> {
+  render() {
+    return <input type="checkbox" aria-label="box" {...this.props.attrs} />;
+  }
+}
+
 /** Writes nothing of its own: whatever reaches the field is in the spread. */
 class BareInput extends Component<{ attrs?: Record<string, unknown> }> {
   render() {
@@ -185,6 +192,9 @@ class Loose extends Component {
         <StyledInput value={value} oninput={this.type} />
         {/* ✗ what a spread carries is read everywhere: a value with no handler, and a bag unseen */}
         <BareInput attrs={{ value: "fixed" }} />
+        {/* ✓ a box's value is what the form sends; ✗ its checked is a model with no handler */}
+        <BoxInput attrs={{ value: "yes" }} />
+        <BoxInput attrs={{ checked: true }} />
         {/* ✗ a text field's change comes on blur: `onchange` alone is no handler beside its value */}
         <BareInput attrs={{ value: "x", onchange: this.type }} />
         <DefaultsInput field={this.type} attrs={bag} />

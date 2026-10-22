@@ -81,6 +81,16 @@ class Resets extends Component<{ children?: unknown }> {
           {this.props.children}
           <button type="reset">children reset</button>
         </form>
+        {/* ✗ what `??` renders first is its left side */}
+        <form>
+          {this.props.children ?? <p>None</p>}
+          <button type="reset">fallback reset</button>
+        </form>
+        {/* ✗ a form any field may join by its id */}
+        <form id="joined">
+          <input aria-label="joined field" defaultValue="x" />
+          <button type="reset">joined reset</button>
+        </form>
         {/* ✗ a value */}
         <form>
           {this.label}

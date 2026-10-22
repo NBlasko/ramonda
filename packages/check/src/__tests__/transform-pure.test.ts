@@ -19,6 +19,7 @@ const lineOf = (label: string) =>
 describe("a transform that is not pure", () => {
   test("each shape is reported, and named", () => {
     expect(found().map((issue) => [issue.line, issue.kind])).toEqual([
+      [lineOf('aria-label="arm select"'), "impure"],
       [lineOf('aria-label="reads this"'), "impure"],
       [lineOf('aria-label="logs"'), "impure"],
       [lineOf('aria-label="counts"'), "impure"],

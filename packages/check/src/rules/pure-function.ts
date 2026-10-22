@@ -208,9 +208,23 @@ export function whyImpure(
   const holdsTheCallers = (declared: ts.Node, depth = 0): boolean => {
     if (ts.isParameter(declared) || ts.isBindingElement(declared)) return true;
     if (depth > 8 || !ts.isVariableDeclaration(declared) || declared.initializer === undefined) return false;
-    const held = unwrap(declared.initializer);
-    if (!ts.isIdentifier(held)) return false;
-    const origin = resolve(held)?.declarations?.[0];
+    return mayHold(unwrap(declared.initializer), depth);
+  };
+  /** Whether a value may be the caller's: a name for it, or either arm of `?:`, `??` and `||`. */
+  const mayHold = (value: ts.Expression, depth: number): boolean => {
+    if (ts.isConditionalExpression(value)) {
+      return mayHold(unwrap(value.whenTrue), depth) || mayHold(unwrap(value.whenFalse), depth);
+    }
+    if (
+      ts.isBinaryExpression(value) &&
+      (value.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken ||
+        value.operatorToken.kind === ts.SyntaxKind.BarBarToken ||
+        value.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken)
+    ) {
+      return mayHold(unwrap(value.left), depth) || mayHold(unwrap(value.right), depth);
+    }
+    if (!ts.isIdentifier(value)) return false;
+    const origin = resolve(value)?.declarations?.[0];
     return origin !== undefined && isInside(origin, fn) && holdsTheCallers(origin, depth + 1);
   };
   const isLocal = (expression: ts.Expression): boolean => {
