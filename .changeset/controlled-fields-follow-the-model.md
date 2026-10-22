@@ -59,5 +59,5 @@ commits arrives as one, `insertCompositionText` — and a pick's `onchange` a `c
 `stopPropagation()` stops the browser's own `change`. A transform that answers nothing refuses the
 edit.
 A `file`, `hidden`, `submit`, `reset`, `button` or `image` input holds no model, whatever its `value`;
-and when a field's handler throws, its error is the one the app sees, not one from the render of
-what it half wrote.
+and when a field's handler throws, its error is the one thrown, and the error of the render of what it
+half wrote is reported as an uncaught one; a `transform` that throws leaves the field showing the model.

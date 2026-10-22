@@ -5,6 +5,7 @@ import { isNothing, openingOf } from "./element";
 import { unwrap } from "./follow-value";
 import { implementationOf, reach, whyImpure, type Reached } from "./pure-function";
 import type { ElementContext, ElementRule } from "./rule";
+import { NOT_EDITED } from "./formTable";
 
 export interface TransformThatIsNotPureIssue {
   component: "Select" | "TextArea" | "input";
@@ -77,7 +78,8 @@ export const transformThatIsNotPure = {
           impure: `is not pure: ${issue.detail}.`,
           unreadable: `is \`${issue.detail}\`, whose body cannot be read.`,
           "built-in-render": `is \`${issue.detail}\`, a call that runs its factory on every render — make it once, at the top of a module.`,
-          uncontrolled: "is on a field with no `value`, so there is no model for it to decide against.",
+          uncontrolled:
+            "is on a field with no model — no `value`, or one no one edits — so there is nothing for it to decide.",
         }[issue.kind]
       }`,
     ],
@@ -105,6 +107,9 @@ export const transformThatIsNotPure = {
     const at = positionOf(transform.at);
 
     const type = tag === "input" ? attr("type")?.toLowerCase() : undefined;
+    // A file, a hidden value, a button: no one edits it, so it holds no model, and core runs no
+    // transform on it.
+    if (type !== undefined && NOT_EDITED.has(type)) return [{ component, kind: "uncontrolled", detail: "", ...at }];
     // A `type` this cannot read may be a box or not: its model is whichever of the two is written.
     const unread = tag === "input" && type === undefined && attributes.some((attribute) => attribute.name === "type");
     const names = unread ? ["value", "checked"] : type === "checkbox" || type === "radio" ? ["checked"] : ["value"];

@@ -27,6 +27,7 @@ describe("a reset the model does not hear", () => {
       [lineOf("{this.props.children}"), "unseen-content"],
       [lineOf('aria-label="braced reset field"'), "controlled-field"],
       [lineOf('aria-label="unread reset field"'), "controlled-field"],
+      [lineOf('aria-label="spread button field"'), "controlled-field"],
       [lineOf('aria-label="spread field"'), "unseen-content"],
       [lineOf('aria-label="braced box"'), "controlled-field"],
       [lineOf("{this.props.children ?? <p>None</p>}"), "unseen-content"],

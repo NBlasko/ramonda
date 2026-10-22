@@ -26,19 +26,27 @@ export interface ResetTheModelDoesNotHearIssue {
 }
 
 /** A `<button type="reset">` or `<input type="reset">`, as written. */
-function isResetButton(element: JsxElementLike): boolean {
+/**
+ * Whether an element resets its form: `"reset"` when its `type` says so (`type="reset"` or
+ * `type={"reset"}`); `"maybe"` for a `<button>` whose `type` cannot be read — written as an expression,
+ * or left to a spread — which is asked about its form like a reset, and reported only when that form
+ * holds something a reset would undo. An `<input>` whose `type` cannot be read is a text field
+ * switching to a password and back, not a button.
+ */
+function resetsItsForm(element: JsxElementLike): "reset" | "maybe" | undefined {
   const tag = tagOf(element);
-  if (tag !== "button" && tag !== "input") return false;
-  const type = openingOf(element).attributes.properties.find(
+  if (tag !== "button" && tag !== "input") return undefined;
+  const opening = openingOf(element);
+  const type = opening.attributes.properties.find(
     (p): p is ts.JsxAttribute => ts.isJsxAttribute(p) && p.name.getText().toLowerCase() === "type",
   );
-  // `type="reset"` or `type={"reset"}` — and a `type` this cannot read may be a reset, so its form is
-  // asked the same: it is reported only when that form has something a reset would undo.
   const written = type?.initializer;
-  if (written === undefined) return false;
-  const value = ts.isJsxExpression(written) ? written.expression : written;
-  if (value === undefined) return false;
-  return !ts.isStringLiteralLike(value) || value.text.toLowerCase() === "reset";
+  const value = written !== undefined && ts.isJsxExpression(written) ? written.expression : written;
+  if (value !== undefined && ts.isStringLiteralLike(value))
+    return value.text.toLowerCase() === "reset" ? "reset" : undefined;
+  if (tag !== "button") return undefined;
+  if (value !== undefined) return "maybe";
+  return opening.attributes.properties.some(ts.isJsxSpreadAttribute) ? "maybe" : undefined;
 }
 
 function attributeOf(element: JsxElementLike, name: string): ts.JsxAttribute | undefined {
@@ -273,13 +281,17 @@ export const resetTheModelDoesNotHear = {
   read(file, { resolve }) {
     const found: ResetTheModelDoesNotHearIssue[] = [];
     const visit = (node: ts.Node): void => {
-      if ((ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node)) && isResetButton(node)) {
+      const resets = ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node) ? resetsItsForm(node) : undefined;
+      if (resets !== undefined && (ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node))) {
         const at = positionOf(openingOf(node));
         let form: JsxElementLike | undefined = enclosingElement(node);
         while (form !== undefined && tagOf(form) !== "form") form = enclosingElement(form);
-        if (attributeOf(node, "form") !== undefined) found.push({ kind: "elsewhere", detail: "", ...at });
-        else if (form === undefined) found.push({ kind: "no-form", detail: "", ...at });
-        else {
+        // A button that only MAY reset is asked about the form it sits in, and nothing else.
+        if (attributeOf(node, "form") !== undefined) {
+          if (resets === "reset") found.push({ kind: "elsewhere", detail: "", ...at });
+        } else if (form === undefined) {
+          if (resets === "reset") found.push({ kind: "no-form", detail: "", ...at });
+        } else {
           // A form with an `id` takes fields from anywhere that names it — `<input form="id">` — and
           // those cannot be read from here.
           const named = attributeOf(form, "id");

@@ -16,3 +16,5 @@ declaration or is called on a hook — `this.form.reset()`, or a field of the fo
 anything else cannot be told apart from the browser's `HTMLFormElement.reset`, and is reported.
 
 Devtools gives the plugin tab it resets a type the check can read.
+A `<button>` whose `type` cannot be read, or is left to a spread, may reset its form, and is reported
+only when that form holds something a reset would undo.

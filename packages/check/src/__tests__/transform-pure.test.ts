@@ -43,6 +43,7 @@ describe("a transform that is not pure", () => {
       [lineOf('aria-label="from props"'), "unreadable"],
       [lineOf('aria-label="made in render"'), "built-in-render"],
       [lineOf('aria-label="uncontrolled"'), "uncontrolled"],
+      [lineOf('aria-label="hidden"'), "uncontrolled"],
     ]);
   });
 

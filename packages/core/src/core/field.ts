@@ -92,6 +92,8 @@ export function decideEdit(
   event: Event,
   before?: Selected,
 ): boolean {
+  // A `multiple` select is decided as a list, a model of one value included — as the element says.
+  if (isMultiple(field) && !Array.isArray(prev)) prev = [String(prev)];
   const next = valueOf(field);
   const text = caretOf(field);
   const input: TransformInput = {
@@ -144,6 +146,8 @@ interface Selected {
   text: string;
   start: number | null;
   end: number | null;
+  /** The `beforeinput` itself: a cancelled one was not followed by its edit. */
+  event: InputEvent;
 }
 
 /** What one controlled field is in the middle of: a composition, or a pick. */
@@ -244,13 +248,38 @@ function show(control: FieldControl, after?: () => void): void {
   after?.();
 }
 
+/**
+ * `decide`, and when the app's `transform` throws, the field shows the model before the error goes on:
+ * no handler ran, so the model is where it was, and the field must not keep an edit it never took.
+ */
+function decideOrShow(control: FieldControl, event: Event): boolean {
+  try {
+    return decide(control, event);
+  } catch (error) {
+    try {
+      control.settle();
+    } catch {
+      // The transform's error is the cause.
+    }
+    throw error;
+  }
+}
+
 /** Decides the edit; whether it refused it, which then reaches no handler of the field — see `decideEdit`. */
 function decide(control: FieldControl, event: Event): boolean {
   const transform = control.transform();
   const field = event.currentTarget as Field | null;
   const state = stateOf(control.key);
-  const before = state.before;
+  // The record belongs to this edit only when its `beforeinput` went ahead and announced this kind of
+  // edit: a cancelled keystroke, then an autofill with no `beforeinput` of its own, is not that edit.
+  const recorded = state.before;
   state.before = undefined;
+  const before =
+    recorded !== undefined &&
+    !recorded.event.defaultPrevented &&
+    recorded.event.inputType === ((event as InputEvent).inputType ?? "")
+      ? recorded
+      : undefined;
   return transform !== undefined && field !== null && decideEdit(field, transform, control.prev(), event, before);
 }
 
@@ -312,7 +341,10 @@ export function answerEdit(control: FieldControl, event: Event): void {
   // refusal to put back.
   if (event.type === "beforeinput") {
     const text = field === null ? null : caretOf(field);
-    state.before = text === null ? undefined : { text: text.value, start: text.selectionStart, end: text.selectionEnd };
+    state.before =
+      text === null
+        ? undefined
+        : { text: text.value, start: text.selectionStart, end: text.selectionEnd, event: event as InputEvent };
     control.own(event.type, event);
     return;
   }
@@ -340,7 +372,7 @@ export function answerEdit(control: FieldControl, event: Event): void {
   if (event.type === "compositionend") {
     state.composing = false;
     state.blurred = false;
-    const refused = decide(control, event);
+    const refused = decideOrShow(control, event);
     answered(
       control,
       () => {
@@ -398,7 +430,7 @@ export function answerEdit(control: FieldControl, event: Event): void {
     return;
   }
 
-  if (decide(control, event)) {
+  if (decideOrShow(control, event)) {
     // A refused edit is no edit: a pick's `change`, coming next, finds nothing to do either.
     if (control.pick && event.type === "input") state.picked = true;
     show(control);
@@ -414,6 +446,24 @@ export function answerEdit(control: FieldControl, event: Event): void {
       control.own("change", as(event, "change", {}, asked));
     }
   });
+}
+
+/**
+ * An error reported as the platform reports an uncaught one: `reportError` where there is one — an
+ * `error` event on the window, then the console unless a listener took it — and the same by hand
+ * where there is not.
+ */
+function reportUncaught(error: unknown): void {
+  if (typeof reportError === "function") {
+    reportError(error);
+    return;
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  const unheard =
+    typeof window === "undefined" ||
+    typeof ErrorEvent === "undefined" ||
+    window.dispatchEvent(new ErrorEvent("error", { error, message, cancelable: true }));
+  if (unheard) console.error(error);
 }
 
 /**
@@ -433,8 +483,16 @@ function answered(control: FieldControl, handlers: () => void, after?: () => voi
   }
   try {
     show(control, after);
-  } catch {
-    // The handler's error is the cause; what its half-written state did next is not.
+  } catch (renderError) {
+    // The handler's error is the one thrown here; the render's is reported as an uncaught error is,
+    // and the field still shows the model.
+    reportUncaught(renderError);
+    try {
+      control.settle();
+      after?.();
+    } catch {
+      // Already reported.
+    }
   }
   throw thrown.error;
 }

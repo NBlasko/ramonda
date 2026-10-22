@@ -107,6 +107,7 @@ class Fields extends Component<{ transform: (next: string, prev: string) => stri
         <input aria-label="made in render" value={value} oninput={this.type} transform={maxLength(20)} />
         {/* ✗ uncontrolled */}
         <input aria-label="uncontrolled" defaultValue="x" transform={this.upper} />
+        <input aria-label="hidden" type="hidden" value={value} transform={this.upper} />
         {/* ✓ an SVG transform is an attribute, and not this rule's */}
         <svg aria-hidden="true">
           <g transform="translate(10, 0)" />

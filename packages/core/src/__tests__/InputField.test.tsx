@@ -1070,6 +1070,147 @@ describe("what a field answers, and what it does not", () => {
       window.removeEventListener("error", listener);
     }
 
-    expect(seen[0]).toBe("the handler's own");
+    expect(seen).toContain("the handler's own");
+  });
+});
+
+/** Round 40. */
+describe("a field when the app's code throws, or an edit is not the one announced", () => {
+  /** The render of what a throwing handler half wrote throws too: both errors are seen, and the field shows the model. */
+  test("the render's error is reported as well, and the field still shows the model", async () => {
+    class Broken extends Component {
+      @state text = "";
+      typed(event: EventOn<HTMLInputElement>) {
+        this.text = event.currentTarget.value;
+        throw new Error("the handler's own");
+      }
+      render() {
+        if (this.text === "boom") throw new Error("the render's");
+        return <input id="i" aria-label="Broken" value={this.text} oninput={this.typed} />;
+      }
+    }
+    const app = await getDOM<Broken>(<Broken />);
+    await app.settle();
+    const field = app.container.querySelector("#i") as HTMLInputElement;
+    const seen: string[] = [];
+    const listener = (event: ErrorEvent) => {
+      seen.push(event.error?.message);
+      event.preventDefault();
+    };
+    window.addEventListener("error", listener);
+    try {
+      field.value = "boom";
+      field.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText" }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    } finally {
+      window.removeEventListener("error", listener);
+    }
+
+    expect([...seen].sort()).toEqual(["the handler's own", "the render's"]);
+  });
+
+  /** A mask that throws on what was pasted: the field shows the model it never left. */
+  test("a transform that throws leaves the field showing the model", async () => {
+    class Masked extends Component {
+      @state text = "12";
+      typed(event: EventOn<HTMLInputElement>) {
+        this.text = event.currentTarget.value;
+      }
+      strict(next: string): string {
+        if (!/^\d*$/.test(next)) throw new Error("not digits");
+        return next;
+      }
+      render() {
+        return <input id="i" aria-label="Masked" value={this.text} oninput={this.typed} transform={this.strict} />;
+      }
+    }
+    const app = await getDOM<Masked>(<Masked />);
+    await app.settle();
+    const field = app.container.querySelector("#i") as HTMLInputElement;
+    const listener = (event: ErrorEvent) => event.preventDefault();
+    window.addEventListener("error", listener);
+    try {
+      field.value = "12abc";
+      field.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertFromPaste" }));
+    } finally {
+      window.removeEventListener("error", listener);
+    }
+
+    expect({ shown: field.value, model: app.instance.text }).toEqual({ shown: "12", model: "12" });
+  });
+
+  /** A keystroke the app cancelled at `beforeinput`, then an autofill: the cancelled selection is not the autofill's. */
+  test("a cancelled beforeinput's selection is not put back for a different edit", async () => {
+    class Locked extends Component {
+      @state text = "hello world";
+      typed(event: EventOn<HTMLInputElement>) {
+        this.text = event.currentTarget.value;
+      }
+      cancel(event: Event) {
+        event.preventDefault();
+      }
+      refuse(_next: string, prev: string): string {
+        return prev;
+      }
+      render() {
+        return (
+          <input
+            id="i"
+            aria-label="Locked"
+            value={this.text}
+            oninput={this.typed}
+            onbeforeinput={this.cancel}
+            transform={this.refuse}
+          />
+        );
+      }
+    }
+    const app = await getDOM<Locked>(<Locked />);
+    await app.settle();
+    const field = app.container.querySelector("#i") as HTMLInputElement;
+    field.setSelectionRange(2, 2);
+    field.dispatchEvent(new InputEvent("beforeinput", { bubbles: true, cancelable: true, inputType: "insertText" }));
+    field.value = "hello worldX";
+    field.setSelectionRange(12, 12);
+    field.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertReplacementText" }));
+
+    expect([field.value, field.selectionStart]).toEqual(["hello world", 11]);
+  });
+
+  test("a cancelled beforeinput's selection is not put back even for the same kind of edit", async () => {
+    class Locked extends Component {
+      @state text = "hello world";
+      typed(event: EventOn<HTMLInputElement>) {
+        this.text = event.currentTarget.value;
+      }
+      cancel(event: Event) {
+        event.preventDefault();
+      }
+      refuse(_next: string, prev: string): string {
+        return prev;
+      }
+      render() {
+        return (
+          <input
+            id="i"
+            aria-label="Locked"
+            value={this.text}
+            oninput={this.typed}
+            onbeforeinput={this.cancel}
+            transform={this.refuse}
+          />
+        );
+      }
+    }
+    const app = await getDOM<Locked>(<Locked />);
+    await app.settle();
+    const field = app.container.querySelector("#i") as HTMLInputElement;
+    field.setSelectionRange(2, 2);
+    field.dispatchEvent(new InputEvent("beforeinput", { bubbles: true, cancelable: true, inputType: "insertText" }));
+    field.value = "hello worldX";
+    field.setSelectionRange(12, 12);
+    field.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText" }));
+
+    expect([field.value, field.selectionStart]).toEqual(["hello world", 11]);
   });
 });

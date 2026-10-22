@@ -980,3 +980,34 @@ test("a multiple select whose model is one value is decided as a list", async ()
     chosen: Array.from(select.selectedOptions, (option) => option.value),
   }).toEqual({ told: [["a"]], chosen: ["a"] });
 });
+
+/** `multiple=""` makes a multiple select as much as `multiple` does; it is read off the element. */
+test('a multiple select written multiple="" with one value is decided as a list', async () => {
+  class Tags extends Component {
+    @state tag = "a";
+    pick(event: EventOn<HTMLSelectElement>) {
+      this.tag = event.currentTarget.value;
+    }
+    atMostOne(next: string[], prev: string[]): string[] {
+      return next.length > 1 ? prev : next;
+    }
+    render() {
+      const multiple = { multiple: "" } as Record<string, unknown>;
+      return (
+        <Select id="s" aria-label="Tags" {...multiple} value={this.tag} onchange={this.pick} transform={this.atMostOne}>
+          <option value="a">a</option>
+          <option value="b">b</option>
+        </Select>
+      );
+    }
+  }
+  const app = await getDOM<Tags>(<Tags />);
+  await app.settle();
+  const select = app.container.querySelector("#s") as HTMLSelectElement;
+  expect(select.multiple).toBe(true);
+  for (const option of Array.from(select.options)) option.selected = true;
+  select.dispatchEvent(new Event("input", { bubbles: true }));
+  select.dispatchEvent(new Event("change", { bubbles: true }));
+
+  expect(Array.from(select.selectedOptions, (option) => option.value)).toEqual(["a"]);
+});

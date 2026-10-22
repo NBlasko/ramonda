@@ -96,6 +96,31 @@ class Resets extends Component<{ children?: unknown }> {
           <input aria-label="unread ok field" defaultValue="x" />
           <button type={this.label as "button"}>unread ok button</button>
         </form>
+        {/* ✓ a password field that switches its type is a field, not a reset — in a form or out */}
+        <input
+          aria-label="password out"
+          type={this.label === "x" ? "text" : "password"}
+          value={value}
+          oninput={this.type}
+        />
+        <form>
+          <input
+            aria-label="password in"
+            type={this.label === "x" ? "text" : "password"}
+            value={value}
+            oninput={this.type}
+          />
+        </form>
+        {/* ✓ a button that may reset, outside any form or naming another, is asked nothing */}
+        <button type={this.label as "button"}>unread loose button</button>
+        <button type={this.label as "button"} form="elsewhere-form">
+          unread elsewhere button
+        </button>
+        {/* ✗ a button whose type a spread may carry, over a controlled field */}
+        <form>
+          <input aria-label="spread button field" value={value} oninput={this.type} />
+          <button {...this.props}>spread button</button>
+        </form>
         {/* ✗ a spread on a field may carry its value */}
         <form>
           <input aria-label="spread field" {...this.props} />
