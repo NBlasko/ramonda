@@ -161,6 +161,8 @@ interface FieldState {
   blurred: boolean;
   /** What the model held when the composition began: a model the app moves in the middle of a word wins. */
   composedFrom?: unknown;
+  /** The composition began while a commit ran: it was sent by the commit's own work, not typed. */
+  composedInACommit?: boolean;
   /** The blur's own listener is running: what it renders leaves a word the browser may still commit. */
   inBlur?: boolean;
   /** The text and the selection the next edit starts from, recorded at its `beforeinput`. */
@@ -172,10 +174,13 @@ interface FieldState {
    */
   pending?: FieldValue;
   /**
-   * An edit of a text field was taken since its last `change` or blur, so the `change` that ends them reaches
-   * `onchange`. Edits that were all refused are no edit, and their `change` reaches nothing.
+   * An edit of a text field was taken since its last `change`, so the `change` that ends them reaches
+   * `onchange` — when the field no longer shows `since`. Edits that were all refused are no edit, and
+   * their `change` reaches nothing; nor does one whose edits put the text back, as a browser sends none.
    */
   taken: boolean;
+  /** What the field held when the edits the next `change` ends began. */
+  since?: FieldValue;
   /**
    * A pick answered on its `input`, whose `change` has nothing left to do: what the field's `onchange`,
    * called there, asked of the `change` it was told it had.
@@ -240,15 +245,17 @@ function runRenders(): void {
  * Inside running rendering work the handler's renders have not happened yet, so settling now would
  * show the model as it was: the field is settled in a microtask instead, once that work has returned
  * and the renders it queued have run — still before the browser draws. Until then, what the field
- * shows is the model as far as an event in the same commit can know it: it is kept as `pending`.
+ * shows is the model as far as an event in the same commit can know it: it is kept as `pending` —
+ * when a handler ran (`handled`), since one that wrote the model is what the render waits for. A
+ * refusal ran none, and leaves the field showing what it already held.
  */
-function show(control: FieldControl, field: Field | null): void {
+function show(control: FieldControl, field: Field | null, handled: boolean): void {
   if (drainingNow()) {
     // Once the running work has returned — the renders the handler queued run in a pass after it,
     // so settling at the end of this commit would still show the model as it was. A microtask is
     // still before the browser draws.
     const state = stateOf(control.key);
-    state.pending = field === null ? undefined : valueOf(field);
+    if (handled && field !== null) state.pending = valueOf(field);
     queueMicrotask(() => {
       state.pending = undefined;
       if (!drainingNow()) drainSync();
@@ -303,8 +310,8 @@ function decideOrShow(control: FieldControl, event: Event): boolean {
  * for the running commit: an edit sent from the commit's own work, a second one reading the first's
  * model. Reported, never thrown; the edit is answered as before, against what the field last showed.
  */
-function readsAheadOfItsRender(field: Field | null, what: string): void {
-  const tag = field?.tagName.toLowerCase() ?? "field";
+function readsAheadOfItsRender(field: Field, what: string): void {
+  const tag = field.tagName.toLowerCase();
   if (__DEV__) {
     diagnose(
       "RMD062",
@@ -313,7 +320,7 @@ function readsAheadOfItsRender(field: Field | null, what: string): void {
         `of its last edit had written it.`,
     );
   } else {
-    reportFault("RMD062", what, "A field read its model while the render after its last edit was waiting.");
+    reportFault("RMD062", what, "A field read its model while the render after its last edit was waiting.", "warn");
   }
 }
 
@@ -379,8 +386,8 @@ function decide(control: FieldControl, event: Event): boolean {
  *
  * **A `change` ends the edits before it, or is an edit of its own.** On a text field it comes on blur;
  * on a date, a color or a range right after the `input` it ends. When the field shows what it holds,
- * the `change` brings nothing new: it reaches `onchange` if an edit since the last `change` or blur was
- * taken, and nothing if every one was refused. When the field shows something else — an autofill, a
+ * the `change` brings nothing new: it reaches `onchange` if an edit since the last `change` was taken
+ * and the text is not back to what it was, and nothing if every one was refused. When the field shows something else — an autofill, a
  * `fireEvent.change` — it is an edit, decided as one, that reaches `oninput` as the `input` it is
  * promised and then `onchange`. A pick's `change` right after its `input` has nothing left to do.
  */
@@ -411,14 +418,12 @@ export function answerEdit(control: FieldControl, event: Event): void {
     state.composing = true;
     state.blurred = false;
     state.composedFrom = control.model();
+    state.composedInACommit = drainingNow();
     control.own(event.type, event);
     return;
   }
   if (event.type === "blur") {
     if (state.composing) state.blurred = true;
-    // The `change` that ends the edits comes before the blur, or not at all — a browser sends none
-    // when the text is back to what it was — so the next edits start counting afresh.
-    state.taken = false;
     // The blur's own renders leave the word alone; after it, the field follows the model again — see
     // `composingIn` and "A composition lost".
     state.inBlur = true;
@@ -433,22 +438,23 @@ export function answerEdit(control: FieldControl, event: Event): void {
   if (event.type === "compositionend") {
     state.composing = false;
     state.blurred = false;
+    const was = field === null ? undefined : heldBy(control, field);
     const refused = decideOrShow(control, event);
     answered(control, field, () => {
       control.own(event.type, event);
       // What `oncompositionend` rendered has run by now: it may have removed the field.
       runRenders();
       // A word the transform refused is no word: it is not handed over.
-      if (!refused && field !== null && !control.gone() && drainingNow()) {
-        // What `oncompositionend` wrote waits for the running commit's render.
-        readsAheadOfItsRender(field, "the end of its word");
-      }
-      if (!refused && field !== null && !control.gone() && sameModel(control.model(), state.composedFrom)) {
-        // An `input`, as `oninput` is promised: the word, one edit, `insertCompositionText`. A word not
-        // handed over is no edit, and the `change` after it reaches nothing.
-        state.taken = true;
-        control.own("input", as(event, "input", { inputType: "insertCompositionText", isComposing: false }));
-      }
+      if (refused || field === null || control.gone()) return;
+      // A word the commit's own work composed: what `oncompositionend` wrote waits for its render. One
+      // the user typed and a commit merely ended — a `focus()` in a `@mounted` — is not this.
+      if (state.composedInACommit === true && drainingNow()) readsAheadOfItsRender(field, "the end of its word");
+      if (!sameModel(control.model(), state.composedFrom)) return;
+      // An `input`, as `oninput` is promised: the word, one edit, `insertCompositionText`. A word not
+      // handed over is no edit, and the `change` after it reaches nothing.
+      if (!state.taken) state.since = was;
+      state.taken = true;
+      control.own("input", as(event, "input", { inputType: "insertCompositionText", isComposing: false }));
     });
     return;
   }
@@ -472,9 +478,11 @@ export function answerEdit(control: FieldControl, event: Event): void {
       return;
     }
     const taken = state.taken;
+    const since = state.since;
     state.taken = false;
+    state.since = undefined;
     if (field !== null && showsWhatItHolds(control, field)) {
-      if (taken) answered(control, field, () => control.own("change", event));
+      if (taken && !sameModel(valueOf(field), since)) answered(control, field, () => control.own("change", event));
       return;
     }
   } else if (
@@ -493,10 +501,14 @@ export function answerEdit(control: FieldControl, event: Event): void {
   if (control.pick && event.type === "input")
     state.pickAsked = { propagation: false, immediate: false, prevented: false };
   const asked = state.pickAsked;
+  const was = field === null ? undefined : heldBy(control, field);
   const refused = decideOrShow(control, event);
-  if (!refused && !control.pick && event.type === "input") state.taken = true;
+  if (!refused && !control.pick && event.type === "input") {
+    if (!state.taken) state.since = was;
+    state.taken = true;
+  }
   if (refused) {
-    show(control, field);
+    show(control, field, false);
     return;
   }
   answered(control, field, () => {
@@ -544,11 +556,11 @@ function answered(control: FieldControl, field: Field | null, handlers: () => vo
     thrown = { error };
   }
   if (thrown === undefined) {
-    show(control, field);
+    show(control, field, true);
     return;
   }
   try {
-    show(control, field);
+    show(control, field, true);
   } catch (renderError) {
     // The handler's error is the one thrown here; the render's is reported as an uncaught error is,
     // and the field still shows the model.

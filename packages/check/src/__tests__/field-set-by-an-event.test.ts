@@ -48,7 +48,8 @@ describe("a field set by an event while a commit runs", () => {
   /**
    * An event handler is not a commit's work: a row whose `onclick` clicks its checkbox does what a
    * `<label>` does. Nor is what runs after the commit — a microtask, a timer, a promise, past an
-   * `await` — nor a click that is a command: a button, a file input's picker.
+   * `await` — nor a click that is a command: a button, a file input's picker, a label of a text
+   * field. Nor an event dispatched where no field hears it: the document, a store.
    */
   test("a handler, what runs after the commit, and a command are not reported", () => {
     const components = new Set(found().map((issue) => issue.component));
@@ -60,6 +61,10 @@ describe("a field set by an event while a commit runs", () => {
       "AnnouncesItself",
       "WritesAnUncontrolledField",
       "FocusesOnMount",
+      "DispatchesAtTheDocument",
+      "TellsAStore",
+      "HandlersWrittenInline",
+      "ClicksALabelOfATextField",
     ]) {
       expect(components.has(allowed), allowed).toBe(false);
     }

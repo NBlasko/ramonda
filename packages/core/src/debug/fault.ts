@@ -70,7 +70,12 @@ const reported = new Set<string>();
  * safe to send is the app's decision to make in its collector, on a record that carries nothing it
  * did not already have.
  */
-export function reportFault(code: string, dedupKey: string, message: string): void {
+export function reportFault(
+  code: string,
+  dedupKey: string,
+  message: string,
+  severity: "warn" | "error" = "error",
+): void {
   const sink = globalThis.__RAMONDA_DIAGNOSTICS__;
   if (sink === undefined) return;
 
@@ -81,7 +86,7 @@ export function reportFault(code: string, dedupKey: string, message: string): vo
   sink({
     code,
     scope: "ramonda/core",
-    severity: "error",
+    severity,
     message,
     time: Date.now(),
     dedupKey: id,

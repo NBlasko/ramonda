@@ -56,6 +56,8 @@ test("a second edit from a @mounted, read ahead of its render, is recorded witho
   const record = records.find((r) => r.code === "RMD062");
   expect(record).toBeDefined();
   expect(record!.fix).toBeUndefined();
+  // The severity development gives it, so one fault is one series in a collector.
+  expect(record!.severity).toBe("warn");
   expect((container.querySelector("input") as HTMLInputElement).value).toBe("AB");
 
   unmount(container);

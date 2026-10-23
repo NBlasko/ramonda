@@ -78,7 +78,7 @@ class ClicksALabel extends Component {
 class DispatchesAnUnreadableEvent extends Component {
   @mounted
   start() {
-    document.dispatchEvent(new Event(kind)); // REPORT unreadable
+    document.querySelector("input")?.dispatchEvent(new Event(kind)); // REPORT unreadable
   }
   render() {
     return <div />;
@@ -88,7 +88,7 @@ class DispatchesAnUnreadableEvent extends Component {
 class DispatchesAPrebuiltEvent extends Component {
   @mounted
   start() {
-    document.dispatchEvent(event); // REPORT unreadable prebuilt
+    document.getElementById("name")?.dispatchEvent(event); // REPORT unreadable prebuilt
   }
   render() {
     return <div />;
@@ -141,22 +141,22 @@ class EditsFromEveryCommitHook extends Component<{ id: string }> {
   field = createRef<HTMLInputElement>();
   constructor() {
     super();
-    document.dispatchEvent(new Event("change")); // REPORT constructor
+    this.field.current?.dispatchEvent(new Event("change")); // REPORT constructor
   }
   @created
   made() {
-    document.dispatchEvent(new Event("beforeinput")); // REPORT created
+    this.field.current?.dispatchEvent(new Event("beforeinput")); // REPORT created
   }
   @destroyed
   gone() {
-    document.dispatchEvent(new CompositionEvent("compositionend")); // REPORT destroyed
+    this.field.current?.dispatchEvent(new CompositionEvent("compositionend")); // REPORT destroyed
   }
   @watchProp((props: { id: string }) => props.id)
   moved() {
-    document.dispatchEvent(new Event("compositionstart")); // REPORT watchProp
+    this.field.current?.dispatchEvent(new Event("compositionstart")); // REPORT watchProp
   }
   render() {
-    document.dispatchEvent(new Event("input")); // REPORT render
+    this.field.current?.dispatchEvent(new Event("input")); // REPORT render
     return <input aria-label="t" ref={this.field} value={this.text} oninput={() => {}} />;
   }
 }
@@ -284,5 +284,113 @@ class FocusesOnMount extends Component {
   }
   render() {
     return <input aria-label="f" ref={this.field} value={this.text} oninput={() => {}} />;
+  }
+}
+
+class DispatchesAtTheDocument extends Component {
+  @mounted
+  start() {
+    document.dispatchEvent(new Event("change"));
+    window.dispatchEvent(new Event("input"));
+  }
+  render() {
+    return <div />;
+  }
+}
+
+class Store extends EventTarget {}
+
+class TellsAStore extends Component {
+  store = new Store();
+  @mounted
+  start() {
+    this.store.dispatchEvent(new Event("change"));
+  }
+  render() {
+    return <div />;
+  }
+}
+
+class HandlersWrittenInline extends Component {
+  @state on = false;
+  @state text = "";
+  box = createRef<HTMLInputElement>();
+  field = createRef<HTMLInputElement>();
+  clear() {
+    this.field.current!.value = "";
+  }
+  render() {
+    return (
+      <div onclick={() => this.box.current?.click()}>
+        <input type="checkbox" aria-label="b" ref={this.box} checked={this.on} onchange={() => {}} />
+        <input aria-label="t" ref={this.field} value={this.text} oninput={() => {}} />
+        <button type="button" onclick={() => this.clear()}>
+          Clear
+        </button>
+        {[1, 2].map((n) => (
+          <button type="button" key={n} onclick={() => this.box.current?.click()}>
+            {n}
+          </button>
+        ))}
+      </div>
+    );
+  }
+}
+
+class ClicksALabelOfATextField extends Component {
+  @state text = "";
+  label = createRef<HTMLLabelElement>();
+  named = createRef<HTMLLabelElement>();
+  @mounted
+  start() {
+    this.label.current?.click();
+    this.named.current?.click();
+  }
+  render() {
+    return (
+      <div>
+        <label ref={this.label}>
+          Name <input value={this.text} oninput={() => {}} />
+        </label>
+        <label ref={this.named} for="city">
+          City
+        </label>
+        <input id="city" value={this.text} oninput={() => {}} />
+      </div>
+    );
+  }
+}
+
+class ClicksALabelForABox extends Component {
+  @state on = false;
+  label = createRef<HTMLLabelElement>();
+  @mounted
+  start() {
+    this.label.current?.click(); // REPORT label for a box
+  }
+  render() {
+    return (
+      <div>
+        <label ref={this.label} for="terms">
+          Terms
+        </label>
+        <input id="terms" type="checkbox" checked={this.on} onchange={() => {}} />
+      </div>
+    );
+  }
+}
+
+class ARefCallbackRunsInTheCommit extends Component {
+  @state on = false;
+  render() {
+    return (
+      <input
+        type="checkbox"
+        aria-label="b"
+        ref={(node: HTMLInputElement | null) => node?.dispatchEvent(new Event("change"))} // REPORT ref callback
+        checked={this.on}
+        onchange={() => {}}
+      />
+    );
   }
 }

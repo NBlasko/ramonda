@@ -17,18 +17,24 @@ import type { Rule, RuleContext } from "./rule";
  * method ends after `oncompositionend` moved the model — reads the model as it was. And an edit sent
  * there is a value set by an event: what the field should show is state, `this.on = true`.
  *
- * What is an edit: dispatching `input`, `change`, `beforeinput` or a composition event; a `click`
- * on a checkbox, a radio or a `<label>` — the label clicks its field — that this class renders, by
- * method or as a dispatched event; writing `.value` or `.checked` on a field it renders with that
- * model; `document.execCommand`, which edits the focused field. An event whose type cannot be read
- * is reported as one: nothing says it is not an edit.
+ * What is an edit: dispatching `input`, `change`, `beforeinput` or a composition event at a field
+ * this class renders — held by a ref, or handed to a `ref` callback — or at an element a query
+ * finds, which may be one; a `click` on a checkbox, a radio or a `<label>` of one that this class
+ * renders, by method or as a dispatched event; writing `.value` or `.checked` on a field it renders
+ * with that model; `document.execCommand`, which edits the focused field. An event whose type cannot
+ * be read is reported as one: nothing says it is not an edit. An event dispatched at the document, at
+ * the window or at any other object — a store that extends `EventTarget` — reaches no field, which
+ * hears only what is dispatched at it; and an element the class is handed rather than renders is
+ * not read here: `RMD062` reports what reaches it.
  *
  * How far it looks: every method of the class the commit's work calls as `this.method()`, and every
  * function written there that runs now — a callback to `forEach`, `map` or any call this cannot name
  * as later. One handed to `queueMicrotask`, `setTimeout`, `requestAnimationFrame`, a promise's `then`
  * or `addEventListener` runs after the commit, and so does what an `async` method does past an
- * `await` written as a statement of its own. An event handler is not the commit's work: a row whose
- * `onclick` clicks its checkbox does what a `<label>` does.
+ * `await` written as a statement of its own. A function written as an attribute is not the commit's
+ * work either — `onclick={() => …}` is an event handler, which the element calls, and a row whose
+ * handler clicks its checkbox does what a `<label>` does; a prop's function is the receiving
+ * component's to call — except `ref={(node) => …}`, which runs in the commit.
  */
 export interface FieldSetByAnEventIssue {
   /** The class whose commit work sends the edit. */
@@ -125,12 +131,15 @@ export const fieldSetByAnEvent = {
       }
     }
 
-    const refs = refsOf(cls, context);
+    const boxes = boxesOf(cls, context);
+    const refs = refsOf(cls, boxes, context);
 
     // The ref a receiver names: `this.box.current`, with `?.`, `!` or a `const` one name away.
     const heldBy = (receiver: ts.Expression, hops = 0): { name: string; held: Held } | undefined => {
       const at = unwrap(receiver);
       if (ts.isIdentifier(at) && hops < 4) {
+        const element = refCallbackElement(at, context);
+        if (element !== undefined) return { name: at.text, held: heldAs(element, boxes, context) };
         const declared = resolve(at)?.declarations?.[0];
         if (
           declared !== undefined &&
@@ -150,15 +159,39 @@ export const fieldSetByAnEvent = {
       return held === undefined ? undefined : { name: `this.${owner.name.text}`, held };
     };
 
+    /**
+     * Whether an event dispatched at `receiver` can reach a field: a field this class renders, held by
+     * a ref, or an element found by a query — which may be one. `document`, `window` and any other
+     * object — a store that extends `EventTarget` — cannot: a field hears what is dispatched at it.
+     */
+    const reachesAField = (receiver: ts.Expression, hops = 0): boolean => {
+      const held = heldBy(receiver);
+      if (held !== undefined) return held.held !== "other";
+      const at = unwrap(receiver);
+      if (ts.isIdentifier(at) && hops < 4) {
+        const declared = resolve(at)?.declarations?.[0];
+        return (
+          declared !== undefined &&
+          ts.isVariableDeclaration(declared) &&
+          declared.initializer !== undefined &&
+          (ts.getCombinedNodeFlags(declared) & ts.NodeFlags.Const) !== 0 &&
+          reachesAField(declared.initializer, hops + 1)
+        );
+      }
+      return isAnElementQuery(at);
+    };
+
     const visited = new Set<ts.Node>();
     const walk = (node: ts.Node, from: string): void => {
       const report = (at: ts.Node, kind: FieldSetByAnEventIssue["kind"], detail: string) =>
         found.push({ component: self.name, kind, detail, from, ...positionOf(at) });
 
       const look = (at: ts.Node): void => {
-        // A function written here runs now unless it is handed to something that runs it later.
+        // A function written here runs now unless it is handed to something that runs it later — or
+        // written as an attribute: `onclick={() => …}` is an event handler, which the element calls,
+        // and a prop's function is the receiving component's to call. A `ref` callback runs in the commit.
         if (ts.isArrowFunction(at) || ts.isFunctionExpression(at) || ts.isFunctionDeclaration(at)) {
-          if (handedToLater(at)) return;
+          if (handedToLater(at) || writtenAsAnAttribute(at)) return;
           body(at);
           return;
         }
@@ -183,7 +216,7 @@ export const fieldSetByAnEvent = {
               const member = members.get(method);
               if (member !== undefined) enter(member);
             }
-            if (method === "dispatchEvent") {
+            if (method === "dispatchEvent" && reachesAField(callee.expression)) {
               const event = at.arguments[0] === undefined ? undefined : unwrap(at.arguments[0]);
               const types =
                 event !== undefined && ts.isNewExpression(event) && event.arguments?.[0] !== undefined
@@ -194,7 +227,7 @@ export const fieldSetByAnEvent = {
                 const held = heldBy(callee.expression);
                 for (const type of types) {
                   if (EDIT_EVENTS.has(type)) report(at, "dispatch", type);
-                  else if (type === "click" && held !== undefined && held.held !== "other" && held.held !== "field") {
+                  else if (type === "click" && held !== undefined && (held.held === "box" || held.held === "label")) {
                     report(at, "click", held.name);
                   }
                 }
@@ -284,6 +317,31 @@ function handedToLater(fn: ts.Node): boolean {
   return name !== undefined && LATER.has(name);
 }
 
+/** A function written as an attribute's value — an event handler, a prop — other than a `ref` callback. */
+function writtenAsAnAttribute(fn: ts.Node): boolean {
+  const expression = fn.parent;
+  if (!ts.isJsxExpression(expression) || !ts.isJsxAttribute(expression.parent)) return false;
+  return expression.parent.name.getText() !== "ref";
+}
+
+/** `querySelector(…)`, `getElementById(…)` and their family: an element that may be a field. */
+const ELEMENT_QUERIES = new Set([
+  "querySelector",
+  "querySelectorAll",
+  "getElementById",
+  "getElementsByName",
+  "closest",
+]);
+
+function isAnElementQuery(expression: ts.Expression): boolean {
+  let at = unwrap(expression);
+  // `querySelectorAll("input")[0]`, `.item(0)`.
+  if (ts.isElementAccessExpression(at)) at = unwrap(at.expression);
+  if (!ts.isCallExpression(at)) return false;
+  const callee = unwrap(at.expression);
+  return ts.isPropertyAccessExpression(callee) && ELEMENT_QUERIES.has(callee.name.text);
+}
+
 /** `await x;` or `const y = await x;` — an await the function stops at, whatever branch it takes. */
 function awaitsAsAStatement(statement: ts.Statement): boolean {
   if (ts.isExpressionStatement(statement)) return ts.isAwaitExpression(unwrap(statement.expression));
@@ -302,12 +360,104 @@ function isDocument(expression: ts.Expression): boolean {
   return ts.isPropertyAccessExpression(at) && at.name.text === "document";
 }
 
+/** Whether an `<input>` written here is a checkbox or a radio, by its `type` — or `checked`, when that cannot be read. */
+function isABox(node: ts.JsxElement | ts.JsxSelfClosingElement, context: RuleContext): boolean {
+  const opening = openingOf(node);
+  if (opening.tagName.getText() !== "input") return false;
+  const type = typeAttributeOf(node);
+  const field = type === undefined ? "text" : kindOfLiterals(attributeLiterals(type, context.resolve));
+  const checked = opening.attributes.properties.some((p) => ts.isJsxAttribute(p) && p.name.getText() === "checked");
+  return field === "box" || (field === "unread" && checked);
+}
+
+/**
+ * Whether clicking a `<label>` edits a field: it labels a checkbox or a radio — inside it, or named by
+ * `for` — or what it labels cannot be read: a component inside it, a `for` that is not a literal, or
+ * names no field this class renders. A label of a text field only moves the focus.
+ */
+function labelsABox(
+  label: ts.JsxElement | ts.JsxSelfClosingElement,
+  boxes: Map<string, boolean>,
+  context: RuleContext,
+): boolean {
+  const opening = openingOf(label);
+  const forAttribute = opening.attributes.properties.find(
+    (p): p is ts.JsxAttribute => ts.isJsxAttribute(p) && ["for", "htmlFor"].includes(p.name.getText()),
+  );
+  if (forAttribute !== undefined) {
+    const ids = attributeLiterals(forAttribute, context.resolve);
+    return ids === undefined || ids.some((id) => boxes.get(id) !== false);
+  }
+  let found = false;
+  const visit = (node: ts.Node): void => {
+    if (found) return;
+    if ((ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node)) && node !== label) {
+      const tag = openingOf(node).tagName.getText();
+      // A component's markup is not read here: whatever it renders may be a box.
+      if (/^[A-Z]/.test(tag) || tag.includes(".")) found = true;
+      else if (isABox(node, context)) found = true;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(label);
+  return found;
+}
+
+/** What an element is, as far as an edit is concerned — see `Held`. */
+function heldAs(
+  node: ts.JsxElement | ts.JsxSelfClosingElement,
+  boxes: Map<string, boolean>,
+  context: RuleContext,
+): Held {
+  const opening = openingOf(node);
+  const named = (name: string) =>
+    opening.attributes.properties.some((p) => ts.isJsxAttribute(p) && p.name.getText() === name);
+  const tag = coreElementTag(opening.tagName, context.resolve) ?? opening.tagName.getText();
+  if (tag === "label") return labelsABox(node, boxes, context) ? "label" : "other";
+  if (tag === "input") return isABox(node, context) ? "box" : named("value") ? "field" : "other";
+  if ((tag === "select" || tag === "textarea") && named("value")) return "field";
+  return "other";
+}
+
+/** The inputs with a literal `id` this class renders, and whether each is a box — what a `for` names. */
+function boxesOf(cls: ts.ClassLikeDeclaration, context: RuleContext): Map<string, boolean> {
+  const boxes = new Map<string, boolean>();
+  const ids = (node: ts.Node): void => {
+    if ((ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node)) && openingOf(node).tagName.getText() === "input") {
+      const id = openingOf(node).attributes.properties.find(
+        (p): p is ts.JsxAttribute => ts.isJsxAttribute(p) && p.name.getText() === "id",
+      );
+      for (const literal of attributeLiterals(id, context.resolve) ?? []) boxes.set(literal, isABox(node, context));
+    }
+    ts.forEachChild(node, ids);
+  };
+  ids(cls);
+  return boxes;
+}
+
+/**
+ * The element a `ref` callback's parameter is: `ref={(node) => …}` is handed the element it is written on.
+ */
+function refCallbackElement(
+  name: ts.Identifier,
+  context: RuleContext,
+): ts.JsxElement | ts.JsxSelfClosingElement | undefined {
+  const declared = context.resolve(name)?.declarations?.[0];
+  if (declared === undefined || !ts.isParameter(declared)) return undefined;
+  const fn = declared.parent;
+  const expression = fn.parent;
+  if (!ts.isJsxExpression(expression) || !ts.isJsxAttribute(expression.parent)) return undefined;
+  if (expression.parent.name.getText() !== "ref") return undefined;
+  const opening = expression.parent.parent.parent;
+  if (ts.isJsxSelfClosingElement(opening)) return opening;
+  return ts.isJsxOpeningElement(opening) ? opening.parent : undefined;
+}
+
 /**
  * Every ref this class renders, by field name, and what it is attached to: a checkbox or a radio, a
- * `<label>`, a field written with its model (`value`, `checked`), or anything else.
+ * `<label>` of one, a field written with its model (`value`, `checked`), or anything else.
  */
-function refsOf(cls: ts.ClassLikeDeclaration, context: RuleContext): Map<string, Held> {
-  const { resolve } = context;
+function refsOf(cls: ts.ClassLikeDeclaration, boxes: Map<string, boolean>, context: RuleContext): Map<string, Held> {
   const refs = new Map<string, Held>();
   const visit = (node: ts.Node): void => {
     if (ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node)) {
@@ -321,17 +471,7 @@ function refsOf(cls: ts.ClassLikeDeclaration, context: RuleContext): Map<string,
         ts.isPropertyAccessExpression(held) &&
         held.expression.kind === ts.SyntaxKind.ThisKeyword
       ) {
-        const tag = coreElementTag(opening.tagName, resolve) ?? opening.tagName.getText();
-        let kind: Held = "other";
-        if (tag === "label") kind = "label";
-        else if (tag === "input") {
-          const type = typeAttributeOf(node);
-          const field = type === undefined ? "text" : kindOfLiterals(attributeLiterals(type, resolve));
-          const checked = named("checked") !== undefined;
-          if (field === "box" || (field === "unread" && checked)) kind = "box";
-          else if (named("value") !== undefined) kind = "field";
-        } else if ((tag === "select" || tag === "textarea") && named("value") !== undefined) kind = "field";
-        refs.set(held.name.text, kind);
+        refs.set(held.name.text, heldAs(node, boxes, context));
       }
     }
     ts.forEachChild(node, visit);

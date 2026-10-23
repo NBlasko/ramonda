@@ -63,8 +63,9 @@ and when a field's handler throws, its error is the one thrown, and the error of
 half wrote is reported as an uncaught one; a `transform` that throws leaves the field showing the model.
 A `change` ends the edits before it — on blur, or right after a date's, a color's or a range's
 `input` — or is an edit of its own. When the field shows its model, the `change` brings nothing new:
-it runs `onchange` when an edit since the last `change` or blur was kept, decides nothing again, and
-reaches no handler when every edit was refused, a word was overtaken by the app's own write, or there
+it runs `onchange` when an edit since the last `change` was kept and the text is not back to what it
+was, decides nothing again, and reaches no handler when every edit was refused, a word was overtaken
+by the app's own write, the edits put the text back — a browser sends no `change` for those — or there
 was none. When the field shows something else — an
 autofill, or a change dispatched alone, on any field, a `TextArea` included — it is an edit, decided
 by the `transform` and handed to `oninput` as an `insertReplacementText` input, then to `onchange` as

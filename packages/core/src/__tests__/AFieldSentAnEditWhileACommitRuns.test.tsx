@@ -185,4 +185,77 @@ describe("RMD062", () => {
 
     expect({ messages, text: app.instance.text }).toEqual({ messages: [], text: "x日本" });
   });
+  /** A word the user typed, which a commit merely ended — the browser commits it as a `focus()` moves away. */
+  test("a word typed by the user and ended inside a commit is not reported", async () => {
+    class Chat extends Component {
+      @state text = "x";
+      @state other = false;
+      field = createRef<HTMLInputElement>();
+      typed(event: EventOn<HTMLInputElement>) {
+        this.text = event.currentTarget.value;
+      }
+      render() {
+        return (
+          <div>
+            <input aria-label="Chat" ref={this.field} value={this.text} oninput={this.typed} />
+            {this.other ? <Ends field={this.field.current as HTMLInputElement} /> : null}
+          </div>
+        );
+      }
+    }
+    class Ends extends Component<{ field: HTMLInputElement }> {
+      @mounted
+      takeTheFocus() {
+        this.props.field.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "日本" }));
+      }
+      render() {
+        return <span />;
+      }
+    }
+    const app = await getDOM<Chat>(<Chat />);
+    await app.settle();
+    const field = app.instance.field.current as HTMLInputElement;
+    field.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+    field.value = "x日本";
+    field.dispatchEvent(new InputEvent("input", { bubbles: true, isComposing: true }));
+    app.instance.other = true;
+    await app.settle();
+
+    expect(messages).toEqual([]);
+  });
+
+  /** A refused edit ran no handler, so the field still shows its model: a second edit reads it right. */
+  test("a second edit after a refused one is not reported", async () => {
+    class Locked extends Component {
+      @state on = false;
+      box = createRef<HTMLInputElement>();
+      flipped(event: EventOn<HTMLInputElement>) {
+        this.on = event.currentTarget.checked;
+      }
+      refuse(_next: boolean, prev: boolean): boolean {
+        return prev;
+      }
+      @mounted
+      start() {
+        this.box.current?.click();
+        this.box.current?.click();
+      }
+      render() {
+        return (
+          <input
+            type="checkbox"
+            aria-label="Locked"
+            ref={this.box}
+            checked={this.on}
+            onchange={this.flipped}
+            transform={this.refuse}
+          />
+        );
+      }
+    }
+    const app = await getDOM<Locked>(<Locked />);
+    await app.settle();
+
+    expect({ messages, on: app.instance.on }).toEqual({ messages: [], on: false });
+  });
 });
