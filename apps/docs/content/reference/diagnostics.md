@@ -1901,7 +1901,7 @@ A callback belongs on a field too — `createRef<T>((node) => this.arrived(node)
 `ramonda-check` reports the same call before it ships, as
 [`ref-built-where-it-cannot-be-kept`](/reference/check).
 
-## RMD062 — A field was sent an edit while a commit ran
+## RMD062 — A field read its model while a commit ran
 
 ```tsx expect-report:field-set-by-an-event
 import { Component, createRef, mounted, state, type EventOn } from "@ramonda/core";
@@ -1962,6 +1962,11 @@ must go through the field, its `transform` and the form around it, is sent once 
 `queueMicrotask(() => this.box.current?.click())`. A library handed the field tells you its value
 through its own callback, which writes state. An event handler is not a commit's work: a row whose
 `onclick` clicks its checkbox does what a `<label>` does.
+
+A word the user is typing is read the same way when the commit's work ends it: a `focus()` in a
+`@mounted` moves the focus away, the browser commits the word there and then, and what
+`oncompositionend` writes still waits for the render. Move the focus once the commit is over —
+`queueMicrotask(() => this.other.current?.focus())` — and the word ends after it.
 
 `ramonda-check` reports the same edit before it ships, as
 [`field-set-by-an-event`](/reference/check).

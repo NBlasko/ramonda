@@ -157,8 +157,8 @@ function controlFor(component: Component<any> & { settle(): void }, pick: boolea
     },
     own: (type, own) => {
       // Both spellings, in the order a listener would be: `oninput`, then `on:input`.
-      callHandler(runtime.rawProps[`on${type}`], own);
-      callHandler(runtime.rawProps[`on:${type}`], own);
+      const written = callHandler(runtime.rawProps[`on${type}`], own);
+      return callHandler(runtime.rawProps[`on:${type}`], own) || written;
     },
     settle: () => component.settle(),
     gone: () => runtime.isDestroyed === true,

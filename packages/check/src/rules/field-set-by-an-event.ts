@@ -5,7 +5,7 @@ import { openingOf } from "./element";
 import { unwrap } from "./follow-value";
 import { attributeLiterals, kindOfLiterals, literalsOf, typeAttributeOf } from "./formTable";
 import { coreDecorators } from "./lifecycle-env";
-import type { Rule, RuleContext } from "./rule";
+import type { Resolver, Rule, RuleContext } from "./rule";
 
 /**
  * A field given an edit by the component's own code while a commit runs.
@@ -187,23 +187,23 @@ export const fieldSetByAnEvent = {
         found.push({ component: self.name, kind, detail, from, ...positionOf(at) });
 
       const look = (at: ts.Node): void => {
-        // A function written here runs now unless it is handed to something that runs it later — or
-        // written as an attribute: `onclick={() => …}` is an event handler, which the element calls,
-        // and a prop's function is the receiving component's to call. A `ref` callback runs in the commit.
-        if (ts.isArrowFunction(at) || ts.isFunctionExpression(at) || ts.isFunctionDeclaration(at)) {
-          if (handedToLater(at) || writtenAsAnAttribute(at)) return;
-          body(at);
+        // A function runs where it is CALLED, not where it is written — see `whenItRuns`. One written
+        // here, a local one named here, or the class's own: each is read when what it is handed to runs
+        // it now, and left when that is later or when it is only kept.
+        if (ts.isArrowFunction(at) || ts.isFunctionExpression(at)) {
+          if (whenItRuns(at) === "now") enter(at);
           return;
         }
-        // `items.forEach(this.tick)` — the class's own function handed over to run now, followed;
-        // `queueMicrotask(this.tick)` runs it later.
+        if (ts.isFunctionDeclaration(at)) return;
+        if (ts.isIdentifier(at) && whenItRuns(at) === "now") {
+          const local = localFunction(at, resolve);
+          if (local !== undefined) enter(local);
+        }
         if (
           ts.isPropertyAccessExpression(at) &&
           at.expression.kind === ts.SyntaxKind.ThisKeyword &&
           members.has(at.name.text) &&
-          ts.isCallExpression(at.parent) &&
-          at.parent.arguments.some((argument) => unwrap(argument) === at) &&
-          !handedToLater(at)
+          whenItRuns(at) === "now"
         ) {
           enter(members.get(at.name.text) as ts.Node);
         }
@@ -211,18 +211,13 @@ export const fieldSetByAnEvent = {
           const callee = unwrap(at.expression);
           if (ts.isPropertyAccessExpression(callee)) {
             const method = callee.name.text;
-            // `this.helper()` — the class's own function, followed.
-            if (callee.expression.kind === ts.SyntaxKind.ThisKeyword) {
-              const member = members.get(method);
-              if (member !== undefined) enter(member);
-            }
             if (method === "dispatchEvent" && reachesAField(callee.expression)) {
-              const event = at.arguments[0] === undefined ? undefined : unwrap(at.arguments[0]);
+              const event = at.arguments[0] === undefined ? undefined : eventBuilt(at.arguments[0], resolve);
               const types =
-                event !== undefined && ts.isNewExpression(event) && event.arguments?.[0] !== undefined
+                event !== undefined && event.arguments?.[0] !== undefined
                   ? literalsOf(event.arguments[0], resolve)
                   : undefined;
-              if (types === undefined) report(at, "unreadable", event?.getText() ?? "");
+              if (types === undefined) report(at, "unreadable", at.arguments[0]?.getText() ?? "");
               else {
                 const held = heldBy(callee.expression);
                 for (const type of types) {
@@ -255,27 +250,32 @@ export const fieldSetByAnEvent = {
         ts.forEachChild(at, look);
       };
 
-      // A function's statements, up to an `await` written as a statement of its own in an `async` one:
-      // what comes after it runs once the commit is over.
+      // A function's statements, up to the first one an `async` function is sure to `await` at: what
+      // comes after it runs once the commit is over — see `awaitsAt`.
       const body = (fn: ts.FunctionLikeDeclaration): void => {
         const statements = fn.body === undefined ? [] : ts.isBlock(fn.body) ? fn.body.statements : [fn.body];
         const async = (ts.getCombinedModifierFlags(fn as ts.Declaration) & ts.ModifierFlags.Async) !== 0;
         for (const statement of statements) {
+          if (async && ts.isStatement(statement) && awaitsAt(statement)) {
+            // What runs before the `await` in it still runs now: `this.x = await load(this.box.click())`.
+            look(statement);
+            return;
+          }
           look(statement);
-          if (async && ts.isStatement(statement) && awaitsAsAStatement(statement)) return;
         }
       };
 
-      const enter = (member: ts.Node): void => {
-        if (visited.has(member)) return;
-        visited.add(member);
+      const enter = (fn: ts.Node): void => {
+        if (visited.has(fn)) return;
+        visited.add(fn);
         if (
-          ts.isMethodDeclaration(member) ||
-          ts.isConstructorDeclaration(member) ||
-          ts.isArrowFunction(member) ||
-          ts.isFunctionExpression(member)
+          ts.isMethodDeclaration(fn) ||
+          ts.isConstructorDeclaration(fn) ||
+          ts.isArrowFunction(fn) ||
+          ts.isFunctionExpression(fn) ||
+          ts.isFunctionDeclaration(fn)
         ) {
-          body(member);
+          body(fn);
         }
       };
 
@@ -304,24 +304,95 @@ export const fieldSetByAnEvent = {
   },
 } as const satisfies Rule<FieldSetByAnEventIssue>;
 
-/** Whether a function is handed, as an argument, to a call that runs it after the current work. */
-function handedToLater(fn: ts.Node): boolean {
-  const call = fn.parent;
-  if (!ts.isCallExpression(call) || !call.arguments.some((argument) => unwrap(argument) === fn)) return false;
-  const callee = unwrap(call.expression);
-  const name = ts.isIdentifier(callee)
-    ? callee.text
-    : ts.isPropertyAccessExpression(callee)
-      ? callee.name.text
-      : undefined;
+/** Constructors whose callback runs later: an observer is called when what it watches changes. */
+const LATER_CONSTRUCTORS = new Set([
+  "MutationObserver",
+  "ResizeObserver",
+  "IntersectionObserver",
+  "PerformanceObserver",
+]);
+
+/**
+ * When a function value runs, by where it is used: `now` — called there, or handed to a call that is
+ * not known to run it later (`forEach`, `new Promise`, a function this cannot name); `later` — handed
+ * to one of `LATER`, an observer, or written as an attribute (`onclick={…}` is an event handler, a
+ * prop's function is the receiving component's to call) other than `ref`, which runs in the commit;
+ * `kept` — stored or returned, for whoever reads it: its uses decide. Read through what only passes it
+ * on: parentheses, `as`, `!`, an arm of `?:`, a side of `??`, `||` and `&&`.
+ */
+function whenItRuns(value: ts.Node): "now" | "later" | "kept" {
+  let at = value;
+  for (;;) {
+    const parent = at.parent;
+    if (
+      ts.isParenthesizedExpression(parent) ||
+      ts.isAsExpression(parent) ||
+      ts.isNonNullExpression(parent) ||
+      ts.isSatisfiesExpression(parent) ||
+      (ts.isConditionalExpression(parent) && parent.condition !== at) ||
+      (ts.isBinaryExpression(parent) &&
+        (parent.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken ||
+          parent.operatorToken.kind === ts.SyntaxKind.BarBarToken ||
+          parent.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken))
+    ) {
+      at = parent;
+      continue;
+    }
+    break;
+  }
+  const parent = at.parent;
+  if (ts.isCallExpression(parent)) {
+    if (parent.expression === at) return "now";
+    if (parent.arguments.some((argument) => argument === at)) return namedLater(parent.expression) ? "later" : "now";
+  }
+  if (ts.isNewExpression(parent) && parent.arguments?.some((argument) => argument === at)) {
+    const made = unwrap(parent.expression);
+    return ts.isIdentifier(made) && LATER_CONSTRUCTORS.has(made.text) ? "later" : "now";
+  }
+  if (ts.isJsxExpression(parent) && ts.isJsxAttribute(parent.parent)) {
+    return parent.parent.name.getText() === "ref" ? "now" : "later";
+  }
+  return "kept";
+}
+
+/** Whether a callee is one of `LATER`, by its name: `queueMicrotask`, `promise.then`. */
+function namedLater(callee: ts.Expression): boolean {
+  const at = unwrap(callee);
+  const name = ts.isIdentifier(at) ? at.text : ts.isPropertyAccessExpression(at) ? at.name.text : undefined;
   return name !== undefined && LATER.has(name);
 }
 
-/** A function written as an attribute's value — an event handler, a prop — other than a `ref` callback. */
-function writtenAsAnAttribute(fn: ts.Node): boolean {
-  const expression = fn.parent;
-  if (!ts.isJsxExpression(expression) || !ts.isJsxAttribute(expression.parent)) return false;
-  return expression.parent.name.getText() !== "ref";
+/** The function a local name holds: `function tick() {}`, or `const tick = () => …`. */
+function localFunction(name: ts.Identifier, resolve: Resolver): ts.FunctionLikeDeclaration | undefined {
+  const declared = resolve(name)?.declarations?.[0];
+  if (declared === undefined) return undefined;
+  if (ts.isFunctionDeclaration(declared)) return declared;
+  if (
+    ts.isVariableDeclaration(declared) &&
+    declared.initializer !== undefined &&
+    (ts.getCombinedNodeFlags(declared) & ts.NodeFlags.Const) !== 0
+  ) {
+    const held = unwrap(declared.initializer);
+    if (ts.isArrowFunction(held) || ts.isFunctionExpression(held)) return held;
+  }
+  return undefined;
+}
+
+/** The `new Event(…)` an argument is, written there or held by a `const` a few names away. */
+function eventBuilt(argument: ts.Expression, resolve: Resolver, hops = 0): ts.NewExpression | undefined {
+  const at = unwrap(argument);
+  if (ts.isNewExpression(at)) return at;
+  if (!ts.isIdentifier(at) || hops > 4) return undefined;
+  const declared = resolve(at)?.declarations?.[0];
+  if (
+    declared === undefined ||
+    !ts.isVariableDeclaration(declared) ||
+    declared.initializer === undefined ||
+    (ts.getCombinedNodeFlags(declared) & ts.NodeFlags.Const) === 0
+  ) {
+    return undefined;
+  }
+  return eventBuilt(declared.initializer, resolve, hops + 1);
 }
 
 /** `querySelector(…)`, `getElementById(…)` and their family: an element that may be a field. */
@@ -342,15 +413,53 @@ function isAnElementQuery(expression: ts.Expression): boolean {
   return ts.isPropertyAccessExpression(callee) && ELEMENT_QUERIES.has(callee.name.text);
 }
 
-/** `await x;` or `const y = await x;` — an await the function stops at, whatever branch it takes. */
-function awaitsAsAStatement(statement: ts.Statement): boolean {
-  if (ts.isExpressionStatement(statement)) return ts.isAwaitExpression(unwrap(statement.expression));
+/**
+ * Whether a statement is sure to `await`, whatever its values — `await x;`, `const y = await x;`,
+ * `this.data = await load();`, `return await x;`, or a `try` whose first statement is. An `await`
+ * behind a branch — an arm of `?:`, the right of `&&`, `||` or `??`, an `if`, a function written there
+ * — may not run, and the commit's work goes on past it.
+ */
+function awaitsAt(statement: ts.Statement): boolean {
+  if (ts.isExpressionStatement(statement)) return surelyAwaits(statement.expression);
+  if (ts.isReturnStatement(statement)) return statement.expression !== undefined && surelyAwaits(statement.expression);
   if (ts.isVariableStatement(statement)) {
     return statement.declarationList.declarations.some(
-      (declaration) => declaration.initializer !== undefined && ts.isAwaitExpression(unwrap(declaration.initializer)),
+      (declaration) => declaration.initializer !== undefined && surelyAwaits(declaration.initializer),
     );
   }
+  if (ts.isTryStatement(statement)) {
+    const first = statement.tryBlock.statements[0];
+    return first !== undefined && awaitsAt(first);
+  }
+  if (ts.isBlock(statement)) {
+    const first = statement.statements[0];
+    return first !== undefined && awaitsAt(first);
+  }
   return false;
+}
+
+/** Whether evaluating an expression is sure to reach an `await` in it — see `awaitsAt`. */
+function surelyAwaits(expression: ts.Node): boolean {
+  if (ts.isAwaitExpression(expression)) return true;
+  if (ts.isFunctionLike(expression)) return false;
+  if (ts.isConditionalExpression(expression)) return surelyAwaits(expression.condition);
+  if (
+    ts.isBinaryExpression(expression) &&
+    (expression.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken ||
+      expression.operatorToken.kind === ts.SyntaxKind.BarBarToken ||
+      expression.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken)
+  ) {
+    return surelyAwaits(expression.left);
+  }
+  // An optional call's arguments are not evaluated when what it calls is missing.
+  if (ts.isCallExpression(expression) && expression.questionDotToken !== undefined) {
+    return surelyAwaits(expression.expression);
+  }
+  let found = false;
+  ts.forEachChild(expression, (child) => {
+    if (!found && surelyAwaits(child)) found = true;
+  });
+  return found;
 }
 
 /** `document`, or `window.document`. */
@@ -444,8 +553,11 @@ function refCallbackElement(
 ): ts.JsxElement | ts.JsxSelfClosingElement | undefined {
   const declared = context.resolve(name)?.declarations?.[0];
   if (declared === undefined || !ts.isParameter(declared)) return undefined;
-  const fn = declared.parent;
-  const expression = fn.parent;
+  // Through what only passes it on: `ref={((node) => …)}`, `ref={on ? (node) => … : undefined}`.
+  let expression: ts.Node = declared.parent.parent;
+  while (ts.isParenthesizedExpression(expression) || ts.isConditionalExpression(expression)) {
+    expression = expression.parent;
+  }
   if (!ts.isJsxExpression(expression) || !ts.isJsxAttribute(expression.parent)) return undefined;
   if (expression.parent.name.getText() !== "ref") return undefined;
   const opening = expression.parent.parent.parent;

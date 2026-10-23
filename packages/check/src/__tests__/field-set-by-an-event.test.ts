@@ -65,6 +65,9 @@ describe("a field set by an event while a commit runs", () => {
       "TellsAStore",
       "HandlersWrittenInline",
       "ClicksALabelOfATextField",
+      "HandlerHeldInALocal",
+      "AwaitsBeforeItClicks",
+      "DispatchesAHeldFocus",
     ]) {
       expect(components.has(allowed), allowed).toBe(false);
     }

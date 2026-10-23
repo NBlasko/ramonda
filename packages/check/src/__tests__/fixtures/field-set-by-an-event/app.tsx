@@ -394,3 +394,133 @@ class ARefCallbackRunsInTheCommit extends Component {
     );
   }
 }
+
+declare function load(): Promise<string>;
+
+class CallsALocalFunctionNow extends Component {
+  @state on = false;
+  box = createRef<HTMLInputElement>();
+  @mounted
+  start() {
+    const toggle = () => this.box.current?.click(); // REPORT local function called
+    toggle();
+    function tick(box: HTMLInputElement | null) {
+      box?.dispatchEvent(new Event("change"));
+    }
+    tick(this.box.current);
+    document.querySelector("input")?.dispatchEvent(new Event("input")); // REPORT query
+  }
+  render() {
+    return <input type="checkbox" aria-label="b" ref={this.box} checked={this.on} onchange={this.flipped} />;
+  }
+  flipped() {}
+}
+
+class AwaitsOnlyInABranch extends Component {
+  @state on = false;
+  box = createRef<HTMLInputElement>();
+  @mounted
+  async start() {
+    const text = this.on ? await load() : "";
+    void text;
+    this.box.current?.click(); // REPORT branch await
+  }
+  render() {
+    return <input type="checkbox" aria-label="b" ref={this.box} checked={this.on} onchange={this.flipped} />;
+  }
+  flipped() {}
+}
+
+class DispatchesAHeldEdit extends Component {
+  @state text = "";
+  field = createRef<HTMLInputElement>();
+  @mounted
+  start() {
+    const edit = new Event("input");
+    this.field.current?.dispatchEvent(edit); // REPORT held edit
+  }
+  render() {
+    return <input aria-label="t" ref={this.field} value={this.text} oninput={this.typed} />;
+  }
+  typed() {}
+}
+
+class RefCallbackInAConditional extends Component {
+  @state on = false;
+  render() {
+    return (
+      <input
+        type="checkbox"
+        aria-label="b"
+        ref={this.on ? (node: HTMLInputElement | null) => node?.click() : undefined} // REPORT ref in a conditional
+        checked={this.on}
+        onchange={this.flipped}
+      />
+    );
+  }
+  flipped() {}
+}
+
+class HandlerHeldInALocal extends Component {
+  @state on = false;
+  box = createRef<HTMLInputElement>();
+  @mounted
+  start() {
+    const tick = () => this.box.current?.click();
+    setTimeout(tick, 0);
+  }
+  render() {
+    const toggle = () => this.box.current?.click();
+    return (
+      <div>
+        <input type="checkbox" aria-label="b" ref={this.box} checked={this.on} onchange={this.flipped} />
+        <button type="button" onclick={toggle}>
+          Toggle
+        </button>
+        <button type="button" onclick={this.on ? () => this.box.current?.click() : undefined}>
+          Again
+        </button>
+      </div>
+    );
+  }
+  flipped() {}
+}
+
+class AwaitsBeforeItClicks extends Component {
+  @state on = false;
+  @state text = "";
+  box = createRef<HTMLInputElement>();
+  @mounted
+  async start() {
+    this.text = await load();
+    this.box.current?.click();
+  }
+  @updated
+  async again() {
+    try {
+      await load();
+    } catch {
+      return;
+    }
+    this.box.current?.click();
+  }
+  render() {
+    return <input type="checkbox" aria-label="b" ref={this.box} checked={this.on} onchange={this.flipped} />;
+  }
+  flipped() {}
+}
+
+class DispatchesAHeldFocus extends Component {
+  @state text = "";
+  field = createRef<HTMLInputElement>();
+  @mounted
+  start() {
+    const focus = new FocusEvent("focus");
+    this.field.current?.dispatchEvent(focus);
+    new MutationObserver(() => this.field.current?.dispatchEvent(new Event("input")));
+  }
+  render() {
+    return <input aria-label="t" ref={this.field} value={this.text} oninput={this.typed} />;
+  }
+  typed() {}
+}

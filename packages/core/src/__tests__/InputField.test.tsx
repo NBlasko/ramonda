@@ -1735,3 +1735,38 @@ test("a word not handed over leaves its change with nothing to end", async () =>
     shown: "",
   });
 });
+
+/**
+ * Edits that put the text back end with the blur — a browser sends no `change` for them — so a later
+ * `change`, after the app moved the model, is judged against where its own edits began.
+ */
+test("a change after edits that were put back, and a model the app moved, reaches onchange", async () => {
+  class Notes extends Component {
+    @state text = "";
+    changes: string[] = [];
+    typed(event: EventOn<HTMLInputElement>) {
+      this.text = event.currentTarget.value;
+    }
+    changed(event: EventOn<HTMLInputElement>) {
+      this.changes.push(event.currentTarget.value);
+    }
+    render() {
+      return <input id="i" aria-label="Notes" value={this.text} oninput={this.typed} onchange={this.changed} />;
+    }
+  }
+  const app = await getDOM<Notes>(<Notes />);
+  await app.settle();
+  const field = app.container.querySelector("#i") as HTMLInputElement;
+  typeInto(field, "x");
+  field.value = "";
+  field.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "deleteContentBackward" }));
+  field.dispatchEvent(new FocusEvent("blur"));
+  app.instance.text = "abc";
+  await app.settle();
+  field.value = "";
+  field.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "deleteContentBackward" }));
+  field.dispatchEvent(new Event("change", { bubbles: true }));
+  await app.settle();
+
+  expect(app.instance.changes).toEqual([""]);
+});

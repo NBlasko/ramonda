@@ -29,8 +29,8 @@ export interface FieldControl {
   /** The model as `transform` is given it, as `prev`. */
   prev(): FieldValue;
   transform(): Transform | undefined;
-  /** Calls the field's own handler for `type`, if it has one, as a listener would be called. */
-  own(type: string, event: Event): void;
+  /** Calls the field's own handler for `type`, if it has one, as a listener would be called; whether it had one. */
+  own(type: string, event: Event): boolean;
   /** Makes the field show the model. */
   settle(): void;
   /** The field's component is gone: a composition's end that destroyed it is handed nothing. */
@@ -308,16 +308,16 @@ function decideOrShow(control: FieldControl, event: Event): boolean {
 /**
  * RMD062 — the field must read its model while the render after its last answer is still waiting
  * for the running commit: an edit sent from the commit's own work, a second one reading the first's
- * model. Reported, never thrown; the edit is answered as before, against what the field last showed.
+ * model; or a word the user typed that the commit's work ended. Reported, never thrown; the edit is
+ * answered as before, against what the field last showed.
  */
-function readsAheadOfItsRender(field: Field, what: string): void {
+function readsAheadOfItsRender(field: Field, what: string, cause = "was sent an edit while a commit ran"): void {
   const tag = field.tagName.toLowerCase();
   if (__DEV__) {
     diagnose(
       "RMD062",
       `${tag}:${what}`,
-      `A <${tag}> was sent an edit while a commit ran, and ${what} read the model before the render ` +
-        `of its last edit had written it.`,
+      `A <${tag}> ${cause}, and ${what} read the model before the render of its last edit had written it.`,
     );
   } else {
     reportFault("RMD062", what, "A field read its model while the render after its last edit was waiting.", "warn");
@@ -424,6 +424,11 @@ export function answerEdit(control: FieldControl, event: Event): void {
   }
   if (event.type === "blur") {
     if (state.composing) state.blurred = true;
+    // The edits put the text back: a browser sends no `change` for them, and the next ones start over.
+    if (state.taken && field !== null && sameModel(valueOf(field), state.since)) {
+      state.taken = false;
+      state.since = undefined;
+    }
     // The blur's own renders leave the word alone; after it, the field follows the model again — see
     // `composingIn` and "A composition lost".
     state.inBlur = true;
@@ -441,20 +446,28 @@ export function answerEdit(control: FieldControl, event: Event): void {
     const was = field === null ? undefined : heldBy(control, field);
     const refused = decideOrShow(control, event);
     answered(control, field, () => {
-      control.own(event.type, event);
+      const handled = control.own(event.type, event);
       // What `oncompositionend` rendered has run by now: it may have removed the field.
       runRenders();
       // A word the transform refused is no word: it is not handed over.
-      if (refused || field === null || control.gone()) return;
-      // A word the commit's own work composed: what `oncompositionend` wrote waits for its render. One
-      // the user typed and a commit merely ended — a `focus()` in a `@mounted` — is not this.
-      if (state.composedInACommit === true && drainingNow()) readsAheadOfItsRender(field, "the end of its word");
-      if (!sameModel(control.model(), state.composedFrom)) return;
+      if (refused || field === null || control.gone()) return handled;
+      // What `oncompositionend` wrote waits for the running commit's render: a word the commit's own
+      // work composed, or one the user typed that it ended — a `focus()` in a `@mounted`.
+      if (drainingNow()) {
+        readsAheadOfItsRender(
+          field,
+          "the end of its word",
+          state.composedInACommit === true ? "was sent an edit while a commit ran" : "had its word ended by a commit",
+        );
+      }
+      if (!sameModel(control.model(), state.composedFrom)) return handled;
       // An `input`, as `oninput` is promised: the word, one edit, `insertCompositionText`. A word not
       // handed over is no edit, and the `change` after it reaches nothing.
       if (!state.taken) state.since = was;
       state.taken = true;
-      control.own("input", as(event, "input", { inputType: "insertCompositionText", isComposing: false }));
+      return (
+        control.own("input", as(event, "input", { inputType: "insertCompositionText", isComposing: false })) || handled
+      );
     });
     return;
   }
@@ -516,13 +529,15 @@ export function answerEdit(control: FieldControl, event: Event): void {
     // promised (`insertReplacementText`, what the transform was told), and then `onchange`, as the
     // change it is. What `oninput` stops or prevents is asked of an `input` that never was, and leaves
     // the real `change` alone.
+    let handled = false;
     if (event.type === "change") {
       const unasked: Asked = { propagation: false, immediate: false, prevented: false };
-      control.own("input", as(event, "input", { inputType: "insertReplacementText" }, unasked));
+      handled = control.own("input", as(event, "input", { inputType: "insertReplacementText" }, unasked));
     }
-    control.own(event.type, event);
+    handled = control.own(event.type, event) || handled;
     // A pick's `change`, as `onchange` is promised; what it stops or prevents is done to the real one.
-    if (asked !== undefined) control.own("change", as(event, "change", {}, asked));
+    if (asked !== undefined) handled = control.own("change", as(event, "change", {}, asked)) || handled;
+    return handled;
   });
 }
 
@@ -548,15 +563,17 @@ function reportUncaught(error: unknown): void {
  * The app's handlers, then the field shown the model — and when a handler threw, its error is the one
  * the app sees: the render of the state it half wrote may throw as well, and must not take its place.
  */
-function answered(control: FieldControl, field: Field | null, handlers: () => void): void {
+function answered(control: FieldControl, field: Field | null, handlers: () => boolean): void {
   let thrown: { error: unknown } | undefined;
+  // Whether a handler of the field ran — one that threw ran — and so may have written the model.
+  let handled = true;
   try {
-    handlers();
+    handled = handlers();
   } catch (error) {
     thrown = { error };
   }
   if (thrown === undefined) {
-    show(control, field, true);
+    show(control, field, handled);
     return;
   }
   try {
@@ -631,12 +648,20 @@ function as(event: Event, type: string, own: Record<string, unknown>, asked?: As
   });
 }
 
-/** Calls a handler as a listener would be: a function with the element as `this`, or `handleEvent`. */
-export function callHandler(theirs: unknown, event: Event): void {
-  if (typeof theirs === "function") theirs.call(event.currentTarget, event);
-  else if (typeof (theirs as EventListenerObject | null)?.handleEvent === "function") {
-    (theirs as EventListenerObject).handleEvent(event);
+/**
+ * Calls a handler as a listener would be: a function with the element as `this`, or `handleEvent`.
+ * Whether there was one to call.
+ */
+export function callHandler(theirs: unknown, event: Event): boolean {
+  if (typeof theirs === "function") {
+    theirs.call(event.currentTarget, event);
+    return true;
   }
+  if (typeof (theirs as EventListenerObject | null)?.handleEvent === "function") {
+    (theirs as EventListenerObject).handleEvent(event);
+    return true;
+  }
+  return false;
 }
 
 /* ------------------------------------------------------------------ *
@@ -694,11 +719,13 @@ export function keepOwnHandler(input: HTMLInputElement, name: string, type: stri
   if (handler !== undefined) listen(kept, [type]);
 }
 
-/** Every own handler of `input` for `type`, in the order they were written. */
-function callOwn(input: Kept, type: string, event: Event): void {
+/** Every own handler of `input` for `type`, in the order they were written; whether there was one. */
+function callOwn(input: Kept, type: string, event: Event): boolean {
   const handlers = input[OWN]?.[type];
-  if (handlers === undefined) return;
-  for (const handler of [...handlers.values()]) callHandler(handler, event);
+  if (handlers === undefined) return false;
+  let called = false;
+  for (const handler of [...handlers.values()]) called = callHandler(handler, event) || called;
+  return called;
 }
 
 function isRadio(input: HTMLInputElement): boolean {

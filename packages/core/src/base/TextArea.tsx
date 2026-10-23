@@ -145,8 +145,6 @@ export class TextArea extends Component<TextAreaProps> {
      * node disagrees with it. Measured: RMD007, *rendered the text "" but the server sent nothing* —
      * a report about correct markup, which is the worst kind.
      */
-    // `input` only. `change` comes on blur, after every input and every composition has already been
-    // answered, so there is nothing left for it to settle.
     // `change` too: one a TextArea gets with no `input` before it — an autofill, a change dispatched
     // alone — is an edit, and is answered as one; the tail of a typed edit only reaches `onchange`.
     const field = controlled(this, this.a, ["oninput", "onchange"]);

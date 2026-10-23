@@ -185,8 +185,12 @@ describe("RMD062", () => {
 
     expect({ messages, text: app.instance.text }).toEqual({ messages: [], text: "x日本" });
   });
-  /** A word the user typed, which a commit merely ended — the browser commits it as a `focus()` moves away. */
-  test("a word typed by the user and ended inside a commit is not reported", async () => {
+  /**
+   * A word the user typed, which a commit's work ended — the browser commits it as a `focus()` moves
+   * away. What `oncompositionend` writes still waits for that commit's render, so the read is reported,
+   * naming the commit rather than an edit the app sent.
+   */
+  test("a word typed by the user and ended inside a commit is reported as the commit's", async () => {
     class Chat extends Component {
       @state text = "x";
       @state other = false;
@@ -221,7 +225,8 @@ describe("RMD062", () => {
     app.instance.other = true;
     await app.settle();
 
-    expect(messages).toEqual([]);
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toContain("had its word ended by a commit");
   });
 
   /** A refused edit ran no handler, so the field still shows its model: a second edit reads it right. */
@@ -257,5 +262,39 @@ describe("RMD062", () => {
     await app.settle();
 
     expect({ messages, on: app.instance.on }).toEqual({ messages: [], on: false });
+  });
+  /** No handler ran for the first edit, so nothing waits for a render: the second reads the model. */
+  test("a second edit after one no handler heard is not reported", async () => {
+    class Unheard extends Component {
+      @state text = "";
+      prevs: string[] = [];
+      field = createRef<HTMLInputElement>();
+      changed() {}
+      keep(next: string, prev: string): string {
+        this.prevs.push(prev);
+        return next;
+      }
+      @mounted
+      fill() {
+        const field = this.field.current as HTMLInputElement;
+        typeInto(field, "x");
+        typeInto(field, "xy");
+      }
+      render() {
+        return (
+          <input
+            aria-label="Unheard"
+            ref={this.field}
+            value={this.text}
+            onchange={this.changed}
+            transform={this.keep}
+          />
+        );
+      }
+    }
+    const app = await getDOM<Unheard>(<Unheard />);
+    await app.settle();
+
+    expect({ messages, prevs: app.instance.prevs }).toEqual({ messages: [], prevs: ["", ""] });
   });
 });
