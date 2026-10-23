@@ -1,4 +1,6 @@
 import { UNEDITED_INPUT_TYPES } from "@ramonda/dom-facts";
+import { diagnose } from "../debug/diagnostics";
+import { reportFault } from "../debug/fault";
 import type { TransformInput } from "../types/commonTypes";
 import type { EnhancedHTMLNode } from "../types/vdom";
 import { writeValue } from "./Attribute";
@@ -296,6 +298,25 @@ function decideOrShow(control: FieldControl, event: Event): boolean {
   }
 }
 
+/**
+ * RMD062 — the field must read its model while the render after its last answer is still waiting
+ * for the running commit: an edit sent from the commit's own work, a second one reading the first's
+ * model. Reported, never thrown; the edit is answered as before, against what the field last showed.
+ */
+function readsAheadOfItsRender(field: Field | null, what: string): void {
+  const tag = field?.tagName.toLowerCase() ?? "field";
+  if (__DEV__) {
+    diagnose(
+      "RMD062",
+      `${tag}:${what}`,
+      `A <${tag}> was sent an edit while a commit ran, and ${what} read the model before the render ` +
+        `of its last edit had written it.`,
+    );
+  } else {
+    reportFault("RMD062", what, "A field read its model while the render after its last edit was waiting.");
+  }
+}
+
 /** Decides the edit; whether it refused it, which then reaches no handler of the field — see `decideEdit`. */
 function decide(control: FieldControl, event: Event): boolean {
   const transform = control.transform();
@@ -311,9 +332,9 @@ function decide(control: FieldControl, event: Event): boolean {
     recorded.event.inputType === ((event as InputEvent).inputType ?? "")
       ? recorded
       : undefined;
-  return (
-    transform !== undefined && field !== null && decideEdit(field, transform, heldBy(control, field), event, before)
-  );
+  if (transform === undefined || field === null) return false;
+  if (state.pending !== undefined) readsAheadOfItsRender(field, "its transform's `prev`");
+  return decideEdit(field, transform, heldBy(control, field), event, before);
 }
 
 /**
@@ -418,6 +439,10 @@ export function answerEdit(control: FieldControl, event: Event): void {
       // What `oncompositionend` rendered has run by now: it may have removed the field.
       runRenders();
       // A word the transform refused is no word: it is not handed over.
+      if (!refused && field !== null && !control.gone() && drainingNow()) {
+        // What `oncompositionend` wrote waits for the running commit's render.
+        readsAheadOfItsRender(field, "the end of its word");
+      }
       if (!refused && field !== null && !control.gone() && sameModel(control.model(), state.composedFrom)) {
         // An `input`, as `oninput` is promised: the word, one edit, `insertCompositionText`. A word not
         // handed over is no edit, and the `change` after it reaches nothing.

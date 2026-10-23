@@ -83,7 +83,8 @@ describe("the numbers /accessibility spells out", () => {
    * fights the writer, and it would be deleted rather than obeyed. So each number is asserted as a
    * word the page contains, and the neighbouring numbers as words it must not.
    */
-  const says = (n: number): boolean => new RegExp(`\\b${spelled(n)}\\b`).test(page);
+  // Not `\b`: a hyphen is a word boundary to it, so "ninety" would be found inside "ninety-one".
+  const says = (n: number): boolean => new RegExp(`(?<![\\w-])${spelled(n)}(?![\\w-])`).test(page);
 
   it("says how many accessibility rules it links to, and no other number", () => {
     expect(says(linked.size)).toBe(true);

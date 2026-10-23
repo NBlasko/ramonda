@@ -85,6 +85,7 @@ import { cachedReadOfAPlainField } from "./cached-read-of-a-plain-field";
 import { watchOfAPropThatIsNotThere } from "./watch-of-a-prop-that-is-not-there";
 import { browserUrl } from "./browser-url";
 import { domWrites } from "./dom-writes";
+import { fieldSetByAnEvent } from "./field-set-by-an-event";
 import { duplicateDecorators } from "./duplicate-decorators";
 import { unsplittableImport } from "./unsplittable-import";
 import { unwatchedFields } from "./unwatched-fields";
@@ -255,6 +256,7 @@ export { devGuardAsAnExpression, type DevGuardAsAnExpressionIssue } from "./dev-
 export { unkeyableMemoizedArgument, type UnkeyableMemoizedArgumentIssue } from "./unkeyable-memoized-argument";
 export { browserUrl, type BrowserUrlIssue } from "./browser-url";
 export { domWrites, type DomWriteIssue } from "./dom-writes";
+export { fieldSetByAnEvent, type FieldSetByAnEventIssue } from "./field-set-by-an-event";
 export { duplicateDecorators, type DuplicateDecoratorIssue } from "./duplicate-decorators";
 export { unsplittableImport, type UnsplittableImportIssue } from "./unsplittable-import";
 export { unwatchedFields, type UnwatchedFieldIssue } from "./unwatched-fields";
@@ -304,6 +306,7 @@ export const CLASS_RULES = [
   arrowFields,
   browserUrl,
   domWrites,
+  fieldSetByAnEvent,
   duplicateDecorators,
   unwatchedFields,
   watchOfAPropThatIsNotThere,

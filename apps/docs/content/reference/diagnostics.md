@@ -1901,3 +1901,67 @@ A callback belongs on a field too — `createRef<T>((node) => this.arrived(node)
 `ramonda-check` reports the same call before it ships, as
 [`ref-built-where-it-cannot-be-kept`](/reference/check).
 
+## RMD062 — A field was sent an edit while a commit ran
+
+```tsx expect-report:field-set-by-an-event
+import { Component, createRef, mounted, state, type EventOn } from "@ramonda/core";
+
+class Terms extends Component {
+  @state accepted = false;
+  private box = createRef<HTMLInputElement>();
+
+  flipped(event: EventOn<HTMLInputElement>) {
+    this.accepted = event.currentTarget.checked;
+  }
+
+  @mounted
+  start() {
+    this.box.current?.click();   // ✗ a value set by an event, while the commit runs
+  }
+
+  render() {
+    return (
+      <input type="checkbox" aria-label="Terms" ref={this.box} checked={this.accepted} onchange={this.flipped} />
+    );
+  }
+}
+```
+
+A field learns its model through render, and the render an edit's handler causes runs once the
+commit is over. The work a commit runs — `render()`, the constructor, `@created`, `@mounted`,
+`@updated`, `@destroyed`, `@watchProp`, `@catchError` — is still running when the edit arrives.
+
+One edit from there is answered like any. The next read of the model is what goes wrong: a second
+edit's `transform` is handed the `prev` the field last showed, not the one the first edit's handler
+wrote; and a word an input method ends there is handed to `oninput` even when `oncompositionend`
+has just cleared the model. The edit is still answered — this is reported, not thrown.
+
+What a field shows is **state**. Write it, and the commit's render shows it:
+
+```tsx
+import { Component, createRef, state, type EventOn } from "@ramonda/core";
+
+class Terms extends Component {
+  @state accepted = true;                                   // ✓ known at the start
+  private box = createRef<HTMLInputElement>();
+
+  flipped(event: EventOn<HTMLInputElement>) {
+    this.accepted = event.currentTarget.checked;
+  }
+
+  render() {
+    return (
+      <input type="checkbox" aria-label="Terms" ref={this.box} checked={this.accepted} onchange={this.flipped} />
+    );
+  }
+}
+```
+
+A value learned on mount is written in `@mounted` — `this.accepted = this.saved` — and an edit that
+must go through the field, its `transform` and the form around it, is sent once the commit is over:
+`queueMicrotask(() => this.box.current?.click())`. A library handed the field tells you its value
+through its own callback, which writes state. An event handler is not a commit's work: a row whose
+`onclick` clicks its checkbox does what a `<label>` does.
+
+`ramonda-check` reports the same edit before it ships, as
+[`field-set-by-an-event`](/reference/check).

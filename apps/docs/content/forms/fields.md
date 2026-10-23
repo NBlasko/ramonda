@@ -156,6 +156,13 @@ to it.
 <TextArea aria-label="Notes" name="notes" defaultValue={this.saved} />;       // the user's, sent with the form
 ```
 
+What a field shows is set through the model, never by sending the field an event. A value known at
+the start is the field's initial state, `@state accepted = true`; one learned on mount is written in
+`@mounted`, `this.draft = this.saved`. A field learns its model through render, and the work a
+commit runs — `@mounted`, `@updated`, `render()` — is still running when an edit sent from there
+arrives, so [`field-set-by-an-event`](/reference/check) reports one before it ships and
+[`RMD062`](/reference/diagnostics/rmd062) when it runs.
+
 ### `transform` — an edit decided before anyone reads it
 
 A `transform(next, prev, input)` on an `<input>`, a `Select` or a `TextArea` decides each edit before

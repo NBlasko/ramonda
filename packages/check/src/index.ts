@@ -81,6 +81,7 @@ export type {
   ElementHtmlRemovedIssue,
   OptionThatCannotChooseIssue,
   FieldTheUserCannotChangeIssue,
+  FieldSetByAnEventIssue,
   RoleTakesNoNameIssue,
   RowWithoutAKeyIssue,
   ServerEnvInSharedCodeIssue,

@@ -1,0 +1,288 @@
+import {
+  Component,
+  Select,
+  TextArea,
+  createRef,
+  created,
+  destroyed,
+  mounted,
+  state,
+  updated,
+  watchProp,
+} from "@ramonda/core";
+
+declare const kind: string;
+declare const later: (run: () => void) => void;
+declare const event: Event;
+const INPUT = "input";
+const READY = "app:ready";
+
+/* ---- Reported ---- */
+
+class ClicksABoxOnMount extends Component {
+  @state on = false;
+  box = createRef<HTMLInputElement>();
+  @mounted
+  start() {
+    this.box.current?.click(); // REPORT click box
+  }
+  render() {
+    return <input type="checkbox" aria-label="b" ref={this.box} checked={this.on} onchange={() => {}} />;
+  }
+}
+
+class DispatchesInputOnUpdate extends Component {
+  @state text = "";
+  field = createRef<HTMLInputElement>();
+  @updated
+  again() {
+    this.field.current!.dispatchEvent(new InputEvent(INPUT, { bubbles: true })); // REPORT dispatch input
+  }
+  render() {
+    return <input aria-label="t" ref={this.field} value={this.text} oninput={() => {}} />;
+  }
+}
+
+class WritesTheValueInAHelper extends Component {
+  @state text = "";
+  field = createRef<HTMLTextAreaElement>();
+  @mounted
+  start() {
+    this.fill();
+  }
+  fill() {
+    const area = this.field.current!;
+    area.value = "x"; // REPORT write field
+  }
+  render() {
+    return <TextArea aria-label="t" ref={this.field} value={this.text} oninput={() => {}} />;
+  }
+}
+
+class ClicksALabel extends Component {
+  @state on = false;
+  label = createRef<HTMLLabelElement>();
+  @mounted
+  start() {
+    this.label.current!.dispatchEvent(new MouseEvent("click")); // REPORT click label
+  }
+  render() {
+    return (
+      <label ref={this.label}>
+        <input type="checkbox" checked={this.on} onchange={() => {}} /> Terms
+      </label>
+    );
+  }
+}
+
+class DispatchesAnUnreadableEvent extends Component {
+  @mounted
+  start() {
+    document.dispatchEvent(new Event(kind)); // REPORT unreadable
+  }
+  render() {
+    return <div />;
+  }
+}
+
+class DispatchesAPrebuiltEvent extends Component {
+  @mounted
+  start() {
+    document.dispatchEvent(event); // REPORT unreadable prebuilt
+  }
+  render() {
+    return <div />;
+  }
+}
+
+class EditsTheFocusedField extends Component {
+  @mounted
+  start() {
+    document.execCommand("insertText", false, "x"); // REPORT exec-command
+  }
+  render() {
+    return <div />;
+  }
+}
+
+class ChangesInAForEach extends Component {
+  @state on = false;
+  boxes = createRef<HTMLSelectElement>();
+  @mounted
+  start() {
+    [1, 2].forEach(() => this.boxes.current!.dispatchEvent(new Event("change"))); // REPORT forEach
+  }
+  render() {
+    return (
+      <Select aria-label="s" ref={this.boxes} value="a" oninput={() => {}}>
+        <option value="a">a</option>
+      </Select>
+    );
+  }
+}
+
+class HandsItsOwnMethodToForEach extends Component {
+  @state on = false;
+  box = createRef<HTMLInputElement>();
+  @mounted
+  start() {
+    [1].forEach(this.tick);
+  }
+  tick = () => {
+    this.box.current?.click(); // REPORT handed over
+  };
+  render() {
+    return <input type="checkbox" aria-label="b" ref={this.box} checked={this.on} onchange={() => {}} />;
+  }
+}
+
+class EditsFromEveryCommitHook extends Component<{ id: string }> {
+  @state text = "";
+  field = createRef<HTMLInputElement>();
+  constructor() {
+    super();
+    document.dispatchEvent(new Event("change")); // REPORT constructor
+  }
+  @created
+  made() {
+    document.dispatchEvent(new Event("beforeinput")); // REPORT created
+  }
+  @destroyed
+  gone() {
+    document.dispatchEvent(new CompositionEvent("compositionend")); // REPORT destroyed
+  }
+  @watchProp((props: { id: string }) => props.id)
+  moved() {
+    document.dispatchEvent(new Event("compositionstart")); // REPORT watchProp
+  }
+  render() {
+    document.dispatchEvent(new Event("input")); // REPORT render
+    return <input aria-label="t" ref={this.field} value={this.text} oninput={() => {}} />;
+  }
+}
+
+class AwaitsInABranchFirst extends Component {
+  @state on = false;
+  box = createRef<HTMLInputElement>();
+  @mounted
+  async start() {
+    if (this.on) await Promise.resolve();
+    this.box.current?.click(); // REPORT await in a branch
+  }
+  render() {
+    return <input type="checkbox" aria-label="b" ref={this.box} checked={this.on} onchange={() => {}} />;
+  }
+}
+
+class HandsACallbackToSomethingUnknown extends Component {
+  @state on = false;
+  box = createRef<HTMLInputElement>();
+  @mounted
+  start() {
+    later(() => this.box.current?.click()); // REPORT unknown caller
+  }
+  render() {
+    return <input type="checkbox" aria-label="b" ref={this.box} checked={this.on} onchange={() => {}} />;
+  }
+}
+
+/* ---- Not reported ---- */
+
+class ClicksFromAHandler extends Component {
+  @state on = false;
+  box = createRef<HTMLInputElement>();
+  rowClicked() {
+    this.box.current?.click();
+  }
+  render() {
+    return (
+      <div onclick={this.rowClicked}>
+        <input type="checkbox" aria-label="b" ref={this.box} checked={this.on} onchange={() => {}} />
+      </div>
+    );
+  }
+}
+
+class ClicksAfterTheCommit extends Component {
+  @state on = false;
+  box = createRef<HTMLInputElement>();
+  @mounted
+  start() {
+    queueMicrotask(() => this.box.current?.click());
+    setTimeout(() => this.box.current?.click(), 0);
+    Promise.resolve().then(() => this.box.current?.click());
+    queueMicrotask(this.tick);
+  }
+  tick = () => {
+    this.box.current?.click();
+  };
+  render() {
+    return <input type="checkbox" aria-label="b" ref={this.box} checked={this.on} onchange={() => {}} />;
+  }
+}
+
+class ClicksPastAnAwait extends Component {
+  @state on = false;
+  box = createRef<HTMLInputElement>();
+  @mounted
+  async start() {
+    await Promise.resolve();
+    this.box.current?.click();
+  }
+  render() {
+    return <input type="checkbox" aria-label="b" ref={this.box} checked={this.on} onchange={() => {}} />;
+  }
+}
+
+class ClicksAButtonAndAFileInput extends Component {
+  button = createRef<HTMLButtonElement>();
+  file = createRef<HTMLInputElement>();
+  @mounted
+  start() {
+    this.button.current?.click();
+    this.file.current?.click();
+  }
+  render() {
+    return (
+      <div>
+        <button type="button" ref={this.button}>
+          Go
+        </button>
+        <input type="file" aria-label="f" ref={this.file} />
+      </div>
+    );
+  }
+}
+
+class AnnouncesItself extends Component {
+  @mounted
+  start() {
+    window.dispatchEvent(new CustomEvent(READY));
+  }
+  render() {
+    return <div />;
+  }
+}
+
+class WritesAnUncontrolledField extends Component {
+  field = createRef<HTMLInputElement>();
+  @mounted
+  start() {
+    this.field.current!.value = "x";
+  }
+  render() {
+    return <input aria-label="u" ref={this.field} />;
+  }
+}
+
+class FocusesOnMount extends Component {
+  field = createRef<HTMLInputElement>();
+  @state text = "";
+  @mounted
+  start() {
+    this.field.current?.focus();
+  }
+  render() {
+    return <input aria-label="f" ref={this.field} value={this.text} oninput={() => {}} />;
+  }
+}

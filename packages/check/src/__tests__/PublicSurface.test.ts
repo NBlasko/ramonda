@@ -102,6 +102,7 @@ const EXPECTED_TYPES = [
   "ElementHtmlRemovedIssue",
   "OptionThatCannotChooseIssue",
   "FieldTheUserCannotChangeIssue",
+  "FieldSetByAnEventIssue",
   "RoleTakesNoNameIssue",
   "RowReadsAPlainFieldIssue",
   "RowWithoutAKeyIssue",

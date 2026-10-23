@@ -85,7 +85,8 @@ export type DiagnosticCode =
   | "RMD058"
   | "RMD059"
   | "RMD060"
-  | "RMD061";
+  | "RMD061"
+  | "RMD062";
 interface DiagnosticSpec {
   /**
    * The rule, and it is about the OUTCOME rather than how bad the code looks:
@@ -426,6 +427,13 @@ export const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
     severity: "warning",
     title: "A ref was built while a value was being derived",
     fix: "`createRef()` returns a NEW object every call, and a ref is an identity — so one built inside a render, a `@compute`, a `@memoized` member or a hook's props callback is a different ref every time. Two things follow. The child is handed a changed `ref` on every parent render, which IS a props change (`ref` is compared like any other prop), so it re-renders for nothing. And the ref the author meant to read is replaced before they can read it — nothing kept a reference to it. Put it on a FIELD: `private field = createRef<HTMLInputElement>()`, and write `ref={this.field}` in the render. A callback belongs there too — `createRef<T>((node) => this.arrived(node))` on a field is how `Select` and `TextArea` learn their element has appeared.",
+  },
+  RMD062: {
+    // A warning: the edit is answered, against what the field last showed. An error in a later
+    // version, the standing rule for a new code.
+    severity: "warning",
+    title: "A field was sent an edit while a commit ran",
+    fix: "A field learns its model through render, and the render an edit's handler causes runs once the commit is over. An edit sent from the commit's own work — `@mounted`, `@updated`, `render()`, the constructor, `@created`, `@destroyed`, `@watchProp`, `@catchError` — is answered, but the next read of the model (a `transform`'s `prev`, the check after `oncompositionend` that keeps a word the app overtook) finds it as it was. What a field shows is state: write it — `@state on = true`, or `this.text = …` in `@mounted` — and the commit's render shows it. An edit that must go through the field, its `transform` and the form around it, is sent once the commit is over: `queueMicrotask(() => this.box.current?.click())`. A library handed the field tells you its value through its own callback, which writes state. `ramonda-check` reports the same edit before it ships, as `field-set-by-an-event`.",
   },
   RMD060: {
     // error: nothing renders. The component's output is a promise, so the diff is handed an object
