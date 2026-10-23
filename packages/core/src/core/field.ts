@@ -74,34 +74,22 @@ export function valueOf(field: Field): FieldValue {
  * anything the event bubbles to all read the same value, and the browser never draws the edit it
  * replaced.
  *
- * A refused edit puts the caret back where the edit found it: the text is the text before the edit,
- * so the offset before the edit means what it meant. A rewrite of the same length keeps the caret
- * through `writeValue`; any other rewrite is the app's to place, as `writeValue` explains.
+ * A refused edit puts the caret back as any refused edit does — see `putCaretBack`. A rewrite of the
+ * same length keeps the caret through `writeValue`; any other rewrite is the app's to place, as
+ * `writeValue` explains.
  *
  * Returns whether it REFUSED the edit — the edit changed the field and the answer is `prev`. A refused
  * edit is no edit: the field's `oninput` and `onchange` are not called, for any field. One rule, so a
  * handler never has to tell a refused edit from a real one — a radio's `value` is the same on or off,
  * and a handler that read it would write the refused pick into the model.
  */
-export function decideEdit(
-  field: Field,
-  transform: Transform,
-  prev: FieldValue,
-  event: Event,
-  before?: Selected,
-): boolean {
+export function decideEdit(field: Field, transform: Transform, prev: FieldValue, event: Event): boolean {
   // A `multiple` select is decided as a list, a model of one value included — as the element says.
   if (isMultiple(field) && !Array.isArray(prev)) prev = [String(prev)];
   const next = valueOf(field);
   const text = caretOf(field);
   const input: TransformInput = {
-    // The word an input method commits is decided at `compositionend`, as the edit it is.
-    inputType:
-      event.type === "compositionend"
-        ? "insertCompositionText"
-        : event.type === "change"
-          ? "insertReplacementText"
-          : ((event as InputEvent).inputType ?? ""),
+    inputType: inputTypeOf(event),
     selectionStart: text?.selectionStart ?? null,
     selectionEnd: text?.selectionEnd ?? null,
   };
@@ -125,23 +113,60 @@ export function decideEdit(
     field.value = String(kept);
     return refused;
   }
-  const caret = text.selectionStart;
   writeValue(text as unknown as EnhancedHTMLNode, String(kept), false);
-  if (caret !== null && typeof next === "string" && typeof prev === "string" && String(kept) === prev) {
-    // The selection the edit found, as `beforeinput` saw it — the one exact record of it — when the
-    // field showed the model then: a paste over `hello` selected is `hello` selected again.
-    if (before !== undefined && before.text === prev && before.start !== null && before.end !== null) {
-      text.setSelectionRange(before.start, before.end);
-      return refused;
-    }
-    // What a delete forward took was after the caret, so the caret is where the edit found it; any
-    // other edit moved it by what it added or took before it.
-    const forward = input.inputType.startsWith("delete") && input.inputType.endsWith("Forward");
-    const moved = forward ? 0 : next.length - prev.length;
-    const back = Math.max(0, Math.min(prev.length, caret - moved));
-    text.setSelectionRange(back, back);
-  }
   return refused;
+}
+
+/** The kind of edit an event is, as `inputType` names it. */
+function inputTypeOf(event: Event): string {
+  // The word an input method commits is decided at `compositionend`, as the edit it is.
+  if (event.type === "compositionend") return "insertCompositionText";
+  if (event.type === "change") return "insertReplacementText";
+  return (event as InputEvent).inputType ?? "";
+}
+
+/** A text field's edit as its event found it: what a refusal puts back. */
+interface Edit {
+  text: HTMLInputElement | HTMLTextAreaElement;
+  /** What the field showed before the edit: the model. */
+  prev: string;
+  /** What the edit left in the field, and the caret where it left it. */
+  next: string;
+  caret: number;
+  inputType: string;
+  /** The selection `beforeinput` recorded, when it belongs to this edit. */
+  before?: Selected;
+}
+
+/** The edit `event` made to a text field, read before anything answers it; none on a field without a caret. */
+function editOf(field: Field | null, event: Event, prev: FieldValue | undefined, before?: Selected): Edit | undefined {
+  const text = field === null ? null : caretOf(field);
+  if (text === null || text.selectionStart === null || typeof prev !== "string") return undefined;
+  return { text, prev, next: text.value, caret: text.selectionStart, inputType: inputTypeOf(event), before };
+}
+
+/**
+ * Once the field shows the model: an edit that left the text as it was before it was refused — by the
+ * `transform`, by a handler that did not write the model, or with no handler at all — and the
+ * selection goes back to where the edit found it. The text is the text before the edit, so the
+ * offsets before the edit mean what they meant.
+ */
+function putCaretBack(edit: Edit | undefined): void {
+  if (edit === undefined) return;
+  const { text, prev, next, caret, before } = edit;
+  if (next === prev || text.value !== prev) return;
+  // The selection the edit found, as `beforeinput` saw it — the one exact record of it — when the
+  // field showed the model then: a paste over `hello` selected is `hello` selected again.
+  if (before !== undefined && before.text === prev && before.start !== null && before.end !== null) {
+    text.setSelectionRange(before.start, before.end);
+    return;
+  }
+  // What a delete forward took was after the caret, so the caret is where the edit found it; any
+  // other edit moved it by what it added or took before it.
+  const forward = edit.inputType.startsWith("delete") && edit.inputType.endsWith("Forward");
+  const moved = forward ? 0 : next.length - prev.length;
+  const back = Math.max(0, Math.min(prev.length, caret - moved));
+  text.setSelectionRange(back, back);
 }
 
 /** A text field as `beforeinput` found it: its text and its selection, the moment before an edit. */
@@ -249,7 +274,7 @@ function runRenders(): void {
  * when a handler ran (`handled`), since one that wrote the model is what the render waits for. A
  * refusal ran none, and leaves the field showing what it already held.
  */
-function show(control: FieldControl, field: Field | null, handled: boolean): void {
+function show(control: FieldControl, field: Field | null, handled: boolean, edit?: Edit): void {
   if (drainingNow()) {
     // Once the running work has returned — the renders the handler queued run in a pass after it,
     // so settling at the end of this commit would still show the model as it was. A microtask is
@@ -260,11 +285,13 @@ function show(control: FieldControl, field: Field | null, handled: boolean): voi
       state.pending = undefined;
       if (!drainingNow()) drainSync();
       control.settle();
+      putCaretBack(edit);
     });
     return;
   }
   drainSync();
   control.settle();
+  putCaretBack(edit);
 }
 
 /**
@@ -328,20 +355,24 @@ function readsAheadOfItsRender(field: Field, what: string, cause = "was sent an 
 function decide(control: FieldControl, event: Event): boolean {
   const transform = control.transform();
   const field = event.currentTarget as Field | null;
-  const state = stateOf(control.key);
-  // The record belongs to this edit only when its `beforeinput` went ahead and announced this kind of
-  // edit: a cancelled keystroke, then an autofill with no `beforeinput` of its own, is not that edit.
+  if (transform === undefined || field === null) return false;
+  if (stateOf(control.key).pending !== undefined) readsAheadOfItsRender(field, "its transform's `prev`");
+  return decideEdit(field, transform, heldBy(control, field), event);
+}
+
+/**
+ * The selection `beforeinput` recorded, taken for the edit `event` makes. It belongs to this edit only
+ * when its `beforeinput` went ahead and announced this kind of edit: a cancelled keystroke, then an
+ * autofill with no `beforeinput` of its own, is not that edit.
+ */
+function takeBefore(state: FieldState, event: Event): Selected | undefined {
   const recorded = state.before;
   state.before = undefined;
-  const before =
-    recorded !== undefined &&
+  return recorded !== undefined &&
     !recorded.event.defaultPrevented &&
     recorded.event.inputType === ((event as InputEvent).inputType ?? "")
-      ? recorded
-      : undefined;
-  if (transform === undefined || field === null) return false;
-  if (state.pending !== undefined) readsAheadOfItsRender(field, "its transform's `prev`");
-  return decideEdit(field, transform, heldBy(control, field), event, before);
+    ? recorded
+    : undefined;
 }
 
 /**
@@ -444,8 +475,9 @@ export function answerEdit(control: FieldControl, event: Event): void {
     state.composing = false;
     state.blurred = false;
     const was = field === null ? undefined : heldBy(control, field);
+    const edit = editOf(field, event, was);
     const refused = decideOrShow(control, event);
-    answered(control, field, () => {
+    answered(control, field, edit, () => {
       const handled = control.own(event.type, event);
       // What `oncompositionend` rendered has run by now: it may have removed the field.
       runRenders();
@@ -495,7 +527,8 @@ export function answerEdit(control: FieldControl, event: Event): void {
     state.taken = false;
     state.since = undefined;
     if (field !== null && showsWhatItHolds(control, field)) {
-      if (taken && !sameModel(valueOf(field), since)) answered(control, field, () => control.own("change", event));
+      if (taken && !sameModel(valueOf(field), since))
+        answered(control, field, undefined, () => control.own("change", event));
       return;
     }
   } else if (
@@ -515,16 +548,17 @@ export function answerEdit(control: FieldControl, event: Event): void {
     state.pickAsked = { propagation: false, immediate: false, prevented: false };
   const asked = state.pickAsked;
   const was = field === null ? undefined : heldBy(control, field);
+  const edit = editOf(field, event, was, takeBefore(state, event));
   const refused = decideOrShow(control, event);
   if (!refused && !control.pick && event.type === "input") {
     if (!state.taken) state.since = was;
     state.taken = true;
   }
   if (refused) {
-    show(control, field, false);
+    show(control, field, false, edit);
     return;
   }
-  answered(control, field, () => {
+  answered(control, field, edit, () => {
     // A `change` that is an edit of its own reaches the field's edit handler first, as the `input` it is
     // promised (`insertReplacementText`, what the transform was told), and then `onchange`, as the
     // change it is. What `oninput` stops or prevents is asked of an `input` that never was, and leaves
@@ -563,7 +597,7 @@ function reportUncaught(error: unknown): void {
  * The app's handlers, then the field shown the model — and when a handler threw, its error is the one
  * the app sees: the render of the state it half wrote may throw as well, and must not take its place.
  */
-function answered(control: FieldControl, field: Field | null, handlers: () => boolean): void {
+function answered(control: FieldControl, field: Field | null, edit: Edit | undefined, handlers: () => boolean): void {
   let thrown: { error: unknown } | undefined;
   // Whether a handler of the field ran — one that threw ran — and so may have written the model.
   let handled = true;
@@ -573,11 +607,11 @@ function answered(control: FieldControl, field: Field | null, handlers: () => bo
     thrown = { error };
   }
   if (thrown === undefined) {
-    show(control, field, handled);
+    show(control, field, handled, edit);
     return;
   }
   try {
-    show(control, field, true);
+    show(control, field, true, edit);
   } catch (renderError) {
     // The handler's error is the one thrown here; the render's is reported as an uncaught error is,
     // and the field still shows the model.

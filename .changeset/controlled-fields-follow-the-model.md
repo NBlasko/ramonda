@@ -11,7 +11,8 @@ around the field and before the browser draws: the edit is decided by the field'
 renders it caused run at once, and the field shows the model. A handler that takes the edit leaves
 the field as the user made it; one that refuses it, or no handler at all, leaves the model showing —
 in the same event, so a refused keystroke or pick is never drawn, and a form around the field reads
-the value the field keeps.
+the value the field keeps. A refused edit puts the caret and the selection back where the edit found
+them: a paste over `hello` selected leaves `hello` selected again.
 
 ```tsx
 typed(event: EventOn<HTMLInputElement>) {

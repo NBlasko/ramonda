@@ -145,7 +145,8 @@ before any script runs.
 **`value` is the model's; `defaultValue` is where the field starts.** A field with `value` shows what
 the model holds: its own handler writes the model, and the field shows the model again in the same
 event, before the event bubbles to anything around it — so a handler that does not take an edit leaves the
-field as it was, and a field with no handler of its own cannot be changed. An input method's word is
+field as it was, its caret and its selection where the edit found them, and a field with no handler of its
+own cannot be changed. An input method's word is
 one edit: while it is composed it reaches no handler, and once it ends it is handed to the handler
 once, in every browser — so a handler never asks `isComposing`. A field whose text is read when the form is sent, rather than held in state, takes
 `defaultValue` instead: it shows that first and then belongs to the user, and a form's reset returns
