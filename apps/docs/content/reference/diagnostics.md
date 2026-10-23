@@ -1931,10 +1931,12 @@ A field learns its model through render, and the render an edit's handler causes
 commit is over. The work a commit runs — `render()`, the constructor, `@created`, `@mounted`,
 `@updated`, `@destroyed`, `@watchProp`, `@catchError` — is still running when the edit arrives.
 
-One edit from there is answered like any. The next read of the model is what goes wrong: a second
-edit's `transform` is handed the `prev` the field last showed, not the one the first edit's handler
-wrote; and a word an input method ends there is handed to `oninput` even when `oncompositionend`
-has just cleared the model. The edit is still answered — this is reported, not thrown.
+One edit from there is answered like any. The next read of the model is what goes wrong: whether
+the handler took the first edit or refused it is known once its render has run, so the next event
+in the same commit reads the model as it was — a `change` after a refused `input` reaches
+`onchange` with the text the handler refused, and a word an input method ends there is handed to
+`oninput` even when `oncompositionend` has just cleared the model. The edit is still answered — this
+is reported, not thrown.
 
 What a field shows is **state**. Write it, and the commit's render shows it:
 
@@ -1958,7 +1960,7 @@ class Terms extends Component {
 ```
 
 A value learned on mount is written in `@mounted` — `this.accepted = this.saved` — and an edit that
-must go through the field, its `transform` and the form around it, is sent once the commit is over:
+must go through the field's handler and the form around it is sent once the commit is over:
 `queueMicrotask(() => this.box.current?.click())`. A library handed the field tells you its value
 through its own callback, which writes state. An event handler is not a commit's work: a row whose
 `onclick` clicks its checkbox does what a `<label>` does.

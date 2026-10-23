@@ -1,13 +1,17 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { getDOM } from "../test/setup";
 import { mounted, state } from "../base/decorators";
-import { Component, Select, TextArea, createRef, type EventOn, type TransformInput } from "../index";
+import { Component, Select, TextArea, createRef, type EventOn } from "../index";
+import { resetDiagnostics } from "../debug/diagnostics";
 
 /**
  * What a controlled field does with each event a browser sends it, for every kind of field, written
- * as one table: which of the field's handlers is called, with what, and what the transform is asked.
+ * as one table: which of the field's handlers is called, with what, and what the field shows after.
  * Every row is run twice — sent from the test, and sent from a `@mounted` while a commit is running,
- * where the field's settle waits for a microtask — and both runs must read the same.
+ * where the field's settle waits for a microtask. Inside a commit, a second event finds the field
+ * before the render of the first has written its model: the handler's decision is not known yet. That
+ * is reported as RMD062, and the table says what the handlers were handed then; the model after is
+ * the same either way.
  */
 
 type Kind = "text" | "number" | "date" | "textarea" | "checkbox" | "radio" | "select" | "multiple";
@@ -107,7 +111,7 @@ function compose(field: AnyField, firefox: boolean, blurMidWord = false): void {
 interface Row {
   kind: Kind;
   handlers: Handlers;
-  /** The transform refuses every edit. */
+  /** The handler refuses every edit: it writes nothing. */
   refuse?: boolean;
   events: (field: AnyField) => void;
 }
@@ -115,28 +119,48 @@ interface Row {
 interface Seen {
   /** Each handler call: the event type the handler was handed, its `inputType`, and the field's value. */
   calls: string[];
-  /** Each `inputType` the transform was asked about; `none` for a pick, whose event carries none. */
-  decided: string[];
   shown: string;
   model: string;
+  /** RMD062 was reported: the field read its model while the render of its last edit was waiting. */
+  reported: boolean;
 }
 
 async function run(row: Row, inACommit: boolean): Promise<Seen> {
   const { kind, handlers, refuse = false, events } = row;
+  resetDiagnostics();
+  let reported = false;
+  const heard = (event: Event) => {
+    if ((event as CustomEvent<{ message: string }>).detail.message.startsWith("[RMD062]")) reported = true;
+  };
+  const log = vi.spyOn(console, "log").mockImplementation(() => {});
+  window.addEventListener("ramonda:dev-log", heard);
+  try {
+    return await runIn(kind, handlers, refuse, events, inACommit, () => reported);
+  } finally {
+    window.removeEventListener("ramonda:dev-log", heard);
+    log.mockRestore();
+  }
+}
+
+async function runIn(
+  kind: Kind,
+  handlers: Handlers,
+  refuse: boolean,
+  events: (field: AnyField) => void,
+  inACommit: boolean,
+  reported: () => boolean,
+): Promise<Seen> {
   class Field extends Component {
     @state model = START[kind];
     calls: string[] = [];
-    decided: string[] = [];
     field = createRef<AnyField>();
+    /** Refuses every edit when the row says so, and always a text that ends in `!`. */
     edited(event: EventOn<AnyField>) {
       const inputType = (event as Event as InputEvent).inputType;
       this.calls.push(`${event.type}${inputType ? ` ${inputType}` : ""} ${read(event.currentTarget)}`);
-      this.model = modelOf(event.currentTarget);
-    }
-    /** Refuses every edit when the row says so, and always a text that ends in `!`. */
-    decide<T>(next: T, prev: T, input: TransformInput): T {
-      this.decided.push(input.inputType || "none");
-      return refuse || (typeof next === "string" && next.endsWith("!")) ? prev : next;
+      const next = modelOf(event.currentTarget);
+      if (refuse || (typeof next === "string" && next.endsWith("!"))) return;
+      this.model = next;
     }
     @mounted
     sendInside() {
@@ -154,7 +178,6 @@ async function run(row: Row, inACommit: boolean): Promise<Seen> {
             value={model as string}
             oninput={oninput}
             onchange={onchange}
-            transform={this.decide}
           />
         );
       }
@@ -167,7 +190,6 @@ async function run(row: Row, inACommit: boolean): Promise<Seen> {
             value={model as string | string[]}
             oninput={oninput}
             onchange={onchange}
-            transform={this.decide}
           >
             <option value="a">a</option>
             <option value="b">b</option>
@@ -186,7 +208,6 @@ async function run(row: Row, inACommit: boolean): Promise<Seen> {
             checked={model as boolean}
             oninput={oninput}
             onchange={onchange}
-            transform={this.decide}
           />
         );
       }
@@ -198,7 +219,6 @@ async function run(row: Row, inACommit: boolean): Promise<Seen> {
           value={model as string}
           oninput={oninput}
           onchange={onchange}
-          transform={this.decide}
         />
       );
     }
@@ -211,9 +231,9 @@ async function run(row: Row, inACommit: boolean): Promise<Seen> {
   const model = app.instance.model;
   return {
     calls: app.instance.calls,
-    decided: app.instance.decided,
     shown: read(field),
     model: typeof model === "boolean" ? (model ? "on" : "off") : Array.isArray(model) ? model.join(",") : model,
+    reported: reported(),
   };
 }
 
@@ -328,270 +348,275 @@ for (const [scenario, { kinds, events }] of Object.entries(SCENARIOS)) {
 
 /**
  * Row | the handler calls, in order: the event type each was handed, its `inputType`, the field's value |
- * each `inputType` the transform was asked | the model after, which the field shows.
+ * the model after, which the field shows — or `shows` what it shows instead, a number written another
+ * way | inside a commit: `same` calls, with RMD062 or without, or `RMD062:` and the calls handed then.
  */
 const TABLE = `
-text, both: typed                                                                                                             | input insertText ab                                              | insertText                                    | ab
-text, both, refusing: typed                                                                                                   | –                                                                | insertText                                    | a
-text, oninput: typed                                                                                                          | input insertText ab                                              | insertText                                    | ab
-text, oninput, refusing: typed                                                                                                | –                                                                | insertText                                    | a
-number, both: typed                                                                                                           | input insertText 12                                              | insertText                                    | 12
-number, both, refusing: typed                                                                                                 | –                                                                | insertText                                    | 1
-number, oninput: typed                                                                                                        | input insertText 12                                              | insertText                                    | 12
-number, oninput, refusing: typed                                                                                              | –                                                                | insertText                                    | 1
-textarea, both: typed                                                                                                         | input insertText ab                                              | insertText                                    | ab
-textarea, both, refusing: typed                                                                                               | –                                                                | insertText                                    | a
-textarea, oninput: typed                                                                                                      | input insertText ab                                              | insertText                                    | ab
-textarea, oninput, refusing: typed                                                                                            | –                                                                | insertText                                    | a
-text, both: typed, then blurred                                                                                               | input insertText ab, change ab                                   | insertText                                    | ab
-text, both, refusing: typed, then blurred                                                                                     | –                                                                | insertText                                    | a
-text, oninput: typed, then blurred                                                                                            | input insertText ab                                              | insertText                                    | ab
-text, oninput, refusing: typed, then blurred                                                                                  | –                                                                | insertText                                    | a
-number, both: typed, then blurred                                                                                             | input insertText 12, change 12                                   | insertText                                    | 12
-number, both, refusing: typed, then blurred                                                                                   | –                                                                | insertText                                    | 1
-number, oninput: typed, then blurred                                                                                          | input insertText 12                                              | insertText                                    | 12
-number, oninput, refusing: typed, then blurred                                                                                | –                                                                | insertText                                    | 1
-textarea, both: typed, then blurred                                                                                           | input insertText ab, change ab                                   | insertText                                    | ab
-textarea, both, refusing: typed, then blurred                                                                                 | –                                                                | insertText                                    | a
-textarea, oninput: typed, then blurred                                                                                        | input insertText ab                                              | insertText                                    | ab
-textarea, oninput, refusing: typed, then blurred                                                                              | –                                                                | insertText                                    | a
-text, both: typed, then a keystroke refused, then blurred                                                                     | input insertText ab, change ab                                   | insertText, insertText                        | ab
-text, both, refusing: typed, then a keystroke refused, then blurred                                                           | –                                                                | insertText, insertText                        | a
-text, oninput: typed, then a keystroke refused, then blurred                                                                  | input insertText ab                                              | insertText, insertText                        | ab
-text, oninput, refusing: typed, then a keystroke refused, then blurred                                                        | –                                                                | insertText, insertText                        | a
-textarea, both: typed, then a keystroke refused, then blurred                                                                 | input insertText ab, change ab                                   | insertText, insertText                        | ab
-textarea, both, refusing: typed, then a keystroke refused, then blurred                                                       | –                                                                | insertText, insertText                        | a
-textarea, oninput: typed, then a keystroke refused, then blurred                                                              | input insertText ab                                              | insertText, insertText                        | ab
-textarea, oninput, refusing: typed, then a keystroke refused, then blurred                                                    | –                                                                | insertText, insertText                        | a
-text, both: the same text pasted                                                                                              | input insertFromPaste a                                          | insertFromPaste                               | a
-text, both, refusing: the same text pasted                                                                                    | input insertFromPaste a                                          | insertFromPaste                               | a
-text, oninput: the same text pasted                                                                                           | input insertFromPaste a                                          | insertFromPaste                               | a
-text, oninput, refusing: the same text pasted                                                                                 | input insertFromPaste a                                          | insertFromPaste                               | a
-textarea, both: the same text pasted                                                                                          | input insertFromPaste a                                          | insertFromPaste                               | a
-textarea, both, refusing: the same text pasted                                                                                | input insertFromPaste a                                          | insertFromPaste                               | a
-textarea, oninput: the same text pasted                                                                                       | input insertFromPaste a                                          | insertFromPaste                               | a
-textarea, oninput, refusing: the same text pasted                                                                             | input insertFromPaste a                                          | insertFromPaste                               | a
-number, both: 1.0 typed over 1                                                                                                | input insertText 1.0                                             | insertText                                    | 1.0
-number, both, refusing: 1.0 typed over 1                                                                                      | –                                                                | insertText                                    | 1
-number, oninput: 1.0 typed over 1                                                                                             | input insertText 1.0                                             | insertText                                    | 1.0
-number, oninput, refusing: 1.0 typed over 1                                                                                   | –                                                                | insertText                                    | 1
-date, both: picked                                                                                                            | input 2026-02-02, change 2026-02-02                              | none                                          | 2026-02-02
-date, both, refusing: picked                                                                                                  | –                                                                | none                                          | 2026-01-01
-date, oninput: picked                                                                                                         | input 2026-02-02                                                 | none                                          | 2026-02-02
-date, oninput, refusing: picked                                                                                               | –                                                                | none                                          | 2026-01-01
-checkbox, both: picked                                                                                                        | input on, change on                                              | none                                          | on
-checkbox, both, refusing: picked                                                                                              | –                                                                | none                                          | off
-checkbox, oninput: picked                                                                                                     | input on                                                         | none                                          | on
-checkbox, oninput, refusing: picked                                                                                           | –                                                                | none                                          | off
-checkbox, onchange: picked                                                                                                    | change on                                                        | none                                          | on
-checkbox, onchange, refusing: picked                                                                                          | –                                                                | none                                          | off
-radio, both: picked                                                                                                           | input on, change on                                              | none                                          | on
-radio, both, refusing: picked                                                                                                 | –                                                                | none                                          | off
-radio, oninput: picked                                                                                                        | input on                                                         | none                                          | on
-radio, oninput, refusing: picked                                                                                              | –                                                                | none                                          | off
-radio, onchange: picked                                                                                                       | change on                                                        | none                                          | on
-radio, onchange, refusing: picked                                                                                             | –                                                                | none                                          | off
-select, both: picked                                                                                                          | input b, change b                                                | none                                          | b
-select, both, refusing: picked                                                                                                | –                                                                | none                                          | a
-select, oninput: picked                                                                                                       | input b                                                          | none                                          | b
-select, oninput, refusing: picked                                                                                             | –                                                                | none                                          | a
-select, onchange: picked                                                                                                      | change b                                                         | none                                          | b
-select, onchange, refusing: picked                                                                                            | –                                                                | none                                          | a
-multiple, both: picked                                                                                                        | input a,b, change a,b                                            | none                                          | a,b
-multiple, both, refusing: picked                                                                                              | –                                                                | none                                          | a
-multiple, oninput: picked                                                                                                     | input a,b                                                        | none                                          | a,b
-multiple, oninput, refusing: picked                                                                                           | –                                                                | none                                          | a
-multiple, onchange: picked                                                                                                    | change a,b                                                       | none                                          | a,b
-multiple, onchange, refusing: picked                                                                                          | –                                                                | none                                          | a
-text, both: a change alone                                                                                                    | input insertReplacementText filled, change filled                | insertReplacementText                         | filled
-text, both, refusing: a change alone                                                                                          | –                                                                | insertReplacementText                         | a
-text, oninput: a change alone                                                                                                 | input insertReplacementText filled                               | insertReplacementText                         | filled
-text, oninput, refusing: a change alone                                                                                       | –                                                                | insertReplacementText                         | a
-number, both: a change alone                                                                                                  | input insertReplacementText 12, change 12                        | insertReplacementText                         | 12
-number, both, refusing: a change alone                                                                                        | –                                                                | insertReplacementText                         | 1
-number, oninput: a change alone                                                                                               | input insertReplacementText 12                                   | insertReplacementText                         | 12
-number, oninput, refusing: a change alone                                                                                     | –                                                                | insertReplacementText                         | 1
-textarea, both: a change alone                                                                                                | input insertReplacementText filled, change filled                | insertReplacementText                         | filled
-textarea, both, refusing: a change alone                                                                                      | –                                                                | insertReplacementText                         | a
-textarea, oninput: a change alone                                                                                             | input insertReplacementText filled                               | insertReplacementText                         | filled
-textarea, oninput, refusing: a change alone                                                                                   | –                                                                | insertReplacementText                         | a
-date, both: a change alone                                                                                                    | input insertReplacementText 2026-02-02, change 2026-02-02        | insertReplacementText                         | 2026-02-02
-date, both, refusing: a change alone                                                                                          | –                                                                | insertReplacementText                         | 2026-01-01
-date, oninput: a change alone                                                                                                 | input insertReplacementText 2026-02-02                           | insertReplacementText                         | 2026-02-02
-date, oninput, refusing: a change alone                                                                                       | –                                                                | insertReplacementText                         | 2026-01-01
-checkbox, both: a change alone                                                                                                | input insertReplacementText on, change on                        | insertReplacementText                         | on
-checkbox, both, refusing: a change alone                                                                                      | –                                                                | insertReplacementText                         | off
-checkbox, oninput: a change alone                                                                                             | input insertReplacementText on                                   | insertReplacementText                         | on
-checkbox, oninput, refusing: a change alone                                                                                   | –                                                                | insertReplacementText                         | off
-checkbox, onchange: a change alone                                                                                            | change on                                                        | insertReplacementText                         | on
-checkbox, onchange, refusing: a change alone                                                                                  | –                                                                | insertReplacementText                         | off
-radio, both: a change alone                                                                                                   | input insertReplacementText on, change on                        | insertReplacementText                         | on
-radio, both, refusing: a change alone                                                                                         | –                                                                | insertReplacementText                         | off
-radio, oninput: a change alone                                                                                                | input insertReplacementText on                                   | insertReplacementText                         | on
-radio, oninput, refusing: a change alone                                                                                      | –                                                                | insertReplacementText                         | off
-radio, onchange: a change alone                                                                                               | change on                                                        | insertReplacementText                         | on
-radio, onchange, refusing: a change alone                                                                                     | –                                                                | insertReplacementText                         | off
-select, both: a change alone                                                                                                  | input insertReplacementText b, change b                          | insertReplacementText                         | b
-select, both, refusing: a change alone                                                                                        | –                                                                | insertReplacementText                         | a
-select, oninput: a change alone                                                                                               | input insertReplacementText b                                    | insertReplacementText                         | b
-select, oninput, refusing: a change alone                                                                                     | –                                                                | insertReplacementText                         | a
-select, onchange: a change alone                                                                                              | change b                                                         | insertReplacementText                         | b
-select, onchange, refusing: a change alone                                                                                    | –                                                                | insertReplacementText                         | a
-multiple, both: a change alone                                                                                                | input insertReplacementText a,b, change a,b                      | insertReplacementText                         | a,b
-multiple, both, refusing: a change alone                                                                                      | –                                                                | insertReplacementText                         | a
-multiple, oninput: a change alone                                                                                             | input insertReplacementText a,b                                  | insertReplacementText                         | a,b
-multiple, oninput, refusing: a change alone                                                                                   | –                                                                | insertReplacementText                         | a
-multiple, onchange: a change alone                                                                                            | change a,b                                                       | insertReplacementText                         | a,b
-multiple, onchange, refusing: a change alone                                                                                  | –                                                                | insertReplacementText                         | a
-text, both: a word, Chromium                                                                                                  | input insertCompositionText a日本                                  | insertCompositionText                         | a日本
-text, both, refusing: a word, Chromium                                                                                        | –                                                                | insertCompositionText                         | a
-text, oninput: a word, Chromium                                                                                               | input insertCompositionText a日本                                  | insertCompositionText                         | a日本
-text, oninput, refusing: a word, Chromium                                                                                     | –                                                                | insertCompositionText                         | a
-textarea, both: a word, Chromium                                                                                              | input insertCompositionText a日本                                  | insertCompositionText                         | a日本
-textarea, both, refusing: a word, Chromium                                                                                    | –                                                                | insertCompositionText                         | a
-textarea, oninput: a word, Chromium                                                                                           | input insertCompositionText a日本                                  | insertCompositionText                         | a日本
-textarea, oninput, refusing: a word, Chromium                                                                                 | –                                                                | insertCompositionText                         | a
-text, both: a word, Firefox                                                                                                   | input insertCompositionText a日本                                  | insertCompositionText                         | a日本
-text, both, refusing: a word, Firefox                                                                                         | –                                                                | insertCompositionText                         | a
-text, oninput: a word, Firefox                                                                                                | input insertCompositionText a日本                                  | insertCompositionText                         | a日本
-text, oninput, refusing: a word, Firefox                                                                                      | –                                                                | insertCompositionText                         | a
-textarea, both: a word, Firefox                                                                                               | input insertCompositionText a日本                                  | insertCompositionText                         | a日本
-textarea, both, refusing: a word, Firefox                                                                                     | –                                                                | insertCompositionText                         | a
-textarea, oninput: a word, Firefox                                                                                            | input insertCompositionText a日本                                  | insertCompositionText                         | a日本
-textarea, oninput, refusing: a word, Firefox                                                                                  | –                                                                | insertCompositionText                         | a
-text, both: a word, then blurred                                                                                              | input insertCompositionText a日本, change a日本                      | insertCompositionText                         | a日本
-text, both, refusing: a word, then blurred                                                                                    | –                                                                | insertCompositionText                         | a
-text, oninput: a word, then blurred                                                                                           | input insertCompositionText a日本                                  | insertCompositionText                         | a日本
-text, oninput, refusing: a word, then blurred                                                                                 | –                                                                | insertCompositionText                         | a
-textarea, both: a word, then blurred                                                                                          | input insertCompositionText a日本, change a日本                      | insertCompositionText                         | a日本
-textarea, both, refusing: a word, then blurred                                                                                | –                                                                | insertCompositionText                         | a
-textarea, oninput: a word, then blurred                                                                                       | input insertCompositionText a日本                                  | insertCompositionText                         | a日本
-textarea, oninput, refusing: a word, then blurred                                                                             | –                                                                | insertCompositionText                         | a
-text, both: a word lost to a blur, Firefox                                                                                    | input insertCompositionText a日本                                  | insertCompositionText                         | a日本
-text, both, refusing: a word lost to a blur, Firefox                                                                          | –                                                                | insertCompositionText                         | a
-text, oninput: a word lost to a blur, Firefox                                                                                 | input insertCompositionText a日本                                  | insertCompositionText                         | a日本
-text, oninput, refusing: a word lost to a blur, Firefox                                                                       | –                                                                | insertCompositionText                         | a
-textarea, both: a word lost to a blur, Firefox                                                                                | input insertCompositionText a日本                                  | insertCompositionText                         | a日本
-textarea, both, refusing: a word lost to a blur, Firefox                                                                      | –                                                                | insertCompositionText                         | a
-textarea, oninput: a word lost to a blur, Firefox                                                                             | input insertCompositionText a日本                                  | insertCompositionText                         | a日本
-textarea, oninput, refusing: a word lost to a blur, Firefox                                                                   | –                                                                | insertCompositionText                         | a
-text, both: typed, then blurred twice                                                                                         | input insertText ab, change ab                                   | insertText                                    | ab
-text, both, refusing: typed, then blurred twice                                                                               | –                                                                | insertText                                    | a
-text, oninput: typed, then blurred twice                                                                                      | input insertText ab                                              | insertText                                    | ab
-text, oninput, refusing: typed, then blurred twice                                                                            | –                                                                | insertText                                    | a
-number, both: typed, then blurred twice                                                                                       | input insertText 12, change 12                                   | insertText                                    | 12
-number, both, refusing: typed, then blurred twice                                                                             | –                                                                | insertText                                    | 1
-number, oninput: typed, then blurred twice                                                                                    | input insertText 12                                              | insertText                                    | 12
-number, oninput, refusing: typed, then blurred twice                                                                          | –                                                                | insertText                                    | 1
-textarea, both: typed, then blurred twice                                                                                     | input insertText ab, change ab                                   | insertText                                    | ab
-textarea, both, refusing: typed, then blurred twice                                                                           | –                                                                | insertText                                    | a
-textarea, oninput: typed, then blurred twice                                                                                  | input insertText ab                                              | insertText                                    | ab
-textarea, oninput, refusing: typed, then blurred twice                                                                        | –                                                                | insertText                                    | a
-checkbox, both: picked, then a change with nothing new                                                                        | input on, change on                                              | none                                          | on
-checkbox, both, refusing: picked, then a change with nothing new                                                              | –                                                                | none                                          | off
-checkbox, oninput: picked, then a change with nothing new                                                                     | input on                                                         | none                                          | on
-checkbox, oninput, refusing: picked, then a change with nothing new                                                           | –                                                                | none                                          | off
-checkbox, onchange: picked, then a change with nothing new                                                                    | change on                                                        | none                                          | on
-checkbox, onchange, refusing: picked, then a change with nothing new                                                          | –                                                                | none                                          | off
-radio, both: picked, then a change with nothing new                                                                           | input on, change on                                              | none                                          | on
-radio, both, refusing: picked, then a change with nothing new                                                                 | –                                                                | none                                          | off
-radio, oninput: picked, then a change with nothing new                                                                        | input on                                                         | none                                          | on
-radio, oninput, refusing: picked, then a change with nothing new                                                              | –                                                                | none                                          | off
-radio, onchange: picked, then a change with nothing new                                                                       | change on                                                        | none                                          | on
-radio, onchange, refusing: picked, then a change with nothing new                                                             | –                                                                | none                                          | off
-select, both: picked, then a change with nothing new                                                                          | input b, change b                                                | none                                          | b
-select, both, refusing: picked, then a change with nothing new                                                                | –                                                                | none                                          | a
-select, oninput: picked, then a change with nothing new                                                                       | input b                                                          | none                                          | b
-select, oninput, refusing: picked, then a change with nothing new                                                             | –                                                                | none                                          | a
-select, onchange: picked, then a change with nothing new                                                                      | change b                                                         | none                                          | b
-select, onchange, refusing: picked, then a change with nothing new                                                            | –                                                                | none                                          | a
-multiple, both: picked, then a change with nothing new                                                                        | input a,b, change a,b                                            | none                                          | a,b
-multiple, both, refusing: picked, then a change with nothing new                                                              | –                                                                | none                                          | a
-multiple, oninput: picked, then a change with nothing new                                                                     | input a,b                                                        | none                                          | a,b
-multiple, oninput, refusing: picked, then a change with nothing new                                                           | –                                                                | none                                          | a
-multiple, onchange: picked, then a change with nothing new                                                                    | change a,b                                                       | none                                          | a,b
-multiple, onchange, refusing: picked, then a change with nothing new                                                          | –                                                                | none                                          | a
-text, both: a change with nothing new                                                                                         | –                                                                | –                                             | a
-text, both, refusing: a change with nothing new                                                                               | –                                                                | –                                             | a
-text, oninput: a change with nothing new                                                                                      | –                                                                | –                                             | a
-text, oninput, refusing: a change with nothing new                                                                            | –                                                                | –                                             | a
-number, both: a change with nothing new                                                                                       | –                                                                | –                                             | 1
-number, both, refusing: a change with nothing new                                                                             | –                                                                | –                                             | 1
-number, oninput: a change with nothing new                                                                                    | –                                                                | –                                             | 1
-number, oninput, refusing: a change with nothing new                                                                          | –                                                                | –                                             | 1
-textarea, both: a change with nothing new                                                                                     | –                                                                | –                                             | a
-textarea, both, refusing: a change with nothing new                                                                           | –                                                                | –                                             | a
-textarea, oninput: a change with nothing new                                                                                  | –                                                                | –                                             | a
-textarea, oninput, refusing: a change with nothing new                                                                        | –                                                                | –                                             | a
-date, both: a change with nothing new                                                                                         | –                                                                | –                                             | 2026-01-01
-date, both, refusing: a change with nothing new                                                                               | –                                                                | –                                             | 2026-01-01
-date, oninput: a change with nothing new                                                                                      | –                                                                | –                                             | 2026-01-01
-date, oninput, refusing: a change with nothing new                                                                            | –                                                                | –                                             | 2026-01-01
-checkbox, both: a change with nothing new                                                                                     | –                                                                | –                                             | off
-checkbox, both, refusing: a change with nothing new                                                                           | –                                                                | –                                             | off
-checkbox, oninput: a change with nothing new                                                                                  | –                                                                | –                                             | off
-checkbox, oninput, refusing: a change with nothing new                                                                        | –                                                                | –                                             | off
-checkbox, onchange: a change with nothing new                                                                                 | –                                                                | –                                             | off
-checkbox, onchange, refusing: a change with nothing new                                                                       | –                                                                | –                                             | off
-radio, both: a change with nothing new                                                                                        | –                                                                | –                                             | off
-radio, both, refusing: a change with nothing new                                                                              | –                                                                | –                                             | off
-radio, oninput: a change with nothing new                                                                                     | –                                                                | –                                             | off
-radio, oninput, refusing: a change with nothing new                                                                           | –                                                                | –                                             | off
-radio, onchange: a change with nothing new                                                                                    | –                                                                | –                                             | off
-radio, onchange, refusing: a change with nothing new                                                                          | –                                                                | –                                             | off
-select, both: a change with nothing new                                                                                       | –                                                                | –                                             | a
-select, both, refusing: a change with nothing new                                                                             | –                                                                | –                                             | a
-select, oninput: a change with nothing new                                                                                    | –                                                                | –                                             | a
-select, oninput, refusing: a change with nothing new                                                                          | –                                                                | –                                             | a
-select, onchange: a change with nothing new                                                                                   | –                                                                | –                                             | a
-select, onchange, refusing: a change with nothing new                                                                         | –                                                                | –                                             | a
-multiple, both: a change with nothing new                                                                                     | –                                                                | –                                             | a
-multiple, both, refusing: a change with nothing new                                                                           | –                                                                | –                                             | a
-multiple, oninput: a change with nothing new                                                                                  | –                                                                | –                                             | a
-multiple, oninput, refusing: a change with nothing new                                                                        | –                                                                | –                                             | a
-multiple, onchange: a change with nothing new                                                                                 | –                                                                | –                                             | a
-multiple, onchange, refusing: a change with nothing new                                                                       | –                                                                | –                                             | a
-checkbox, both: picked, then a change alone                                                                                   | input on, change on, input insertReplacementText off, change off | none, insertReplacementText                   | off
-checkbox, both, refusing: picked, then a change alone                                                                         | –                                                                | none                                          | off
-checkbox, oninput: picked, then a change alone                                                                                | input on, input insertReplacementText off                        | none, insertReplacementText                   | off
-checkbox, oninput, refusing: picked, then a change alone                                                                      | –                                                                | none                                          | off
-checkbox, onchange: picked, then a change alone                                                                               | change on, change off                                            | none, insertReplacementText                   | off
-checkbox, onchange, refusing: picked, then a change alone                                                                     | –                                                                | none                                          | off
-select, both: picked, then a change alone                                                                                     | input b, change b, input insertReplacementText c, change c       | none, insertReplacementText                   | c
-select, both, refusing: picked, then a change alone                                                                           | –                                                                | none, insertReplacementText                   | a
-select, oninput: picked, then a change alone                                                                                  | input b, input insertReplacementText c                           | none, insertReplacementText                   | c
-select, oninput, refusing: picked, then a change alone                                                                        | –                                                                | none, insertReplacementText                   | a
-select, onchange: picked, then a change alone                                                                                 | change b, change c                                               | none, insertReplacementText                   | c
-select, onchange, refusing: picked, then a change alone                                                                       | –                                                                | none, insertReplacementText                   | a
-text, both: typed, blurred with no change (the window lost the focus), then a keystroke refused and a change                  | input insertText ab, change ab                                   | insertText, insertText                        | ab
-text, both: typed and put back, blurred, then a keystroke refused and a change                                                | input insertText ab, input deleteContentBackward a               | insertText, deleteContentBackward, insertText | a
-text, both, refusing: typed, blurred with no change (the window lost the focus), then a keystroke refused and a change        | –                                                                | insertText, insertText                        | a
-text, both, refusing: typed and put back, blurred, then a keystroke refused and a change                                      | input deleteContentBackward a                                    | insertText, deleteContentBackward, insertText | a
-text, oninput: typed, blurred with no change (the window lost the focus), then a keystroke refused and a change               | input insertText ab                                              | insertText, insertText                        | ab
-text, oninput: typed and put back, blurred, then a keystroke refused and a change                                             | input insertText ab, input deleteContentBackward a               | insertText, deleteContentBackward, insertText | a
-text, oninput, refusing: typed, blurred with no change (the window lost the focus), then a keystroke refused and a change     | –                                                                | insertText, insertText                        | a
-text, oninput, refusing: typed and put back, blurred, then a keystroke refused and a change                                   | input deleteContentBackward a                                    | insertText, deleteContentBackward, insertText | a
-textarea, both: typed, blurred with no change (the window lost the focus), then a keystroke refused and a change              | input insertText ab, change ab                                   | insertText, insertText                        | ab
-textarea, both: typed and put back, blurred, then a keystroke refused and a change                                            | input insertText ab, input deleteContentBackward a               | insertText, deleteContentBackward, insertText | a
-textarea, both, refusing: typed, blurred with no change (the window lost the focus), then a keystroke refused and a change    | –                                                                | insertText, insertText                        | a
-textarea, both, refusing: typed and put back, blurred, then a keystroke refused and a change                                  | input deleteContentBackward a                                    | insertText, deleteContentBackward, insertText | a
-textarea, oninput: typed, blurred with no change (the window lost the focus), then a keystroke refused and a change           | input insertText ab                                              | insertText, insertText                        | ab
-textarea, oninput: typed and put back, blurred, then a keystroke refused and a change                                         | input insertText ab, input deleteContentBackward a               | insertText, deleteContentBackward, insertText | a
-textarea, oninput, refusing: typed, blurred with no change (the window lost the focus), then a keystroke refused and a change | –                                                                | insertText, insertText                        | a
-textarea, oninput, refusing: typed and put back, blurred, then a keystroke refused and a change                               | input deleteContentBackward a                                    | insertText, deleteContentBackward, insertText | a
-number, both: 1.0 over 1 as an input method's input, not composing                                                            | input insertCompositionText 1.0                                  | insertCompositionText                         | 1.0
-number, both, refusing: 1.0 over 1 as an input method's input, not composing                                                  | –                                                                | insertCompositionText                         | 1
-number, oninput: 1.0 over 1 as an input method's input, not composing                                                         | input insertCompositionText 1.0                                  | insertCompositionText                         | 1.0
-number, oninput, refusing: 1.0 over 1 as an input method's input, not composing                                               | –                                                                | insertCompositionText                         | 1
+text, both: typed                                                                                                             | input insertText ab                                                     | ab          | same
+text, both, refusing: typed                                                                                                   | input insertText ab                                                     | a           | same
+text, oninput: typed                                                                                                          | input insertText ab                                                     | ab          | same
+text, oninput, refusing: typed                                                                                                | input insertText ab                                                     | a           | same
+number, both: typed                                                                                                           | input insertText 12                                                     | 12          | same
+number, both, refusing: typed                                                                                                 | input insertText 12                                                     | 1           | same
+number, oninput: typed                                                                                                        | input insertText 12                                                     | 12          | same
+number, oninput, refusing: typed                                                                                              | input insertText 12                                                     | 1           | same
+textarea, both: typed                                                                                                         | input insertText ab                                                     | ab          | same
+textarea, both, refusing: typed                                                                                               | input insertText ab                                                     | a           | same
+textarea, oninput: typed                                                                                                      | input insertText ab                                                     | ab          | same
+textarea, oninput, refusing: typed                                                                                            | input insertText ab                                                     | a           | same
+text, both: typed, then blurred                                                                                               | input insertText ab, change ab                                          | ab          | same, RMD062
+text, both, refusing: typed, then blurred                                                                                     | input insertText ab                                                     | a           | RMD062: input insertText ab, change ab
+text, oninput: typed, then blurred                                                                                            | input insertText ab                                                     | ab          | same, RMD062
+text, oninput, refusing: typed, then blurred                                                                                  | input insertText ab                                                     | a           | same, RMD062
+number, both: typed, then blurred                                                                                             | input insertText 12, change 12                                          | 12          | same, RMD062
+number, both, refusing: typed, then blurred                                                                                   | input insertText 12                                                     | 1           | RMD062: input insertText 12, change 12
+number, oninput: typed, then blurred                                                                                          | input insertText 12                                                     | 12          | same, RMD062
+number, oninput, refusing: typed, then blurred                                                                                | input insertText 12                                                     | 1           | same, RMD062
+textarea, both: typed, then blurred                                                                                           | input insertText ab, change ab                                          | ab          | same, RMD062
+textarea, both, refusing: typed, then blurred                                                                                 | input insertText ab                                                     | a           | RMD062: input insertText ab, change ab
+textarea, oninput: typed, then blurred                                                                                        | input insertText ab                                                     | ab          | same, RMD062
+textarea, oninput, refusing: typed, then blurred                                                                              | input insertText ab                                                     | a           | same, RMD062
+text, both: typed, then a keystroke refused, then blurred                                                                     | input insertText ab, input insertText ab!, change ab                    | ab          | RMD062: input insertText ab, input insertText ab!, change ab!
+text, both, refusing: typed, then a keystroke refused, then blurred                                                           | input insertText ab, input insertText ab!                               | a           | RMD062: input insertText ab, input insertText ab!, change ab!
+text, oninput: typed, then a keystroke refused, then blurred                                                                  | input insertText ab, input insertText ab!                               | ab          | same, RMD062
+text, oninput, refusing: typed, then a keystroke refused, then blurred                                                        | input insertText ab, input insertText ab!                               | a           | same, RMD062
+textarea, both: typed, then a keystroke refused, then blurred                                                                 | input insertText ab, input insertText ab!, change ab                    | ab          | RMD062: input insertText ab, input insertText ab!, change ab!
+textarea, both, refusing: typed, then a keystroke refused, then blurred                                                       | input insertText ab, input insertText ab!                               | a           | RMD062: input insertText ab, input insertText ab!, change ab!
+textarea, oninput: typed, then a keystroke refused, then blurred                                                              | input insertText ab, input insertText ab!                               | ab          | same, RMD062
+textarea, oninput, refusing: typed, then a keystroke refused, then blurred                                                    | input insertText ab, input insertText ab!                               | a           | same, RMD062
+text, both: the same text pasted                                                                                              | input insertFromPaste a                                                 | a           | same
+text, both, refusing: the same text pasted                                                                                    | input insertFromPaste a                                                 | a           | same
+text, oninput: the same text pasted                                                                                           | input insertFromPaste a                                                 | a           | same
+text, oninput, refusing: the same text pasted                                                                                 | input insertFromPaste a                                                 | a           | same
+textarea, both: the same text pasted                                                                                          | input insertFromPaste a                                                 | a           | same
+textarea, both, refusing: the same text pasted                                                                                | input insertFromPaste a                                                 | a           | same
+textarea, oninput: the same text pasted                                                                                       | input insertFromPaste a                                                 | a           | same
+textarea, oninput, refusing: the same text pasted                                                                             | input insertFromPaste a                                                 | a           | same
+number, both: 1.0 typed over 1                                                                                                | input insertText 1.0                                                    | 1.0         | same
+number, both, refusing: 1.0 typed over 1                                                                                      | input insertText 1.0                                                    | 1 shows 1.0 | same
+number, oninput: 1.0 typed over 1                                                                                             | input insertText 1.0                                                    | 1.0         | same
+number, oninput, refusing: 1.0 typed over 1                                                                                   | input insertText 1.0                                                    | 1 shows 1.0 | same
+date, both: picked                                                                                                            | input 2026-02-02, change 2026-02-02                                     | 2026-02-02  | same, RMD062
+date, both, refusing: picked                                                                                                  | input 2026-02-02                                                        | 2026-01-01  | RMD062: input 2026-02-02, change 2026-02-02
+date, oninput: picked                                                                                                         | input 2026-02-02                                                        | 2026-02-02  | same, RMD062
+date, oninput, refusing: picked                                                                                               | input 2026-02-02                                                        | 2026-01-01  | same, RMD062
+checkbox, both: picked                                                                                                        | input on, change on                                                     | on          | same
+checkbox, both, refusing: picked                                                                                              | input on, change on                                                     | off         | same
+checkbox, oninput: picked                                                                                                     | input on                                                                | on          | same
+checkbox, oninput, refusing: picked                                                                                           | input on                                                                | off         | same
+checkbox, onchange: picked                                                                                                    | change on                                                               | on          | same
+checkbox, onchange, refusing: picked                                                                                          | change on                                                               | off         | same
+radio, both: picked                                                                                                           | input on, change on                                                     | on          | same
+radio, both, refusing: picked                                                                                                 | input on, change on                                                     | off         | same
+radio, oninput: picked                                                                                                        | input on                                                                | on          | same
+radio, oninput, refusing: picked                                                                                              | input on                                                                | off         | same
+radio, onchange: picked                                                                                                       | change on                                                               | on          | same
+radio, onchange, refusing: picked                                                                                             | change on                                                               | off         | same
+select, both: picked                                                                                                          | input b, change b                                                       | b           | same
+select, both, refusing: picked                                                                                                | input b, change b                                                       | a           | same
+select, oninput: picked                                                                                                       | input b                                                                 | b           | same
+select, oninput, refusing: picked                                                                                             | input b                                                                 | a           | same
+select, onchange: picked                                                                                                      | change b                                                                | b           | same
+select, onchange, refusing: picked                                                                                            | change b                                                                | a           | same
+multiple, both: picked                                                                                                        | input a,b, change a,b                                                   | a,b         | same
+multiple, both, refusing: picked                                                                                              | input a,b, change a,b                                                   | a           | same
+multiple, oninput: picked                                                                                                     | input a,b                                                               | a,b         | same
+multiple, oninput, refusing: picked                                                                                           | input a,b                                                               | a           | same
+multiple, onchange: picked                                                                                                    | change a,b                                                              | a,b         | same
+multiple, onchange, refusing: picked                                                                                          | change a,b                                                              | a           | same
+text, both: a change alone                                                                                                    | input insertReplacementText filled, change filled                       | filled      | same
+text, both, refusing: a change alone                                                                                          | input insertReplacementText filled, change filled                       | a           | same
+text, oninput: a change alone                                                                                                 | input insertReplacementText filled                                      | filled      | same
+text, oninput, refusing: a change alone                                                                                       | input insertReplacementText filled                                      | a           | same
+number, both: a change alone                                                                                                  | input insertReplacementText 12, change 12                               | 12          | same
+number, both, refusing: a change alone                                                                                        | input insertReplacementText 12, change 12                               | 1           | same
+number, oninput: a change alone                                                                                               | input insertReplacementText 12                                          | 12          | same
+number, oninput, refusing: a change alone                                                                                     | input insertReplacementText 12                                          | 1           | same
+textarea, both: a change alone                                                                                                | input insertReplacementText filled, change filled                       | filled      | same
+textarea, both, refusing: a change alone                                                                                      | input insertReplacementText filled, change filled                       | a           | same
+textarea, oninput: a change alone                                                                                             | input insertReplacementText filled                                      | filled      | same
+textarea, oninput, refusing: a change alone                                                                                   | input insertReplacementText filled                                      | a           | same
+date, both: a change alone                                                                                                    | input insertReplacementText 2026-02-02, change 2026-02-02               | 2026-02-02  | same
+date, both, refusing: a change alone                                                                                          | input insertReplacementText 2026-02-02, change 2026-02-02               | 2026-01-01  | same
+date, oninput: a change alone                                                                                                 | input insertReplacementText 2026-02-02                                  | 2026-02-02  | same
+date, oninput, refusing: a change alone                                                                                       | input insertReplacementText 2026-02-02                                  | 2026-01-01  | same
+checkbox, both: a change alone                                                                                                | input insertReplacementText on, change on                               | on          | same
+checkbox, both, refusing: a change alone                                                                                      | input insertReplacementText on, change on                               | off         | same
+checkbox, oninput: a change alone                                                                                             | input insertReplacementText on                                          | on          | same
+checkbox, oninput, refusing: a change alone                                                                                   | input insertReplacementText on                                          | off         | same
+checkbox, onchange: a change alone                                                                                            | change on                                                               | on          | same
+checkbox, onchange, refusing: a change alone                                                                                  | change on                                                               | off         | same
+radio, both: a change alone                                                                                                   | input insertReplacementText on, change on                               | on          | same
+radio, both, refusing: a change alone                                                                                         | input insertReplacementText on, change on                               | off         | same
+radio, oninput: a change alone                                                                                                | input insertReplacementText on                                          | on          | same
+radio, oninput, refusing: a change alone                                                                                      | input insertReplacementText on                                          | off         | same
+radio, onchange: a change alone                                                                                               | change on                                                               | on          | same
+radio, onchange, refusing: a change alone                                                                                     | change on                                                               | off         | same
+select, both: a change alone                                                                                                  | input insertReplacementText b, change b                                 | b           | same
+select, both, refusing: a change alone                                                                                        | input insertReplacementText b, change b                                 | a           | same
+select, oninput: a change alone                                                                                               | input insertReplacementText b                                           | b           | same
+select, oninput, refusing: a change alone                                                                                     | input insertReplacementText b                                           | a           | same
+select, onchange: a change alone                                                                                              | change b                                                                | b           | same
+select, onchange, refusing: a change alone                                                                                    | change b                                                                | a           | same
+multiple, both: a change alone                                                                                                | input insertReplacementText a,b, change a,b                             | a,b         | same
+multiple, both, refusing: a change alone                                                                                      | input insertReplacementText a,b, change a,b                             | a           | same
+multiple, oninput: a change alone                                                                                             | input insertReplacementText a,b                                         | a,b         | same
+multiple, oninput, refusing: a change alone                                                                                   | input insertReplacementText a,b                                         | a           | same
+multiple, onchange: a change alone                                                                                            | change a,b                                                              | a,b         | same
+multiple, onchange, refusing: a change alone                                                                                  | change a,b                                                              | a           | same
+text, both: a word, Chromium                                                                                                  | input insertCompositionText a日本                                         | a日本         | same, RMD062
+text, both, refusing: a word, Chromium                                                                                        | input insertCompositionText a日本                                         | a           | same, RMD062
+text, oninput: a word, Chromium                                                                                               | input insertCompositionText a日本                                         | a日本         | same, RMD062
+text, oninput, refusing: a word, Chromium                                                                                     | input insertCompositionText a日本                                         | a           | same, RMD062
+textarea, both: a word, Chromium                                                                                              | input insertCompositionText a日本                                         | a日本         | same, RMD062
+textarea, both, refusing: a word, Chromium                                                                                    | input insertCompositionText a日本                                         | a           | same, RMD062
+textarea, oninput: a word, Chromium                                                                                           | input insertCompositionText a日本                                         | a日本         | same, RMD062
+textarea, oninput, refusing: a word, Chromium                                                                                 | input insertCompositionText a日本                                         | a           | same, RMD062
+text, both: a word, Firefox                                                                                                   | input insertCompositionText a日本                                         | a日本         | same, RMD062
+text, both, refusing: a word, Firefox                                                                                         | input insertCompositionText a日本                                         | a           | same, RMD062
+text, oninput: a word, Firefox                                                                                                | input insertCompositionText a日本                                         | a日本         | same, RMD062
+text, oninput, refusing: a word, Firefox                                                                                      | input insertCompositionText a日本                                         | a           | same, RMD062
+textarea, both: a word, Firefox                                                                                               | input insertCompositionText a日本                                         | a日本         | same, RMD062
+textarea, both, refusing: a word, Firefox                                                                                     | input insertCompositionText a日本                                         | a           | same, RMD062
+textarea, oninput: a word, Firefox                                                                                            | input insertCompositionText a日本                                         | a日本         | same, RMD062
+textarea, oninput, refusing: a word, Firefox                                                                                  | input insertCompositionText a日本                                         | a           | same, RMD062
+text, both: a word, then blurred                                                                                              | input insertCompositionText a日本, change a日本                             | a日本         | same, RMD062
+text, both, refusing: a word, then blurred                                                                                    | input insertCompositionText a日本                                         | a           | RMD062: input insertCompositionText a日本, change a日本
+text, oninput: a word, then blurred                                                                                           | input insertCompositionText a日本                                         | a日本         | same, RMD062
+text, oninput, refusing: a word, then blurred                                                                                 | input insertCompositionText a日本                                         | a           | same, RMD062
+textarea, both: a word, then blurred                                                                                          | input insertCompositionText a日本, change a日本                             | a日本         | same, RMD062
+textarea, both, refusing: a word, then blurred                                                                                | input insertCompositionText a日本                                         | a           | RMD062: input insertCompositionText a日本, change a日本
+textarea, oninput: a word, then blurred                                                                                       | input insertCompositionText a日本                                         | a日本         | same, RMD062
+textarea, oninput, refusing: a word, then blurred                                                                             | input insertCompositionText a日本                                         | a           | same, RMD062
+text, both: a word lost to a blur, Firefox                                                                                    | input insertCompositionText a日本                                         | a日本         | same, RMD062
+text, both, refusing: a word lost to a blur, Firefox                                                                          | input insertCompositionText a日本                                         | a           | same, RMD062
+text, oninput: a word lost to a blur, Firefox                                                                                 | input insertCompositionText a日本                                         | a日本         | same, RMD062
+text, oninput, refusing: a word lost to a blur, Firefox                                                                       | input insertCompositionText a日本                                         | a           | same, RMD062
+textarea, both: a word lost to a blur, Firefox                                                                                | input insertCompositionText a日本                                         | a日本         | same, RMD062
+textarea, both, refusing: a word lost to a blur, Firefox                                                                      | input insertCompositionText a日本                                         | a           | same, RMD062
+textarea, oninput: a word lost to a blur, Firefox                                                                             | input insertCompositionText a日本                                         | a日本         | same, RMD062
+textarea, oninput, refusing: a word lost to a blur, Firefox                                                                   | input insertCompositionText a日本                                         | a           | same, RMD062
+text, both: typed, then blurred twice                                                                                         | input insertText ab, change ab                                          | ab          | same, RMD062
+text, both, refusing: typed, then blurred twice                                                                               | input insertText ab                                                     | a           | RMD062: input insertText ab, change ab
+text, oninput: typed, then blurred twice                                                                                      | input insertText ab                                                     | ab          | same, RMD062
+text, oninput, refusing: typed, then blurred twice                                                                            | input insertText ab                                                     | a           | same, RMD062
+number, both: typed, then blurred twice                                                                                       | input insertText 12, change 12                                          | 12          | same, RMD062
+number, both, refusing: typed, then blurred twice                                                                             | input insertText 12                                                     | 1           | RMD062: input insertText 12, change 12
+number, oninput: typed, then blurred twice                                                                                    | input insertText 12                                                     | 12          | same, RMD062
+number, oninput, refusing: typed, then blurred twice                                                                          | input insertText 12                                                     | 1           | same, RMD062
+textarea, both: typed, then blurred twice                                                                                     | input insertText ab, change ab                                          | ab          | same, RMD062
+textarea, both, refusing: typed, then blurred twice                                                                           | input insertText ab                                                     | a           | RMD062: input insertText ab, change ab
+textarea, oninput: typed, then blurred twice                                                                                  | input insertText ab                                                     | ab          | same, RMD062
+textarea, oninput, refusing: typed, then blurred twice                                                                        | input insertText ab                                                     | a           | same, RMD062
+checkbox, both: picked, then a change with nothing new                                                                        | input on, change on                                                     | on          | same, RMD062
+checkbox, both, refusing: picked, then a change with nothing new                                                              | input on, change on                                                     | off         | same, RMD062
+checkbox, oninput: picked, then a change with nothing new                                                                     | input on                                                                | on          | same, RMD062
+checkbox, oninput, refusing: picked, then a change with nothing new                                                           | input on                                                                | off         | same, RMD062
+checkbox, onchange: picked, then a change with nothing new                                                                    | change on                                                               | on          | same, RMD062
+checkbox, onchange, refusing: picked, then a change with nothing new                                                          | change on                                                               | off         | same, RMD062
+radio, both: picked, then a change with nothing new                                                                           | input on, change on                                                     | on          | same, RMD062
+radio, both, refusing: picked, then a change with nothing new                                                                 | input on, change on                                                     | off         | same, RMD062
+radio, oninput: picked, then a change with nothing new                                                                        | input on                                                                | on          | same, RMD062
+radio, oninput, refusing: picked, then a change with nothing new                                                              | input on                                                                | off         | same, RMD062
+radio, onchange: picked, then a change with nothing new                                                                       | change on                                                               | on          | same, RMD062
+radio, onchange, refusing: picked, then a change with nothing new                                                             | change on                                                               | off         | same, RMD062
+select, both: picked, then a change with nothing new                                                                          | input b, change b                                                       | b           | same, RMD062
+select, both, refusing: picked, then a change with nothing new                                                                | input b, change b                                                       | a           | same, RMD062
+select, oninput: picked, then a change with nothing new                                                                       | input b                                                                 | b           | same, RMD062
+select, oninput, refusing: picked, then a change with nothing new                                                             | input b                                                                 | a           | same, RMD062
+select, onchange: picked, then a change with nothing new                                                                      | change b                                                                | b           | same, RMD062
+select, onchange, refusing: picked, then a change with nothing new                                                            | change b                                                                | a           | same, RMD062
+multiple, both: picked, then a change with nothing new                                                                        | input a,b, change a,b                                                   | a,b         | same, RMD062
+multiple, both, refusing: picked, then a change with nothing new                                                              | input a,b, change a,b                                                   | a           | same, RMD062
+multiple, oninput: picked, then a change with nothing new                                                                     | input a,b                                                               | a,b         | same, RMD062
+multiple, oninput, refusing: picked, then a change with nothing new                                                           | input a,b                                                               | a           | same, RMD062
+multiple, onchange: picked, then a change with nothing new                                                                    | change a,b                                                              | a,b         | same, RMD062
+multiple, onchange, refusing: picked, then a change with nothing new                                                          | change a,b                                                              | a           | same, RMD062
+text, both: a change with nothing new                                                                                         | –                                                                       | a           | same
+text, both, refusing: a change with nothing new                                                                               | –                                                                       | a           | same
+text, oninput: a change with nothing new                                                                                      | –                                                                       | a           | same
+text, oninput, refusing: a change with nothing new                                                                            | –                                                                       | a           | same
+number, both: a change with nothing new                                                                                       | –                                                                       | 1           | same
+number, both, refusing: a change with nothing new                                                                             | –                                                                       | 1           | same
+number, oninput: a change with nothing new                                                                                    | –                                                                       | 1           | same
+number, oninput, refusing: a change with nothing new                                                                          | –                                                                       | 1           | same
+textarea, both: a change with nothing new                                                                                     | –                                                                       | a           | same
+textarea, both, refusing: a change with nothing new                                                                           | –                                                                       | a           | same
+textarea, oninput: a change with nothing new                                                                                  | –                                                                       | a           | same
+textarea, oninput, refusing: a change with nothing new                                                                        | –                                                                       | a           | same
+date, both: a change with nothing new                                                                                         | –                                                                       | 2026-01-01  | same
+date, both, refusing: a change with nothing new                                                                               | –                                                                       | 2026-01-01  | same
+date, oninput: a change with nothing new                                                                                      | –                                                                       | 2026-01-01  | same
+date, oninput, refusing: a change with nothing new                                                                            | –                                                                       | 2026-01-01  | same
+checkbox, both: a change with nothing new                                                                                     | –                                                                       | off         | same
+checkbox, both, refusing: a change with nothing new                                                                           | –                                                                       | off         | same
+checkbox, oninput: a change with nothing new                                                                                  | –                                                                       | off         | same
+checkbox, oninput, refusing: a change with nothing new                                                                        | –                                                                       | off         | same
+checkbox, onchange: a change with nothing new                                                                                 | –                                                                       | off         | same
+checkbox, onchange, refusing: a change with nothing new                                                                       | –                                                                       | off         | same
+radio, both: a change with nothing new                                                                                        | –                                                                       | off         | same
+radio, both, refusing: a change with nothing new                                                                              | –                                                                       | off         | same
+radio, oninput: a change with nothing new                                                                                     | –                                                                       | off         | same
+radio, oninput, refusing: a change with nothing new                                                                           | –                                                                       | off         | same
+radio, onchange: a change with nothing new                                                                                    | –                                                                       | off         | same
+radio, onchange, refusing: a change with nothing new                                                                          | –                                                                       | off         | same
+select, both: a change with nothing new                                                                                       | –                                                                       | a           | same
+select, both, refusing: a change with nothing new                                                                             | –                                                                       | a           | same
+select, oninput: a change with nothing new                                                                                    | –                                                                       | a           | same
+select, oninput, refusing: a change with nothing new                                                                          | –                                                                       | a           | same
+select, onchange: a change with nothing new                                                                                   | –                                                                       | a           | same
+select, onchange, refusing: a change with nothing new                                                                         | –                                                                       | a           | same
+multiple, both: a change with nothing new                                                                                     | –                                                                       | a           | same
+multiple, both, refusing: a change with nothing new                                                                           | –                                                                       | a           | same
+multiple, oninput: a change with nothing new                                                                                  | –                                                                       | a           | same
+multiple, oninput, refusing: a change with nothing new                                                                        | –                                                                       | a           | same
+multiple, onchange: a change with nothing new                                                                                 | –                                                                       | a           | same
+multiple, onchange, refusing: a change with nothing new                                                                       | –                                                                       | a           | same
+checkbox, both: picked, then a change alone                                                                                   | input on, change on, input insertReplacementText off, change off        | off         | same, RMD062
+checkbox, both, refusing: picked, then a change alone                                                                         | input on, change on                                                     | off         | RMD062: input on, change on, input insertReplacementText off, change off
+checkbox, oninput: picked, then a change alone                                                                                | input on, input insertReplacementText off                               | off         | same, RMD062
+checkbox, oninput, refusing: picked, then a change alone                                                                      | input on                                                                | off         | RMD062: input on, input insertReplacementText off
+checkbox, onchange: picked, then a change alone                                                                               | change on, change off                                                   | off         | same, RMD062
+checkbox, onchange, refusing: picked, then a change alone                                                                     | change on                                                               | off         | RMD062: change on, change off
+select, both: picked, then a change alone                                                                                     | input b, change b, input insertReplacementText c, change c              | c           | same, RMD062
+select, both, refusing: picked, then a change alone                                                                           | input b, change b, input insertReplacementText c, change c              | a           | same, RMD062
+select, oninput: picked, then a change alone                                                                                  | input b, input insertReplacementText c                                  | c           | same, RMD062
+select, oninput, refusing: picked, then a change alone                                                                        | input b, input insertReplacementText c                                  | a           | same, RMD062
+select, onchange: picked, then a change alone                                                                                 | change b, change c                                                      | c           | same, RMD062
+select, onchange, refusing: picked, then a change alone                                                                       | change b, change c                                                      | a           | same, RMD062
+text, both: typed, blurred with no change (the window lost the focus), then a keystroke refused and a change                  | input insertText ab, input insertText ab!, change ab                    | ab          | RMD062: input insertText ab, input insertText ab!, change ab!
+text, both: typed and put back, blurred, then a keystroke refused and a change                                                | input insertText ab, input deleteContentBackward a, input insertText a! | a           | RMD062: input insertText ab, input deleteContentBackward a, input insertText a!, change a!
+text, both, refusing: typed, blurred with no change (the window lost the focus), then a keystroke refused and a change        | input insertText ab, input insertText ab!                               | a           | RMD062: input insertText ab, input insertText ab!, change ab!
+text, both, refusing: typed and put back, blurred, then a keystroke refused and a change                                      | input insertText ab, input deleteContentBackward a, input insertText a! | a           | RMD062: input insertText ab, input deleteContentBackward a, input insertText a!, change a!
+text, oninput: typed, blurred with no change (the window lost the focus), then a keystroke refused and a change               | input insertText ab, input insertText ab!                               | ab          | same, RMD062
+text, oninput: typed and put back, blurred, then a keystroke refused and a change                                             | input insertText ab, input deleteContentBackward a, input insertText a! | a           | same, RMD062
+text, oninput, refusing: typed, blurred with no change (the window lost the focus), then a keystroke refused and a change     | input insertText ab, input insertText ab!                               | a           | same, RMD062
+text, oninput, refusing: typed and put back, blurred, then a keystroke refused and a change                                   | input insertText ab, input deleteContentBackward a, input insertText a! | a           | same, RMD062
+textarea, both: typed, blurred with no change (the window lost the focus), then a keystroke refused and a change              | input insertText ab, input insertText ab!, change ab                    | ab          | RMD062: input insertText ab, input insertText ab!, change ab!
+textarea, both: typed and put back, blurred, then a keystroke refused and a change                                            | input insertText ab, input deleteContentBackward a, input insertText a! | a           | RMD062: input insertText ab, input deleteContentBackward a, input insertText a!, change a!
+textarea, both, refusing: typed, blurred with no change (the window lost the focus), then a keystroke refused and a change    | input insertText ab, input insertText ab!                               | a           | RMD062: input insertText ab, input insertText ab!, change ab!
+textarea, both, refusing: typed and put back, blurred, then a keystroke refused and a change                                  | input insertText ab, input deleteContentBackward a, input insertText a! | a           | RMD062: input insertText ab, input deleteContentBackward a, input insertText a!, change a!
+textarea, oninput: typed, blurred with no change (the window lost the focus), then a keystroke refused and a change           | input insertText ab, input insertText ab!                               | ab          | same, RMD062
+textarea, oninput: typed and put back, blurred, then a keystroke refused and a change                                         | input insertText ab, input deleteContentBackward a, input insertText a! | a           | same, RMD062
+textarea, oninput, refusing: typed, blurred with no change (the window lost the focus), then a keystroke refused and a change | input insertText ab, input insertText ab!                               | a           | same, RMD062
+textarea, oninput, refusing: typed and put back, blurred, then a keystroke refused and a change                               | input insertText ab, input deleteContentBackward a, input insertText a! | a           | same, RMD062
+number, both: 1.0 over 1 as an input method's input, not composing                                                            | input insertCompositionText 1.0                                         | 1.0         | same
+number, both, refusing: 1.0 over 1 as an input method's input, not composing                                                  | input insertCompositionText 1.0                                         | 1 shows 1.0 | same
+number, oninput: 1.0 over 1 as an input method's input, not composing                                                         | input insertCompositionText 1.0                                         | 1.0         | same
+number, oninput, refusing: 1.0 over 1 as an input method's input, not composing                                               | input insertCompositionText 1.0                                         | 1 shows 1.0 | same
 `;
 
 const EXPECTED = new Map(
   TABLE.trim()
     .split("\n")
     .map((line) => {
-      const [row, calls, decided, model] = line.split("|").map((cell) => cell.trim());
+      const [row, calls, after, inside] = line.split("|").map((cell) => cell.trim());
       const list = (cell: string) => (cell === "–" ? [] : cell.split(", "));
-      return [row, { calls: list(calls), decided: list(decided), model }] as const;
+      const [model, shown = model] = after.split(" shows ");
+      const outside = { calls: list(calls), shown, model, reported: false };
+      const insideCalls = inside.startsWith("RMD062: ") ? list(inside.slice("RMD062: ".length)) : outside.calls;
+      const reported = inside !== "same";
+      return [row, { outside, inside: { ...outside, calls: insideCalls, reported } }] as const;
     }),
 );
 
@@ -603,10 +628,8 @@ describe("every event on every field", () => {
   for (const [name, row] of Object.entries(ROWS)) {
     test(name, async () => {
       const expected = EXPECTED.get(name);
-      for (const inACommit of [false, true]) {
-        const seen = await run(row, inACommit);
-        expect({ inACommit, ...seen }).toEqual({ inACommit, ...expected, shown: expected?.model });
-      }
+      expect({ inACommit: false, ...(await run(row, false)) }).toEqual({ inACommit: false, ...expected?.outside });
+      expect({ inACommit: true, ...(await run(row, true)) }).toEqual({ inACommit: true, ...expected?.inside });
     });
   }
 });

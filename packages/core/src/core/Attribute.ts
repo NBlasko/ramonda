@@ -24,10 +24,9 @@ export function applyChangesOnAttributes(enhancedNode: ChildNode, rawNextAttribu
   attachNextOnenhancedNode(enhancedNode as EnhancedHTMLNode, previousAttributes, nextAttributes, onServer);
   releaseDroppedRef(enhancedNode as EnhancedHTMLNode, nextAttributes.ref);
   /**
-   * An `<input>` is told, on every pass, whether it is controlled and what its `transform` is — a
-   * function its field listener calls, not an attribute, so a pass that no longer has it takes it away,
-   * which the attribute diff, reading attributes back off the element, would never see. On any other
-   * element `transform` is the attribute it is: SVG's `transform="translate(…)"`.
+   * An `<input>` is told, on every pass, whether it is controlled — a pass that no longer has a
+   * `value` lets the field go, which the attribute diff, reading attributes back off the element,
+   * would never see.
    */
   if (enhancedNode.nodeName === "INPUT") {
     writeDefaults(enhancedNode as unknown as HTMLInputElement, rawNextAttributes);
@@ -289,8 +288,6 @@ function setNextOnenhancedNode(enhancedNode: EnhancedHTMLNode, name: string, val
    */
   if (value === true && isBooleanAttribute(name)) value = "";
 
-  // An `<input>`'s `transform` is the field's, given in `applyChangesOnAttributes` — never markup.
-  if (name === "transform" && typeof value === "function") return;
   // Nor are an `<input>`'s defaults attributes of those names: `writeDefaults` writes them.
   if ((name === "defaultValue" || name === "defaultChecked") && enhancedNode.nodeName === "INPUT") return;
 

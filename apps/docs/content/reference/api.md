@@ -154,13 +154,13 @@ anyway under a server DOM shim.
 
 ### Types
 
-All 39, grouped by what they belong to. The server and per-request ones are explained under
+All 38, grouped by what they belong to. The server and per-request ones are explained under
 [Server rendering](#server-rendering); the rest are the shape of whatever they are named for.
 
 **Markup** — `VNode` · `RamondaNode` · `ComponentChild` · `ComponentClassKind`
 
 **Hooks and options** — `HookMeta` · `HeadOptions` · `MetaTag` · `LinkTag` · `PortalProps` · `PortalTarget` · `Each` · `ItemRender` · `ItemComponent` · `Identity` ·
-`AsyncLoadProps` · `AsyncLoadFailure` · `Lazy` · `ContextOptions` · `ErrorBoundaryFallbackProps` · `SelectProps` · `TextAreaProps` · `TransformInput`
+`AsyncLoadProps` · `AsyncLoadFailure` · `Lazy` · `ContextOptions` · `ErrorBoundaryFallbackProps` · `SelectProps` · `TextAreaProps`
 
 **Refs and subscriptions** — `RefCallback` · `RefTarget` · `SubscriptionOwner` · `Disconnect`
 
@@ -493,11 +493,10 @@ Every rule publishes its own issue shape, named for the rule: `AccessKeyIssue`,
 `ResetTheModelDoesNotHearIssue`, `RoleMissingRequiredAriaIssue`, `RoleTakesNoNameIssue`,
 `RoleThatFightsTheTagIssue`, `RowReadsAPlainFieldIssue`, `RowWithoutAKeyIssue`,
 `ServerEnvInSharedCodeIssue`, `StateMutatedInPlaceIssue`, `StateWrittenWhileRenderingIssue`,
-`TableWithNoHeadersIssue`, `TagNeedsItsParentIssue`, `TransformThatIsNotPureIssue`,
-`UnexposedEnvReadIssue`, `UnguardedAsyncLifecycleIssue`, `UnkeyableMemoizedArgumentIssue`,
-`UnknownAriaAttributeIssue`, `UnknownRoleIssue`, `UnnamedFrameIssue`, `UnnamedImageIssue`,
-`UnserializableStateIssue`, `UnsplittableImportIssue`, `UnwatchedFieldIssue`,
-`WatchOfAPropThatIsNotThereIssue`.
+`TableWithNoHeadersIssue`, `TagNeedsItsParentIssue`, `UnexposedEnvReadIssue`,
+`UnguardedAsyncLifecycleIssue`, `UnkeyableMemoizedArgumentIssue`, `UnknownAriaAttributeIssue`,
+`UnknownRoleIssue`, `UnnamedFrameIssue`, `UnnamedImageIssue`, `UnserializableStateIssue`,
+`UnsplittableImportIssue`, `UnwatchedFieldIssue`, `WatchOfAPropThatIsNotThereIssue`.
 
 [issues:end]: #
 

@@ -14,7 +14,7 @@ import { expect, test } from "@playwright/test";
  *   where `Select` writes its `defaultValue`. jsdom was measured to move a choice where browsers do
  *   not, so this is asked of a browser.
  * - **What is drawn.** A refused pick or keystroke is gone in the event that made it — by the field's
- *   `transform`, or by its own handler, which the field answers at once. Chromium draws a frame
+ *   own handler, which the field answers at once. Chromium draws a frame
  *   between an event and a timer, so an answer a task later was measured to show the refused pick in
  *   100 tries of 100; jsdom draws nothing, so this is asked of a browser.
  */
@@ -133,38 +133,19 @@ test.describe("fields only a browser settles", () => {
     expect(frames.filter((value) => value.length > 3)).toEqual([]);
   });
 
-  /** A handler that refuses on its own is answered in the same event, so its refusal is never drawn either. */
-  test("a pick the handler refuses is never drawn", async ({ page }) => {
-    await watchFrames(page, "#refused-by-hand");
-    await page.locator("#refused-by-hand").focus();
+  test("a keystroke the handler refuses is never drawn — on an <input>", async ({ page }) => {
+    await watchFrames(page, "#refused-input");
+    await page.locator("#refused-input").click();
+    await page.keyboard.press("End");
     for (let i = 0; i < 20; i++) {
-      await page.keyboard.press("ArrowDown");
+      await page.keyboard.type("d");
       await page.waitForTimeout(40);
     }
-    await expect(page.locator("#refused-by-hand")).toHaveValue("m");
+    await expect(page.locator("#refused-input")).toHaveValue("abc");
     const frames = await drawn(page);
     expect(frames.length).toBeGreaterThan(20);
-    expect(frames).not.toContain("l");
+    expect(frames.filter((value) => value.length > 3)).toEqual([]);
   });
-
-  for (const [id, by] of [
-    ["refused-input", "its transform"],
-    ["refused-input-by-hand", "its handler"],
-  ]) {
-    test(`a keystroke ${by} refuses is never drawn — on an <input>`, async ({ page }) => {
-      await watchFrames(page, `#${id}`);
-      await page.locator(`#${id}`).click();
-      await page.keyboard.press("End");
-      for (let i = 0; i < 20; i++) {
-        await page.keyboard.type("d");
-        await page.waitForTimeout(40);
-      }
-      await expect(page.locator(`#${id}`)).toHaveValue("abc");
-      const frames = await drawn(page);
-      expect(frames.length).toBeGreaterThan(20);
-      expect(frames.filter((value) => value.length > 3)).toEqual([]);
-    });
-  }
 
   test("a box the handler will not tick is never drawn ticked", async ({ page }) => {
     await watchFrames(page, "#refused-box", "checked");
@@ -187,9 +168,7 @@ test.describe("fields only a browser settles", () => {
     }
     await expect(page.locator("#radio-m")).toBeChecked();
     await expect(page.locator("#radio-l")).not.toBeChecked();
-    await expect(page.locator("#refused-input-model")).toHaveText(
-      '{"text":"abc","handled":"abc","ticked":false,"size":"m"}',
-    );
+    await expect(page.locator("#refused-input-model")).toHaveText('{"text":"abc","ticked":false,"size":"m"}');
     const frames = await drawn(page);
     expect(frames.length).toBeGreaterThan(20);
     expect(frames).not.toContain("true");

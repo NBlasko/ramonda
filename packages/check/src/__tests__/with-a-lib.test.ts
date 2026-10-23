@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { expect, test } from "vitest";
 import ts from "typescript";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -22,20 +22,13 @@ const lines = (found: { line: number; kind: string }[] | undefined) => (found ??
 
 /**
  * The analyzer builds its own program with no lib, and a caller of `analyzeProgram` may hand it one
- * with a lib, where `RegExp.prototype.test`, `Math` and `HTMLFormElement.reset` resolve to TypeScript's
- * declarations instead of to nothing. A rule that asks whether a name is the platform's answers the
- * same in both.
+ * with a lib, where `HTMLFormElement.reset` resolves to TypeScript's declaration instead of to
+ * nothing. A rule that asks whether a name is the platform's answers the same in both.
  */
-describe("a rule reads the platform the same with a lib or without", () => {
-  for (const [fixture, rule] of [
-    ["transform-pure", "transform-that-is-not-pure"],
-    ["reset-heard", "reset-the-model-does-not-hear"],
-  ] as const) {
-    test(rule, () => {
-      const without = analyzeProject(join(here, "fixtures", fixture, "tsconfig.json")).findings[rule];
-      const withLib = analyzeProgram(withALib(fixture)).findings[rule];
-      expect(lines(withLib)).toEqual(lines(without));
-      expect(lines(without).length).toBeGreaterThan(0);
-    });
-  }
+test("a rule reads the platform the same with a lib or without", () => {
+  const rule = "reset-the-model-does-not-hear";
+  const without = analyzeProject(join(here, "fixtures", "reset-heard", "tsconfig.json")).findings[rule];
+  const withLib = analyzeProgram(withALib("reset-heard")).findings[rule];
+  expect(lines(withLib)).toEqual(lines(without));
+  expect(lines(without).length).toBeGreaterThan(0);
 });

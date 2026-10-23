@@ -56,7 +56,6 @@ const EXPECTED_TYPES = [
   "ContextConsumedAboveItsProviderIssue",
   "ControlWithNoLabelIssue",
   "FormFieldWithoutWhatTheFormNeedsIssue",
-  "TransformThatIsNotPureIssue",
   "ResetTheModelDoesNotHearIssue",
   "ComputeTakesNoArgumentsIssue",
   "ContextIssue",

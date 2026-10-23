@@ -15,7 +15,7 @@ export interface FieldTheUserCannotChangeIssue {
    * `literal` — a text field's `value` written as itself, `value=""`, which no handler can move;
    * `unknown-spread` — a spread on a controlled field that the source cannot say carries a handler;
    * `handler-may-be-missing` — the field's handler is a prop declared optional, `oninput?:`;
-   * `pick-through-click` — a box picked through `onclick`, which runs before the field decides the pick;
+   * `pick-through-click` — a box picked through `onclick`, which a pick sent without a click never reaches;
    * `change-after-its-input` — a date, time, color or range with only `onchange`, after its `input`.
    */
   kind:
@@ -124,8 +124,8 @@ const PICKED_AT_ONCE: ReadonlySet<string> = new Set([
  *   the schema's HTML constraints, `html(path)` from `@ramonda/form/bguard` — see `isConstraints`.
  *   A spread of a prop, `{...this.props.attrs}`, is read where the component is used, by
  *   `form-field-without-what-the-form-needs`.
- * - **A box picked through `onclick`** — it works, but `click` comes before the field's `input`, so
- *   it writes the model before the pick is decided: past the `transform`, and past a refusal.
+ * - **A box picked through `onclick`** — it works for a click, but a pick sent without one — a
+ *   `change` a test or a script dispatches — never reaches it, and the field puts the box back.
  * - **A handler that is an optional prop** — `oninput={this.props.oninput}` where the props declare
  *   `oninput?:` — whose caller may leave it out.
  *
@@ -159,7 +159,7 @@ export const fieldTheUserCannotChange = {
           "change-after-its-input":
             "has a value and only `onchange`, which comes after the `input` the field already answered — write it as `oninput`.",
           "pick-through-click":
-            "takes its pick through `onclick`, which runs before the field decides it — write it as `onchange`.",
+            "takes its pick through `onclick`, which a pick sent without a click never reaches — write it as `onchange`.",
         }[issue.kind]
       }`,
     ],
@@ -177,8 +177,8 @@ export const fieldTheUserCannotChange = {
       "```tsx\n" +
       '<input name="email" defaultValue={this.saved} />\n' +
       "```\n\n" +
-      "To refuse or rewrite an edit, give the field a `transform` — a pure function it runs before any\n" +
-      "handler reads it.\n\n",
+      "To refuse an edit, the handler writes nothing; to rewrite it, the handler writes what the field\n" +
+      "should show.\n\n",
   },
 
   /**
@@ -248,7 +248,7 @@ export const fieldTheUserCannotChange = {
         }
         return [{ component, kind: "held-between-keystrokes", ...at }];
       }
-      // `onclick` on a box writes the model before the field decides the pick — around its `transform`.
+      // `onclick` on a box hears a click, not a pick: a pick sent without one never reaches it.
       const click = attributes.find((attribute) => attribute.name === "onclick" && !writtenAsNothing(attribute));
       if (pick && click !== undefined) return [{ component, kind: "pick-through-click", ...at }];
       return [{ component, kind: "no-handler", ...at }];

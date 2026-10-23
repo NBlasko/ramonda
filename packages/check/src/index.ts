@@ -23,7 +23,6 @@ export type {
   ContextConsumedAboveItsProviderIssue,
   ControlWithNoLabelIssue,
   FormFieldWithoutWhatTheFormNeedsIssue,
-  TransformThatIsNotPureIssue,
   ResetTheModelDoesNotHearIssue,
   ComputeTakesNoArgumentsIssue,
   ContextIssue,

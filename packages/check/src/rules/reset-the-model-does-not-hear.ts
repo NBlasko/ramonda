@@ -5,7 +5,7 @@ import { isNothing, openingOf, tagOf } from "./element";
 import { unwrap } from "./follow-value";
 import { enclosingElement } from "./html";
 import type { JsxElementLike, ModuleRule, Resolver } from "./rule";
-import { fromThePlatform } from "./pure-function";
+import { fromThePlatform } from "./platform";
 import { attributeLiterals, fieldKind, modelNames, typeAttributeOf } from "./formTable";
 
 export interface ResetTheModelDoesNotHearIssue {

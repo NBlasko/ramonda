@@ -1,6 +1,6 @@
 import type { Component } from "./Component";
 import { COMPONENT_RUNTIME } from "../core/runtime";
-import { answerEdit, callHandler, forgetField, type FieldControl, type Transform } from "../core/field";
+import { answerEdit, callHandler, forgetField, type FieldControl } from "../core/field";
 import type { ComponentChild, RamondaNode } from "../types/vdom";
 
 /**
@@ -150,10 +150,6 @@ function controlFor(component: Component<any> & { settle(): void }, pick: boolea
     prev: () => {
       const model = runtime.rawProps.value;
       return Array.isArray(model) ? model.map(String) : String(model ?? "");
-    },
-    transform: () => {
-      const transform = runtime.rawProps.transform;
-      return typeof transform === "function" ? (transform as Transform) : undefined;
     },
     own: (type, own) => {
       // Both spellings, in the order a listener would be: `oninput`, then `on:input`.

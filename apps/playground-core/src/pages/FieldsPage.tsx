@@ -117,36 +117,21 @@ class Between extends Component {
 }
 
 /**
- * A pick or a keystroke that is refused is never drawn, refused either way: by the field's
- * `transform`, before any handler, or by the handler itself, which the field answers at once. `l` is
- * not in stock, and the text holds three characters at most. The form reads what the field keeps.
+ * A pick or a keystroke the handler refuses is never drawn: the field answers the handler at once,
+ * and a handler that writes nothing leaves the model where it was. `l` is not in stock, and the text
+ * holds three characters at most. The form reads what the field keeps.
  */
 class Refused extends Component {
   @state size = "m";
   @state text = "abc";
-  @state handled = "m";
   @state read = "";
 
-  inStock(next: string, prev: string): string {
-    return next === "l" ? prev : next;
-  }
-
-  max3(next: string, prev: string): string {
-    return next.length <= 3 ? next : prev;
-  }
-
   picked(event: EventOn<HTMLSelectElement>) {
-    this.size = event.currentTarget.value;
+    if (event.currentTarget.value !== "l") this.size = event.currentTarget.value;
   }
 
   typed(event: EventOn<HTMLTextAreaElement>) {
-    this.text = event.currentTarget.value;
-  }
-
-  /** The handler refuses on its own: it leaves the model where it was. */
-  pickedByHand(event: EventOn<HTMLSelectElement>) {
-    const wanted = event.currentTarget.value;
-    if (wanted !== "l") this.handled = wanted;
+    if (event.currentTarget.value.length <= 3) this.text = event.currentTarget.value;
   }
 
   heard(event: EventOn<HTMLFormElement>) {
@@ -160,28 +145,12 @@ class Refused extends Component {
         <h3 style={{ margin: "0 0 0.25rem" }}>4 — a refused pick is never drawn</h3>
         <p style={hint}>Pick l, or type a fourth character: neither shows, even for a frame.</p>
         <form onchange={this.heard}>
-          <Select id="refused-size" aria-label="Size" value={this.size} onchange={this.picked} transform={this.inStock}>
+          <Select id="refused-size" aria-label="Size" value={this.size} onchange={this.picked}>
             <option value="s">s</option>
             <option value="m">m</option>
             <option value="l">l</option>
           </Select>
-          <TextArea
-            id="refused-text"
-            aria-label="Three at most"
-            value={this.text}
-            oninput={this.typed}
-            transform={this.max3}
-          />
-          <Select
-            id="refused-by-hand"
-            aria-label="Size, refused by the handler"
-            value={this.handled}
-            onchange={this.pickedByHand}
-          >
-            <option value="s">s</option>
-            <option value="m">m</option>
-            <option value="l">l</option>
-          </Select>
+          <TextArea id="refused-text" aria-label="Three at most" value={this.text} oninput={this.typed} />
         </form>
         <output id="refused-read" style={readout}>
           {this.read}
@@ -193,27 +162,17 @@ class Refused extends Component {
 
 /**
  * The same refusals on an `<input>`, whose own handlers core holds on the element: a keystroke the
- * `transform` refuses, one the handler refuses, a box the handler will not tick, and a radio the
- * handler will not pick — the group is put back whole, so `m` stays the one that is on.
+ * handler refuses, a box the handler will not tick, and a radio the handler will not pick — the group
+ * is put back whole, so `m` stays the one that is on.
  */
 class RefusedInput extends Component {
   @state text = "abc";
-  @state handled = "abc";
   @state ticked = false;
   @state size = "m";
 
-  max3(next: string, prev: string): string {
-    return next.length <= 3 ? next : prev;
-  }
-
+  /** Past three characters, the handler leaves the model where it was. */
   typed(event: EventOn<HTMLInputElement>) {
-    this.text = event.currentTarget.value;
-  }
-
-  /** The handler refuses on its own: past three characters, it leaves the model where it was. */
-  typedByHand(event: EventOn<HTMLInputElement>) {
-    const wanted = event.currentTarget.value;
-    if (wanted.length <= 3) this.handled = wanted;
+    if (event.currentTarget.value.length <= 3) this.text = event.currentTarget.value;
   }
 
   /** Never ticks: the terms are not ready to be accepted yet. */
@@ -230,19 +189,7 @@ class RefusedInput extends Component {
       <section style={box}>
         <h3 style={{ margin: "0 0 0.25rem" }}>5 — the same, on an input</h3>
         <p style={hint}>Type a fourth character, tick the box, pick l: none of them shows, even for a frame.</p>
-        <input
-          id="refused-input"
-          aria-label="Three at most, by transform"
-          value={this.text}
-          oninput={this.typed}
-          transform={this.max3}
-        />
-        <input
-          id="refused-input-by-hand"
-          aria-label="Three at most, by the handler"
-          value={this.handled}
-          oninput={this.typedByHand}
-        />
+        <input id="refused-input" aria-label="Three at most" value={this.text} oninput={this.typed} />
         <label>
           <input id="refused-box" type="checkbox" checked={this.ticked} oninput={this.ticks} /> Accept
         </label>
@@ -256,7 +203,7 @@ class RefusedInput extends Component {
           </label>
         </fieldset>
         <output id="refused-input-model" style={readout}>
-          {JSON.stringify({ text: this.text, handled: this.handled, ticked: this.ticked, size: this.size })}
+          {JSON.stringify({ text: this.text, ticked: this.ticked, size: this.size })}
         </output>
       </section>
     );

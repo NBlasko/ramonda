@@ -451,19 +451,11 @@ export const targetIsNotNarrowed = (
   />
 );
 
-/**
- * An uncontrolled `<input>` says where it starts with `defaultValue` or `defaultChecked`, and a
- * controlled one takes `transform` — a function, which no other element's `transform` is.
- */
+/** An uncontrolled `<input>` says where it starts with `defaultValue` or `defaultChecked`. */
 export const inputDefaults = (
   <div>
     <input name="email" defaultValue="ana@example.com" />
     <input type="checkbox" name="news" defaultChecked />
-    <input
-      value="064"
-      oninput={() => {}}
-      transform={(next: string, prev: string) => (/^\d*$/.test(next) ? next : prev)}
-    />
     <svg>
       <g transform="translate(10, 0)" />
     </svg>

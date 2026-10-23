@@ -6,7 +6,7 @@ import { mounted, updated } from "./decorators";
 import { __h } from "../vdom/h";
 import { composingIn } from "../core/field";
 import { answer, controlled, forwarded, given } from "./forwarded";
-import type { RefusedVerbatimStandard, TransformInput } from "../types/commonTypes";
+import type { RefusedVerbatimStandard } from "../types/commonTypes";
 import type { RefTarget } from "./Ref";
 
 /**
@@ -48,14 +48,6 @@ export interface TextAreaProps extends Partial<RefusedVerbatimStandard> {
    * text is read when the form is sent rather than held in state. Not with `value`.
    */
   defaultValue?: string | number;
-  /**
-   * What an edit leaves in the field, decided before any handler reads it: `next` is the text the edit
-   * made, `prev` what the model holds, and what comes back is what the field shows — `prev` refuses
-   * the edit, so a fourth character in a field of three is never even drawn, and the caret goes back
-   * where it was. `input` says where the caret is and what kind of edit it was, for a mask. A pure
-   * function: see `decideEdit` in `core/field.ts`.
-   */
-  transform?: (next: string, prev: string, input: TransformInput) => string;
   className?: string;
   key?: string | number;
   ref?: RefTarget<HTMLTextAreaElement>;
@@ -151,7 +143,7 @@ export class TextArea extends Component<TextAreaProps> {
     return __h(
       "textarea",
       {
-        ...forwarded(this, ["value", "defaultValue", "transform", "children", "ref", ...field.replaced]),
+        ...forwarded(this, ["value", "defaultValue", "children", "ref", ...field.replaced]),
         ...field.listeners,
         ref: this.e,
       },

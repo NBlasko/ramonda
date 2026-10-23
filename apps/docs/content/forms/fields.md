@@ -164,14 +164,12 @@ commit runs — `@mounted`, `@updated`, `render()` — is still running when an 
 arrives, so [`field-set-by-an-event`](/reference/check) reports one before it ships and
 [`RMD062`](/reference/diagnostics/rmd062) when it runs.
 
-### `transform` — an edit decided before anyone reads it
+### Refusing or rewriting an edit — the handler decides
 
-A `transform(next, prev, input)` on an `<input>`, a `Select` or a `TextArea` decides each edit before
-the field's handler runs: `next` is what the edit left in the field, `prev` what the model holds, and
-what it returns is what the field keeps. Return `next` to take the edit, `prev` to refuse it, or
-anything else to rewrite it. A refused edit is no edit: it is never drawn, the caret stays where the
-edit found it, and neither `oninput` nor `onchange` of the field runs — a handler only ever hears an
-edit the field keeps.
+A field's handler decides each edit by what it writes: the edit, to take it; something else, to
+rewrite it; nothing, to refuse it. The field shows the model in the same event, before anything
+around it reads it — so a refused keystroke is never drawn, and the caret and the selection go back
+where the edit found them.
 
 ```tsx
 import { Component, state, type EventOn } from "@ramonda/core";
@@ -180,28 +178,21 @@ class Phone extends Component {
   @state phone = "";
 
   typed(event: EventOn<HTMLInputElement>) {
-    this.phone = event.currentTarget.value;
-  }
-
-  digitsOnly(next: string, prev: string): string {
-    return /^\d*$/.test(next) ? next : prev;
+    const text = event.currentTarget.value;
+    if (/^\d*$/.test(text)) this.phone = text;
   }
 
   render() {
-    return <input aria-label="Phone" value={this.phone} oninput={this.typed} transform={this.digitsOnly} />;
+    return <input aria-label="Phone" value={this.phone} oninput={this.typed} />;
   }
 }
 ```
 
-`input` says what the edit was — `inputType` (`insertText`, `deleteContentBackward`, `insertFromPaste`)
-and the caret's `selectionStart` and `selectionEnd` — which is what a mask needs. On a checkbox or a
-radio, `next` and `prev` are whether it is checked. An input method's word is decided whole, once it
-ends, so a `transform` holds for it as for anything typed.
-
-A `transform` is pure — its answer depends on what it is given and on fixed values, and it changes
-nothing — and [`transform-that-is-not-pure`](/reference/check) proves it from the source, following the
-functions it calls into other files. One made by a factory is made once, at the top of a module —
-`export const max20 = maxLength(20)` — and named in the markup.
+The handler is handed the edit's own `input`. Typed `EventOn<HTMLInputElement, InputEvent>`, it reads
+what the edit was — `event.inputType`: `insertText`, `deleteContentBackward`, `insertFromPaste` — and
+where the caret is, `event.currentTarget.selectionStart`, which is what a mask needs. A rewrite that
+keeps the text's length keeps the caret where it was; after one that changes the length, where the
+caret belongs is the app's to say.
 
 ### `TextArea` — a `<textarea>` keeps its value inside the element
 

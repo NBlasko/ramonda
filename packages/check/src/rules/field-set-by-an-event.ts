@@ -13,8 +13,9 @@ import type { Resolver, Rule, RuleContext } from "./rule";
  * A field learns its model through render, and the work a commit runs — `render()`, the constructor,
  * `@created`, `@mounted`, `@updated`, `@destroyed`, `@watchProp`, `@catchError` — runs before the
  * render an edit's handler causes: that one comes once the commit is over. An edit sent from there
- * is answered, but a second one that reads the model — a `transform`'s `prev`, the word an input
- * method ends after `oncompositionend` moved the model — reads the model as it was. And an edit sent
+ * is answered, but a second one reads the model before that render — whether the handler took the
+ * first edit or refused it is not known yet — and so does the word an input method ends after
+ * `oncompositionend` moved the model. And an edit sent
  * there is a value set by an event: what the field should show is state, `this.on = true`.
  *
  * What is an edit: dispatching `input`, `change`, `beforeinput` or a composition event at a field
@@ -110,7 +111,7 @@ export const fieldSetByAnEvent = {
       "  this.text = this.saved;      // learned on mount\n" +
       "}\n" +
       "```\n\n" +
-      "An edit that must go through the field — its `transform`, the form around it — is sent once the\n" +
+      "An edit that must go through the field — its handler, the form around it — is sent once the\n" +
       "commit is over: `queueMicrotask(() => this.box.current?.click())`. A library given the field is\n" +
       "told its value through its own callback, which writes state.\n\n",
   },

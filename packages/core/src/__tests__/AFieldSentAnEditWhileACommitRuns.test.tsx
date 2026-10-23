@@ -1,16 +1,16 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { getDOM } from "../test/setup";
 import { mounted, state } from "../base/decorators";
-import { Component, createRef, type EventOn, type TransformInput } from "../index";
+import { Component, createRef, type EventOn } from "../index";
 import { resetDiagnostics } from "../debug/diagnostics";
 
 /**
  * RMD062 — a field sent an edit while a commit runs.
  *
  * A field learns its model through render, and the render an edit's handler causes runs once the
- * commit is over. One edit sent from a `@mounted` is answered like any; a second that reads the
- * model — a `transform`'s `prev`, the check after `oncompositionend` — reads it as it was. That read
- * is reported; the edit is still answered.
+ * commit is over. One edit sent from a `@mounted` is answered like any; a second reads the model
+ * before that render — whether the handler took the first edit or refused it is not known yet — and
+ * so does the check after `oncompositionend`. That read is reported; the edit is still answered.
  */
 let messages: string[];
 let stop: () => void;
@@ -38,15 +38,12 @@ function typeInto(field: HTMLInputElement, text: string): void {
 }
 
 describe("RMD062", () => {
-  test("a second edit from a @mounted, whose transform reads the model, is reported", async () => {
+  test("a second edit from a @mounted is reported", async () => {
     class Shout extends Component {
       @state text = "";
       field = createRef<HTMLInputElement>();
       typed(event: EventOn<HTMLInputElement>) {
         this.text = event.currentTarget.value.toUpperCase();
-      }
-      keep(next: string, _prev: string, _input: TransformInput): string {
-        return next;
       }
       @mounted
       fill() {
@@ -55,16 +52,14 @@ describe("RMD062", () => {
         typeInto(field, `${field.value}b`);
       }
       render() {
-        return (
-          <input aria-label="Shout" ref={this.field} value={this.text} oninput={this.typed} transform={this.keep} />
-        );
+        return <input aria-label="Shout" ref={this.field} value={this.text} oninput={this.typed} />;
       }
     }
     const app = await getDOM<Shout>(<Shout />);
     await app.settle();
 
     expect(messages).toHaveLength(1);
-    expect(messages[0]).toContain("its transform's `prev`");
+    expect(messages[0]).toContain("its next event");
   });
 
   test("a word that ends while a commit runs is reported", async () => {
@@ -105,7 +100,7 @@ describe("RMD062", () => {
   });
 
   /** One edit from a @mounted reads nothing its render has not written: it is answered, and says nothing. */
-  test("one click, or one edit through a transform, from a @mounted is not reported", async () => {
+  test("one click, or one edit, from a @mounted is not reported", async () => {
     class Terms extends Component {
       @state on = false;
       @state text = "";
@@ -117,9 +112,6 @@ describe("RMD062", () => {
       typed(event: EventOn<HTMLInputElement>) {
         this.text = event.currentTarget.value;
       }
-      keep(next: string): string {
-        return next;
-      }
       @mounted
       start() {
         this.box.current?.click();
@@ -129,7 +121,7 @@ describe("RMD062", () => {
         return (
           <div>
             <input type="checkbox" aria-label="Terms" ref={this.box} checked={this.on} onchange={this.flipped} />
-            <input aria-label="Name" ref={this.field} value={this.text} oninput={this.typed} transform={this.keep} />
+            <input aria-label="Name" ref={this.field} value={this.text} oninput={this.typed} />
           </div>
         );
       }
@@ -147,11 +139,8 @@ describe("RMD062", () => {
       typed(event: EventOn<HTMLInputElement>) {
         this.text = event.currentTarget.value.toUpperCase();
       }
-      keep(next: string): string {
-        return next;
-      }
       render() {
-        return <input id="i" aria-label="Shout" value={this.text} oninput={this.typed} transform={this.keep} />;
+        return <input id="i" aria-label="Shout" value={this.text} oninput={this.typed} />;
       }
     }
     const app = await getDOM<Shout>(<Shout />);
@@ -229,51 +218,36 @@ describe("RMD062", () => {
     expect(messages[0]).toContain("had its word ended by a commit");
   });
 
-  /** A refused edit ran no handler, so the field still shows its model: a second edit reads it right. */
-  test("a second edit after a refused one is not reported", async () => {
+  /** The handler ran and refused: that is known once its render has run, so a second edit reads ahead of it. */
+  test("a second edit after one the handler refused is reported", async () => {
     class Locked extends Component {
       @state on = false;
       box = createRef<HTMLInputElement>();
-      flipped(event: EventOn<HTMLInputElement>) {
-        this.on = event.currentTarget.checked;
-      }
-      refuse(_next: boolean, prev: boolean): boolean {
-        return prev;
-      }
+      notYet(_event: EventOn<HTMLInputElement>) {}
       @mounted
       start() {
         this.box.current?.click();
         this.box.current?.click();
       }
       render() {
-        return (
-          <input
-            type="checkbox"
-            aria-label="Locked"
-            ref={this.box}
-            checked={this.on}
-            onchange={this.flipped}
-            transform={this.refuse}
-          />
-        );
+        return <input type="checkbox" aria-label="Locked" ref={this.box} checked={this.on} onchange={this.notYet} />;
       }
     }
     const app = await getDOM<Locked>(<Locked />);
     await app.settle();
 
-    expect({ messages, on: app.instance.on }).toEqual({ messages: [], on: false });
+    expect({ messages: messages.length, on: app.instance.on, checked: app.instance.box.current?.checked }).toEqual({
+      messages: 1,
+      on: false,
+      checked: false,
+    });
   });
   /** No handler ran for the first edit, so nothing waits for a render: the second reads the model. */
   test("a second edit after one no handler heard is not reported", async () => {
     class Unheard extends Component {
       @state text = "";
-      prevs: string[] = [];
       field = createRef<HTMLInputElement>();
       changed() {}
-      keep(next: string, prev: string): string {
-        this.prevs.push(prev);
-        return next;
-      }
       @mounted
       fill() {
         const field = this.field.current as HTMLInputElement;
@@ -281,20 +255,12 @@ describe("RMD062", () => {
         typeInto(field, "xy");
       }
       render() {
-        return (
-          <input
-            aria-label="Unheard"
-            ref={this.field}
-            value={this.text}
-            onchange={this.changed}
-            transform={this.keep}
-          />
-        );
+        return <input aria-label="Unheard" ref={this.field} value={this.text} onchange={this.changed} />;
       }
     }
     const app = await getDOM<Unheard>(<Unheard />);
     await app.settle();
 
-    expect({ messages, prevs: app.instance.prevs }).toEqual({ messages: [], prevs: ["", ""] });
+    expect({ messages, shown: app.instance.field.current?.value }).toEqual({ messages: [], shown: "" });
   });
 });

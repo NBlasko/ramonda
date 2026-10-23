@@ -1,7 +1,6 @@
 import { UNEDITED_INPUT_TYPES } from "@ramonda/dom-facts";
 import { diagnose } from "../debug/diagnostics";
 import { reportFault } from "../debug/fault";
-import type { TransformInput } from "../types/commonTypes";
 import type { EnhancedHTMLNode } from "../types/vdom";
 import { writeValue } from "./Attribute";
 import { drainSync, drainingNow } from "./Task";
@@ -9,10 +8,8 @@ import { drainSync, drainingNow } from "./Task";
 /** The fields a controlled value can sit on. Told apart by tag name: a field in an iframe is another window's class. */
 type Field = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
 
-/** A field's value as `transform` sees it: text, a checkbox's state, or a `multiple` select's choices. */
+/** A field's value: text, a checkbox's state, or a `multiple` select's choices. */
 export type FieldValue = string | boolean | string[];
-
-export type Transform = (next: never, prev: never, input: TransformInput) => unknown;
 
 /**
  * What a controlled field is, to `answerEdit`: where its model is, how its own handlers are called,
@@ -26,9 +23,8 @@ export interface FieldControl {
   readonly pick: boolean;
   /** What the model holds now. */
   model(): unknown;
-  /** The model as `transform` is given it, as `prev`. */
+  /** The model as the field holds a value: text, whether it is checked, or a list. */
   prev(): FieldValue;
-  transform(): Transform | undefined;
   /** Calls the field's own handler for `type`, if it has one, as a listener would be called; whether it had one. */
   own(type: string, event: Event): boolean;
   /** Makes the field show the model. */
@@ -65,61 +61,9 @@ export function valueOf(field: Field): FieldValue {
   return field.value;
 }
 
-/**
- * The app's `transform(next, prev, input)`, applied to the field before its handler reads it.
- *
- * `next` is what the edit left in the field and `prev` what the model holds; what comes back is what
- * the field keeps — `next` to take the edit, `prev` to refuse it, anything else to rewrite it. It is
- * written at once, in the field's own listener, so the app's handler, a form around the field and
- * anything the event bubbles to all read the same value, and the browser never draws the edit it
- * replaced.
- *
- * A refused edit puts the caret back as any refused edit does — see `putCaretBack`. A rewrite of the
- * same length keeps the caret through `writeValue`; any other rewrite is the app's to place, as
- * `writeValue` explains.
- *
- * Returns whether it REFUSED the edit — the edit changed the field and the answer is `prev`. A refused
- * edit is no edit: the field's `oninput` and `onchange` are not called, for any field. One rule, so a
- * handler never has to tell a refused edit from a real one — a radio's `value` is the same on or off,
- * and a handler that read it would write the refused pick into the model.
- */
-export function decideEdit(field: Field, transform: Transform, prev: FieldValue, event: Event): boolean {
-  // A `multiple` select is decided as a list, a model of one value included — as the element says.
-  if (isMultiple(field) && !Array.isArray(prev)) prev = [String(prev)];
-  const next = valueOf(field);
-  const text = caretOf(field);
-  const input: TransformInput = {
-    inputType: inputTypeOf(event),
-    selectionStart: text?.selectionStart ?? null,
-    selectionEnd: text?.selectionEnd ?? null,
-  };
-  // A transform that answers nothing — a path with no `return`, past the types — refuses the edit,
-  // rather than writing the text "undefined" into the field and the model.
-  const kept = (transform(next as never, prev as never, input) ?? prev) as FieldValue;
-  // As the model is compared: a multiple select's answer in another order is the same choice.
-  if (sameModel(kept, next)) return false;
-  const refused = sameModel(kept, prev);
-
-  if (isBox(field)) {
-    field.checked = Boolean(kept);
-    return refused;
-  }
-  if (isMultiple(field)) {
-    const wanted = new Set((kept as string[]).map(String));
-    for (let i = 0; i < field.options.length; i++) field.options[i].selected = wanted.has(field.options[i].value);
-    return refused;
-  }
-  if (text === null) {
-    field.value = String(kept);
-    return refused;
-  }
-  writeValue(text as unknown as EnhancedHTMLNode, String(kept), false);
-  return refused;
-}
-
 /** The kind of edit an event is, as `inputType` names it. */
 function inputTypeOf(event: Event): string {
-  // The word an input method commits is decided at `compositionend`, as the edit it is.
+  // The word an input method commits is one edit, handed over at `compositionend`.
   if (event.type === "compositionend") return "insertCompositionText";
   if (event.type === "change") return "insertReplacementText";
   return (event as InputEvent).inputType ?? "";
@@ -146,9 +90,9 @@ function editOf(field: Field | null, event: Event, prev: FieldValue | undefined,
 }
 
 /**
- * Once the field shows the model: an edit that left the text as it was before it was refused — by the
- * `transform`, by a handler that did not write the model, or with no handler at all — and the
- * selection goes back to where the edit found it. The text is the text before the edit, so the
+ * Once the field shows the model: an edit that left the text as it was before it was refused — by a
+ * handler that did not write the model, or with no handler at all — and the selection goes back to
+ * where the edit found it. The text is the text before the edit, so the
  * offsets before the edit mean what they meant.
  */
 function putCaretBack(edit: Edit | undefined): void {
@@ -199,9 +143,9 @@ interface FieldState {
    */
   pending?: FieldValue;
   /**
-   * An edit of a text field was taken since its last `change`, so the `change` that ends them reaches
-   * `onchange` — when the field no longer shows `since`. Edits that were all refused are no edit, and
-   * their `change` reaches nothing; nor does one whose edits put the text back, as a browser sends none.
+   * An edit of a text field reached its handler since its last `change`, so the `change` that ends
+   * them reaches `onchange` — when the field no longer shows `since`. One whose edits put the text
+   * back — every one refused — reaches nothing, as a browser sends none.
    */
   taken: boolean;
   /** What the field held when the edits the next `change` ends began. */
@@ -297,9 +241,14 @@ function show(control: FieldControl, field: Field | null, handled: boolean, edit
 /**
  * The model as the field holds a value: while a settle is pending, what the field showed once its
  * last event was answered — see `pending`. A `multiple` select's is a list, a model of one included.
+ *
+ * Read while a settle is pending, it is a guess: whether the handler took the last edit or refused it
+ * is known once its render has run, and that waits for the running commit. Reported as RMD062.
  */
 function heldBy(control: FieldControl, field: Field): FieldValue {
-  const held = stateOf(control.key).pending ?? control.prev();
+  const pending = stateOf(control.key).pending;
+  if (pending !== undefined) readsAheadOfItsRender(field, "its next event", "was sent an edit while a commit ran");
+  const held = pending ?? control.prev();
   return isMultiple(field) && !Array.isArray(held) ? [String(held)] : held;
 }
 
@@ -314,31 +263,12 @@ function showsWhatItHolds(control: FieldControl, field: Field): boolean {
 }
 
 /**
- * `decide`, and when the app's `transform` throws, the field shows the model before the error goes on:
- * no handler ran, so the model is where it was, and the field must not keep an edit it never took.
- */
-function decideOrShow(control: FieldControl, event: Event): boolean {
-  try {
-    return decide(control, event);
-  } catch (error) {
-    // A pick is already marked answered — see `answerEdit` — so its `change` finds nothing to do; a
-    // text field's edit was not taken, so its `change` reaches nothing.
-    try {
-      control.settle();
-    } catch {
-      // The transform's error is the cause.
-    }
-    throw error;
-  }
-}
-
-/**
  * RMD062 — the field must read its model while the render after its last answer is still waiting
- * for the running commit: an edit sent from the commit's own work, a second one reading the first's
- * model; or a word the user typed that the commit's work ended. Reported, never thrown; the edit is
- * answered as before, against what the field last showed.
+ * for the running commit: a second event sent from the commit's own work, or a word that ends while
+ * a commit runs, sent by the commit's own work or typed by the user and ended by it. Reported, never thrown; the edit is answered as before, against
+ * what the field last showed.
  */
-function readsAheadOfItsRender(field: Field, what: string, cause = "was sent an edit while a commit ran"): void {
+function readsAheadOfItsRender(field: Field, what: string, cause: string): void {
   const tag = field.tagName.toLowerCase();
   if (__DEV__) {
     diagnose(
@@ -349,15 +279,6 @@ function readsAheadOfItsRender(field: Field, what: string, cause = "was sent an 
   } else {
     reportFault("RMD062", what, "A field read its model while the render after its last edit was waiting.", "warn");
   }
-}
-
-/** Decides the edit; whether it refused it, which then reaches no handler of the field — see `decideEdit`. */
-function decide(control: FieldControl, event: Event): boolean {
-  const transform = control.transform();
-  const field = event.currentTarget as Field | null;
-  if (transform === undefined || field === null) return false;
-  if (stateOf(control.key).pending !== undefined) readsAheadOfItsRender(field, "its transform's `prev`");
-  return decideEdit(field, transform, heldBy(control, field), event);
 }
 
 /**
@@ -376,13 +297,12 @@ function takeBefore(state: FieldState, event: Event): Selected | undefined {
 }
 
 /**
- * The field's `transform`, its own handler, and then the model — all in the field's own listener.
+ * The field's own handler, and then the model — all in the field's own listener.
  *
  * A field with a `value` (or `checked`) shows what the model says, and its own handler is what
- * writes the model. So, on every edit and in this order: the edit is decided (`decideEdit`), and an
- * edit it refused ends there, with the field showing the model; the handler the app wrote on the
- * field runs, as a listener would, with the element as `this`; the
- * renders it caused run at once; and the field is made to show the model (`show`). All before the
+ * writes the model. So, on every edit and in this order: the handler the app wrote on the field runs,
+ * as a listener would, with the element as `this`; the renders it caused run at once; and the field
+ * is made to show the model (`show`). All before the
  * event bubbles to anything around the field — a form's `oninput`, a library listening on the
  * document — and before the browser draws. So every reader reads the same value, and a handler that
  * did not write the model leaves the field showing the model, in the same event. A field with a
@@ -394,14 +314,11 @@ function takeBefore(state: FieldState, event: Event): Selected | undefined {
  * and the `change` finds nothing left to do.
  *
  * **Not in the middle of a composition.** An input method builds a word over several `input` events,
- * and writing the field between them cancels it. They reach no handler of the field — the
- * `transform` cannot decide a word that is not finished, and a handler that took the unfinished one
- * would write past it — and the field is left alone until the word ends.
+ * and writing the field between them cancels it. They reach no handler of the field — a handler that
+ * took the unfinished word would write past it — and the field is left alone until the word ends.
  *
- * **When it ends, the word is one edit, and every browser hands it over the same way.** It is decided
- * by the `transform` against the model as it stood before the word, and a word the transform keeps
- * reaches the field's `oninput` once, at `compositionend` — so a handler never has to ask
- * `isComposing`. Measured: Firefox then sends an `input` of its own, `insertCompositionText` with the
+ * **When it ends, the word is one edit, and every browser hands it over the same way.** It reaches
+ * the field's `oninput` once, at `compositionend` — so a handler never has to ask `isComposing`. Measured: Firefox then sends an `input` of its own, `insertCompositionText` with the
  * same word, which finds the field showing what it holds and reaches no handler a second time;
  * Chromium sends nothing after `compositionend`.
  * A field the end of the word removed — Enter closed its dialog — is handed nothing, and so is one
@@ -417,10 +334,10 @@ function takeBefore(state: FieldState, event: Event): Selected | undefined {
  *
  * **A `change` ends the edits before it, or is an edit of its own.** On a text field it comes on blur;
  * on a date, a color or a range right after the `input` it ends. When the field shows what it holds,
- * the `change` brings nothing new: it reaches `onchange` if an edit since the last `change` was taken
- * and the text is not back to what it was, and nothing if every one was refused. When the field shows something else — an autofill, a
- * `fireEvent.change` — it is an edit, decided as one, that reaches `oninput` as the `input` it is
- * promised and then `onchange`. A pick's `change` right after its `input` has nothing left to do.
+ * the `change` brings nothing new: it reaches `onchange` if an edit since the last `change` reached
+ * the handler and the text is not back to what it was — every edit refused puts it back. When the
+ * field shows something else — an autofill, a `fireEvent.change` — it is an edit, that reaches
+ * `oninput` as the `input` it is promised and then `onchange`. A pick's `change` right after its `input` has nothing left to do.
  */
 export function answerEdit(control: FieldControl, event: Event): void {
   // A field the tree took away answers nothing — a browser blurs a focused field as it is removed.
@@ -476,13 +393,11 @@ export function answerEdit(control: FieldControl, event: Event): void {
     state.blurred = false;
     const was = field === null ? undefined : heldBy(control, field);
     const edit = editOf(field, event, was);
-    const refused = decideOrShow(control, event);
     answered(control, field, edit, () => {
       const handled = control.own(event.type, event);
       // What `oncompositionend` rendered has run by now: it may have removed the field.
       runRenders();
-      // A word the transform refused is no word: it is not handed over.
-      if (refused || field === null || control.gone()) return handled;
+      if (field === null || control.gone()) return handled;
       // What `oncompositionend` wrote waits for the running commit's render: a word the commit's own
       // work composed, or one the user typed that it ended — a `focus()` in a `@mounted`.
       if (drainingNow()) {
@@ -509,7 +424,7 @@ export function answerEdit(control: FieldControl, event: Event): void {
     state.composing = false;
     state.blurred = false;
   }
-  // The unfinished word reaches no handler of the field: it is handed over, decided, when it ends.
+  // The unfinished word reaches no handler of the field: it is handed over when it ends.
   if ((event as InputEvent).isComposing || state.composing) return;
 
   if (event.type === "change") {
@@ -541,26 +456,20 @@ export function answerEdit(control: FieldControl, event: Event): void {
     return;
   }
 
-  // A pick is one move from its `input` on, whatever happens to it — refused, or a transform or a
-  // handler that throws: the `change` after it finds the pick answered. Marked before anything can
-  // leave this function.
+  // A pick is one move from its `input` on, whatever happens to it — a handler that throws included:
+  // the `change` after it finds the pick answered. Marked before anything can leave this function.
   if (control.pick && event.type === "input")
     state.pickAsked = { propagation: false, immediate: false, prevented: false };
   const asked = state.pickAsked;
   const was = field === null ? undefined : heldBy(control, field);
   const edit = editOf(field, event, was, takeBefore(state, event));
-  const refused = decideOrShow(control, event);
-  if (!refused && !control.pick && event.type === "input") {
+  if (!control.pick && event.type === "input") {
     if (!state.taken) state.since = was;
     state.taken = true;
   }
-  if (refused) {
-    show(control, field, false, edit);
-    return;
-  }
   answered(control, field, edit, () => {
     // A `change` that is an edit of its own reaches the field's edit handler first, as the `input` it is
-    // promised (`insertReplacementText`, what the transform was told), and then `onchange`, as the
+    // promised (`insertReplacementText`), and then `onchange`, as the
     // change it is. What `oninput` stops or prevents is asked of an `input` that never was, and leaves
     // the real `change` alone.
     let handled = false;
@@ -699,11 +608,10 @@ export function callHandler(theirs: unknown, event: Event): boolean {
 }
 
 /* ------------------------------------------------------------------ *
- * A plain `<input>`, given its handlers and its `transform` by the attribute pass.
+ * A plain `<input>`, given its handlers by the attribute pass.
  * ------------------------------------------------------------------ */
 
 const OWN = Symbol("ramonda.input.own");
-const TRANSFORM = Symbol("ramonda.input.transform");
 const CONTROLLED = Symbol("ramonda.input.controlled");
 const HEARD = Symbol("ramonda.input.heard");
 const CONTROL = Symbol("ramonda.input.control");
@@ -712,7 +620,6 @@ const GONE = Symbol("ramonda.input.gone");
 type Kept = HTMLInputElement & {
   /** By event type, then by the name the handler was written under — `oninput`, `on:input`. */
   [OWN]?: Record<string, Map<string, unknown>>;
-  [TRANSFORM]?: Transform;
   [CONTROLLED]?: boolean;
   /** The event types the field listener is attached for. */
   [HEARD]?: Set<string>;
@@ -800,7 +707,6 @@ function controlOf(input: Kept): FieldControl {
     },
     model,
     prev: model,
-    transform: () => input[TRANSFORM],
     own: (type, event) => callOwn(input, type, event),
     settle: () => {
       const box = isBoxNow();
@@ -854,7 +760,7 @@ function listen(input: Kept, types: Iterable<string>): void {
 
 /**
  * After an `<input>`'s attribute pass: whether it is controlled — a `value`, or a `checked` that is
- * `true` or `false` — and its `transform`, which a controlled field alone takes.
+ * `true` or `false`.
  */
 export function controlInput(input: HTMLInputElement, attributes: Record<string, unknown>): void {
   const kept = input as Kept;
@@ -864,7 +770,5 @@ export function controlInput(input: HTMLInputElement, attributes: Record<string,
     !UNEDITED_INPUT_TYPES.has(input.type) && (box ? typeof attributes.checked === "boolean" : attributes.value != null);
   if (!controlled && kept[CONTROLLED]) forgetField(input);
   kept[CONTROLLED] = controlled;
-  const transform = attributes.transform;
-  kept[TRANSFORM] = controlled && typeof transform === "function" ? (transform as Transform) : undefined;
   if (controlled) listen(kept, INPUT_OWN_EVENTS);
 }

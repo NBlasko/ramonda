@@ -30,9 +30,6 @@ class Shout extends Component {
   typed(event: EventOn<HTMLInputElement>) {
     this.text = event.currentTarget.value.toUpperCase();
   }
-  keep(next: string): string {
-    return next;
-  }
   @mounted
   fill() {
     const field = this.field.current as HTMLInputElement;
@@ -42,7 +39,7 @@ class Shout extends Component {
     }
   }
   render() {
-    return <input aria-label="Shout" ref={this.field} value={this.text} oninput={this.typed} transform={this.keep} />;
+    return <input aria-label="Shout" ref={this.field} value={this.text} oninput={this.typed} />;
   }
 }
 

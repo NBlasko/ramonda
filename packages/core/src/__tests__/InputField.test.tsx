@@ -1,7 +1,7 @@
 import { describe, test, expect } from "vitest";
 import { getDOM } from "../test/setup";
 import { state } from "../base/decorators";
-import { Component, type EventOn, type TransformInput } from "../index";
+import { Component, type EventOn } from "../index";
 import { renderToString } from "../hydration/ssr";
 
 /** An edit as a browser makes it: the field changes first, then `input` says so. */
@@ -944,26 +944,12 @@ test("an input puts back the selection a refused paste replaced, and calls the a
   class Locked extends Component {
     @state text = "hello";
     seen: string[] = [];
-    typed(event: EventOn<HTMLInputElement>) {
-      this.text = event.currentTarget.value;
-    }
+    typed(_event: EventOn<HTMLInputElement>) {}
     about(event: EventOn<HTMLInputElement, InputEvent>) {
       this.seen.push(event.inputType);
     }
-    refuse(_next: string, prev: string): string {
-      return prev;
-    }
     render() {
-      return (
-        <input
-          id="i"
-          aria-label="Locked"
-          value={this.text}
-          oninput={this.typed}
-          onbeforeinput={this.about}
-          transform={this.refuse}
-        />
-      );
+      return <input id="i" aria-label="Locked" value={this.text} oninput={this.typed} onbeforeinput={this.about} />;
     }
   }
   const app = await getDOM<Locked>(<Locked />);
@@ -1017,14 +1003,9 @@ describe("what a field answers, and what it does not", () => {
   test("a cancelled edit's selection is not put back by a later refusal", async () => {
     class Locked extends Component {
       @state text = "hello world";
-      typed(event: EventOn<HTMLInputElement>) {
-        this.text = event.currentTarget.value;
-      }
-      refuse(_next: string, prev: string): string {
-        return prev;
-      }
+      typed(_event: EventOn<HTMLInputElement>) {}
       render() {
-        return <input id="i" aria-label="Locked" value={this.text} oninput={this.typed} transform={this.refuse} />;
+        return <input id="i" aria-label="Locked" value={this.text} oninput={this.typed} />;
       }
     }
     const app = await getDOM<Locked>(<Locked />);
@@ -1109,19 +1090,16 @@ describe("a field when the app's code throws, or an edit is not the one announce
     expect([...seen].sort()).toEqual(["the handler's own", "the render's"]);
   });
 
-  /** A mask that throws on what was pasted: the field shows the model it never left. */
-  test("a transform that throws leaves the field showing the model", async () => {
+  /** A mask that throws on what was pasted, before it writes: the field shows the model it never left. */
+  test("a handler that throws before it writes leaves the field showing the model", async () => {
     class Masked extends Component {
       @state text = "12";
       typed(event: EventOn<HTMLInputElement>) {
+        if (!/^\d*$/.test(event.currentTarget.value)) throw new Error("not digits");
         this.text = event.currentTarget.value;
       }
-      strict(next: string): string {
-        if (!/^\d*$/.test(next)) throw new Error("not digits");
-        return next;
-      }
       render() {
-        return <input id="i" aria-label="Masked" value={this.text} oninput={this.typed} transform={this.strict} />;
+        return <input id="i" aria-label="Masked" value={this.text} oninput={this.typed} />;
       }
     }
     const app = await getDOM<Masked>(<Masked />);
@@ -1143,26 +1121,12 @@ describe("a field when the app's code throws, or an edit is not the one announce
   test("a cancelled beforeinput's selection is not put back for a different edit", async () => {
     class Locked extends Component {
       @state text = "hello world";
-      typed(event: EventOn<HTMLInputElement>) {
-        this.text = event.currentTarget.value;
-      }
+      typed(_event: EventOn<HTMLInputElement>) {}
       cancel(event: Event) {
         event.preventDefault();
       }
-      refuse(_next: string, prev: string): string {
-        return prev;
-      }
       render() {
-        return (
-          <input
-            id="i"
-            aria-label="Locked"
-            value={this.text}
-            oninput={this.typed}
-            onbeforeinput={this.cancel}
-            transform={this.refuse}
-          />
-        );
+        return <input id="i" aria-label="Locked" value={this.text} oninput={this.typed} onbeforeinput={this.cancel} />;
       }
     }
     const app = await getDOM<Locked>(<Locked />);
@@ -1180,26 +1144,12 @@ describe("a field when the app's code throws, or an edit is not the one announce
   test("a cancelled beforeinput's selection is not put back even for the same kind of edit", async () => {
     class Locked extends Component {
       @state text = "hello world";
-      typed(event: EventOn<HTMLInputElement>) {
-        this.text = event.currentTarget.value;
-      }
+      typed(_event: EventOn<HTMLInputElement>) {}
       cancel(event: Event) {
         event.preventDefault();
       }
-      refuse(_next: string, prev: string): string {
-        return prev;
-      }
       render() {
-        return (
-          <input
-            id="i"
-            aria-label="Locked"
-            value={this.text}
-            oninput={this.typed}
-            onbeforeinput={this.cancel}
-            transform={this.refuse}
-          />
-        );
+        return <input id="i" aria-label="Locked" value={this.text} oninput={this.typed} onbeforeinput={this.cancel} />;
       }
     }
     const app = await getDOM<Locked>(<Locked />);
@@ -1216,73 +1166,22 @@ describe("a field when the app's code throws, or an edit is not the one announce
 });
 
 /** Round 41. */
-describe("a pick that threw, and a text field's change", () => {
-  /** An out-of-stock size makes the transform throw: the `change` after it is no pick of its own. */
-  test("a pick whose transform threw does not reach onchange on its change", async () => {
-    const { Select } = await import("../index");
-    class Sizes extends Component {
-      @state size = "m";
-      saved: string[] = [];
-      save(event: EventOn<HTMLSelectElement>) {
-        this.saved.push(event.currentTarget.value);
-        this.size = event.currentTarget.value;
-      }
-      inStock(next: string): string {
-        if (next === "l") throw new Error("out of stock");
-        return next;
-      }
-      render() {
-        return (
-          <Select id="s" aria-label="Size" value={this.size} onchange={this.save} transform={this.inStock}>
-            <option value="m">m</option>
-            <option value="l">l</option>
-          </Select>
-        );
-      }
-    }
-    const app = await getDOM<Sizes>(<Sizes />);
-    await app.settle();
-    const select = app.container.querySelector("#s") as HTMLSelectElement;
-    const listener = (event: ErrorEvent) => event.preventDefault();
-    window.addEventListener("error", listener);
-    try {
-      select.value = "l";
-      select.dispatchEvent(new Event("input", { bubbles: true }));
-      select.dispatchEvent(new Event("change", { bubbles: true }));
-    } finally {
-      window.removeEventListener("error", listener);
-    }
-
-    expect({ saved: app.instance.saved, shown: select.value }).toEqual({ saved: [], shown: "m" });
-  });
-
-  /** A text field's `change` on blur: its `onchange` runs, and the transform is not asked again. */
-  test("a text input's change calls onchange and decides nothing again", async () => {
+describe("a text field's change", () => {
+  /** A text field's `change` on blur: its `onchange` runs, and `oninput` is not handed the edit again. */
+  test("a text input's change calls onchange and hands oninput nothing again", async () => {
     class Named extends Component {
       @state text = "";
-      decided = 0;
+      typedTimes = 0;
       changed = 0;
       typed(event: EventOn<HTMLInputElement>) {
+        this.typedTimes++;
         this.text = event.currentTarget.value;
       }
       left() {
         this.changed++;
       }
-      keep(next: string): string {
-        this.decided++;
-        return next;
-      }
       render() {
-        return (
-          <input
-            id="i"
-            aria-label="Named"
-            value={this.text}
-            oninput={this.typed}
-            onchange={this.left}
-            transform={this.keep}
-          />
-        );
+        return <input id="i" aria-label="Named" value={this.text} oninput={this.typed} onchange={this.left} />;
       }
     }
     const app = await getDOM<Named>(<Named />);
@@ -1292,7 +1191,7 @@ describe("a pick that threw, and a text field's change", () => {
     await app.settle();
     field.dispatchEvent(new Event("change", { bubbles: true }));
 
-    expect({ decided: app.instance.decided, changed: app.instance.changed }).toEqual({ decided: 1, changed: 1 });
+    expect({ typed: app.instance.typedTimes, changed: app.instance.changed }).toEqual({ typed: 1, changed: 1 });
   });
 });
 
@@ -1341,27 +1240,15 @@ describe("a pick whose handler threw, and a change no input carried", () => {
     });
   });
 
-  /** An autofill sets the value and sends only `change`: the transform decides it, as any edit. */
-  test("a change that brings a value no input carried goes through the transform", async () => {
+  /** An autofill sets the value and sends only `change`: the handler decides it, as any edit. */
+  test("a change that brings a value no input carried is refused as any edit", async () => {
     class Short extends Component {
       @state text = "";
       typed(event: EventOn<HTMLInputElement>) {
-        this.text = event.currentTarget.value;
-      }
-      max3(next: string, prev: string): string {
-        return next.length <= 3 ? next : prev;
+        if (event.currentTarget.value.length <= 3) this.text = event.currentTarget.value;
       }
       render() {
-        return (
-          <input
-            id="i"
-            aria-label="Short"
-            value={this.text}
-            oninput={this.typed}
-            onchange={this.typed}
-            transform={this.max3}
-          />
-        );
+        return <input id="i" aria-label="Short" value={this.text} oninput={this.typed} onchange={this.typed} />;
       }
     }
     const app = await getDOM<Short>(<Short />);
@@ -1404,17 +1291,14 @@ describe("a change that is an edit, a change that is a tail, and a word inside a
     class Day extends Component {
       @state day = "2026-01-01";
       field = createRef<HTMLInputElement>();
-      decided = 0;
+      picks = 0;
       changes = 0;
       picked(event: EventOn<HTMLInputElement>) {
+        this.picks++;
         this.day = event.currentTarget.value;
       }
       changed() {
         this.changes++;
-      }
-      keep(next: string): string {
-        this.decided++;
-        return next;
       }
       @mounted
       pickNow() {
@@ -1433,7 +1317,6 @@ describe("a change that is an edit, a change that is a tail, and a word inside a
             value={this.day}
             oninput={this.picked}
             onchange={this.changed}
-            transform={this.keep}
           />
         );
       }
@@ -1441,8 +1324,8 @@ describe("a change that is an edit, a change that is a tail, and a word inside a
     const app = await getDOM<Day>(<Day />);
     await app.settle();
 
-    expect({ decided: app.instance.decided, changes: app.instance.changes, day: app.instance.day }).toEqual({
-      decided: 1,
+    expect({ picks: app.instance.picks, changes: app.instance.changes, day: app.instance.day }).toEqual({
+      picks: 1,
       changes: 1,
       day: "2026-02-02",
     });
@@ -1579,8 +1462,8 @@ describe("a change, on every field", () => {
     expect({ model: app.instance.text, shown: field.value }).toEqual({ model: "filled", shown: "filled" });
   });
 
-  /** One edit, one kind: the transform and the handler are told the same `inputType`. */
-  test("a change that is an edit is the same kind of edit to the transform and to oninput", async () => {
+  /** A change that is an edit reaches `oninput` as the kind of edit an autofill is. */
+  test("a change that is an edit reaches oninput as insertReplacementText", async () => {
     class Named extends Component {
       @state name = "";
       kinds: string[] = [];
@@ -1588,12 +1471,8 @@ describe("a change, on every field", () => {
         this.kinds.push(`handler:${event.inputType}`);
         this.name = event.currentTarget.value;
       }
-      keep(next: string, _prev: string, input: TransformInput): string {
-        this.kinds.push(`transform:${input.inputType}`);
-        return next;
-      }
       render() {
-        return <input id="i" aria-label="Named" value={this.name} oninput={this.typed} transform={this.keep} />;
+        return <input id="i" aria-label="Named" value={this.name} oninput={this.typed} />;
       }
     }
     const app = await getDOM<Named>(<Named />);
@@ -1602,7 +1481,7 @@ describe("a change, on every field", () => {
     field.value = "filled";
     field.dispatchEvent(new Event("change", { bubbles: true }));
 
-    expect(app.instance.kinds).toEqual(["transform:insertReplacementText", "handler:insertReplacementText"]);
+    expect(app.instance.kinds).toEqual(["handler:insertReplacementText"]);
   });
 
   /** What `oninput` stops is asked of an `input` that never was: the real `change` still bubbles. */

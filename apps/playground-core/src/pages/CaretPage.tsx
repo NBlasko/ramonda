@@ -14,7 +14,7 @@ class Watched extends Component<{
   id: string;
   title: string;
   hint: string;
-  transform: (text: string) => string;
+  rewrite: (text: string) => string;
   start: string;
 }> {
   @state text = this.props.start;
@@ -23,7 +23,7 @@ class Watched extends Component<{
 
   onInput(event: Event) {
     const field = event.target as HTMLInputElement;
-    this.text = this.props.transform(field.value);
+    this.text = this.props.rewrite(field.value);
     // Read after the render, which is where the caret has landed.
     queueMicrotask(() => {
       this.caret = field.selectionStart ?? -1;
@@ -52,7 +52,7 @@ class Watched extends Component<{
 
 const group = (text: string) => text.replace(/\D/g, "").replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 /**
- * Beside `group`, and for the reason `group` is already here: a `transform` written in the markup
+ * Beside `group`, and for the reason `group` is already here: a `rewrite` written in the markup
  * is a new function every render, so `<Watched>` can never compare its props equal.
  */
 const same = (text: string) => text;
@@ -161,7 +161,7 @@ export class CaretPage extends Component {
           title="1 — the model echoes the input"
           hint="Nothing is written, so nothing can move the caret. Expect it to stay where you typed."
           start="abcdef"
-          transform={same}
+          rewrite={same}
         />
 
         <Watched
@@ -169,7 +169,7 @@ export class CaretPage extends Component {
           title="2 — the model rewrites, same length"
           hint="Uppercased. The value changes, so it IS written — and the caret should still stay."
           start="ABCDEF"
-          transform={upper}
+          rewrite={upper}
         />
 
         <Watched
@@ -177,7 +177,7 @@ export class CaretPage extends Component {
           title="3 — the model rewrites and the length changes"
           hint="Grouped with commas. This one is NOT fixed on purpose: the caret goes to the end, and an app that formats has to place it itself."
           start="1234567"
-          transform={group}
+          rewrite={group}
         />
 
         <Watched
@@ -185,7 +185,7 @@ export class CaretPage extends Component {
           title="4 — a field with no caret at all"
           hint="type=number, where setSelectionRange throws. Nothing to keep; it must simply not break."
           start="1"
-          transform={same}
+          rewrite={same}
         />
 
         <Reorderable />

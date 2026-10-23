@@ -84,6 +84,60 @@ describe("a refused edit puts the selection back", () => {
     });
   }
 
+  /** `world` selected and typed over with `w`: the inserted letter is the one the selection began with. */
+  test("an insert beginning like the selection it replaced puts the whole selection back", async () => {
+    const app = await getDOM(<LockedArea />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as Text;
+    edit(field, [6, 11], "hello w", 7, "insertText");
+
+    expect(shown(field)).toEqual(["hello world", 6, 11]);
+  });
+
+  /** Backspace after an emoji takes two units and no selection: the caret goes back after it. */
+  test("a refused Backspace after an emoji puts the caret back, selecting nothing", async () => {
+    const app = await getDOM<LockedArea>(<LockedArea />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as Text;
+    app.instance.text = "hi👍";
+    await app.settle();
+    edit(field, [4, 4], "hi", 2, "deleteContentBackward");
+
+    expect(shown(field)).toEqual(["hi👍", 4, 4]);
+  });
+
+  /** `maxlength` takes part of a paste: what was selected is what the field had then, not a sum. */
+  test("a refused paste the field cut short puts back the caret it had", async () => {
+    const app = await getDOM<LockedArea>(<LockedArea />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as Text;
+    app.instance.text = "abc";
+    await app.settle();
+    edit(field, [3, 3], "abc12", 5, "insertFromPaste");
+
+    expect(shown(field)).toEqual(["abc", 3, 3]);
+  });
+
+  /** Typed beside the same letter — `l` into `he|llo` — the caret goes back to where it was, not past the pair. */
+  test("a refused keystroke beside the same letter puts the caret back where it was", async () => {
+    const app = await getDOM(<LockedArea />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as Text;
+    editAlone(field, "helllo world", 3, "insertText");
+
+    expect(shown(field)).toEqual(["hello world", 2, 2]);
+  });
+
+  /** Backspace in `hel|lo` takes the `l` BEFORE the caret, which moved to 2: back to 3. */
+  test("a delete backward with no beforeinput puts the caret back after what it took", async () => {
+    const app = await getDOM(<LockedArea />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as Text;
+    editAlone(field, "helo world", 2, "deleteContentBackward");
+
+    expect(shown(field)).toEqual(["hello world", 3, 3]);
+  });
+
   /** No record of the selection: the caret goes back by what the edit added before it. */
   test("an edit with no beforeinput of its own puts the caret back by what it added", async () => {
     const app = await getDOM(<LockedInput />);
