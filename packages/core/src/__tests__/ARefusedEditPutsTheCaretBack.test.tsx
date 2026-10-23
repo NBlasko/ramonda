@@ -198,6 +198,34 @@ describe("a refused edit puts the selection back", () => {
     expect(shown(field)).toEqual(["hello world", 5, 5]);
   });
 
+  /**
+   * Backspace inside a word brings the text back to what it was, and the handler refused the step:
+   * the selection of a word being composed is the input method's, and moving it cancels the word.
+   */
+  test("a step of a word is never given the selection back", async () => {
+    const app = await getDOM(<LockedInput />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLInputElement;
+    let moved = 0;
+    const original = field.setSelectionRange.bind(field);
+    field.setSelectionRange = (start, end) => {
+      moved++;
+      original(start, end);
+    };
+    field.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+    for (const [text, inputType] of [
+      ["hellon world", "insertCompositionText"],
+      ["hello world", "deleteCompositionText"],
+    ]) {
+      field.dispatchEvent(new InputEvent("beforeinput", { bubbles: true, inputType }));
+      field.value = text;
+      field.dispatchEvent(new InputEvent("input", { bubbles: true, isComposing: true, inputType }));
+    }
+    await app.settle();
+
+    expect(moved).toBe(0);
+  });
+
   /** A refusal answered while a commit runs shows the model a microtask later; the selection comes back with it. */
   test("an edit refused while a commit runs puts the selection back once the field shows the model", async () => {
     class Filled extends Component {

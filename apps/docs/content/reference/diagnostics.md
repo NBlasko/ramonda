@@ -1935,8 +1935,8 @@ One edit from there is answered like any. The next read of the model is what goe
 the handler took the first edit or refused it is known once its render has run, so the next event
 in the same commit reads the model as it was — a `change` after a refused `input` reaches
 `onchange` with the text the handler refused, and a word an input method ends there is handed to
-`oninput` even when `oncompositionend` has just cleared the model. The edit is still answered — this
-is reported, not thrown.
+`oninput` again although the handler took it. The edit is still answered — this is reported, not
+thrown.
 
 What a field shows is **state**. Write it, and the commit's render shows it:
 
@@ -1964,11 +1964,6 @@ must go through the field's handler and the form around it is sent once the comm
 `queueMicrotask(() => this.box.current?.click())`. A library handed the field tells you its value
 through its own callback, which writes state. An event handler is not a commit's work: a row whose
 `onclick` clicks its checkbox does what a `<label>` does.
-
-A word the user is typing is read the same way when the commit's work ends it: a `focus()` in a
-`@mounted` moves the focus away, the browser commits the word there and then, and what
-`oncompositionend` writes still waits for the render. Move the focus once the commit is over —
-`queueMicrotask(() => this.other.current?.focus())` — and the word ends after it.
 
 `ramonda-check` reports the same edit before it ships, as
 [`field-set-by-an-event`](/reference/check).

@@ -532,7 +532,7 @@ describe("a field's own handlers, its defaults and its end", () => {
 
   /** Enter closes the dialog the field was in: the word's end removes the field. */
   test.each([false, true])(
-    "a composition whose end removes the field hands the word to nobody (inside what is removed: %s)",
+    "a composition whose end removes the field hands the word over before it goes (inside what is removed: %s)",
     async (wrapped) => {
       class Dialog extends Component<{ wrapped: boolean }> {
         @state open = true;
@@ -576,7 +576,7 @@ describe("a field's own handlers, its defaults and its end", () => {
       field.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "日本" }));
       await app.settle();
 
-      expect({ removed: !field.isConnected, taken: app.instance.taken }).toEqual({ removed: true, taken: [] });
+      expect({ removed: !field.isConnected, taken: app.instance.taken }).toEqual({ removed: true, taken: ["日本"] });
     },
   );
 });
@@ -755,7 +755,10 @@ describe("a field blurred in the middle of a commit", () => {
     expect(app.instance.blurs).toBe(0);
   });
 
-  /** A chat sends and clears in the middle of a word: Firefox's `input` after its end changes nothing. */
+  /**
+   * A chat sends and clears in the middle of a word: the step before reached the handler, the app's
+   * write wins at the end, and Firefox's `input` after it changes nothing.
+   */
   test("after a word the app's write won over, Firefox's input reaches no handler", async () => {
     class Chat extends Component {
       @state text = "";
@@ -781,7 +784,7 @@ describe("a field blurred in the middle of a commit", () => {
     await app.settle();
 
     expect({ heard: app.instance.heard, model: app.instance.text, shown: field.value }).toEqual({
-      heard: [],
+      heard: ["日本"],
       model: "sent",
       shown: "sent",
     });
@@ -907,8 +910,12 @@ describe("a field answering inside a commit", () => {
   });
 });
 
-/** A word ending inside a running commit: Firefox's input after it is matched against the settled field. */
-test("a word that ends inside a commit is heard once, with Firefox's input after it", async () => {
+/**
+ * A word sent and ended inside a running commit — RMD062 — is handed over at its end as well: what the
+ * handler made of its steps waits for the render, and a word is never dropped on a guess. Firefox's
+ * input after it is matched against the settled field, and reaches no handler.
+ */
+test("a word that ends inside a commit is handed over at its end, and Firefox's input after it is not", async () => {
   const { mounted, createRef } = await import("../index");
   class Shouting extends Component {
     @state text = "";
@@ -936,7 +943,7 @@ test("a word that ends inside a commit is heard once, with Firefox's input after
   field.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertCompositionText", data: "é" }));
   await app.settle();
 
-  expect({ heard: app.instance.heard, shown: field.value }).toEqual({ heard: ["é"], shown: "É" });
+  expect({ heard: app.instance.heard, shown: field.value }).toEqual({ heard: ["é", "é"], shown: "É" });
 });
 
 /** An `<input>` reads the selection at `beforeinput` as a TextArea does, and the app's own handler still runs. */
@@ -1332,7 +1339,7 @@ describe("a change that is an edit, a change that is a tail, and a word inside a
   });
 
   /** Firefox's `input` after the word, sent before a running commit's settle: it is still the word's. */
-  test("a word that ends inside a commit is heard once, with Firefox's input right after it", async () => {
+  test("a word that ends inside a commit is handed over at its end, and Firefox's input right after it is not", async () => {
     const { mounted, createRef } = await import("../index");
     class Words extends Component {
       @state text = "";
@@ -1360,7 +1367,7 @@ describe("a change that is an edit, a change that is a tail, and a word inside a
     const app = await getDOM<Words>(<Words />);
     await app.settle();
 
-    expect(app.instance.heard).toEqual(["日本"]);
+    expect(app.instance.heard).toEqual(["日本", "日本"]);
   });
 });
 
@@ -1574,11 +1581,14 @@ test("an edit after a word that ended inside a commit is heard", async () => {
   field.value = "日本語";
   field.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertCompositionText", data: "語" }));
 
-  expect(app.instance.heard).toEqual(["日本", "日本語"]);
+  expect(app.instance.heard).toEqual(["日本", "日本", "日本語"]);
 });
 
-/** A word the app's own write overtook is no edit: the `change` after it reaches nothing either. */
-test("a word not handed over leaves its change with nothing to end", async () => {
+/**
+ * A word the app's own write overtook is not handed over at its end; the step before it was an edit the
+ * handler took, so the `change` after it, which finds the text moved from where it began, ends it.
+ */
+test("a word the app's write overtook is not handed over, and its change ends the step the handler took", async () => {
   class Chat extends Component {
     @state text = "x";
     heard: string[] = [];
@@ -1609,7 +1619,7 @@ test("a word not handed over leaves its change with nothing to end", async () =>
   await app.settle();
 
   expect({ heard: app.instance.heard, model: app.instance.text, shown: field.value }).toEqual({
-    heard: [],
+    heard: ["input x日", "change "],
     model: "",
     shown: "",
   });

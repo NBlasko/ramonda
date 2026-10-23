@@ -22,6 +22,5 @@ row whose `onclick` clicks its checkbox does what a `<label>` does.
 
 `RMD062` reports the same at runtime, when a field reads its model while the render of its last edit
 waits for the running commit — a second event in the same commit, which cannot know whether the
-handler took the first edit or refused it; a word ending after `oncompositionend` moved the model; or
-a word the user typed that a `focus()` in `@mounted` ended. In a development build it says what to write instead; a
+handler took the first edit or refused it. In a development build it says what to write instead; a
 production build records it for the app's collector. The edit is answered either way.

@@ -7,11 +7,11 @@ const readout = { display: "block", margin: "0.5rem 0 0", fontFamily: "monospace
 /**
  * A word typed through an input method, into a field the model holds.
  *
- * Two handlers, the two ways one is written: `skips` leaves on composing input, `takes` reads every
- * input. Both hear the same thing — the unfinished word reaches no handler, and the finished one is
- * handed over once, at the composition's end, in every browser. Each readout lists what its handler
- * took: the word, once. The same two are written on a `TextArea` and on an `<input>`, which reach the
- * field by different paths.
+ * Two handlers, the two ways one is written: `skips` waits for the finished word, `takes` reads every
+ * input. `takes` hears each step of the word as the browser sends it; `skips` is handed the finished
+ * word once, at the composition's end, in every browser. Each readout lists what its handler took.
+ * The same two are written on a `TextArea` and on an `<input>`, which reach the field by different
+ * paths.
  */
 class Composed extends Component<{ id: string; title: string; skipsComposing: boolean; field: "textarea" | "input" }> {
   @state text = "";
@@ -28,8 +28,8 @@ class Composed extends Component<{ id: string; title: string; skipsComposing: bo
       <section style={box}>
         <h3 style={{ margin: "0 0 0.25rem" }}>{this.props.title}</h3>
         <p style={hint}>
-          Switch to a Japanese input method, type <code>nihon</code>, Space, Enter. The field keeps 日本, and the last
-          line below is 日本 — once.
+          Switch to a Japanese input method, type <code>nihon</code>, Space, Enter. The field keeps 日本, and the
+          readout ends in 日本 — once.
         </p>
         {this.props.field === "textarea" ? (
           <TextArea id={this.props.id} aria-label={this.props.title} value={this.text} oninput={this.onInput} />

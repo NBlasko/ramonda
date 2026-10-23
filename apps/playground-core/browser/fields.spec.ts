@@ -3,10 +3,10 @@ import { expect, test } from "@playwright/test";
 /**
  * What a field does that jsdom cannot settle, because it is the browser's own.
  *
- * - **A word typed through an input method.** Chromium sends no ordinary `input` after a
- *   composition — its last `input` still says `isComposing` — so the field hands the word over at
- *   `compositionend` (`field.ts`, "When it ends"), once, to either way of writing a handler, on a
- *   `TextArea` and on an `<input>` alike. The composition is driven through the
+ * - **A word typed through an input method.** Each step of the word reaches the handler; Chromium
+ *   sends no ordinary `input` after a composition — its last `input` still says `isComposing` — so a
+ *   handler that waits for the finished word is handed it at `compositionend` (`field.ts`, "When it
+ *   ends"), once, on a `TextArea` and on an `<input>` alike. The composition is driven through the
  *   DevTools protocol's IME, which goes through the same path a real input method does. Firefox,
  *   which sends that `input` itself, is checked by `firefox-composition.mjs`: Playwright cannot
  *   compose in it.
@@ -43,10 +43,22 @@ test.describe("fields only a browser settles", () => {
       await expect(page.locator(`#skips${suffix}`)).toHaveValue("日本");
     });
 
-    /** The unfinished word reaches no handler, so one that reads every input hears the word once too. */
-    test(`a handler that takes every input hears the word once — on ${on}`, async ({ page }) => {
+    /** Tab in the middle of a word: Chromium ends it with what was typed, and neither handler loses it. */
+    test(`a word left in the middle keeps what was typed — on ${on}`, async ({ page }) => {
+      await page.locator(`#skips${suffix}`).click();
+      const session = await page.context().newCDPSession(page);
+      for (const text of ["n", "に"]) {
+        await session.send("Input.imeSetComposition", { text, selectionStart: text.length, selectionEnd: text.length });
+      }
+      await page.keyboard.press("Tab");
+      await expect(page.locator(`#skips${suffix}-taken`)).toHaveText('["に"]');
+      await expect(page.locator(`#skips${suffix}`)).toHaveValue("に");
+    });
+
+    /** Each step of the word reaches a handler that reads every input, and the word is not handed over again. */
+    test(`a handler that takes every input hears each step, and the word once — on ${on}`, async ({ page }) => {
       await compose(page, `#takes${suffix}`);
-      await expect(page.locator(`#takes${suffix}-taken`)).toHaveText('["日本"]');
+      await expect(page.locator(`#takes${suffix}-taken`)).toHaveText('["n","に","日本"]');
       await expect(page.locator(`#takes${suffix}`)).toHaveValue("日本");
     });
   }

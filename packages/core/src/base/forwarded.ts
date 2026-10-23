@@ -112,15 +112,20 @@ export function heard(component: Component<any>, event: Event): void {
  * 2. Build the playground, `vite preview` it, and open `/fields` in Safari.
  * 3. In each of the two text fields, switch to Japanese, type `nihon`, Space, Enter.
  *
- * Right: both fields keep 日本; the first readout is `["日本"]`, and the second ends in 日本 with no
- * 日本 that Safari did not send itself. Wrong: a field comes back empty, or the first readout has 日本
- * twice — then log `input` and `compositionend` on the field to see the order Safari sends them in,
- * which is what this code has to answer.
+ * Right: every field keeps 日本; each "skips" readout is `["日本"]`, and each "takes" readout lists
+ * the steps Safari sent and ends in 日本 once. Wrong: a field comes back empty, or a readout ends in
+ * 日本 twice — then log `input` (with its `inputType` and `isComposing`) and `compositionend` on the
+ * field to see the order Safari sends them in, which is what this code has to answer. One thing to
+ * look for: an `input` Safari sends after `compositionend` under another `inputType` than Firefox's
+ * `insertCompositionText` is not recognised as the word already shown, and a handler hears it twice.
  *
- * 4. Type `nihon` again and, before Enter, press Tab to leave the field. Right: the word is kept, or
- *    the field shows the model — never an empty field. Wrong: an empty field, which means Safari sends
- *    `compositionend` after the blur and something wrote the field in between — see "A composition
- *    lost" on `answerEdit`.
+ * 4. Type `nihon` again and, before Enter, press Tab to leave the field. Right: the field keeps what
+ *    was typed, and the "skips" readout has it once — as Chromium and Firefox do. Wrong: an empty
+ *    field, which means Safari sends `compositionend` after the blur and something wrote the field in
+ *    between — see "A composition lost" on `answerEdit`.
+ *
+ * 5. On a Mac, an accent is composed too: in a Latin field, type Option-E then `e`. Right: é, once in
+ *    the "skips" readout.
  *
  * Delete this note once it is measured.
  */

@@ -285,12 +285,13 @@ test("an SVG transform is written as an attribute", async () => {
 
 /** Round 34: a field's handlers are handed the event they are promised. */
 describe("the event a field's handler is handed", () => {
-  test("the word an input method commits reaches `oninput` as an input", async () => {
+  /** Each step of a word reaches `oninput` as the browser sent it; a handler that took them is handed nothing more. */
+  test("each step of a word reaches `oninput` as an input that is composing", async () => {
     class Words extends Component {
       @state text = "";
       seen: string[] = [];
       typed(event: EventOn<HTMLTextAreaElement, InputEvent>) {
-        this.seen.push(`${event.type}:${event.inputType}`);
+        this.seen.push(`${event.inputType} ${event.isComposing} ${event.currentTarget.value}`);
         this.text = event.currentTarget.value;
       }
       render() {
@@ -301,12 +302,58 @@ describe("the event a field's handler is handed", () => {
     await app.settle();
     const field = app.container.querySelector("#t") as HTMLTextAreaElement;
     field.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
-    field.value = "日本";
-    field.dispatchEvent(new InputEvent("input", { bubbles: true, isComposing: true }));
+    for (const step of ["に", "日本"]) {
+      field.value = step;
+      field.dispatchEvent(
+        new InputEvent("input", { bubbles: true, isComposing: true, inputType: "insertCompositionText" }),
+      );
+    }
     field.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "日本" }));
     await app.settle();
 
-    expect(app.instance.seen).toEqual(["input:insertCompositionText"]);
+    expect(app.instance.seen).toEqual(["insertCompositionText true に", "insertCompositionText true 日本"]);
+  });
+
+  /**
+   * Chromium's last `input` of a word still says `isComposing`, and nothing follows its end: a handler
+   * that waits for the finished word is handed it at `compositionend`, once, before `oncompositionend`.
+   */
+  test("a handler that waits for the finished word is handed it once, at its end", async () => {
+    class Words extends Component {
+      @state text = "";
+      seen: string[] = [];
+      typed(event: EventOn<HTMLTextAreaElement, InputEvent>) {
+        if (event.isComposing) return;
+        this.seen.push(`${event.type} ${event.inputType} ${event.currentTarget.value}`);
+        this.text = event.currentTarget.value;
+      }
+      ended(_event: EventOn<HTMLTextAreaElement>) {
+        this.seen.push(`compositionend ${this.text}`);
+      }
+      render() {
+        return (
+          <TextArea id="t" aria-label="Words" value={this.text} oninput={this.typed} oncompositionend={this.ended} />
+        );
+      }
+    }
+    const app = await getDOM<Words>(<Words />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+    field.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+    field.value = "日本";
+    field.dispatchEvent(
+      new InputEvent("input", { bubbles: true, isComposing: true, inputType: "insertCompositionText" }),
+    );
+    field.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "日本" }));
+    // Firefox's own `input` after the end: the field shows what it holds, and no handler hears it.
+    field.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertCompositionText" }));
+    await app.settle();
+
+    expect({ seen: app.instance.seen, model: app.instance.text, shown: field.value }).toEqual({
+      seen: ["input insertCompositionText 日本", "compositionend 日本"],
+      model: "日本",
+      shown: "日本",
+    });
   });
 
   /** A pick is answered on its `input`; `onchange` stopping its `change` stops the real one. */

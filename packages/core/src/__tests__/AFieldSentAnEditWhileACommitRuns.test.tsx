@@ -96,7 +96,7 @@ describe("RMD062", () => {
     await app.settle();
 
     expect(messages).toHaveLength(1);
-    expect(messages[0]).toContain("the end of its word");
+    expect(messages[0]).toContain("its next event");
   });
 
   /** One edit from a @mounted reads nothing its render has not written: it is answered, and says nothing. */
@@ -179,7 +179,7 @@ describe("RMD062", () => {
    * away. What `oncompositionend` writes still waits for that commit's render, so the read is reported,
    * naming the commit rather than an edit the app sent.
    */
-  test("a word typed by the user and ended inside a commit is reported as the commit's", async () => {
+  test("a word typed by the user and ended inside a commit is not reported", async () => {
     class Chat extends Component {
       @state text = "x";
       @state other = false;
@@ -214,8 +214,7 @@ describe("RMD062", () => {
     app.instance.other = true;
     await app.settle();
 
-    expect(messages).toHaveLength(1);
-    expect(messages[0]).toContain("had its word ended by a commit");
+    expect({ messages, text: app.instance.text }).toEqual({ messages: [], text: "x日本" });
   });
 
   /** The handler ran and refused: that is known once its render has run, so a second edit reads ahead of it. */

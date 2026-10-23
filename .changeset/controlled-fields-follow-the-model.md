@@ -27,12 +27,14 @@ A select, a checkbox and a radio pick in one move: both of the field's own `onin
 run on the `input`, and the `change` after it finds nothing left to do. A radio the handler refuses is
 put back with its whole group.
 
-An input method's word is one edit. While it is composed, its `input` events reach no handler of the
-field and the field is not written; when it ends, the word is handed to the field's `oninput` once,
-at `compositionend` — the same in Chromium, which sends nothing more, and in Firefox, whose `input`
-after it is recognised and not handed over a second time. So a handler never asks `isComposing`. A
-model the app moves in the middle of a word wins over it, and a blur keeps the composition going
-until its `compositionend` or the next ordinary edit.
+A word typed through an input method reaches the field's `oninput` at every step, as the browser
+sends it, `isComposing` saying it is not finished — so a search or a count follows the user on an
+Android keyboard, which composes every word. The field is not written while the word is composed.
+A handler that waits for the finished word returns while `isComposing`, and is handed the word once,
+at `compositionend` and before `oncompositionend` — Chromium's last `input` of a word still says
+`isComposing`, and nothing follows its end; Firefox's own `input` after the end is recognised and
+not handed over again. A model the app moves in the middle of a word wins over it, and a blur keeps
+the composition going until its `compositionend` or the next ordinary edit.
 
 `defaultValue` (and `defaultChecked`) starts a field the user owns — for a form whose fields are read
 when it is sent. It is written as the field's default — the `value` attribute, the `checked`
@@ -40,14 +42,13 @@ attribute, the option's `selected` — so a served page shows it before any scri
 reset returns to it. A `value` of `null` or `undefined` is no value. The field's handler is called as a
 listener is, with the element as `this`, and may be a function or a listener object; one written
 `on:input` — a type error now, see below — reaching the field anyway is its own as much as `oninput`.
-A field the end of a composition removes — Enter closing its dialog — hands the word to no handler.
 
 `on:` before a standard event is a type error that names the spelling: `on:input` is written
 `oninput`, on every element and on `Select` and `TextArea`. `on:` is for an event `on…` cannot
 spell, a custom one with a dash.
 
 Each handler is handed the event it is promised: `oninput` an `input` — the word an input method
-commits arrives as one, `insertCompositionText` — and a pick's `onchange` a `change`, whose
+finishes is handed over as one, `insertCompositionText` — and a pick's `onchange` a `change`, whose
 `stopPropagation()` stops the browser's own `change`.
 A `file`, `hidden`, `submit`, `reset`, `button` or `image` input holds no model, whatever its `value`;
 and when a field's handler throws, its error is the one thrown, and the error of the render of what it
@@ -56,8 +57,7 @@ showing the model.
 A `change` ends the edits before it — on blur, or right after a date's, a color's or a range's
 `input` — or is an edit of its own. When the field shows its model, the `change` brings nothing new:
 it runs `onchange` when an edit since the last `change` reached the handler and the text is not back
-to what it was, hands `oninput` nothing again, and reaches no handler when every edit was refused, a word was overtaken
-by the app's own write, the edits put the text back — a browser sends no `change` for those — or there
+to what it was, hands `oninput` nothing again, and reaches no handler when every edit was refused, the edits put the text back — a browser sends no `change` for those — or there
 was none. When the field shows something else — an
 autofill, or a change dispatched alone, on any field, a `TextArea` included — it is an edit, handed
 to `oninput` as an `insertReplacementText` input, then to `onchange` as the change. An event sent

@@ -128,10 +128,12 @@ interface FieldState {
   composing: boolean;
   /** The field lost the focus in the middle of the composition — see "A composition lost" on `answerEdit`. */
   blurred: boolean;
-  /** What the model held when the composition began: a model the app moves in the middle of a word wins. */
-  composedFrom?: unknown;
-  /** The composition began while a commit ran: it was sent by the commit's own work, not typed. */
-  composedInACommit?: boolean;
+  /**
+   * What the model held when the composition began. The word is handed over at its end only while the
+   * model still holds it: anything that wrote the model since — the handler taking the word, the app
+   * clearing it — wins.
+   */
+  composedFrom?: FieldValue;
   /** The blur's own listener is running: what it renders leaves a word the browser may still commit. */
   inBlur?: boolean;
   /** The text and the selection the next edit starts from, recorded at its `beforeinput`. */
@@ -313,24 +315,30 @@ function takeBefore(state: FieldState, event: Event): Selected | undefined {
  * before a render can land between the two — a form's `oninput` flipping a "Save" button is enough —
  * and the `change` finds nothing left to do.
  *
- * **Not in the middle of a composition.** An input method builds a word over several `input` events,
- * and writing the field between them cancels it. They reach no handler of the field — a handler that
- * took the unfinished word would write past it — and the field is left alone until the word ends.
+ * **Not written in the middle of a composition.** An input method builds a word over several `input`
+ * events, and writing the field between them cancels the word. Each of them reaches the field's
+ * handler as any edit does, `isComposing` saying the word is not finished; the field is left as the
+ * word stands until it ends, and then shows the model.
  *
- * **When it ends, the word is one edit, and every browser hands it over the same way.** It reaches
- * the field's `oninput` once, at `compositionend` — so a handler never has to ask `isComposing`. Measured: Firefox then sends an `input` of its own, `insertCompositionText` with the
- * same word, which finds the field showing what it holds and reaches no handler a second time;
- * Chromium sends nothing after `compositionend`.
- * A field the end of the word removed — Enter closed its dialog — is handed nothing, and so is one
- * whose model the app moved in the middle of the word — a chat that sent and cleared it: the app's
- * write wins, and the field shows it. Every other listener hears what the browser sent.
+ * **When it ends, a handler that waited is handed the word, the same in every browser.** Measured:
+ * Chromium's last `input` of a word still says `isComposing`, and nothing follows its
+ * `compositionend`; Firefox sends an `input` of its own after it. So at `compositionend`, before
+ * `oncompositionend`, the word reaches `oninput` once more, as an `input` that is not composing —
+ * when the field shows something else than the model, and nothing wrote the model since the word
+ * began (`composedFrom`). A handler that took every step is handed nothing more; one that skipped
+ * them is handed the word once; a model the app moved in the middle of the word — a chat that sent
+ * and cleared it — wins. Firefox's own `input` then finds the field showing what it holds and reaches
+ * no handler. Every other listener hears what the browser sent.
  *
  * **A composition lost.** A field that loses the focus mid-word may get no `compositionend` at all, or
  * get it after the blur. The blur is noted, and what its own listener renders — an `onblur` that moves
  * the model — does not write over the word a browser may still commit; its `compositionend` hands the
  * word over as any. Past the blur the field follows the model again, so a model the app moves after
- * it — a Clear button, a reset — is shown even when no `compositionend` ever comes. The composition
- * itself ends with its `compositionend` or the next ordinary edit, answered as any edit.
+ * it — a Clear button, a reset — is shown even when no `compositionend` ever comes; one more step of
+ * the word says it was not lost, and the field is left as the word stands again. The composition
+ * itself ends with its `compositionend` or the next ordinary edit, answered as any edit. Measured in
+ * Chromium and Firefox: Tab in the middle of a word ends it with what was typed, and both a handler
+ * that waits and one that takes every step keep it.
  *
  * **A `change` ends the edits before it, or is an edit of its own.** On a text field it comes on blur;
  * on a date, a color or a range right after the `input` it ends. When the field shows what it holds,
@@ -365,8 +373,7 @@ export function answerEdit(control: FieldControl, event: Event): void {
   if (event.type === "compositionstart") {
     state.composing = true;
     state.blurred = false;
-    state.composedFrom = control.model();
-    state.composedInACommit = drainingNow();
+    state.composedFrom = control.prev();
     control.own(event.type, event);
     return;
   }
@@ -393,39 +400,29 @@ export function answerEdit(control: FieldControl, event: Event): void {
     state.blurred = false;
     const was = field === null ? undefined : heldBy(control, field);
     const edit = editOf(field, event, was);
+    // Read off the model as last rendered, not a guess while a render waits — see `heldBy`: a guess
+    // that took a skipped step for a taken one would drop the word. Wrong only towards handing it over.
+    const rendered = control.prev();
+    const waited = field !== null && !sameModel(valueOf(field), rendered) && sameModel(rendered, state.composedFrom);
     answered(control, field, edit, () => {
-      const handled = control.own(event.type, event);
-      // What `oncompositionend` rendered has run by now: it may have removed the field.
-      runRenders();
-      if (field === null || control.gone()) return handled;
-      // What `oncompositionend` wrote waits for the running commit's render: a word the commit's own
-      // work composed, or one the user typed that it ended — a `focus()` in a `@mounted`.
-      if (drainingNow()) {
-        readsAheadOfItsRender(
-          field,
-          "the end of its word",
-          state.composedInACommit === true ? "was sent an edit while a commit ran" : "had its word ended by a commit",
-        );
+      let handled = false;
+      if (waited) {
+        // An `input`, as `oninput` is promised: the word, finished, `insertCompositionText`.
+        if (!state.taken) state.since = was;
+        state.taken = true;
+        handled = control.own("input", as(event, "input", { inputType: "insertCompositionText", isComposing: false }));
       }
-      if (!sameModel(control.model(), state.composedFrom)) return handled;
-      // An `input`, as `oninput` is promised: the word, one edit, `insertCompositionText`. A word not
-      // handed over is no edit, and the `change` after it reaches nothing.
-      if (!state.taken) state.since = was;
-      state.taken = true;
-      return (
-        control.own("input", as(event, "input", { inputType: "insertCompositionText", isComposing: false })) || handled
-      );
+      return control.own(event.type, event) || handled;
     });
     return;
   }
 
-  // A composition lost to a blur, with no `compositionend` since, is over once an ordinary edit arrives.
-  if (state.blurred && !(event as InputEvent).isComposing) {
-    state.composing = false;
+  // A composition lost to a blur, with no `compositionend` since, is over once an ordinary edit arrives;
+  // one more step of the word says it was not lost, and the field is left as the word stands again.
+  if (state.blurred) {
+    if (!(event as InputEvent).isComposing) state.composing = false;
     state.blurred = false;
   }
-  // The unfinished word reaches no handler of the field: it is handed over when it ends.
-  if ((event as InputEvent).isComposing || state.composing) return;
 
   if (event.type === "change") {
     if (control.pick && state.pickAsked !== undefined) {

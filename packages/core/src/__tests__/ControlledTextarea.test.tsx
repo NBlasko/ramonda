@@ -768,10 +768,10 @@ describe("a controlled textarea follows the model after the event the app handle
   });
 
   /**
-   * A handler that takes every input hears the unfinished word at no step: the word is one edit,
-   * handed over once, decided, when it ends — even one typed again over itself.
+   * A handler that takes every input hears every step of the word, and nothing more at its end — even
+   * a word typed again over itself, which leaves the model as it began.
    */
-  test("a handler that takes every input hears the word once, at its end", async () => {
+  test("a handler that takes every input hears each step, and nothing more at the end", async () => {
     const taken: string[] = [];
     class Again extends Component {
       @state text = "日本";
@@ -796,7 +796,7 @@ describe("a controlled textarea follows the model after the event the app handle
     field.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "日本" }));
     await drain(app);
 
-    expect(taken).toEqual(["日本"]);
+    expect(taken).toEqual(["n", "日本"]);
   });
 
   test("a model cleared in the middle of a word is not handed the word back", async () => {
@@ -852,8 +852,11 @@ describe("a controlled textarea follows the model after the event the app handle
     expect({ field: field.value, model: app.instance.text }).toEqual({ field: "日本", model: "日本" });
   });
 
-  /** A field its composition's end destroyed — Enter closed the dialog — is sent nothing. */
-  test("a field destroyed as its composition ends is sent nothing", async () => {
+  /**
+   * A field its composition's end destroys — Enter closes the dialog — is handed the word first: the
+   * word reaches `oninput` before `oncompositionend`, as a handler that took every step had it already.
+   */
+  test("a field destroyed as its composition ends is handed the word before it goes", async () => {
     const taken: string[] = [];
     class Dialog extends Component {
       @state text = "";
@@ -880,7 +883,7 @@ describe("a controlled textarea follows the model after the event the app handle
     compose(field, "", "日本", "chromium");
     await drain(app);
 
-    expect({ onPage: field.isConnected, taken }).toEqual({ onPage: false, taken: [] });
+    expect({ onPage: field.isConnected, taken }).toEqual({ onPage: false, taken: ["日本"] });
   });
 
   /**

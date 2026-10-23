@@ -14,8 +14,7 @@ import type { Resolver, Rule, RuleContext } from "./rule";
  * `@created`, `@mounted`, `@updated`, `@destroyed`, `@watchProp`, `@catchError` — runs before the
  * render an edit's handler causes: that one comes once the commit is over. An edit sent from there
  * is answered, but a second one reads the model before that render — whether the handler took the
- * first edit or refused it is not known yet — and so does the word an input method ends after
- * `oncompositionend` moved the model. And an edit sent
+ * first edit or refused it is not known yet. And an edit sent
  * there is a value set by an event: what the field should show is state, `this.on = true`.
  *
  * What is an edit: dispatching `input`, `change`, `beforeinput` or a composition event at a field
