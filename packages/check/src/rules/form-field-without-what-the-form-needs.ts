@@ -231,6 +231,9 @@ function readBag(
     found.push({ kind: "bag-unreadable", component: site.tag, detail: name, ...where(site) });
     return;
   }
+  // The keys the bag sets to something: a key that holds nothing — `{ oninput: undefined }` — carries
+  // no handler and sets no model, as core reads it.
+  const keys = new Set<string>();
   for (const property of written.properties) {
     if (!ts.isPropertyAssignment(property) && !ts.isShorthandPropertyAssignment(property)) {
       found.push({ kind: "bag-unreadable", component: site.tag, detail: name, ...where(site) });
@@ -243,24 +246,11 @@ function readBag(
     }
     // `{ oninput }` is `{ oninput: oninput }`, and the name is followed to what it holds.
     const held = ts.isPropertyAssignment(property) ? property.initializer : property.name;
-    if (FORM_KEYS.has(key) && !shadowed.includes(key) && holdsNothing(held)) {
+    if (!holdsNothing(held)) keys.add(key);
+    else if (FORM_KEYS.has(key) && !shadowed.includes(key)) {
       found.push({ kind: "bag-overrides", component: site.tag, detail: `${name}.${key}`, ...where(site) });
     }
   }
-  // The keys the bag sets to something: a key that holds nothing — `{ oninput: undefined }` — carries
-  // no handler and sets no model, as core reads it.
-  const keys = new Set(
-    written.properties
-      .filter((p) => {
-        const held = ts.isPropertyAssignment(p)
-          ? p.initializer
-          : ts.isShorthandPropertyAssignment(p)
-            ? p.name
-            : undefined;
-        return held === undefined || !holdsNothing(held);
-      })
-      .map((p) => (p.name !== undefined && (ts.isIdentifier(p.name) || ts.isStringLiteral(p.name)) ? p.name.text : "")),
-  );
   // `on:input` is the field's own handler as `oninput` is, however it reaches the field.
   const carries =
     keys.has("oninput") ||

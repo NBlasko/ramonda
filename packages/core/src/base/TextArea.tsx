@@ -4,7 +4,7 @@ import { Component } from "./Component";
 import { createRef } from "./Ref";
 import { mounted, updated } from "./decorators";
 import { __h } from "../vdom/h";
-import { composingIn } from "../core/field";
+import { composingIn, showsTheModel } from "../core/field";
 import { answer, controlled, forwarded, given } from "./forwarded";
 import type { RefusedVerbatimStandard } from "../types/commonTypes";
 import type { RefTarget } from "./Ref";
@@ -108,7 +108,7 @@ export class TextArea extends Component<TextAreaProps> {
     // Only a value that differs: writing the same one would collapse the user's selection, and
     // `writeValue` is the write for a value that has changed.
     const model = String(this.props.value);
-    if (field.value !== model) writeValue(field as unknown as EnhancedHTMLNode, model, false);
+    if (!showsTheModel(field, model)) writeValue(field as unknown as EnhancedHTMLNode, model, false);
   }
 
   /** The listener a controlled field answers its events with — see `answer` in `forwarded.ts`. */

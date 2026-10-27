@@ -4,6 +4,7 @@ import { Form as Mine } from "./myForm";
 import { Fancy } from "./ui";
 
 declare const value: string;
+const NONE = undefined;
 declare const on: boolean;
 declare const bag: Record<string, unknown>;
 declare const kind: string;
@@ -175,6 +176,7 @@ class Page extends Component {
         <input aria-label="unread box in form" type={kind} checked={on} oninput={this.type} />
         <input aria-label="unread radio in form" type={kind} checked={on} value="yes" onchange={this.type} />
         <input aria-label="checked as nothing" type={kind} checked={undefined} value={value} oninput={this.type} />
+        <input aria-label="checked as a const" type={kind} checked={NONE} value={value} onchange={this.type} />
         {/* ✗ a box whose type is written as an expression is still a box */}
         <input aria-label="braced box" type={"checkbox"} checked={on} oninput={this.type} />
         {/* ✗ unreadable-component */}

@@ -254,6 +254,51 @@ describe("RMD062", () => {
     container.remove();
   });
 
+  /**
+   * An edit the handler took inside the mount, and another sent right after it, before any microtask:
+   * the second is answered against what the field last showed — a render now would write over the
+   * browser's edit already in the field — and reported. Once it settles, nothing is left of the guess:
+   * the `change` after it is the end of the edits, not an edit of its own.
+   */
+  test("an edit right after a mount builds on the edit the mount's handler took", () => {
+    const heard: string[] = [];
+    class Words extends Component {
+      @state text = "";
+      field = createRef<HTMLInputElement>();
+      typed(event: EventOn<HTMLInputElement, InputEvent>) {
+        heard.push(`${event.inputType} ${event.currentTarget.value}`);
+        this.text = event.currentTarget.value;
+      }
+      left(event: EventOn<HTMLInputElement>) {
+        heard.push(`change ${event.currentTarget.value}`);
+      }
+      @mounted
+      fill() {
+        typeInto(this.field.current as HTMLInputElement, "a");
+      }
+      render() {
+        return (
+          <input aria-label="Words" ref={this.field} value={this.text} oninput={this.typed} onchange={this.left} />
+        );
+      }
+    }
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    bootstrap(<Words />, container);
+    const field = container.querySelector("input") as HTMLInputElement;
+    typeInto(field, `${field.value}b`);
+    field.dispatchEvent(new Event("change", { bubbles: true }));
+    flushSync();
+
+    expect({ heard, shown: field.value, reported: messages.some((m) => m.includes("its next event")) }).toEqual({
+      heard: ["insertText a", "insertText ab", "change ab"],
+      shown: "ab",
+      reported: true,
+    });
+    unmount(container);
+    container.remove();
+  });
+
   /** The handler ran and refused: that is known once its render has run, so a second edit reads ahead of it. */
   test("a second edit after one the handler refused is reported", async () => {
     class Locked extends Component {

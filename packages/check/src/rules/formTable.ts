@@ -359,6 +359,18 @@ export function formTableFor(sources: readonly ts.SourceFile[], resolve: Resolve
     });
   };
 
+  // `null` or `undefined`, through a `const` that holds one: what core reads as no value.
+  const holdsNothing = (expression: ts.Expression, depth = 0): boolean => {
+    const value = unwrap(expression);
+    if (isNothing(value)) return true;
+    if (!ts.isIdentifier(value) || depth > 8) return false;
+    const declared = resolve(value)?.declarations?.[0];
+    if (declared === undefined || !ts.isVariableDeclaration(declared) || declared.initializer === undefined)
+      return false;
+    if ((ts.getCombinedNodeFlags(declared) & ts.NodeFlags.Const) === 0) return false;
+    return holdsNothing(declared.initializer, depth + 1);
+  };
+
   const readField = (element: ts.JsxElement | ts.JsxSelfClosingElement, tag: string): void => {
     const opening = openingOf(element);
     const written = new Map<string, ts.JsxAttribute>();
@@ -375,7 +387,7 @@ export function formTableFor(sources: readonly ts.SourceFile[], resolve: Resolve
         value !== undefined &&
         ts.isJsxExpression(value) &&
         value.expression !== undefined &&
-        isNothing(value.expression)
+        holdsNothing(value.expression)
       );
     };
     // What its `type` makes it — see `fieldKind`. One whose type cannot be read is a box when it is
@@ -444,17 +456,6 @@ export function formTableFor(sources: readonly ts.SourceFile[], resolve: Resolve
     ts.forEachChild(node, secondPass);
   };
   for (const file of sources) secondPass(file);
-
-  const holdsNothing = (expression: ts.Expression, depth = 0): boolean => {
-    const value = unwrap(expression);
-    if (isNothing(value)) return true;
-    if (!ts.isIdentifier(value) || depth > 8) return false;
-    const declared = resolve(value)?.declarations?.[0];
-    if (declared === undefined || !ts.isVariableDeclaration(declared) || declared.initializer === undefined)
-      return false;
-    if ((ts.getCombinedNodeFlags(declared) & ts.NodeFlags.Const) === 0) return false;
-    return holdsNothing(declared.initializer, depth + 1);
-  };
 
   return { holdsNothing, fields, bags, sites, holders };
 }

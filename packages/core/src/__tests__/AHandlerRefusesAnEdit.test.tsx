@@ -380,6 +380,42 @@ test.each([
   expect(field.value).toBe(shown);
 });
 
+/**
+ * A textarea keeps its line breaks as `\n`. A model with `\r\n` — text from a server — is what it shows:
+ * a later render leaves the field and the caret alone, and its `change` is no edit of its own.
+ */
+test("a TextArea whose model has CRLF line breaks is not written again", async () => {
+  class Notes extends Component {
+    @state text = "one\r\ntwo";
+    @state marked = false;
+    heard: string[] = [];
+    typed(event: EventOn<HTMLTextAreaElement, InputEvent>) {
+      this.heard.push(event.inputType);
+      this.text = event.currentTarget.value;
+    }
+    render() {
+      return (
+        <TextArea id="t" aria-label="Notes" data-marked={String(this.marked)} value={this.text} oninput={this.typed} />
+      );
+    }
+  }
+  const app = await getDOM<Notes>(<Notes />);
+  await app.settle();
+  const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+  field.focus();
+  field.setSelectionRange(2, 2);
+  app.instance.marked = true;
+  await app.settle();
+  field.dispatchEvent(new Event("change", { bubbles: true }));
+  await app.settle();
+
+  expect({ shown: field.value, caret: field.selectionStart, heard: app.instance.heard }).toEqual({
+    shown: "one\ntwo",
+    caret: 2,
+    heard: [],
+  });
+});
+
 /** SVG's `transform` is the attribute it is, on the server as in the browser. */
 test("an SVG transform is written as an attribute", async () => {
   class Shape extends Component {
@@ -539,6 +575,38 @@ describe("the event a field's handler is handed", () => {
       heard: ["compositionend"],
       model: "日本",
     });
+  });
+
+  /** The `input` a field hands over for a finished word, or for an autofill, is an `InputEvent` on the field. */
+  test("an input the field hands over is an InputEvent, where the edit happened", async () => {
+    class Words extends Component {
+      @state text = "";
+      seen: string[] = [];
+      typed(event: EventOn<HTMLInputElement, InputEvent>) {
+        if (event.isComposing) return;
+        const where = event.currentTarget === event.target ? event.currentTarget.id : "elsewhere";
+        this.seen.push(`${event instanceof InputEvent} ${event.inputType} ${String(event.data)} ${where}`);
+        this.text = event.currentTarget.value;
+      }
+      render() {
+        return <input id="i" aria-label="Words" value={this.text} oninput={this.typed} />;
+      }
+    }
+    const app = await getDOM<Words>(<Words />);
+    await app.settle();
+    const field = app.container.querySelector("#i") as HTMLInputElement;
+    field.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+    field.value = "日本";
+    field.dispatchEvent(
+      new InputEvent("input", { bubbles: true, isComposing: true, inputType: "insertCompositionText" }),
+    );
+    field.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "日本" }));
+    await app.settle();
+    field.value = "filled";
+    field.dispatchEvent(new Event("change", { bubbles: true }));
+    await app.settle();
+
+    expect(app.instance.seen).toEqual(["true insertCompositionText 日本 i", "true insertReplacementText null i"]);
   });
 
   /** A pick is answered on its `input`; `onchange` stopping its `change` stops the real one. */

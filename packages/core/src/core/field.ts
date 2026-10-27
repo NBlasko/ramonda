@@ -153,6 +153,8 @@ interface FieldState {
    * since the render that writes the model has not run yet.
    */
   pending?: FieldValue;
+  /** `show` queued a settle for a microtask, which has not run yet — see the `change` in `answerEdit`. */
+  waiting?: boolean;
   /**
    * An edit of a text field reached its handler since its last `change`, so the `change` that ends
    * them reaches `onchange` — when the field no longer shows `since`. One whose edits put the text
@@ -236,7 +238,9 @@ function show(control: FieldControl, field: Field | null, handled: boolean, edit
     // still before the browser draws.
     const state = stateOf(control.key);
     if (handled && field !== null) state.pending = valueOf(field);
+    state.waiting = true;
     queueMicrotask(() => {
+      state.waiting = undefined;
       state.pending = undefined;
       settleNow(control, edit);
     });
@@ -380,11 +384,15 @@ export function answerEdit(control: FieldControl, event: Event): void {
     return;
   }
   const state = stateOf(control.key);
-  // A settle still waiting for its microtask while no commit runs any more — a `flushSync` in a test
-  // ran the renders it waited for: the field shows the model now, before this event reads it.
-  if (state.pending !== undefined && !drainingNow()) {
+  // A `change` while a settle still waits for its microtask and no commit runs any more — right after a
+  // mount, after a `flushSync` in a test: it brings no text of its own, so the renders run and the field
+  // shows the model before the `change` reads it; the microtask then settles a field already settled. Any other
+  // event may bring the browser's edit, already in the field, which a render would write over: it is
+  // answered as an event in the commit is, against what the field last showed — RMD062.
+  if (event.type === "change" && state.waiting === true && !drainingNow()) {
+    state.waiting = undefined;
     state.pending = undefined;
-    control.settle();
+    settleNow(control, undefined);
   }
   // The selection `beforeinput` recorded belongs to the `input` right after it; anything else in
   // between — a cancelled edit sends none — and it is no longer the edit's.
@@ -590,6 +598,9 @@ function answered(control: FieldControl, field: Field | null, edit: Edit | undef
 export function showsTheModel(field: { type?: string; value: string }, model: unknown): boolean {
   const text = String(model ?? "");
   if (field.value === text) return true;
+  // A textarea keeps its line breaks as `\n`: a model written with `\r\n` — text from a server — is
+  // the text it shows, not a value to write again on every render.
+  if (field.type === "textarea") return field.value === text.replace(/\r\n?/g, "\n");
   if (typeof model !== "number" || field.type !== "number" || field.value === "") return false;
   return Number(field.value) === model;
 }
@@ -601,6 +612,17 @@ interface Asked {
   prevented: boolean;
 }
 
+/** What a view of an event reads off the event itself: where and when it happened. */
+const FROM_THE_EVENT = new Set([
+  "target",
+  "currentTarget",
+  "srcElement",
+  "composedPath",
+  "eventPhase",
+  "timeStamp",
+  "isTrusted",
+]);
+
 /**
  * `event` as a handler of the field is promised it: `oninput` an `input`, `onchange` a `change` —
  * when the field answers the edit on another event (a pick on its `input`, a word on its
@@ -610,10 +632,28 @@ interface Asked {
  * dispatching it again is the one thing it cannot do.
  */
 function as(event: Event, type: string, own: Record<string, unknown>, asked: Asked): Event {
-  return new Proxy(event, {
+  // `oninput` is promised an `InputEvent` — `instanceof` and its fields — even when the field answers
+  // the edit on another event: a word's `compositionend`, an autofill's `change`.
+  const view =
+    type === "input" && typeof InputEvent === "function" && !(event instanceof InputEvent)
+      ? new InputEvent("input", {
+          bubbles: event.bubbles,
+          cancelable: event.cancelable,
+          composed: event.composed,
+          data: (event as CompositionEvent).data ?? null,
+          inputType: String(own.inputType ?? ""),
+          isComposing: own.isComposing === true,
+        })
+      : event;
+  return new Proxy(view, {
     get(target, key) {
       if (key === "type") return type;
       if (typeof key === "string" && Object.hasOwn(own, key)) return own[key];
+      // Where and when it happened is the event's own, whatever the view is built from.
+      if (typeof key === "string" && FROM_THE_EVENT.has(key)) {
+        const value = Reflect.get(event, key, event);
+        return typeof value === "function" ? (value as (...args: unknown[]) => unknown).bind(event) : value;
+      }
       if (key === "stopPropagation") return () => void (asked.propagation = true);
       if (key === "stopImmediatePropagation") return () => void (asked.immediate = true);
       if (key === "preventDefault") return () => void (asked.prevented = true);

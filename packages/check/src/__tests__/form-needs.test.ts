@@ -40,6 +40,8 @@ describe("a field inside a @ramonda/form form", () => {
         [lineOf('aria-label="unread radio in form"'), "missing", "`name`, `onblur`, `aria-invalid`"],
         // `checked={undefined}` is no `checked`: a text field, with its `value` and its own `oninput`.
         [lineOf('aria-label="checked as nothing"'), "missing", "`name`, `onblur`, `aria-invalid`"],
+        // A `const` that holds nothing is nothing too: a text field, whose handler is `oninput`.
+        [lineOf('aria-label="checked as a const"'), "missing", "`name`, `oninput`, `onblur`, `aria-invalid`"],
         [lineOf('aria-label="braced box"'), "missing", "`name`, `onblur`, `aria-invalid`"],
         [lineOf('attrs={{ value: "fixed" }}'), "bag-without-a-handler", "attrs"],
         [lineOf("<BoxInput attrs={{ checked: true }} />"), "bag-without-a-handler", "attrs"],
@@ -55,7 +57,7 @@ describe("a field inside a @ramonda/form form", () => {
         [lineOf("class SignupForm"), "form-in-a-hook", "form"],
       ]),
     );
-    expect(issues).toHaveLength(24);
+    expect(issues).toHaveLength(25);
   });
 
   test("a complete field, a wrapper handed everything, a harmless bag, a field outside a form and an app's own Form are silent", () => {
