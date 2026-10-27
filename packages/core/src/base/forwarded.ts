@@ -55,8 +55,8 @@ export function forwarded(component: Component<any>, consumed: readonly string[]
  *
  * A CONTROLLED field — one with a `value` — gets `listener` on each event in `answered`, calling the
  * app's own through `answer`. A handler written `on:input` is the field's own as much as `oninput`
- * is, as on a plain `<input>`: it is taken off the element too and called by the field, after the
- * edit is decided — so a refused edit reaches neither. A field without a `value` is the page's: it
+ * is, as on a plain `<input>`: it is taken off the element too and called by the field, which then
+ * shows the model — so an edit neither of them took is put back. A field without a `value` is the page's: it
  * gets `uncontrolled` on the same events when it needs to hear them — a `Select` notes the user's
  * pick — and nothing otherwise.
  */
@@ -110,7 +110,9 @@ export function heard(component: Component<any>, event: Event): void {
  *
  * 1. System Settings → Keyboard → Input Sources: add Japanese – Romaji.
  * 2. Build the playground, `vite preview` it, and open `/fields` in Safari.
- * 3. In each of the two text fields, switch to Japanese, type `nihon`, Space, Enter.
+ * 3. In each of the four composed fields — "skips" and "takes" on a `TextArea`, the same two on an
+ *    `<input>`, which reaches the field through the attribute pass rather than this file — switch to
+ *    Japanese, type `nihon`, Space, Enter.
  *
  * Right: every field keeps 日本; each "skips" readout is `["日本"]`, and each "takes" readout lists
  * the steps Safari sent and ends in 日本 once. Wrong: a field comes back empty, or a readout ends in
@@ -119,13 +121,14 @@ export function heard(component: Component<any>, event: Event): void {
  * look for: an `input` Safari sends after `compositionend` under another `inputType` than Firefox's
  * `insertCompositionText` is not recognised as the word already shown, and a handler hears it twice.
  *
- * 4. Type `nihon` again and, before Enter, press Tab to leave the field. Right: the field keeps what
- *    was typed, and the "skips" readout has it once — as Chromium and Firefox do. Wrong: an empty
+ * 4. In each of the four, type `nihon` again and, before Enter, press Tab to leave the field. Right:
+ *    the field keeps what was typed, and that field's readout has it once at its end — as Chromium
+ *    and Firefox do. Wrong: an empty
  *    field, which means Safari sends `compositionend` after the blur and something wrote the field in
  *    between — see "A composition lost" on `answerEdit`.
  *
- * 5. On a Mac, an accent is composed too: in a Latin field, type Option-E then `e`. Right: é, once in
- *    the "skips" readout.
+ * 5. On a Mac, an accent is composed too: in each "skips" field, with a Latin layout, type Option-E
+ *    then `e`. Right: é, once in that field's readout.
  *
  * Delete this note once it is measured.
  */

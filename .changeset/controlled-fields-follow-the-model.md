@@ -33,7 +33,8 @@ Android keyboard, which composes every word. The field is not written while the 
 A handler that waits for the finished word returns while `isComposing`, and is handed the word once,
 at `compositionend` and before `oncompositionend` — Chromium's last `input` of a word still says
 `isComposing`, and nothing follows its end; Firefox's own `input` after the end is recognised and
-not handed over again. A model the app moves in the middle of a word wins over it, and a blur keeps
+not handed over again. A handler that refuses or rewrites waits for the finished word, so it never
+keeps half of one. A model the app moves in the middle of a word wins over it, and a blur keeps
 the composition going until its `compositionend` or the next ordinary edit.
 
 `defaultValue` (and `defaultChecked`) starts a field the user owns — for a form whose fields are read

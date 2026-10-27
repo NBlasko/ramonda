@@ -130,7 +130,9 @@ class Refused extends Component {
     if (event.currentTarget.value !== "l") this.size = event.currentTarget.value;
   }
 
-  typed(event: EventOn<HTMLTextAreaElement>) {
+  /** Waits for the finished word: a refusal keeps no half of one. */
+  typed(event: EventOn<HTMLTextAreaElement, InputEvent>) {
+    if (event.isComposing) return;
     if (event.currentTarget.value.length <= 3) this.text = event.currentTarget.value;
   }
 
@@ -170,8 +172,9 @@ class RefusedInput extends Component {
   @state ticked = false;
   @state size = "m";
 
-  /** Past three characters, the handler leaves the model where it was. */
-  typed(event: EventOn<HTMLInputElement>) {
+  /** Past three characters, the handler leaves the model where it was — after the word, not in it. */
+  typed(event: EventOn<HTMLInputElement, InputEvent>) {
+    if (event.isComposing) return;
     if (event.currentTarget.value.length <= 3) this.text = event.currentTarget.value;
   }
 

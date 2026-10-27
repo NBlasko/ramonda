@@ -407,10 +407,15 @@ export function answerEdit(control: FieldControl, event: Event): void {
     answered(control, field, edit, () => {
       let handled = false;
       if (waited) {
-        // An `input`, as `oninput` is promised: the word, finished, `insertCompositionText`.
+        // An `input`, as `oninput` is promised: the word, finished, `insertCompositionText`. What it stops
+        // or prevents is asked of an `input` that never was, and leaves the real `compositionend` alone.
         if (!state.taken) state.since = was;
         state.taken = true;
-        handled = control.own("input", as(event, "input", { inputType: "insertCompositionText", isComposing: false }));
+        const unasked: Asked = { propagation: false, immediate: false, prevented: false };
+        handled = control.own(
+          "input",
+          as(event, "input", { inputType: "insertCompositionText", isComposing: false }, unasked),
+        );
       }
       return control.own(event.type, event) || handled;
     });

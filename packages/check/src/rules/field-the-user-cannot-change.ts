@@ -231,7 +231,7 @@ export const fieldTheUserCannotChange = {
     }
     if (unknown) return [{ component, kind: "unknown-spread", ...at }];
 
-    // `oninput` or `on:input`: both are the field's own handler, called by core after the edit is decided.
+    // `oninput` or `on:input`: both are the field's own handler, which core calls before it shows the model.
     const own = (name: string) =>
       attributes.find(
         (attribute) =>

@@ -179,7 +179,8 @@ import { Component, state, type EventOn } from "@ramonda/core";
 class Phone extends Component {
   @state phone = "";
 
-  typed(event: EventOn<HTMLInputElement>) {
+  typed(event: EventOn<HTMLInputElement, InputEvent>) {
+    if (event.isComposing) return;
     const text = event.currentTarget.value;
     if (/^\d*$/.test(text)) this.phone = text;
   }
@@ -189,6 +190,10 @@ class Phone extends Component {
   }
 }
 ```
+
+A handler that refuses or rewrites waits for the finished word: it returns while `isComposing`, and
+is handed the word once, when it ends. One that took the first steps of a word and refused the rest
+would keep a reading the input method had not finished — `abに` for `ab日本` — in the model.
 
 The handler is handed the edit's own `input`. Typed `EventOn<HTMLInputElement, InputEvent>`, it reads
 what the edit was — `event.inputType`: `insertText`, `deleteContentBackward`, `insertFromPaste` — and

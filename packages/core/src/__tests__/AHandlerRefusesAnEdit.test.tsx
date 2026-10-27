@@ -115,6 +115,41 @@ describe("a field shows what its handler decided, before anything around it read
   );
 });
 
+/**
+ * A handler that limits the text, typed through an input method: one that waits for the finished word
+ * refuses it whole, and the field goes back to the text before the word; one that refuses steps keeps
+ * the steps it took — a reading the input method had not finished.
+ */
+test.each([
+  ["waits for the finished word", true, "ab"],
+  ["takes the steps it allows", false, "abに"],
+] as const)("a length limit that %s", async (_name, waits, kept) => {
+  class Short extends Component {
+    @state text = "ab";
+    typed(event: EventOn<HTMLInputElement, InputEvent>) {
+      if (waits && event.isComposing) return;
+      if (event.currentTarget.value.length <= 3) this.text = event.currentTarget.value;
+    }
+    render() {
+      return <input id="i" aria-label="Short" value={this.text} oninput={this.typed} />;
+    }
+  }
+  const app = await getDOM<Short>(<Short />);
+  await app.settle();
+  const field = app.container.querySelector("#i") as HTMLInputElement;
+  field.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+  for (const step of ["abn", "abに", "abにh", "abにほ", "ab日本"]) {
+    field.value = step;
+    field.dispatchEvent(
+      new InputEvent("input", { bubbles: true, isComposing: true, inputType: "insertCompositionText" }),
+    );
+  }
+  field.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "日本" }));
+  await app.settle();
+
+  expect({ shown: field.value, model: app.instance.text }).toEqual({ shown: kept, model: kept });
+});
+
 describe("a pick the handler refused", () => {
   test("is gone from the select", async () => {
     class Shop extends Component {
@@ -353,6 +388,44 @@ describe("the event a field's handler is handed", () => {
       seen: ["input insertCompositionText 日本", "compositionend 日本"],
       model: "日本",
       shown: "日本",
+    });
+  });
+
+  /** What the handler stops on the word it is handed is asked of an `input` that never was: the real end bubbles on. */
+  test("a handler stopping the word it is handed leaves the real compositionend alone", async () => {
+    class Words extends Component {
+      @state text = "";
+      heard: string[] = [];
+      typed(event: EventOn<HTMLInputElement, InputEvent>) {
+        if (event.isComposing) return;
+        event.stopImmediatePropagation();
+        this.text = event.currentTarget.value;
+      }
+      ended(_event: EventOn<HTMLDivElement>) {
+        this.heard.push("compositionend");
+      }
+      render() {
+        return (
+          <div oncompositionend={this.ended}>
+            <input id="i" aria-label="Words" value={this.text} oninput={this.typed} />
+          </div>
+        );
+      }
+    }
+    const app = await getDOM<Words>(<Words />);
+    await app.settle();
+    const field = app.container.querySelector("#i") as HTMLInputElement;
+    field.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+    field.value = "日本";
+    field.dispatchEvent(
+      new InputEvent("input", { bubbles: true, isComposing: true, inputType: "insertCompositionText" }),
+    );
+    field.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "日本" }));
+    await app.settle();
+
+    expect({ heard: app.instance.heard, model: app.instance.text }).toEqual({
+      heard: ["compositionend"],
+      model: "日本",
     });
   });
 
