@@ -166,6 +166,7 @@ class Page extends Component {
         <input aria-label="hidden const in form" type={HIDDEN} name="id" value={value} />
         {/* ✗ a box whose type cannot be read, written with `checked`, is a field of the form */}
         <input aria-label="unread box in form" type={kind} checked={on} oninput={this.type} />
+        <input aria-label="unread radio in form" type={kind} checked={on} value="yes" onchange={this.type} />
         {/* ✗ a box whose type is written as an expression is still a box */}
         <input aria-label="braced box" type={"checkbox"} checked={on} oninput={this.type} />
         {/* ✗ unreadable-component */}
@@ -198,6 +199,7 @@ class Loose extends Component {
         <StyledInput value={value} oninput={this.type} />
         {/* ✗ what a spread carries is read everywhere: a value with no handler, and a bag unseen */}
         <BareInput attrs={{ value: "fixed" }} />
+        <BareInput attrs={{ value: undefined }} />
         {/* ✓ a box's value is what the form sends; ✗ its checked is a model with no handler */}
         <BoxInput attrs={{ value: "yes" }} />
         {/* ✓ `on:input` in the spread is the field's own handler */}

@@ -261,7 +261,17 @@ function readBag(
   // The model key the spread may set: `checked` on a box, `value` on anything else — and only when the
   // field does not write it after the spread.
   const model = wants === "box" ? "checked" : "value";
-  const value = keys.has(model) && !shadowed.includes(model);
+  // A model key that holds nothing — `{ value: undefined }` — sets no model: the field stays the user's.
+  const modelProperty = written.properties.find(
+    (p) => p.name !== undefined && (ts.isIdentifier(p.name) || ts.isStringLiteral(p.name)) && p.name.text === model,
+  );
+  const held =
+    modelProperty === undefined
+      ? undefined
+      : ts.isPropertyAssignment(modelProperty)
+        ? modelProperty.initializer
+        : modelProperty.name;
+  const value = held !== undefined && !holdsNothing(held as ts.Expression) && !shadowed.includes(model);
   if (wants !== "nothing" && value && !carries) {
     found.push({ kind: "bag-without-a-handler", component: site.tag, detail: name, ...where(site) });
   }

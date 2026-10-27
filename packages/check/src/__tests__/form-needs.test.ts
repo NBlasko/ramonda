@@ -36,17 +36,21 @@ describe("a field inside a @ramonda/form form", () => {
         [lineOf("<Fancy"), "unreadable-component", "Fancy"],
         [lineOf("<Ambient"), "unreadable-component", "Ambient"],
         [lineOf('aria-label="unread box in form"'), "missing", "`name`, `onblur`, `aria-invalid`"],
+        // `checked` beside a `value`: a pick, whose `onchange` is its handler — as the other rules read it.
+        [lineOf('aria-label="unread radio in form"'), "missing", "`name`, `onblur`, `aria-invalid`"],
         [lineOf('aria-label="braced box"'), "missing", "`name`, `onblur`, `aria-invalid`"],
         [lineOf('attrs={{ value: "fixed" }}'), "bag-without-a-handler", "attrs"],
         [lineOf("<BoxInput attrs={{ checked: true }} />"), "bag-without-a-handler", "attrs"],
         [lineOf('attrs={{ value: "x", onchange: this.type }}'), "bag-without-a-handler", "attrs"],
         [lineOf("attrs={bag}", 2), "bag-unreadable", "attrs"],
         [lineOf("attrs={{ oninput }}"), "bag-overrides", "attrs.oninput"],
+        // A `value` that holds nothing overrides the field's, and sets no model that needs a handler.
+        [lineOf("attrs={{ value: undefined }}"), "bag-overrides", "attrs.value"],
         [lineOf("class Detached"), "form-not-attached", "form"],
         [lineOf("class SignupForm"), "form-in-a-hook", "form"],
       ]),
     );
-    expect(issues).toHaveLength(19);
+    expect(issues).toHaveLength(21);
   });
 
   test("a complete field, a wrapper handed everything, a harmless bag, a field outside a form and an app's own Form are silent", () => {

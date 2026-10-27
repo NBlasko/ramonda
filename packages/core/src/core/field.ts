@@ -600,31 +600,29 @@ interface Asked {
  * when the field answers the edit on another event (a pick on its `input`, a word on its
  * `compositionend`). Everything else is the event itself, `currentTarget` included. What the handler
  * stops or prevents — by method, or by `cancelBubble` and `returnValue` — is recorded in `asked`, for
- * the event it was told about; without `asked` it reaches the event itself. It is a view, not an
- * event: dispatching it again is the one thing it cannot do.
+ * the event it was told about, and never reaches the event itself. It is a view, not an event:
+ * dispatching it again is the one thing it cannot do.
  */
-function as(event: Event, type: string, own: Record<string, unknown>, asked?: Asked): Event {
+function as(event: Event, type: string, own: Record<string, unknown>, asked: Asked): Event {
   return new Proxy(event, {
     get(target, key) {
       if (key === "type") return type;
       if (typeof key === "string" && Object.hasOwn(own, key)) return own[key];
-      if (asked !== undefined) {
-        if (key === "stopPropagation") return () => void (asked.propagation = true);
-        if (key === "stopImmediatePropagation") return () => void (asked.immediate = true);
-        if (key === "preventDefault") return () => void (asked.prevented = true);
-        if (key === "defaultPrevented") return asked.prevented;
-        if (key === "cancelBubble") return asked.propagation || asked.immediate;
-      }
+      if (key === "stopPropagation") return () => void (asked.propagation = true);
+      if (key === "stopImmediatePropagation") return () => void (asked.immediate = true);
+      if (key === "preventDefault") return () => void (asked.prevented = true);
+      if (key === "defaultPrevented") return asked.prevented;
+      if (key === "cancelBubble") return asked.propagation || asked.immediate;
       const value = Reflect.get(target, key, target);
       return typeof value === "function" ? (value as (...args: unknown[]) => unknown).bind(target) : value;
     },
     // The old spellings of the same three asks, `cancelBubble = true` and `returnValue = false`.
     set(target, key, value) {
-      if (asked !== undefined && key === "cancelBubble") {
+      if (key === "cancelBubble") {
         if (value === true) asked.propagation = true;
         return true;
       }
-      if (asked !== undefined && key === "returnValue") {
+      if (key === "returnValue") {
         if (value === false) asked.prevented = true;
         return true;
       }
@@ -756,6 +754,9 @@ function controlOf(input: Kept): FieldControl {
     own: (type, event) => callOwn(input, type, event),
     settle: () => {
       const box = isBoxNow();
+      // A render — the handler's own — took the `value` away: the field is the user's again, and keeps
+      // what it shows, as a `TextArea` or a `Select` does.
+      if (!input[CONTROLLED]) return;
       if (composingIn(input)) return;
       if (isRadio(input)) {
         // Clicking one radio unchecks another, which hears nothing: the whole group is put back.

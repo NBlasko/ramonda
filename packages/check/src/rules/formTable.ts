@@ -366,10 +366,11 @@ export function formTableFor(sources: readonly ts.SourceFile[], resolve: Resolve
       if (ts.isJsxAttribute(attribute)) written.set(attribute.name.getText(), attribute);
     }
     // What its `type` makes it — see `fieldKind`. One whose type cannot be read is a box when it is
-    // written with `checked`, and a text field otherwise.
+    // written with `checked` — a `value` beside it is then what the box sends, as on a radio — and a
+    // text field otherwise: the same reading as `field-the-user-cannot-change`.
     const kind = tag === "input" ? fieldKind(typeAttributeOf(element), resolve) : "text";
     if (kind === "unedited") return;
-    const box = kind === "box" || (kind === "unread" && written.has("checked") && !written.has("value"));
+    const box = kind === "box" || (kind === "unread" && written.has("checked"));
     const pick = tag === "select" || box;
 
     // Every `{...this.props.P}` on a field, controlled or not: it may carry a model, or take one away.

@@ -277,6 +277,60 @@ describe("a pick the handler refused", () => {
   });
 });
 
+/**
+ * A handler that lets the field go — its render takes the `value` away — leaves it showing what the
+ * user typed: the field is the user's again, on an `<input>` as on a `TextArea`, a box as a text.
+ */
+test.each([
+  ["an input", "input"],
+  ["a TextArea", "textarea"],
+  ["a checkbox", "checkbox"],
+] as const)("%s released by its handler keeps what the user did", async (_name, kind) => {
+  class Released extends Component {
+    @state text = "";
+    @state on = false;
+    @state locked = true;
+    typed(event: EventOn<HTMLInputElement | HTMLTextAreaElement>) {
+      this.text = event.currentTarget.value;
+      this.locked = false;
+    }
+    ticked(event: EventOn<HTMLInputElement>) {
+      this.on = event.currentTarget.checked;
+      this.locked = false;
+    }
+    render() {
+      if (kind === "checkbox") {
+        return (
+          <input
+            id="f"
+            type="checkbox"
+            aria-label="Released"
+            checked={this.locked ? this.on : undefined}
+            onchange={this.ticked}
+          />
+        );
+      }
+      const value = this.locked ? this.text : undefined;
+      return kind === "input" ? (
+        <input id="f" aria-label="Released" value={value} oninput={this.typed} />
+      ) : (
+        <TextArea id="f" aria-label="Released" value={value} oninput={this.typed} />
+      );
+    }
+  }
+  const app = await getDOM<Released>(<Released />);
+  await app.settle();
+  const field = app.container.querySelector("#f") as HTMLInputElement;
+  if (kind === "checkbox") field.click();
+  else {
+    field.value = "abcd";
+    field.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText" }));
+  }
+  await app.settle();
+
+  expect(kind === "checkbox" ? field.checked : field.value).toBe(kind === "checkbox" ? true : "abcd");
+});
+
 /** A number field has no caret: what it shows is put back without one. */
 test("a number field whose handler refused the edit shows the model", async () => {
   class Age extends Component {
