@@ -40,6 +40,24 @@ export function holdsNothing(expression: ts.Expression, resolve: Resolver, depth
 }
 
 /**
+ * Whether `name` is written on an element and says something — not `{null}`, `{undefined}` or a `const`
+ * holding one: what core reads as the attribute being there. A bare `checked` says `true`.
+ */
+export function says(opening: ts.JsxOpeningLikeElement, name: string, resolve: Resolver): boolean {
+  return opening.attributes.properties.some(
+    (p) =>
+      ts.isJsxAttribute(p) &&
+      p.name.getText() === name &&
+      !(
+        p.initializer !== undefined &&
+        ts.isJsxExpression(p.initializer) &&
+        p.initializer.expression !== undefined &&
+        holdsNothing(p.initializer.expression, resolve)
+      ),
+  );
+}
+
+/**
  * Whether an attribute is written as `{null}` or `{undefined}`, or a `const` holding one: there, and
  * saying nothing. Core reads a `value` written so as no value, and a rule about `value` has to read it
  * the same way.

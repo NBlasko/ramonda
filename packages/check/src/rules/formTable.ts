@@ -2,7 +2,7 @@ import { UNEDITED_INPUT_TYPES } from "@ramonda/dom-facts";
 import ts from "typescript";
 import { positionOf } from "../syntax";
 import { coreElementTag } from "./coreElements";
-import { holdsNothing as holdsNothingIn, openingOf, tagOf } from "./element";
+import { holdsNothing as holdsNothingIn, openingOf, says, tagOf } from "./element";
 import { unwrap } from "./follow-value";
 import { enclosingElement } from "./html";
 import type { Resolver, Where } from "./rule";
@@ -367,19 +367,8 @@ export function formTableFor(sources: readonly ts.SourceFile[], resolve: Resolve
     for (const attribute of opening.attributes.properties) {
       if (ts.isJsxAttribute(attribute)) written.set(attribute.name.getText(), attribute);
     }
-    // Written, and saying something: `{null}` and `{undefined}` are no attribute, as core reads them and
-    // as `field-the-user-cannot-change` does.
-    const said = (name: string): boolean => {
-      const attribute = written.get(name);
-      if (attribute === undefined) return false;
-      const value = attribute.initializer;
-      return !(
-        value !== undefined &&
-        ts.isJsxExpression(value) &&
-        value.expression !== undefined &&
-        holdsNothing(value.expression)
-      );
-    };
+    // Written, and saying something — see `says`: as core reads it, and as every rule here does.
+    const said = (name: string): boolean => says(opening, name, resolve);
     // What its `type` makes it — see `fieldKind`. One whose type cannot be read is a box when it is
     // written with `checked` — a `value` beside it is then what the box sends, as on a radio — and a
     // text field otherwise: the same reading as `field-the-user-cannot-change`.

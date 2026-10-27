@@ -15,6 +15,7 @@ declare const kind: string;
 declare const later: (run: () => void) => void;
 declare const event: Event;
 const INPUT = "input";
+const NONE = undefined;
 const READY = "app:ready";
 
 /* ---- Reported ---- */
@@ -80,6 +81,32 @@ class WritesFieldsWithNoModel extends Component {
         <input aria-label="l" ref={this.loose} value={undefined} />
         <input type="checkbox" aria-label="f" ref={this.free} />
         <input type="checkbox" aria-label="h" ref={this.held} checked={this.on} onchange={() => {}} />
+      </div>
+    );
+  }
+}
+
+/** A ref on a held box in one branch and a free one in the other holds what either does. */
+class WritesARefOnTwoElements extends Component {
+  @state on = false;
+  @state edit = true;
+  @state text = "";
+  b = createRef<HTMLInputElement>();
+  r = createRef<HTMLInputElement>();
+  @mounted
+  start() {
+    this.b.current!.checked = true; // REPORT write held box in a branch
+    this.r.current!.value = "x"; // REPORT write a value beside checked={NONE}
+  }
+  render() {
+    return (
+      <div>
+        {this.edit ? (
+          <input type="checkbox" aria-label="b" ref={this.b} checked={this.on} onchange={() => {}} />
+        ) : (
+          <input type="checkbox" aria-label="b" ref={this.b} />
+        )}
+        <input type={kind} aria-label="r" ref={this.r} checked={NONE} value={this.text} oninput={() => {}} />
       </div>
     );
   }
