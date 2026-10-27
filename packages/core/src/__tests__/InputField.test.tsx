@@ -1,7 +1,7 @@
 import { describe, test, expect } from "vitest";
 import { getDOM } from "../test/setup";
 import { state } from "../base/decorators";
-import { Component, type EventOn } from "../index";
+import { Component, TextArea, type EventOn } from "../index";
 import { renderToString } from "../hydration/ssr";
 
 /** An edit as a browser makes it: the field changes first, then `input` says so. */
@@ -723,24 +723,30 @@ describe("a field blurred in the middle of a commit", () => {
     expect({ focused: document.activeElement?.id, blurs: app.instance.blurs }).toEqual({ focused: "d", blurs: 1 });
   });
 
-  /** A browser blurs a focused field as it is removed: the field's own handler is not called for it. */
-  test("a field the tree removed answers its blur with nothing", async () => {
+  /**
+   * A browser blurs a focused field as it is removed: its own `onblur` is called, as any element's is
+   * — a draft saved on the way out — and the field answers nothing else.
+   */
+  test.each(["input", "TextArea"] as const)("a %s the tree removed calls its own onblur", async (kind) => {
     class Page extends Component {
       @state open = true;
       @state text = "";
       blurs = 0;
-      typed(event: EventOn<HTMLInputElement>) {
+      typed(event: EventOn<HTMLInputElement | HTMLTextAreaElement>) {
         this.text = event.currentTarget.value;
       }
       left() {
         this.blurs++;
       }
       render() {
+        if (!this.open) return <div />;
         return (
           <div>
-            {this.open ? (
+            {kind === "input" ? (
               <input id="i" aria-label="Gone" value={this.text} oninput={this.typed} onblur={this.left} />
-            ) : null}
+            ) : (
+              <TextArea id="i" aria-label="Gone" value={this.text} oninput={this.typed} onblur={this.left} />
+            )}
           </div>
         );
       }
@@ -752,7 +758,7 @@ describe("a field blurred in the middle of a commit", () => {
     await app.settle();
     field.dispatchEvent(new FocusEvent("blur"));
 
-    expect(app.instance.blurs).toBe(0);
+    expect(app.instance.blurs).toBe(1);
   });
 
   /**

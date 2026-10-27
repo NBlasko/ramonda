@@ -238,13 +238,29 @@ function show(control: FieldControl, field: Field | null, handled: boolean, edit
     if (handled && field !== null) state.pending = valueOf(field);
     queueMicrotask(() => {
       state.pending = undefined;
-      if (!drainingNow()) drainSync();
-      control.settle();
-      putCaretBack(edit);
+      settleNow(control, edit);
     });
     return;
   }
-  drainSync();
+  settleNow(control, edit);
+}
+
+/**
+ * The renders the handler caused, then the field made to show the model and the caret put back. When
+ * a render throws, the field still shows the model as last rendered — not an edit no render took —
+ * and the render's error goes on.
+ */
+function settleNow(control: FieldControl, edit: Edit | undefined): void {
+  try {
+    runRenders();
+  } catch (renderError) {
+    try {
+      control.settle();
+    } catch {
+      // The render's error is the cause.
+    }
+    throw renderError;
+  }
   control.settle();
   putCaretBack(edit);
 }
@@ -357,8 +373,12 @@ function takeBefore(state: FieldState, event: Event): Selected | undefined {
  * `oninput` as the `input` it is promised and then `onchange`. A pick's `change` right after its `input` has nothing left to do.
  */
 export function answerEdit(control: FieldControl, event: Event): void {
-  // A field the tree took away answers nothing — a browser blurs a focused field as it is removed.
-  if (control.gone()) return;
+  // A field the tree took away answers nothing — a browser blurs a focused field as it is removed —
+  // but its own `onblur` is called, as any element's is: a draft saved on the way out.
+  if (control.gone()) {
+    if (event.type === "blur") control.own(event.type, event);
+    return;
+  }
   const state = stateOf(control.key);
   // The selection `beforeinput` recorded belongs to the `input` right after it; anything else in
   // between — a cancelled edit sends none — and it is no longer the edit's.
@@ -541,18 +561,8 @@ function answered(control: FieldControl, field: Field | null, edit: Edit | undef
     thrown = { error };
   }
   if (thrown === undefined) {
-    try {
-      show(control, field, handled, edit);
-    } catch (renderError) {
-      // The render of what the handler wrote threw: its error goes on, and the field shows the model
-      // as last rendered, as it does after a handler that throws — not the edit no render took.
-      try {
-        control.settle();
-      } catch {
-        // The render's error is the cause.
-      }
-      throw renderError;
-    }
+    // A render that throws leaves the field showing the model, and its error goes on — see `settleNow`.
+    show(control, field, handled, edit);
     return;
   }
   try {
@@ -561,11 +571,6 @@ function answered(control: FieldControl, field: Field | null, edit: Edit | undef
     // The handler's error is the one thrown here; the render's is reported as an uncaught error is,
     // and the field still shows the model.
     reportUncaught(renderError);
-    try {
-      control.settle();
-    } catch {
-      // Already reported.
-    }
   }
   throw thrown.error;
 }
