@@ -59,6 +59,32 @@ class WritesTheValueInAHelper extends Component {
   }
 }
 
+/** `.value` and `.checked` on fields no model holds are the element's own: only the held box is a write. */
+class WritesFieldsWithNoModel extends Component {
+  @state on = false;
+  hidden = createRef<HTMLInputElement>();
+  loose = createRef<HTMLInputElement>();
+  free = createRef<HTMLInputElement>();
+  held = createRef<HTMLInputElement>();
+  @mounted
+  start() {
+    this.hidden.current!.value = "token";
+    this.loose.current!.value = "x";
+    this.free.current!.checked = true;
+    this.held.current!.checked = true; // REPORT write held box
+  }
+  render() {
+    return (
+      <div>
+        <input type="hidden" ref={this.hidden} value="t" />
+        <input aria-label="l" ref={this.loose} value={undefined} />
+        <input type="checkbox" aria-label="f" ref={this.free} />
+        <input type="checkbox" aria-label="h" ref={this.held} checked={this.on} onchange={() => {}} />
+      </div>
+    );
+  }
+}
+
 class ClicksALabel extends Component {
   @state on = false;
   label = createRef<HTMLLabelElement>();

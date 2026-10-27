@@ -1,9 +1,9 @@
 import ts from "typescript";
 import { positionOf } from "../syntax";
 import { coreElementTag } from "./coreElements";
-import { openingOf } from "./element";
+import { holdsNothing, openingOf } from "./element";
 import { unwrap } from "./follow-value";
-import { attributeLiterals, kindOfLiterals, literalsOf, typeAttributeOf } from "./formTable";
+import { attributeLiterals, fieldKind, kindOfLiterals, literalsOf, typeAttributeOf } from "./formTable";
 import { coreDecorators } from "./lifecycle-env";
 import type { Resolver, Rule, RuleContext } from "./rule";
 
@@ -77,7 +77,8 @@ const LATER = new Set([
 ]);
 
 /** What a ref this class renders is attached to, as far as an edit is concerned. */
-type Held = "box" | "label" | "field" | "other";
+/** A box (clicked or not, a model or not), a `<label>` of one, a box or a field with a model, or neither. */
+type Held = "box" | "held-box" | "label" | "field" | "other";
 
 export const fieldSetByAnEvent = {
   id: "field-set-by-an-event",
@@ -222,7 +223,7 @@ export const fieldSetByAnEvent = {
                 const held = heldBy(callee.expression);
                 for (const type of types) {
                   if (EDIT_EVENTS.has(type)) report(at, "dispatch", type);
-                  else if (type === "click" && held !== undefined && (held.held === "box" || held.held === "label")) {
+                  else if (type === "click" && held !== undefined && clicked(held.held)) {
                     report(at, "click", held.name);
                   }
                 }
@@ -230,7 +231,7 @@ export const fieldSetByAnEvent = {
             }
             if (method === "click" && at.arguments.length === 0) {
               const held = heldBy(callee.expression);
-              if (held !== undefined && (held.held === "box" || held.held === "label")) report(at, "click", held.name);
+              if (held !== undefined && clicked(held.held)) report(at, "click", held.name);
             }
             if (method === "execCommand" && isDocument(callee.expression)) report(at, "exec-command", "execCommand");
           }
@@ -243,7 +244,9 @@ export const fieldSetByAnEvent = {
           (at.left.name.text === "value" || at.left.name.text === "checked")
         ) {
           const held = heldBy(at.left.expression);
-          if (held !== undefined && (held.held === "field" || held.held === "box")) {
+          // Only a field with a model: `.value` on a hidden input, `.checked` on a box no model holds,
+          // is the element's own and the page's, as core reads it.
+          if (held !== undefined && (held.held === "field" || held.held === "held-box")) {
             report(at.left, "write", `${held.name}.${at.left.name.text}`);
           }
         }
@@ -513,18 +516,39 @@ function labelsABox(
 }
 
 /** What an element is, as far as an edit is concerned — see `Held`. */
+/** What a click reaches: any box, with a model or not, or a `<label>` of one. */
+function clicked(held: Held): boolean {
+  return held === "box" || held === "held-box" || held === "label";
+}
+
 function heldAs(
   node: ts.JsxElement | ts.JsxSelfClosingElement,
   boxes: Map<string, boolean>,
   context: RuleContext,
 ): Held {
   const opening = openingOf(node);
-  const named = (name: string) =>
-    opening.attributes.properties.some((p) => ts.isJsxAttribute(p) && p.name.getText() === name);
+  // Written, and saying something: `{undefined}`, or a `const` holding it, is no model.
+  const said = (name: string) =>
+    opening.attributes.properties.some(
+      (p) =>
+        ts.isJsxAttribute(p) &&
+        p.name.getText() === name &&
+        !(
+          p.initializer !== undefined &&
+          ts.isJsxExpression(p.initializer) &&
+          p.initializer.expression !== undefined &&
+          holdsNothing(p.initializer.expression, context.resolve)
+        ),
+    );
   const tag = coreElementTag(opening.tagName, context.resolve) ?? opening.tagName.getText();
   if (tag === "label") return labelsABox(node, boxes, context) ? "label" : "other";
-  if (tag === "input") return isABox(node, context) ? "box" : named("value") ? "field" : "other";
-  if ((tag === "select" || tag === "textarea") && named("value")) return "field";
+  if (tag === "input") {
+    if (isABox(node, context)) return said("checked") ? "held-box" : "box";
+    // A hidden, a button, a file input holds no model, whatever its `value`.
+    if (fieldKind(typeAttributeOf(node), context.resolve) === "unedited") return "other";
+    return said("value") ? "field" : "other";
+  }
+  if ((tag === "select" || tag === "textarea") && said("value")) return "field";
   return "other";
 }
 

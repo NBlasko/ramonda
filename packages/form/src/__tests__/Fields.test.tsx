@@ -127,7 +127,7 @@ describe("the field tree", () => {
     expect(fields.email.$.inputValue).toBe("a@b.c");
     expect(fields.age.$.inputValue).toBe(30);
     expect(fields.contacts[0].value.$.inputValue).toBe("x@y.z");
-    // A checkbox takes `checked={field.value}`.
+    // A checkbox takes `checked={field.value === true}`.
     expect(fields.agree.$.value).toBe(false);
   });
 

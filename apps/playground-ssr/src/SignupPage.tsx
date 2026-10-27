@@ -243,7 +243,7 @@ export class SignupPage extends Component {
             <input
               type="checkbox"
               name={terms.name}
-              checked={terms.value}
+              checked={terms.value === true}
               oninput={terms.oninput}
               onblur={terms.onblur}
               aria-invalid={terms.invalid}

@@ -6,6 +6,7 @@ declare const rows: string[];
 declare const kind: string;
 declare const busy: boolean;
 const HIDDEN = "hidden";
+const NONE = undefined;
 
 class Child extends Component {
   render() {
@@ -51,6 +52,12 @@ class Resets extends Component<{ children?: unknown }> {
           ))}
           {value ? <span>yes</span> : null}
           <button type="reset">ok reset</button>
+        </form>
+        {/* ✓ a value, and a child, that are a const holding nothing: no model, nothing unseen */}
+        <form>
+          <input aria-label="held as nothing" value={NONE} />
+          {NONE}
+          <button type="reset">nothing reset</button>
         </form>
         {/* ✓ a reset button, a submit and a hidden value: none of them is edited */}
         <form>

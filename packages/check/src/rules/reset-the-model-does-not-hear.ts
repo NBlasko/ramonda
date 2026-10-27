@@ -1,7 +1,7 @@
 import ts from "typescript";
 import { positionOf } from "../syntax";
 import { coreElementTag } from "./coreElements";
-import { isNothing, openingOf, tagOf } from "./element";
+import { holdsNothing, openingOf, tagOf } from "./element";
 import { unwrap } from "./follow-value";
 import { enclosingElement } from "./html";
 import type { JsxElementLike, ModuleRule, Resolver } from "./rule";
@@ -71,7 +71,7 @@ function controlledField(element: JsxElementLike, resolve: Resolver): boolean {
     const value = model.initializer;
     if (value === undefined) return true;
     const held = ts.isJsxExpression(value) ? value.expression : value;
-    return held !== undefined && !isNothing(held);
+    return held !== undefined && !holdsNothing(held, resolve);
   });
 }
 
@@ -133,7 +133,7 @@ function firstProblem(
       ts.isNumericLiteral(written) ||
       written.kind === ts.SyntaxKind.TrueKeyword ||
       written.kind === ts.SyntaxKind.FalseKeyword ||
-      isNothing(written)
+      holdsNothing(written, resolve)
     ) {
       return;
     }
