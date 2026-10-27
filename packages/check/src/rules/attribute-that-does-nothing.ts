@@ -183,11 +183,12 @@ export const attributeThatDoesNothing = {
        */
       const name = ts.isJsxAttribute(attribute.at) ? attribute.at.name : undefined;
       // A rename only where it does something: a different spelling, on an element that takes the
-      // name — `defaultValue` on a field, `defaultChecked` on an `<input>`. Offered anywhere else it
-      // would change nothing, and the next run would offer it again.
+      // name — `defaultValue` on an `<input>`, a `Select` or a `TextArea` (not the tags written as
+      // themselves, which drop it), `defaultChecked` on an `<input>`. Offered anywhere else it would
+      // change nothing, and the next run would offer it again.
       const takes =
         dead.rename === "defaultValue"
-          ? tag === "input" || tag === "select" || tag === "textarea"
+          ? tag === "input" || (component && (tag === "select" || tag === "textarea"))
           : dead.rename === "defaultChecked"
             ? tag === "input"
             : true;

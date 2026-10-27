@@ -378,6 +378,35 @@ describe("the event a field's handler is handed", () => {
     expect(app.instance.seen).toEqual(["insertCompositionText true に", "insertCompositionText true 日本"]);
   });
 
+  /** Backspace inside a word back to the text the model holds: still a step, and the handler hears it. */
+  test("a step of a word that brings back the model's text reaches the handler", async () => {
+    class Words extends Component {
+      @state text = "ab";
+      seen: string[] = [];
+      typed(event: EventOn<HTMLTextAreaElement, InputEvent>) {
+        this.seen.push(event.currentTarget.value);
+        if (event.currentTarget.value.length <= 2) this.text = event.currentTarget.value;
+      }
+      render() {
+        return <TextArea id="t" aria-label="Words" value={this.text} oninput={this.typed} />;
+      }
+    }
+    const app = await getDOM<Words>(<Words />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+    field.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+    for (const step of ["abn", "ab"]) {
+      field.value = step;
+      field.dispatchEvent(
+        new InputEvent("input", { bubbles: true, isComposing: true, inputType: "insertCompositionText" }),
+      );
+    }
+    field.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "" }));
+    await app.settle();
+
+    expect({ seen: app.instance.seen, shown: field.value }).toEqual({ seen: ["abn", "ab"], shown: "ab" });
+  });
+
   /**
    * Chromium's last `input` of a word still says `isComposing`, and nothing follows its end: a handler
    * that waits for the finished word is handed it at `compositionend`, once, before `oncompositionend`.

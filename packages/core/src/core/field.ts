@@ -465,9 +465,11 @@ export function answerEdit(control: FieldControl, event: Event): void {
     !control.pick &&
     field !== null &&
     (event as InputEvent).inputType === "insertCompositionText" &&
+    !(event as InputEvent).isComposing &&
     sameModel(valueOf(field), heldBy(control, field))
   ) {
-    // Firefox's `input` after a word: the field already shows exactly what the word left.
+    // Firefox's `input` after a word, which is not composing: the field already shows exactly what the
+    // word left. A step of a word in progress is the handler's, whatever its text.
     return;
   }
 
@@ -539,7 +541,18 @@ function answered(control: FieldControl, field: Field | null, edit: Edit | undef
     thrown = { error };
   }
   if (thrown === undefined) {
-    show(control, field, handled, edit);
+    try {
+      show(control, field, handled, edit);
+    } catch (renderError) {
+      // The render of what the handler wrote threw: its error goes on, and the field shows the model
+      // as last rendered, as it does after a handler that throws — not the edit no render took.
+      try {
+        control.settle();
+      } catch {
+        // The render's error is the cause.
+      }
+      throw renderError;
+    }
     return;
   }
   try {

@@ -113,8 +113,8 @@ type RefusedEventCasing = {
  *
  * `on:` exists for the event `on…` cannot spell — a custom one with a dash. Written before `input` or
  * `click` it reaches the same listener as `oninput`, and a second way to write one thing is a second
- * thing to read, to check and to get wrong: on a `Select` or a `TextArea` it once bypassed the field's
- * `transform`. Generated from the same maps as `EventHandlers`, so it cannot fall out of step.
+ * thing to read, to check and to get wrong. Generated from the same maps as `EventHandlers`, so it
+ * cannot fall out of step.
  */
 export type RefusedVerbatimStandard = {
   [K in keyof (HTMLElementEventMap &

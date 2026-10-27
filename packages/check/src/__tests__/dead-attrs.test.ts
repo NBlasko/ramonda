@@ -22,6 +22,8 @@ describe("an attribute that does nothing", () => {
       "acceptcharset",
       "defaultvalue",
       "defaultValue",
+      "defaultvalue",
+      "defaultvalue",
       "innerHTML",
       "textContent",
     ]);
@@ -42,15 +44,22 @@ describe("an attribute that does nothing", () => {
   });
 
   /**
-   * A rename is offered only where it does something: `defaultvalue` on an `<input>` becomes the
-   * `defaultValue` it meant; `defaultValue` on a `<div>` is already spelled so, and no spelling helps.
+   * A rename is offered only where it does something: `defaultvalue` on an `<input>` or a `TextArea`
+   * becomes the `defaultValue` it meant; on a `<textarea>` written as itself, which drops it, and on a
+   * `<div>`, no spelling helps.
    */
   test("a default's rename is offered only where it works", () => {
     const found = run().findings["attribute-that-does-nothing"];
-    const offer = (attribute: string) => found.find((issue) => issue.attribute === attribute)?.edit?.text;
-    expect({ input: offer("defaultvalue"), div: offer("defaultValue") }).toEqual({
+    const offer = (tag: string, attribute: string) =>
+      found.find((issue) => issue.tag === tag && issue.attribute === attribute)?.edit?.text ?? null;
+    expect({
+      input: offer("input", "defaultvalue"),
+      div: offer("div", "defaultValue"),
+      textarea: found.filter((issue) => issue.tag === "textarea").map((issue) => issue.edit?.text ?? null),
+    }).toEqual({
       input: "defaultValue",
-      div: undefined,
+      div: null,
+      textarea: [null, "defaultValue"],
     });
   });
 

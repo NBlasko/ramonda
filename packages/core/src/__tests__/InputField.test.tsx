@@ -1063,6 +1063,37 @@ describe("what a field answers, and what it does not", () => {
   });
 });
 
+/** The handler returns, and the render of what it wrote throws: that error goes on, and the field shows the model. */
+test("a render that throws after the handler leaves the field showing the model", async () => {
+  class Broken extends Component {
+    @state text = "";
+    typed(event: EventOn<HTMLInputElement>) {
+      this.text = event.currentTarget.value;
+    }
+    render() {
+      if (this.text === "boom") throw new Error("the render's");
+      return <input id="i" aria-label="Broken" value={this.text} oninput={this.typed} />;
+    }
+  }
+  const app = await getDOM<Broken>(<Broken />);
+  await app.settle();
+  const field = app.container.querySelector("#i") as HTMLInputElement;
+  const seen: string[] = [];
+  const listener = (event: ErrorEvent) => {
+    seen.push(event.error?.message);
+    event.preventDefault();
+  };
+  window.addEventListener("error", listener);
+  try {
+    field.value = "boom";
+    field.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText" }));
+  } finally {
+    window.removeEventListener("error", listener);
+  }
+
+  expect({ seen, shown: field.value }).toEqual({ seen: ["the render's"], shown: "" });
+});
+
 /** Round 40. */
 describe("a field when the app's code throws, or an edit is not the one announced", () => {
   /** The render of what a throwing handler half wrote throws too: both errors are seen, and the field shows the model. */

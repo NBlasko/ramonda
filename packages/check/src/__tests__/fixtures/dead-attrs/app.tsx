@@ -1,4 +1,4 @@
-import { Component, bootstrap } from "@ramonda/core";
+import { Component, TextArea, bootstrap } from "@ramonda/core";
 
 /**
  * Attributes that reach the DOM verbatim and do nothing.
@@ -22,6 +22,8 @@ class Page extends Component {
           {/* REPORTED — a default only an <input> has, spelled so: in lowercase, or on another tag. */}
           <input defaultvalue="v" />
           <div defaultValue="v" />
+          <textarea defaultvalue="v" />
+          <TextArea aria-label="Notes" defaultvalue="v" />
           {/* REPORTED — properties, not attributes. */}
           <div innerHTML="<p>x</p>" />
           <span textContent="hi" />
