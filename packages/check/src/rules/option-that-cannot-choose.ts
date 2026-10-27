@@ -64,7 +64,7 @@ function insideADecidingSelect(element: JsxElementLike, resolve: ElementContext[
       return (
         select.spreads ||
         select.attributes.some(
-          (attribute) => ["value", "defaultValue"].includes(attribute.name) && !writtenAsNothing(attribute),
+          (attribute) => ["value", "defaultValue"].includes(attribute.name) && !writtenAsNothing(attribute, resolve),
         )
       );
     }

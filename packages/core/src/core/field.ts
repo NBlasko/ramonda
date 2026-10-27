@@ -3,7 +3,7 @@ import { diagnose } from "../debug/diagnostics";
 import { reportFault } from "../debug/fault";
 import type { EnhancedHTMLNode } from "../types/vdom";
 import { writeValue } from "./Attribute";
-import { drainSync, drainingNow } from "./Task";
+import { afterTheDrain, drainSync, drainingNow } from "./Task";
 
 /** The fields a controlled value can sit on. Told apart by tag name: a field in an iframe is another window's class. */
 type Field = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
@@ -153,8 +153,8 @@ interface FieldState {
    * since the render that writes the model has not run yet.
    */
   pending?: FieldValue;
-  /** `show` queued a settle for a microtask, which has not run yet — see the `change` in `answerEdit`. */
-  waiting?: boolean;
+  /** The settle `show` left for the end of the running commit; a later settle makes it stale. */
+  waiting?: object;
   /**
    * An edit of a text field reached its handler since its last `change`, so the `change` that ends
    * them reaches `onchange` — when the field no longer shows `since`. One whose edits put the text
@@ -238,18 +238,27 @@ function show(control: FieldControl, field: Field | null, handled: boolean, edit
     // still before the browser draws.
     const state = stateOf(control.key);
     if (handled && field !== null) state.pending = valueOf(field);
-    state.waiting = true;
-    queueMicrotask(() => {
+    // When a synchronous drain has run those renders — `flushSync`, or the settle of a later event — or
+    // a microtask later. Whichever comes first settles; the other finds it is no longer the field's.
+    const waiting = {};
+    state.waiting = waiting;
+    const settle = () => {
+      if (state.waiting !== waiting) return;
       state.waiting = undefined;
       state.pending = undefined;
       settleNow(control, edit);
+    };
+    afterTheDrain(() => {
+      try {
+        settle();
+      } catch (error) {
+        // The drain has returned: nothing is running to throw it to.
+        reportUncaught(error);
+      }
     });
+    queueMicrotask(settle);
     return;
   }
-  // Settled now: a guess, and a settle waiting from an event in a commit, are over.
-  const state = stateOf(control.key);
-  state.pending = undefined;
-  state.waiting = undefined;
   settleNow(control, edit);
 }
 
@@ -388,25 +397,6 @@ export function answerEdit(control: FieldControl, event: Event): void {
     return;
   }
   const state = stateOf(control.key);
-  // A `change` while a settle still waits for its microtask and no commit runs any more — right after a
-  // mount, after a `flushSync` in a test — on a field that still shows what it showed once its last event
-  // was answered: it brings no text of its own, so the renders run and the field shows the model before
-  // the `change` reads it; the microtask then settles a field already settled. A `change` that brings new
-  // text — an autofill, a test's `fireEvent.change` — and any other event, whose edit the browser has
-  // already put in the field, would have a render write over it: they are answered as an event in the
-  // commit is, against what the field last showed — RMD062.
-  const target = event.currentTarget as Field | null;
-  if (
-    event.type === "change" &&
-    state.waiting === true &&
-    !drainingNow() &&
-    target !== null &&
-    (state.pending === undefined || sameModel(valueOf(target), state.pending))
-  ) {
-    state.waiting = undefined;
-    state.pending = undefined;
-    settleNow(control, undefined);
-  }
   // The selection `beforeinput` recorded belongs to the `input` right after it; anything else in
   // between — a cancelled edit sends none — and it is no longer the edit's.
   if (event.type !== "beforeinput" && event.type !== "input") state.before = undefined;

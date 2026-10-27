@@ -19,7 +19,8 @@ const email = this.form.fields.email.$;
 ```
 
 `inputValue` is the value as the control shows it: a `Date` as `yyyy-mm-dd`, a number as itself (`""`
-for an emptied one), text as text; a checkbox takes `checked={field.value}`, and `type` is written on
+for an emptied one), text as text; a checkbox takes `checked={field.value === true}` — a value not set
+yet, or cleared by a reset, is an unticked box core still holds, as `bind` wrote it — and `type` is written on
 the element. `oninput` and `onblur` are one bound function each for the life of the field. `Field`
 answers the same four. The `Bind`, `CommonBind`, `TextBind`, `NumberBind`, `CheckboxBind` and
 `DateBind` types are gone; `InputValue<T>` types `inputValue`. What an edit writes is read off the

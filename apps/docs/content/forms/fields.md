@@ -95,7 +95,7 @@ sees that none is missing.
 |---|---|
 | `string` | `value={x.inputValue}` |
 | `number` | `type="number" value={x.inputValue}` — `""` for an emptied field |
-| `boolean` | `type="checkbox" checked={x.value}` |
+| `boolean` | `type="checkbox" checked={x.value === true}` — a value not set yet, or cleared by a reset, is an unticked box |
 | `Date` | `type="date" value={x.inputValue}` — the day, as `YYYY-MM-DD` |
 | an object or a list | no control holds one: its `$` has no `oninput`, and writing it is a type error |
 

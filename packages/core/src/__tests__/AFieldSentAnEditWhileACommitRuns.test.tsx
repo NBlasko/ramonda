@@ -333,6 +333,74 @@ describe("RMD062", () => {
     container.remove();
   });
 
+  /** A field that answers only `onchange`, sent an `input` by the mount, and then an autofill's `change`. */
+  test("an autofill's change after a mount reaches onchange on a field with no oninput", () => {
+    const heard: string[] = [];
+    class Saved extends Component {
+      @state text = "";
+      field = createRef<HTMLInputElement>();
+      saved(event: EventOn<HTMLInputElement>) {
+        heard.push(event.currentTarget.value);
+        this.text = event.currentTarget.value;
+      }
+      @mounted
+      fill() {
+        typeInto(this.field.current as HTMLInputElement, "a");
+      }
+      render() {
+        return <input type="date" aria-label="Saved" ref={this.field} value={this.text} onchange={this.saved} />;
+      }
+    }
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    bootstrap(<Saved />, container);
+    const field = container.querySelector("input") as HTMLInputElement;
+    field.value = "2026-10-27";
+    field.dispatchEvent(new Event("change", { bubbles: true }));
+    flushSync();
+
+    expect({ heard, shown: field.value }).toEqual({ heard: ["2026-10-27"], shown: "2026-10-27" });
+    unmount(container);
+    container.remove();
+  });
+
+  /**
+   * A refused edit sent from the mount is settled when the commit's drain returns; a later edit puts
+   * its own caret back, and the microtask left for the first finds nothing more to do.
+   */
+  test("a settle left for a microtask does not move the caret a later edit put back", async () => {
+    class Locked extends Component {
+      @state text = "hello world";
+      field = createRef<HTMLInputElement>();
+      typed(_event: EventOn<HTMLInputElement>) {}
+      @mounted
+      fill() {
+        const field = this.field.current as HTMLInputElement;
+        field.focus();
+        field.value = "hello worldX";
+        field.setSelectionRange(12, 12);
+        field.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText" }));
+      }
+      render() {
+        return <input aria-label="Locked" ref={this.field} value={this.text} oninput={this.typed} />;
+      }
+    }
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    bootstrap(<Locked />, container);
+    flushSync();
+    const field = container.querySelector("input") as HTMLInputElement;
+    field.value = "hXello world";
+    field.setSelectionRange(2, 2);
+    field.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText" }));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect([field.value, field.selectionStart]).toEqual(["hello world", 1]);
+    unmount(container);
+    container.remove();
+  });
+
   /** The handler ran and refused: that is known once its render has run, so a second edit reads ahead of it. */
   test("a second edit after one the handler refused is reported", async () => {
     class Locked extends Component {

@@ -2,7 +2,7 @@ import { UNEDITED_INPUT_TYPES } from "@ramonda/dom-facts";
 import ts from "typescript";
 import { positionOf } from "../syntax";
 import { coreElementTag } from "./coreElements";
-import { isNothing, openingOf, tagOf } from "./element";
+import { holdsNothing as holdsNothingIn, openingOf, tagOf } from "./element";
 import { unwrap } from "./follow-value";
 import { enclosingElement } from "./html";
 import type { Resolver, Where } from "./rule";
@@ -359,17 +359,7 @@ export function formTableFor(sources: readonly ts.SourceFile[], resolve: Resolve
     });
   };
 
-  // `null` or `undefined`, through a `const` that holds one: what core reads as no value.
-  const holdsNothing = (expression: ts.Expression, depth = 0): boolean => {
-    const value = unwrap(expression);
-    if (isNothing(value)) return true;
-    if (!ts.isIdentifier(value) || depth > 8) return false;
-    const declared = resolve(value)?.declarations?.[0];
-    if (declared === undefined || !ts.isVariableDeclaration(declared) || declared.initializer === undefined)
-      return false;
-    if ((ts.getCombinedNodeFlags(declared) & ts.NodeFlags.Const) === 0) return false;
-    return holdsNothing(declared.initializer, depth + 1);
-  };
+  const holdsNothing = (expression: ts.Expression): boolean => holdsNothingIn(expression, resolve);
 
   const readField = (element: ts.JsxElement | ts.JsxSelfClosingElement, tag: string): void => {
     const opening = openingOf(element);

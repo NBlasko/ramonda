@@ -2,7 +2,7 @@ import ts from "typescript";
 import { BOOLEAN_ATTRIBUTES, svgElements } from "@ramonda/dom-facts";
 import { coreElementTag } from "./coreElements";
 import { follow, unwrap, type Looking } from "./follow-value";
-import type { ElementContext, JsxElementLike, WrittenAttribute } from "./rule";
+import type { ElementContext, JsxElementLike, Resolver, WrittenAttribute } from "./rule";
 
 /**
  * What every element rule reads, computed once per element rather than once per rule.
@@ -26,11 +26,26 @@ export function isNothing(node: ts.Expression): boolean {
 }
 
 /**
- * Whether an attribute is written as `{null}` or `{undefined}`: there, and saying nothing. Core reads
- * a `value` written so as no value, and a rule about `value` has to read it the same way.
+ * `null` or `undefined`, or a `const` that holds one, however many `const`s deep: what core reads as no
+ * value. One question, asked the same way by every rule that asks it.
  */
-export function writtenAsNothing(attribute: WrittenAttribute): boolean {
-  return attribute.value !== undefined && isNothing(attribute.value);
+export function holdsNothing(expression: ts.Expression, resolve: Resolver, depth = 0): boolean {
+  const value = unwrap(expression);
+  if (isNothing(value)) return true;
+  if (!ts.isIdentifier(value) || depth > 8) return false;
+  const declared = resolve(value)?.declarations?.[0];
+  if (declared === undefined || !ts.isVariableDeclaration(declared) || declared.initializer === undefined) return false;
+  if ((ts.getCombinedNodeFlags(declared) & ts.NodeFlags.Const) === 0) return false;
+  return holdsNothing(declared.initializer, resolve, depth + 1);
+}
+
+/**
+ * Whether an attribute is written as `{null}` or `{undefined}`, or a `const` holding one: there, and
+ * saying nothing. Core reads a `value` written so as no value, and a rule about `value` has to read it
+ * the same way.
+ */
+export function writtenAsNothing(attribute: WrittenAttribute, resolve: Resolver): boolean {
+  return attribute.value !== undefined && holdsNothing(attribute.value, resolve);
 }
 
 /**

@@ -90,7 +90,11 @@ export async function flushTaskQueue(maxTicks = 50): Promise<void> {
  */
 export function drainSync(maxRounds = 50): void {
   for (let round = 0; round < maxRounds; round++) {
-    if (taskQueue.length === 0 && !hasPendingPostCommit() && !hasPendingUpdated()) return;
+    if (taskQueue.length === 0 && !hasPendingPostCommit() && !hasPendingUpdated()) {
+      // Settled: what waited for a drain — one that had nothing to render — runs now.
+      if (!processing) runAfterTheDrain();
+      return;
+    }
     processTask();
   }
 
@@ -264,6 +268,22 @@ function resumeIfWorkRemains(): void {
 
 /** A drain is running: its builds, its post-commit work, or something they called. */
 let processing = false;
+
+/** What waits for the drain running now to return — see `afterTheDrain`. */
+const afterDrain: (() => void)[] = [];
+
+/**
+ * Runs `callback` once a synchronous drain — `drainSync`, a `flushSync` — has nothing left to render:
+ * a field whose answer waited for the renders is settled there, before the caller's next line, not a
+ * microtask later. Its caller keeps a microtask of its own for a drain that never comes.
+ */
+export function afterTheDrain(callback: () => void): void {
+  afterDrain.push(callback);
+}
+
+function runAfterTheDrain(): void {
+  if (afterDrain.length > 0) for (const callback of afterDrain.splice(0)) callback();
+}
 
 /**
  * Whether rendering work is running now: a drain, or a commit's own work flushed without one —

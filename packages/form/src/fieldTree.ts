@@ -247,7 +247,7 @@ export class FieldHandle {
   /**
    * The value as the control shows it, for its `value` attribute: a date as `yyyy-mm-dd`, a number as
    * itself, and anything absent as `""` — so `value={field.inputValue}` is the same line for every
-   * kind of text, number and date field. A checkbox takes `checked={field.value}`.
+   * kind of text, number and date field. A checkbox takes `checked={field.value === true}`.
    */
   get inputValue(): string | number {
     const value = this.host.read(this.at_);

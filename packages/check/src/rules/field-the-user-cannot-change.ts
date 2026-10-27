@@ -197,7 +197,7 @@ export const fieldTheUserCannotChange = {
 
     // `{null}` and `{undefined}` — data still loading — are no value: the field is the user's.
     const said = (name: string) =>
-      attributes.find((attribute) => attribute.name === name && !writtenAsNothing(attribute));
+      attributes.find((attribute) => attribute.name === name && !writtenAsNothing(attribute, resolve));
 
     // Every string its `type` can be, read once, for its kind (see `kindOfLiterals`) and, below, whether
     // it is a picker. One whose type cannot be read is a box when it is written with `checked` — a
@@ -236,7 +236,8 @@ export const fieldTheUserCannotChange = {
     const own = (name: string) =>
       attributes.find(
         (attribute) =>
-          (attribute.name === name || attribute.name === `on:${name.slice(2)}`) && !writtenAsNothing(attribute),
+          (attribute.name === name || attribute.name === `on:${name.slice(2)}`) &&
+          !writtenAsNothing(attribute, resolve),
       );
     const writer = own("oninput") ?? (pick ? own("onchange") : undefined);
     if (writer === undefined) {
@@ -250,7 +251,9 @@ export const fieldTheUserCannotChange = {
         return [{ component, kind: "held-between-keystrokes", ...at }];
       }
       // `onclick` on a box hears a click, not a pick: a pick sent without one never reaches it.
-      const click = attributes.find((attribute) => attribute.name === "onclick" && !writtenAsNothing(attribute));
+      const click = attributes.find(
+        (attribute) => attribute.name === "onclick" && !writtenAsNothing(attribute, resolve),
+      );
       if (pick && click !== undefined) return [{ component, kind: "pick-through-click", ...at }];
       return [{ component, kind: "no-handler", ...at }];
     }

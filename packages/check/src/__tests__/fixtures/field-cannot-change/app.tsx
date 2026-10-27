@@ -10,6 +10,7 @@ declare const withTime: boolean;
 const BOX = "checkbox";
 const EMPTY = "";
 const LOCKED = true;
+const NONE = undefined;
 
 import { htmlConstraints } from "@ramonda/form/bguard";
 import { htmlConstraints as lookalike } from "./mine";
@@ -77,6 +78,7 @@ class App extends Component<{ text: string; rows: { text: string }[]; attrs?: Re
         <input value={value} oninput={this.type} {...this.overrides} aria-label="own field spread" />
         <input {...this.overrides} defaultValue="saved" aria-label="a spread and a default" />
         <input value={value} oninput={undefined} aria-label="a handler written as nothing" />
+        <input value={value} oninput={NONE} aria-label="a handler held as nothing" />
         <input type="checkbox" checked={true} onclick={this.type} aria-label="a box picked by click" />
         <input type="date" value={value} onchange={this.type} aria-label="a date on change" />
         <input type={kind} checked={on} aria-label="a box of a type unread" />
@@ -90,6 +92,7 @@ class App extends Component<{ text: string; rows: { text: string }[]; attrs?: Re
         />
 
         {/* ✓ a handler of its own */}
+        <input value={NONE} aria-label="a value held as nothing" />
         <input type={kind} name="g" value="a" checked={on} onchange={this.type} aria-label="a radio of a type unread" />
         <Select value={value} onchange={this.pick} aria-label="picked">
           <option value="a">a</option>
