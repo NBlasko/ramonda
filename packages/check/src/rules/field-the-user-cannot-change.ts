@@ -200,12 +200,13 @@ export const fieldTheUserCannotChange = {
       attributes.find((attribute) => attribute.name === name && !writtenAsNothing(attribute));
 
     // Every string its `type` can be, read once, for its kind (see `kindOfLiterals`) and, below, whether
-    // it is a picker. One whose type cannot be read is a box when it is written with `checked`.
+    // it is a picker. One whose type cannot be read is a box when it is written with `checked` — a
+    // `value` beside it is then what the box sends, as on a radio.
     const typeAttribute = tag === "input" ? typeAttributeOf(element) : undefined;
     const types = typeAttribute === undefined ? undefined : attributeLiterals(typeAttribute, resolve);
     const kind = typeAttribute === undefined ? "text" : kindOfLiterals(types);
     if (kind === "unedited") return [];
-    const box = kind === "box" || (kind === "unread" && said("checked") !== undefined && said("value") === undefined);
+    const box = kind === "box" || (kind === "unread" && said("checked") !== undefined);
     const pick = tag === "select" || box;
     const model = said(box ? "checked" : "value");
     const spreads = opening.attributes.properties.filter(ts.isJsxSpreadAttribute);

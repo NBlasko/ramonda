@@ -80,6 +80,7 @@ class App extends Component<{ text: string; rows: { text: string }[]; attrs?: Re
         <input type="checkbox" checked={true} onclick={this.type} aria-label="a box picked by click" />
         <input type="date" value={value} onchange={this.type} aria-label="a date on change" />
         <input type={kind} checked={on} aria-label="a box of a type unread" />
+        <input type={kind} name="g" value="a" checked={on} aria-label="a radio of a type unread, held" />
         <input type={BOX} checked={on} aria-label="a box through a const" />
         <input
           type={withTime ? "datetime-local" : "date"}
@@ -89,6 +90,7 @@ class App extends Component<{ text: string; rows: { text: string }[]; attrs?: Re
         />
 
         {/* ✓ a handler of its own */}
+        <input type={kind} name="g" value="a" checked={on} onchange={this.type} aria-label="a radio of a type unread" />
         <Select value={value} onchange={this.pick} aria-label="picked">
           <option value="a">a</option>
         </Select>

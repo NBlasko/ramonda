@@ -198,6 +198,34 @@ describe("a refused edit puts the selection back", () => {
     expect(shown(field)).toEqual(["hello world", 5, 5]);
   });
 
+  /** A word typed over `hello` selected, refused when it ends: `hello` is selected again. */
+  test("a word refused at its end puts back the selection it began over", async () => {
+    class Ascii extends Component {
+      @state text = "say hello";
+      typed(event: EventOn<HTMLInputElement, InputEvent>) {
+        if (event.isComposing) return;
+        if (/^[a-z ]*$/.test(event.currentTarget.value)) this.text = event.currentTarget.value;
+      }
+      render() {
+        return <input id="t" aria-label="Ascii" value={this.text} oninput={this.typed} />;
+      }
+    }
+    const app = await getDOM(<Ascii />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLInputElement;
+    field.setSelectionRange(4, 9);
+    field.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+    field.value = "say 日本";
+    field.setSelectionRange(6, 6);
+    field.dispatchEvent(
+      new InputEvent("input", { bubbles: true, isComposing: true, inputType: "insertCompositionText" }),
+    );
+    field.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "日本" }));
+    await app.settle();
+
+    expect(shown(field)).toEqual(["say hello", 4, 9]);
+  });
+
   /**
    * Backspace inside a word brings the text back to what it was, and the handler refused the step:
    * the selection of a word being composed is the input method's, and moving it cancels the word.

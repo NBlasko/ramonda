@@ -25,7 +25,6 @@ export interface ResetTheModelDoesNotHearIssue {
   column: number;
 }
 
-/** A `<button type="reset">` or `<input type="reset">`, as written. */
 /**
  * Whether an element resets its form: `"reset"` when its `type` says so (`type="reset"` or
  * `type={"reset"}`); `"maybe"` for a `<button>` whose `type` cannot be read — written as an expression,

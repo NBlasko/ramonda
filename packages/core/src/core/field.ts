@@ -78,12 +78,12 @@ interface Edit {
   next: string;
   caret: number;
   inputType: string;
-  /** The selection `beforeinput` recorded, when it belongs to this edit. */
-  before?: Selected;
+  /** The selection the edit found — at its `beforeinput`, or where its word began — when it is known. */
+  before?: Selection;
 }
 
 /** The edit `event` made to a text field, read before anything answers it; none on a field without a caret. */
-function editOf(field: Field | null, event: Event, prev: FieldValue | undefined, before?: Selected): Edit | undefined {
+function editOf(field: Field | null, event: Event, prev: FieldValue | undefined, before?: Selection): Edit | undefined {
   const text = field === null ? null : caretOf(field);
   if (text === null || text.selectionStart === null || typeof prev !== "string") return undefined;
   return { text, prev, next: text.value, caret: text.selectionStart, inputType: inputTypeOf(event), before };
@@ -113,11 +113,15 @@ function putCaretBack(edit: Edit | undefined): void {
   text.setSelectionRange(back, back);
 }
 
-/** A text field as `beforeinput` found it: its text and its selection, the moment before an edit. */
-interface Selected {
+/** A text field's text and its selection, the moment before an edit. */
+interface Selection {
   text: string;
   start: number | null;
   end: number | null;
+}
+
+/** A text field as `beforeinput` found it. */
+interface Selected extends Selection {
   /** The `beforeinput` itself: a cancelled one was not followed by its edit. */
   event: InputEvent;
 }
@@ -134,6 +138,8 @@ interface FieldState {
    * clearing it — wins.
    */
   composedFrom?: FieldValue;
+  /** The selection the word began over, for a word refused at its end to put back. */
+  composedOver?: Selection;
   /** The blur's own listener is running: what it renders leaves a word the browser may still commit. */
   inBlur?: boolean;
   /** The text and the selection the next edit starts from, recorded at its `beforeinput`. */
@@ -374,6 +380,9 @@ export function answerEdit(control: FieldControl, event: Event): void {
     state.composing = true;
     state.blurred = false;
     state.composedFrom = control.prev();
+    const text = field === null ? null : caretOf(field);
+    state.composedOver =
+      text === null ? undefined : { text: text.value, start: text.selectionStart, end: text.selectionEnd };
     control.own(event.type, event);
     return;
   }
@@ -399,7 +408,8 @@ export function answerEdit(control: FieldControl, event: Event): void {
     state.composing = false;
     state.blurred = false;
     const was = field === null ? undefined : heldBy(control, field);
-    const edit = editOf(field, event, was);
+    const edit = editOf(field, event, was, state.composedOver);
+    state.composedOver = undefined;
     // Read off the model as last rendered, not a guess while a render waits — see `heldBy`: a guess
     // that took a skipped step for a taken one would drop the word. Wrong only towards handing it over.
     const rendered = control.prev();
