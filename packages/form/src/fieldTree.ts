@@ -256,9 +256,13 @@ export class FieldHandle {
     return value === null || value === undefined ? "" : String(value);
   }
 
-  /** Whether the field has a message: the control's `aria-invalid`. */
-  get invalid(): boolean {
-    return this.host.errorsAt(this.at_).length > 0;
+  /**
+   * `true` while the field has a message, and no value otherwise: the control's `aria-invalid`. A valid
+   * field carries no `aria-invalid` at all, as one written before any form library did — `false` would
+   * be written as `aria-invalid="false"`, which a stylesheet reads as a verdict on a field not yet used.
+   */
+  get invalid(): true | undefined {
+    return this.host.errorsAt(this.at_).length > 0 ? true : undefined;
   }
 
   /* ---- array members. The types keep these off a leaf; these throw if reached anyway. ---- */

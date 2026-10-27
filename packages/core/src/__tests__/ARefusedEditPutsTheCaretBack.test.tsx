@@ -68,6 +68,7 @@ describe("a refused edit puts the selection back", () => {
       const app = await getDOM(<Locked />);
       await app.settle();
       const field = app.container.querySelector("#t") as Text;
+      field.focus();
       edit(field, [6, 11], "hello abc", 9, "insertFromPaste");
 
       expect(shown(field)).toEqual(["hello world", 6, 11]);
@@ -78,6 +79,7 @@ describe("a refused edit puts the selection back", () => {
       const app = await getDOM(<Locked />);
       await app.settle();
       const field = app.container.querySelector("#t") as Text;
+      field.focus();
       edit(field, [1, 5], "h world", 1, "deleteContentBackward");
 
       expect(shown(field)).toEqual(["hello world", 1, 5]);
@@ -89,6 +91,7 @@ describe("a refused edit puts the selection back", () => {
     const app = await getDOM(<LockedArea />);
     await app.settle();
     const field = app.container.querySelector("#t") as Text;
+    field.focus();
     edit(field, [6, 11], "hello w", 7, "insertText");
 
     expect(shown(field)).toEqual(["hello world", 6, 11]);
@@ -99,6 +102,7 @@ describe("a refused edit puts the selection back", () => {
     const app = await getDOM<LockedArea>(<LockedArea />);
     await app.settle();
     const field = app.container.querySelector("#t") as Text;
+    field.focus();
     app.instance.text = "hi👍";
     await app.settle();
     edit(field, [4, 4], "hi", 2, "deleteContentBackward");
@@ -111,6 +115,7 @@ describe("a refused edit puts the selection back", () => {
     const app = await getDOM<LockedArea>(<LockedArea />);
     await app.settle();
     const field = app.container.querySelector("#t") as Text;
+    field.focus();
     app.instance.text = "abc";
     await app.settle();
     edit(field, [3, 3], "abc12", 5, "insertFromPaste");
@@ -123,6 +128,7 @@ describe("a refused edit puts the selection back", () => {
     const app = await getDOM(<LockedArea />);
     await app.settle();
     const field = app.container.querySelector("#t") as Text;
+    field.focus();
     editAlone(field, "helllo world", 3, "insertText");
 
     expect(shown(field)).toEqual(["hello world", 2, 2]);
@@ -133,9 +139,35 @@ describe("a refused edit puts the selection back", () => {
     const app = await getDOM(<LockedArea />);
     await app.settle();
     const field = app.container.querySelector("#t") as Text;
+    field.focus();
     editAlone(field, "helo world", 2, "deleteContentBackward");
 
     expect(shown(field)).toEqual(["hello world", 3, 3]);
+  });
+
+  /**
+   * An autofill fills fields that do not have the focus: a refused one shows the model and is given no
+   * selection — setting one is what moves the focus to it in some browsers.
+   */
+  test("a field without the focus is given no selection", async () => {
+    const app = await getDOM(<LockedInput />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLInputElement;
+    let moved = 0;
+    const original = field.setSelectionRange.bind(field);
+    field.setSelectionRange = (start, end) => {
+      moved++;
+      original(start, end);
+    };
+    field.value = "filled";
+    field.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertReplacementText" }));
+    await app.settle();
+
+    expect({ shown: field.value, moved, focused: document.activeElement === field }).toEqual({
+      shown: "hello world",
+      moved: 0,
+      focused: false,
+    });
   });
 
   /** No record of the selection: the caret goes back by what the edit added before it. */
@@ -143,6 +175,7 @@ describe("a refused edit puts the selection back", () => {
     const app = await getDOM(<LockedInput />);
     await app.settle();
     const field = app.container.querySelector("#t") as Text;
+    field.focus();
     editAlone(field, "heXllo world", 3, "insertText");
 
     expect(shown(field)).toEqual(["hello world", 2, 2]);
@@ -156,6 +189,7 @@ describe("a refused edit puts the selection back", () => {
     const app = await getDOM(<LockedInput />);
     await app.settle();
     const field = app.container.querySelector("#t") as Text;
+    field.focus();
     field.setSelectionRange(0, 5);
     field.dispatchEvent(new InputEvent("beforeinput", { bubbles: true, inputType: "insertText", data: "x" }));
     editAlone(field, "hello world!", 12, "insertReplacementText");
@@ -168,6 +202,7 @@ describe("a refused edit puts the selection back", () => {
     const app = await getDOM(<LockedInput />);
     await app.settle();
     const field = app.container.querySelector("#t") as Text;
+    field.focus();
     editAlone(field, "hllo world", 1, "deleteContentForward");
 
     expect(shown(field)).toEqual(["hello world", 1, 1]);
@@ -177,6 +212,7 @@ describe("a refused edit puts the selection back", () => {
     const app = await getDOM(<NoHandler />);
     await app.settle();
     const field = app.container.querySelector("#t") as Text;
+    field.focus();
     edit(field, [6, 11], "hello abc", 9, "insertFromPaste");
 
     expect(shown(field)).toEqual(["hello world", 6, 11]);
@@ -187,6 +223,7 @@ describe("a refused edit puts the selection back", () => {
     const app = await getDOM(<LockedInput />);
     await app.settle();
     const field = app.container.querySelector("#t") as Text;
+    field.focus();
     field.setSelectionRange(5, 5);
     field.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
     field.value = "hello日本 world";
@@ -213,6 +250,7 @@ describe("a refused edit puts the selection back", () => {
     const app = await getDOM(<Ascii />);
     await app.settle();
     const field = app.container.querySelector("#t") as HTMLInputElement;
+    field.focus();
     field.setSelectionRange(4, 9);
     field.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
     field.value = "say 日本";
@@ -234,6 +272,7 @@ describe("a refused edit puts the selection back", () => {
     const app = await getDOM(<LockedInput />);
     await app.settle();
     const field = app.container.querySelector("#t") as HTMLInputElement;
+    field.focus();
     let moved = 0;
     const original = field.setSelectionRange.bind(field);
     field.setSelectionRange = (start, end) => {
@@ -262,6 +301,7 @@ describe("a refused edit puts the selection back", () => {
       typed(_event: EventOn<HTMLInputElement>) {}
       @mounted
       paste() {
+        this.field.current?.focus();
         edit(this.field.current as HTMLInputElement, [6, 11], "hello abc", 9, "insertFromPaste");
       }
       render() {
@@ -271,6 +311,7 @@ describe("a refused edit puts the selection back", () => {
     const app = await getDOM(<Filled />);
     await app.settle();
     const field = app.container.querySelector("#t") as Text;
+    field.focus();
 
     expect(shown(field)).toEqual(["hello world", 6, 11]);
   });
@@ -290,6 +331,7 @@ describe("a kept edit leaves the caret where the edit put it", () => {
     const app = await getDOM(<Open />);
     await app.settle();
     const field = app.container.querySelector("#t") as Text;
+    field.focus();
     edit(field, [6, 11], "hello abc", 9, "insertFromPaste");
 
     expect(shown(field)).toEqual(["hello abc", 9, 9]);
@@ -300,6 +342,7 @@ describe("a kept edit leaves the caret where the edit put it", () => {
     const app = await getDOM(<LockedInput />);
     await app.settle();
     const field = app.container.querySelector("#t") as Text;
+    field.focus();
     edit(field, [6, 11], "hello world", 11, "insertFromPaste");
 
     expect(shown(field)).toEqual(["hello world", 11, 11]);
@@ -319,6 +362,7 @@ describe("a kept edit leaves the caret where the edit put it", () => {
     const app = await getDOM(<Upper />);
     await app.settle();
     const field = app.container.querySelector("#t") as Text;
+    field.focus();
     edit(field, [6, 11], "hello abc", 9, "insertFromPaste");
 
     expect(shown(field)).toEqual(["hello abc!", 10, 10]);

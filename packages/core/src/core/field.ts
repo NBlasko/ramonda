@@ -99,6 +99,9 @@ function putCaretBack(edit: Edit | undefined): void {
   if (edit === undefined) return;
   const { text, prev, next, caret, before } = edit;
   if (next === prev || text.value !== prev) return;
+  // A field without the focus — an autofill fills several at once — has no caret to put back, and
+  // setting a selection on one is what moves the focus to it in some browsers.
+  if ((text.getRootNode() as Document | ShadowRoot).activeElement !== text) return;
   // The selection the edit found, as `beforeinput` saw it — the one exact record of it — when the
   // field showed the model then: a paste over `hello` selected is `hello` selected again.
   if (before !== undefined && before.text === prev && before.start !== null && before.end !== null) {
@@ -470,8 +473,16 @@ export function answerEdit(control: FieldControl, event: Event): void {
 
   // A pick is one move from its `input` on, whatever happens to it — a handler that throws included:
   // the `change` after it finds the pick answered. Marked before anything can leave this function.
-  if (control.pick && event.type === "input")
-    state.pickAsked = { propagation: false, immediate: false, prevented: false };
+  if (control.pick && event.type === "input") {
+    const pick: Asked = { propagation: false, immediate: false, prevented: false };
+    state.pickAsked = pick;
+    // A pick's `change` comes in the same task as its `input` — measured in Chromium and Firefox, where
+    // a microtask can run between the two — so one that has not come by the next task is not coming,
+    // and a later `change` is answered as its own.
+    setTimeout(() => {
+      if (state.pickAsked === pick) state.pickAsked = undefined;
+    }, 0);
+  }
   const asked = state.pickAsked;
   const was = field === null ? undefined : heldBy(control, field);
   const edit = editOf(field, event, was, takeBefore(state, event));
@@ -547,15 +558,16 @@ function answered(control: FieldControl, field: Field | null, edit: Edit | undef
 }
 
 /**
- * Whether the field already shows the model. A number field shows the same NUMBER in more than one
- * text — `1.50` is the model's 1.5 while the user types toward `1.505` — and rewriting it would take
- * the half-typed text away; every other field shows the model only as its exact text.
+ * Whether the field already shows the model. A model that is a NUMBER, in a number field, is shown by
+ * every text that is that number — `1.50` is the model's 1.5 while the user types toward `1.505` — and
+ * rewriting it would take the half-typed text away. Any other model is shown only by its exact text: a
+ * handler that keeps text, `"1.23"`, and refuses `1.230` has the field put back.
  */
 export function showsTheModel(field: { type?: string; value: string }, model: unknown): boolean {
   const text = String(model ?? "");
   if (field.value === text) return true;
-  if (field.type !== "number" || field.value === "" || text === "") return false;
-  return Number(field.value) === Number(text);
+  if (typeof model !== "number" || field.type !== "number" || field.value === "") return false;
+  return Number(field.value) === model;
 }
 
 /** What a handler asked of an event it was handed as another: to stop it, or to prevent its default. */
@@ -625,6 +637,7 @@ export function callHandler(theirs: unknown, event: Event): boolean {
 
 const OWN = Symbol("ramonda.input.own");
 const CONTROLLED = Symbol("ramonda.input.controlled");
+const MODEL = Symbol("ramonda.input.model");
 const HEARD = Symbol("ramonda.input.heard");
 const CONTROL = Symbol("ramonda.input.control");
 const GONE = Symbol("ramonda.input.gone");
@@ -633,6 +646,8 @@ type Kept = HTMLInputElement & {
   /** By event type, then by the name the handler was written under — `oninput`, `on:input`. */
   [OWN]?: Record<string, Map<string, unknown>>;
   [CONTROLLED]?: boolean;
+  /** The `value` as the render gave it — a number stays a number, for `showsTheModel`. */
+  [MODEL]?: unknown;
   /** The event types the field listener is attached for. */
   [HEARD]?: Set<string>;
   [CONTROL]?: FieldControl;
@@ -711,14 +726,15 @@ function controlOf(input: Kept): FieldControl {
   const existing = input[CONTROL];
   if (existing !== undefined) return existing;
   const isBoxNow = () => isBox(input);
-  const model = () => (isBoxNow() ? input.hasAttribute("checked") : (input.getAttribute("value") ?? ""));
+  const model = () =>
+    isBoxNow() ? input.hasAttribute("checked") : (input[MODEL] ?? input.getAttribute("value") ?? "");
   const control: FieldControl = {
     key: input,
     get pick() {
       return isBoxNow();
     },
     model,
-    prev: model,
+    prev: () => (isBoxNow() ? input.hasAttribute("checked") : (input.getAttribute("value") ?? "")),
     own: (type, event) => callOwn(input, type, event),
     settle: () => {
       const box = isBoxNow();
@@ -734,7 +750,8 @@ function controlOf(input: Kept): FieldControl {
         if (input.checked !== on) input.checked = on;
       } else {
         const model = input.getAttribute("value") ?? "";
-        if (!showsTheModel(input, model)) writeValue(input as unknown as EnhancedHTMLNode, model, false);
+        if (!showsTheModel(input, input[MODEL] ?? model))
+          writeValue(input as unknown as EnhancedHTMLNode, model, false);
       }
     },
     gone: () => input[GONE] === true,
@@ -782,5 +799,6 @@ export function controlInput(input: HTMLInputElement, attributes: Record<string,
     !UNEDITED_INPUT_TYPES.has(input.type) && (box ? typeof attributes.checked === "boolean" : attributes.value != null);
   if (!controlled && kept[CONTROLLED]) forgetField(input);
   kept[CONTROLLED] = controlled;
+  kept[MODEL] = controlled && !box ? attributes.value : undefined;
   if (controlled) listen(kept, INPUT_OWN_EVENTS);
 }

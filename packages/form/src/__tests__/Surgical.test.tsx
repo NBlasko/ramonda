@@ -546,7 +546,7 @@ describe("a component that reads only `invalid`", () => {
       const before = field.getAttribute("aria-invalid");
       await act(async () => field.dispatchEvent(new FocusEvent("blur")));
 
-      expect({ before, after: field.getAttribute("aria-invalid") }).toEqual({ before: "false", after: "true" });
+      expect({ before, after: field.getAttribute("aria-invalid") }).toEqual({ before: null, after: "true" });
     } finally {
       unmount();
     }

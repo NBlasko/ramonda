@@ -131,10 +131,10 @@ describe("the field tree", () => {
     expect(fields.agree.$.value).toBe(false);
   });
 
-  test("`invalid` is true only while there is something to report", () => {
+  test("`invalid` is true only while there is something to report, and no value otherwise", () => {
     const { h, fields } = tree(SEED);
 
-    expect(fields.email.$.invalid).toBe(false);
+    expect(fields.email.$.invalid).toBeUndefined();
     h.setErrors(["email"], ["not an email"]);
     expect(fields.email.$.invalid).toBe(true);
   });

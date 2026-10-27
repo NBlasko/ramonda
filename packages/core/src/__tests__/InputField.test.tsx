@@ -962,6 +962,7 @@ test("an input puts back the selection a refused paste replaced, and calls the a
   const app = await getDOM<Locked>(<Locked />);
   await app.settle();
   const field = app.container.querySelector("#i") as HTMLInputElement;
+  field.focus();
   field.setSelectionRange(1, 4);
   field.dispatchEvent(new InputEvent("beforeinput", { bubbles: true, inputType: "insertFromPaste" }));
   field.value = "hXo";

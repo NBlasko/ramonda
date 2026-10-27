@@ -13,7 +13,9 @@ take it, something else to rewrite it, nothing to refuse it. A handler that take
 the field as the user made it; one that refuses it, or no handler at all, leaves the model showing —
 in the same event, so a refused keystroke or pick is never drawn, and a form around the field reads
 the value the field keeps. A refused edit puts the caret and the selection back where the edit found
-them: a paste over `hello` selected leaves `hello` selected again.
+them: a paste over `hello` selected leaves `hello` selected again — on the field that has the focus.
+A number field whose model is a number is shown by every text of that number, so `1.50` stays while
+the user types toward `1.505`; one whose model is text is shown only by that text.
 
 ```tsx
 typed(event: EventOn<HTMLInputElement>) {

@@ -297,6 +297,35 @@ test("a number field whose handler refused the edit shows the model", async () =
   expect(field.value).toBe("30");
 });
 
+/**
+ * A number field is put back by what its model IS: a model kept as text is shown only by that text, so
+ * a refused trailing zero goes; a model kept as a number is shown by every text of that number, so the
+ * zero the user typed on the way to `1.505` stays.
+ */
+test.each([
+  ["text", "1.23", "1.23"],
+  ["a number", 1.23, "1.230"],
+] as const)("a number field whose model is %s, refusing a trailing zero", async (_name, start, shown) => {
+  class Price extends Component {
+    @state price: string | number = start;
+    typed(event: EventOn<HTMLInputElement>) {
+      const text = event.currentTarget.value;
+      if (/^\d*(\.\d{0,2})?$/.test(text)) this.price = typeof start === "number" ? Number(text) : text;
+    }
+    render() {
+      return <input id="n" type="number" aria-label="Price" value={this.price} oninput={this.typed} />;
+    }
+  }
+  const app = await getDOM<Price>(<Price />);
+  await app.settle();
+  const field = app.container.querySelector("#n") as HTMLInputElement;
+  field.value = "1.230";
+  field.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText" }));
+  await app.settle();
+
+  expect(field.value).toBe(shown);
+});
+
 /** SVG's `transform` is the attribute it is, on the server as in the browser. */
 test("an SVG transform is written as an attribute", async () => {
   class Shape extends Component {
@@ -500,6 +529,45 @@ describe("the event a field's handler is handed", () => {
     await app.settle();
 
     expect({ changes: app.instance.changes, size: app.instance.size }).toEqual({ changes: 2, size: "s" });
+  });
+
+  /**
+   * A pick's `change` comes in the same task as its `input`: a lone `input` — a test's, a script's — is
+   * over by the next task, and a `change` after it is answered as its own, with nothing between them.
+   */
+  test("a pick's lone input does not take a change sent in a later task", async () => {
+    class Sizes extends Component {
+      @state size = "m";
+      changes = 0;
+      picked(event: EventOn<HTMLSelectElement>) {
+        this.changes++;
+        this.size = event.currentTarget.value;
+      }
+      render() {
+        return (
+          <Select id="s" aria-label="Size" value={this.size} onchange={this.picked}>
+            <option value="m">m</option>
+            <option value="l">l</option>
+            <option value="s">s</option>
+          </Select>
+        );
+      }
+    }
+    const app = await getDOM<Sizes>(<Sizes />);
+    await app.settle();
+    const select = app.container.querySelector("#s") as HTMLSelectElement;
+    select.value = "l";
+    select.dispatchEvent(new Event("input", { bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    select.value = "s";
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+    await app.settle();
+
+    expect({ changes: app.instance.changes, size: app.instance.size, shown: select.value }).toEqual({
+      changes: 2,
+      size: "s",
+      shown: "s",
+    });
   });
 
   /** `cancelBubble = true` and `returnValue = false` ask what the methods ask, of the `change` promised. */

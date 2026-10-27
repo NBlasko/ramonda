@@ -163,8 +163,8 @@ type InputValueOf<U> = U extends Date ? string : U extends number ? number | "" 
 export interface LeafApi<T> extends FieldApi<T> {
   /** The value as the control shows it — see `InputValue`. */
   readonly inputValue: InputValue<T>;
-  /** Whether the field has a message: the control's `aria-invalid`. */
-  readonly invalid: boolean;
+  /** `true` while the field has a message, and no value otherwise: the control's `aria-invalid`. */
+  readonly invalid: true | undefined;
   /** The control's own `oninput`, which writes what it produced into the form. */
   readonly oninput: (event: Event) => void;
   /** The control's `onblur`, which marks the field touched. */
