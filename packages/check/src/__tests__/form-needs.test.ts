@@ -26,6 +26,8 @@ describe("a field inside a @ramonda/form form", () => {
     expect(issues).toEqual(
       expect.arrayContaining([
         [lineOf('aria-label="no blur"'), "missing", "`onblur`"],
+        // An `onblur` that holds nothing, through a `const`, is no `onblur`.
+        [lineOf('aria-label="blur as a const"') - 1, "missing", "`onblur`"],
         [lineOf('aria-label="select without invalid"'), "missing", "`aria-invalid`"],
         [lineOf('aria-label="child field"'), "missing", "`name`"],
         [lineOf('aria-label="shelled"'), "missing", "`name`, `onblur`, `aria-invalid`"],
@@ -57,7 +59,7 @@ describe("a field inside a @ramonda/form form", () => {
         [lineOf("class SignupForm"), "form-in-a-hook", "form"],
       ]),
     );
-    expect(issues).toHaveLength(25);
+    expect(issues).toHaveLength(26);
   });
 
   test("a complete field, a wrapper handed everything, a harmless bag, a field outside a form and an app's own Form are silent", () => {
@@ -65,6 +67,8 @@ describe("a field inside a @ramonda/form form", () => {
     for (const line of [
       lineOf('aria-label="complete"'),
       lineOf('aria-label="complete box"'),
+      lineOf('aria-label="value as a const"'),
+      lineOf('aria-label="nothing, then onchange"') - 1,
       lineOf("<StyledInput", 2),
       lineOf('attrs={{ placeholder: "you@example.com" }}'),
       lineOf('aria-label="loose"'),

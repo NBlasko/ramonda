@@ -170,6 +170,20 @@ describe("a refused edit puts the selection back", () => {
     });
   });
 
+  /** A model with `\r\n` — text from a server — is the `\n` text the textarea shows: the caret comes back. */
+  test("a refused keystroke in a TextArea whose model has CRLF puts the caret back", async () => {
+    const app = await getDOM<LockedArea>(<LockedArea />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as Text;
+    field.focus();
+    app.instance.text = "one\r\ntwo";
+    await app.settle();
+    editAlone(field, "oXne\ntwo", 2, "insertText");
+    await app.settle();
+
+    expect(shown(field)).toEqual(["one\ntwo", 1, 1]);
+  });
+
   /** No record of the selection: the caret goes back by what the edit added before it. */
   test("an edit with no beforeinput of its own puts the caret back by what it added", async () => {
     const app = await getDOM(<LockedInput />);

@@ -416,9 +416,8 @@ export function formTableFor(sources: readonly ts.SourceFile[], resolve: Resolve
     });
 
     const modelName = box ? "checked" : "value";
-    const model = written.get(modelName);
-    const modelValue = model === undefined ? undefined : valueOf(model);
-    if (model === undefined || (modelValue !== undefined && isNothing(modelValue))) return;
+    // No model — not written, or written as nothing, through a `const` too: the field is the user's.
+    if (!said(modelName)) return;
 
     const sourceOf = (name: string): AttributeSource => {
       const attribute = written.get(name);
@@ -426,15 +425,13 @@ export function formTableFor(sources: readonly ts.SourceFile[], resolve: Resolve
       const value = valueOf(attribute);
       const prop = propRead(value);
       if (prop !== undefined) return { kind: "prop", prop };
-      if (value !== undefined && isNothing(value)) return { kind: "missing" };
+      if (!said(name)) return { kind: "missing" };
       return { kind: "written" };
     };
-    // `on:input` is as much the field's own as `oninput`.
-    const spelled = (name: string) => (written.has(name) ? name : `on:${name.slice(2)}`);
+    // `on:input` is as much the field's own as `oninput`; a spelling written as nothing is no handler.
+    const spelled = (name: string) => (said(name) ? name : `on:${name.slice(2)}`);
     const writer =
-      written.has("oninput") || written.has("on:input") || !pick
-        ? sourceOf(spelled("oninput"))
-        : sourceOf(spelled("onchange"));
+      said("oninput") || said("on:input") || !pick ? sourceOf(spelled("oninput")) : sourceOf(spelled("onchange"));
 
     fields.push({
       owner: enclosingClass(element),

@@ -157,7 +157,10 @@ function controlFor(component: Component<any> & { settle(): void }, pick: boolea
     model: () => runtime.rawProps.value,
     prev: () => {
       const model = runtime.rawProps.value;
-      return Array.isArray(model) ? model.map(String) : String(model ?? "");
+      if (Array.isArray(model)) return model.map(String);
+      // A textarea keeps its line breaks as `\n`: a model written with `\r\n` is read as the text it
+      // shows, for every comparison and every caret put back — see `showsTheModel`.
+      return pick ? String(model ?? "") : String(model ?? "").replace(/\r\n?/g, "\n");
     },
     own: (type, own) => {
       // Both spellings, in the order a listener would be: `oninput`, then `on:input`.

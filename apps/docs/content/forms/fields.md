@@ -405,7 +405,7 @@ what you would have written by hand:
 ```html
 <label class="field">
   <span class="field__label">E-mail</span>
-  <input name="email" value="" aria-invalid="false">
+  <input name="email" value="">
 </label>
 ```
 

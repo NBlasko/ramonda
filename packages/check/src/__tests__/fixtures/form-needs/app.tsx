@@ -155,8 +155,30 @@ class Page extends Component {
           onblur={this.type}
           aria-invalid={false}
         />
+        {/* ✓ an `oninput` written as nothing beside the pick's own `onchange` */}
+        <Select
+          aria-label="nothing, then onchange"
+          name="s"
+          value={value}
+          oninput={undefined}
+          onchange={this.type}
+          onblur={this.type}
+          aria-invalid={false}
+        >
+          <option value="a">a</option>
+        </Select>
+        {/* ✓ a value that is a `const` holding nothing: no model, the field is the user's */}
+        <input aria-label="value as a const" name="e" value={NONE} />
         {/* ✗ missing */}
         <input aria-label="no blur" name="e" value={value} oninput={this.type} aria-invalid={false} />
+        <input
+          aria-label="blur as a const"
+          name="e"
+          value={value}
+          oninput={this.type}
+          onblur={NONE}
+          aria-invalid={false}
+        />
         <Select aria-label="select without invalid" name="s" value={value} onchange={this.type} onblur={this.type}>
           <option value="a">a</option>
         </Select>

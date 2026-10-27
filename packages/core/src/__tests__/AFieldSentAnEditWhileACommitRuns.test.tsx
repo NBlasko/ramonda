@@ -299,6 +299,40 @@ describe("RMD062", () => {
     container.remove();
   });
 
+  /** An autofill's `change` right after a mount brings its own text: it is an edit, not the end of the last. */
+  test("a change that brings new text right after a mount is answered as an edit", () => {
+    const heard: string[] = [];
+    class Named extends Component {
+      @state text = "";
+      field = createRef<HTMLInputElement>();
+      typed(event: EventOn<HTMLInputElement, InputEvent>) {
+        heard.push(`${event.inputType} ${event.currentTarget.value}`);
+        this.text = event.currentTarget.value;
+      }
+      @mounted
+      fill() {
+        typeInto(this.field.current as HTMLInputElement, "a");
+      }
+      render() {
+        return <input aria-label="Named" ref={this.field} value={this.text} oninput={this.typed} />;
+      }
+    }
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    bootstrap(<Named />, container);
+    const field = container.querySelector("input") as HTMLInputElement;
+    field.value = "filled";
+    field.dispatchEvent(new Event("change", { bubbles: true }));
+    flushSync();
+
+    expect({ heard, shown: field.value }).toEqual({
+      heard: ["insertText a", "insertReplacementText filled"],
+      shown: "filled",
+    });
+    unmount(container);
+    container.remove();
+  });
+
   /** The handler ran and refused: that is known once its render has run, so a second edit reads ahead of it. */
   test("a second edit after one the handler refused is reported", async () => {
     class Locked extends Component {

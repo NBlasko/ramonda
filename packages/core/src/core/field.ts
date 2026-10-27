@@ -246,6 +246,10 @@ function show(control: FieldControl, field: Field | null, handled: boolean, edit
     });
     return;
   }
+  // Settled now: a guess, and a settle waiting from an event in a commit, are over.
+  const state = stateOf(control.key);
+  state.pending = undefined;
+  state.waiting = undefined;
   settleNow(control, edit);
 }
 
@@ -385,11 +389,20 @@ export function answerEdit(control: FieldControl, event: Event): void {
   }
   const state = stateOf(control.key);
   // A `change` while a settle still waits for its microtask and no commit runs any more — right after a
-  // mount, after a `flushSync` in a test: it brings no text of its own, so the renders run and the field
-  // shows the model before the `change` reads it; the microtask then settles a field already settled. Any other
-  // event may bring the browser's edit, already in the field, which a render would write over: it is
-  // answered as an event in the commit is, against what the field last showed — RMD062.
-  if (event.type === "change" && state.waiting === true && !drainingNow()) {
+  // mount, after a `flushSync` in a test — on a field that still shows what it showed once its last event
+  // was answered: it brings no text of its own, so the renders run and the field shows the model before
+  // the `change` reads it; the microtask then settles a field already settled. A `change` that brings new
+  // text — an autofill, a test's `fireEvent.change` — and any other event, whose edit the browser has
+  // already put in the field, would have a render write over it: they are answered as an event in the
+  // commit is, against what the field last showed — RMD062.
+  const target = event.currentTarget as Field | null;
+  if (
+    event.type === "change" &&
+    state.waiting === true &&
+    !drainingNow() &&
+    target !== null &&
+    (state.pending === undefined || sameModel(valueOf(target), state.pending))
+  ) {
     state.waiting = undefined;
     state.pending = undefined;
     settleNow(control, undefined);
@@ -745,9 +758,12 @@ export function keepOwnHandler(input: HTMLInputElement, name: string, type: stri
   const kept = input as Kept;
   kept[OWN] ??= {};
   const handlers = (kept[OWN][type] ??= new Map());
-  if (handler === undefined) handlers.delete(name);
-  else handlers.set(name, handler);
-  if (handler !== undefined) listen(kept, [type]);
+  if (handler === undefined) {
+    handlers.delete(name);
+    return;
+  }
+  handlers.set(name, handler);
+  listen(kept, [type]);
 }
 
 /** Every own handler of `input` for `type`, in the order they were written; whether there was one. */
