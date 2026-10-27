@@ -662,7 +662,7 @@ describe("the event a field's handler is handed", () => {
       picked(event: EventOn<HTMLSelectElement>) {
         event.cancelBubble = true;
         event.preventDefault();
-        this.prevented.push(event.defaultPrevented, event.cancelBubble);
+        this.prevented.push(event.defaultPrevented, event.cancelBubble, event.returnValue);
         this.size = event.currentTarget.value;
       }
       dirty() {
@@ -689,7 +689,7 @@ describe("the event a field's handler is handed", () => {
 
     expect({ formHeard: app.instance.formHeard, prevented: app.instance.prevented }).toEqual({
       formHeard: 0,
-      prevented: [true, true],
+      prevented: [true, true, false],
     });
   });
 });

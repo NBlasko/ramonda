@@ -38,6 +38,8 @@ describe("a field inside a @ramonda/form form", () => {
         [lineOf('aria-label="unread box in form"'), "missing", "`name`, `onblur`, `aria-invalid`"],
         // `checked` beside a `value`: a pick, whose `onchange` is its handler — as the other rules read it.
         [lineOf('aria-label="unread radio in form"'), "missing", "`name`, `onblur`, `aria-invalid`"],
+        // `checked={undefined}` is no `checked`: a text field, with its `value` and its own `oninput`.
+        [lineOf('aria-label="checked as nothing"'), "missing", "`name`, `onblur`, `aria-invalid`"],
         [lineOf('aria-label="braced box"'), "missing", "`name`, `onblur`, `aria-invalid`"],
         [lineOf('attrs={{ value: "fixed" }}'), "bag-without-a-handler", "attrs"],
         [lineOf("<BoxInput attrs={{ checked: true }} />"), "bag-without-a-handler", "attrs"],
@@ -46,11 +48,14 @@ describe("a field inside a @ramonda/form form", () => {
         [lineOf("attrs={{ oninput }}"), "bag-overrides", "attrs.oninput"],
         // A `value` that holds nothing overrides the field's, and sets no model that needs a handler.
         [lineOf("attrs={{ value: undefined }}"), "bag-overrides", "attrs.value"],
+        // A handler key that holds nothing carries no handler; one written as nothing on the field is none.
+        [lineOf('attrs={{ value: "carried nothing"'), "bag-without-a-handler", "attrs"],
+        [lineOf('<NoHandlerInput attrs={{ value: "x" }} />'), "bag-without-a-handler", "attrs"],
         [lineOf("class Detached"), "form-not-attached", "form"],
         [lineOf("class SignupForm"), "form-in-a-hook", "form"],
       ]),
     );
-    expect(issues).toHaveLength(21);
+    expect(issues).toHaveLength(24);
   });
 
   test("a complete field, a wrapper handed everything, a harmless bag, a field outside a form and an app's own Form are silent", () => {

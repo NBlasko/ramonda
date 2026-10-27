@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { getDOM } from "../test/setup";
 import { mounted, state } from "../base/decorators";
-import { Component, createRef, type EventOn } from "../index";
+import { Component, bootstrap, createRef, unmount, type EventOn } from "../index";
+import { flushSync } from "../testing";
 import { resetDiagnostics } from "../debug/diagnostics";
 
 /**
@@ -215,6 +216,42 @@ describe("RMD062", () => {
     await app.settle();
 
     expect({ messages, text: app.instance.text }).toEqual({ messages: [], text: "x日本" });
+  });
+
+  /**
+   * `flushSync` runs the commit's renders, and the settle still waits for its microtask: an event sent
+   * right after it finds the field showing the model, reads nothing ahead of a render, and a refused
+   * edit's `change` reaches no `onchange`.
+   */
+  test("an event right after flushSync finds the field showing the model", () => {
+    let changes = 0;
+    class Locked extends Component {
+      @state text = "";
+      field = createRef<HTMLInputElement>();
+      typed(_event: EventOn<HTMLInputElement>) {}
+      changed() {
+        changes++;
+      }
+      @mounted
+      fill() {
+        typeInto(this.field.current as HTMLInputElement, "ab");
+      }
+      render() {
+        return (
+          <input aria-label="Locked" ref={this.field} value={this.text} oninput={this.typed} onchange={this.changed} />
+        );
+      }
+    }
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    bootstrap(<Locked />, container);
+    flushSync();
+    const field = container.querySelector("input") as HTMLInputElement;
+    field.dispatchEvent(new Event("change", { bubbles: true }));
+
+    expect({ messages, shown: field.value, changes }).toEqual({ messages: [], shown: "", changes: 0 });
+    unmount(container);
+    container.remove();
   });
 
   /** The handler ran and refused: that is known once its render has run, so a second edit reads ahead of it. */

@@ -380,6 +380,12 @@ export function answerEdit(control: FieldControl, event: Event): void {
     return;
   }
   const state = stateOf(control.key);
+  // A settle still waiting for its microtask while no commit runs any more — a `flushSync` in a test
+  // ran the renders it waited for: the field shows the model now, before this event reads it.
+  if (state.pending !== undefined && !drainingNow()) {
+    state.pending = undefined;
+    control.settle();
+  }
   // The selection `beforeinput` recorded belongs to the `input` right after it; anything else in
   // between — a cancelled edit sends none — and it is no longer the edit's.
   if (event.type !== "beforeinput" && event.type !== "input") state.before = undefined;
@@ -612,6 +618,7 @@ function as(event: Event, type: string, own: Record<string, unknown>, asked: Ask
       if (key === "stopImmediatePropagation") return () => void (asked.immediate = true);
       if (key === "preventDefault") return () => void (asked.prevented = true);
       if (key === "defaultPrevented") return asked.prevented;
+      if (key === "returnValue") return !asked.prevented;
       if (key === "cancelBubble") return asked.propagation || asked.immediate;
       const value = Reflect.get(target, key, target);
       return typeof value === "function" ? (value as (...args: unknown[]) => unknown).bind(target) : value;

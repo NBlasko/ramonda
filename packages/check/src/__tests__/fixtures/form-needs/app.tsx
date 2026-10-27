@@ -67,6 +67,13 @@ class BareInput extends Component<{ attrs?: Record<string, unknown> }> {
   }
 }
 
+/** Its handler written as nothing after the spread: no handler at all, whatever the bag says. */
+class NoHandlerInput extends Component<{ attrs?: Record<string, unknown> }> {
+  render() {
+    return <input aria-label="no handler" {...this.props.attrs} oninput={undefined} />;
+  }
+}
+
 /** Spreads FIRST: everything written after it is the field's, and no spread can override it. */
 class EarlySpread extends Component<{ field: any; attrs?: Record<string, unknown> }> {
   render() {
@@ -167,6 +174,7 @@ class Page extends Component {
         {/* ✗ a box whose type cannot be read, written with `checked`, is a field of the form */}
         <input aria-label="unread box in form" type={kind} checked={on} oninput={this.type} />
         <input aria-label="unread radio in form" type={kind} checked={on} value="yes" onchange={this.type} />
+        <input aria-label="checked as nothing" type={kind} checked={undefined} value={value} oninput={this.type} />
         {/* ✗ a box whose type is written as an expression is still a box */}
         <input aria-label="braced box" type={"checkbox"} checked={on} oninput={this.type} />
         {/* ✗ unreadable-component */}
@@ -200,6 +208,8 @@ class Loose extends Component {
         {/* ✗ what a spread carries is read everywhere: a value with no handler, and a bag unseen */}
         <BareInput attrs={{ value: "fixed" }} />
         <BareInput attrs={{ value: undefined }} />
+        <BareInput attrs={{ value: "carried nothing", "on:input": undefined }} />
+        <NoHandlerInput attrs={{ value: "x" }} />
         {/* ✓ a box's value is what the form sends; ✗ its checked is a model with no handler */}
         <BoxInput attrs={{ value: "yes" }} />
         {/* ✓ `on:input` in the spread is the field's own handler */}

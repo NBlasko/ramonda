@@ -365,12 +365,25 @@ export function formTableFor(sources: readonly ts.SourceFile[], resolve: Resolve
     for (const attribute of opening.attributes.properties) {
       if (ts.isJsxAttribute(attribute)) written.set(attribute.name.getText(), attribute);
     }
+    // Written, and saying something: `{null}` and `{undefined}` are no attribute, as core reads them and
+    // as `field-the-user-cannot-change` does.
+    const said = (name: string): boolean => {
+      const attribute = written.get(name);
+      if (attribute === undefined) return false;
+      const value = attribute.initializer;
+      return !(
+        value !== undefined &&
+        ts.isJsxExpression(value) &&
+        value.expression !== undefined &&
+        isNothing(value.expression)
+      );
+    };
     // What its `type` makes it — see `fieldKind`. One whose type cannot be read is a box when it is
     // written with `checked` — a `value` beside it is then what the box sends, as on a radio — and a
     // text field otherwise: the same reading as `field-the-user-cannot-change`.
     const kind = tag === "input" ? fieldKind(typeAttributeOf(element), resolve) : "text";
     if (kind === "unedited") return;
-    const box = kind === "box" || (kind === "unread" && written.has("checked"));
+    const box = kind === "box" || (kind === "unread" && said("checked"));
     const pick = tag === "select" || box;
 
     // Every `{...this.props.P}` on a field, controlled or not: it may carry a model, or take one away.
@@ -381,7 +394,7 @@ export function formTableFor(sources: readonly ts.SourceFile[], resolve: Resolve
       if (!ts.isJsxSpreadAttribute(attribute)) return;
       const prop = propRead(attribute.expression);
       if (prop === undefined) return;
-      const handled = writes.some((name) => written.has(name));
+      const handled = writes.some((name) => said(name));
       // What is written AFTER the spread wins over it: the spread cannot override those.
       const shadowed = properties
         .slice(index + 1)

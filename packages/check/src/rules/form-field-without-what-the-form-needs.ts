@@ -247,10 +247,19 @@ function readBag(
       found.push({ kind: "bag-overrides", component: site.tag, detail: `${name}.${key}`, ...where(site) });
     }
   }
+  // The keys the bag sets to something: a key that holds nothing — `{ oninput: undefined }` — carries
+  // no handler and sets no model, as core reads it.
   const keys = new Set(
-    written.properties.map((p) =>
-      p.name !== undefined && (ts.isIdentifier(p.name) || ts.isStringLiteral(p.name)) ? p.name.text : "",
-    ),
+    written.properties
+      .filter((p) => {
+        const held = ts.isPropertyAssignment(p)
+          ? p.initializer
+          : ts.isShorthandPropertyAssignment(p)
+            ? p.name
+            : undefined;
+        return held === undefined || !holdsNothing(held);
+      })
+      .map((p) => (p.name !== undefined && (ts.isIdentifier(p.name) || ts.isStringLiteral(p.name)) ? p.name.text : "")),
   );
   // `on:input` is the field's own handler as `oninput` is, however it reaches the field.
   const carries =
@@ -261,17 +270,7 @@ function readBag(
   // The model key the spread may set: `checked` on a box, `value` on anything else — and only when the
   // field does not write it after the spread.
   const model = wants === "box" ? "checked" : "value";
-  // A model key that holds nothing — `{ value: undefined }` — sets no model: the field stays the user's.
-  const modelProperty = written.properties.find(
-    (p) => p.name !== undefined && (ts.isIdentifier(p.name) || ts.isStringLiteral(p.name)) && p.name.text === model,
-  );
-  const held =
-    modelProperty === undefined
-      ? undefined
-      : ts.isPropertyAssignment(modelProperty)
-        ? modelProperty.initializer
-        : modelProperty.name;
-  const value = held !== undefined && !holdsNothing(held as ts.Expression) && !shadowed.includes(model);
+  const value = keys.has(model) && !shadowed.includes(model);
   if (wants !== "nothing" && value && !carries) {
     found.push({ kind: "bag-without-a-handler", component: site.tag, detail: name, ...where(site) });
   }
