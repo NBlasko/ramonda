@@ -326,8 +326,12 @@ function setNextOnenhancedNode(enhancedNode: EnhancedHTMLNode, name: string, val
     // Both, because they say different things about the same element: the property is the value NOW,
     // and the attribute is the one it started with — which is also the only half a server render can
     // serialize. Not the property while an input method is composing in the field: writing it would
-    // cancel the word, and the field shows the model once the word ends — see `composingIn`.
-    if (enhancedNode.nodeName !== "INPUT" || !composingIn(enhancedNode)) writeValue(enhancedNode, value, onServer);
+    // cancel the word, and the field shows the model once the word ends — see `composingIn`. Nor on an
+    // `<input>` that already shows the model: a number field with `-` typed on the way to `-3` reports
+    // `""`, the model holds `""`, and writing `""` back would take the `-` away — see `showsTheModel`.
+    const input = enhancedNode.nodeName === "INPUT";
+    const shown = input && showsTheModel(enhancedNode as unknown as HTMLInputElement, value);
+    if (!shown && (!input || !composingIn(enhancedNode))) writeValue(enhancedNode, value, onServer);
     enhancedNode.setAttribute(name, value);
     return;
   }

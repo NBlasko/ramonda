@@ -213,6 +213,33 @@ class RefusedInput extends Component {
   }
 }
 
+/**
+ * A number field typed toward a number it cannot hold yet: `-` on the way to `-3`, `1e` on the way to
+ * `1e5`. The browser reports `""` for both, so the model holds `""` — which is what the field already
+ * says, and writing it back would take the `-` away.
+ */
+class Signed extends Component {
+  @state amount: number | "" = 5;
+
+  typed(event: EventOn<HTMLInputElement, InputEvent>) {
+    const typed = event.currentTarget.value;
+    this.amount = typed === "" ? "" : Number(typed);
+  }
+
+  render() {
+    return (
+      <section style={box}>
+        <h3 style={{ margin: "0 0 0.25rem" }}>6 — a number on its way</h3>
+        <p style={hint}>Select all and type -3: the minus stays while the number is not one yet.</p>
+        <input id="signed" type="number" aria-label="Amount" value={this.amount} oninput={this.typed} />
+        <output id="signed-model" style={readout}>
+          {JSON.stringify(this.amount)}
+        </output>
+      </section>
+    );
+  }
+}
+
 /** Fields whose behaviour only a browser settles — see `browser/fields.spec.ts`. */
 export class FieldsPage extends Component {
   render() {
@@ -227,6 +254,7 @@ export class FieldsPage extends Component {
         <Between />
         <Refused />
         <RefusedInput />
+        <Signed />
       </div>
     );
   }

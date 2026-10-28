@@ -13,6 +13,8 @@ import { expect, test } from "@playwright/test";
  * - **A form's reset.** It returns a select to the option whose `selected` ATTRIBUTE is set, which is
  *   where `Select` writes its `defaultValue`. jsdom was measured to move a choice where browsers do
  *   not, so this is asked of a browser.
+ * - **A number not typed yet.** `-` on the way to `-3` is a value the browser cannot read, so it reports
+ *   `""`, and the model holds `""` — what the field already says. jsdom keeps no such text at all.
  * - **What is drawn.** A refused pick or keystroke is gone in the event that made it — by the field's
  *   own handler, which the field answers at once. Chromium draws a frame
  *   between an event and a timer, so an answer a task later was measured to show the refused pick in
@@ -200,5 +202,16 @@ test.describe("fields only a browser settles", () => {
         element.selectionEnd,
       ]),
     ).toEqual(["abc", 1, 2]);
+  });
+
+  /** The `-` stays while the number is not one yet, and `-3` is held once it is. */
+  test("a number field keeps a minus typed before its number", async ({ page }) => {
+    const field = page.locator("#signed");
+    await field.selectText();
+    await page.keyboard.type("-");
+    await expect(page.locator("#signed-model")).toHaveText('""');
+    await page.keyboard.type("3");
+    await expect(page.locator("#signed-model")).toHaveText("-3");
+    await expect(field).toHaveValue("-3");
   });
 });
