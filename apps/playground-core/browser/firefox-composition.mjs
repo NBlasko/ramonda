@@ -183,17 +183,24 @@ try {
     await session.send("Marionette:SetContext", { value: "content" });
     // Read until the answer is in, rather than after a fixed pause a loaded runner may outlast: the
     // readout is a render after the composition.
+    const read = async () =>
+      (
+        await session.send("WebDriver:ExecuteScript", {
+          script: `return [document.getElementById("${id}").value, document.getElementById("${id}-taken").textContent];`,
+          args: [],
+        })
+      ).value;
     let field = "";
     let taken = "";
     for (let attempt = 0; attempt < 50; attempt++) {
-      const { value } = await session.send("WebDriver:ExecuteScript", {
-        script: `return [document.getElementById("${id}").value, document.getElementById("${id}-taken").textContent];`,
-        args: [],
-      });
-      [field, taken] = value;
+      [field, taken] = await read();
       if (field === "日本" && taken === expected) break;
       await wait(200);
     }
+    // And again once nothing more has come: a word handed over twice, the second time late, must not
+    // pass on the first reading that looked right.
+    await wait(500);
+    [field, taken] = await read();
     const right = field === "日本" && taken === expected;
     if (!right) failed = true;
     console.log(

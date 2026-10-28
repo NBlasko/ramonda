@@ -1,7 +1,7 @@
 import ts from "typescript";
 import { positionOf } from "../syntax";
 import { coreElementTag } from "./coreElements";
-import { holdsNothing, openingOf, tagOf } from "./element";
+import { holdsNothing, openingOf, says, tagOf } from "./element";
 import { unwrap } from "./follow-value";
 import { enclosingElement } from "./html";
 import type { JsxElementLike, ModuleRule, Resolver } from "./rule";
@@ -65,14 +65,7 @@ function controlledField(element: JsxElementLike, resolve: Resolver): boolean {
   const kind = tag === "input" ? fieldKind(typeAttributeOf(element), resolve) : "text";
   // Controlled when any of its models holds something: for a type that cannot be read, `value` and
   // `checked` each — a `value={undefined}` beside a `checked` hides nothing.
-  return modelNames(kind).some((name) => {
-    const model = attributeOf(element, name);
-    if (model === undefined) return false;
-    const value = model.initializer;
-    if (value === undefined) return true;
-    const held = ts.isJsxExpression(value) ? value.expression : value;
-    return held !== undefined && !holdsNothing(held, resolve);
-  });
+  return modelNames(kind).some((name) => says(openingOf(element), name, resolve));
 }
 
 /**
