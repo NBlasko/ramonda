@@ -1,6 +1,6 @@
 import { indexUnder, keyPrefix, type Path, type PathSegment, pathKey, pathToString } from "./path";
 import type { FieldNode, Row } from "./types";
-import { REFUSAL, refuse } from "./diagnostics";
+import { REFUSAL, refuse, report } from "./diagnostics";
 
 /**
  * What a field needs from the form. Declared as an interface so the tree can be built and
@@ -208,8 +208,28 @@ export class FieldHandle {
   ) {
     this.path = pathToString(at_);
     this.name = this.path;
-    this.oninput = (event: Event) => this.host.write(this.at_, fromControl(event.target, this.host.read(this.at_)));
+    this.oninput = (event: Event) => {
+      const current = this.host.read(this.at_);
+      if (__DEV__) this.checkTheControl(event.target, current);
+      this.host.write(this.at_, fromControl(event.target, current));
+    };
     this.onblur = () => this.host.touch(this.at_);
+  }
+
+  /**
+   * A field holding a number or a day, edited through a control that hands back text — `type` left
+   * off. Read on the value the field holds, so a field still empty says nothing; `ramonda-check` reads
+   * the markup before any of it runs, as `form-value-in-the-wrong-control`.
+   */
+  private checkTheControl(target: EventTarget | null, current: unknown): void {
+    const type = (target as { type?: string } | null)?.type;
+    const wants = typeof current === "number" ? "number" : current instanceof Date ? "date" : undefined;
+    if (wants === undefined || type === wants || type === undefined) return;
+    report(
+      "RMF005",
+      `\`${this.path}\` holds a ${wants === "number" ? "number" : "day"}, and its control is \`type="${type}"\`, which hands back text: write \`type="${wants}"\` on it.`,
+      { path: this.path, type, wants },
+    );
   }
 
   get value(): unknown {

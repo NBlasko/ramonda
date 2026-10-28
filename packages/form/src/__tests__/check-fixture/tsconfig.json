@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "jsxImportSource": "@ramonda/core",
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "paths": {
+      "@ramonda/core": ["../../../../core/dist/index.d.ts"],
+      "@ramonda/core/jsx-runtime": ["../../../../core/dist/jsx-runtime.d.ts"],
+      "@ramonda/form": ["../../../dist/index.d.ts"]
+    }
+  },
+  "include": ["app.tsx"]
+}

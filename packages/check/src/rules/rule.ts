@@ -524,7 +524,17 @@ export interface Resolver {
    * re-export, and not an app's own of the same name. See `importedFromPackage`.
    */
   fromPackage(id: ts.Node, pkg: string): boolean;
+  /**
+   * What a form shows in this expression, read off its TYPE: a number for `<input type="number">`, a
+   * day for `type="date"`, anything else, or `unread` when its type cannot be read. `undefined` when
+   * this program reads no types — a project that imports no `@ramonda/form` is built with no lib,
+   * which keeps the check fast, and has no form value to ask about. See `form-value-in-the-wrong-control`.
+   */
+  formValue(expression: ts.Expression): FormValue | undefined;
 }
+
+/** What a form shows in a control's `value` — see `Resolver.formValue`. */
+export type FormValue = "number" | "day" | "other" | "unread";
 
 /**
  * Whether a finding carries a written reason, and the recording of it.

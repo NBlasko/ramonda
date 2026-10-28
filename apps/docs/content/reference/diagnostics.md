@@ -1252,6 +1252,22 @@ const schema = object({
 });
 ```
 
+## RMF005 — a number or a day edited through a control that hands back text
+
+A field turns what its control produced back into its value by the control's own `type`:
+`type="number"` hands back a number, `type="date"` a day, and every other control hands back its text.
+So a field holding a number, written without `type="number"`, fills the form with text on the first
+keystroke — and the schema reports a value the reader never typed wrong.
+
+```tsx expect-report:form-value-in-the-wrong-control
+<input aria-label="Age" name={age.name} value={age.inputValue} oninput={age.oninput} />                // ✗ text
+<input aria-label="Age" type="number" name={age.name} value={age.inputValue} oninput={age.oninput} />  // ✓
+```
+
+Reported once the field holds a number or a day, naming the `type` to write. `ramonda-check` reports
+the same before it ships, as [`form-value-in-the-wrong-control`](/reference/check) — and that one
+reads the markup, so it finds a field that is still empty too.
+
 # Query — `RMQ`
 
 ## RMQ001 — a query key that cannot be hashed

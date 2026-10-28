@@ -100,6 +100,7 @@ const EXPECTED_TYPES = [
   "HalfBuiltKeyboardPathIssue",
   "ElementHtmlRemovedIssue",
   "OptionThatCannotChooseIssue",
+  "FormValueInTheWrongControlIssue",
   "FieldTheUserCannotChangeIssue",
   "FieldSetByAnEventIssue",
   "RoleTakesNoNameIssue",

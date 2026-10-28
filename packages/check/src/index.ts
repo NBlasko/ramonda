@@ -79,6 +79,7 @@ export type {
   HalfBuiltKeyboardPathIssue,
   ElementHtmlRemovedIssue,
   OptionThatCannotChooseIssue,
+  FormValueInTheWrongControlIssue,
   FieldTheUserCannotChangeIssue,
   FieldSetByAnEventIssue,
   RoleTakesNoNameIssue,

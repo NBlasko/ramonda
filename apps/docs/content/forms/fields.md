@@ -102,6 +102,12 @@ sees that none is missing.
 `inputValue` is typed by the value (`InputValue<T>`), so a `Date` handed to `value` directly is a
 compile error rather than a field that shows nothing.
 
+The `type` is what turns an edit back into the value: `type="number"` hands back a number and
+`type="date"` a day, and any other control hands back text. A number field written without it fills
+the form with text, so `ramonda-check` reports a number's or a day's `inputValue` in any other control
+before it ships, as [`form-value-in-the-wrong-control`](/reference/check), and
+[`RMF005`](/reference/diagnostics/rmf005) reports it in a running page.
+
 ### A choice lives on `<Select>`
 
 Every other control holds its own value. A select's value is which of its **children** is chosen, so

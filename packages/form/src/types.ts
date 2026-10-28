@@ -138,7 +138,23 @@ export type InputValue<T> = InputValueOf<NonNullable<T>>;
  * A value a control's `value` cannot show — a boolean, a file, a bigint — is `never`: a box takes
  * `checked={field.value === true}`, and the type refuses `value={…}` on it.
  */
-type InputValueOf<U> = U extends Date ? string : U extends number ? number | "" : U extends string ? string : never;
+type InputValueOf<U> = U extends Date
+  ? FormDay
+  : U extends number
+    ? FormNumber | ""
+    : U extends string
+      ? string
+      : never;
+
+/**
+ * A number a form's field shows. A number like any other to TypeScript, and marked, so that
+ * `ramonda-check` can tell it from one an app holds itself: it belongs in `<input type="number">`, the
+ * one control the field turns back into a number — see `form-value-in-the-wrong-control`.
+ */
+export type FormNumber = number & { readonly "@ramonda/form:number": true };
+
+/** A day a form's date field shows, `yyyy-mm-dd`: a string, marked as `FormNumber` is, for `type="date"`. */
+export type FormDay = string & { readonly "@ramonda/form:day": true };
 
 /* ------------------------------------------------------------------ *
  * The three node kinds.

@@ -427,6 +427,14 @@ jobs:
       # moved aside: the globals come out empty and every example fails on `Component`,
       # which is exactly what a fresh checkout gives — so running it earlier, or in a
       # job of its own, would report the missing build rather than the examples.
+      # Here because it reads `@ramonda/core`'s and `@ramonda/form`'s BUILT declarations: the DOM
+      # names they mention, which `ramonda-check` reads them against as stand-ins. Its self-test
+      # first — a list missing a name must be reported stale — so a check gone quiet fails here.
+      - name: Check the DOM stand-ins match core's and the form's declarations
+        run: |
+          SELFTEST=stale node scripts/build-dom-names.mjs --check
+          node scripts/build-dom-names.mjs --check
+
       - name: Type-check the documentation examples
         run: |
           SELFTEST=block node scripts/check-examples.mjs

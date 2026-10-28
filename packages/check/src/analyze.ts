@@ -6,7 +6,11 @@ import { declarationEntryOf, fingerprint, loadFragment, packageRootOf } from "./
 import type { ComponentGraph, GraphEdge, GraphNode, Where } from "./graph";
 import { hookNamed, isThisUse, positionOf } from "./syntax";
 import { coreExportName, importedFromPackage } from "./rules/core-import";
-import type { Resolver, Silencer } from "./rules/rule";
+import type { FormValue, Resolver, Silencer } from "./rules/rule";
+import { DOM_STUB } from "./domStub.generated";
+
+/** Where the DOM's stand-ins sit in a program that reads types — no file on disk. */
+const DOM_STUB_FILE = "/__ramonda-check__/dom-stub.d.ts";
 import {
   activate,
   applyClass,
@@ -662,9 +666,12 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
    * — it is a `const`, and one built halfway down works only while nothing above it runs first,
    * which is an ordering nobody can see from the call site.
    */
+  const readsTypes = program.getCompilerOptions().noLib !== true;
   const resolver: Resolver = Object.assign(resolve, {
     coreName: (id: ts.Node) => coreExportName(id, resolveLocal, resolveStep, resolve),
     fromPackage: (id: ts.Node, pkg: string) => importedFromPackage(id, pkg, resolveLocal, resolveStep),
+    formValue: (expression: ts.Expression) =>
+      readsTypes ? formValueOf(checker.getTypeAtLocation(expression)) : undefined,
   });
 
   /** Symbol id → the context it belongs to, and which half of the pair it is. */
@@ -3957,10 +3964,15 @@ function packageOf(dir: string): { name: string; version: string } {
  * about module resolution moves. `@ramonda/check` may depend on `@ramonda/css`; the forbidden
  * direction is the other one, and it stays forbidden.
  */
-function overlayHost(options: ts.CompilerOptions): ts.CompilerHost {
+function overlayHost(options: ts.CompilerOptions, forms = false): ts.CompilerHost {
   const host = ts.createCompilerHost(options);
   const readFromDisk = host.readFile.bind(host);
   const sourceFromDisk = host.getSourceFile.bind(host);
+  if (forms) {
+    // The DOM's stand-ins, a file no disk holds — see `createProgram`.
+    const exists = host.fileExists.bind(host);
+    host.fileExists = (fileName) => fileName === DOM_STUB_FILE || exists(fileName);
+  }
 
   /**
    * Text → its virtual copy, or `undefined` when the file holds no block. One read per file.
@@ -3977,8 +3989,10 @@ function overlayHost(options: ts.CompilerOptions): ts.CompilerHost {
     return virtualFile(text, { tolerant: true })?.code;
   };
 
-  host.readFile = (fileName) => virtual(fileName) ?? readFromDisk(fileName);
+  host.readFile = (fileName) =>
+    forms && fileName === DOM_STUB_FILE ? DOM_STUB : (virtual(fileName) ?? readFromDisk(fileName));
   host.getSourceFile = (fileName, language, onError, shouldCreate) => {
+    if (forms && fileName === DOM_STUB_FILE) return ts.createSourceFile(fileName, DOM_STUB, language, true);
     const code = virtual(fileName);
     return code === undefined
       ? sourceFromDisk(fileName, language, onError, shouldCreate)
@@ -3986,6 +4000,29 @@ function overlayHost(options: ts.CompilerOptions): ts.CompilerHost {
   };
 
   return host;
+}
+
+/**
+ * What a form shows in a value of this type: the marks `@ramonda/form` puts on the number and the day
+ * its fields show (`FormNumber`, `FormDay`). A union is a number only when every member that is not
+ * the emptied field's `""` is one — a field that may hold text shows text too.
+ */
+function formValueOf(type: ts.Type): FormValue {
+  if ((type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) return "unread";
+  const members = (type.isUnion() ? type.types : [type]).filter(
+    (member) => !(member.isStringLiteral() && member.value === ""),
+  );
+  if (members.length === 0) return "other";
+  if (members.every((member) => member.getProperty("@ramonda/form:number") !== undefined)) return "number";
+  if (members.every((member) => member.getProperty("@ramonda/form:day") !== undefined)) return "day";
+  return "other";
+}
+
+/** Whether any of a project's own files imports `@ramonda/form` — the one reason to read types. */
+function importsTheForm(fileNames: readonly string[]): boolean {
+  return fileNames.some(
+    (file) => !file.endsWith(".d.ts") && /["']@ramonda\/form["'/]/.test(ts.sys.readFile(file) ?? ""),
+  );
 }
 
 function createProgram(tsconfigPath: string): {
@@ -4014,8 +4051,18 @@ function createProgram(tsconfigPath: string): {
   if (parsed.errors.length > 0) {
     for (const error of parsed.errors) notes.push(String(ts.flattenDiagnosticMessageText(error.messageText, " ")));
   }
+  /**
+   * A project that imports `@ramonda/form` is read WITH types, for one rule — whether a form's number
+   * or day sits in the control that turns it back into one: `form-value-in-the-wrong-control`. With
+   * the language's own lib and none of the DOM's: the DOM lib is 2.3 MB of parsing for names whose
+   * contents the answer never reads, so each name core and the form mention is a distinct stand-in
+   * instead — `DOM_STUB`, generated from their declarations. Measured on a form of 200 fields, the
+   * whole DOM lib cost 1.1–2.5 s; on `apps/docs`, the stand-ins cost 0.3 s (17.6 s → 17.9 s, the median
+   * of five `analyzeProject` runs each), and a project without the form pays nothing.
+   */
+  const forms = importsTheForm(parsed.fileNames);
   const program = ts.createProgram({
-    rootNames: parsed.fileNames,
+    rootNames: forms ? [...parsed.fileNames, DOM_STUB_FILE] : parsed.fileNames,
     /**
      * The host, with `@@( … )` style blocks turned into TSX before the compiler sees them.
      *
@@ -4037,7 +4084,7 @@ function createProgram(tsconfigPath: string): {
      * half-written in an editor's buffer is not a reason to stop analysing the file it is in. Whether
      * the block itself is well formed is `ramonda-css`'s answer, and it is the one that fails a build.
      */
-    host: overlayHost(parsed.options),
+    host: overlayHost(parsed.options, forms),
     /**
      * The project's own options, minus the two that load declaration files this analyzer will
      * never look at.
@@ -4055,7 +4102,9 @@ function createProgram(tsconfigPath: string): {
      * diagnostics: the analyzer's job is to say which context has no provider, and a project
      * that does not compile is `tsc`'s news to break, not this tool's.
      */
-    options: { ...parsed.options, noLib: true, types: [] },
+    options: forms
+      ? { ...parsed.options, noLib: false, lib: ["lib.esnext.d.ts"], types: [] }
+      : { ...parsed.options, noLib: true, types: [] },
   });
   return { program, notes };
 }

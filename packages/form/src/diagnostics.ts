@@ -33,7 +33,7 @@ type Spec =
   | { readonly severity: "error"; readonly fix: string }
   | { readonly severity: "debug" | "info" | "warn"; readonly fix?: string };
 
-export type FormCode = "RMF001" | "RMF002" | "RMF003" | "RMF004";
+export type FormCode = "RMF001" | "RMF002" | "RMF003" | "RMF004" | "RMF005";
 
 /**
  * Behind the flag, so a published build carries none of this text.
@@ -75,6 +75,15 @@ const SPECS: Record<FormCode, Spec> = __DEV__
           "form keeps the messages it already had and reports `isValid: false`, because it asked and did " +
           "not hear back. Catch the failure inside the rule and turn it into an issue, so the reader is " +
           "told what happened instead of facing a form that will not answer.",
+      },
+      RMF005: {
+        severity: "error",
+        fix:
+          "A field turns what its control produced back into its value by the control's own `type`: " +
+          '`type="number"` hands back a number and `type="date"` a day, and any other control hands back ' +
+          'its text — so a number field written without `type="number"` fills the form with text, and the ' +
+          "schema reports a value the reader never typed wrong. Write the `type` on the control. " +
+          "`ramonda-check` reports the same before it ships, as `form-value-in-the-wrong-control`.",
       },
     }
   : ({} as Record<FormCode, Spec>);

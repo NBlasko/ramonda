@@ -2,7 +2,7 @@ import { Component } from "@ramonda/core";
 import type { RamondaNode } from "@ramonda/core";
 import { describe, expect, test } from "vitest";
 import { Form } from "../Form";
-import type { FieldApi, InferIn, InferOut, InputValue, StandardSchemaV1 } from "../types";
+import type { FieldApi, FormDay, FormNumber, InferIn, InferOut, InputValue, StandardSchemaV1 } from "../types";
 
 /**
  * The type-level contract. Almost all of this is checked by `pnpm check-types` rather
@@ -319,11 +319,14 @@ describe("the form's type surface", () => {
   });
 });
 
-/** A field that holds a string or a number shows either: `inputValue` is typed as what it returns. */
+/**
+ * A field that holds a string or a number shows either: `inputValue` is typed as what it returns — a
+ * number or a day marked as the form's, for `ramonda-check` to tell from any other.
+ */
 test("a field of a union shows each member as its control would", () => {
-  assertType<Equals<InputValue<string | number>, string | number>>();
-  assertType<Equals<InputValue<number | undefined>, number | "">>();
-  assertType<Equals<InputValue<Date>, string>>();
+  assertType<Equals<InputValue<string | number>, string | FormNumber>>();
+  assertType<Equals<InputValue<number | undefined>, FormNumber | "">>();
+  assertType<Equals<InputValue<Date>, FormDay>>();
   assertType<Equals<InputValue<boolean>, never>>();
   assertType<Equals<InputValue<File>, never>>();
   assertType<Equals<InputValue<"s" | "m">, string>>();
