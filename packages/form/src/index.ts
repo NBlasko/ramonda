@@ -8,6 +8,8 @@ export type {
   Collision,
   FieldApi,
   FieldNode,
+  FormDay,
+  FormNumber,
   FormProps,
   InferIn,
   InferOut,

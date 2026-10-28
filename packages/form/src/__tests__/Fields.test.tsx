@@ -276,6 +276,15 @@ describe("the field tree", () => {
     expect((h.values as Shape).age).toBe(7);
   });
 
+  /** A field of text shown in a slider keeps text: the slider is a number control only for a number. */
+  test("a range input on a field of text writes text", () => {
+    const { h, fields } = tree(SEED);
+
+    fields.email.$.oninput(inputEvent("range", { value: "50" }));
+
+    expect((h.values as Shape).email).toBe("50");
+  });
+
   test("a number field that the reader clears takes a number again", () => {
     const { h, fields } = tree(SEED);
 

@@ -1,4 +1,4 @@
-import { Component } from "@ramonda/core";
+import { Component, Hook } from "@ramonda/core";
 import { Form } from "@ramonda/form";
 
 type Formica = HTMLFormElement;
@@ -17,16 +17,54 @@ declare function clearLater(target: Resettable): void;
 const RESET = "reset";
 const ACTION = "action";
 
+interface TypedForm<T> extends HTMLFormElement {
+  values: T;
+}
+declare const typed: TypedForm<string>;
+declare const callable: { (): void; reset(): void };
+declare const mixed: { reset(): void; count: number } | Resettable;
+// `void` rather than `undefined`, which the fixtures' non-strict base drops from a union.
+declare const counterOrNothing: { reset(): void; count: number } | void;
+declare const node: HTMLElement;
+
+/** A hook that holds an element, as a ref does. */
+class Holder extends Hook {
+  current: HTMLElement | null = null;
+}
+
+/** A type naming more of a form than its reset — the form fits it all the same. */
+function clearBoth(target: { reset(): void; submit(): void }) {
+  target.reset(); // ✗ form-retyped
+}
+
 /** A form under a type with a `reset` of its own, given back. */
 function asResettable(): Resettable {
   return forma;
 }
 
+export { clearBoth };
+
 export class Follows extends Component {
   form = this.use(Form, {});
+  holder = this.use(Holder) as Holder;
 
   clear() {
     a.reset(); // ✗ browser-reset — through a type alias
+    typed.reset(); // ✗ browser-reset — through a generic interface extending the form
+    if (node instanceof HTMLFormElement) node.reset(); // ✗ browser-reset — narrowed by instanceof
+    this.holder.current?.reset(); // ✗ form-retyped — an element a hook holds
+    const both: { reset(): void; elements: unknown } = forma;
+    both.reset(); // ✗ form-retyped
+    const loosely: { reset(): void; extra?: number } = forma;
+    loosely.reset(); // ✗ form-retyped — a member a form lacks, but optional
+    mixed.reset(); // ✗ form-retyped — one member of the union a form fits
+    callable.reset(); // ✓ a function with a reset of its own is no form
+    // @ts-expect-error — `void` has no `reset`; the union is what is asked about, not the call
+    counterOrNothing.reset(); // ✓ no form, or nothing at all
+    const helpers: Record<string, unknown> = {};
+    helpers[RESET] = clearBoth; // ✓ a member written, not taken
+    (helpers as { reset?: unknown }).reset = clearBoth; // ✓ the same, by its name
+    helpers[RESET]; // ✗ form-retyped — taken from a type a form fits
     b.reset(); // ✗ browser-reset — through an interface extending the alias
     const nesto = forma;
     nesto.reset(); // ✗ browser-reset — under another name

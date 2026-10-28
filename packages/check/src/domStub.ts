@@ -18,22 +18,35 @@ import ts from "typescript";
  * types ask. A generic one keeps its arity, every parameter defaulted. A value keeps its type when
  * that is one of these names (`declare var document: Document`); a function takes anything.
  *
- * One member is kept, `HTMLFormElement.reset` — `MEMBERS` — so a form FITS a type with a `reset` of
- * its own, as it does in the browser: `reset-the-model-does-not-hear` asks whether a form fits the
- * value a `reset()` is called on (`const r: Resettable = form`, then `r.reset()`).
+ * A constructor stays one — `declare var HTMLFormElement: { prototype: HTMLFormElement; new (…) }` — so
+ * `node instanceof HTMLFormElement` narrows as it does with the DOM lib.
  */
 export function domStub(): string {
-  if (built === undefined)
+  return read().stub;
+}
+
+/**
+ * The names of every member a form has — `HTMLFormElement`'s own and every DOM interface it extends,
+ * and the stand-ins' marks of each — read from the same DOM lib. The stand-ins keep no members, so
+ * whether a form FITS a type is asked by these names: a type whose every required member a form
+ * has can hold one (`const r: { reset(): void; submit(): void } = form`). See
+ * `reset-the-model-does-not-hear`.
+ */
+export function formMembers(): ReadonlySet<string> {
+  return read().formMembers;
+}
+
+let built: { stub: string; formMembers: ReadonlySet<string> } | undefined;
+
+function read(): { stub: string; formMembers: ReadonlySet<string> } {
+  if (built === undefined) {
     built = standInsFor(readFileSync(join(dirname(ts.getDefaultLibFilePath({})), "lib.dom.d.ts"), "utf8"));
+  }
   return built;
 }
 
-let built: string | undefined;
-
-/** The members a stand-in keeps, by name — each one a rule asks about; see `domStub`. */
-const MEMBERS: Readonly<Record<string, string>> = { HTMLFormElement: "reset(): void;" };
-
-function standInsFor(lib: string): string {
+function standInsFor(lib: string): { stub: string; formMembers: ReadonlySet<string> } {
+  const members = new Map<string, Set<string>>();
   const types = new Map<string, number>();
   const aliases = new Set<string>();
   const bases = new Map<string, Set<string>>();
@@ -50,6 +63,13 @@ function standInsFor(lib: string): string {
       for (const base of topLevel(extended)) known.add(base.replace(/<.*$/s, ""));
       bases.set(name, known);
     }
+    if (kind === "interface") {
+      // The body runs to the `}` that closes it at the start of a line, as the DOM lib writes it.
+      const body = lib.slice(list.end, lib.indexOf("\n}", list.end));
+      const own = members.get(name) ?? new Set<string>();
+      for (const member of body.matchAll(/^ {4}(?:readonly |get |set )?(\w+)\??[(:<]/gm)) own.add(member[1]);
+      members.set(name, own);
+    }
   }
   const values = new Map<string, string>();
   for (const match of lib.matchAll(/^declare (var|function|namespace) (\w+)(?:: (\w+);)?/gm)) {
@@ -59,18 +79,30 @@ function standInsFor(lib: string): string {
       name,
       kind === "function"
         ? `declare function ${name}(...args: any[]): any;`
-        : `declare var ${name}: ${type !== undefined && types.has(type) ? type : types.has(name) ? name : "any"};`,
+        : type !== undefined && types.has(type)
+          ? `declare var ${name}: ${type};`
+          : types.has(name)
+            ? `declare var ${name}: { prototype: ${name}; new (...args: any[]): ${name} };`
+            : `declare var ${name}: any;`,
     );
   }
   const declared = [...types].map(([name, count]) => {
     const parameters = count === 0 ? "" : `<${Array.from({ length: count }, (_, i) => `T${i} = any`).join(", ")}>`;
-    const body = `{ readonly "stub:${name}": never;${MEMBERS[name] === undefined ? "" : ` ${MEMBERS[name]}`} }`;
+    const body = `{ readonly "stub:${name}": never }`;
     if (aliases.has(name)) return `type ${name}${parameters} = ${body};`;
     // Only the DOM's own bases: one from the language's lib (`Map<K, V>`) is not the stand-ins' to restate.
     const extended = [...(bases.get(name) ?? [])].filter((base) => types.has(base));
     return `interface ${name}${parameters}${extended.length === 0 ? "" : ` extends ${extended.join(", ")}`} ${body}`;
   });
-  return [...declared, ...values.values()].join("\n");
+  const formMembers = new Set<string>();
+  const visit = (name: string): void => {
+    if (formMembers.has(`stub:${name}`)) return;
+    formMembers.add(`stub:${name}`);
+    for (const member of members.get(name) ?? []) formMembers.add(member);
+    for (const base of bases.get(name) ?? []) visit(base);
+  };
+  visit("HTMLFormElement");
+  return { stub: [...declared, ...values.values()].join("\n"), formMembers };
 }
 
 /** How many type parameters the list opening at `open` holds — its top-level commas, plus one — and where it ends. */

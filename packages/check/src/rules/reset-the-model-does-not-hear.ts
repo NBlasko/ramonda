@@ -228,6 +228,14 @@ function underAnAssertion(node: ts.Node): boolean {
   return ts.isAsExpression(above) || ts.isTypeAssertionExpression(above);
 }
 
+/** Whether a member is only written — `x.reset = clear`, `x[key] = helper` — and so not taken. */
+function writtenTo(access: ts.Expression): boolean {
+  const parent = access.parent;
+  return (
+    ts.isBinaryExpression(parent) && parent.left === access && parent.operatorToken.kind === ts.SyntaxKind.EqualsToken
+  );
+}
+
 /** The value a destructuring takes its members from: `const { reset } = form` → `form`. */
 function initializerOf(pattern: ts.ObjectBindingPattern): ts.Expression | undefined {
   return ts.isVariableDeclaration(pattern.parent) ? pattern.parent.initializer : undefined;
@@ -268,6 +276,12 @@ function rootedInAHook(receiver: ts.Expression, resolve: Resolver, file: ts.Sour
  *   then `r.reset()`), on a value whose type cannot be read, and a form cast to a type that is not one
  *   (`form as unknown as Canvas`), past which it cannot be followed. Give the value a type a form does
  *   not fit: `const context: CanvasRenderingContext2D = …`.
+ *
+ * **It trusts the type the author writes**, as TypeScript does. A form put through `unknown` or
+ * `any` and then given another type — `const x: unknown = form; (x as Canvas).reset()` — is that
+ * type from there on: the claim is the author's, and so is what it costs. Reporting every value
+ * typed out of `unknown` would report `getContext("2d") as CanvasRenderingContext2D` with it. Writing
+ * a form itself as something it is not is reported, as `form-cast`.
  */
 export const resetTheModelDoesNotHear = {
   id: "reset-the-model-does-not-hear",
@@ -335,17 +349,17 @@ export const resetTheModelDoesNotHear = {
         }
       }
       if (
-        ts.isPropertyAccessExpression(node) ||
-        ts.isElementAccessExpression(node) ||
+        ((ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) && !writtenTo(node)) ||
         (ts.isBindingElement(node) && ts.isObjectBindingPattern(node.parent))
       ) {
         const reached = resolve.formReset(node);
         const receiver = ts.isBindingElement(node)
           ? initializerOf(node.parent as ts.ObjectBindingPattern)
           : node.expression;
-        // A hook is never the browser's form, whatever its type is shaped like.
-        const fromAHook = receiver !== undefined && rootedInAHook(receiver, resolve, file);
-        if (reached === "reset" || (reached !== undefined && !fromAHook)) {
+        // A value whose type cannot be read is not the browser's form when it is a hook's — but a
+        // type a form fits is asked of anything, a hook's `current` element included.
+        const fromAHook = reached === "maybe" && receiver !== undefined && rootedInAHook(receiver, resolve, file);
+        if (reached !== undefined && !fromAHook) {
           // Said as the call where it is one — `form.reset()` — and as the access where the reset is taken.
           const call = ts.isCallExpression(node.parent) && unwrap(node.parent.expression) === node ? node.parent : node;
           const kind = reached === "fits" ? ("form-retyped" as const) : ("browser-reset" as const);

@@ -1,6 +1,6 @@
 import ts from "typescript";
 import { describe, expect, test } from "vitest";
-import { domStub } from "../domStub";
+import { domStub, formMembers } from "../domStub";
 
 const FILE = "/stub.d.ts";
 
@@ -33,14 +33,37 @@ describe("the DOM's stand-ins", () => {
   test("keep each name distinct, the DOM interfaces it extends, and the arity of a generic one", () => {
     const stub = domStub();
     expect(stub).toMatch(
-      /^interface HTMLInputElement extends HTMLElement, PopoverTargetAttributes \{ readonly "stub:HTMLInputElement": never; \}$/m,
-    );
-    expect(stub).toMatch(
-      /^interface HTMLFormElement extends HTMLElement \{ readonly "stub:HTMLFormElement": never; reset\(\): void; \}$/m,
+      /^interface HTMLInputElement extends HTMLElement, PopoverTargetAttributes \{ readonly "stub:HTMLInputElement": never \}$/m,
     );
     expect(stub).toMatch(/^interface CustomEvent<T0 = any> extends Event \{/m);
     expect(stub).toMatch(/^interface ReadableWritablePair<T0 = any, T1 = any> \{/m);
     expect(stub).toMatch(/^declare var document: Document;$/m);
+    expect(stub).toMatch(
+      /^declare var HTMLFormElement: \{ prototype: HTMLFormElement; new \(\.\.\.args: any\[\]\): HTMLFormElement \};$/m,
+    );
     expect(stub).toMatch(/^declare function setInterval\(/m);
+  });
+
+  test("name every member a form has, its own and every base's", () => {
+    const names = formMembers();
+    for (const name of [
+      "reset",
+      "submit",
+      "elements",
+      "action",
+      "focus",
+      "style",
+      "classList",
+      "click",
+      "addEventListener",
+      "stub:HTMLFormElement",
+      "stub:HTMLElement",
+      "stub:EventTarget",
+    ]) {
+      expect(names.has(name), name).toBe(true);
+    }
+    for (const name of ["getContext", "stub:HTMLInputElement", "stub:CanvasRenderingContext2D"]) {
+      expect(names.has(name), name).toBe(false);
+    }
   });
 });

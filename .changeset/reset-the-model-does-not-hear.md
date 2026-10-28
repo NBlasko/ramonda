@@ -16,5 +16,7 @@ does not fit, such as a `CanvasRenderingContext2D`. It is read off types, never 
 is reported under any name — a type alias, another variable, `const clear = form.reset`, `form["reset"]`,
 `const { reset } = form` — and so is `reset` on a type a form fits (`const r: Resettable = form`), on a
 value whose type cannot be read, and a form cast to a type that is not one (`form as unknown as Canvas`).
+It trusts the type the author writes, as TypeScript does: a form put through `unknown` and given another
+type is that type from there on.
 A `<button>` whose `type` cannot be read, or is left to a spread, may reset its form, and is reported
 only when that form holds something a reset would undo.

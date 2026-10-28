@@ -7,7 +7,7 @@ import type { ComponentGraph, GraphEdge, GraphNode, Where } from "./graph";
 import { hookNamed, isThisUse, positionOf } from "./syntax";
 import { coreExportName, importedFromPackage } from "./rules/core-import";
 import type { FormType, FormValue, Resolver, Silencer } from "./rules/rule";
-import { domStub } from "./domStub";
+import { domStub, formMembers } from "./domStub";
 import { DOM_STUB_FILE } from "./rules/platform";
 import {
   activate,
@@ -670,7 +670,7 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
     formValue: (expression: ts.Expression) => formValueOf(checker.getTypeAtLocation(expression)),
     formCast: (outer: ts.AsExpression | ts.TypeAssertion) => formCast(outer, checker),
     formReset: (node: ts.PropertyAccessExpression | ts.ElementAccessExpression | ts.BindingElement) =>
-      formReset(node, program, checker),
+      formReset(node, checker),
   });
 
   /** Symbol id → the context it belongs to, and which half of the pair it is. */
@@ -4029,7 +4029,12 @@ function formTypeOf(type: ts.Type, checker: ts.TypeChecker): FormType {
   const apparent = checker.getApparentType(type);
   if (apparent !== type) return formTypeOf(apparent, checker);
   if (type.getSymbol()?.name === "HTMLFormElement") return "form";
-  const bases = type.isClassOrInterface() ? (checker.getBaseTypes(type) ?? []) : [];
+  // `TypedForm<Signup>` is an instance of a generic interface: its bases are its declaration's.
+  const declared =
+    (type.flags & ts.TypeFlags.Object) !== 0 && ((type as ts.ObjectType).objectFlags & ts.ObjectFlags.Reference) !== 0
+      ? (type as ts.TypeReference).target
+      : type;
+  const bases = declared.isClassOrInterface() ? (checker.getBaseTypes(declared) ?? []) : [];
   return bases.some((base) => formTypeOf(base, checker) === "form") ? "form" : "other";
 }
 
@@ -4043,7 +4048,6 @@ function formTypeOf(type: ts.Type, checker: ts.TypeChecker): FormType {
  */
 function formReset(
   node: ts.PropertyAccessExpression | ts.ElementAccessExpression | ts.BindingElement,
-  program: ts.Program,
   checker: ts.TypeChecker,
 ): "reset" | "maybe" | "fits" | undefined {
   const key = ts.isPropertyAccessExpression(node)
@@ -4056,44 +4060,39 @@ function formReset(
           ? node.propertyName.expression
           : node.propertyName;
   // A member's own name is its text, and so is an index written as one; any other index is a value,
-  // read by its type — last, as it is the costly question and most receivers settle it first.
+  // read by its type. The key before the receiver: most keys are not `reset`, and end it there.
   const written =
     ((ts.isIdentifier(key) || ts.isPrivateIdentifier(key)) && !ts.isElementAccessExpression(node)) ||
     ts.isStringLiteralLike(key) ||
     ts.isNumericLiteral(key)
       ? key.text
       : undefined;
-  if (written !== undefined && written !== "reset") return undefined;
+  const names = written !== undefined ? [written] : keyNames(key, checker);
+  if (names !== undefined && !names.includes("reset")) return undefined;
   const receiver = checker.getTypeAtLocation(ts.isBindingElement(node) ? node.parent : node.expression);
   const held = formTypeOf(receiver, checker);
-  if (held === "other") {
-    const form = theFormType(program, checker);
-    if (form === undefined || !checker.isTypeAssignableTo(form, receiver)) return undefined;
-  }
-  const names = written !== undefined ? [written] : keyNames(key, checker);
   if (names === undefined) return held === "form" ? "maybe" : undefined;
-  if (!names.includes("reset")) return undefined;
-  return held === "form" ? "reset" : held === "unread" ? "maybe" : "fits";
+  if (held !== "other") return held === "form" ? "reset" : "maybe";
+  return aFormFits(receiver, checker) ? "fits" : undefined;
 }
 
-/** The platform's `HTMLFormElement` in this program — the DOM's stand-in, or TypeScript's own lib. */
-function theFormType(program: ts.Program, checker: ts.TypeChecker): ts.Type | undefined {
-  if (!formTypes.has(program)) {
-    let found: ts.Type | undefined;
-    for (const file of program.getSourceFiles()) {
-      if (file.fileName !== DOM_STUB_FILE && !program.isSourceFileDefaultLibrary(file)) continue;
-      const declared = file.statements.find(
-        (statement): statement is ts.InterfaceDeclaration =>
-          ts.isInterfaceDeclaration(statement) && statement.name.text === "HTMLFormElement",
-      );
-      if (declared !== undefined) found = checker.getTypeAtLocation(declared.name);
-    }
-    formTypes.set(program, found);
-  }
-  return formTypes.get(program);
+/**
+ * Whether a form can be held by a value of this type: a type, or a member of a union, whose every
+ * required member a form has — by the names `formMembers` reads off the DOM lib, as the stand-ins keep
+ * none. A callable type holds no form.
+ */
+function aFormFits(type: ts.Type, checker: ts.TypeChecker): boolean {
+  const names = formMembers();
+  return (type.isUnion() ? type.types : [type]).some((member) => {
+    // A form is never nothing: `Tab | undefined` holds one only if `Tab` does.
+    if ((member.flags & (ts.TypeFlags.Undefined | ts.TypeFlags.Null | ts.TypeFlags.Void)) !== 0) return false;
+    const apparent = checker.getApparentType(member);
+    if (apparent.getCallSignatures().length > 0 || apparent.getConstructSignatures().length > 0) return false;
+    return checker
+      .getPropertiesOfType(apparent)
+      .every((property) => (property.flags & ts.SymbolFlags.Optional) !== 0 || names.has(property.name));
+  });
 }
-
-const formTypes = new WeakMap<ts.Program, ts.Type | undefined>();
 
 /**
  * Whether this assertion puts a form under a type that is not one and does not hold one —

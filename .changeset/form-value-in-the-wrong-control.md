@@ -16,7 +16,7 @@ reader never typed wrong.
 ```
 
 `inputValue` is typed `FormNumber | ""` for a number and `FormDay` for a date — a number and a string to
-TypeScript, marked so the check can tell them from any other. `ramonda-check` reports one in any other
+TypeScript, marked so the check can tell them from any other; both are exported. `ramonda-check` reports one in any other
 control, in an `<input>` whose `type` it cannot read, and an `inputValue` whose type it cannot read.
 For it, `ramonda-check` now reads every project with the language's own lib and, in place of the DOM
 lib, a stand-in for each name it declares, read from the DOM lib of the TypeScript the check runs —
