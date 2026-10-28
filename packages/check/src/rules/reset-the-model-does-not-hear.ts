@@ -5,7 +5,7 @@ import { holdsNothing, openingOf, says, tagOf } from "./element";
 import { unwrap } from "./follow-value";
 import { enclosingElement } from "./html";
 import type { JsxElementLike, ModuleRule, Resolver } from "./rule";
-import { fromThePlatform } from "./platform";
+import { namesThePlatform } from "./platform";
 import { attributeLiterals, fieldKind, modelNames, typeAttributeOf } from "./formTable";
 
 export interface ResetTheModelDoesNotHearIssue {
@@ -301,8 +301,7 @@ export const resetTheModelDoesNotHear = {
       if (ts.isCallExpression(node)) {
         const callee = unwrap(node.expression);
         if (ts.isPropertyAccessExpression(callee) && callee.name.text === "reset") {
-          const declared = resolve(callee.name)?.declarations?.[0];
-          if (fromThePlatform(declared) && !rootedInAHook(callee.expression, resolve, file)) {
+          if (namesThePlatform(callee.name, resolve) && !rootedInAHook(callee.expression, resolve, file)) {
             found.push({ kind: "browser-reset", detail: `${callee.getText()}()`, ...positionOf(node) });
           }
         }

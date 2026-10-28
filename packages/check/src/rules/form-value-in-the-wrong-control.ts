@@ -18,8 +18,10 @@ import type { ElementContext, ElementRule } from "./rule";
  *
  * Read off the TYPE of the control's `value`: the form marks the number and the day its fields show
  * (`FormNumber`, `FormDay`), so a number the app holds itself — `value={this.count}` — is not asked
- * about. The one rule here that reads types, and the reason a project that imports the form is read
- * with them — see `createProgram` in `analyze.ts`.
+ * about. The one rule here that reads types, and the reason the program carries a lib — see
+ * `createProgram` in `analyze.ts`.
+ *
+ * A `type="hidden"` input keeps it too: it posts the value with the form and nobody edits it.
  *
  * **What it will not let pass in silence.** A `type` it cannot read — `type={kind}` — around a form's
  * number, and an `.inputValue` whose type it cannot read at all: either may be right, and neither can
@@ -43,14 +45,28 @@ export interface FormValueInTheWrongControlIssue {
 /** The `type` a value of this kind belongs in. */
 const WANTED = { number: "number", day: "date" } as const;
 
+/**
+ * Whether an `<input>` of this `type` keeps the value as it is: one that turns it back — a slider,
+ * `type="range"`, is a number control too — or a `hidden` one, which nobody edits and so hands
+ * nothing back. Without regard to case, as HTML reads
+ * the attribute — `type="Number"` is a number control, and `element.type`, which the form reads, says
+ * `"number"`.
+ */
+const keeps = (type: string, kind: keyof typeof WANTED): boolean => {
+  const read = type.toLowerCase();
+  return read === WANTED[kind] || read === "hidden" || (kind === "number" && read === "range");
+};
+
 export const formValueInTheWrongControl = {
   id: "form-value-in-the-wrong-control",
 
   report: {
     severity: "error",
     reportedWhen:
-      'a number a `@ramonda/form` field shows sits in a control that is not `<input type="number">`, a day ' +
-      'in one that is not `type="date"`, or either in an `<input>` whose `type` cannot be read — or a ' +
+      'a number a `@ramonda/form` field shows sits in a control that is not `<input type="number">` or ' +
+      '`type="range"`, a day ' +
+      'in one that is not `type="date"` (a `type="hidden"` one keeps either), or either in an `<input>` ' +
+      "whose `type` cannot be read — or a " +
       "field's `.inputValue` has a type the check cannot read",
     heading: (found) => `${found.length} form value(s) in a control that will not hand them back:`,
     lines: (issue) => [
@@ -88,7 +104,7 @@ export const formValueInTheWrongControl = {
         : undefined;
     if (expression === undefined) return [];
     const kind = resolve.formValue(expression);
-    if (kind === undefined || kind === "other") return [];
+    if (kind === "other") return [];
 
     const typeAttribute = field === "input" ? typeAttributeOf(element) : undefined;
     const types = typeAttribute === undefined ? [] : attributeLiterals(typeAttribute, resolve);
@@ -112,7 +128,7 @@ export const formValueInTheWrongControl = {
     if (field === "input" && typeAttribute !== undefined && types === undefined) {
       return [{ kind: "type-unread" as const, control, ...at }];
     }
-    if (field === "input" && types !== undefined && types.length > 0 && types.every((t) => t === WANTED[kind])) {
+    if (field === "input" && types !== undefined && types.length > 0 && types.every((t) => keeps(t, kind))) {
       return [];
     }
     return [{ kind, control, ...at }];

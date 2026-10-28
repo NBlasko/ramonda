@@ -94,7 +94,7 @@ sees that none is missing.
 | the field holds | the control |
 |---|---|
 | `string` | `value={x.inputValue}` |
-| `number` | `type="number" value={x.inputValue}` — `""` for an emptied field |
+| `number` | `type="number" value={x.inputValue}` — `""` for an emptied field; or `type="range"`, a slider |
 | `boolean` | `type="checkbox" checked={x.value === true}` — a value not set yet, or cleared by a reset, is an unticked box |
 | `Date` | `type="date" value={x.inputValue}` — the day, as `YYYY-MM-DD` |
 | an object or a list | no control holds one: its `$` has no `oninput`, and writing it is a type error |
@@ -102,8 +102,8 @@ sees that none is missing.
 `inputValue` is typed by the value (`InputValue<T>`), so a `Date` handed to `value` directly is a
 compile error rather than a field that shows nothing.
 
-The `type` is what turns an edit back into the value: `type="number"` hands back a number and
-`type="date"` a day, and any other control hands back text. A number field written without it fills
+The `type` is what turns an edit back into the value: `type="number"` and `type="range"` hand back a
+number and `type="date"` a day, and any other control hands back text. A number field written without it fills
 the form with text, so `ramonda-check` reports a number's or a day's `inputValue` in any other control
 before it ships, as [`form-value-in-the-wrong-control`](/reference/check), and
 [`RMF005`](/reference/diagnostics/rmf005) reports it in a running page.

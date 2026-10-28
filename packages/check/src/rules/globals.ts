@@ -19,9 +19,10 @@ import type { Resolver } from "./rule";
  *
  * ## What separates them is AMBIENT versus real
  *
- * The analyzer forces `noLib: true, types: []` whatever the project's own tsconfig says, so a
- * global the DOM library declares can never resolve here. The only thing that can is a declaration
- * in the project's own source — and those come in two kinds. `declare const document: Document` is
+ * The analyzer never loads the DOM library, whatever the project's own tsconfig says, so a global
+ * it declares resolves to an ambient stand-in (see `platform.ts`), or to nothing in a program built
+ * with no lib. Anything else is a declaration in the project's own source — and those come in two
+ * kinds. `declare const document: Document` is
  * the author writing down what the platform already provides, which is still the platform's. `const
  * self = this`, or a parameter called `window`, is a name of their own that happens to collide.
  *

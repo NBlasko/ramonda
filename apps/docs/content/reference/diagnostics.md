@@ -1255,7 +1255,8 @@ const schema = object({
 ## RMF005 — a number or a day edited through a control that hands back text
 
 A field turns what its control produced back into its value by the control's own `type`:
-`type="number"` hands back a number, `type="date"` a day, and every other control hands back its text.
+`type="number"` and `type="range"` hand back a number, `type="date"` a day, and every other control
+hands back its text.
 So a field holding a number, written without `type="number"`, fills the form with text on the first
 keystroke — and the schema reports a value the reader never typed wrong.
 

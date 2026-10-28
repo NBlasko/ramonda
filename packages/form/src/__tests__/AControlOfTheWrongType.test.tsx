@@ -22,15 +22,29 @@ afterEach(() => {
 
 /**
  * RMF005 — a field holding a number or a day, edited through a control that hands back text. Reported
- * once per field, naming the `type` to write; a control of the right type, and a field still empty,
- * say nothing.
+ * once per field, naming what its control hands back and the control it belongs in; a control of
+ * the right type, and a field still empty, say nothing.
  */
 test.each([
-  ["a number field without its type", 41, undefined, "12", "number"],
+  ["a number field without its type", 41, undefined, "12", 'hands back text: it belongs in `<input type="number">`'],
   ["a number field written type=number", 41, "number", "12", undefined],
-  ["a date field without its type", new Date(2026, 0, 1), undefined, "2026-10-28", "date"],
+  ["a number field on a slider", 41, "range", "12", undefined],
+  [
+    "a date field without its type",
+    new Date(2026, 0, 1),
+    undefined,
+    "2026-10-28",
+    'hands back text: it belongs in `<input type="date">`',
+  ],
   ["a date field written type=date", new Date(2026, 0, 1), "date", "2026-10-28", undefined],
   ["a number field still empty", undefined, undefined, "12", undefined],
+  [
+    "a number field on a checkbox",
+    41,
+    "checkbox",
+    "12",
+    'hands back true or false: it belongs in `<input type="number">`',
+  ],
 ] as const)("%s", async (_name, start, type, typed, reported) => {
   const schema = anything<{ x?: number | Date }>();
   class Page extends Component {
@@ -50,9 +64,8 @@ test.each([
       });
     }
     const found = records.filter((record) => record.code === "RMF005");
-    expect(found.map((record) => (record.data as { wants: string }).wants)).toEqual(
-      reported === undefined ? [] : [reported],
-    );
+    expect(found.length).toBe(reported === undefined ? 0 : 1);
+    if (reported !== undefined) expect(found[0]?.message).toContain(reported);
   } finally {
     unmount();
   }

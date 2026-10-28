@@ -11,8 +11,8 @@ const lineOf = (label: string) =>
     .findIndex((line) => line.includes(`aria-label="${label}"`)) + 1;
 
 /**
- * `ramonda-check` reads this package's own declarations, through core's, with no DOM lib and the
- * stand-ins it generates for the names they mention — see `scripts/build-dom-names.mjs`. Here, on
+ * `ramonda-check` reads this package's own declarations, through core's, with no DOM lib: a stand-in
+ * for each name the DOM lib declares — see `domStub` in `@ramonda/check`. Here, on
  * the built types and a schema of each kind, it tells a number and a day from text, and names the
  * control each one is missing.
  */

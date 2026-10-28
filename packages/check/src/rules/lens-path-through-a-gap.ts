@@ -3,6 +3,7 @@ import { isNothing } from "./element";
 import { unwrap } from "./follow-value";
 import { positionOf } from "../syntax";
 import { importedFromPackage } from "./core-import";
+import { namesThePlatform } from "./platform";
 import { guardedBy, type Means } from "./guard-walk";
 import type { ModuleContext, ModuleRule } from "./rule";
 
@@ -29,8 +30,8 @@ import type { ModuleContext, ModuleRule } from "./rule";
  *
  * ## What it can prove, and where it goes quiet
  *
- * This package may not ask the compiler for a type: the program is built with `noLib` and `types`
- * overridden, and `resolve` — where a name was DECLARED — is the whole of what it asks. So the path
+ * This package does not ask the compiler for a type here — see "What it may NOT do" in `rule.ts` —
+ * and `resolve` — where a name was DECLARED — is the whole of what it asks. So the path
  * is read from DECLARATIONS and from type annotations as written:
  *
  * - the root of the chain has to resolve to something with a written annotation (a `const`, a
@@ -327,11 +328,11 @@ function narrowing(text: string, resolve: ModuleContext["resolve"]): Means {
     return longer !== undefined && longer.startsWith(`${text}.`);
   };
 
-  /** `Boolean(x)`, and only the global one: a name declared in this project resolves, the lib's does not. */
+  /** `Boolean(x)`, and only the global one — not a `Boolean` this project declares. */
   const asBooleanCall = (node: ts.Expression): ts.Expression | undefined => {
     if (!ts.isCallExpression(node) || node.arguments.length !== 1) return undefined;
     if (!ts.isIdentifier(node.expression) || node.expression.text !== "Boolean") return undefined;
-    return resolve(node.expression) === undefined ? node.arguments[0] : undefined;
+    return namesThePlatform(node.expression, resolve) ? node.arguments[0] : undefined;
   };
 
   const proves = (condition: ts.Expression): boolean => {

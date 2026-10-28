@@ -1,6 +1,7 @@
 import ts from "typescript";
 import { positionOf } from "../syntax";
 import { isTheGlobal } from "./globals";
+import { namesThePlatform } from "./platform";
 import type { Rule } from "./rule";
 
 /**
@@ -95,14 +96,14 @@ export const browserUrl = {
      * `window.location`, `globalThis.location`, `document.location`, `self.location` and a bare
      * `location`.
      *
-     * A name the source can shadow counts only when it resolves to NOTHING — see `globals.ts`,
+     * A name the source can shadow counts only when the platform owns it — see `globals.ts`,
      * which carries that reasoning and the two measurements behind it. `self` was missing here and
      * was then accepted by NAME, which reported `const self = this; self.location.pathname` on a
      * component reading its own field.
      */
     const isTheUrl = (node: ts.Expression): boolean =>
       (ts.isPropertyAccessExpression(node) && node.name.text === "location" && isTheGlobal(node.expression, resolve)) ||
-      (ts.isIdentifier(node) && node.text === "location" && resolve(node) === undefined);
+      (ts.isIdentifier(node) && node.text === "location" && namesThePlatform(node, resolve));
 
     const report = (member: string, read: string, at: ts.Node): void => {
       found.push({

@@ -23,11 +23,12 @@ import type ts from "typescript";
  * quiet for that path rather than report a maybe. A rule that fires on a suspicion ends that, and
  * the README's argument with it — a gate that cries wolf is a gate somebody switches off.
  *
- * **Ask for a type.** The program is built with `noLib` and `types` overridden, on purpose: the
- * analyzer asks the compiler only where a symbol was DECLARED, never what type anything is, and
- * skipping the whole TypeScript lib is most of what a run would otherwise cost. `resolve` below is
- * that one question and the whole of it — `browser-url` uses "resolves to nothing" to tell the
- * browser's `location` from a local of the same name, which costs no type at all.
+ * **Ask for a type — but one.** A rule asks the compiler where a symbol was DECLARED, never what
+ * type anything is: `resolve` below is that question. The exception is `formValue`, the one
+ * question about a type, which is why the program carries the language's lib and the DOM's names
+ * as stand-ins — see `createProgram` in `analyze.ts`. So a platform name — `location`, `Boolean` —
+ * resolves to a lib declaration or a stand-in, and to nothing in a program a caller of
+ * `analyzeProgram` built with no lib: ask `namesThePlatform`, never "does it resolve?".
  */
 /**
  * How a rule says what it found.
@@ -526,11 +527,10 @@ export interface Resolver {
   fromPackage(id: ts.Node, pkg: string): boolean;
   /**
    * What a form shows in this expression, read off its TYPE: a number for `<input type="number">`, a
-   * day for `type="date"`, anything else, or `unread` when its type cannot be read. `undefined` when
-   * this program reads no types — a project that imports no `@ramonda/form` is built with no lib,
-   * which keeps the check fast, and has no form value to ask about. See `form-value-in-the-wrong-control`.
+   * day for `type="date"`, anything else, or `unread` when its type cannot be read. See
+   * `form-value-in-the-wrong-control`.
    */
-  formValue(expression: ts.Expression): FormValue | undefined;
+  formValue(expression: ts.Expression): FormValue;
 }
 
 /** What a form shows in a control's `value` — see `Resolver.formValue`. */

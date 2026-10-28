@@ -225,9 +225,11 @@ export class FieldHandle {
     const type = (target as { type?: string } | null)?.type;
     const wants = typeof current === "number" ? "number" : current instanceof Date ? "date" : undefined;
     if (wants === undefined || type === wants || type === undefined) return;
+    if (wants === "number" && type === "range") return;
+    const handsBack = type === "checkbox" ? "true or false" : "text";
     report(
       "RMF005",
-      `\`${this.path}\` holds a ${wants === "number" ? "number" : "day"}, and its control is \`type="${type}"\`, which hands back text: write \`type="${wants}"\` on it.`,
+      `\`${this.path}\` holds a ${wants === "number" ? "number" : "day"}, and its control (\`type="${type}"\`) hands back ${handsBack}: it belongs in \`<input type="${wants}">\`.`,
       { path: this.path, type, wants },
     );
   }
@@ -404,7 +406,10 @@ function fromControl(target: EventTarget | null, current: unknown): unknown {
   if (element === null) return current;
 
   if (element.type === "checkbox") return element.checked;
-  if (element.type === "number") return element.value === "" ? "" : Number(element.value);
+  // A slider has no empty position, so only `type="number"` ever hands back `""`.
+  if (element.type === "number" || element.type === "range") {
+    return element.value === "" ? "" : Number(element.value);
+  }
   if (element.type === "date" && current instanceof Date) {
     return fromDateInput(element.value, current) ?? element.value;
   }

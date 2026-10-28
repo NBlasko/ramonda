@@ -267,6 +267,15 @@ describe("the field tree", () => {
    * A cleared number field holds `""` — a value the schema can report on — and shows it, and the next
    * number typed into it is a number again: the control says what it is, by its own `type`.
    */
+  /** A slider is a number control too: it hands back its position as text, and the field holds the number. */
+  test("a range input writes a number", () => {
+    const { h, fields } = tree(SEED);
+
+    fields.age.$.oninput(inputEvent("range", { value: "7" }));
+
+    expect((h.values as Shape).age).toBe(7);
+  });
+
   test("a number field that the reader clears takes a number again", () => {
     const { h, fields } = tree(SEED);
 

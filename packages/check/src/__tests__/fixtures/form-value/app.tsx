@@ -19,6 +19,11 @@ class Page extends Component {
         <input type={"number"} aria-label="age braced" value={age.inputValue} />
         <input type={NUMBER} aria-label="age through a const" value={age.inputValue} />
         <input type="date" aria-label="born" value={born.inputValue} />
+        {/* ✓ the attribute in any case, as HTML reads it, and a hidden input nobody edits */}
+        <input type="Number" aria-label="age in capitals" value={age.inputValue} />
+        <input type="range" aria-label="age on a slider" value={age.inputValue} />
+        <input type="hidden" name="age" value={age.inputValue} />
+        <input type="HIDDEN" name="born" value={born.inputValue} />
         <input aria-label="name" value={name.inputValue} />
         {/* ✓ a field that may hold text, and a number the app holds itself */}
         <input aria-label="either" value={either.inputValue} />

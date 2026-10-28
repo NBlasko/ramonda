@@ -14,8 +14,7 @@ const lineOf = (label: string) =>
 
 /**
  * A number or a day a form's field shows, in a control that does not hand it back. Read off the type
- * of the control's `value`, which the form marks — so the program is read with types when the project
- * imports `@ramonda/form`, and only then.
+ * of the control's `value`, which the form marks.
  */
 describe("a form value in the wrong control", () => {
   test("each shape is reported, and named", () => {
