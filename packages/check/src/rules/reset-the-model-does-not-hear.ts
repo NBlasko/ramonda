@@ -5,7 +5,6 @@ import { holdsNothing, openingOf, says, tagOf } from "./element";
 import { unwrap } from "./follow-value";
 import { enclosingElement } from "./html";
 import type { JsxElementLike, ModuleRule, Resolver } from "./rule";
-import { namesThePlatform } from "./platform";
 import { attributeLiterals, fieldKind, modelNames, typeAttributeOf } from "./formTable";
 
 export interface ResetTheModelDoesNotHearIssue {
@@ -14,10 +13,22 @@ export interface ResetTheModelDoesNotHearIssue {
    * browser's reset puts back on screen and nothing tells the model; `unseen-content` — its form holds
    * something whose fields cannot be read (a component, `children`, a value); `no-form` — the button is
    * in no `<form>` of the same render; `elsewhere` — it names its form with a `form` attribute;
-   * `browser-reset` — `.reset()` is called on something with no declaration and no hook under it,
-   * which cannot be told apart from the browser's `HTMLFormElement.reset`.
+   * `browser-reset` — the browser's `HTMLFormElement.reset` is reached, by whatever name (`form.reset()`,
+   * `const clear = form.reset`, `form["reset"]`, `const { reset } = form`), or `reset` on a value whose
+   * type cannot be read with no hook under it, or a key that cannot be read on a form (`form[key]`);
+   * `form-cast` — a form is asserted to a type that is not one and does not hold one (`form as unknown
+   * as Canvas`), whose `reset()` then cannot be followed; `form-retyped` — `reset` is taken from a
+   * value of a type a form fits (`const r: Resettable = form`, then `r.reset()`): it may be the
+   * browser's under another declaration.
    */
-  kind: "controlled-field" | "unseen-content" | "no-form" | "elsewhere" | "browser-reset";
+  kind:
+    | "controlled-field"
+    | "unseen-content"
+    | "no-form"
+    | "elsewhere"
+    | "browser-reset"
+    | "form-cast"
+    | "form-retyped";
   /** What the report names: the field, the content, or the call as written. */
   detail: string;
   file: string;
@@ -204,6 +215,24 @@ function isHookField(access: ts.PropertyAccessExpression, file: ts.SourceFile): 
   return false;
 }
 
+/**
+ * Whether another assertion stands over this one — through parentheses, `!` and `satisfies`, which
+ * change nothing — so this one is not the outermost: `(form as unknown) as Canvas`, but not
+ * `(form as unknown as Canvas).reset()`.
+ */
+function underAnAssertion(node: ts.Node): boolean {
+  let above = node.parent;
+  while (ts.isParenthesizedExpression(above) || ts.isNonNullExpression(above) || ts.isSatisfiesExpression(above)) {
+    above = above.parent;
+  }
+  return ts.isAsExpression(above) || ts.isTypeAssertionExpression(above);
+}
+
+/** The value a destructuring takes its members from: `const { reset } = form` → `form`. */
+function initializerOf(pattern: ts.ObjectBindingPattern): ts.Expression | undefined {
+  return ts.isVariableDeclaration(pattern.parent) ? pattern.parent.initializer : undefined;
+}
+
 /** Whether `receiver` is rooted in a hook — `this.form`, `this.form.fields.city.$`, or a `const` holding one. */
 function rootedInAHook(receiver: ts.Expression, resolve: Resolver, file: ts.SourceFile, depth = 0): boolean {
   if (depth > 8) return false;
@@ -231,9 +260,14 @@ function rootedInAHook(receiver: ts.Expression, resolve: Resolver, file: ts.Sour
  * - `<button type="reset">` (or `<input type="reset">`) inside a `<form>` of the same render, naming no
  *   other form, whose content is all written there and holds no field with a `value` (`checked`).
  *   A component, `children`, or a value placed in it may hold one, so they are reported too.
- * - `.reset()` that names a declaration, or is called on a hook (`this.form.reset()`, a field of one).
- *   Anything else cannot be told apart from the browser's `HTMLFormElement.reset`, and is reported —
- *   a value whose type this cannot see (what `Map.get` returns) is given one it can: `const tab: Tab = …`.
+ * - `reset` taken from a hook (`this.form.reset()`, a field of one), or from a value whose TYPE a form
+ *   does not fit — a canvas context, `CanvasRenderingContext2D`, a class with more to it than a
+ *   `reset`. Read off types, never names: the browser's reset is reported under any name it is given
+ *   — a type alias, another variable, `const clear = form.reset`, `form["reset"]`, `form[RESET]`,
+ *   `const { reset } = form` — and so is `reset` on a type a form fits (`const r: Resettable = form`,
+ *   then `r.reset()`), on a value whose type cannot be read, and a form cast to a type that is not one
+ *   (`form as unknown as Canvas`), past which it cannot be followed. Give the value a type a form does
+ *   not fit: `const context: CanvasRenderingContext2D = …`.
  */
 export const resetTheModelDoesNotHear = {
   id: "reset-the-model-does-not-hear",
@@ -252,7 +286,9 @@ export const resetTheModelDoesNotHear = {
           "unseen-content": `This reset's form holds ${issue.detail}, which may hold a field with a value that cannot be read here.`,
           "no-form": "This reset button is in no <form> of the same render, so what it resets cannot be read.",
           elsewhere: "This reset button names its form with `form`, so what it resets cannot be read.",
-          "browser-reset": `\`${issue.detail}\` names no declaration and no hook, so it cannot be shown to be anything but the browser's form reset — fields go back on screen and no model hears.`,
+          "browser-reset": `\`${issue.detail}\` is the browser's form reset, or a value whose type cannot be read and so cannot be shown not to be — fields go back on screen and no model hears.`,
+          "form-cast": `\`${issue.detail}\` is a form cast to a type that is not one, so its reset cannot be followed past here.`,
+          "form-retyped": `\`${issue.detail}\` takes \`reset\` from a type a form fits, so it may be the browser's form reset under another declaration — give the value a type a form does not fit.`,
         }[issue.kind]
       }`,
     ],
@@ -298,13 +334,30 @@ export const resetTheModelDoesNotHear = {
             found.push({ kind: problem.kind, detail: problem.detail, ...positionOf(problem.at) });
         }
       }
-      if (ts.isCallExpression(node)) {
-        const callee = unwrap(node.expression);
-        if (ts.isPropertyAccessExpression(callee) && callee.name.text === "reset") {
-          if (namesThePlatform(callee.name, resolve) && !rootedInAHook(callee.expression, resolve, file)) {
-            found.push({ kind: "browser-reset", detail: `${callee.getText()}()`, ...positionOf(node) });
-          }
+      if (
+        ts.isPropertyAccessExpression(node) ||
+        ts.isElementAccessExpression(node) ||
+        (ts.isBindingElement(node) && ts.isObjectBindingPattern(node.parent))
+      ) {
+        const reached = resolve.formReset(node);
+        const receiver = ts.isBindingElement(node)
+          ? initializerOf(node.parent as ts.ObjectBindingPattern)
+          : node.expression;
+        // A hook is never the browser's form, whatever its type is shaped like.
+        const fromAHook = receiver !== undefined && rootedInAHook(receiver, resolve, file);
+        if (reached === "reset" || (reached !== undefined && !fromAHook)) {
+          // Said as the call where it is one — `form.reset()` — and as the access where the reset is taken.
+          const call = ts.isCallExpression(node.parent) && unwrap(node.parent.expression) === node ? node.parent : node;
+          const kind = reached === "fits" ? ("form-retyped" as const) : ("browser-reset" as const);
+          found.push({ kind, detail: call.getText(), ...positionOf(call) });
         }
+      }
+      if (
+        (ts.isAsExpression(node) || ts.isTypeAssertionExpression(node)) &&
+        !underAnAssertion(node) &&
+        resolve.formCast(node)
+      ) {
+        found.push({ kind: "form-cast", detail: node.getText(), ...positionOf(node) });
       }
       ts.forEachChild(node, visit);
     };

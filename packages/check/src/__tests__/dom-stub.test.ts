@@ -33,7 +33,10 @@ describe("the DOM's stand-ins", () => {
   test("keep each name distinct, the DOM interfaces it extends, and the arity of a generic one", () => {
     const stub = domStub();
     expect(stub).toMatch(
-      /^interface HTMLInputElement extends HTMLElement, PopoverTargetAttributes \{ readonly "stub:HTMLInputElement": never \}$/m,
+      /^interface HTMLInputElement extends HTMLElement, PopoverTargetAttributes \{ readonly "stub:HTMLInputElement": never; \}$/m,
+    );
+    expect(stub).toMatch(
+      /^interface HTMLFormElement extends HTMLElement \{ readonly "stub:HTMLFormElement": never; reset\(\): void; \}$/m,
     );
     expect(stub).toMatch(/^interface CustomEvent<T0 = any> extends Event \{/m);
     expect(stub).toMatch(/^interface ReadableWritablePair<T0 = any, T1 = any> \{/m);

@@ -6,7 +6,7 @@ import { declarationEntryOf, fingerprint, loadFragment, packageRootOf } from "./
 import type { ComponentGraph, GraphEdge, GraphNode, Where } from "./graph";
 import { hookNamed, isThisUse, positionOf } from "./syntax";
 import { coreExportName, importedFromPackage } from "./rules/core-import";
-import type { FormValue, Resolver, Silencer } from "./rules/rule";
+import type { FormType, FormValue, Resolver, Silencer } from "./rules/rule";
 import { domStub } from "./domStub";
 import { DOM_STUB_FILE } from "./rules/platform";
 import {
@@ -668,6 +668,9 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
     coreName: (id: ts.Node) => coreExportName(id, resolveLocal, resolveStep, resolve),
     fromPackage: (id: ts.Node, pkg: string) => importedFromPackage(id, pkg, resolveLocal, resolveStep),
     formValue: (expression: ts.Expression) => formValueOf(checker.getTypeAtLocation(expression)),
+    formCast: (outer: ts.AsExpression | ts.TypeAssertion) => formCast(outer, checker),
+    formReset: (node: ts.PropertyAccessExpression | ts.ElementAccessExpression | ts.BindingElement) =>
+      formReset(node, program, checker),
   });
 
   /** Symbol id → the context it belongs to, and which half of the pair it is. */
@@ -4010,6 +4013,120 @@ function formValueOf(type: ts.Type): FormValue {
   if (members.every((member) => member.getProperty("@ramonda/form:number") !== undefined)) return "number";
   if (members.every((member) => member.getProperty("@ramonda/form:day") !== undefined)) return "day";
   return "other";
+}
+
+/**
+ * Whether a value of this type is the browser's `HTMLFormElement`: `form` when it is or extends it,
+ * alone or in a union (`HTMLFormElement | null`); `unread` when it cannot be read (`any`, `unknown`)
+ * and so may be; `other` for anything else.
+ */
+function formTypeOf(type: ts.Type, checker: ts.TypeChecker): FormType {
+  if ((type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) return "unread";
+  if (type.isUnion() || type.isIntersection()) {
+    const answers = type.types.map((member) => formTypeOf(member, checker));
+    return answers.includes("form") ? "form" : answers.includes("unread") ? "unread" : "other";
+  }
+  const apparent = checker.getApparentType(type);
+  if (apparent !== type) return formTypeOf(apparent, checker);
+  if (type.getSymbol()?.name === "HTMLFormElement") return "form";
+  const bases = type.isClassOrInterface() ? (checker.getBaseTypes(type) ?? []) : [];
+  return bases.some((base) => formTypeOf(base, checker) === "form") ? "form" : "other";
+}
+
+/**
+ * Whether this access reaches the browser's form reset — see `Resolver.formReset`. Read off the
+ * receiver's TYPE and the member it takes: `reset` taken from a form is the reset, whatever the form
+ * is called and whatever the taken method is called after — `const clear = form.reset`,
+ * `const { reset: clear } = form` are both reported where they take it. A receiver of another type
+ * is asked whether a form FITS it — `const r: Resettable = form` holds one, and `r.reset()` is the
+ * browser's under another declaration.
+ */
+function formReset(
+  node: ts.PropertyAccessExpression | ts.ElementAccessExpression | ts.BindingElement,
+  program: ts.Program,
+  checker: ts.TypeChecker,
+): "reset" | "maybe" | "fits" | undefined {
+  const key = ts.isPropertyAccessExpression(node)
+    ? node.name
+    : ts.isElementAccessExpression(node)
+      ? node.argumentExpression
+      : node.propertyName === undefined
+        ? node.name
+        : ts.isComputedPropertyName(node.propertyName)
+          ? node.propertyName.expression
+          : node.propertyName;
+  // A member's own name is its text, and so is an index written as one; any other index is a value,
+  // read by its type — last, as it is the costly question and most receivers settle it first.
+  const written =
+    ((ts.isIdentifier(key) || ts.isPrivateIdentifier(key)) && !ts.isElementAccessExpression(node)) ||
+    ts.isStringLiteralLike(key) ||
+    ts.isNumericLiteral(key)
+      ? key.text
+      : undefined;
+  if (written !== undefined && written !== "reset") return undefined;
+  const receiver = checker.getTypeAtLocation(ts.isBindingElement(node) ? node.parent : node.expression);
+  const held = formTypeOf(receiver, checker);
+  if (held === "other") {
+    const form = theFormType(program, checker);
+    if (form === undefined || !checker.isTypeAssignableTo(form, receiver)) return undefined;
+  }
+  const names = written !== undefined ? [written] : keyNames(key, checker);
+  if (names === undefined) return held === "form" ? "maybe" : undefined;
+  if (!names.includes("reset")) return undefined;
+  return held === "form" ? "reset" : held === "unread" ? "maybe" : "fits";
+}
+
+/** The platform's `HTMLFormElement` in this program — the DOM's stand-in, or TypeScript's own lib. */
+function theFormType(program: ts.Program, checker: ts.TypeChecker): ts.Type | undefined {
+  if (!formTypes.has(program)) {
+    let found: ts.Type | undefined;
+    for (const file of program.getSourceFiles()) {
+      if (file.fileName !== DOM_STUB_FILE && !program.isSourceFileDefaultLibrary(file)) continue;
+      const declared = file.statements.find(
+        (statement): statement is ts.InterfaceDeclaration =>
+          ts.isInterfaceDeclaration(statement) && statement.name.text === "HTMLFormElement",
+      );
+      if (declared !== undefined) found = checker.getTypeAtLocation(declared.name);
+    }
+    formTypes.set(program, found);
+  }
+  return formTypes.get(program);
+}
+
+const formTypes = new WeakMap<ts.Program, ts.Type | undefined>();
+
+/**
+ * Whether this assertion puts a form under a type that is not one and does not hold one —
+ * `form as unknown as Canvas` — so its `reset` cannot be followed past it. Asked of the outermost
+ * assertion; read down to the value inside it.
+ */
+function formCast(outer: ts.AsExpression | ts.TypeAssertion, checker: ts.TypeChecker): boolean {
+  // The type the assertion names, read from what is written — not by checking the expression.
+  const target = checker.getTypeFromTypeNode(outer.type);
+  let inner: ts.Expression = outer;
+  while (
+    ts.isAsExpression(inner) ||
+    ts.isTypeAssertionExpression(inner) ||
+    ts.isParenthesizedExpression(inner) ||
+    ts.isNonNullExpression(inner) ||
+    ts.isSatisfiesExpression(inner)
+  ) {
+    inner = inner.expression;
+  }
+  const type = checker.getTypeAtLocation(inner);
+  return formTypeOf(type, checker) === "form" && !checker.isTypeAssignableTo(type, target);
+}
+
+/**
+ * The member names an index can be, read by its type: the literals it holds, none for a number (a
+ * form's controls by index), `undefined` when it cannot be read.
+ */
+function keyNames(key: ts.Node, checker: ts.TypeChecker): string[] | undefined {
+  const type = checker.getTypeAtLocation(key);
+  const members = type.isUnion() ? type.types : [type];
+  if (!members.every((member) => member.isStringLiteral() || (member.flags & ts.TypeFlags.NumberLike) !== 0))
+    return undefined;
+  return members.flatMap((member) => (member.isStringLiteral() ? [member.value] : []));
 }
 
 function createProgram(tsconfigPath: string): {

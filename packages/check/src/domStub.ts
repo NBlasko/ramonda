@@ -15,9 +15,12 @@ import ts from "typescript";
  * Each interface and type is DISTINCT — an empty one is `{}`, everything is assignable to it, and the
  * form then took a whole schema for a `File` (measured): the answer collapsed to `any`. An interface
  * keeps the DOM interfaces it extends, so `HTMLInputElement` is still an `HTMLElement` where core's
- * types ask. A
- * generic one keeps its arity, every parameter defaulted. A value keeps its type when that is one of these names
- * (`declare var document: Document`); a function takes anything.
+ * types ask. A generic one keeps its arity, every parameter defaulted. A value keeps its type when
+ * that is one of these names (`declare var document: Document`); a function takes anything.
+ *
+ * One member is kept, `HTMLFormElement.reset` — `MEMBERS` — so a form FITS a type with a `reset` of
+ * its own, as it does in the browser: `reset-the-model-does-not-hear` asks whether a form fits the
+ * value a `reset()` is called on (`const r: Resettable = form`, then `r.reset()`).
  */
 export function domStub(): string {
   if (built === undefined)
@@ -26,6 +29,9 @@ export function domStub(): string {
 }
 
 let built: string | undefined;
+
+/** The members a stand-in keeps, by name — each one a rule asks about; see `domStub`. */
+const MEMBERS: Readonly<Record<string, string>> = { HTMLFormElement: "reset(): void;" };
 
 function standInsFor(lib: string): string {
   const types = new Map<string, number>();
@@ -58,7 +64,7 @@ function standInsFor(lib: string): string {
   }
   const declared = [...types].map(([name, count]) => {
     const parameters = count === 0 ? "" : `<${Array.from({ length: count }, (_, i) => `T${i} = any`).join(", ")}>`;
-    const body = `{ readonly "stub:${name}": never }`;
+    const body = `{ readonly "stub:${name}": never;${MEMBERS[name] === undefined ? "" : ` ${MEMBERS[name]}`} }`;
     if (aliases.has(name)) return `type ${name}${parameters} = ${body};`;
     // Only the DOM's own bases: one from the language's lib (`Map<K, V>`) is not the stand-ins' to restate.
     const extended = [...(bases.get(name) ?? [])].filter((base) => types.has(base));

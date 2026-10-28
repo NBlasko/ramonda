@@ -24,9 +24,9 @@ import type ts from "typescript";
  * the README's argument with it — a gate that cries wolf is a gate somebody switches off.
  *
  * **Ask for a type — but one.** A rule asks the compiler where a symbol was DECLARED, never what
- * type anything is: `resolve` below is that question. The exception is `formValue`, the one
- * question about a type, which is why the program carries the language's lib and the DOM's names
- * as stand-ins — see `createProgram` in `analyze.ts`. So a platform name — `location`, `Boolean` —
+ * type anything is: `resolve` below is that question. The exceptions are `formValue`, `formCast`
+ * and `formReset`, the questions about a type, which is why the program carries the language's
+ * lib and the DOM's names as stand-ins — see `createProgram` in `analyze.ts`. So a platform name — `location`, `Boolean` —
  * resolves to a lib declaration or a stand-in, and to nothing in a program a caller of
  * `analyzeProgram` built with no lib: ask `namesThePlatform`, never "does it resolve?".
  */
@@ -531,7 +531,26 @@ export interface Resolver {
    * `form-value-in-the-wrong-control`.
    */
   formValue(expression: ts.Expression): FormValue;
+  /**
+   * Whether this assertion puts an `HTMLFormElement` under a type that is not a form and does not
+   * hold one — `form as unknown as Canvas` — so its `reset` cannot be followed past it. Asked of the
+   * outermost assertion. See `reset-the-model-does-not-hear`.
+   */
+  formCast(outer: ts.AsExpression | ts.TypeAssertion): boolean;
+  /**
+   * Whether this member access reaches the browser's form reset, read off the receiver's TYPE:
+   * `reset` — it takes `reset` from a form (`form.reset`, `form["reset"]`, `form[RESET]`,
+   * `const { reset } = form`); `maybe` — `reset` on a value whose type cannot be read, or a key that
+   * cannot be read on a form (`form[key]`); `fits` — `reset` on a type a form fits
+   * (`const r: Resettable = form`, then `r.reset()`); `undefined` for anything else.
+   */
+  formReset(
+    node: ts.PropertyAccessExpression | ts.ElementAccessExpression | ts.BindingElement,
+  ): "reset" | "maybe" | "fits" | undefined;
 }
+
+/** What a value is, as far as the browser's form goes — see `formTypeOf` in `analyze.ts`. */
+export type FormType = "form" | "unread" | "other";
 
 /** What a form shows in a control's `value` — see `Resolver.formValue`. */
 export type FormValue = "number" | "day" | "other" | "unread";

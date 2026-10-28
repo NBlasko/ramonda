@@ -19,7 +19,11 @@ const lineOf = (text: string) =>
 describe("a reset the model does not hear", () => {
   test("each shape is reported, and named", () => {
     expect(found().map((issue) => [issue.line, issue.kind])).toEqual([
+      [lineOf("  form.reset();"), "browser-reset"],
       [lineOf("(event.currentTarget as HTMLFormElement).reset()"), "browser-reset"],
+      [lineOf("maybe.reset()"), "browser-reset"],
+      [lineOf("signup.reset()"), "browser-reset"],
+      [lineOf("loose.reset()"), "browser-reset"],
       [lineOf('aria-label="b"'), "controlled-field"],
       [lineOf('aria-label="capital box"'), "controlled-field"],
       [lineOf('aria-label="c"'), "controlled-field"],
@@ -49,6 +53,7 @@ describe("a reset the model does not hear", () => {
       "this.counter.reset()",
       "this.form.reset()",
       "city.reset()",
+      "context.reset()",
     ]) {
       expect(lines.has(lineOf(text)), text).toBe(false);
     }

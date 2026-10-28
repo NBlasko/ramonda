@@ -5,6 +5,16 @@ declare const value: string;
 declare const rows: string[];
 declare const kind: string;
 declare const busy: boolean;
+declare const canvasContext: CanvasRenderingContext2D;
+declare const formOrNot: HTMLFormElement | CanvasRenderingContext2D;
+interface SignupForm extends HTMLFormElement {}
+declare const signup: SignupForm;
+
+/** A form handed in under a type parameter: what it may be is its constraint. */
+function clearAny<F extends HTMLFormElement>(form: F) {
+  form.reset();
+}
+declare const loose: any;
 const HIDDEN = "hidden";
 const NONE = undefined;
 
@@ -34,8 +44,15 @@ class Resets extends Component<{ children?: unknown }> {
     this.form.reset();
     const city = this.form.fields.city.$;
     city.reset();
-    // ✗ the browser's
+    // ✓ the reset of a DOM object that is not a form, named by its type
+    const context: CanvasRenderingContext2D = canvasContext;
+    context.reset();
+    // ✗ the browser's, and a value whose type cannot be read
     (event.currentTarget as HTMLFormElement).reset();
+    const maybe: HTMLFormElement | CanvasRenderingContext2D = formOrNot;
+    maybe.reset();
+    signup.reset();
+    loose.reset();
   }
 
   render() {
@@ -190,4 +207,4 @@ class Resets extends Component<{ children?: unknown }> {
   }
 }
 
-export { Resets };
+export { Resets, clearAny };
