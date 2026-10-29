@@ -466,7 +466,8 @@ function fromControl(target: EventTarget | null, current: unknown): unknown {
  * the calendar day a local `Date` means is its local one.
  */
 function toDateInput(value: Date): string {
-  if (Number.isNaN(value.getTime())) return "";
+  // A day before year 1 is none a date input shows: `00-5-01-01` would be no day to it either.
+  if (Number.isNaN(value.getTime()) || value.getFullYear() < 1) return "";
 
   const pad = (part: number, width = 2) => String(part).padStart(width, "0");
   // The year in four digits, as a date input reads it: `2-05-10` is not a day to it, and it would empty
@@ -500,7 +501,8 @@ function fromDateInput(text: string, current: Date): Date | undefined {
     const midnight = new Date(0);
     midnight.setFullYear(year, month, day);
     midnight.setHours(0, 0, 0, 0);
-    return midnight;
+    // A year past what a `Date` holds (275760) is no day.
+    return Number.isNaN(midnight.getTime()) ? undefined : midnight;
   }
 
   const next = new Date(current.getTime());

@@ -187,11 +187,19 @@ export const formFieldWithoutWhatTheFormNeeds = {
       need(bag.owner, bag.prop, true, wants, bag.shadowed);
     }
 
-    for (let next = queue.shift(); next !== undefined; next = queue.shift()) {
-      const { owner, name, bag, wants, shadowed } = next;
-      for (const site of sites) {
+    // Each use by the component it renders: an item is asked of its own uses, not of every use there is.
+    const usesOf = new Map<unknown, typeof sites>();
+    for (const site of sites) {
+      const uses = usesOf.get(site.target);
+      if (uses === undefined) usesOf.set(site.target, [site]);
+      else uses.push(site);
+    }
+    // Walked by its index, as `need` adds to it: no array shifted under every item.
+    for (let at = 0; at < queue.length; at++) {
+      const { owner, name, bag, wants, shadowed } = queue[at];
+      for (const site of usesOf.get(owner) ?? []) {
         // What a field needs from a form is asked inside one; what a spread on it carries, everywhere.
-        if (site.target !== owner || (!bag && !inContext(site.owner, site.inForm))) continue;
+        if (!bag && !inContext(site.owner, site.inForm)) continue;
         const handed = site.props.get(name);
         if (!site.props.has(name)) {
           if (!bag) found.push({ kind: "not-passed", component: site.tag, detail: name, ...where(site) });

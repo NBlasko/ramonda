@@ -329,6 +329,24 @@ describe("the field tree", () => {
     expect([(h.values as Shape).when.getFullYear(), fields.when.$.inputValue]).toEqual([20261, "20261-10-29"]);
   });
 
+  /** A year past what a `Date` holds is no day: the field holds nothing, never an invalid `Date`. */
+  test("a date input past the last year a Date holds writes nothing", () => {
+    const { h, fields } = tree({ ...SEED, when: undefined as unknown as Date });
+
+    fields.when.$.oninput(inputEvent("date", { value: "999999-01-01" }));
+
+    expect((h.values as Shape).when).toBe(undefined);
+  });
+
+  /** A day before year 1 is none a date input shows, so the input is shown nothing rather than `00-5-01-01`. */
+  test("a date before year 1 is shown as no day", () => {
+    const early = new Date(2026, 0, 1);
+    early.setFullYear(-5);
+    const { fields } = tree({ ...SEED, when: early });
+
+    expect(fields.when.$.inputValue).toBe("");
+  });
+
   /** A date field that held no date takes one from its control: the day, at local midnight. */
   test("a date input on an empty field writes a day", () => {
     const { h, fields } = tree({ ...SEED, when: undefined as unknown as Date });
