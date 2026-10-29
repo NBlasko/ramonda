@@ -27,7 +27,6 @@ describe("a form value in the wrong control", () => {
       [lineOf("age in an unread type"), "type-unread", "<input type={kind}>"],
       [lineOf("loose"), "unreadable", "<input>"],
       [lineOf("name on a slider"), "text", '<input type="range">'],
-      [lineOf("name as a date"), "text", '<input type="date">'],
       [lineOf("name as a number"), "text", '<input type="number">'],
       [lineOf("name in an unread type"), "type-unread", "<input type={kind}>"],
       [lineOf("name in a maybe number"), "text", '<input type="number | text">'],

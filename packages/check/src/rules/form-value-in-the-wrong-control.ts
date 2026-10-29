@@ -10,9 +10,10 @@ import type { ElementContext, ElementRule } from "./rule";
 /**
  * A value a `@ramonda/form` field shows, in a control that hands back another kind.
  *
- * A field writes back what its control produced by the control's own `type`, whatever the field held:
- * `type="number"` and `type="range"` hand back a number, `type="date"` a day, `type="checkbox"` true or
- * false, and every other control — a text `<input>`, a `TextArea`, a `Select` — its text. So a number
+ * A field writes back what its control produced by the control's own `type`: `type="number"` and
+ * `type="range"` hand back a number, `type="checkbox"` true or false, and every other control — a text
+ * `<input>`, a `TextArea`, a `Select` — its text. `type="date"` serves a `Date` and a date written as
+ * text, and hands each its own: a day to a `Date`, text to text. So a number
  * field written without `type="number"` fills the form with text on the first keystroke, a text field in
  * a slider fills it with a number, and the schema reports a value the reader never typed wrong.
  *
@@ -58,6 +59,8 @@ const HANDS_BACK: ReadonlyMap<string, "number" | "day" | "boolean"> = new Map([
  */
 const keeps = (type: string, kind: "number" | "day" | "text"): boolean => {
   const read = type.toLowerCase();
+  // A date input hands text back to a field that holds text — a date written as text, `""` at the start.
+  if (read === "date" && kind === "text") return true;
   return UNEDITED_INPUT_TYPES.has(read) || (HANDS_BACK.get(read) ?? "text") === kind;
 };
 
@@ -68,9 +71,9 @@ export const formValueInTheWrongControl = {
     severity: "error",
     reportedWhen:
       'a number a `@ramonda/form` field shows sits in a control that is not `<input type="number">` or ' +
-      '`type="range"`, a day in one that is not `type="date"`, or text in one of those three (a ' +
-      '`type="hidden"` one keeps any), or any of them in an `<input>` whose `type` cannot be read — or ' +
-      "a field's `.inputValue` has a type the check cannot read",
+      '`type="range"`, a day in one that is not `type="date"`, or text in a number control or a checkbox ' +
+      '(an input nobody edits, such as `type="hidden"`, keeps any), or any of them in an `<input>` whose ' +
+      "`type` cannot be read — or a field's `.inputValue` has a type the check cannot read",
     heading: (found) => `${found.length} form value(s) in a control that will not hand them back:`,
     lines: (issue) => [
       `  ${issue.file}:${issue.line}:${issue.column}`,
@@ -86,10 +89,11 @@ export const formValueInTheWrongControl = {
     ],
     advice:
       'A form field writes back what its control produced by the control\'s own `type`: `type="number"`\n' +
-      'and `type="range"` hand back a number, `type="date"` a day, and every other control hands back its\n' +
-      "text — whatever the field held, as an empty field could be waiting for any of them. A number field\n" +
-      "without its `type` fills the form with text on the first keystroke, a text field in a slider with a\n" +
-      "number, and the schema reports a value the reader never typed wrong.\n\n" +
+      'and `type="range"` hand back a number — whatever the field held, as an empty field could be waiting\n' +
+      'for a number or text alike — and `type="date"` a day to a `Date` and text to a date written as text.\n' +
+      "Every other control hands back its text. A number field without its `type` fills the form with text\n" +
+      "on the first keystroke, a text field in a slider with a number, and the schema reports a value the\n" +
+      "reader never typed wrong.\n\n" +
       "```tsx\n" +
       '<input type="number" name={age.name} value={age.inputValue} oninput={age.oninput} />\n' +
       '<input type="date" name={born.name} value={born.inputValue} oninput={born.oninput} />\n' +

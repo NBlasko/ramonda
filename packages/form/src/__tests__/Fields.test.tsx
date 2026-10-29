@@ -311,13 +311,29 @@ describe("the field tree", () => {
 
   /** A date field that held no date takes one from its control: the day, at local midnight. */
   test("a date input on an empty field writes a day", () => {
-    for (const empty of [undefined, ""]) {
-      const { h, fields } = tree({ ...SEED, when: empty as unknown as Date });
+    const { h, fields } = tree({ ...SEED, when: undefined as unknown as Date });
 
-      fields.when.$.oninput(inputEvent("date", { value: "2026-10-29" }));
+    fields.when.$.oninput(inputEvent("date", { value: "2026-10-29" }));
 
-      expect((h.values as Shape).when, String(empty)).toEqual(new Date(2026, 9, 29));
+    expect((h.values as Shape).when).toEqual(new Date(2026, 9, 29));
+  });
+
+  /**
+   * A date written as text — `""` at the start, or a day already — gets the control's text back: the
+   * value it holds says it is text. A `Date` emptied holds nothing, so `""` never means a `Date`.
+   */
+  test("a date input writes text to a field of text, and nothing to an emptied Date", () => {
+    const written: unknown[] = [];
+    for (const held of ["", "2026-01-01"]) {
+      const { h, fields } = tree({ ...SEED, email: held });
+      fields.email.$.oninput(inputEvent("date", { value: "2026-10-29" }));
+      written.push((h.values as Shape).email);
     }
+    const { h, fields } = tree(SEED);
+    fields.when.$.oninput(inputEvent("date", { value: "" }));
+    written.push((h.values as Shape).when);
+
+    expect(written).toEqual(["2026-10-29", "2026-10-29", undefined]);
   });
 
   test("a number field that the reader clears takes a number again", () => {
@@ -343,7 +359,7 @@ describe("the field tree", () => {
   test("a cleared date field shows nothing", () => {
     const { fields } = tree(SEED);
 
-    // A date input that the reader clears hands back `""`, which no `Date` branch would match.
+    // A date input that the reader clears hands back `""`; the `Date` field holds nothing, and shows `""`.
     fields.when.$.oninput(inputEvent("date", { value: "" }));
     expect(fields.when.$.inputValue).toBe("");
   });

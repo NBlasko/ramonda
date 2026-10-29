@@ -93,10 +93,10 @@ sees that none is missing.
 
 | the field holds | the control |
 |---|---|
-| `string` | `value={x.inputValue}` — any control but the three below that hand back a number or a day |
+| `string` | `value={x.inputValue}` — any control but the two that hand back a number; `type="date"` for a date written as text, which starts at `""` |
 | `number` | `type="number" value={x.inputValue}` — `""` for an emptied field; or `type="range"`, a slider |
 | `boolean` | `type="checkbox" checked={x.value === true}` — a value not set yet, or cleared by a reset, is an unticked box |
-| `Date` | `type="date" value={x.inputValue}` — the day, as `YYYY-MM-DD` |
+| `Date` | `type="date" value={x.inputValue}` — the day, as `YYYY-MM-DD`; emptied, it holds nothing |
 | an object or a list | no control holds one: its `$` has no `oninput`, and writing it is a type error |
 
 `inputValue` is typed by the value (`InputValue<T>`), so a `Date` handed to `value` directly is a
@@ -105,10 +105,14 @@ compile error rather than a field that shows nothing. A number shows as `FormNum
 reads the mark below.
 
 The `type` is what turns an edit back into the value: `type="number"` and `type="range"` hand back a
-number, `type="date"` a day, and any other control hands back text — whatever the field held, as an
-empty field could be waiting for any of them. So the control has to match the field: a number field
-written without its `type` fills the form with text, and a text field in a slider fills it with a
-number. `ramonda-check` reports either before it ships, as
+number — whatever the field held, as an empty field could be waiting for a number or text alike — and
+any other control hands back text. So the control has to match the field: a number field written
+without its `type` fills the form with text, and a text field in a slider fills it with a number.
+
+`type="date"` serves two kinds of field, a `Date` and a date written as text (`"2026-10-29"`, a JSON
+Schema `format: "date"`), and the value the field holds tells them apart: text gets the control's text
+back, and a `Date` or nothing gets a day. So a date written as text starts at `""` — in `defaultValues`,
+or in the row you `append` — and a `Date` emptied holds nothing rather than `""`. `ramonda-check` reports either before it ships, as
 [`form-value-in-the-wrong-control`](/reference/check), and [`RMF005`](/reference/diagnostics/rmf005)
 reports a number's or a day's in a running page.
 

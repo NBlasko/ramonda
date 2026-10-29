@@ -35,6 +35,7 @@ class Page extends Component {
         <input type={textual} aria-label="name in a typed type" value={name.inputValue} />
         <input type="constructor" aria-label="name in an odd type" value={name.inputValue} />
         <input type="submit" value={name.inputValue} />
+        <input type="date" aria-label="name as a date" value={name.inputValue} />
         <input type="button" value={age.inputValue} />
         {/* ✓ a field that may hold text, and a number the app holds itself */}
         <input aria-label="either" value={either.inputValue} />
@@ -50,7 +51,6 @@ class Page extends Component {
         <input type={kind} aria-label="age in an unread type" value={age.inputValue} />
         <input aria-label="loose" value={loose.inputValue} />
         <input type="range" aria-label="name on a slider" value={name.inputValue} />
-        <input type="date" aria-label="name as a date" value={name.inputValue} />
         <input type="number" aria-label="name as a number" value={name.inputValue} />
         <input type={kind} aria-label="name in an unread type" value={name.inputValue} />
         <input type={numberish} aria-label="name in a maybe number" value={name.inputValue} />
