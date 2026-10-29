@@ -455,3 +455,32 @@ export function formTableFor(sources: readonly ts.SourceFile[], resolve: Resolve
 
   return { holdsNothing, fields, bags, sites, holders };
 }
+
+/**
+ * Whether a spread is the schema's HTML constraints from `@ramonda/form/bguard`: `html(path)`, where
+ * `html` is made by `htmlConstraints(schema)` — a `const`, or a class's field (`this.html(path)`). Those
+ * carry only validation attributes — `required`, `minlength`, `maxlength`, `min`, `max`, `pattern`,
+ * `step`, and a `type` of email, url, date, time or datetime-local — none a field is written with, so the
+ * spread cannot take a handler away, make a field controlled, or turn a field into a number control.
+ * Every rule that reads a field with a spread asks this, so none of them reads one apart.
+ *
+ * One step, and both halves are questions about declarations: where `html` was declared, and where
+ * the function that made it was imported from.
+ */
+export function isConstraints(expression: ts.Expression, resolve: Resolver): boolean {
+  const written = unwrap(expression);
+  if (!ts.isCallExpression(written)) return false;
+  const callee = written.expression;
+  const name = ts.isIdentifier(callee)
+    ? callee
+    : ts.isPropertyAccessExpression(callee) && callee.expression.kind === ts.SyntaxKind.ThisKeyword
+      ? callee.name
+      : undefined;
+  if (name === undefined) return false;
+  const declaration = resolve(name)?.declarations?.[0];
+  if (declaration === undefined || !(ts.isVariableDeclaration(declaration) || ts.isPropertyDeclaration(declaration)))
+    return false;
+  const made = declaration.initializer === undefined ? undefined : unwrap(declaration.initializer);
+  if (made === undefined || !ts.isCallExpression(made) || !ts.isIdentifier(made.expression)) return false;
+  return resolve.fromPackage(made.expression, "@ramonda/form/bguard");
+}

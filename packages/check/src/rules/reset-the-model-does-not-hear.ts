@@ -5,7 +5,7 @@ import { holdsNothing, openingOf, says, tagOf } from "./element";
 import { unwrap } from "./follow-value";
 import { enclosingElement } from "./html";
 import type { JsxElementLike, ModuleRule, Resolver } from "./rule";
-import { fieldKind, modelNames, typeAttributeOf, typeLiterals } from "./formTable";
+import { fieldKind, isConstraints, modelNames, typeAttributeOf, typeLiterals } from "./formTable";
 
 export interface ResetTheModelDoesNotHearIssue {
   /**
@@ -95,12 +95,15 @@ function firstProblem(
     const opening = openingOf(node);
     const fieldTag = tagOf(node) ?? coreElementTag(opening.tagName, resolve);
     // A spread on a field may carry its `value`, and nothing here can read whether it does — unless
-    // the field is one no one edits (`hidden`, `submit`, `reset`), which a reset does not move.
+    // the field is one no one edits (`hidden`, `submit`, `reset`), which a reset does not move, or the
+    // spread is the schema's constraints, which carry no `value` (see `isConstraints`).
     const notEdited = fieldTag === "input" && fieldKind(typeAttributeOf(node), resolve) === "unedited";
     if (
       (fieldTag === "input" || fieldTag === "select" || fieldTag === "textarea") &&
       !notEdited &&
-      opening.attributes.properties.some(ts.isJsxSpreadAttribute)
+      opening.attributes.properties.some(
+        (property) => ts.isJsxSpreadAttribute(property) && !isConstraints(property.expression, resolve),
+      )
     ) {
       found = { kind: "unseen-content", at: opening, detail: `a spread on <${opening.tagName.getText()}>` };
       return;

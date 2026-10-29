@@ -51,6 +51,8 @@ describe("a field the user cannot change", () => {
       // A `const` that holds nothing is nothing, as a literal is: no handler; and below, no model.
       [lineOf('aria-label="a handler held as nothing"'), "input", "no-handler"],
       [lineOf('aria-label="a box picked by click"'), "input", "pick-through-click"],
+      // A box whose `checked` is a literal snaps back on every click, as a text field's literal does.
+      [lineOf('aria-label="a box held true"'), "input", "literal"],
       // Read off its type, `"checkbox" | "radio"`, as every rule reads a `type` — see `attributeLiterals`.
       [lineOf("type={boxish}") - 1, "input", "pick-through-click"],
       [lineOf('aria-label="a date on change"'), "input", "change-after-its-input"],
@@ -78,6 +80,7 @@ describe("a field the user cannot change", () => {
       "ticked",
       "radio picked",
       "constraints",
+      "constraints in a field",
       "props spread",
       "typed colon",
       "default",

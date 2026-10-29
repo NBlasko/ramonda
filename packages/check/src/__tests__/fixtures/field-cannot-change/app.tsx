@@ -36,6 +36,7 @@ class Strict extends Component<{ value: string; oninput: (event: Event) => void 
 class App extends Component<{ text: string; rows: { text: string }[]; attrs?: Record<string, unknown> }> {
   rows = [{ text: "a", size: "s" }];
   overrides: Record<string, unknown> = {};
+  html = htmlConstraints({});
   pick(_event: Event) {}
   type(_event: Event) {}
   render() {
@@ -80,10 +81,11 @@ class App extends Component<{ text: string; rows: { text: string }[]; attrs?: Re
         <input {...this.overrides} defaultValue="saved" aria-label="a spread and a default" />
         <input value={value} oninput={undefined} aria-label="a handler written as nothing" />
         <input value={value} oninput={NONE} aria-label="a handler held as nothing" />
-        <input type="checkbox" checked={true} onclick={this.type} aria-label="a box picked by click" />
+        <input type="checkbox" checked={on} onclick={this.type} aria-label="a box picked by click" />
+        <input type="checkbox" checked={true} onchange={this.pick} aria-label="a box held true" />
         <input
           type={boxish}
-          checked={true}
+          checked={on}
           onclick={this.type}
           aria-label="a box picked by click, of a type read off its type"
         />
@@ -113,6 +115,7 @@ class App extends Component<{ text: string; rows: { text: string }[]; attrs?: Re
         <input type="radio" name="r" value="a" checked={on} oninput={this.pick} aria-label="radio picked" />
         {/* ✓ the schema's constraints carry nothing a field is written with */}
         <input {...html("nick")} value={value} oninput={this.type} aria-label="constraints" />
+        <input {...this.html("nick")} value={value} oninput={this.type} aria-label="constraints in a field" />
         {/* ✓ a spread of props is read where the component is used, by the form rule */}
         <input value={value} oninput={this.type} {...this.props.attrs} aria-label="props spread" />
         {/* ✓ `on:input` is the field's own handler, as `oninput` is */}

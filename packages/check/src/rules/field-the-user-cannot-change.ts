@@ -4,7 +4,7 @@ import { coreElementTag } from "./coreElements";
 import { openingOf, writtenAsNothing } from "./element";
 import { follow, unwrap, type Looking } from "./follow-value";
 import type { ElementContext, ElementRule, WrittenAttribute } from "./rule";
-import { kindOfLiterals, propRead, typeAttributeOf, typeLiterals } from "./formTable";
+import { kindOfLiterals, propRead, typeAttributeOf, typeLiterals, isConstraints } from "./formTable";
 
 export interface FieldTheUserCannotChangeIssue {
   component: "Select" | "TextArea" | "input";
@@ -32,11 +32,15 @@ export interface FieldTheUserCannotChangeIssue {
   column: number;
 }
 
-/** A value read down to a literal — a string, a number (`-1` included), a plain template — and no further. */
+/**
+ * A value read down to a literal — a string, a number (`-1` included), a plain template, `true` or
+ * `false` (a box's `checked`) — and no further.
+ */
 const LITERAL: Looking<true> = {
   leaf: (expression) => {
     if (ts.isStringLiteral(expression) || ts.isNumericLiteral(expression)) return true;
     if (ts.isNoSubstitutionTemplateLiteral(expression)) return true;
+    if (expression.kind === ts.SyntaxKind.TrueKeyword || expression.kind === ts.SyntaxKind.FalseKeyword) return true;
     const negative =
       ts.isPrefixUnaryExpression(expression) &&
       expression.operator === ts.SyntaxKind.MinusToken &&
@@ -54,25 +58,6 @@ const LITERAL: Looking<true> = {
 /** Whether a `value` is a literal, or a `const` holding one — read from nothing the page can move. */
 function writtenAsItself(value: WrittenAttribute, resolve: ElementContext["resolve"]): boolean {
   return value.value !== undefined && follow(value.value, resolve, LITERAL) !== undefined;
-}
-
-/**
- * Whether a spread is the schema's HTML constraints from `@ramonda/form/bguard`: `html(path)`, where
- * `html` is a `const` made by `htmlConstraints(schema)`. Those carry only validation attributes —
- * `required`, `minlength`, `maxlength`, `min`, `max`, `pattern`, `step`, `type` — and none a field is
- * written with, so the spread cannot take a handler away or make a field controlled.
- *
- * One step, and both halves are questions about declarations: where `html` was declared, and where
- * the function that made it was imported from.
- */
-function isConstraints(expression: ts.Expression, resolve: ElementContext["resolve"]): boolean {
-  const written = unwrap(expression);
-  if (!ts.isCallExpression(written) || !ts.isIdentifier(written.expression)) return false;
-  const declaration = resolve(written.expression)?.declarations?.[0];
-  if (declaration === undefined || !ts.isVariableDeclaration(declaration)) return false;
-  const made = declaration.initializer === undefined ? undefined : unwrap(declaration.initializer);
-  if (made === undefined || !ts.isCallExpression(made) || !ts.isIdentifier(made.expression)) return false;
-  return resolve.fromPackage(made.expression, "@ramonda/form/bguard");
 }
 
 /** Whether a handler is read off a declaration marked optional — `oninput?:` on a wrapper's props. */
@@ -116,9 +101,10 @@ const PICKED_AT_ONCE: ReadonlySet<string> = new Set([
  *   undone.
  * - **`value` beside `defaultValue`**, or `checked` beside `defaultChecked` — the first wins and the
  *   second says nothing.
- * - **A text field whose `value` is a literal** — `value=""`, `{-1}`, or a `const` holding one — which
- *   no handler can move. A `Select`'s literal is a pattern, an action menu that goes back to its
- *   placeholder once its handler acts, and is not reported.
+ * - **A field whose model is a literal** — `value=""`, `{-1}`, `checked={true}`, or a `const` holding
+ *   one — which no handler can move, so a box snaps back on every click. A `Select`'s literal is a
+ *   pattern, an action menu that goes back to its placeholder once its handler acts, and is not
+ *   reported.
  * - **A spread on a field**, with a `value` written beside it or not: what it holds is not written
  *   down, and it may carry a `value` without the handler. The one spread that says what it holds is
  *   the schema's HTML constraints, `html(path)` from `@ramonda/form/bguard` — see `isConstraints`.
@@ -227,7 +213,7 @@ export const fieldTheUserCannotChange = {
     // `readonly` takes the input away from a text field, and does nothing to a pick.
     const still = pick ? ["disabled"] : ["readonly", "readOnly", "disabled"];
     if (still.some((name) => truth(name) === true)) return [];
-    if (!pick && model !== undefined && writtenAsItself(model, resolve)) {
+    if (tag !== "select" && model !== undefined && writtenAsItself(model, resolve)) {
       return [{ component, kind: "literal", ...at }];
     }
     if (unknown) return [{ component, kind: "unknown-spread", ...at }];

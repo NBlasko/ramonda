@@ -276,6 +276,12 @@ const afterDrain: (() => void)[] = [];
  * Runs `callback` once a synchronous drain — `drainSync`, a `flushSync` — has nothing left to render:
  * a field whose answer waited for the renders is settled there, before the caller's next line, not a
  * microtask later. Its caller keeps a microtask of its own for a drain that never comes.
+ *
+ * Nothing waits here past its field's settle. When the microtask settles first, it settles through
+ * `runRenders` — a `drainSync` — which finds nothing left and runs this list; the field's own callback
+ * finds it is no longer the field's and returns. Measured on the paths that queue one — a field edited
+ * from `@mounted` in a microtask drain and from a bootstrap, its handler taking the edit and refusing
+ * it: the list is empty once the microtask has run.
  */
 export function afterTheDrain(callback: () => void): void {
   afterDrain.push(callback);

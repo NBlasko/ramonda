@@ -54,6 +54,7 @@ describe("a reset the model does not hear", () => {
       "this.counter.reset()",
       "this.form.reset()",
       "city.reset()",
+      'aria-label="constraints beside a reset"',
       "context.reset()",
     ]) {
       expect(lines.has(lineOf(text)), text).toBe(false);

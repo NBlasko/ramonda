@@ -9,9 +9,10 @@ shows the model, and only the handler written on the field writes it. Reported, 
 source: no handler on the field (`oninput`, or for a pick `oninput` or `onchange`, either also written
 `on:input`, `on:change`); a text field with
 only `onchange`, which comes on blur, so every keystroke is undone before it; `value` beside
-`defaultValue`, or `checked` beside `defaultChecked`; a text field whose `value` is a literal, or a
-`const` holding one; a spread on a controlled field, except the schema's constraints, `html(path)` from
-`@ramonda/form/bguard`, and a spread of a prop, which is read where the component is used; a handler taken from a prop declared optional; a date, time, color or range with only `onchange`, which comes after the `input`
+`defaultValue`, or `checked` beside `defaultChecked`; a field whose model is a literal — `value=""`,
+`checked={true}` — or a `const` holding one; a spread on a controlled field, except the schema's
+constraints, `html(path)` from `@ramonda/form/bguard` (made into a `const` or a class's field), which
+`reset-the-model-does-not-hear` and `form-value-in-the-wrong-control` read through as well; and a spread of a prop, which is read where the component is used; a handler taken from a prop declared optional; a date, time, color or range with only `onchange`, which comes after the `input`
 the field already answered; and a box picked through `onclick`, which writes the
 model before the field decides the pick. Not reported: a field
 `disabled` as written, a text field that is `readonly`, an `<input>` whose type is not edited

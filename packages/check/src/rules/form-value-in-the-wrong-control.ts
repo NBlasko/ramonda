@@ -4,7 +4,7 @@ import { coreElementTag } from "./coreElements";
 import { openingOf, tagOf } from "./element";
 import { unwrap } from "./follow-value";
 import { UNEDITED_INPUT_TYPES } from "@ramonda/dom-facts";
-import { typeAttributeOf, typeLiterals } from "./formTable";
+import { isConstraints, typeAttributeOf, typeLiterals } from "./formTable";
 import type { ElementContext, ElementRule } from "./rule";
 
 /**
@@ -115,10 +115,20 @@ export const formValueInTheWrongControl = {
       "`RMF005` reports the same in a running page, once the field holds a value.\n\n",
   },
 
+  /**
+   * The schema's constraints spread, `{...html(path)}`, is the one spread this reads through: it can
+   * carry a `type` of email, url, date, time or datetime-local and nothing else — see `isConstraints`.
+   * Any other spread may carry the `type`, and the element is not asked.
+   */
+  evenWhenSpreading: true,
+
   read(element, { tag, resolve }: ElementContext) {
     const opening = openingOf(element);
     const field = tagOf(element) ?? coreElementTag(opening.tagName, resolve) ?? tag;
     if (field !== "input" && field !== "select" && field !== "textarea") return [];
+    const properties = opening.attributes.properties;
+    const spreads = properties.filter(ts.isJsxSpreadAttribute);
+    if (spreads.some((spread) => !isConstraints(spread.expression, resolve))) return [];
     const written = opening.attributes.properties.find(
       (p): p is ts.JsxAttribute => ts.isJsxAttribute(p) && p.name.getText() === "value",
     );
@@ -150,8 +160,13 @@ export const formValueInTheWrongControl = {
     if (kind === "none") return asksTheForm ? [{ kind: "no-value" as const, control, ...at }] : [];
     // What the control hands back, by the `type` it may have — none, on a `Select`, a `TextArea` or an
     // `<input>` without one, is text.
-    const handsBack = field === "input" && typeAttribute !== undefined ? types : ["text"];
-    if (handsBack === undefined) return [{ kind: "type-unread" as const, control, ...at }];
+    const typed = field === "input" && typeAttribute !== undefined ? types : ["text"];
+    if (typed === undefined) return [{ kind: "type-unread" as const, control, ...at }];
+    // A constraints spread written after the `type`, or with none, may give the input its own: text
+    // (email, url, time, datetime-local) or a day (date).
+    const lastSpread = spreads.length === 0 ? -1 : properties.indexOf(spreads[spreads.length - 1]);
+    const typeAt = typeAttribute === undefined ? -1 : properties.indexOf(typeAttribute);
+    const handsBack = field === "input" && lastSpread > typeAt ? [...typed, "email", "date"] : typed;
     return handsBack.length > 0 && handsBack.every((type) => keeps(type, kind)) ? [] : [{ kind, control, ...at }];
   },
 } as const satisfies ElementRule<FormValueInTheWrongControlIssue>;
