@@ -164,7 +164,13 @@ function controlFor(component: Component<any> & { settle(): void }, pick: boolea
     },
     // Both spellings, in the order a listener would be — `oninput`, then `on:input` — and the first one
     // stopping the event for the rest stops the second.
-    own: (type, own) => callInTurn([runtime.rawProps[`on${type}`], runtime.rawProps[`on:${type}`]], own),
+    own: (type, own) =>
+      callInTurn(
+        [runtime.rawProps[`on${type}`], runtime.rawProps[`on:${type}`]],
+        own,
+        // Read again for each: a render the first one settled may have taken the second away.
+        (handler) => handler === runtime.rawProps[`on${type}`] || handler === runtime.rawProps[`on:${type}`],
+      ),
     settle: () => component.settle(),
     gone: () => runtime.isDestroyed === true,
   };

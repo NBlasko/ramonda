@@ -688,10 +688,15 @@ const askedOf = new WeakMap<Event, Asked>();
 
 /**
  * Calls each handler in turn, as listeners on one element are called: one that calls
- * `stopImmediatePropagation()` is the last. Read off the view's record for a view — whose stop never
- * reaches the event — and off the call itself for an event. Whether any was called.
+ * `stopImmediatePropagation()` is the last, and one taken away by an earlier one — a render it settled
+ * dropped it — is not called, which `stillOwn` answers. Read off the view's record for a view — whose
+ * stop never reaches the event — and off the call itself for an event. Whether any was called.
  */
-export function callInTurn(handlers: readonly unknown[], event: Event): boolean {
+export function callInTurn(
+  handlers: readonly unknown[],
+  event: Event,
+  stillOwn: (handler: unknown) => boolean = () => true,
+): boolean {
   let callable = 0;
   for (const handler of handlers) if (isAHandler(handler)) callable += 1;
   // With one handler there is no next one to stop: called as it is, and the event left alone.
@@ -716,7 +721,7 @@ export function callInTurn(handlers: readonly unknown[], event: Event): boolean 
   try {
     for (const handler of handlers) {
       if (stopped || asked?.immediate === true) break;
-      called = callHandler(handler, event) || called;
+      if (stillOwn(handler)) called = callHandler(handler, event) || called;
     }
   } finally {
     if (asked === undefined) {
@@ -737,15 +742,10 @@ function isAHandler(theirs: unknown): boolean {
  * Whether there was one to call.
  */
 export function callHandler(theirs: unknown, event: Event): boolean {
-  if (typeof theirs === "function") {
-    theirs.call(event.currentTarget, event);
-    return true;
-  }
-  if (typeof (theirs as EventListenerObject | null)?.handleEvent === "function") {
-    (theirs as EventListenerObject).handleEvent(event);
-    return true;
-  }
-  return false;
+  if (!isAHandler(theirs)) return false;
+  if (typeof theirs === "function") theirs.call(event.currentTarget, event);
+  else (theirs as EventListenerObject).handleEvent(event);
+  return true;
 }
 
 /* ------------------------------------------------------------------ *
@@ -814,7 +814,7 @@ export function keepOwnHandler(input: HTMLInputElement, name: string, type: stri
 function callOwn(input: Kept, type: string, event: Event): boolean {
   const handlers = input[OWN]?.[type];
   if (handlers === undefined) return false;
-  return callInTurn([...handlers.values()], event);
+  return callInTurn([...handlers.values()], event, (handler) => [...handlers.values()].includes(handler));
 }
 
 function isRadio(input: HTMLInputElement): boolean {

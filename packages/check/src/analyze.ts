@@ -668,12 +668,16 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
     coreName: (id: ts.Node) => coreExportName(id, resolveLocal, resolveStep, resolve),
     fromPackage: (id: ts.Node, pkg: string) => importedFromPackage(id, pkg, resolveLocal, resolveStep),
     formValue: (expression: ts.Expression) => formValueOf(checker.getTypeAtLocation(expression)),
-    typeLiterals: (expression: ts.Expression) => {
+    typeLiterals: (expression: ts.Expression, absentAs?: string) => {
       const type = checker.getTypeAtLocation(expression);
-      const members = type.isUnion() ? type.types : [type];
-      return members.every((member) => member.isStringLiteral())
-        ? members.map((member) => (member as ts.StringLiteralType).value)
-        : undefined;
+      const read: string[] = [];
+      for (const member of type.isUnion() ? type.types : [type]) {
+        if (member.isStringLiteral()) read.push(member.value);
+        else if (absentAs !== undefined && (member.flags & (ts.TypeFlags.Undefined | ts.TypeFlags.Null)) !== 0)
+          read.push(absentAs);
+        else return undefined;
+      }
+      return read;
     },
     formCast: (outer: ts.AsExpression | ts.TypeAssertion) => formCast(outer, checker),
     formReset: (node: ts.PropertyAccessExpression | ts.ElementAccessExpression | ts.BindingElement) =>

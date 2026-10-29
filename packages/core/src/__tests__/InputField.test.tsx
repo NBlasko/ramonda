@@ -3,6 +3,7 @@ import { getDOM } from "../test/setup";
 import { state } from "../base/decorators";
 import { Component, TextArea, type EventOn } from "../index";
 import { renderToString } from "../hydration/ssr";
+import { flushSync } from "../testing";
 
 /** An edit as a browser makes it: the field changes first, then `input` says so. */
 function typeInto(field: HTMLInputElement, text: string) {
@@ -316,6 +317,60 @@ describe("an input's own handlers", () => {
     app.container.removeEventListener("input", bubbled);
 
     expect({ calls: app.instance.calls, touched }).toEqual({ calls: ["a", "b", "a"], touched: [false, false] });
+  });
+
+  /** A handler the first one takes away — a render it settled dropped it — is not called, as a listener removed mid-dispatch is not. */
+  test("`on:input` taken away by `oninput`'s own render is not called", async () => {
+    class Drops extends Component {
+      @state second = true;
+      calls: string[] = [];
+      a() {
+        this.calls.push("a");
+        this.second = false;
+        flushSync();
+      }
+      b() {
+        this.calls.push("b");
+      }
+      render() {
+        const untyped: Record<string, unknown> = { "on:input": this.second ? this.b : undefined };
+        return <input id="i" aria-label="Drops" oninput={this.a} {...untyped} />;
+      }
+    }
+    const app = await getDOM<Drops>(<Drops />);
+    await app.settle();
+    typeInto(app.container.querySelector("#i") as HTMLInputElement, "x");
+
+    expect(app.instance.calls).toEqual(["a"]);
+  });
+
+  /** The same on a `TextArea`, whose handlers its component calls. */
+  test("a TextArea's `on:input` taken away by `oninput`'s own render is not called", async () => {
+    class Drops extends Component {
+      @state second = true;
+      @state text = "";
+      calls: string[] = [];
+      a(event: EventOn<HTMLTextAreaElement>) {
+        this.calls.push("a");
+        this.text = event.currentTarget.value;
+        this.second = false;
+        flushSync();
+      }
+      b() {
+        this.calls.push("b");
+      }
+      render() {
+        const untyped: Record<string, unknown> = { "on:input": this.second ? this.b : undefined };
+        return <TextArea id="t" aria-label="Drops" value={this.text} oninput={this.a} {...untyped} />;
+      }
+    }
+    const app = await getDOM<Drops>(<Drops />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+    field.value = "x";
+    field.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText" }));
+
+    expect(app.instance.calls).toEqual(["a"]);
   });
 
   /** A handler that stops the event for the rest is the last, as a listener stopping it would be. */

@@ -23,5 +23,6 @@ test("the check reads a number, a day and text off the form's real types", () =>
     [lineOf("age as text"), "number"],
     [lineOf("born as text"), "day"],
     [lineOf("name on a slider"), "text"],
+    [lineOf("age, its type left off or number"), "number"],
   ]);
 });

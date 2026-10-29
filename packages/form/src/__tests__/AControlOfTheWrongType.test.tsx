@@ -61,6 +61,13 @@ test.each([
   ],
   ["an empty text field on a slider", "", "range", "12", undefined],
   [
+    "a text field on a checkbox",
+    "abc",
+    "checkbox",
+    "12",
+    'holds text, and its control (`type="checkbox"`) hands back true or false',
+  ],
+  [
     "a date field on a slider",
     new Date(2026, 0, 1),
     "range",
@@ -72,7 +79,7 @@ test.each([
     41,
     "date",
     "2026-10-29",
-    'hands back a day or text: it belongs in `<input type="number">`',
+    'hands back a day: it belongs in `<input type="number">`',
   ],
 ] as const)("%s", async (_name, start, type, typed, reported) => {
   const schema = anything<{ x?: number | Date | string }>();

@@ -35,6 +35,7 @@ function host(initial: unknown) {
     errorsAt: (path: Path) => errors.get(pathKey(path)) ?? [],
     touchedAt: (path: Path) => touched.has(pathKey(path)),
     dirtyAt: () => false,
+    nothingAt: (path: Path) => (readAt(initial, path) === null ? null : undefined),
     touch: (path: Path) => {
       touched.add(pathKey(path));
     },
@@ -297,6 +298,15 @@ describe("the field tree", () => {
     fields.email.$.oninput(inputEvent("range", { value: "50" }));
 
     expect((h.values as Shape).email).toBe(50);
+  });
+
+  /** An emptied `Date` holds the form's own nothing: `null` where it was handed `null`, `undefined` otherwise. */
+  test("an emptied date field holds null where the form was handed null", () => {
+    const { h, fields } = tree({ ...SEED, when: null as unknown as Date });
+    fields.when.$.oninput(inputEvent("date", { value: "2026-10-29" }));
+    fields.when.$.oninput(inputEvent("date", { value: "" }));
+
+    expect((h.values as Shape).when).toBe(null);
   });
 
   /** A year below 100 is that year, not 1900 more: the year a reader types passes through `0002`. */

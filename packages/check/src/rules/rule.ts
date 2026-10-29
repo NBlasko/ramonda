@@ -534,10 +534,12 @@ export interface Resolver {
   formValue(expression: ts.Expression): FormValue;
   /**
    * The strings this expression can be, read off its TYPE: `this.props.type` typed `"text" | "email"`
-   * is those two. `undefined` when its type is not a union of string literals — `string` included. Read
-   * through `attributeLiterals` in `formTable.ts`, which asks what is written first.
+   * is those two. `undefined` when its type is not a union of string literals — `string` included. A
+   * member that is `undefined` or `null` leaves the attribute off, which reads as `absentAs` where the
+   * caller says what that means — `type?: "email"` is `"email"` or `"text"` — and as unreadable
+   * otherwise. Read through `attributeLiterals` in `formTable.ts`, which asks what is written first.
    */
-  typeLiterals(expression: ts.Expression): string[] | undefined;
+  typeLiterals(expression: ts.Expression, absentAs?: string): string[] | undefined;
   /**
    * Whether this assertion puts an `HTMLFormElement` under a type that is not a form and does not
    * hold one — `form as unknown as Canvas` — so its `reset` cannot be followed past it. Asked of the

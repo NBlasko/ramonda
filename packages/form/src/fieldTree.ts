@@ -12,6 +12,11 @@ export interface FieldHost {
   errorsAt(path: Path): readonly string[];
   touchedAt(path: Path): boolean;
   dirtyAt(path: Path): boolean;
+  /**
+   * What "nothing" is at this path: `null` where the field's baseline holds `null` — a `Date | null`
+   * the form was handed `null` for — and `undefined` otherwise. What an emptied date input writes.
+   */
+  nothingAt(path: Path): null | undefined;
   touch(path: Path): void;
   resetAt(path: Path): void;
   rowIds(path: Path): readonly string[];
@@ -211,7 +216,10 @@ export class FieldHandle {
     this.oninput = (event: Event) => {
       const current = this.host.read(this.at_);
       if (__DEV__) this.checkTheControl(event.target, current);
-      this.host.write(this.at_, fromControl(event.target, current));
+      this.host.write(
+        this.at_,
+        fromControl(event.target, current, () => this.host.nothingAt(this.at_)),
+      );
     };
     this.onblur = () => this.host.touch(this.at_);
   }
@@ -225,10 +233,13 @@ export class FieldHandle {
   private checkTheControl(target: EventTarget | null, current: unknown): void {
     const type = (target as { type?: string } | null)?.type;
     if (type === undefined) return;
-    if (typeof current === "string" && current !== "" && (type === "number" || type === "range")) {
+    // Text, through a control that hands back something else: a number, or true or false.
+    const notText =
+      type === "number" || type === "range" ? "a number" : type === "checkbox" ? "true or false" : undefined;
+    if (typeof current === "string" && current !== "" && notText !== undefined) {
       report(
         "RMF005",
-        `\`${this.path}\` holds text, and its control (\`type="${type}"\`) hands back a number: it belongs in a control that hands back text.`,
+        `\`${this.path}\` holds text, and its control (\`type="${type}"\`) hands back ${notText}: it belongs in a control that hands back text.`,
         { path: this.path, type, wants: "text" },
       );
       return;
@@ -242,7 +253,7 @@ export class FieldHandle {
         : type === "number" || type === "range"
           ? "a number"
           : type === "date"
-            ? "a day or text"
+            ? "a day"
             : "text";
     report(
       "RMF005",
@@ -421,10 +432,11 @@ function sameIds(a: readonly string[] | undefined, b: readonly string[]): boolea
  * A date input serves two kinds of field — a `Date`, and a date written as text (`"2026-10-29"`, a JSON
  * Schema `format: "date"`) — and the value the field holds tells them apart: text, `""` included, is a
  * date written as text, and gets the control's text back; a `Date` or nothing gets a day, at local
- * midnight for a field that held none. So a `Date` field emptied holds nothing rather than `""`, and a
- * date written as text starts at `""`, which is what keeps the two apart while either is empty.
+ * midnight for a field that held none. So a `Date` field emptied holds nothing rather than `""` — `null`
+ * where the form was handed `null` for it, `undefined` otherwise — and a date written as text starts at
+ * `""`, which is what keeps the two apart while either is empty.
  */
-function fromControl(target: EventTarget | null, current: unknown): unknown {
+function fromControl(target: EventTarget | null, current: unknown, nothing: () => null | undefined): unknown {
   const element = target as (HTMLInputElement & { type?: string }) | null;
   if (element === null) return current;
 
@@ -435,8 +447,8 @@ function fromControl(target: EventTarget | null, current: unknown): unknown {
   if (element.type === "date") {
     if (typeof current === "string") return element.value;
     // The time of day a held date carries is kept; a field that held none starts the day at midnight.
-    // Emptied, or half-typed, it holds nothing.
-    return fromDateInput(element.value, current instanceof Date ? current : new Date(Number.NaN));
+    // Emptied, or half-typed, it holds nothing — `null` for a field the form was handed `null` for.
+    return fromDateInput(element.value, current instanceof Date ? current : new Date(Number.NaN)) ?? nothing();
   }
 
   return element.value;

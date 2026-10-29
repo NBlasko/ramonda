@@ -142,11 +142,26 @@ export function literalsOf(expression: ts.Expression | undefined, resolve: Resol
  * literal reaches, off its TYPE: `type={this.props.type}` typed `"text" | "email"` holds those two. A
  * bare attribute holds none. One reading for every rule, so no two of them read one attribute apart.
  */
-export function attributeLiterals(attribute: ts.JsxAttribute | undefined, resolve: Resolver): string[] | undefined {
+export function attributeLiterals(
+  attribute: ts.JsxAttribute | undefined,
+  resolve: Resolver,
+  absentAs?: string,
+): string[] | undefined {
   const written = attribute?.initializer;
   if (written === undefined) return undefined;
   const expression = ts.isJsxExpression(written) ? written.expression : written;
-  return literalsOf(expression, resolve) ?? (expression === undefined ? undefined : resolve.typeLiterals(expression));
+  return (
+    literalsOf(expression, resolve) ??
+    (expression === undefined ? undefined : resolve.typeLiterals(expression, absentAs))
+  );
+}
+
+/**
+ * An `<input>`'s `type`, every string it can be — as `attributeLiterals` reads it, and a `type` that may
+ * be left off (`type?: "email"`) as `"text"` too, which is what an input with none is.
+ */
+export function typeLiterals(typeAttribute: ts.JsxAttribute, resolve: Resolver): string[] | undefined {
+  return attributeLiterals(typeAttribute, resolve, "text");
 }
 
 /** An element's `type` attribute, as written. */
@@ -161,7 +176,7 @@ export function typeAttributeOf(element: ts.JsxElement | ts.JsxSelfClosingElemen
  * `const` as much as written in place. A `type` that can be either kind, or cannot be read, is `unread`.
  */
 export function fieldKind(typeAttribute: ts.JsxAttribute | undefined, resolve: Resolver): FieldKind {
-  return typeAttribute === undefined ? "text" : kindOfLiterals(attributeLiterals(typeAttribute, resolve));
+  return typeAttribute === undefined ? "text" : kindOfLiterals(typeLiterals(typeAttribute, resolve));
 }
 
 /** The kind of field the strings a `type` can be make it — `unread` when they disagree or are unknown. */

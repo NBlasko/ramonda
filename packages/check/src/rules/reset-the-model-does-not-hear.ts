@@ -5,7 +5,7 @@ import { holdsNothing, openingOf, says, tagOf } from "./element";
 import { unwrap } from "./follow-value";
 import { enclosingElement } from "./html";
 import type { JsxElementLike, ModuleRule, Resolver } from "./rule";
-import { attributeLiterals, fieldKind, modelNames, typeAttributeOf } from "./formTable";
+import { fieldKind, modelNames, typeAttributeOf, typeLiterals } from "./formTable";
 
 export interface ResetTheModelDoesNotHearIssue {
   /**
@@ -49,7 +49,7 @@ function resetsItsForm(element: JsxElementLike, resolve: Resolver): "reset" | "m
   const opening = openingOf(element);
   const type = typeAttributeOf(element);
   // Every string the `type` can be, as written — `busy ? "button" : "submit"` is never a reset.
-  const literals = type === undefined ? undefined : attributeLiterals(type, resolve);
+  const literals = type === undefined ? undefined : typeLiterals(type, resolve);
   if (literals !== undefined) {
     const resets = literals.filter((literal) => literal.toLowerCase() === "reset").length;
     if (resets === 0) return undefined;

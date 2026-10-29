@@ -4,7 +4,7 @@ import { coreElementTag } from "./coreElements";
 import { openingOf, writtenAsNothing } from "./element";
 import { follow, unwrap, type Looking } from "./follow-value";
 import type { ElementContext, ElementRule, WrittenAttribute } from "./rule";
-import { attributeLiterals, kindOfLiterals, propRead, typeAttributeOf } from "./formTable";
+import { kindOfLiterals, propRead, typeAttributeOf, typeLiterals } from "./formTable";
 
 export interface FieldTheUserCannotChangeIssue {
   component: "Select" | "TextArea" | "input";
@@ -203,7 +203,7 @@ export const fieldTheUserCannotChange = {
     // it is a picker. One whose type cannot be read is a box when it is written with `checked` — a
     // `value` beside it is then what the box sends, as on a radio.
     const typeAttribute = tag === "input" ? typeAttributeOf(element) : undefined;
-    const types = typeAttribute === undefined ? undefined : attributeLiterals(typeAttribute, resolve);
+    const types = typeAttribute === undefined ? undefined : typeLiterals(typeAttribute, resolve);
     const kind = typeAttribute === undefined ? "text" : kindOfLiterals(types);
     if (kind === "unedited") return [];
     const box = kind === "box" || (kind === "unread" && said("checked") !== undefined);

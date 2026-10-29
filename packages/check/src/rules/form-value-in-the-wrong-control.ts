@@ -4,7 +4,7 @@ import { coreElementTag } from "./coreElements";
 import { openingOf, tagOf } from "./element";
 import { unwrap } from "./follow-value";
 import { UNEDITED_INPUT_TYPES } from "@ramonda/dom-facts";
-import { attributeLiterals, typeAttributeOf } from "./formTable";
+import { typeAttributeOf, typeLiterals } from "./formTable";
 import type { ElementContext, ElementRule } from "./rule";
 
 /**
@@ -43,13 +43,24 @@ export interface FormValueInTheWrongControlIssue {
   column: number;
 }
 
-/** What a control of this `type` hands back, as the form reads it; any `type` not here hands back text. */
-const HANDS_BACK: ReadonlyMap<string, "number" | "day" | "boolean"> = new Map([
-  ["number", "number"],
-  ["range", "number"],
-  ["date", "day"],
-  ["checkbox", "boolean"],
+type Kind = "number" | "day" | "text";
+
+/**
+ * What a control of this `type` hands back, as the form reads it — a date input serves two kinds, a day
+ * to a `Date` and text to a date written as text, and a checkbox none of them, true or false. Any `type`
+ * not here hands back text.
+ */
+const HANDS_BACK: ReadonlyMap<string, ReadonlySet<Kind>> = new Map([
+  ["number", new Set<Kind>(["number"])],
+  ["range", new Set<Kind>(["number"])],
+  ["date", new Set<Kind>(["day", "text"])],
+  ["checkbox", new Set<Kind>()],
+  // A file input's `value` cannot be written: core writing one throws.
+  ["file", new Set<Kind>()],
 ]);
+
+/** Inputs nobody edits, which hand nothing back — but a file input, whose `value` cannot be written. */
+const UNEDITED = new Set([...UNEDITED_INPUT_TYPES].filter((type) => type !== "file"));
 
 /**
  * Whether a control of this `type` keeps a value of this kind: one that hands that kind back, or one
@@ -57,11 +68,9 @@ const HANDS_BACK: ReadonlyMap<string, "number" | "day" | "boolean"> = new Map([
  * `type="Number"` is a number control, and `element.type`, which the form reads, says `"number"`. A
  * `Select`, a `TextArea` and an `<input>` with no `type` hand back text.
  */
-const keeps = (type: string, kind: "number" | "day" | "text"): boolean => {
+const keeps = (type: string, kind: Kind): boolean => {
   const read = type.toLowerCase();
-  // A date input hands text back to a field that holds text — a date written as text, `""` at the start.
-  if (read === "date" && kind === "text") return true;
-  return UNEDITED_INPUT_TYPES.has(read) || (HANDS_BACK.get(read) ?? "text") === kind;
+  return UNEDITED.has(read) || (HANDS_BACK.get(read)?.has(kind) ?? kind === "text");
 };
 
 export const formValueInTheWrongControl = {
@@ -117,7 +126,7 @@ export const formValueInTheWrongControl = {
     if (kind === "other") return [];
 
     const typeAttribute = field === "input" ? typeAttributeOf(element) : undefined;
-    const types = typeAttribute === undefined ? [] : attributeLiterals(typeAttribute, resolve);
+    const types = typeAttribute === undefined ? [] : typeLiterals(typeAttribute, resolve);
     const control =
       field === "select"
         ? "<Select>"
