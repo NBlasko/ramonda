@@ -1,7 +1,7 @@
 import { Component } from "@ramonda/core";
 import { Form, type StandardSchemaV1 } from "@ramonda/form";
 
-declare const schema: StandardSchemaV1<{ age: number; born: Date; name: string; met?: string }>;
+declare const schema: StandardSchemaV1<{ age: number; born: Date; name: string }>;
 
 export class Signup extends Component {
   private f = this.use(Form<typeof schema>, () => ({
@@ -11,7 +11,7 @@ export class Signup extends Component {
   }));
 
   render() {
-    const { age, born, name, met } = this.f.fields;
+    const { age, born, name } = this.f.fields;
     return (
       <form>
         <input type="number" aria-label="age" value={age.$.inputValue} oninput={age.$.oninput} />
@@ -20,8 +20,6 @@ export class Signup extends Component {
         <input aria-label="born as text" value={born.$.inputValue} oninput={born.$.oninput} />
         <input aria-label="name" value={name.$.inputValue} oninput={name.$.oninput} />
         <input type="range" aria-label="name on a slider" value={name.$.inputValue} oninput={name.$.oninput} />
-        <input type="date" aria-label="name as a date" value={name.$.inputValue} oninput={name.$.oninput} />
-        <input type="date" aria-label="met, which may hold nothing" value={met.$.inputValue} oninput={met.$.oninput} />
       </form>
     );
   }

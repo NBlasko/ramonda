@@ -105,8 +105,8 @@ compile error rather than a field that shows nothing. A number shows as `FormNum
 reads the mark below.
 
 The `type` is what turns an edit back into the value: `type="number"` and `type="range"` hand back a
-number — whatever the field held, as an empty field could be waiting for a number or text alike — and
-any other control hands back text. So the control has to match the field: a number field written
+number — whatever the field held, as an empty field could be waiting for a number or text alike — a
+checkbox true or false, `type="date"` what the next paragraph says, and any other control text. So the control has to match the field: a number field written
 without its `type` fills the form with text, and a text field in a slider fills it with a number.
 `ramonda-check` reports either before it ships, as [`form-value-in-the-wrong-control`](/reference/check),
 and [`RMF005`](/reference/diagnostics/rmf005) reports them in a running page once the field holds a value.
@@ -114,10 +114,9 @@ and [`RMF005`](/reference/diagnostics/rmf005) reports them in a running page onc
 `type="date"` serves two kinds of field, a `Date` and a date written as text (`"2026-10-29"`, a JSON
 Schema `format: "date"`), and the value the field holds tells them apart: text gets the control's text
 back, and a `Date` or nothing gets a day. So a date written as text starts at `""` — in `defaultValues`,
-or in the row you `append` — and a `Date` emptied holds nothing rather than `""`. A date written as text
-that may hold nothing (`born?: string`) would take a day on its first pick, so `ramonda-check` reports
-one in `type="date"`: type it `string`, with `""` for no date. One left out of `defaultValues` the check
-cannot see, and it takes a day too.
+or in the row you `append` — and a `Date` emptied holds nothing rather than `""`. Where it starts is the
+author's to write: neither `ramonda-check` nor `RMF005` can tell a date written as text that starts with
+nothing from a `Date`, and it takes a day on the first pick.
 
 ### A choice lives on `<Select>`
 

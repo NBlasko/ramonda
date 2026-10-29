@@ -527,8 +527,8 @@ export interface Resolver {
   fromPackage(id: ts.Node, pkg: string): boolean;
   /**
    * What a form shows in this expression, read off its TYPE: a number for `<input type="number">`, a
-   * day for `type="date"`, text for any control but those — `optional-text` for the text of a field that
-   * may hold nothing — anything else, or `unread` when its type cannot be read. See
+   * day for `type="date"`, text for any control but those, anything else, or `unread` when its type
+   * cannot be read. See
    * `form-value-in-the-wrong-control`.
    */
   formValue(expression: ts.Expression): FormValue;
@@ -560,7 +560,7 @@ export interface Resolver {
 export type FormType = "form" | "unread" | "other";
 
 /** What a form shows in a control's `value` — see `Resolver.formValue`. */
-export type FormValue = "number" | "day" | "text" | "optional-text" | "other" | "unread";
+export type FormValue = "number" | "day" | "text" | "other" | "unread";
 
 /**
  * Whether a finding carries a written reason, and the recording of it.

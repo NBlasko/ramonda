@@ -266,7 +266,7 @@ Every field is reached by property access and its API sits behind `$`:
 | `FormState` | A **hook**, for a component that watches the FORM rather than a field — `this.use(FormState)`, no props. `isValid` · `isDirty` · `isSubmitting` · `submitCount` · `formErrors` · `submit(event?)` · `reset()`. Wakes only when a fact it reads actually MOVED, so a save button sleeps through typing that does not change the answer. The form publishes itself on the context, so it works at any depth. [A button that watches the form](/forms/fields#a-button-that-watches-the-form) |
 
 Types: `FieldNode` · `FieldTarget` · `LeafNode` · `ObjectNode` · `ArrayNode` · `FormProps` · `ValidateOn` ·
-`InputValue` · `FormNumber` · `FormDay` · `FormText` · `FormOptional` · `Collision` ·
+`InputValue` · `FormNumber` · `FormDay` · `FormText` · `Collision` ·
 `InferIn` · `InferOut` · `StandardSchemaV1` · `StandardResult` · `StandardIssue`
 
 `StandardSchemaV1` is the [Standard Schema](https://standardschema.dev) interface, vendored so
@@ -275,8 +275,7 @@ valibot, arktype. [Validation](/forms/validation)
 
 `FormNumber`, `FormDay` and `FormText` are what `inputValue` shows for a number, a date and text — a
 `number` and two `string`s to TypeScript, marked, so `ramonda-check` tells them from any other and
-reports one in a control that hands back another kind. `FormOptional` marks the text of a field that may
-hold nothing. [Writing a control](/forms/fields#writing-a-control)
+reports one in a control that hands back another kind. [Writing a control](/forms/fields#writing-a-control)
 
 ---
 

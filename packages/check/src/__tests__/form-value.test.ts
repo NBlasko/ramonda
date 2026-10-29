@@ -31,7 +31,6 @@ describe("a form value in the wrong control", () => {
       [lineOf("name in an unread type"), "type-unread", "<input type={kind}>"],
       [lineOf("name in a maybe number"), "text", '<input type="number | text">'],
       [lineOf("name in a box"), "text", '<input type="checkbox">'],
-      [lineOf("a date as text that may be absent"), "optional-date-text", '<input type="date">'],
       [lineOf("any field"), "unreadable", "<input>"],
     ]);
   });
