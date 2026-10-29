@@ -236,7 +236,14 @@ export class FieldHandle {
     const wants = typeof current === "number" ? "number" : current instanceof Date ? "date" : undefined;
     if (wants === undefined || type === wants) return;
     if (wants === "number" && type === "range") return;
-    const handsBack = type === "checkbox" ? "true or false" : "text";
+    const handsBack =
+      type === "checkbox"
+        ? "true or false"
+        : type === "number" || type === "range"
+          ? "a number"
+          : type === "date"
+            ? "a day or text"
+            : "text";
     report(
       "RMF005",
       `\`${this.path}\` holds a ${wants === "number" ? "number" : "day"}, and its control (\`type="${type}"\`) hands back ${handsBack}: it belongs in \`<input type="${wants}">\`.`,
@@ -461,8 +468,8 @@ function toDateInput(value: Date): string {
  * silently move to midnight, and an appointment would lose its hour to a change of day. `setFullYear`
  * takes all three parts at once, so there is no intermediate date to overflow through.
  *
- * `undefined` for anything that is not a day — an empty control, or a half-typed one — and the caller
- * keeps the raw text, which is a value a schema can report on.
+ * `undefined` for anything that is not a day — an empty control, or a half-typed one — which the field
+ * then holds: nothing, which a required `Date` reports on.
  */
 function fromDateInput(text: string, current: Date): Date | undefined {
   const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);

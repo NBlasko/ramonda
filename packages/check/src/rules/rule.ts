@@ -24,7 +24,7 @@ import type ts from "typescript";
  * the README's argument with it — a gate that cries wolf is a gate somebody switches off.
  *
  * **Ask for a type — but one.** A rule asks the compiler where a symbol was DECLARED, never what
- * type anything is: `resolve` below is that question. The exceptions are `formValue`, `literalsOf`,
+ * type anything is: `resolve` below is that question. The exceptions are `formValue`, `typeLiterals`,
  * `formCast` and `formReset`, the questions about a type, which is why the program carries the language's
  * lib and the DOM's names as stand-ins — see `createProgram` in `analyze.ts`. So a platform name — `location`, `Boolean` —
  * resolves to a lib declaration or a stand-in, and to nothing in a program a caller of
@@ -534,9 +534,10 @@ export interface Resolver {
   formValue(expression: ts.Expression): FormValue;
   /**
    * The strings this expression can be, read off its TYPE: `this.props.type` typed `"text" | "email"`
-   * is those two. `undefined` when its type is not a union of string literals — `string` included.
+   * is those two. `undefined` when its type is not a union of string literals — `string` included. Read
+   * through `attributeLiterals` in `formTable.ts`, which asks what is written first.
    */
-  literalsOf(expression: ts.Expression): string[] | undefined;
+  typeLiterals(expression: ts.Expression): string[] | undefined;
   /**
    * Whether this assertion puts an `HTMLFormElement` under a type that is not a form and does not
    * hold one — `form as unknown as Canvas` — so its `reset` cannot be followed past it. Asked of the

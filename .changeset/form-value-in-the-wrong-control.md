@@ -26,4 +26,5 @@ For it, `ramonda-check` now reads every project with the language's own lib and,
 lib, a stand-in for each name it declares, read from the DOM lib of the TypeScript the check runs —
 about 0.2 s more per run, whatever the app's size (measured on a Linux laptop, Ryzen 5 2500U). A
 rule that told the platform's names from a project's own by whether they resolved asks which file
-declares them now. `RMF005` reports the same in a running page once the field holds a number or a day.
+declares them now. `RMF005` reports the same in a running page once the field holds a value: a number
+or a day through a control that hands back text, and text through one that hands back a number.

@@ -6,6 +6,7 @@ declare const on: boolean;
 declare const viewing: boolean;
 declare const bag: Record<string, unknown>;
 declare const kind: string;
+declare const boxish: "checkbox" | "radio";
 declare const withTime: boolean;
 const BOX = "checkbox";
 const EMPTY = "";
@@ -80,6 +81,12 @@ class App extends Component<{ text: string; rows: { text: string }[]; attrs?: Re
         <input value={value} oninput={undefined} aria-label="a handler written as nothing" />
         <input value={value} oninput={NONE} aria-label="a handler held as nothing" />
         <input type="checkbox" checked={true} onclick={this.type} aria-label="a box picked by click" />
+        <input
+          type={boxish}
+          checked={true}
+          onclick={this.type}
+          aria-label="a box picked by click, of a type read off its type"
+        />
         <input type="date" value={value} onchange={this.type} aria-label="a date on change" />
         <input type={kind} checked={on} aria-label="a box of a type unread" />
         <input type={kind} name="g" value="a" checked={on} aria-label="a radio of a type unread, held" />

@@ -80,10 +80,12 @@ const SPECS: Record<FormCode, Spec> = __DEV__
         severity: "error",
         fix:
           "A field turns what its control produced back into its value by the control's own `type`: " +
-          '`type="number"` hands back a number and `type="date"` a day, and any other control hands back ' +
-          'its text — so a number field written without `type="number"` fills the form with text, and the ' +
-          "schema reports a value the reader never typed wrong. Write the `type` on the control. " +
-          "`ramonda-check` reports the same before it ships, as `form-value-in-the-wrong-control`.",
+          '`type="number"` and `type="range"` hand back a number, `type="date"` a day to a `Date` and text ' +
+          'to a date written as text, `type="checkbox"` true or false, and any other control its text — ' +
+          'so a number field written without `type="number"` fills the form with text, a text field in a ' +
+          "slider fills it with a number, and the schema reports a value the reader never typed wrong. Put " +
+          "the field in a control that hands back what it holds. `ramonda-check` reports the same before it " +
+          "ships, as `form-value-in-the-wrong-control`.",
       },
     }
   : ({} as Record<FormCode, Spec>);

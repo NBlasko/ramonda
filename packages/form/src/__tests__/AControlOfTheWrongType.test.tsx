@@ -60,6 +60,20 @@ test.each([
     'holds text, and its control (`type="number"`) hands back a number',
   ],
   ["an empty text field on a slider", "", "range", "12", undefined],
+  [
+    "a date field on a slider",
+    new Date(2026, 0, 1),
+    "range",
+    "12",
+    'hands back a number: it belongs in `<input type="date">`',
+  ],
+  [
+    "a number field in a date input",
+    41,
+    "date",
+    "2026-10-29",
+    'hands back a day or text: it belongs in `<input type="number">`',
+  ],
 ] as const)("%s", async (_name, start, type, typed, reported) => {
   const schema = anything<{ x?: number | Date | string }>();
   class Page extends Component {

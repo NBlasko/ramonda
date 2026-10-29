@@ -24,8 +24,9 @@ yet, or cleared by a reset, is an unticked box core still holds, as `bind` wrote
 the element. `oninput` and `onblur` are one bound function each for the life of the field. `Field`
 answers the same four. The `Bind`, `CommonBind`, `TextBind`, `NumberBind`, `CheckboxBind` and
 `DateBind` types are gone; `InputValue<T>` types `inputValue`. What an edit writes is read off the
-control as written: `type="number"` writes a number and `type="date"` a day, so a number field is
-written `type="number"`, as a box is written `type="checkbox"` — the `type` `bind` used to write.
+control as written: `type="number"` writes a number, so a number field is written `type="number"`, as a
+box is written `type="checkbox"` — the `type` `bind` used to write; `form-value-in-the-wrong-control`
+says what each control hands back.
 `invalid` is `true` while the field has a message and no value otherwise, as `bind` gave it: a valid
 control carries no `aria-invalid`.
 `inputValue` is typed per member of the value's union, and `never` for a value a control's `value`

@@ -1252,7 +1252,7 @@ const schema = object({
 });
 ```
 
-## RMF005 — a number or a day edited through a control that hands back text
+## RMF005 — a field edited through a control that hands back another kind
 
 A field turns what its control produced back into its value by the control's own `type`:
 `type="number"` and `type="range"` hand back a number, `type="date"` a day, and every other control

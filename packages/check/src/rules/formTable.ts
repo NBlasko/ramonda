@@ -137,11 +137,16 @@ export function literalsOf(expression: ts.Expression | undefined, resolve: Resol
   return undefined;
 }
 
-/** The strings a JSX attribute holds as written — see `literalsOf`. A bare attribute holds none. */
+/**
+ * The strings a JSX attribute holds — as written (see `literalsOf`), or, where it is an expression no
+ * literal reaches, off its TYPE: `type={this.props.type}` typed `"text" | "email"` holds those two. A
+ * bare attribute holds none. One reading for every rule, so no two of them read one attribute apart.
+ */
 export function attributeLiterals(attribute: ts.JsxAttribute | undefined, resolve: Resolver): string[] | undefined {
   const written = attribute?.initializer;
   if (written === undefined) return undefined;
-  return literalsOf(ts.isJsxExpression(written) ? written.expression : written, resolve);
+  const expression = ts.isJsxExpression(written) ? written.expression : written;
+  return literalsOf(expression, resolve) ?? (expression === undefined ? undefined : resolve.typeLiterals(expression));
 }
 
 /** An element's `type` attribute, as written. */

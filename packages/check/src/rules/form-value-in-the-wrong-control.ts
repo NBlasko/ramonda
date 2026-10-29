@@ -78,9 +78,9 @@ export const formValueInTheWrongControl = {
     lines: (issue) => [
       `  ${issue.file}:${issue.line}:${issue.column}`,
       issue.kind === "number"
-        ? `    a number field's value in ${issue.control}, which hands back text — write \`<input type="number">\`.`
+        ? `    a number field's value in ${issue.control}, which does not hand back a number — write \`<input type="number">\`.`
         : issue.kind === "day"
-          ? `    a date field's value in ${issue.control}, which hands back text — write \`<input type="date">\`.`
+          ? `    a date field's value in ${issue.control}, which does not hand back a day — write \`<input type="date">\`.`
           : issue.kind === "text"
             ? `    a text field's value in ${issue.control}, which hands back something other than text — write it in a control that hands back text.`
             : issue.kind === "type-unread"
@@ -117,15 +117,7 @@ export const formValueInTheWrongControl = {
     if (kind === "other") return [];
 
     const typeAttribute = field === "input" ? typeAttributeOf(element) : undefined;
-    const typeWritten =
-      typeAttribute?.initializer !== undefined && ts.isJsxExpression(typeAttribute.initializer)
-        ? typeAttribute.initializer.expression
-        : undefined;
-    const types =
-      typeAttribute === undefined
-        ? []
-        : (attributeLiterals(typeAttribute, resolve) ??
-          (typeWritten === undefined ? undefined : resolve.literalsOf(typeWritten)));
+    const types = typeAttribute === undefined ? [] : attributeLiterals(typeAttribute, resolve);
     const control =
       field === "select"
         ? "<Select>"
