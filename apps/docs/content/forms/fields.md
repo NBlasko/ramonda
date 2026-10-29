@@ -96,7 +96,7 @@ sees that none is missing.
 | `string` | `value={x.inputValue}` — any control but the two that hand back a number, a checkbox and a file input; `type="date"` for a date written as text, which starts at `""` |
 | `number` | `type="number" value={x.inputValue}` — `""` for an emptied field; or `type="range"`, a slider |
 | `boolean` | `type="checkbox" checked={x.value === true}` — a value not set yet, or cleared by a reset, is an unticked box |
-| `Date` | `type="date" value={x.inputValue}` — the day, as `YYYY-MM-DD`; emptied, it holds nothing — `null` once it has held `null`, as a `Date \| null` handed `null` has |
+| `Date` | `type="date" value={x.inputValue}` — the day, as `YYYY-MM-DD`; emptied, it holds nothing (`undefined`), so a date that may be empty takes it — `z.date().nullish()` |
 | an object or a list | no control holds one: its `$` has no `oninput`, and writing it is a type error |
 
 `inputValue` is typed by the value (`InputValue<T>`), so a `Date` handed to `value` directly is a

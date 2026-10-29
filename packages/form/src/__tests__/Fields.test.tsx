@@ -299,13 +299,13 @@ describe("the field tree", () => {
     expect((h.values as Shape).email).toBe(50);
   });
 
-  /** An emptied `Date` holds the form's own nothing: `null` where it was handed `null`, `undefined` otherwise. */
-  test("an emptied date field holds null where the form was handed null", () => {
+  /** An emptied `Date` holds nothing — `undefined`, whatever it was handed: the form does not guess at the schema. */
+  test("an emptied date field holds undefined, whatever it was handed", () => {
     const { h, fields } = tree({ ...SEED, when: null as unknown as Date });
     fields.when.$.oninput(inputEvent("date", { value: "2026-10-29" }));
     fields.when.$.oninput(inputEvent("date", { value: "" }));
 
-    expect((h.values as Shape).when).toBe(null);
+    expect((h.values as Shape).when).toBe(undefined);
   });
 
   /** A year below 100 is that year, not 1900 more: the year a reader types passes through `0002`. */
@@ -318,6 +318,15 @@ describe("the field tree", () => {
     expect([day.getFullYear(), day.getMonth(), day.getDate(), day.getHours()]).toEqual([2, 4, 10, 0]);
     // Shown in four digits, as a date input reads it — `2-05-10` would empty the field mid-year.
     expect(fields.when.$.inputValue).toBe("0002-05-10");
+  });
+
+  /** A year of five digits is a year: one digit too many typed is a day, shown back as typed, not nothing. */
+  test("a date input keeps a year of more than four digits", () => {
+    const { h, fields } = tree({ ...SEED, when: undefined as unknown as Date });
+
+    fields.when.$.oninput(inputEvent("date", { value: "20261-10-29" }));
+
+    expect([(h.values as Shape).when.getFullYear(), fields.when.$.inputValue]).toEqual([20261, "20261-10-29"]);
   });
 
   /** A date field that held no date takes one from its control: the day, at local midnight. */

@@ -10,13 +10,15 @@ function anything<V>(): StandardSchemaV1<V, V> {
 }
 
 /**
- * A `Date` field emptied through its date input holds the form's own nothing: `null` for a field the
- * form was handed `null` for — a `Date | null` schema — and `undefined` for one it was handed nothing.
+ * A `Date` field emptied through its date input holds nothing — `undefined` — whatever the form was
+ * handed for it: what the schema calls nothing is the schema's, and a date that may be empty takes
+ * `undefined` (`z.date().nullish()`).
  */
 test.each([
   ["handed null", null],
+  ["handed a day", new Date(2026, 0, 1)],
   ["handed nothing", undefined],
-] as const)("an emptied date field %s holds it again", async (_name, start) => {
+] as const)("an emptied date field %s holds undefined", async (_name, start) => {
   const schema = anything<{ when?: Date | null }>();
   let form: { values: { when?: Date | null } } | undefined;
   class Page extends Component {
@@ -36,48 +38,7 @@ test.each([
         field.dispatchEvent(new Event("input", { bubbles: true }));
       });
     }
-    expect(form?.values.when).toBe(start);
-  } finally {
-    unmount();
-  }
-});
-
-/** A date input's edit, as the field reads it: the control's `type` and `value`. */
-function dateEdit(value: string): Event {
-  return { target: { type: "date", value } } as unknown as Event;
-}
-
-/**
- * In a list, each row keeps its own nothing as rows are removed and appended: it is remembered by the
- * row, not by its index.
- */
-test("an emptied date in a list row holds the null that row was handed, wherever the row moved", async () => {
-  type Rows = { rows: { when: Date | null }[] };
-  const schema = anything<Rows>();
-  let form!: Form<typeof schema>;
-  class Page extends Component {
-    private f = this.use(Form<typeof schema>, () => ({
-      schema,
-      defaultValues: { rows: [{ when: new Date(2026, 0, 1) }, { when: null }] },
-      onSubmit: () => {},
-    }));
-    render(): RamondaNode {
-      form = this.f;
-      return <span>x</span>;
-    }
-  }
-  const { unmount } = render((<Page />) as never);
-  try {
-    // The second row, handed `null`, is picked while it is the second — and emptied once it is the first.
-    await act(async () => form.fields.rows[1].when.$.oninput(dateEdit("2026-10-29")));
-    await act(async () => form.fields.rows.$.remove(0));
-    await act(async () => form.fields.rows[0].when.$.oninput(dateEdit("")));
-    // A row appended with `null`, picked and emptied.
-    await act(async () => form.fields.rows.$.append({ when: null }));
-    await act(async () => form.fields.rows[1].when.$.oninput(dateEdit("2026-10-29")));
-    await act(async () => form.fields.rows[1].when.$.oninput(dateEdit("")));
-
-    expect(form.values.rows.map((row) => row.when)).toEqual([null, null]);
+    expect(form?.values.when).toBe(undefined);
   } finally {
     unmount();
   }

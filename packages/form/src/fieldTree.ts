@@ -98,30 +98,7 @@ export class FieldTree {
   private readonly nodes = new Map<string, object>();
   private readonly handles = new Map<string, FieldHandle>();
 
-  /** The fields that have held `null`, each by its row's id rather than its index — see `nothingAt`. */
-  private readonly heldNull = new Set<string>();
-
   constructor(private readonly host: FieldHost) {}
-
-  /**
-   * What "nothing" is for this field: `null` once it has held `null` — a `Date | null` handed `null`,
-   * in `defaultValues` or in the row appended — and `undefined` otherwise. What an emptied date input
-   * writes. Remembered by each row's id, so a row keeps its own as rows are removed and moved.
-   */
-  nothingAt(path: Path, holds: unknown): null | undefined {
-    const key = this.rowKey(path);
-    if (holds === null) this.heldNull.add(key);
-    return this.heldNull.has(key) ? null : undefined;
-  }
-
-  /** The path with each row named by its id: what stays the same for a row whatever its index. */
-  private rowKey(path: Path): string {
-    return path
-      .map((part, at) =>
-        typeof part === "number" ? `#${this.host.rowIds(path.slice(0, at))[part] ?? part}` : String(part),
-      )
-      .join(".");
-  }
 
   /** The root node. Typed by the caller, which is the only place the value type is known. */
   get root(): unknown {
@@ -234,11 +211,7 @@ export class FieldHandle {
     this.oninput = (event: Event) => {
       const current = this.host.read(this.at_);
       if (__DEV__) this.checkTheControl(event.target, current);
-      const nothing = this.tree.nothingAt(this.at_, current);
-      this.host.write(
-        this.at_,
-        fromControl(event.target, current, () => nothing),
-      );
+      this.host.write(this.at_, fromControl(event.target, current));
     };
     this.onblur = () => this.host.touch(this.at_);
   }
@@ -460,11 +433,12 @@ function sameIds(a: readonly string[] | undefined, b: readonly string[]): boolea
  * A date input serves two kinds of field — a `Date`, and a date written as text (`"2026-10-29"`, a JSON
  * Schema `format: "date"`) — and the value the field holds tells them apart: text, `""` included, is a
  * date written as text, and gets the control's text back; a `Date` or nothing gets a day, at local
- * midnight for a field that held none. So a `Date` field emptied holds nothing rather than `""` — `null`
- * where the form was handed `null` for it, `undefined` otherwise — and a date written as text starts at
- * `""`, which is what keeps the two apart while either is empty.
+ * midnight for a field that held none. So a `Date` field emptied holds nothing — `undefined`, whatever
+ * the schema calls nothing, which a schema that takes no date accepts (`z.date().nullish()`) — rather
+ * than `""`, and a date written as text starts at `""`, which is what keeps the two apart while either
+ * is empty.
  */
-function fromControl(target: EventTarget | null, current: unknown, nothing: () => null | undefined): unknown {
+function fromControl(target: EventTarget | null, current: unknown): unknown {
   const element = target as (HTMLInputElement & { type?: string }) | null;
   if (element === null) return current;
 
@@ -475,8 +449,8 @@ function fromControl(target: EventTarget | null, current: unknown, nothing: () =
   if (element.type === "date") {
     if (typeof current === "string") return element.value;
     // The time of day a held date carries is kept; a field that held none starts the day at midnight.
-    // Emptied, or half-typed, it holds nothing — `null` for a field the form was handed `null` for.
-    return fromDateInput(element.value, current instanceof Date ? current : new Date(Number.NaN)) ?? nothing();
+    // Emptied, or half-typed, it holds nothing.
+    return fromDateInput(element.value, current instanceof Date ? current : new Date(Number.NaN));
   }
 
   return element.value;
@@ -514,7 +488,8 @@ function toDateInput(value: Date): string {
  * then holds: nothing, which a required `Date` reports on.
  */
 function fromDateInput(text: string, current: Date): Date | undefined {
-  const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
+  // Four digits of year to six, as a date input takes them and a `Date` holds them (to 275760).
+  const parts = /^(\d{4,6})-(\d{2})-(\d{2})$/.exec(text);
   if (parts === null) return undefined;
 
   const [year, month, day] = [Number(parts[1]), Number(parts[2]) - 1, Number(parts[3])];
