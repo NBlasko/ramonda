@@ -1,10 +1,11 @@
 import { Component, Select, TextArea } from "@ramonda/core";
-import type { FormDay, FormNumber, InputValue } from "@ramonda/form";
+import type { FormDay, FormNumber, FormText, InputValue } from "@ramonda/form";
 
 declare const age: { inputValue: FormNumber | "" };
 declare const born: { inputValue: FormDay | "" };
-declare const name: { inputValue: string };
-declare const either: { inputValue: string | FormNumber };
+declare const name: { inputValue: FormText };
+declare const either: { inputValue: FormText | FormNumber | "" };
+declare const own: string;
 declare const loose: { inputValue: any };
 declare const kind: string;
 declare const count: number;
@@ -25,6 +26,9 @@ class Page extends Component {
         <input type="hidden" name="age" value={age.inputValue} />
         <input type="HIDDEN" name="born" value={born.inputValue} />
         <input aria-label="name" value={name.inputValue} />
+        <input type="email" aria-label="name as email" value={name.inputValue} />
+        <TextArea aria-label="name in a text area" value={name.inputValue} />
+        <input type="range" aria-label="text of the app's own" value={own} />
         {/* ✓ a field that may hold text, and a number the app holds itself */}
         <input aria-label="either" value={either.inputValue} />
         <input aria-label="count" value={count} />
@@ -38,6 +42,10 @@ class Page extends Component {
         </Select>
         <input type={kind} aria-label="age in an unread type" value={age.inputValue} />
         <input aria-label="loose" value={loose.inputValue} />
+        <input type="range" aria-label="name on a slider" value={name.inputValue} />
+        <input type="date" aria-label="name as a date" value={name.inputValue} />
+        <input type="number" aria-label="name as a number" value={name.inputValue} />
+        <input type={kind} aria-label="name in an unread type" value={name.inputValue} />
       </div>
     );
   }

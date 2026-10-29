@@ -143,18 +143,24 @@ type InputValueOf<U> = U extends Date
   : U extends number
     ? FormNumber | ""
     : U extends string
-      ? string
+      ? FormText
       : never;
 
 /**
  * A number a form's field shows. A number like any other to TypeScript, and marked, so that
- * `ramonda-check` can tell it from one an app holds itself: it belongs in `<input type="number">`, the
- * one control the field turns back into a number — see `form-value-in-the-wrong-control`.
+ * `ramonda-check` can tell it from one an app holds itself: it belongs in `<input type="number">` or
+ * `type="range"`, the controls that hand back a number — see `form-value-in-the-wrong-control`.
  */
 export type FormNumber = number & { readonly "@ramonda/form:number": true };
 
 /** A day a form's date field shows, `yyyy-mm-dd`: a string, marked as `FormNumber` is, for `type="date"`. */
 export type FormDay = string & { readonly "@ramonda/form:day": true };
+
+/**
+ * The text a form's text field shows: a string, marked as `FormNumber` is — for any control but the ones
+ * that hand back a number or a day, which would write one into a field of text.
+ */
+export type FormText = string & { readonly "@ramonda/form:text": true };
 
 /* ------------------------------------------------------------------ *
  * The three node kinds.

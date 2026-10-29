@@ -266,16 +266,16 @@ Every field is reached by property access and its API sits behind `$`:
 | `FormState` | A **hook**, for a component that watches the FORM rather than a field — `this.use(FormState)`, no props. `isValid` · `isDirty` · `isSubmitting` · `submitCount` · `formErrors` · `submit(event?)` · `reset()`. Wakes only when a fact it reads actually MOVED, so a save button sleeps through typing that does not change the answer. The form publishes itself on the context, so it works at any depth. [A button that watches the form](/forms/fields#a-button-that-watches-the-form) |
 
 Types: `FieldNode` · `FieldTarget` · `LeafNode` · `ObjectNode` · `ArrayNode` · `FormProps` · `ValidateOn` ·
-`InputValue` · `FormNumber` · `FormDay` · `Collision` ·
+`InputValue` · `FormNumber` · `FormDay` · `FormText` · `Collision` ·
 `InferIn` · `InferOut` · `StandardSchemaV1` · `StandardResult` · `StandardIssue`
 
 `StandardSchemaV1` is the [Standard Schema](https://standardschema.dev) interface, vendored so
 the package depends on no validator. Anything implementing it works unchanged — bguard, zod,
 valibot, arktype. [Validation](/forms/validation)
 
-`FormNumber` and `FormDay` are what `inputValue` shows for a number and for a date — a `number` and a
-`string` to TypeScript, marked, so `ramonda-check` tells them from any other and reports one in a control
-that hands back text. [Writing a control](/forms/fields#writing-a-control)
+`FormNumber`, `FormDay` and `FormText` are what `inputValue` shows for a number, a date and text — a
+`number` and two `string`s to TypeScript, marked, so `ramonda-check` tells them from any other and
+reports one in a control that hands back another kind. [Writing a control](/forms/fields#writing-a-control)
 
 ---
 

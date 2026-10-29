@@ -4013,6 +4013,7 @@ function formValueOf(type: ts.Type): FormValue {
   if (members.length === 0) return "other";
   if (members.every((member) => member.getProperty("@ramonda/form:number") !== undefined)) return "number";
   if (members.every((member) => member.getProperty("@ramonda/form:day") !== undefined)) return "day";
+  if (members.every((member) => member.getProperty("@ramonda/form:text") !== undefined)) return "text";
   return "other";
 }
 

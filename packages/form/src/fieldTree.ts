@@ -395,11 +395,13 @@ function sameIds(a: readonly string[] | undefined, b: readonly string[]): boolea
 /**
  * What the control produced.
  *
- * Read from the element's own `type` rather than guessed from the text: the control says what it
- * is, so the two cannot disagree. A number input hands back a number, and an empty one hands back
- * `""` rather than `NaN`, which is a value a schema can report on ("expected a number") instead of
- * one that quietly poisons arithmetic. Any other control hands back its text, so a number field is
- * written `type="number"`, as a box is written `type="checkbox"`.
+ * Read from the element's own `type` — never from the value the field holds, which says nothing while
+ * the field is empty: an empty field could be waiting for a number, a day or text alike. So the
+ * control decides. A number input and a slider hand back a number, and an emptied number input `""`
+ * rather than `NaN`, which is a value a schema can report on ("expected a number") instead of one that
+ * quietly poisons arithmetic. A date input hands back a day — at local midnight for a field that held
+ * none — and an emptied one `""`. Any other control hands back its text. Which control a field may sit
+ * in is `ramonda-check`'s to say, from the field's type: `form-value-in-the-wrong-control`.
  */
 function fromControl(target: EventTarget | null, current: unknown): unknown {
   const element = target as (HTMLInputElement & { type?: string }) | null;
@@ -407,12 +409,11 @@ function fromControl(target: EventTarget | null, current: unknown): unknown {
 
   if (element.type === "checkbox") return element.checked;
   if (element.type === "number") return element.value === "" ? "" : Number(element.value);
-  // A slider is a number control — for an empty field too, whose number is still to come — except for
-  // a field that holds text, which it hands text back to, as any other control does. It has no empty
-  // position, so it never hands back `""`.
-  if (element.type === "range" && !(typeof current === "string" && current !== "")) return Number(element.value);
-  if (element.type === "date" && current instanceof Date) {
-    return fromDateInput(element.value, current) ?? element.value;
+  // A slider has no empty position, so it never hands back `""`.
+  if (element.type === "range") return Number(element.value);
+  if (element.type === "date") {
+    // The time of day a held date carries is kept; a field that held none starts the day at midnight.
+    return fromDateInput(element.value, current instanceof Date ? current : new Date(Number.NaN)) ?? element.value;
   }
 
   return element.value;

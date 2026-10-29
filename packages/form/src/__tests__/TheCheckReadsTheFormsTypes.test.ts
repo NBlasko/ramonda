@@ -16,11 +16,12 @@ const lineOf = (label: string) =>
  * the built types and a schema of each kind, it tells a number and a day from text, and names the
  * control each one is missing.
  */
-test("the check reads a number and a day off the form's real types", () => {
+test("the check reads a number, a day and text off the form's real types", () => {
   const found = analyzeProject(join(fixture, "tsconfig.json")).findings["form-value-in-the-wrong-control"] ?? [];
 
   expect(found.map((issue) => [issue.line, issue.kind])).toEqual([
     [lineOf("age as text"), "number"],
     [lineOf("born as text"), "day"],
+    [lineOf("name on a slider"), "text"],
   ]);
 });

@@ -2,7 +2,16 @@ import { Component } from "@ramonda/core";
 import type { RamondaNode } from "@ramonda/core";
 import { describe, expect, test } from "vitest";
 import { Form } from "../Form";
-import type { FieldApi, FormDay, FormNumber, InferIn, InferOut, InputValue, StandardSchemaV1 } from "../types";
+import type {
+  FieldApi,
+  FormDay,
+  FormNumber,
+  FormText,
+  InferIn,
+  InferOut,
+  InputValue,
+  StandardSchemaV1,
+} from "../types";
 
 /**
  * The type-level contract. Almost all of this is checked by `pnpm check-types` rather
@@ -324,11 +333,12 @@ describe("the form's type surface", () => {
  * number or a day marked as the form's, for `ramonda-check` to tell from any other.
  */
 test("a field of a union shows each member as its control would", () => {
-  assertType<Equals<InputValue<string | number>, string | FormNumber>>();
+  assertType<Equals<InputValue<string | number>, FormText | FormNumber | "">>();
   assertType<Equals<InputValue<number | undefined>, FormNumber | "">>();
   assertType<Equals<InputValue<Date>, FormDay | "">>();
   assertType<Equals<InputValue<boolean>, never>>();
   assertType<Equals<InputValue<File>, never>>();
-  assertType<Equals<InputValue<"s" | "m">, string>>();
+  assertType<Equals<InputValue<"s" | "m">, FormText>>();
+  assertType<Equals<InputValue<string | undefined>, FormText>>();
   expect(true).toBe(true);
 });

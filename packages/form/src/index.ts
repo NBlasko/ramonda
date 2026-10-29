@@ -11,6 +11,7 @@ export type {
   FormDay,
   FormNumber,
   FormProps,
+  FormText,
   InferIn,
   InferOut,
   InputValue,

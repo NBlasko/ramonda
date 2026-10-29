@@ -19,6 +19,7 @@ export class Signup extends Component {
         <input type="date" aria-label="born" value={born.$.inputValue} oninput={born.$.oninput} />
         <input aria-label="born as text" value={born.$.inputValue} oninput={born.$.oninput} />
         <input aria-label="name" value={name.$.inputValue} oninput={name.$.oninput} />
+        <input type="range" aria-label="name on a slider" value={name.$.inputValue} oninput={name.$.oninput} />
       </form>
     );
   }

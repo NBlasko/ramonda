@@ -287,13 +287,27 @@ describe("the field tree", () => {
     }
   });
 
-  /** A field of text shown in a slider keeps text: the slider hands text back to a field that holds it. */
-  test("a range input on a field of text writes text", () => {
+  /**
+   * The control decides, not the value held: a slider hands back a number to any field. A field of text
+   * in one is `ramonda-check`'s to report, from the field's type.
+   */
+  test("a range input writes a number whatever the field held", () => {
     const { h, fields } = tree(SEED);
 
     fields.email.$.oninput(inputEvent("range", { value: "50" }));
 
-    expect((h.values as Shape).email).toBe("50");
+    expect((h.values as Shape).email).toBe(50);
+  });
+
+  /** A date field that held no date takes one from its control: the day, at local midnight. */
+  test("a date input on an empty field writes a day", () => {
+    for (const empty of [undefined, ""]) {
+      const { h, fields } = tree({ ...SEED, when: empty as unknown as Date });
+
+      fields.when.$.oninput(inputEvent("date", { value: "2026-10-29" }));
+
+      expect((h.values as Shape).when, String(empty)).toEqual(new Date(2026, 9, 29));
+    }
   });
 
   test("a number field that the reader clears takes a number again", () => {
