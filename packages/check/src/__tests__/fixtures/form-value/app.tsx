@@ -2,7 +2,7 @@ import { Component, Select, TextArea } from "@ramonda/core";
 import type { FormDay, FormNumber, InputValue } from "@ramonda/form";
 
 declare const age: { inputValue: FormNumber | "" };
-declare const born: { inputValue: FormDay };
+declare const born: { inputValue: FormDay | "" };
 declare const name: { inputValue: string };
 declare const either: { inputValue: string | FormNumber };
 declare const loose: { inputValue: any };

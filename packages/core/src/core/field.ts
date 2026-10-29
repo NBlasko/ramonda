@@ -648,7 +648,7 @@ function as(event: Event, type: string, own: Record<string, unknown>, asked: Ask
           isComposing: own.isComposing === true,
         })
       : event;
-  return new Proxy(view, {
+  const proxy = new Proxy(view, {
     get(target, key) {
       if (key === "type") return type;
       if (typeof key === "string" && Object.hasOwn(own, key)) return own[key];
@@ -679,6 +679,39 @@ function as(event: Event, type: string, own: Record<string, unknown>, asked: Ask
       return Reflect.set(target, key, value, target);
     },
   });
+  askedOf.set(proxy, asked);
+  return proxy;
+}
+
+/** What each view of an event recorded — so `callInTurn` knows when a handler stopped it. */
+const askedOf = new WeakMap<Event, Asked>();
+
+/**
+ * Calls each handler in turn, as listeners on one element are called: one that calls
+ * `stopImmediatePropagation()` is the last. Read off the view's record for a view — whose stop never
+ * reaches the event — and off the call itself for an event. Whether any was called.
+ */
+export function callInTurn(handlers: readonly unknown[], event: Event): boolean {
+  const asked = askedOf.get(event);
+  let stopped = false;
+  // An event says nothing of a stop it was asked for, so the ask is heard on its way through.
+  if (asked === undefined) {
+    const stop = event.stopImmediatePropagation;
+    event.stopImmediatePropagation = function (this: Event) {
+      stopped = true;
+      stop.call(this);
+    };
+  }
+  let called = false;
+  try {
+    for (const handler of handlers) {
+      if (stopped || asked?.immediate === true) break;
+      called = callHandler(handler, event) || called;
+    }
+  } finally {
+    if (asked === undefined) delete (event as { stopImmediatePropagation?: unknown }).stopImmediatePropagation;
+  }
+  return called;
 }
 
 /**
@@ -756,13 +789,14 @@ export function keepOwnHandler(input: HTMLInputElement, name: string, type: stri
   listen(kept, [type]);
 }
 
-/** Every own handler of `input` for `type`, in the order they were written; whether there was one. */
+/**
+ * Every own handler of `input` for `type`, in the order they were written — until one stops the event
+ * for the rest, as a listener would; whether there was one.
+ */
 function callOwn(input: Kept, type: string, event: Event): boolean {
   const handlers = input[OWN]?.[type];
   if (handlers === undefined) return false;
-  let called = false;
-  for (const handler of [...handlers.values()]) called = callHandler(handler, event) || called;
-  return called;
+  return callInTurn([...handlers.values()], event);
 }
 
 function isRadio(input: HTMLInputElement): boolean {

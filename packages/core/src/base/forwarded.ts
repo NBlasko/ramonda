@@ -1,6 +1,6 @@
 import type { Component } from "./Component";
 import { COMPONENT_RUNTIME } from "../core/runtime";
-import { answerEdit, callHandler, forgetField, type FieldControl } from "../core/field";
+import { answerEdit, callHandler, callInTurn, forgetField, type FieldControl } from "../core/field";
 import type { ComponentChild, RamondaNode } from "../types/vdom";
 
 /**
@@ -162,11 +162,9 @@ function controlFor(component: Component<any> & { settle(): void }, pick: boolea
       // shows, for every comparison and every caret put back — see `showsTheModel`.
       return pick ? String(model ?? "") : String(model ?? "").replace(/\r\n?/g, "\n");
     },
-    own: (type, own) => {
-      // Both spellings, in the order a listener would be: `oninput`, then `on:input`.
-      const written = callHandler(runtime.rawProps[`on${type}`], own);
-      return callHandler(runtime.rawProps[`on:${type}`], own) || written;
-    },
+    // Both spellings, in the order a listener would be — `oninput`, then `on:input` — and the first one
+    // stopping the event for the rest stops the second.
+    own: (type, own) => callInTurn([runtime.rawProps[`on${type}`], runtime.rawProps[`on:${type}`]], own),
     settle: () => component.settle(),
     gone: () => runtime.isDestroyed === true,
   };

@@ -15,7 +15,7 @@ reader never typed wrong.
 <input type="number" name={age.name} value={age.inputValue} oninput={age.oninput} />
 ```
 
-`inputValue` is typed `FormNumber | ""` for a number and `FormDay` for a date — a number and a string to
+`inputValue` is typed `FormNumber | ""` for a number and `FormDay | ""` for a date — a number and a string to
 TypeScript, marked so the check can tell them from any other; both are exported. `ramonda-check` reports one in any other
 control, in an `<input>` whose `type` it cannot read, and an `inputValue` whose type it cannot read.
 For it, `ramonda-check` now reads every project with the language's own lib and, in place of the DOM

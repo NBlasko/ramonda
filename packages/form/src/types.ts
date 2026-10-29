@@ -129,7 +129,7 @@ export interface FieldApi<T> {
 
 /**
  * What a control's `value` attribute takes for a field of `T`: a date as `yyyy-mm-dd`, a number as
- * itself — `""` for an emptied one — and text as text. A checkbox takes `checked={field.value === true}`.
+ * itself — `""` for either one with nothing in it yet, or emptied — and text as text. A checkbox takes `checked={field.value === true}`.
  */
 export type InputValue<T> = InputValueOf<NonNullable<T>>;
 
@@ -139,7 +139,7 @@ export type InputValue<T> = InputValueOf<NonNullable<T>>;
  * `checked={field.value === true}`, and the type refuses `value={…}` on it.
  */
 type InputValueOf<U> = U extends Date
-  ? FormDay
+  ? FormDay | ""
   : U extends number
     ? FormNumber | ""
     : U extends string

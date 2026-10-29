@@ -305,12 +305,77 @@ describe("an input's own handlers", () => {
     const app = await getDOM<Both>(<Both />);
     await app.settle();
     const field = app.container.querySelector("#i") as HTMLInputElement;
+    // What bubbles on is the event as the browser made it: nothing the handlers were called with stays on it.
+    const touched: boolean[] = [];
+    const bubbled = (event: Event) => touched.push(Object.hasOwn(event, "stopImmediatePropagation"));
+    app.container.addEventListener("input", bubbled);
     typeInto(field, "x");
     app.instance.second = false;
     await app.settle();
     typeInto(field, "xy");
+    app.container.removeEventListener("input", bubbled);
 
-    expect(app.instance.calls).toEqual(["a", "b", "a"]);
+    expect({ calls: app.instance.calls, touched }).toEqual({ calls: ["a", "b", "a"], touched: [false, false] });
+  });
+
+  /** A handler that stops the event for the rest is the last, as a listener stopping it would be. */
+  test("`oninput` stopping the event leaves `on:input` uncalled", async () => {
+    class Stops extends Component {
+      @state text = "";
+      calls: string[] = [];
+      guard(event: EventOn<HTMLInputElement>) {
+        this.calls.push("guard");
+        event.stopImmediatePropagation();
+      }
+      track() {
+        this.calls.push("track");
+      }
+      render() {
+        const untyped: Record<string, unknown> = { "on:input": this.track };
+        return <input id="i" aria-label="Stops" value={this.text} oninput={this.guard} {...untyped} />;
+      }
+    }
+    const app = await getDOM<Stops>(<Stops />);
+    await app.settle();
+    typeInto(app.container.querySelector("#i") as HTMLInputElement, "x");
+
+    expect(app.instance.calls).toEqual(["guard"]);
+  });
+
+  /** The same on a `TextArea`, whose handlers its component calls — for an event, and for the word it hands over. */
+  test("a TextArea's `oninput` stopping the event leaves `on:input` uncalled — the word handed over too", async () => {
+    class Stops extends Component {
+      @state text = "";
+      calls: string[] = [];
+      guard(event: EventOn<HTMLTextAreaElement, InputEvent>) {
+        if (event.isComposing) return;
+        this.calls.push(`guard ${event.currentTarget.value}`);
+        event.stopImmediatePropagation();
+      }
+      track(event: EventOn<HTMLTextAreaElement, InputEvent>) {
+        if (event.isComposing) return;
+        this.calls.push(`track ${event.currentTarget.value}`);
+      }
+      render() {
+        const untyped: Record<string, unknown> = { "on:input": this.track };
+        return <TextArea id="t" aria-label="Stops" value={this.text} oninput={this.guard} {...untyped} />;
+      }
+    }
+    const app = await getDOM<Stops>(<Stops />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+    field.value = "x";
+    field.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText" }));
+    // A word, handed to `oninput` at its end as an `input` — a view of the `compositionend`.
+    field.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+    field.value = "x日本";
+    field.dispatchEvent(
+      new InputEvent("input", { bubbles: true, isComposing: true, inputType: "insertCompositionText" }),
+    );
+    field.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "日本" }));
+    await app.settle();
+
+    expect(app.instance.calls).toEqual(["guard x", "guard x日本"]);
   });
 
   test("an uncontrolled input is heard only for the events it has a handler for", async () => {

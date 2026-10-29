@@ -326,7 +326,7 @@ describe("the form's type surface", () => {
 test("a field of a union shows each member as its control would", () => {
   assertType<Equals<InputValue<string | number>, string | FormNumber>>();
   assertType<Equals<InputValue<number | undefined>, FormNumber | "">>();
-  assertType<Equals<InputValue<Date>, FormDay>>();
+  assertType<Equals<InputValue<Date>, FormDay | "">>();
   assertType<Equals<InputValue<boolean>, never>>();
   assertType<Equals<InputValue<File>, never>>();
   assertType<Equals<InputValue<"s" | "m">, string>>();
