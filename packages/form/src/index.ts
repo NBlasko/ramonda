@@ -10,6 +10,7 @@ export type {
   FieldNode,
   FormDay,
   FormNumber,
+  FormOptional,
   FormProps,
   FormText,
   InferIn,

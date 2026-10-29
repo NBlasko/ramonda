@@ -6,6 +6,7 @@ import type {
   FieldApi,
   FormDay,
   FormNumber,
+  FormOptional,
   FormText,
   InferIn,
   InferOut,
@@ -339,6 +340,7 @@ test("a field of a union shows each member as its control would", () => {
   assertType<Equals<InputValue<boolean>, never>>();
   assertType<Equals<InputValue<File>, never>>();
   assertType<Equals<InputValue<"s" | "m">, FormText>>();
-  assertType<Equals<InputValue<string | undefined>, FormText>>();
+  assertType<Equals<InputValue<string | undefined>, FormText & FormOptional>>();
+  assertType<Equals<InputValue<string | null>, FormText & FormOptional>>();
   expect(true).toBe(true);
 });

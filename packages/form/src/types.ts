@@ -129,9 +129,16 @@ export interface FieldApi<T> {
 
 /**
  * What a control's `value` attribute takes for a field of `T`: a date as `yyyy-mm-dd`, a number as
- * itself — `""` for either one with nothing in it yet, or emptied — and text as text. A checkbox takes `checked={field.value === true}`.
+ * itself — `""` for either one with nothing in it yet, or emptied — and text as text. A checkbox takes
+ * `checked={field.value === true}`. Text a field may hold nothing in — `T` admits `undefined` or `null`
+ * — is `FormOptional` as well.
  */
-export type InputValue<T> = InputValueOf<NonNullable<T>>;
+export type InputValue<T> = [T] extends [NonNullable<T>]
+  ? InputValueOf<NonNullable<T>>
+  : MayHoldNothing<InputValueOf<NonNullable<T>>>;
+
+/** Text marked `FormOptional`; a number and a day as they are. */
+type MayHoldNothing<V> = V extends FormText ? V & FormOptional : V;
 
 /**
  * Each member of the value's union on its own: a `string | number` field shows a string or a number.
@@ -161,6 +168,13 @@ export type FormDay = string & { readonly "@ramonda/form:day": true };
  * that hand back a number or a day, which would write one into a field of text.
  */
 export type FormText = string & { readonly "@ramonda/form:text": true };
+
+/**
+ * The mark on the text of a field that may hold nothing — `born?: string`. A date input hands a day to
+ * a field holding nothing, so a date written as text that may start with nothing would take a day on
+ * its first pick: `ramonda-check` reports one in `type="date"`.
+ */
+export type FormOptional = { readonly "@ramonda/form:optional": true };
 
 /* ------------------------------------------------------------------ *
  * The three node kinds.

@@ -114,9 +114,10 @@ and [`RMF005`](/reference/diagnostics/rmf005) reports them in a running page onc
 `type="date"` serves two kinds of field, a `Date` and a date written as text (`"2026-10-29"`, a JSON
 Schema `format: "date"`), and the value the field holds tells them apart: text gets the control's text
 back, and a `Date` or nothing gets a day. So a date written as text starts at `""` — in `defaultValues`,
-or in the row you `append` — and a `Date` emptied holds nothing rather than `""`. Where it starts is the
-author's to write: neither `ramonda-check` nor `RMF005` can tell a date written as text that starts with
-nothing from a `Date`, and it takes a day on the first pick.
+or in the row you `append` — and a `Date` emptied holds nothing rather than `""`. A date written as text
+that may hold nothing (`born?: string`) would take a day on its first pick, so `ramonda-check` reports
+one in `type="date"`: type it `string`, with `""` for no date. One left out of `defaultValues` the check
+cannot see, and it takes a day too.
 
 ### A choice lives on `<Select>`
 

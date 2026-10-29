@@ -21,7 +21,9 @@ the schema reports a value the reader never typed wrong.
 `inputValue` is typed `FormNumber | ""` for a number, `FormDay | ""` for a date and `FormText` for text —
 a number and two strings to TypeScript, marked so the check can tell them from any other; all three are
 exported. `ramonda-check` reports each in a control that hands back another kind, in an `<input>` whose
-`type` it cannot read, and an `inputValue` whose type it cannot read.
+`type` it cannot read, and an `inputValue` whose type it cannot read — and a date written as text whose
+field may hold nothing in `type="date"`, which would take a day on its first pick: its text is marked
+`FormOptional`, and it is typed `string` with `""` for no date.
 For it, `ramonda-check` now reads every project with the language's own lib and, in place of the DOM
 lib, a stand-in for each name it declares, read from the DOM lib of the TypeScript the check runs —
 about 0.2 s more per run, whatever the app's size (measured on a Linux laptop, Ryzen 5 2500U). A

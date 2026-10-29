@@ -2,4 +2,5 @@
 export type FormNumber = number & { readonly "@ramonda/form:number": true };
 export type FormDay = string & { readonly "@ramonda/form:day": true };
 export type FormText = string & { readonly "@ramonda/form:text": true };
+export type FormOptional = { readonly "@ramonda/form:optional": true };
 export type InputValue<T> = T extends Date ? FormDay | "" : T extends number ? FormNumber | "" : FormText;
