@@ -6,6 +6,8 @@ declare const born: { inputValue: FormDay | "" };
 declare const name: { inputValue: FormText };
 declare const either: { inputValue: FormText | FormNumber | "" };
 declare const own: string;
+declare const textual: "text" | "email";
+declare const numberish: "text" | "number";
 declare const loose: { inputValue: any };
 declare const kind: string;
 declare const count: number;
@@ -29,6 +31,11 @@ class Page extends Component {
         <input type="email" aria-label="name as email" value={name.inputValue} />
         <TextArea aria-label="name in a text area" value={name.inputValue} />
         <input type="range" aria-label="text of the app's own" value={own} />
+        {/* ✓ a type read off its type, one HTML does not know, and inputs nobody edits */}
+        <input type={textual} aria-label="name in a typed type" value={name.inputValue} />
+        <input type="constructor" aria-label="name in an odd type" value={name.inputValue} />
+        <input type="submit" value={name.inputValue} />
+        <input type="button" value={age.inputValue} />
         {/* ✓ a field that may hold text, and a number the app holds itself */}
         <input aria-label="either" value={either.inputValue} />
         <input aria-label="count" value={count} />
@@ -46,6 +53,8 @@ class Page extends Component {
         <input type="date" aria-label="name as a date" value={name.inputValue} />
         <input type="number" aria-label="name as a number" value={name.inputValue} />
         <input type={kind} aria-label="name in an unread type" value={name.inputValue} />
+        <input type={numberish} aria-label="name in a maybe number" value={name.inputValue} />
+        <input type="checkbox" aria-label="name in a box" value={name.inputValue} />
       </div>
     );
   }

@@ -217,14 +217,24 @@ export class FieldHandle {
   }
 
   /**
-   * A field holding a number or a day, edited through a control that hands back text — `type` left
-   * off. Read on the value the field holds, so a field still empty says nothing; `ramonda-check` reads
-   * the markup before any of it runs, as `form-value-in-the-wrong-control`.
+   * A field edited through a control that hands back another kind: a number or a day through one that
+   * hands back text (`type` left off), or text through one that hands back a number. Read on the value
+   * the field holds, so a field still empty says nothing; `ramonda-check` reads the markup before any of
+   * it runs, as `form-value-in-the-wrong-control`.
    */
   private checkTheControl(target: EventTarget | null, current: unknown): void {
     const type = (target as { type?: string } | null)?.type;
+    if (type === undefined) return;
+    if (typeof current === "string" && current !== "" && (type === "number" || type === "range")) {
+      report(
+        "RMF005",
+        `\`${this.path}\` holds text, and its control (\`type="${type}"\`) hands back a number: it belongs in a control that hands back text.`,
+        { path: this.path, type, wants: "text" },
+      );
+      return;
+    }
     const wants = typeof current === "number" ? "number" : current instanceof Date ? "date" : undefined;
-    if (wants === undefined || type === wants || type === undefined) return;
+    if (wants === undefined || type === wants) return;
     if (wants === "number" && type === "range") return;
     const handsBack = type === "checkbox" ? "true or false" : "text";
     report(
@@ -453,8 +463,15 @@ function fromDateInput(text: string, current: Date): Date | undefined {
   if (parts === null) return undefined;
 
   const [year, month, day] = [Number(parts[1]), Number(parts[2]) - 1, Number(parts[3])];
-  // An invalid held value has no time worth carrying, so the picked day starts at local midnight.
-  if (Number.isNaN(current.getTime())) return new Date(year, month, day);
+  // An invalid held value has no time worth carrying, so the picked day starts at local midnight — set
+  // with `setFullYear`, as `new Date(2, …)` reads a year below 100 as 1902: the year a reader types one
+  // digit at a time passes through `0002`.
+  if (Number.isNaN(current.getTime())) {
+    const midnight = new Date(0);
+    midnight.setFullYear(year, month, day);
+    midnight.setHours(0, 0, 0, 0);
+    return midnight;
+  }
 
   const next = new Date(current.getTime());
   next.setFullYear(year, month, day);

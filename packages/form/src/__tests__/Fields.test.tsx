@@ -299,6 +299,16 @@ describe("the field tree", () => {
     expect((h.values as Shape).email).toBe(50);
   });
 
+  /** A year below 100 is that year, not 1900 more: the year a reader types passes through `0002`. */
+  test("a date input on an empty field keeps an early year", () => {
+    const { h, fields } = tree({ ...SEED, when: undefined as unknown as Date });
+
+    fields.when.$.oninput(inputEvent("date", { value: "0002-05-10" }));
+
+    const day = (h.values as Shape).when;
+    expect([day.getFullYear(), day.getMonth(), day.getDate(), day.getHours()]).toEqual([2, 4, 10, 0]);
+  });
+
   /** A date field that held no date takes one from its control: the day, at local midnight. */
   test("a date input on an empty field writes a day", () => {
     for (const empty of [undefined, ""]) {

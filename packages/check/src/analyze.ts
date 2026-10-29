@@ -668,6 +668,13 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
     coreName: (id: ts.Node) => coreExportName(id, resolveLocal, resolveStep, resolve),
     fromPackage: (id: ts.Node, pkg: string) => importedFromPackage(id, pkg, resolveLocal, resolveStep),
     formValue: (expression: ts.Expression) => formValueOf(checker.getTypeAtLocation(expression)),
+    literalsOf: (expression: ts.Expression) => {
+      const type = checker.getTypeAtLocation(expression);
+      const members = type.isUnion() ? type.types : [type];
+      return members.every((member) => member.isStringLiteral())
+        ? members.map((member) => (member as ts.StringLiteralType).value)
+        : undefined;
+    },
     formCast: (outer: ts.AsExpression | ts.TypeAssertion) => formCast(outer, checker),
     formReset: (node: ts.PropertyAccessExpression | ts.ElementAccessExpression | ts.BindingElement) =>
       formReset(node, checker),

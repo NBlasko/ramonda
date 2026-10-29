@@ -3,34 +3,34 @@ import { positionOf } from "../syntax";
 import { coreElementTag } from "./coreElements";
 import { openingOf, tagOf } from "./element";
 import { unwrap } from "./follow-value";
+import { UNEDITED_INPUT_TYPES } from "@ramonda/dom-facts";
 import { attributeLiterals, typeAttributeOf } from "./formTable";
 import type { ElementContext, ElementRule } from "./rule";
 
 /**
- * A number or a day a `@ramonda/form` field shows, in a control that does not turn it back into one.
+ * A value a `@ramonda/form` field shows, in a control that hands back another kind.
  *
- * A field writes back what its control produced by the control's own `type`: `type="number"` hands
- * back a number, `type="date"` a day, and every other control — a text `<input>`, a `TextArea`, a
- * `Select` — hands back its text. So a number field written without `type="number"` fills the form
- * with text on the first keystroke, and the schema reports a value the reader never typed wrong.
- * `bind` used to write the `type` itself; the form's fields are written attribute by attribute now,
- * and this is the attribute nothing else asks for.
+ * A field writes back what its control produced by the control's own `type`, whatever the field held:
+ * `type="number"` and `type="range"` hand back a number, `type="date"` a day, `type="checkbox"` true or
+ * false, and every other control — a text `<input>`, a `TextArea`, a `Select` — its text. So a number
+ * field written without `type="number"` fills the form with text on the first keystroke, a text field in
+ * a slider fills it with a number, and the schema reports a value the reader never typed wrong.
  *
- * Read off the TYPE of the control's `value`: the form marks the number and the day its fields show
- * (`FormNumber`, `FormDay`), so a number the app holds itself — `value={this.count}` — is not asked
- * about. The one rule here that reads types, and the reason the program carries a lib — see
- * `createProgram` in `analyze.ts`.
+ * Read off the TYPE of the control's `value`: the form marks the number, the day and the text its fields
+ * show (`FormNumber`, `FormDay`, `FormText`), so a value the app holds itself — `value={this.count}` — is
+ * not asked about. The control's `type` is read as written, or off its type where it is an expression:
+ * `type={this.props.type}` typed `"text" | "email"` is read as those two.
  *
- * A `type="hidden"` input keeps it too: it posts the value with the form and nobody edits it.
+ * An input nobody edits — `hidden`, `submit`, `button` and the rest of `UNEDITED_INPUT_TYPES` — keeps any
+ * value: it hands nothing back.
  *
- * **What it will not let pass in silence.** A `type` it cannot read — `type={kind}` — around a form's
- * number, and an `.inputValue` whose type it cannot read at all: either may be right, and neither can
- * be shown to be. A spreading element is not asked, as in every element rule: the spread may carry
- * the `type`.
+ * **What it will not let pass in silence.** A `type` it cannot read — `type={kind}` typed `string` — and an
+ * `.inputValue` whose type it cannot read at all: either may be right, and neither can be shown to be. A
+ * spreading element is not asked, as in every element rule: the spread may carry the `type`.
  */
 export interface FormValueInTheWrongControlIssue {
   /**
-   * `number`, `day` or `text` — the form's value in a control of another kind;
+   * `number`, `day` or `text` — the form's value in a control that hands back another kind;
    * `type-unread` — in an `<input>` whose `type` cannot be read;
    * `unreadable` — an `.inputValue` whose type cannot be read.
    */
@@ -42,18 +42,23 @@ export interface FormValueInTheWrongControlIssue {
   column: number;
 }
 
-/** What a control of this `type` hands back, as the form reads it: a number, a day, or text. */
-const HANDS_BACK: Readonly<Record<string, "number" | "day">> = { number: "number", range: "number", date: "day" };
+/** What a control of this `type` hands back, as the form reads it; any `type` not here hands back text. */
+const HANDS_BACK: ReadonlyMap<string, "number" | "day" | "boolean"> = new Map([
+  ["number", "number"],
+  ["range", "number"],
+  ["date", "day"],
+  ["checkbox", "boolean"],
+]);
 
 /**
- * Whether a control of this `type` keeps a value of this kind: one that hands that kind back, or a
- * `hidden` one, which nobody edits and so hands nothing back. Read without regard to case, as HTML
- * reads the attribute — `type="Number"` is a number control, and `element.type`, which the form reads,
- * says `"number"`. A `Select`, a `TextArea` and an `<input>` with no `type` hand back text.
+ * Whether a control of this `type` keeps a value of this kind: one that hands that kind back, or one
+ * nobody edits, which hands nothing back. Read without regard to case, as HTML reads the attribute —
+ * `type="Number"` is a number control, and `element.type`, which the form reads, says `"number"`. A
+ * `Select`, a `TextArea` and an `<input>` with no `type` hand back text.
  */
 const keeps = (type: string, kind: "number" | "day" | "text"): boolean => {
   const read = type.toLowerCase();
-  return read === "hidden" || (HANDS_BACK[read] ?? "text") === kind;
+  return UNEDITED_INPUT_TYPES.has(read) || (HANDS_BACK.get(read) ?? "text") === kind;
 };
 
 export const formValueInTheWrongControl = {
@@ -74,7 +79,7 @@ export const formValueInTheWrongControl = {
         : issue.kind === "day"
           ? `    a date field's value in ${issue.control}, which hands back text — write \`<input type="date">\`.`
           : issue.kind === "text"
-            ? `    a text field's value in ${issue.control}, which hands back a number or a day — write it in a control that hands back text.`
+            ? `    a text field's value in ${issue.control}, which hands back something other than text — write it in a control that hands back text.`
             : issue.kind === "type-unread"
               ? `    a form field's value in ${issue.control}, whose \`type\` cannot be read — write it as a literal.`
               : `    \`.inputValue\` in ${issue.control} has a type the check cannot read, so what it belongs in cannot be shown.`,
@@ -108,7 +113,15 @@ export const formValueInTheWrongControl = {
     if (kind === "other") return [];
 
     const typeAttribute = field === "input" ? typeAttributeOf(element) : undefined;
-    const types = typeAttribute === undefined ? [] : attributeLiterals(typeAttribute, resolve);
+    const typeWritten =
+      typeAttribute?.initializer !== undefined && ts.isJsxExpression(typeAttribute.initializer)
+        ? typeAttribute.initializer.expression
+        : undefined;
+    const types =
+      typeAttribute === undefined
+        ? []
+        : (attributeLiterals(typeAttribute, resolve) ??
+          (typeWritten === undefined ? undefined : resolve.literalsOf(typeWritten)));
     const control =
       field === "select"
         ? "<Select>"

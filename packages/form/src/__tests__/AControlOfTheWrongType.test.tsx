@@ -45,8 +45,23 @@ test.each([
     "12",
     'hands back true or false: it belongs in `<input type="number">`',
   ],
+  [
+    "a text field on a slider",
+    "abc",
+    "range",
+    "12",
+    'holds text, and its control (`type="range"`) hands back a number',
+  ],
+  [
+    "a text field in a number input",
+    "abc",
+    "number",
+    "12",
+    'holds text, and its control (`type="number"`) hands back a number',
+  ],
+  ["an empty text field on a slider", "", "range", "12", undefined],
 ] as const)("%s", async (_name, start, type, typed, reported) => {
-  const schema = anything<{ x?: number | Date }>();
+  const schema = anything<{ x?: number | Date | string }>();
   class Page extends Component {
     private f = this.use(Form<typeof schema>, () => ({ schema, defaultValues: { x: start }, onSubmit: () => {} }));
     render(): RamondaNode {

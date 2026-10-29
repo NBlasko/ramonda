@@ -692,15 +692,25 @@ const askedOf = new WeakMap<Event, Asked>();
  * reaches the event — and off the call itself for an event. Whether any was called.
  */
 export function callInTurn(handlers: readonly unknown[], event: Event): boolean {
+  let callable = 0;
+  for (const handler of handlers) if (isAHandler(handler)) callable += 1;
+  // With one handler there is no next one to stop: called as it is, and the event left alone.
+  if (callable < 2) return handlers.some((handler) => callHandler(handler, event));
   const asked = askedOf.get(event);
   let stopped = false;
-  // An event says nothing of a stop it was asked for, so the ask is heard on its way through.
+  // An event says nothing of a stop it was asked for, so the ask is heard on its way through — and
+  // whatever was there before, an own method or another turn's, is put back after.
+  const before = asked === undefined ? Object.getOwnPropertyDescriptor(event, "stopImmediatePropagation") : undefined;
   if (asked === undefined) {
     const stop = event.stopImmediatePropagation;
-    event.stopImmediatePropagation = function (this: Event) {
-      stopped = true;
-      stop.call(this);
-    };
+    Object.defineProperty(event, "stopImmediatePropagation", {
+      configurable: true,
+      writable: true,
+      value(this: Event) {
+        stopped = true;
+        stop.call(this);
+      },
+    });
   }
   let called = false;
   try {
@@ -709,9 +719,17 @@ export function callInTurn(handlers: readonly unknown[], event: Event): boolean 
       called = callHandler(handler, event) || called;
     }
   } finally {
-    if (asked === undefined) delete (event as { stopImmediatePropagation?: unknown }).stopImmediatePropagation;
+    if (asked === undefined) {
+      if (before === undefined) delete (event as { stopImmediatePropagation?: unknown }).stopImmediatePropagation;
+      else Object.defineProperty(event, "stopImmediatePropagation", before);
+    }
   }
   return called;
+}
+
+/** Whether `callHandler` would call this: a function, or an object with `handleEvent`. */
+function isAHandler(theirs: unknown): boolean {
+  return typeof theirs === "function" || typeof (theirs as EventListenerObject | null)?.handleEvent === "function";
 }
 
 /**

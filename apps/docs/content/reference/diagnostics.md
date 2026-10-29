@@ -1265,9 +1265,10 @@ keystroke — and the schema reports a value the reader never typed wrong.
 <input aria-label="Age" type="number" name={age.name} value={age.inputValue} oninput={age.oninput} />  // ✓
 ```
 
-Reported once the field holds a number or a day, naming the `type` to write. `ramonda-check` reports
-the same before it ships, as [`form-value-in-the-wrong-control`](/reference/check) — and that one
-reads the markup, so it finds a field that is still empty too.
+Reported once the field holds a number or a day, naming the `type` to write — and for a field that holds
+text, edited through `type="number"` or `type="range"`, which hand back a number. `ramonda-check` reports
+the same before it ships, as [`form-value-in-the-wrong-control`](/reference/check) — and that one reads
+the markup, so it finds a field that is still empty too.
 
 # Query — `RMQ`
 
