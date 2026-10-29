@@ -1,4 +1,4 @@
-import { Component, type RamondaNode } from "@ramonda/core";
+import { Component, Select, type RamondaNode } from "@ramonda/core";
 import { act, render } from "@ramonda/testing-library";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { Form } from "../Form";
@@ -61,6 +61,15 @@ test.each([
   ],
   ["an empty text field on a slider", "", "range", "12", undefined],
   [
+    "a box's field in a text input",
+    true,
+    undefined,
+    "x",
+    'holds true or false, and its control (`type="text"`) hands back text',
+  ],
+  ["a box's field on a checkbox", true, "checkbox", "x", undefined],
+  ["a box's field on a radio, which writes its own value", true, "radio", "false", undefined],
+  [
     "a text field on a checkbox",
     "abc",
     "checkbox",
@@ -82,7 +91,7 @@ test.each([
     'hands back a day: it belongs in `<input type="number">`',
   ],
 ] as const)("%s", async (_name, start, type, typed, reported) => {
-  const schema = anything<{ x?: number | Date | string }>();
+  const schema = anything<{ x?: number | Date | string | boolean }>();
   class Page extends Component {
     private f = this.use(Form<typeof schema>, () => ({ schema, defaultValues: { x: start }, onSubmit: () => {} }));
     render(): RamondaNode {
@@ -102,6 +111,34 @@ test.each([
     const found = records.filter((record) => record.code === "RMF005");
     expect(found.length).toBe(reported === undefined ? 0 : 1);
     if (reported !== undefined) expect(found[0]?.message).toContain(reported);
+  } finally {
+    unmount();
+  }
+});
+
+/** A boolean field set through a `Select` — "No" picked as "false" — is no box in the wrong control. */
+test("a box's field through a Select is not reported", async () => {
+  const schema = anything<{ x?: boolean | string }>();
+  class Page extends Component {
+    private f = this.use(Form<typeof schema>, () => ({ schema, defaultValues: { x: true }, onSubmit: () => {} }));
+    render(): RamondaNode {
+      const x = this.f.fields.x.$;
+      return (
+        <Select aria-label="X" name={x.name} value={String(this.f.values.x)} oninput={x.oninput}>
+          <option value="true">Yes</option>
+          <option value="false">No</option>
+        </Select>
+      );
+    }
+  }
+  const { container, unmount } = render((<Page />) as never);
+  try {
+    const select = container.querySelector("select") as HTMLSelectElement;
+    await act(async () => {
+      select.value = "false";
+      select.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(records.filter((record) => record.code === "RMF005")).toEqual([]);
   } finally {
     unmount();
   }

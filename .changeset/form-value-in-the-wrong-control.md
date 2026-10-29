@@ -10,7 +10,7 @@ A field turns what its control produced back into its value by the control's own
 number, as an empty field cannot say what it is waiting for — and every other control its text.
 `type="date"` serves a `Date` and a date written as text, told apart by the value the field holds: text
 (a date written as text starts at `""`) gets text back, and a `Date` or nothing gets a day — so a `Date`
-field that held none now takes a day rather than text, and one emptied holds nothing rather than `""` — `null` where the form was handed `null` for it. A number field written
+field that held none now takes a day rather than text, and one emptied holds nothing rather than `""` — `null` once it has held `null`, by its row in a list. A number field written
 without `type="number"` fills the form with text, a text field in a slider fills it with a number, and
 the schema reports a value the reader never typed wrong.
 

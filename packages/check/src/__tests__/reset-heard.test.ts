@@ -34,6 +34,7 @@ describe("a reset the model does not hear", () => {
       [lineOf('aria-label="spread button field"'), "controlled-field"],
       [lineOf('aria-label="unread box"'), "controlled-field"],
       [lineOf('aria-label="nothing then checked"'), "controlled-field"],
+      [lineOf('aria-label="field beside an input that may reset"'), "controlled-field"],
       [lineOf('aria-label="spread field"'), "unseen-content"],
       [lineOf('aria-label="braced box"'), "controlled-field"],
       [lineOf("{this.props.children ?? <p>None</p>}"), "unseen-content"],

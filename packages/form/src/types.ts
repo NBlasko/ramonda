@@ -136,7 +136,8 @@ export type InputValue<T> = InputValueOf<NonNullable<T>>;
 /**
  * Each member of the value's union on its own: a `string | number` field shows a string or a number.
  * A value a control's `value` cannot show — a boolean, a file, a bigint — is `never`: a box takes
- * `checked={field.value === true}`, and the type refuses `value={…}` on it.
+ * `checked={field.value === true}`. An element's `value` takes anything, so `never` refuses nothing
+ * there; `ramonda-check` reports the `inputValue` of such a field, as `form-value-in-the-wrong-control`.
  */
 type InputValueOf<U> = U extends Date
   ? FormDay | ""

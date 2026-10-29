@@ -6,6 +6,7 @@ declare const born: { inputValue: FormDay | "" };
 declare const name: { inputValue: FormText };
 declare const either: { inputValue: FormText | FormNumber | "" };
 declare const own: string;
+declare const agree: { inputValue: never };
 declare const textual: "text" | "email";
 declare const numberish: "text" | "number";
 
@@ -56,6 +57,7 @@ class Page extends Component {
         <input type={kind} aria-label="name in an unread type" value={name.inputValue} />
         <input type={numberish} aria-label="name in a maybe number" value={name.inputValue} />
         <input type="checkbox" aria-label="name in a box" value={name.inputValue} />
+        <input aria-label="agree as text" value={agree.inputValue} />
         <input type="file" aria-label="name in a file input" value={name.inputValue} />
       </div>
     );

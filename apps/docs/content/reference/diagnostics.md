@@ -1266,7 +1266,9 @@ keystroke — and the schema reports a value the reader never typed wrong.
 ```
 
 Reported once the field holds a number or a day, naming the `type` to write — and for a field that holds
-text, edited through `type="number"` or `type="range"`, which hand back a number. `ramonda-check` reports
+text, edited through `type="number"`, `type="range"` or a checkbox, which hand back a number or true or
+false — and for a field that holds true or false, edited through a control that hands back text, which
+belongs in `<input type="checkbox" checked={…}>`. `ramonda-check` reports
 the same before it ships, as [`form-value-in-the-wrong-control`](/reference/check) — and that one reads
 the markup, so it finds a field that is still empty too.
 

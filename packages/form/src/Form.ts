@@ -552,11 +552,6 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
     return !equal(readAt(this.current, path), readAt(this.baseline, path));
   }
 
-  /** `null` where the baseline holds `null`, `undefined` otherwise — see `FieldHost.nothingAt`. */
-  nothingAt(path: Path): null | undefined {
-    return readAt(this.baseline, path) === null ? null : undefined;
-  }
-
   touch(path: Path): void {
     const key = pathKey(path);
     if (this.touchedKeys.has(key)) return;
@@ -1011,7 +1006,6 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
       errorsAt: (path) => this.errorsAtQuietly(path),
       touchedAt: (path) => this.touchedAtQuietly(path),
       dirtyAt: (path) => this.dirtyAtQuietly(path),
-      nothingAt: (path) => this.nothingAt(path),
       write: (path, next) => this.write(path, next),
       touch: (path) => this.touch(path),
       resetAt: (path) => this.resetAt(path),

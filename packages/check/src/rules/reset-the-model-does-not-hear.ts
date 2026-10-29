@@ -38,9 +38,10 @@ export interface ResetTheModelDoesNotHearIssue {
 
 /**
  * Whether an element resets its form: `"reset"` when its `type` says so (`type="reset"` or
- * `type={"reset"}`); `"maybe"` for a `<button>` whose `type` cannot be read — written as an expression,
- * or left to a spread — which is asked about its form like a reset, and reported only when that form
- * holds something a reset would undo. An `<input>` whose `type` cannot be read is a text field
+ * `type={"reset"}`); `"maybe"` when it may — a `type` read as `"reset"` or another, on a `<button>` or an
+ * `<input>` alike (`editing ? "reset" : "submit"`), or a `<button>`'s `type` that cannot be read or is
+ * left to a spread — which is asked about its form like a reset, and reported only when that form holds
+ * something a reset would undo. An `<input>` whose `type` cannot be read at all is a text field
  * switching to a password and back, not a button.
  */
 function resetsItsForm(element: JsxElementLike, resolve: Resolver): "reset" | "maybe" | undefined {
@@ -53,7 +54,7 @@ function resetsItsForm(element: JsxElementLike, resolve: Resolver): "reset" | "m
   if (literals !== undefined) {
     const resets = literals.filter((literal) => literal.toLowerCase() === "reset").length;
     if (resets === 0) return undefined;
-    return resets === literals.length ? "reset" : tag === "button" ? "maybe" : undefined;
+    return resets === literals.length ? "reset" : "maybe";
   }
   if (tag !== "button") return undefined;
   // A button's `type` that cannot be read, or that a spread may carry.

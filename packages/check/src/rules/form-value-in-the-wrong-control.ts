@@ -32,10 +32,12 @@ import type { ElementContext, ElementRule } from "./rule";
 export interface FormValueInTheWrongControlIssue {
   /**
    * `number`, `day` or `text` — the form's value in a control that hands back another kind;
+   * `no-value` — the `.inputValue` of a field whose value no control's `value` shows: a boolean, which a
+   * box shows as `checked`, or a file;
    * `type-unread` — in an `<input>` whose `type` cannot be read;
    * `unreadable` — an `.inputValue` whose type cannot be read.
    */
-  kind: "number" | "day" | "text" | "type-unread" | "unreadable";
+  kind: "number" | "day" | "text" | "no-value" | "type-unread" | "unreadable";
   /** The control as written: `<input type="text">`, `<input>`, `<TextArea>`, `<Select>`. */
   control: string;
   file: string;
@@ -82,7 +84,8 @@ export const formValueInTheWrongControl = {
       'a number a `@ramonda/form` field shows sits in a control that is not `<input type="number">` or ' +
       '`type="range"`, a day in one that is not `type="date"`, or text in a number control or a checkbox ' +
       '(an input nobody edits, such as `type="hidden"`, keeps any), or any of them in an `<input>` whose ' +
-      "`type` cannot be read — or a field's `.inputValue` has a type the check cannot read",
+      "`type` cannot be read — or a field's `.inputValue` has a type the check cannot read, or is one no " +
+      "control's `value` shows (a boolean, which a box shows as `checked`)",
     heading: (found) => `${found.length} form value(s) in a control that will not hand them back:`,
     lines: (issue) => [
       `  ${issue.file}:${issue.line}:${issue.column}`,
@@ -90,11 +93,13 @@ export const formValueInTheWrongControl = {
         ? `    a number field's value in ${issue.control}, which does not hand back a number — write \`<input type="number">\`.`
         : issue.kind === "day"
           ? `    a date field's value in ${issue.control}, which does not hand back a day — write \`<input type="date">\`.`
-          : issue.kind === "text"
-            ? `    a text field's value in ${issue.control}, which hands back something other than text — write it in a control that hands back text.`
-            : issue.kind === "type-unread"
-              ? `    a form field's value in ${issue.control}, whose \`type\` cannot be read — write it as a literal.`
-              : `    \`.inputValue\` in ${issue.control} has a type the check cannot read, so what it belongs in cannot be shown.`,
+          : issue.kind === "no-value"
+            ? `    \`.inputValue\` of a field no control's \`value\` shows, in ${issue.control} — a box is \`<input type="checkbox" checked={field.value === true}>\`.`
+            : issue.kind === "text"
+              ? `    a text field's value in ${issue.control}, which hands back something other than text — write it in a control that hands back text.`
+              : issue.kind === "type-unread"
+                ? `    a form field's value in ${issue.control}, whose \`type\` cannot be read — write it as a literal.`
+                : `    \`.inputValue\` in ${issue.control} has a type the check cannot read, so what it belongs in cannot be shown.`,
     ],
     advice:
       'A form field writes back what its control produced by the control\'s own `type`: `type="number"`\n' +
@@ -139,11 +144,10 @@ export const formValueInTheWrongControl = {
               : `<input type="${types.join(" | ")}">`;
     const at = positionOf(opening);
 
-    if (kind === "unread") {
-      const value = unwrap(expression);
-      const asksTheForm = ts.isPropertyAccessExpression(value) && value.name.text === "inputValue";
-      return asksTheForm ? [{ kind: "unreadable" as const, control, ...at }] : [];
-    }
+    const value = unwrap(expression);
+    const asksTheForm = ts.isPropertyAccessExpression(value) && value.name.text === "inputValue";
+    if (kind === "unread") return asksTheForm ? [{ kind: "unreadable" as const, control, ...at }] : [];
+    if (kind === "none") return asksTheForm ? [{ kind: "no-value" as const, control, ...at }] : [];
     // What the control hands back, by the `type` it may have — none, on a `Select`, a `TextArea` or an
     // `<input>` without one, is text.
     const handsBack = field === "input" && typeAttribute !== undefined ? types : ["text"];

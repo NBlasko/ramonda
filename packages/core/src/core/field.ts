@@ -814,7 +814,13 @@ export function keepOwnHandler(input: HTMLInputElement, name: string, type: stri
 function callOwn(input: Kept, type: string, event: Event): boolean {
   const handlers = input[OWN]?.[type];
   if (handlers === undefined) return false;
-  return callInTurn([...handlers.values()], event, (handler) => [...handlers.values()].includes(handler));
+  const names = [...handlers.keys()];
+  return callInTurn(
+    names.map((name) => handlers.get(name)),
+    event,
+    // Asked by its name, which the handler is kept under: no copy of the rest for each.
+    (handler) => names.some((name) => handlers.get(name) === handler),
+  );
 }
 
 function isRadio(input: HTMLInputElement): boolean {

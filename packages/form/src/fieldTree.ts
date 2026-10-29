@@ -12,11 +12,6 @@ export interface FieldHost {
   errorsAt(path: Path): readonly string[];
   touchedAt(path: Path): boolean;
   dirtyAt(path: Path): boolean;
-  /**
-   * What "nothing" is at this path: `null` where the field's baseline holds `null` — a `Date | null`
-   * the form was handed `null` for — and `undefined` otherwise. What an emptied date input writes.
-   */
-  nothingAt(path: Path): null | undefined;
   touch(path: Path): void;
   resetAt(path: Path): void;
   rowIds(path: Path): readonly string[];
@@ -103,7 +98,30 @@ export class FieldTree {
   private readonly nodes = new Map<string, object>();
   private readonly handles = new Map<string, FieldHandle>();
 
+  /** The fields that have held `null`, each by its row's id rather than its index — see `nothingAt`. */
+  private readonly heldNull = new Set<string>();
+
   constructor(private readonly host: FieldHost) {}
+
+  /**
+   * What "nothing" is for this field: `null` once it has held `null` — a `Date | null` handed `null`,
+   * in `defaultValues` or in the row appended — and `undefined` otherwise. What an emptied date input
+   * writes. Remembered by each row's id, so a row keeps its own as rows are removed and moved.
+   */
+  nothingAt(path: Path, holds: unknown): null | undefined {
+    const key = this.rowKey(path);
+    if (holds === null) this.heldNull.add(key);
+    return this.heldNull.has(key) ? null : undefined;
+  }
+
+  /** The path with each row named by its id: what stays the same for a row whatever its index. */
+  private rowKey(path: Path): string {
+    return path
+      .map((part, at) =>
+        typeof part === "number" ? `#${this.host.rowIds(path.slice(0, at))[part] ?? part}` : String(part),
+      )
+      .join(".");
+  }
 
   /** The root node. Typed by the caller, which is the only place the value type is known. */
   get root(): unknown {
@@ -216,9 +234,10 @@ export class FieldHandle {
     this.oninput = (event: Event) => {
       const current = this.host.read(this.at_);
       if (__DEV__) this.checkTheControl(event.target, current);
+      const nothing = this.tree.nothingAt(this.at_, current);
       this.host.write(
         this.at_,
-        fromControl(event.target, current, () => this.host.nothingAt(this.at_)),
+        fromControl(event.target, current, () => nothing),
       );
     };
     this.onblur = () => this.host.touch(this.at_);
@@ -233,6 +252,15 @@ export class FieldHandle {
   private checkTheControl(target: EventTarget | null, current: unknown): void {
     const type = (target as { type?: string } | null)?.type;
     if (type === undefined) return;
+    // True or false, through a control that hands back text: a box is written `checked`, not `value`.
+    if (typeof current === "boolean" && type !== "checkbox" && type !== "radio" && !type.startsWith("select")) {
+      report(
+        "RMF005",
+        `\`${this.path}\` holds true or false, and its control (\`type="${type}"\`) hands back text: it belongs in \`<input type="checkbox" checked={…}>\`.`,
+        { path: this.path, type, wants: "checkbox" },
+      );
+      return;
+    }
     // Text, through a control that hands back something else: a number, or true or false.
     const notText =
       type === "number" || type === "range" ? "a number" : type === "checkbox" ? "true or false" : undefined;
@@ -466,8 +494,10 @@ function fromControl(target: EventTarget | null, current: unknown, nothing: () =
 function toDateInput(value: Date): string {
   if (Number.isNaN(value.getTime())) return "";
 
-  const pad = (part: number) => String(part).padStart(2, "0");
-  return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`;
+  const pad = (part: number, width = 2) => String(part).padStart(width, "0");
+  // The year in four digits, as a date input reads it: `2-05-10` is not a day to it, and it would empty
+  // the field while the reader types the year through `0002`.
+  return `${pad(value.getFullYear(), 4)}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`;
 }
 
 /**

@@ -4016,6 +4016,8 @@ function overlayHost(options: ts.CompilerOptions): ts.CompilerHost {
  * the emptied field's `""` is one — a field that may hold text shows text too.
  */
 function formValueOf(type: ts.Type): FormValue {
+  // `never`: what `InputValue` makes of a value no control's `value` shows — a boolean, a file.
+  if ((type.flags & ts.TypeFlags.Never) !== 0) return "none";
   const members = (type.isUnion() ? type.types : [type]).filter(
     (member) => !(member.isStringLiteral() && member.value === ""),
   );

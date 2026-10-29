@@ -35,7 +35,6 @@ function host(initial: unknown) {
     errorsAt: (path: Path) => errors.get(pathKey(path)) ?? [],
     touchedAt: (path: Path) => touched.has(pathKey(path)),
     dirtyAt: () => false,
-    nothingAt: (path: Path) => (readAt(initial, path) === null ? null : undefined),
     touch: (path: Path) => {
       touched.add(pathKey(path));
     },
@@ -317,6 +316,8 @@ describe("the field tree", () => {
 
     const day = (h.values as Shape).when;
     expect([day.getFullYear(), day.getMonth(), day.getDate(), day.getHours()]).toEqual([2, 4, 10, 0]);
+    // Shown in four digits, as a date input reads it — `2-05-10` would empty the field mid-year.
+    expect(fields.when.$.inputValue).toBe("0002-05-10");
   });
 
   /** A date field that held no date takes one from its control: the day, at local midnight. */

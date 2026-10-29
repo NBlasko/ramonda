@@ -168,6 +168,11 @@ class Resets extends Component<{ children?: unknown }> {
           <input aria-label="toggled submit field" value={value} oninput={this.type} />
           <button type={busy ? "button" : "submit"}>toggled submit</button>
         </form>
+        {/* ✗ an input that may be a reset, over a controlled field — as a button would be */}
+        <form>
+          <input aria-label="field beside an input that may reset" value={value} oninput={this.type} />
+          <input type={busy ? "reset" : "submit"} value="Go" />
+        </form>
         {/* ✗ a spread on a field may carry its value */}
         <form>
           <input aria-label="spread field" {...this.props} />
