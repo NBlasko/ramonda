@@ -24,6 +24,7 @@ declare const typed: TypedForm<string>;
 declare const callable: { (): void; reset(): void };
 declare const mixed: { reset(): void; count: number } | Resettable;
 // `void` rather than `undefined`, which the fixtures' non-strict base drops from a union.
+declare const actions: Record<string, () => void>;
 declare const counterOrNothing: { reset(): void; count: number } | void;
 declare const node: HTMLElement;
 
@@ -37,12 +38,19 @@ function clearBoth(target: { reset(): void; submit(): void }) {
   target.reset(); // ✗ form-retyped
 }
 
+/** A name that happens to be `reset`, holding another member's name: `action` is what is taken. */
+function byAName() {
+  const reset = "action";
+  const { [reset]: taken } = forma; // ✓ takes `action`
+  return taken;
+}
+
 /** A form under a type with a `reset` of its own, given back. */
 function asResettable(): Resettable {
   return forma;
 }
 
-export { clearBoth };
+export { byAName, clearBoth };
 
 export class Follows extends Component {
   form = this.use(Form, {});
@@ -102,6 +110,12 @@ export class Follows extends Component {
     forma["action"]; // ✓ another member, by a string
     forma[ACTION]; // ✓ another member, by a const
     forma as HTMLElement; // ✓ a form cast to the element it is
+    forma as Resettable; // ✓ a form cast to a type it fits — its reset is followed there
+    forma as TypedForm<string>; // ✓ a form cast to a form
+    forma as { id: string }; // ✓ a form cast to a type naming one of its members
+    actions.reset(); // ✓ a map of functions, which a form's members are not
+    const { [RESET]: clearByAConst } = forma; // ✗ browser-reset — destructured by a const
+    clearByAConst();
     loose[key]; // ✓ an unread value by an unread key: anything at all, asked about nothing
     const element: HTMLElement = forma; // ✓ a form as the element it is
     forma as unknown; // ✓ a form as nothing in particular

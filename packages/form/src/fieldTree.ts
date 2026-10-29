@@ -407,9 +407,10 @@ function fromControl(target: EventTarget | null, current: unknown): unknown {
 
   if (element.type === "checkbox") return element.checked;
   if (element.type === "number") return element.value === "" ? "" : Number(element.value);
-  // A slider is a number control for a field that holds a number; for a field of text it hands back
-  // text, as any other control does. It has no empty position, so it never hands back `""`.
-  if (element.type === "range" && typeof current === "number") return Number(element.value);
+  // A slider is a number control — for an empty field too, whose number is still to come — except for
+  // a field that holds text, which it hands text back to, as any other control does. It has no empty
+  // position, so it never hands back `""`.
+  if (element.type === "range" && !(typeof current === "string" && current !== "")) return Number(element.value);
   if (element.type === "date" && current instanceof Date) {
     return fromDateInput(element.value, current) ?? element.value;
   }

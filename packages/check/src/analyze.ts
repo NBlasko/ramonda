@@ -4005,15 +4005,26 @@ function overlayHost(options: ts.CompilerOptions): ts.CompilerHost {
  * the emptied field's `""` is one — a field that may hold text shows text too.
  */
 function formValueOf(type: ts.Type): FormValue {
-  if ((type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) return "unread";
   const members = (type.isUnion() ? type.types : [type]).filter(
     (member) => !(member.isStringLiteral() && member.value === ""),
   );
+  // A type not read yet is read later, by each use: `InputValue<T>` in a generic component, `T` itself.
+  if (members.some((member) => (member.flags & UNREAD) !== 0)) return "unread";
   if (members.length === 0) return "other";
   if (members.every((member) => member.getProperty("@ramonda/form:number") !== undefined)) return "number";
   if (members.every((member) => member.getProperty("@ramonda/form:day") !== undefined)) return "day";
   return "other";
 }
+
+/** A type that cannot be read here: anything, or one a generic's use decides. */
+const UNREAD =
+  ts.TypeFlags.Any |
+  ts.TypeFlags.Unknown |
+  ts.TypeFlags.TypeParameter |
+  ts.TypeFlags.Conditional |
+  ts.TypeFlags.IndexedAccess |
+  ts.TypeFlags.Substitution |
+  ts.TypeFlags.Index;
 
 /**
  * Whether a value of this type is the browser's `HTMLFormElement`: `form` when it is or extends it,
@@ -4061,8 +4072,11 @@ function formReset(
           : node.propertyName;
   // A member's own name is its text, and so is an index written as one; any other index is a value,
   // read by its type. The key before the receiver: most keys are not `reset`, and end it there.
+  // A name is read by its text where it IS a name — `form.reset`, `{ reset }`, `{ reset: clear }`; a
+  // computed one — `form[RESET]`, `{ [RESET]: clear }` — is a value like any index.
+  const named = ts.isPropertyAccessExpression(node) || (ts.isBindingElement(node) && key !== computedKey(node));
   const written =
-    ((ts.isIdentifier(key) || ts.isPrivateIdentifier(key)) && !ts.isElementAccessExpression(node)) ||
+    (named && (ts.isIdentifier(key) || ts.isPrivateIdentifier(key))) ||
     ts.isStringLiteralLike(key) ||
     ts.isNumericLiteral(key)
       ? key.text
@@ -4088,6 +4102,10 @@ function aFormFits(type: ts.Type, checker: ts.TypeChecker): boolean {
     if ((member.flags & (ts.TypeFlags.Undefined | ts.TypeFlags.Null | ts.TypeFlags.Void)) !== 0) return false;
     const apparent = checker.getApparentType(member);
     if (apparent.getCallSignatures().length > 0 || apparent.getConstructSignatures().length > 0) return false;
+    // `Record<string, () => void>` asks every member to be a function; a form's are not. Only an index
+    // that takes anything — `Record<string, unknown>` — can hold one.
+    const takesAnything = (info: ts.IndexInfo) => (info.type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0;
+    if (!checker.getIndexInfosOfType(apparent).every(takesAnything)) return false;
     return checker
       .getPropertiesOfType(apparent)
       .every((property) => (property.flags & ts.SymbolFlags.Optional) !== 0 || names.has(property.name));
@@ -4112,8 +4130,17 @@ function formCast(outer: ts.AsExpression | ts.TypeAssertion, checker: ts.TypeChe
   ) {
     inner = inner.expression;
   }
-  const type = checker.getTypeAtLocation(inner);
-  return formTypeOf(type, checker) === "form" && !checker.isTypeAssignableTo(type, target);
+  if (formTypeOf(checker.getTypeAtLocation(inner), checker) !== "form") return false;
+  // A form, or a type a form fits — `form as Resettable`, `form as HTMLElement` — is where its reset is
+  // still followed; only a type a form cannot be is a cast that hides it.
+  return formTypeOf(target, checker) !== "form" && !aFormFits(target, checker);
+}
+
+/** The expression of a destructuring's computed name — `{ [RESET]: clear }` — if it has one. */
+function computedKey(node: ts.BindingElement): ts.Expression | undefined {
+  return node.propertyName !== undefined && ts.isComputedPropertyName(node.propertyName)
+    ? node.propertyName.expression
+    : undefined;
 }
 
 /**

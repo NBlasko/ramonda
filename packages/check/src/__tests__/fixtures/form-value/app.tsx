@@ -1,5 +1,5 @@
 import { Component, Select, TextArea } from "@ramonda/core";
-import type { FormDay, FormNumber } from "@ramonda/form";
+import type { FormDay, FormNumber, InputValue } from "@ramonda/form";
 
 declare const age: { inputValue: FormNumber | "" };
 declare const born: { inputValue: FormDay };
@@ -43,4 +43,11 @@ class Page extends Component {
   }
 }
 
-export { Page };
+/** One input for any field: what it shows is decided by each use, and cannot be read here. */
+class AnyField<T> extends Component<{ field: { inputValue: InputValue<T> } }> {
+  render() {
+    return <input aria-label="any field" value={this.props.field.inputValue} />;
+  }
+}
+
+export { AnyField, Page };

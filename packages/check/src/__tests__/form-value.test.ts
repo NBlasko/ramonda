@@ -26,6 +26,7 @@ describe("a form value in the wrong control", () => {
       [lineOf("age in a select") - 0, "number", "<Select>"],
       [lineOf("age in an unread type"), "type-unread", "<input type={kind}>"],
       [lineOf("loose"), "unreadable", "<input>"],
+      [lineOf("any field"), "unreadable", "<input>"],
     ]);
   });
 });

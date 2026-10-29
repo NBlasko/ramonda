@@ -276,7 +276,18 @@ describe("the field tree", () => {
     expect((h.values as Shape).age).toBe(7);
   });
 
-  /** A field of text shown in a slider keeps text: the slider is a number control only for a number. */
+  /** An empty number field takes a number from its slider: its number is still to come. */
+  test("a range input on an empty field writes a number", () => {
+    for (const empty of [undefined, ""]) {
+      const { h, fields } = tree({ ...SEED, age: empty as unknown as number });
+
+      fields.age.$.oninput(inputEvent("range", { value: "60" }));
+
+      expect((h.values as Shape).age, String(empty)).toBe(60);
+    }
+  });
+
+  /** A field of text shown in a slider keeps text: the slider hands text back to a field that holds it. */
   test("a range input on a field of text writes text", () => {
     const { h, fields } = tree(SEED);
 
