@@ -3,7 +3,7 @@ import { memberName, positionOf } from "../syntax";
 import { coreElementTag } from "./coreElements";
 import { openingOf, says } from "./element";
 import { unwrap } from "./follow-value";
-import { attributeLiterals, classChain, fieldKind, literalsOf, typeAttributeOf } from "./formTable";
+import { attributeLiterals, classChain, type FieldKind, fieldKind, literalsOf, typeAttributeOf } from "./formTable";
 import { coreDecorators } from "./lifecycle-env";
 import type { Resolver, Rule, RuleContext } from "./rule";
 
@@ -163,16 +163,17 @@ export const fieldSetByAnEvent = {
     const inherited = functionsOf(chain.slice(1));
     const { members } = own;
 
-    const boxes = boxesOf(cls, context);
+    // What the class renders — with its own render or one it inherits — read across its chain.
+    const boxes = boxesOf(chain, context);
     // Each ref callback's elements, found once: finding them walks the class.
     const refElements = new Map<ts.ParameterDeclaration, (ts.JsxElement | ts.JsxSelfClosingElement)[]>();
-    const refs = refsOf(cls, boxes, context);
+    const refs = refsOf(chain, boxes, context);
 
     // The ref a receiver names: `this.box.current`, with `?.`, `!` or a `const` one name away.
     const heldBy = (receiver: ts.Expression, hops = 0): { name: string; held: Held } | undefined => {
       const at = unwrap(receiver);
       if (ts.isIdentifier(at) && hops < 4) {
-        const elements = refCallbackElements(at, cls, context, refElements);
+        const elements = refCallbackElements(at, chain, context, refElements);
         if (elements.length > 0) {
           return { name: at.text, held: elements.map((element) => heldAs(element, boxes, context)).reduce(either) };
         }
@@ -414,25 +415,7 @@ const LATER_CONSTRUCTORS = new Set([
  * on: parentheses, `as`, `!`, an arm of `?:`, a side of `??`, `||` and `&&`.
  */
 function whenItRuns(value: ts.Node): "now" | "later" | "kept" {
-  let at = value;
-  for (;;) {
-    const parent = at.parent;
-    if (
-      ts.isParenthesizedExpression(parent) ||
-      ts.isAsExpression(parent) ||
-      ts.isNonNullExpression(parent) ||
-      ts.isSatisfiesExpression(parent) ||
-      (ts.isConditionalExpression(parent) && parent.condition !== at) ||
-      (ts.isBinaryExpression(parent) &&
-        (parent.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken ||
-          parent.operatorToken.kind === ts.SyntaxKind.BarBarToken ||
-          parent.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken))
-    ) {
-      at = parent;
-      continue;
-    }
-    break;
-  }
+  const at = passedOn(value);
   const parent = at.parent;
   // `fn.call(…)` and `fn.apply(…)` run it there; `fn.bind(…)` is it again, run wherever that is.
   if (
@@ -493,6 +476,32 @@ function usedAs(target: ts.Expression): "read" | "written" | "both" {
       continue;
     }
     return "read";
+  }
+}
+
+/**
+ * The outermost expression a value is passed on through, unchanged: parentheses, `as`, `!`,
+ * `satisfies`, an arm of `?:`, a side of `??`, `||` and `&&`.
+ */
+function passedOn(value: ts.Node): ts.Node {
+  let at = value;
+  for (;;) {
+    const parent = at.parent;
+    if (
+      ts.isParenthesizedExpression(parent) ||
+      ts.isAsExpression(parent) ||
+      ts.isNonNullExpression(parent) ||
+      ts.isSatisfiesExpression(parent) ||
+      (ts.isConditionalExpression(parent) && parent.condition !== at) ||
+      (ts.isBinaryExpression(parent) &&
+        (parent.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken ||
+          parent.operatorToken.kind === ts.SyntaxKind.BarBarToken ||
+          parent.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken))
+    ) {
+      at = parent;
+      continue;
+    }
+    return at;
   }
 }
 
@@ -604,9 +613,12 @@ function isDocument(expression: ts.Expression): boolean {
  * `type={kind}` with `kind: "checkbox" | "text"` may be either, and nothing says a click on it edits nothing.
  */
 function isABox(node: ts.JsxElement | ts.JsxSelfClosingElement, context: RuleContext): boolean {
-  if (openingOf(node).tagName.getText() !== "input") return false;
-  const field = fieldKind(typeAttributeOf(node), context.resolve);
-  return field === "box" || field === "unread";
+  return openingOf(node).tagName.getText() === "input" && mayBeABox(fieldKind(typeAttributeOf(node), context.resolve));
+}
+
+/** Whether an input of this kind may be a checkbox or a radio — see `isABox`. */
+function mayBeABox(kind: FieldKind): boolean {
+  return kind === "box" || kind === "unread";
 }
 
 /**
@@ -664,16 +676,16 @@ function heldAs(
   if (tag === "input") {
     // A box's model is `checked`: its `.value` is only what the form sends. One whose `type` cannot be
     // read may be a box or a text field, and its model either.
-    if (isABox(node, context)) {
-      const unread = fieldKind(typeAttributeOf(node), context.resolve) === "unread";
+    const kind = fieldKind(typeAttributeOf(node), context.resolve);
+    if (mayBeABox(kind)) {
       return {
         clicked: true,
         field: true,
-        models: unread ? new Set([...model("checked"), ...model("value")]) : model("checked"),
+        models: kind === "unread" ? new Set([...model("checked"), ...model("value")]) : model("checked"),
       };
     }
     // A hidden, a button, a file input holds no model, whatever its `value`.
-    if (fieldKind(typeAttributeOf(node), context.resolve) === "unedited") return NEITHER;
+    if (kind === "unedited") return NEITHER;
     return { clicked: false, field: true, models: model("value") };
   }
   if (tag === "select" || tag === "textarea") return { clicked: false, field: true, models: model("value") };
@@ -684,7 +696,7 @@ function heldAs(
  * The fields with a literal `id` this class renders — an `<input>`, a `<select>`, a `<textarea>`, core's
  * `Select` and `TextArea` — and whether each is a box: what a `for` names.
  */
-function boxesOf(cls: ts.ClassLikeDeclaration, context: RuleContext): Map<string, boolean> {
+function boxesOf(classes: readonly ts.ClassLikeDeclaration[], context: RuleContext): Map<string, boolean> {
   const boxes = new Map<string, boolean>();
   const ids = (node: ts.Node): void => {
     const tag =
@@ -704,7 +716,7 @@ function boxesOf(cls: ts.ClassLikeDeclaration, context: RuleContext): Map<string
     }
     ts.forEachChild(node, ids);
   };
-  ids(cls);
+  for (const cls of classes) ids(cls);
   return boxes;
 }
 
@@ -719,7 +731,7 @@ function either(a: Held, b: Held): Held {
  */
 function refCallbackElements(
   name: ts.Identifier,
-  cls: ts.ClassLikeDeclaration,
+  chain: readonly ts.ClassLikeDeclaration[],
   context: RuleContext,
   found: Map<ts.ParameterDeclaration, (ts.JsxElement | ts.JsxSelfClosingElement)[]>,
 ): (ts.JsxElement | ts.JsxSelfClosingElement)[] {
@@ -727,7 +739,7 @@ function refCallbackElements(
   if (declared === undefined || !ts.isParameter(declared)) return [];
   let elements = found.get(declared);
   if (elements === undefined) {
-    elements = elementsOfRefCallback(declared, cls, context);
+    elements = elementsOfRefCallback(declared, chain, context);
     found.set(declared, elements);
   }
   return elements;
@@ -736,27 +748,22 @@ function refCallbackElements(
 /** The elements a `ref` callback whose parameter this is is handed — see `refCallbackElements`. */
 function elementsOfRefCallback(
   declared: ts.ParameterDeclaration,
-  cls: ts.ClassLikeDeclaration,
+  chain: readonly ts.ClassLikeDeclaration[],
   context: RuleContext,
 ): (ts.JsxElement | ts.JsxSelfClosingElement)[] {
-  // A method handed as a ref — `ref={this.attach}` — or a function kept in a field, `attach = (node) => …`,
-  // read through what only passes it on, as the class's own functions are: `attach = ((node) => …)`.
+  // A method handed as a ref — `ref={this.attach}`, the class's own or one it inherits — or a function
+  // kept in a field, `attach = (node) => …`, read through what only passes it on: `attach = ((node) => …)`.
   const fn = declared.parent;
-  let written: ts.Node = fn;
-  while (
-    ts.isParenthesizedExpression(written.parent) ||
-    ts.isAsExpression(written.parent) ||
-    ts.isSatisfiesExpression(written.parent) ||
-    ts.isNonNullExpression(written.parent)
-  ) {
-    written = written.parent;
-  }
+  const written = passedOn(fn);
   const isFunction = ts.isArrowFunction(fn) || ts.isFunctionExpression(fn);
   const method = isFunction && ts.isPropertyDeclaration(written.parent) ? written.parent : fn;
-  if ((ts.isMethodDeclaration(method) || ts.isPropertyDeclaration(method)) && method.parent === cls) {
+  if (
+    (ts.isMethodDeclaration(method) || ts.isPropertyDeclaration(method)) &&
+    chain.some((cls) => cls === method.parent)
+  ) {
     const named = memberName(method);
     return elementsWithARef(
-      cls,
+      chain,
       (held) =>
         ts.isPropertyAccessExpression(held) &&
         held.expression.kind === ts.SyntaxKind.ThisKeyword &&
@@ -772,13 +779,14 @@ function elementsOfRefCallback(
         ? written.parent
         : undefined;
   if (local !== undefined) {
-    return elementsWithARef(cls, (held) => ts.isIdentifier(held) && context.resolve(held)?.declarations?.[0] === local);
+    return elementsWithARef(
+      chain,
+      (held) => ts.isIdentifier(held) && context.resolve(held)?.declarations?.[0] === local,
+    );
   }
-  // Through what only passes it on: `ref={((node) => …)}`, `ref={on ? (node) => … : undefined}`.
-  let expression: ts.Node = declared.parent.parent;
-  while (ts.isParenthesizedExpression(expression) || ts.isConditionalExpression(expression)) {
-    expression = expression.parent;
-  }
+  // Through what only passes it on: `ref={((node) => …)}`, `ref={on ? (node) => … : undefined}`,
+  // `ref={on && ((node) => …)}`.
+  const expression = written.parent;
   if (!ts.isJsxExpression(expression) || !ts.isJsxAttribute(expression.parent)) return [];
   if (expression.parent.name.getText() !== "ref") return [];
   const opening = expression.parent.parent.parent;
@@ -788,7 +796,7 @@ function elementsOfRefCallback(
 
 /** Every element this class writes a `ref` on that holds what `names` says it is, or that bound. */
 function elementsWithARef(
-  cls: ts.ClassLikeDeclaration,
+  classes: readonly ts.ClassLikeDeclaration[],
   names: (held: ts.Expression) => boolean,
 ): (ts.JsxElement | ts.JsxSelfClosingElement)[] {
   const found: (ts.JsxElement | ts.JsxSelfClosingElement)[] = [];
@@ -812,7 +820,7 @@ function elementsWithARef(
     }
     ts.forEachChild(node, visit);
   };
-  visit(cls);
+  for (const cls of classes) visit(cls);
   return found;
 }
 
@@ -820,7 +828,11 @@ function elementsWithARef(
  * Every ref this class renders, by field name, and what it is attached to: a checkbox or a radio, a
  * `<label>` of one, a field written with its model (`value`, `checked`), or anything else.
  */
-function refsOf(cls: ts.ClassLikeDeclaration, boxes: Map<string, boolean>, context: RuleContext): Map<string, Held> {
+function refsOf(
+  classes: readonly ts.ClassLikeDeclaration[],
+  boxes: Map<string, boolean>,
+  context: RuleContext,
+): Map<string, Held> {
   const refs = new Map<string, Held>();
   const visit = (node: ts.Node): void => {
     if (ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node)) {
@@ -841,6 +853,6 @@ function refsOf(cls: ts.ClassLikeDeclaration, boxes: Map<string, boolean>, conte
     }
     ts.forEachChild(node, visit);
   };
-  visit(cls);
+  for (const cls of classes) visit(cls);
   return refs;
 }

@@ -69,6 +69,10 @@ describe("a field inside a @ramonda/form form", () => {
         [lineOf("<NamedByAProp />"), "not-passed", "n"],
         // A component rendering with the render it inherits: the field there is inside the form.
         [lineOf('aria-label="inherited render"'), "missing", "`name`, `oninput`, `onblur`, `aria-invalid`"],
+        // A class a `const` holds is read as the class it is.
+        [lineOf('aria-label="class in a const"'), "missing", "`name`, `onblur`, `aria-invalid`"],
+        // A form a base class holds, attached by the class extending it.
+        [lineOf('aria-label="in a form held by a base"'), "missing", "`name`, `onblur`, `aria-invalid`"],
         [lineOf('<AriaInput name="a"'), "not-passed", "aria-invalid"],
         [lineOf("<StyledByAProp />"), "not-passed", "n"],
         [lineOf("<SpreadInItsForm value"), "not-passed", "name"],
@@ -82,6 +86,8 @@ describe("a field inside a @ramonda/form form", () => {
         // A union spread may hand what any of its members hands.
         [lineOf("<BareInput {...either} />"), "bag-unreadable", "attrs"],
         [lineOf("<BareInput {...this.props.extra} />"), "bag-unreadable", "attrs"],
+        [lineOf("<BareInput {...anObject} />"), "bag-unreadable", "attrs"],
+        [lineOf("<BareInput {...anything} />"), "bag-unreadable", "attrs"],
         [lineOf('attrs={{ "on:input": undefined }}'), "bag-overrides", "attrs.on:input"],
         [lineOf("<TwoFields attrs={bag} />"), "bag-unreadable", "attrs"],
         [lineOf("<BareInput {...rest} />"), "bag-unreadable", "attrs"],
@@ -102,7 +108,7 @@ describe("a field inside a @ramonda/form form", () => {
         [lineOf("<SpreadBare attrs={bag} />"), "bag-unreadable", "attrs"],
       ]),
     );
-    expect(issues).toHaveLength(58);
+    expect(issues).toHaveLength(62);
   });
 
   test("a complete field, a wrapper handed everything, a harmless bag, a field outside a form and an app's own Form are silent", () => {
@@ -121,6 +127,8 @@ describe("a field inside a @ramonda/form form", () => {
       lineOf("attrs={undefined} />"),
       lineOf("<TrackedInput"),
       lineOf("<BareInput {...hinted} />"),
+      lineOf("class BaseHolder"),
+      lineOf('<BareInput {...(on ? { title: "t" } : {})} />'),
       lineOf('<Toggle type="checkbox" attrs={{ checked: on, onchange: this.type }} />'),
       lineOf("attrs={NONE} />"),
       lineOf("keys the field never writes, set to nothing") + 1,

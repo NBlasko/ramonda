@@ -1049,3 +1049,68 @@ class ClicksThroughItsBase extends ClickingBase {
     return <input type="checkbox" aria-label="b" ref={this.box} checked={this.on} onchange={this.picked} />;
   }
 }
+
+/** An inline ref callback through `&&` and `as`, which only pass it on. */
+class RefCallbackThroughAnd extends Component {
+  @state on = false;
+  @state shown = true;
+  render() {
+    return (
+      <div>
+        <input
+          type="checkbox"
+          aria-label="a"
+          checked={this.on}
+          onchange={this.flip}
+          ref={this.shown && ((node: HTMLInputElement | null) => node?.click())} // REPORT through &&
+        />
+        <input
+          type="checkbox"
+          aria-label="b"
+          checked={this.on}
+          onchange={this.flip}
+          ref={((node: HTMLInputElement | null) => node?.click()) as (node: HTMLInputElement | null) => void} // REPORT through as
+        />
+      </div>
+    );
+  }
+  flip() {}
+}
+
+/** A ref callback method a base declares, and a ref its render attaches, used by a subclass. */
+class RefsInABase extends Component {
+  @state on = false;
+  @state text = "";
+  box = createRef<HTMLInputElement>();
+  label = createRef<HTMLLabelElement>();
+  attach(node: HTMLInputElement | null) {
+    node?.click(); // REPORT click in an inherited ref method
+  }
+  render() {
+    return (
+      <div>
+        <input type="checkbox" aria-label="b" ref={this.box} checked={this.on} onchange={this.flip} />
+        <input id="inherited-text" aria-label="t" value={this.text} oninput={this.flip} />
+        <label for="inherited-text" ref={this.label}>
+          T
+        </label>
+      </div>
+    );
+  }
+  flip() {}
+}
+
+class UsesRefsInABase extends RefsInABase {
+  @mounted
+  start() {
+    this.box.current?.click(); // REPORT click on a ref the inherited render attaches
+    // A label of a text field, in the inherited render: a click there only moves the focus.
+    this.label.current?.click();
+  }
+}
+
+class UsesARefMethodInABase extends RefsInABase {
+  render() {
+    return <input type="checkbox" aria-label="c" ref={this.attach} checked={this.on} onchange={this.flip} />;
+  }
+}

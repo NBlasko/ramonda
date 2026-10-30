@@ -46,11 +46,11 @@ type Wants = "nothing" | "text" | "pick" | "box" | "unread";
  * A field inside a `@ramonda/form` form, written without everything the form needs.
  *
  * The form is recognised by one shape: `<form onsubmit={this.X.submit}>`, where `X` is a field of the
- * same class initialised `this.use(Form, …)` and `Form` is imported from `@ramonda/form`. Every
- * controlled field inside it — written in that render, in a component rendered there (by its own render
- * or one it inherits, and through every component it renders), or handed as children to a component that
- * places its children inside one — is written with all five of `name`, `value` (`checked` on a box),
- * `oninput`, `onblur` and `aria-invalid`, each by name.
+ * same class — its own or one it inherits — initialised `this.use(Form, …)` and `Form` is imported from
+ * `@ramonda/form`. Every controlled field inside it — written in that render, in a component rendered
+ * there (by its own render or one it inherits, and through every component it renders), or handed as
+ * children to a component that places its children inside one — is written with all five of `name`,
+ * `value` (`checked` on a box), `oninput`, `onblur` and `aria-invalid`, each by name.
  *
  * A component that takes them as props — a design system's `StyledInput`, writing
  * `name={this.props.name}` — is checked where it is USED inside a form, and at every use, inside a form

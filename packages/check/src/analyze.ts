@@ -4165,9 +4165,14 @@ function propertyNames(type: ts.Type, checker: ts.TypeChecker): string[] | undef
     return [...names];
   }
   const apparent = checker.getApparentType(type);
-  // An index — `Record<string, unknown>` — may hand any name at all.
+  // An index — `Record<string, unknown>` — may hand any name at all, and so may a type that names none,
+  // `object` or `{}`: but an empty object written there, `cond ? { title } : {}`, hands nothing.
   if (checker.getIndexInfosOfType(apparent).length > 0) return undefined;
-  return checker.getPropertiesOfType(apparent).map((property) => property.name);
+  const names = checker.getPropertiesOfType(apparent).map((property) => property.name);
+  const written =
+    (apparent.flags & ts.TypeFlags.Object) !== 0 &&
+    ((apparent as ts.ObjectType).objectFlags & ts.ObjectFlags.ObjectLiteral) !== 0;
+  return names.length === 0 && !written ? undefined : names;
 }
 
 /**

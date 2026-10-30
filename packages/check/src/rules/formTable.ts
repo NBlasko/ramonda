@@ -300,17 +300,31 @@ function valueOf(attribute: ts.JsxAttribute): ts.Expression | undefined {
 
 /** A component class this can read the render of: declared in source, with a body. */
 function readableClass(tagName: ts.JsxTagNameExpression, resolve: Resolver): ts.ClassLikeDeclaration | undefined {
-  const declared = resolve(tagName)?.declarations?.[0];
-  if (declared === undefined || !(ts.isClassDeclaration(declared) || ts.isClassExpression(declared))) return undefined;
-  if (!isReadable(declared)) return undefined;
+  const declaration = resolve(tagName)?.declarations?.[0];
+  if (declaration === undefined) return undefined;
+  // Asked of every component around every element read: answered once for each declaration.
+  const known = readableClasses.get(declaration);
+  if (known !== undefined) return known ?? undefined;
+  // A class, or one a `const` holds: `const Row = class extends Component { … }`.
+  const held =
+    ts.isVariableDeclaration(declaration) && declaration.initializer !== undefined
+      ? unwrap(declaration.initializer)
+      : declaration;
+  const declared = ts.isClassDeclaration(held) || ts.isClassExpression(held) ? held : undefined;
   // The class whose render it renders with — its own, or the nearest it inherits from a class of the
   // project's: the fields written there are that class's.
-  return (
-    classChain(declared, resolve).find(
-      (cls) => isReadable(cls) && cls.members.some((member) => memberName(member) === "render"),
-    ) ?? declared
-  );
+  const found =
+    declared === undefined || !isReadable(declared)
+      ? undefined
+      : (classChain(declared, resolve).find(
+          (cls) => isReadable(cls) && cls.members.some((member) => memberName(member) === "render"),
+        ) ?? declared);
+  readableClasses.set(declaration, found ?? null);
+  return found;
 }
+
+/** What `readableClass` answered for each declaration — `null` for none. */
+const readableClasses = new WeakMap<ts.Node, ts.ClassLikeDeclaration | null>();
 
 /** A class with a body this can read: a `declare class` has none, wherever it is written, nor a package's `.d.ts`. */
 function isReadable(cls: ts.ClassLikeDeclaration): boolean {
@@ -343,9 +357,17 @@ export function formTableFor(sources: readonly ts.SourceFile[], resolve: Resolve
   const childrenInForm = new Set<ts.ClassLikeDeclaration>();
 
   // Pass one: the forms, the classes holding them, and where children land.
+  /** The forms each class attaches, by the field that holds them — its own, or one it inherits. */
+  const attachedBy = new Map<ts.ClassLikeDeclaration, { chain: ts.ClassLikeDeclaration[]; fields: Set<string> }>();
+  /** The classes that hold a form in a field of their own. */
+  const ownForms: { cls: ts.ClassLikeDeclaration; fields: Set<string> }[] = [];
   const firstPass = (node: ts.Node): void => {
     if (ts.isClassDeclaration(node) || ts.isClassExpression(node)) {
-      const held = formFieldsOf(node, resolve);
+      const chain = classChain(node, resolve);
+      const own = formFieldsOf(node, resolve);
+      if (own.size > 0) ownForms.push({ cls: node, fields: own });
+      // What it holds: its own, and what it inherits.
+      const held = new Set([...own, ...chain.slice(1).flatMap((base) => [...formFieldsOf(base, resolve)])]);
       if (held.size > 0) {
         const attached = new Set<string>();
         const look = (inner: ts.Node): void => {
@@ -371,18 +393,26 @@ export function formTableFor(sources: readonly ts.SourceFile[], resolve: Resolve
           ts.forEachChild(inner, look);
         };
         ts.forEachChild(node, look);
-        holders.push({
-          component: node.name?.text ?? "(anonymous)",
-          isHook: isHookClass(node, resolve),
-          fields: [...held.keys()],
-          unattached: [...held.keys()].filter((field) => !attached.has(field)),
-          ...positionOf(node.name ?? node),
-        });
+        attachedBy.set(node, { chain, fields: attached });
       }
     }
     ts.forEachChild(node, firstPass);
   };
   for (const file of sources) firstPass(file);
+  // A class's form is attached where it, or a class extending it, renders `<form onsubmit={this.X.submit}>`.
+  for (const { cls, fields } of ownForms) {
+    const attached = new Set<string>();
+    for (const { chain, fields: by } of attachedBy.values()) {
+      if (chain.includes(cls)) for (const field of by) attached.add(field);
+    }
+    holders.push({
+      component: cls.name?.text ?? "(anonymous)",
+      isHook: isHookClass(cls, resolve),
+      fields: [...fields],
+      unattached: [...fields].filter((field) => !attached.has(field)),
+      ...positionOf(cls.name ?? cls),
+    });
+  }
 
   // Where `this.props.children` sits inside one of those forms.
   const childrenPass = (node: ts.Node): void => {

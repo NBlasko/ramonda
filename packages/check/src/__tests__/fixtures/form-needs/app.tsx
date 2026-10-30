@@ -19,6 +19,8 @@ declare const handed: {
 /** The same, each of it may be left out. */
 declare const partial: Partial<typeof handed>;
 declare const kind: string;
+declare const anObject: object;
+declare const anything: {};
 /** What `hint && { title: hint }` is in a strict project: the empty string, or the object. */
 declare const hinted: "" | 0 | false | { title: string };
 const HIDDEN = "hidden";
@@ -351,6 +353,11 @@ class Loose extends Component {
         <NoHandlerInput attrs={{ value: "y", oninput: this.type }} />
         {/* ✓ a spread of a string or an object: neither can carry the bag */}
         <BareInput {...hinted} />
+        {/* ✓ an empty object written there hands nothing */}
+        <BareInput {...(on ? { title: "t" } : {})} />
+        {/* ✗ bag-unreadable — `object` and `{}` name nothing, and may carry anything */}
+        <BareInput {...anObject} />
+        <BareInput {...anything} />
         {/* ✓ a box's value is what the form sends; ✗ its checked is a model with no handler */}
         <BoxInput attrs={{ value: "yes" }} />
         {/* ✓ `on:input` in the spread is the field's own handler */}
@@ -658,3 +665,40 @@ class RendersASubField extends Component {
 }
 
 export { RendersASubField };
+
+/** A component a `const` holds, written as a class expression. */
+const Row = class extends Component {
+  render() {
+    return <input aria-label="class in a const" value={value} oninput={handed.oninput} />;
+  }
+};
+
+class RendersARow extends Component {
+  form = this.use(Form, {});
+  render() {
+    return (
+      <form onsubmit={this.form.submit}>
+        <Row />
+      </form>
+    );
+  }
+}
+
+export { RendersARow };
+
+/** A form held in a base class, attached by the class that extends it. */
+class BaseHolder extends Component {
+  form = this.use(Form, {});
+}
+
+class SubRenders extends BaseHolder {
+  render() {
+    return (
+      <form onsubmit={this.form.submit}>
+        <input aria-label="in a form held by a base" value={value} oninput={handed.oninput} />
+      </form>
+    );
+  }
+}
+
+export { SubRenders };
