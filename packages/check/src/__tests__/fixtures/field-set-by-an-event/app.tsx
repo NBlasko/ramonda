@@ -930,3 +930,49 @@ class DispatchesATypedName extends Component {
   }
   typed() {}
 }
+
+/** A method handed as a ref through `.bind`. */
+class ClicksThroughABoundRef extends Component {
+  @state on = false;
+  attach(node: HTMLInputElement | null) {
+    node?.click(); // REPORT click through a bound ref method
+  }
+  render() {
+    return (
+      <input type="checkbox" aria-label="b" ref={this.attach.bind(this)} checked={this.on} onchange={this.picked} />
+    );
+  }
+  picked() {}
+}
+
+declare const either: "checkbox" | "text";
+
+/** An input whose `type` may be a checkbox, and a label whose `for` names one in either branch. */
+class ClicksWhatMayBeABox extends Component {
+  @state on = false;
+  @state text = "";
+  box = createRef<HTMLInputElement>();
+  label = createRef<HTMLLabelElement>();
+  @mounted
+  start() {
+    this.box.current?.click(); // REPORT click on an input that may be a checkbox
+    this.box.current!.value = "typed"; // REPORT write on an input that may be a text field
+    this.label.current?.click(); // REPORT click on a label of what is a checkbox in one branch
+  }
+  render() {
+    return (
+      <div>
+        <input type={either} aria-label="m" ref={this.box} value={this.text} oninput={this.typed} />
+        {this.on ? (
+          <input type="checkbox" id="x" aria-label="x" checked={this.on} onchange={this.typed} />
+        ) : (
+          <input id="x" aria-label="x" value={this.text} oninput={this.typed} />
+        )}
+        <label for="x" ref={this.label}>
+          X
+        </label>
+      </div>
+    );
+  }
+  typed() {}
+}

@@ -12,9 +12,9 @@ rendered there in turn, and the children of a component that places its children
 component that takes those attributes as props is checked where it is used inside a form: each use
 hands every one of them. A spread of a prop on a field — defaults, then `{...this.props.attrs}` for a
 caller to overwrite them — is checked at every use, inside a form or not: an object written there,
-setting none of them to nothing — a shorthand `{ oninput }` followed to the `const` it names — and
-handing no `value` (`checked`) without an `oninput` or `onchange` beside it, unless the field writes its
-own.
+setting none the field writes before it to nothing — a shorthand `{ oninput }` followed to the `const`
+it names — and handing no `value` (`checked`) without an `oninput` or `onchange` beside it, unless the
+field writes its own.
 
 Reported too: a component that holds a `Form` and renders no `<form onsubmit={this.X.submit}>` for it,
 a hook that holds one, and a component used inside a form whose render cannot be read — a `declare

@@ -50,14 +50,12 @@ describe("a field inside a @ramonda/form form", () => {
         [lineOf('attrs={{ value: "x", onchange: this.type }}'), "bag-without-a-handler", "attrs"],
         [lineOf("attrs={bag}", 2), "bag-unreadable", "attrs"],
         [lineOf("attrs={{ oninput }}"), "bag-overrides", "attrs.oninput"],
-        // A `value` that holds nothing overrides the field's, and sets no model that needs a handler.
-        [lineOf("attrs={{ value: undefined }}"), "bag-overrides", "attrs.value"],
         // A handler key that holds nothing carries no handler; one written as nothing on the field is none.
         [lineOf('attrs={{ value: "carried nothing"'), "bag-without-a-handler", "attrs"],
-        [lineOf('attrs={{ value: "carried nothing"'), "bag-overrides", "attrs.on:input"],
         [lineOf('<NoHandlerInput attrs={{ value: "x" }} />'), "bag-without-a-handler", "attrs"],
         [lineOf("class Detached"), "form-not-attached", "form"],
         [lineOf("class SignupForm"), "form-in-a-hook", "form"],
+        [lineOf("class SignupThroughABase"), "form-in-a-hook", "form"],
         [lineOf("class DetachedSignup"), "form-not-attached", "signup"],
         [lineOf("class TwoForms"), "form-not-attached", "login"],
         // A field inside the holder's own form: every use hands its prop, inside a form or not.
@@ -93,7 +91,7 @@ describe("a field inside a @ramonda/form form", () => {
         [lineOf("<SpreadBare attrs={bag} />"), "bag-unreadable", "attrs"],
       ]),
     );
-    expect(issues).toHaveLength(53);
+    expect(issues).toHaveLength(52);
   });
 
   test("a complete field, a wrapper handed everything, a harmless bag, a field outside a form and an app's own Form are silent", () => {
@@ -106,6 +104,10 @@ describe("a field inside a @ramonda/form form", () => {
       lineOf("<StyledInput", 2),
       lineOf('<SpreadOuter name="s"'),
       lineOf('<NamedByAProp n="handed" />'),
+      // A key set to nothing that the field never writes takes nothing away, and sets no model that needs
+      // a handler: the bare input writes nothing before its spread.
+      lineOf("<BareInput attrs={{ value: undefined }} />"),
+      lineOf("keys the field never writes, set to nothing") + 1,
       lineOf('<SpreadBare attrs={{ placeholder: "spread" }} />'),
       lineOf("<StyledInput {...this.props} />"),
       lineOf("<BareInput {...this.props} />"),

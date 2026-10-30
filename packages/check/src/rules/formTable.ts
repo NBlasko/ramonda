@@ -84,6 +84,11 @@ export interface SpreadBag extends Where {
   box: boolean;
   /** The attributes the field writes after the spread, which it therefore cannot override. */
   shadowed: readonly string[];
+  /**
+   * The attributes the field writes before it, with something — what the spread can take away. A
+   * handler is taken away under its own spelling only: `"on:input": undefined` leaves `oninput`.
+   */
+  overridable: readonly string[];
 }
 
 export interface FormFacts {
@@ -238,11 +243,17 @@ function formFieldsOf(cls: ts.ClassLikeDeclaration, resolve: Resolver): Set<stri
   return names;
 }
 
-/** Whether a class extends core's `Hook`. */
-function isHookClass(cls: ts.ClassLikeDeclaration, resolve: Resolver): boolean {
+/** Whether a class extends core's `Hook` — itself, or through a class of the project's that does. */
+function isHookClass(cls: ts.ClassLikeDeclaration, resolve: Resolver, seen = new Set<ts.Node>()): boolean {
+  if (seen.has(cls)) return false;
+  seen.add(cls);
   for (const clause of cls.heritageClauses ?? []) {
     if (clause.token !== ts.SyntaxKind.ExtendsKeyword) continue;
-    for (const type of clause.types) if (resolve.coreName(type.expression) === "Hook") return true;
+    for (const type of clause.types) {
+      if (resolve.coreName(type.expression) === "Hook") return true;
+      const base = ts.isIdentifier(type.expression) ? resolve(type.expression)?.declarations?.[0] : undefined;
+      if (base !== undefined && ts.isClassDeclaration(base) && isHookClass(base, resolve, seen)) return true;
+    }
   }
   return false;
 }
@@ -445,7 +456,21 @@ export function formTableFor(sources: readonly ts.SourceFile[], resolve: Resolve
         .slice(index + 1)
         .filter((later): later is ts.JsxAttribute => ts.isJsxAttribute(later))
         .map((later) => later.name.getText());
-      bags.push({ owner: enclosingClass(element), prop, handled, pick, box, shadowed, ...positionOf(opening) });
+      const overridable = properties
+        .slice(0, index)
+        .filter((earlier): earlier is ts.JsxAttribute => ts.isJsxAttribute(earlier))
+        .map((earlier) => earlier.name.getText())
+        .filter((name) => said(name) && !shadowed.includes(name));
+      bags.push({
+        owner: enclosingClass(element),
+        prop,
+        handled,
+        pick,
+        box,
+        shadowed,
+        overridable,
+        ...positionOf(opening),
+      });
     });
 
     const modelName = box ? "checked" : "value";

@@ -17,15 +17,16 @@ import type { Resolver, Rule, RuleContext } from "./rule";
  * first edit or refused it is not known yet. And an edit sent
  * there is a value set by an event: what the field should show is state, `this.on = true`.
  *
- * What is an edit: dispatching `input`, `change`, `beforeinput` or a composition event at a field
- * this class renders — held by a ref, or handed to a `ref` callback — or at an element a query
- * finds, or a form's `elements` hands, which may be one; a `click` on a checkbox, a radio or a `<label>` of one that this class
- * renders, by method or as a dispatched event; writing `.value` or `.checked` on a field it renders
- * with that model; `document.execCommand`, which edits the focused field. An event whose type cannot
- * be read is reported as one: nothing says it is not an edit. An event dispatched at the document, at
- * the window or at any other object — a store that extends `EventTarget` — reaches no field, which
- * hears only what is dispatched at it; and an element the class is handed rather than renders is
- * not read here: `RMD062` reports what reaches it.
+ * What is an edit: dispatching `input`, `change`, `beforeinput` or a composition event at a field this
+ * class renders — held by a ref, or handed to a `ref` callback — or at an element a query finds, or a
+ * form's `elements` hands, which may be one; a `click` on a checkbox, a radio or a `<label>` of one
+ * that this class renders, by method or as a dispatched event; writing `.value` or `.checked` on a
+ * field it renders with that model; `document.execCommand`, which edits the focused field. An event
+ * whose type cannot be read is reported as one, and an `<input>` whose `type` cannot be read as a box
+ * and a text field both: nothing says they are not. An event dispatched at the document, at the window
+ * or at any other object — a store that extends `EventTarget` — reaches no field, which hears only what
+ * is dispatched at it; and an element the class is handed rather than renders is not read here:
+ * `RMD062` reports what reaches it.
  *
  * How far it looks: every method of the class the commit's work calls — `this.method()`, through
  * `.call`, `.apply` or `.bind(…)()` — every accessor it reads or writes, and every function written
@@ -539,12 +540,14 @@ function isDocument(expression: ts.Expression): boolean {
   return ts.isPropertyAccessExpression(at) && at.name.text === "document";
 }
 
-/** Whether an `<input>` written here is a checkbox or a radio, by its `type` — or `checked`, when that cannot be read. */
+/**
+ * Whether an `<input>` written here may be a checkbox or a radio: its `type` says so, or cannot be read —
+ * `type={kind}` with `kind: "checkbox" | "text"` may be either, and nothing says a click on it edits nothing.
+ */
 function isABox(node: ts.JsxElement | ts.JsxSelfClosingElement, context: RuleContext): boolean {
-  const opening = openingOf(node);
-  if (opening.tagName.getText() !== "input") return false;
+  if (openingOf(node).tagName.getText() !== "input") return false;
   const field = fieldKind(typeAttributeOf(node), context.resolve);
-  return field === "box" || (field === "unread" && says(opening, "checked", context.resolve));
+  return field === "box" || field === "unread";
 }
 
 /**
@@ -596,8 +599,16 @@ function heldAs(
   const model = (name: "value" | "checked") => (said(name) ? new Set([name]) : NOTHING);
   if (tag === "label") return { clicked: labelsABox(node, boxes, context), field: false, models: NOTHING };
   if (tag === "input") {
-    // A box's model is `checked`: its `.value` is only what the form sends.
-    if (isABox(node, context)) return { clicked: true, field: true, models: model("checked") };
+    // A box's model is `checked`: its `.value` is only what the form sends. One whose `type` cannot be
+    // read may be a box or a text field, and its model either.
+    if (isABox(node, context)) {
+      const unread = fieldKind(typeAttributeOf(node), context.resolve) === "unread";
+      return {
+        clicked: true,
+        field: true,
+        models: unread ? new Set([...model("checked"), ...model("value")]) : model("checked"),
+      };
+    }
     // A hidden, a button, a file input holds no model, whatever its `value`.
     if (fieldKind(typeAttributeOf(node), context.resolve) === "unedited") return NEITHER;
     return { clicked: false, field: true, models: model("value") };
@@ -624,7 +635,9 @@ function boxesOf(cls: ts.ClassLikeDeclaration, context: RuleContext): Map<string
       const id = openingOf(node).attributes.properties.find(
         (p): p is ts.JsxAttribute => ts.isJsxAttribute(p) && p.name.getText() === "id",
       );
-      for (const literal of attributeLiterals(id, context.resolve) ?? []) boxes.set(literal, isABox(node, context));
+      // An id on more than one element — one per branch of a `?:` — names a box if any of them is one.
+      for (const literal of attributeLiterals(id, context.resolve) ?? [])
+        boxes.set(literal, (boxes.get(literal) ?? false) || isABox(node, context));
     }
     ts.forEachChild(node, ids);
   };
@@ -710,7 +723,7 @@ function elementsOfRefCallback(
   return ts.isJsxOpeningElement(opening) ? [opening.parent] : [];
 }
 
-/** Every element this class writes a `ref` on that holds what `names` says it is. */
+/** Every element this class writes a `ref` on that holds what `names` says it is, or that bound. */
 function elementsWithARef(
   cls: ts.ClassLikeDeclaration,
   names: (held: ts.Expression) => boolean,
@@ -719,7 +732,16 @@ function elementsWithARef(
   const visit = (node: ts.Node): void => {
     if (ts.isJsxAttribute(node) && node.name.getText() === "ref" && node.initializer !== undefined) {
       const written = ts.isJsxExpression(node.initializer) ? node.initializer.expression : undefined;
-      if (written !== undefined && names(unwrap(written))) {
+      // `ref={this.attach.bind(this)}` hands the method all the same.
+      const held = written === undefined ? undefined : unwrap(written);
+      const bound =
+        held !== undefined &&
+        ts.isCallExpression(held) &&
+        ts.isPropertyAccessExpression(held.expression) &&
+        held.expression.name.text === "bind"
+          ? unwrap(held.expression.expression)
+          : held;
+      if (bound !== undefined && names(bound)) {
         const opening = node.parent.parent;
         if (ts.isJsxSelfClosingElement(opening)) found.push(opening);
         else if (ts.isJsxOpeningElement(opening)) found.push(opening.parent);

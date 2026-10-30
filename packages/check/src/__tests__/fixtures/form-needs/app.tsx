@@ -233,6 +233,11 @@ class Page extends Component {
         <DefaultsInput field={this.form.fields.email.$} attrs={{ placeholder: "you@example.com" }} />
         <DefaultsInput field={this.form.fields.email.$} attrs={{ oninput: undefined }} />
         <DefaultsInput field={this.form.fields.email.$} attrs={bag} />
+        {/* ✓ keys the field never writes, set to nothing: its `oninput` stays, `on:input` is another */}
+        <DefaultsInput
+          field={this.form.fields.email.$}
+          attrs={{ "on:input": undefined, onchange: undefined, checked: undefined }}
+        />
         {/* ✗ a bag that sets the field's `on:input` to nothing */}
         <ColonInput field={this.form.fields.email.$} attrs={{ "on:input": undefined }} />
         {/* ✗ a bag that may come through a spread on the use, which cannot be read */}
@@ -345,6 +350,14 @@ class TwoForms extends Component {
   sendLogin() {
     this.login.submit();
   }
+}
+
+/** A project's own base for its hooks. */
+class BaseHook extends Hook {}
+
+/** ✗ form-in-a-hook — a hook through a base class of the project's. */
+class SignupThroughABase extends BaseHook {
+  form = this.use(Form, {});
 }
 
 /** ✗ form-in-a-hook */
