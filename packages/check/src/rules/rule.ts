@@ -541,6 +541,11 @@ export interface Resolver {
    */
   typeLiterals(expression: ts.Expression, absentAs?: string): string[] | undefined;
   /**
+   * The names a value of this expression's TYPE has — what a spread of it hands — or `undefined` when
+   * its type cannot be read (`any`, `unknown`) or has an index, which may hand any name.
+   */
+  propertyNames(expression: ts.Expression): string[] | undefined;
+  /**
    * Whether this assertion puts an `HTMLFormElement` under a type that is not a form and does not
    * hold one — `form as unknown as Canvas` — so its `reset` cannot be followed past it. Asked of the
    * outermost assertion. See `reset-the-model-does-not-hear`.

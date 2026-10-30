@@ -73,6 +73,7 @@ describe("a field inside a @ramonda/form form", () => {
       lineOf('aria-label="value as a const"'),
       lineOf('aria-label="nothing, then onchange"') - 1,
       lineOf("<StyledInput", 2),
+      lineOf("<StyledInput {...handed} />"),
       lineOf('attrs={{ placeholder: "you@example.com" }}'),
       lineOf('aria-label="loose"'),
       lineOf("<StyledInput value={value} oninput={this.type} />"),

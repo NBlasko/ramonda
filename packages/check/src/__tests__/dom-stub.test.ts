@@ -1,6 +1,6 @@
 import ts from "typescript";
 import { describe, expect, test } from "vitest";
-import { domStub, formMembers } from "../domStub";
+import { domStub, formMembers, formMethods } from "../domStub";
 import { createProgram } from "../analyze";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -77,5 +77,11 @@ describe("the DOM's stand-ins", () => {
     const domLibs = program.getSourceFiles().filter((file) => /[\\/]lib\.dom(\.[a-z]+)?\.d\.ts$/.test(file.fileName));
     expect(domLibs.length).toBeGreaterThan(0);
     expect(domLibs.map((file) => file.text)).toEqual(domLibs.map(() => ""));
+  });
+
+  test("name each member a form holds a function in — its methods and its event handlers — and no other", () => {
+    const functions = formMethods();
+    expect(["reset", "submit", "onclick", "onerror"].filter((name) => !functions.has(name))).toEqual([]);
+    expect(["length", "id", "action", "elements"].filter((name) => functions.has(name))).toEqual([]);
   });
 });

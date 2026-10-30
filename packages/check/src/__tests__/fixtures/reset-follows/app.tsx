@@ -28,6 +28,7 @@ class Stopwatch {
 }
 declare const watch: Stopwatch;
 declare const options: { reset: boolean };
+declare const counted: { reset(): void; length: () => number };
 declare const mixed: { reset(): void; count: number } | Resettable;
 // `void` rather than `undefined`, which the fixtures' non-strict base drops from a union.
 declare const actions: Record<string, () => void>;
@@ -75,6 +76,7 @@ export class Follows extends Component {
     callable.reset(); // ✓ a function with a reset of its own is no form
     watch.reset(); // ✓ a class's instance is that class, as its author wrote it
     options.reset; // ✓ a flag named reset, which no form's method fits
+    counted.reset(); // ✓ a form's length is a number, not a function
     // @ts-expect-error — `void` has no `reset`; the union is what is asked about, not the call
     counterOrNothing.reset(); // ✓ no form, or nothing at all
     const helpers: Record<string, unknown> = {};

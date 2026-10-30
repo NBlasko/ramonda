@@ -203,9 +203,13 @@ export const formFieldWithoutWhatTheFormNeeds = {
         if (!bag && !inContext(site.owner, site.inForm)) continue;
         const handed = site.props.get(name);
         if (!site.props.has(name)) {
-          if (!bag) found.push({ kind: "not-passed", component: site.tag, detail: name, ...where(site) });
-          // A bag not named here may still come through a spread on the use, which cannot be read.
-          else if (site.spreads)
+          // Handed through a spread on the use, by its type — `<StyledInput {...email} />` — or one whose
+          // type cannot be read, which may hand anything.
+          const spread = site.spreads && (site.spreadNames === undefined || site.spreadNames.has(name));
+          if (!bag && !(spread && site.spreadNames !== undefined))
+            found.push({ kind: "not-passed", component: site.tag, detail: name, ...where(site) });
+          // A bag that comes through a spread is not written here, and cannot be read.
+          else if (bag && spread)
             found.push({ kind: "bag-unreadable", component: site.tag, detail: name, ...where(site) });
           continue;
         }

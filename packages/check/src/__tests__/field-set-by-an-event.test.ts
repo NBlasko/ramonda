@@ -56,7 +56,6 @@ describe("a field set by an event while a commit runs", () => {
     for (const allowed of [
       "ClicksFromAHandler",
       "ClicksAfterTheCommit",
-      "ClicksPastAnAwait",
       "ClicksAButtonAndAFileInput",
       "AnnouncesItself",
       "WritesAnUncontrolledField",
@@ -66,7 +65,6 @@ describe("a field set by an event while a commit runs", () => {
       "HandlersWrittenInline",
       "ClicksALabelOfATextField",
       "HandlerHeldInALocal",
-      "AwaitsBeforeItClicks",
       "DispatchesAHeldFocus",
     ]) {
       expect(components.has(allowed), allowed).toBe(false);

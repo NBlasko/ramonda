@@ -144,7 +144,10 @@ class TouchesNoModel extends Component {
   typed() {}
 }
 
-/** What an `async` hook does past its first sure `await` runs once the commit is over — inside a `try` too. */
+/**
+ * An `async` hook is read whole: whether a statement runs before an `await` or after it depends on values,
+ * so an edit anywhere in it is reported — inside a `try`, after an `if` that awaits, past the `await`.
+ */
 class AwaitsBeforeTheEdit extends Component {
   @state on = false;
   box = createRef<HTMLInputElement>();
@@ -153,7 +156,7 @@ class AwaitsBeforeTheEdit extends Component {
   async start() {
     try {
       await this.load();
-      this.box.current?.click();
+      this.box.current?.click(); // REPORT click past an await in a try
     } catch {}
   }
   @mounted
@@ -162,13 +165,13 @@ class AwaitsBeforeTheEdit extends Component {
       this.box.current?.click(); // REPORT click before the await in a try
       await this.load();
     } catch {}
-    this.box.current?.click();
+    this.box.current?.click(); // REPORT click after a try
   }
   @mounted
   async ready() {
     if (await this.load()) {
     }
-    this.box.current?.click();
+    this.box.current?.click(); // REPORT click after an if that awaits
   }
   @mounted
   keep() {
@@ -185,6 +188,39 @@ class AwaitsBeforeTheEdit extends Component {
   }
   render() {
     return <input type="checkbox" aria-label="b" ref={this.box} checked={this.on} onchange={this.picked} />;
+  }
+  picked() {}
+}
+
+/** Elements a query finds, however they are taken from its list, are fields an edit may reach. */
+class DispatchesAtQueriedFields extends Component {
+  root = createRef<HTMLDivElement>();
+  @mounted
+  start() {
+    const root = this.root.current!;
+    root.querySelectorAll("input").item(0).dispatchEvent(new Event("input")); // REPORT item of a query
+    root.getElementsByTagName("input")[0].dispatchEvent(new Event("input")); // REPORT by tag name
+    root.getElementsByClassName("field")[0].dispatchEvent(new Event("change")); // REPORT by class name
+    for (const each of root.querySelectorAll("input")) {
+      each.dispatchEvent(new Event("input")); // REPORT each of a query, in a loop
+    }
+    root.querySelectorAll("input").forEach((element) => {
+      element.dispatchEvent(new Event("input")); // REPORT each of a query, in a forEach
+    });
+  }
+  render() {
+    return <div ref={this.root} />;
+  }
+}
+
+/** An arrow kept in a field and handed as a ref is handed the element it is written on. */
+class ClicksThroughARefArrow extends Component {
+  @state on = false;
+  attach = (node: HTMLInputElement | null) => {
+    node?.click(); // REPORT click through a ref arrow
+  };
+  render() {
+    return <input type="checkbox" aria-label="b" ref={this.attach} checked={this.on} onchange={this.picked} />;
   }
   picked() {}
 }
@@ -424,7 +460,13 @@ class ClicksPastAnAwait extends Component {
   @mounted
   async start() {
     await Promise.resolve();
-    this.box.current?.click();
+    this.box.current?.click(); // REPORT click past an await
+  }
+  /** One meant for after the commit says so: handed to `queueMicrotask`. */
+  @updated
+  async later() {
+    await Promise.resolve();
+    queueMicrotask(() => this.box.current?.click());
   }
   render() {
     return <input type="checkbox" aria-label="b" ref={this.box} checked={this.on} onchange={() => {}} />;
@@ -690,7 +732,7 @@ class AwaitsBeforeItClicks extends Component {
   @mounted
   async start() {
     this.text = await load();
-    this.box.current?.click();
+    this.box.current?.click(); // REPORT click past an assigned await
   }
   @updated
   async again() {
@@ -699,7 +741,7 @@ class AwaitsBeforeItClicks extends Component {
     } catch {
       return;
     }
-    this.box.current?.click();
+    this.box.current?.click(); // REPORT click after a try that awaits
   }
   render() {
     return <input type="checkbox" aria-label="b" ref={this.box} checked={this.on} onchange={this.flipped} />;

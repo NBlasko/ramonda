@@ -27,3 +27,11 @@ export const DOM_STUB_FILE = "/__ramonda-check__/dom-stub.d.ts";
 
 /** `…/typescript/lib/lib.dom.d.ts` — one of TypeScript's own lib files, whichever copy the project has. */
 const TYPESCRIPT_LIB = /[\\/]typescript[\\/]lib[\\/]lib\.[^\\/]+\.d\.ts$/;
+
+/**
+ * One of TypeScript's own DOM lib files — `lib.dom.d.ts`, `lib.dom.iterable.d.ts`,
+ * `lib.dom.asynciterable.d.ts` — read as one of `TYPESCRIPT_LIB`, so the two never disagree on a file.
+ */
+export function isTheDomLib(file: string): boolean {
+  return TYPESCRIPT_LIB.test(file) && /[\\/]lib\.dom(\.[a-z]+)?\.d\.ts$/.test(file);
+}

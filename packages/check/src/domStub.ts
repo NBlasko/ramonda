@@ -37,7 +37,10 @@ export function formMembers(): ReadonlySet<string> {
   return read().formMembers;
 }
 
-/** Which of `formMembers` a form has as a method — `reset`, `submit` — which a type a form fits has as one too. */
+/**
+ * Which of `formMembers` a form holds a function in — its methods, `reset` and `submit`, and its event
+ * handlers — which a type a form fits holds one in too, and no other.
+ */
 export function formMethods(): ReadonlySet<string> {
   return read().formMethods;
 }
@@ -55,7 +58,11 @@ function read(): Read {
 
 function standInsFor(lib: string): Read {
   const members = new Map<string, Set<string>>();
-  const methods = new Map<string, Set<string>>();
+  /** Each member's type as written, `undefined` for a method — read once every function type is known. */
+  const typed = new Map<string, Map<string, string | undefined>>();
+  /** What each alias and each callable interface says, for which types are functions. */
+  const aliasBodies = new Map<string, string>();
+  const callableInterfaces = new Set<string>();
   const types = new Map<string, number>();
   const aliases = new Set<string>();
   const bases = new Map<string, Set<string>>();
@@ -64,7 +71,10 @@ function standInsFor(lib: string): Read {
     const after = match.index + match[0].length;
     const list = generic === undefined ? { count: 0, end: after } : parameters(lib, after - 1);
     if (!types.has(name)) types.set(name, list.count);
-    if (kind === "type") aliases.add(name);
+    if (kind === "type") {
+      aliases.add(name);
+      aliasBodies.set(name, lib.slice(list.end, lib.indexOf(";\n", list.end)));
+    }
     const extended = /^ extends ([^{]+) \{/.exec(lib.slice(list.end, lib.indexOf("\n", list.end)))?.[1];
     if (kind === "interface" && extended !== undefined) {
       const known = bases.get(name) ?? new Set<string>();
@@ -75,15 +85,16 @@ function standInsFor(lib: string): Read {
     if (kind === "interface") {
       // The body runs to the `}` that closes it at the start of a line, as the DOM lib writes it.
       const body = lib.slice(list.end, lib.indexOf("\n}", list.end));
+      if (/^ {4}\(/m.test(body)) callableInterfaces.add(name);
       const own = members.get(name) ?? new Set<string>();
-      const called = methods.get(name) ?? new Set<string>();
-      for (const member of body.matchAll(/^ {4}(readonly |get |set )?(\w+)\??([(:<])/gm)) {
+      const types_ = typed.get(name) ?? new Map<string, string | undefined>();
+      for (const member of body.matchAll(/^ {4}(readonly |get |set )?(\w+)\??([(:<])(.*)$/gm)) {
         own.add(member[2]);
-        // `name(` or `name<T>(` with no `get`/`set` before it: a method.
-        if (member[1] === undefined && member[3] !== ":") called.add(member[2]);
+        // A method — `name(` or `name<T>(`, no `get`/`set` before it — has no type to read: it is one.
+        types_.set(member[2], member[1] === undefined && member[3] !== ":" ? undefined : member[4]);
       }
       members.set(name, own);
-      methods.set(name, called);
+      typed.set(name, types_);
     }
   }
   const values = new Map<string, string>();
@@ -109,6 +120,27 @@ function standInsFor(lib: string): Read {
     const extended = [...(bases.get(name) ?? [])].filter((base) => types.has(base));
     return `interface ${name}${parameters}${extended.length === 0 ? "" : ` extends ${extended.join(", ")}`} ${body}`;
   });
+  // The types that are functions: an alias to an arrow, an interface with a call signature, and an alias
+  // to either — `OnErrorEventHandler` is `OnErrorEventHandlerNonNull | null`, a callable interface.
+  const functionTypes = new Set(callableInterfaces);
+  for (let grew = true; grew; ) {
+    grew = false;
+    for (const [alias, body] of aliasBodies) {
+      if (functionTypes.has(alias)) continue;
+      if (body.includes("=>") || (body.match(/\w+/g) ?? []).some((word) => functionTypes.has(word))) {
+        functionTypes.add(alias);
+        grew = true;
+      }
+    }
+  }
+  // A function the form holds: a method, or a member whose type is one, as an event handler's is
+  // (`onclick: ((…) => any) | null`, `onerror: OnErrorEventHandler`).
+  const isAFunction = (type: string | undefined) =>
+    type === undefined || type.includes("=>") || (type.match(/\w+/g) ?? []).some((word) => functionTypes.has(word));
+  const methods = new Map<string, Set<string>>();
+  for (const [name, members_] of typed) {
+    methods.set(name, new Set([...members_].filter(([, type]) => isAFunction(type)).map(([member]) => member)));
+  }
   const formMembers = new Set<string>();
   const formMethods = new Set<string>();
   const visit = (name: string): void => {

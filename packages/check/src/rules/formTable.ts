@@ -49,6 +49,11 @@ export interface ComponentSite extends Where {
   props: Map<string, ts.Expression | undefined>;
   /** Whether a spread is written on the tag. */
   spreads: boolean;
+  /**
+   * Every name the spreads on the tag may hand, read off their types — `{...email}` with `email` a field
+   * hands its `name`, `value`, `oninput` — or `undefined` when one of them cannot be read (`any`).
+   */
+  spreadNames: ReadonlySet<string> | undefined;
 }
 
 /** A class that holds a `Form` and what became of it. */
@@ -367,9 +372,14 @@ export function formTableFor(sources: readonly ts.SourceFile[], resolve: Resolve
 
     const props = new Map<string, ts.Expression | undefined>();
     let spreads = false;
+    let spreadNames: Set<string> | undefined = new Set<string>();
     for (const attribute of opening.attributes.properties) {
-      if (ts.isJsxSpreadAttribute(attribute)) spreads = true;
-      else props.set(attribute.name.getText(), valueOf(attribute));
+      if (ts.isJsxSpreadAttribute(attribute)) {
+        spreads = true;
+        const names = resolve.propertyNames(attribute.expression);
+        if (names === undefined) spreadNames = undefined;
+        else for (const name of names) spreadNames?.add(name);
+      } else props.set(attribute.name.getText(), valueOf(attribute));
     }
     sites.push({
       owner: enclosingClass(element),
@@ -378,6 +388,7 @@ export function formTableFor(sources: readonly ts.SourceFile[], resolve: Resolve
       inForm: insideAForm(element, true),
       props,
       spreads,
+      spreadNames,
       ...positionOf(opening),
     });
   };

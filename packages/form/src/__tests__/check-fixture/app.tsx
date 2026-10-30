@@ -4,6 +4,8 @@ import { Form, type StandardSchemaV1 } from "@ramonda/form";
 // A `type` that may be left off — read as what it is, or text — in a project with strict null checks,
 // which the check's own fixtures are not.
 declare const maybeEmail: "email" | undefined;
+/** A type a form fits, its handler typed as an event handler is: a function, or `null`. */
+declare const formLike: { reset(): void; onclick: (() => void) | null };
 declare const maybeNumber: "number" | undefined;
 declare const schema: StandardSchemaV1<{ age: number; born: Date; name: string }>;
 
@@ -13,6 +15,10 @@ export class Signup extends Component {
     defaultValues: { age: 30, born: new Date(2000, 0, 1), name: "" },
     onSubmit: () => {},
   }));
+
+  clear() {
+    formLike.reset();
+  }
 
   render() {
     const { age, born, name } = this.f.fields;

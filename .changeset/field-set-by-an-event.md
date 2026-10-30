@@ -12,9 +12,11 @@ commit is over. `field-set-by-an-event` reports an edit sent from the work a com
 `change`, `beforeinput` or a composition event — or one whose type cannot be read — at a field the
 class renders or an element a query finds; a `click` on a checkbox, a radio or a `<label>` of one the
 class renders; writing `.value` or `.checked` on a field it renders with that model;
-`document.execCommand`. What runs after the commit — a microtask, a timer, a promise, past an
-`await` — an event handler, and an event dispatched at the document or a store are not reported: a
-row whose `onclick` clicks its checkbox does what a `<label>` does.
+`document.execCommand`. What is handed to run after the commit — a microtask, a timer, a promise's
+`then` — an event handler, and an event dispatched at the document or a store are not reported: a
+row whose `onclick` clicks its checkbox does what a `<label>` does. An `async` hook is read whole:
+whether a statement runs before an `await` or after it depends on values, so an edit past one is
+handed to `queueMicrotask` to say it is meant for later.
 
 ```tsx
 @state accepted = true;                    // not this.box.current?.click() in @mounted

@@ -30,8 +30,10 @@ import type { Resolver, Rule, RuleContext } from "./rule";
  * How far it looks: every method of the class the commit's work calls as `this.method()`, and every
  * function written there that runs now — a callback to `forEach`, `map` or any call this cannot name
  * as later. One handed to `queueMicrotask`, `setTimeout`, `requestAnimationFrame`, a promise's `then`
- * or `addEventListener` runs after the commit, and so does what an `async` method does past an
- * `await` written as a statement of its own. A function written as an attribute is not the commit's
+ * or `addEventListener` runs after the commit. An `async` method is read whole: whether a statement runs
+ * before an `await` or after it depends on values the check cannot read — `this.cache ??= await load()`
+ * may not wait at all — so an edit anywhere in it is reported, and one meant for later says so by
+ * handing it to `queueMicrotask`. A function written as an attribute is not the commit's
  * work either — `onclick={() => …}` is an event handler, which the element calls, and a row whose
  * handler clicks its checkbox does what a `<label>` does; a prop's function is the receiving
  * component's to call — except `ref={(node) => …}`, which runs in the commit.
@@ -124,8 +126,9 @@ export const fieldSetByAnEvent = {
       "}\n" +
       "```\n\n" +
       "An edit that must go through the field — its handler, the form around it — is sent once the\n" +
-      "commit is over: `queueMicrotask(() => this.box.current?.click())`. A library given the field is\n" +
-      "told its value through its own callback, which writes state.\n\n",
+      "commit is over: `queueMicrotask(() => this.box.current?.click())`. An `await` before it does not\n" +
+      "say so — whether it waits depends on values — so the edit is handed to `queueMicrotask` there too.\n" +
+      "A library given the field is told its value through its own callback, which writes state.\n\n",
   },
 
   read(cls, context) {
@@ -185,6 +188,7 @@ export const fieldSetByAnEvent = {
       const at = unwrap(receiver);
       if (ts.isIdentifier(at) && hops < 4) {
         const declared = resolve(at)?.declarations?.[0];
+        if (declared !== undefined && eachOfAQuery(declared)) return true;
         return (
           declared !== undefined &&
           ts.isVariableDeclaration(declared) &&
@@ -279,42 +283,11 @@ export const fieldSetByAnEvent = {
         ts.forEachChild(at, look);
       };
 
-      /**
-       * Statements in order, up to the first an `async` function is sure to `await` at: what comes after
-       * it runs once the commit is over — see `awaitedAt`. A block and a `try` are read the same way,
-       * inside: `try { await load(); this.box.click(); }` stops at the `await`. Whether one was reached.
-       */
-      const inOrder = (statements: readonly ts.Node[], async: boolean): boolean => {
-        for (const statement of statements) {
-          if (!async || !ts.isStatement(statement)) {
-            look(statement);
-            continue;
-          }
-          if (ts.isBlock(statement)) {
-            if (inOrder(statement.statements, async)) return true;
-            continue;
-          }
-          if (ts.isTryStatement(statement)) {
-            if (inOrder(statement.tryBlock.statements, async)) return true;
-            // With no `await` sure in it, the `catch` may run now, and the `finally` does.
-            if (statement.catchClause !== undefined) look(statement.catchClause);
-            if (statement.finallyBlock !== undefined && inOrder(statement.finallyBlock.statements, async)) return true;
-            continue;
-          }
-          const awaited = awaitedAt(statement);
-          if (awaited !== undefined) {
-            // What runs before the `await` in it still runs now: `this.x = await load(this.box.click())`.
-            look(awaited);
-            return true;
-          }
-          look(statement);
-        }
-        return false;
-      };
-
+      // A function's statements, every one: an `async` one's too, past an `await` as well — see the
+      // rule's description for why the check does not tell them apart.
       const body = (fn: ts.FunctionLikeDeclaration): void => {
         const statements = fn.body === undefined ? [] : ts.isBlock(fn.body) ? fn.body.statements : [fn.body];
-        inOrder(statements, (ts.getCombinedModifierFlags(fn as ts.Declaration) & ts.ModifierFlags.Async) !== 0);
+        for (const statement of statements) look(statement);
       };
 
       const enter = (fn: ts.Node): void => {
@@ -453,69 +426,38 @@ const ELEMENT_QUERIES = new Set([
   "querySelectorAll",
   "getElementById",
   "getElementsByName",
+  "getElementsByTagName",
+  "getElementsByClassName",
   "closest",
 ]);
 
+/** A query for elements, or one taken from what it found: `querySelectorAll("input")[0]`, `.item(0)`. */
 function isAnElementQuery(expression: ts.Expression): boolean {
   let at = unwrap(expression);
-  // `querySelectorAll("input")[0]`, `.item(0)`.
   if (ts.isElementAccessExpression(at)) at = unwrap(at.expression);
   if (!ts.isCallExpression(at)) return false;
-  const callee = unwrap(at.expression);
+  let callee = unwrap(at.expression);
+  if (ts.isPropertyAccessExpression(callee) && callee.name.text === "item") {
+    const list = unwrap(callee.expression);
+    if (!ts.isCallExpression(list)) return false;
+    callee = unwrap(list.expression);
+  }
   return ts.isPropertyAccessExpression(callee) && ELEMENT_QUERIES.has(callee.name.text);
 }
 
 /**
- * The part of a statement that is sure to `await`, whatever its values — `await x;`,
- * `const y = await x;`, `this.data = await load();`, `return await x;`, `throw await x;`, or the head
- * of an `if`, a `switch`, a `while` or a `for … of` that awaits: what runs up to it runs now, and its
- * branches or its body after it. `undefined` when there is none. An `await` behind a branch — an arm of
- * `?:`, the right of `&&`, `||` or `??`, inside an `if`'s branch, a function written there — may not
- * run, and the commit's work goes on past it. A block and a `try` are read inside, by `inOrder`.
+ * Whether a name is each element of a query's list: `for (const el of root.querySelectorAll("input"))`,
+ * or the first parameter of a callback handed to its `forEach`.
  */
-function awaitedAt(statement: ts.Statement): ts.Node | undefined {
-  const sure = (expression: ts.Expression | undefined) =>
-    expression !== undefined && surelyAwaits(expression) ? expression : undefined;
-  if (ts.isExpressionStatement(statement)) return sure(statement.expression);
-  if (ts.isReturnStatement(statement) || ts.isThrowStatement(statement)) return sure(statement.expression);
-  if (ts.isVariableStatement(statement)) {
-    const awaits = statement.declarationList.declarations.some(
-      (declaration) => declaration.initializer !== undefined && surelyAwaits(declaration.initializer),
-    );
-    return awaits ? statement : undefined;
-  }
-  if (ts.isIfStatement(statement) || ts.isWhileStatement(statement) || ts.isSwitchStatement(statement)) {
-    return sure(statement.expression);
-  }
-  if (ts.isForOfStatement(statement)) {
-    // `for await` waits before its first turn; a `for … of` whose list awaits, while reading it.
-    return statement.awaitModifier !== undefined ? statement.expression : sure(statement.expression);
-  }
-  return undefined;
-}
-
-/** Whether evaluating an expression is sure to reach an `await` in it — see `awaitsAt`. */
-function surelyAwaits(expression: ts.Node): boolean {
-  if (ts.isAwaitExpression(expression)) return true;
-  if (ts.isFunctionLike(expression)) return false;
-  if (ts.isConditionalExpression(expression)) return surelyAwaits(expression.condition);
-  if (
-    ts.isBinaryExpression(expression) &&
-    (expression.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken ||
-      expression.operatorToken.kind === ts.SyntaxKind.BarBarToken ||
-      expression.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken)
-  ) {
-    return surelyAwaits(expression.left);
-  }
-  // An optional call's arguments are not evaluated when what it calls is missing.
-  if (ts.isCallExpression(expression) && expression.questionDotToken !== undefined) {
-    return surelyAwaits(expression.expression);
-  }
-  let found = false;
-  ts.forEachChild(expression, (child) => {
-    if (!found && surelyAwaits(child)) found = true;
-  });
-  return found;
+function eachOfAQuery(declared: ts.Declaration): boolean {
+  const list = declared.parent;
+  if (ts.isVariableDeclarationList(list) && ts.isForOfStatement(list.parent))
+    return isAnElementQuery(list.parent.expression);
+  if (!ts.isParameter(declared) || declared.parent.parameters[0] !== declared) return false;
+  const call = declared.parent.parent;
+  if (!ts.isCallExpression(call)) return false;
+  const callee = unwrap(call.expression);
+  return ts.isPropertyAccessExpression(callee) && callee.name.text === "forEach" && isAnElementQuery(callee.expression);
 }
 
 /** `document`, or `window.document`. */
@@ -634,8 +576,10 @@ function refCallbackElements(
 ): (ts.JsxElement | ts.JsxSelfClosingElement)[] {
   const declared = context.resolve(name)?.declarations?.[0];
   if (declared === undefined || !ts.isParameter(declared)) return [];
-  const method = declared.parent;
-  if (ts.isMethodDeclaration(method) && method.parent === cls) {
+  // A method handed as a ref — `ref={this.attach}` — or an arrow kept in a field, `attach = (node) => …`.
+  const fn = declared.parent;
+  const method = ts.isArrowFunction(fn) && ts.isPropertyDeclaration(fn.parent) ? fn.parent : fn;
+  if ((ts.isMethodDeclaration(method) || ts.isPropertyDeclaration(method)) && method.parent === cls) {
     const named = memberName(method);
     const found: (ts.JsxElement | ts.JsxSelfClosingElement)[] = [];
     const visit = (node: ts.Node): void => {

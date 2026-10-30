@@ -8,7 +8,7 @@ import { hookNamed, isThisUse, positionOf } from "./syntax";
 import { coreExportName, importedFromPackage } from "./rules/core-import";
 import type { FormType, FormValue, Resolver, Silencer } from "./rules/rule";
 import { domStub, formMembers, formMethods } from "./domStub";
-import { DOM_STUB_FILE } from "./rules/platform";
+import { DOM_STUB_FILE, isTheDomLib } from "./rules/platform";
 import { unwrap } from "./rules/follow-value";
 import {
   activate,
@@ -669,6 +669,14 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
     coreName: (id: ts.Node) => coreExportName(id, resolveLocal, resolveStep, resolve),
     fromPackage: (id: ts.Node, pkg: string) => importedFromPackage(id, pkg, resolveLocal, resolveStep),
     formValue: (expression: ts.Expression) => formValueOf(checker.getTypeAtLocation(expression)),
+    propertyNames: (expression: ts.Expression) => {
+      const type = checker.getTypeAtLocation(expression);
+      if ((type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) return undefined;
+      const apparent = checker.getApparentType(type);
+      // An index — `Record<string, unknown>` — may hand any name at all.
+      if (checker.getIndexInfosOfType(apparent).length > 0) return undefined;
+      return checker.getPropertiesOfType(apparent).map((property) => property.name);
+    },
     typeLiterals: (expression: ts.Expression, absentAs?: string) => {
       const type = checker.getTypeAtLocation(expression);
       const read: string[] = [];
@@ -3968,11 +3976,6 @@ function packageOf(dir: string): { name: string; version: string } {
   return { name: dir.split(/[/\\]/).pop() ?? "app", version: "0.0.0" };
 }
 
-/** TypeScript's own DOM lib files — `lib.dom.d.ts`, `lib.dom.iterable.d.ts`, `lib.dom.asynciterable.d.ts`. */
-function isTheDomLib(fileName: string): boolean {
-  return /[\\/]typescript[\\/]lib[\\/]lib\.dom(\.[a-z]+)?\.d\.ts$/.test(fileName);
-}
-
 /**
  * A compiler host that serves the virtual reading of any file holding a style block.
  *
@@ -4132,14 +4135,18 @@ function aFormFits(type: ts.Type, checker: ts.TypeChecker): boolean {
     // that takes anything — `Record<string, unknown>` — can hold one.
     const takesAnything = (info: ts.IndexInfo) => (info.type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0;
     if (!checker.getIndexInfosOfType(apparent).every(takesAnything)) return false;
-    // A member the form has as a method — `reset` — is one a value holding a form can call: `{ reset:
-    // boolean }` is a flag, which no form fits.
+    // A member the form holds a function in — `reset`, `onclick` — is one a value holding a form can
+    // call: `{ reset: boolean }` is a flag, which no form fits. And one it holds a value in — `length` —
+    // is no function there: `{ length: () => number }` is no form's either.
     const methods = formMethods();
+    const unread = (property: ts.Symbol) =>
+      (checker.getTypeOfSymbol(property).flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0;
     const callable = (property: ts.Symbol) => {
       const type = checker.getTypeOfSymbol(property);
       return (
         (type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0 ||
-        checker.getApparentType(type).getCallSignatures().length > 0
+        // `((event) => any) | null`, as an event handler is typed, is a function where there is one.
+        checker.getApparentType(checker.getNonNullableType(type)).getCallSignatures().length > 0
       );
     };
     return checker
@@ -4147,7 +4154,8 @@ function aFormFits(type: ts.Type, checker: ts.TypeChecker): boolean {
       .every(
         (property) =>
           (property.flags & ts.SymbolFlags.Optional) !== 0 ||
-          (names.has(property.name) && (!methods.has(property.name) || callable(property))),
+          (names.has(property.name) && methods.has(property.name) === callable(property)) ||
+          (names.has(property.name) && unread(property)),
       );
   });
 }

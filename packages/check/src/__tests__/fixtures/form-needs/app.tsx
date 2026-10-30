@@ -8,6 +8,14 @@ const NONE = undefined;
 declare const on: boolean;
 declare const bag: Record<string, unknown>;
 declare const rest: Record<string, unknown>;
+/** What a field hands, as its type says — every attribute a wrapper of one takes. */
+declare const handed: {
+  name: string;
+  value: string;
+  oninput: (event: Event) => void;
+  onblur: (event: Event) => void;
+  invalid: boolean;
+};
 declare const kind: string;
 const HIDDEN = "hidden";
 const oninput = undefined;
@@ -319,3 +327,15 @@ class OwnForm extends Component {
 }
 
 export { Page, Shelled, Loose, Detached, SignupForm, OwnForm };
+
+/** ✓ a wrapper handed all five through a spread whose type names them. */
+class HandedThroughASpread extends Component {
+  form = this.use(Form, {});
+  render() {
+    return (
+      <form onsubmit={this.form.submit}>
+        <StyledInput {...handed} />
+      </form>
+    );
+  }
+}
