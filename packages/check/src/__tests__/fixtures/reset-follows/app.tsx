@@ -22,6 +22,11 @@ interface TypedForm<T> extends HTMLFormElement {
 }
 declare const typed: TypedForm<string>;
 declare const callable: { (): void; reset(): void };
+/** A class of the project's own with a reset and nothing else a form lacks: its instance is the class. */
+class Stopwatch {
+  reset() {}
+}
+declare const watch: Stopwatch;
 declare const mixed: { reset(): void; count: number } | Resettable;
 // `void` rather than `undefined`, which the fixtures' non-strict base drops from a union.
 declare const actions: Record<string, () => void>;
@@ -67,6 +72,7 @@ export class Follows extends Component {
     loosely.reset(); // ✗ form-retyped — a member a form lacks, but optional
     mixed.reset(); // ✗ form-retyped — one member of the union a form fits
     callable.reset(); // ✓ a function with a reset of its own is no form
+    watch.reset(); // ✓ a class's instance is that class, as its author wrote it
     // @ts-expect-error — `void` has no `reset`; the union is what is asked about, not the call
     counterOrNothing.reset(); // ✓ no form, or nothing at all
     const helpers: Record<string, unknown> = {};

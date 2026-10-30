@@ -3974,6 +3974,11 @@ function packageOf(dir: string): { name: string; version: string } {
  * about module resolution moves. `@ramonda/check` may depend on `@ramonda/css`; the forbidden
  * direction is the other one, and it stays forbidden.
  */
+/** TypeScript's own DOM lib files — `lib.dom.d.ts`, `lib.dom.iterable.d.ts`, `lib.dom.asynciterable.d.ts`. */
+function isTheDomLib(fileName: string): boolean {
+  return /[\\/]typescript[\\/]lib[\\/]lib\.dom(\.[a-z]+)?\.d\.ts$/.test(fileName);
+}
+
 function overlayHost(options: ts.CompilerOptions): ts.CompilerHost {
   const host = ts.createCompilerHost(options);
   const readFromDisk = host.readFile.bind(host);
@@ -4001,6 +4006,9 @@ function overlayHost(options: ts.CompilerOptions): ts.CompilerHost {
     fileName === DOM_STUB_FILE ? domStub() : (virtual(fileName) ?? readFromDisk(fileName));
   host.getSourceFile = (fileName, language, onError, shouldCreate) => {
     if (fileName === DOM_STUB_FILE) return ts.createSourceFile(fileName, domStub(), language, true);
+    // The DOM lib a file asks for itself — `/// <reference lib="dom" />` — read as nothing: the stand-ins
+    // are the DOM here, and both at once would merge every interface with its stand-in.
+    if (isTheDomLib(fileName)) return ts.createSourceFile(fileName, "", language, true);
     const code = virtual(fileName);
     return code === undefined
       ? sourceFromDisk(fileName, language, onError, shouldCreate)
@@ -4116,6 +4124,9 @@ function aFormFits(type: ts.Type, checker: ts.TypeChecker): boolean {
     if ((member.flags & (ts.TypeFlags.Undefined | ts.TypeFlags.Null | ts.TypeFlags.Void)) !== 0) return false;
     const apparent = checker.getApparentType(member);
     if (apparent.getCallSignatures().length > 0 || apparent.getConstructSignatures().length > 0) return false;
+    // An instance of a class the project declares is that class, as its author wrote it — a form is one
+    // only through a cast, and the rule trusts the type the author writes.
+    if (((apparent.getSymbol()?.flags ?? 0) & ts.SymbolFlags.Class) !== 0) return false;
     // `Record<string, () => void>` asks every member to be a function; a form's are not. Only an index
     // that takes anything — `Record<string, unknown>` — can hold one.
     const takesAnything = (info: ts.IndexInfo) => (info.type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0;
@@ -4169,7 +4180,7 @@ function keyNames(key: ts.Node, checker: ts.TypeChecker): string[] | undefined {
   return members.flatMap((member) => (member.isStringLiteral() ? [member.value] : []));
 }
 
-function createProgram(tsconfigPath: string): {
+export function createProgram(tsconfigPath: string): {
   program: ts.Program;
   notes: string[];
 } {
@@ -4223,9 +4234,9 @@ function createProgram(tsconfigPath: string): {
      * The project's own options, with the language's lib in place of whatever lib it names, and no
      * `@types/*`.
      *
-     * Every rule but one asks the checker two things — `getSymbolAtLocation` and
-     * `getAliasedSymbol` — binder work over the files it walks. The one that asks a TYPE,
-     * `form-value-in-the-wrong-control`, needs what core's and the form's declarations name: the
+     * Most rules ask the checker two things — `getSymbolAtLocation` and `getAliasedSymbol` — binder
+     * work over the files it walks. The questions about a TYPE (`formValue`, `formReset`, `formCast`,
+     * `typeLiterals` — see `Resolver`) need what core's and the form's declarations name: the
      * language's lib, and the DOM's names. Not the DOM lib, which is 2.3 MB of parsing for contents
      * the answer never reads — each of its names is a distinct stand-in instead, `domStub`, the extra
      * root file above. `@types/*` packages a project happens to have installed are parsing for nothing.

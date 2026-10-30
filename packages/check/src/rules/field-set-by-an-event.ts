@@ -1,5 +1,5 @@
 import ts from "typescript";
-import { positionOf } from "../syntax";
+import { memberName, positionOf } from "../syntax";
 import { coreElementTag } from "./coreElements";
 import { openingOf, says } from "./element";
 import { unwrap } from "./follow-value";
@@ -78,16 +78,19 @@ const LATER = new Set([
 
 /**
  * What a ref this class renders is attached to, as far as an edit is concerned: whether a click on it
- * edits a field — a checkbox or a radio, held by a model or not, or a `<label>` of one — and whether
- * writing its `.value` or `.checked` writes over a model. A ref on more than one element — one per
- * branch of a `?:` — holds what any of them does.
+ * edits a field — a checkbox or a radio, held by a model or not, or a `<label>` of one; whether it is a
+ * field at all, which an event dispatched at it edits; and which property is its model — `checked` on a
+ * box, `value` on any other field — which writing over is reported, and no other. A ref on more than
+ * one element — one per branch of a `?:` — holds what any of them does.
  */
 interface Held {
   clicked: boolean;
-  written: boolean;
+  field: boolean;
+  models: ReadonlySet<"value" | "checked">;
 }
 
-const NEITHER: Held = { clicked: false, written: false };
+const NOTHING = new Set<"value" | "checked">();
+const NEITHER: Held = { clicked: false, field: false, models: NOTHING };
 
 export const fieldSetByAnEvent = {
   id: "field-set-by-an-event",
@@ -132,7 +135,7 @@ export const fieldSetByAnEvent = {
     // The class's own functions, by name: methods and arrow fields.
     const members = new Map<string, ts.Node>();
     for (const member of cls.members) {
-      const name = member.name !== undefined && ts.isIdentifier(member.name) ? member.name.text : undefined;
+      const name = memberName(member);
       if (name === undefined) continue;
       if (ts.isMethodDeclaration(member) && member.body !== undefined) members.set(name, member);
       else if (ts.isPropertyDeclaration(member) && member.initializer !== undefined) {
@@ -176,7 +179,7 @@ export const fieldSetByAnEvent = {
      */
     const reachesAField = (receiver: ts.Expression, hops = 0): boolean => {
       const held = heldBy(receiver);
-      if (held !== undefined) return held.held.clicked || held.held.written;
+      if (held !== undefined) return held.held.clicked || held.held.field;
       const at = unwrap(receiver);
       if (ts.isIdentifier(at) && hops < 4) {
         const declared = resolve(at)?.declarations?.[0];
@@ -255,7 +258,7 @@ export const fieldSetByAnEvent = {
           const held = heldBy(at.left.expression);
           // Only a field with a model: `.value` on a hidden input, `.checked` on a box no model holds,
           // is the element's own and the page's, as core reads it.
-          if (held !== undefined && held.held.written) {
+          if (held !== undefined && held.held.models.has(at.left.name.text as "value" | "checked")) {
             report(at.left, "write", `${held.name}.${at.left.name.text}`);
           }
         }
@@ -299,7 +302,7 @@ export const fieldSetByAnEvent = {
         walk(member, "the constructor");
         continue;
       }
-      const name = member.name !== undefined && ts.isIdentifier(member.name) ? member.name.text : undefined;
+      const name = memberName(member);
       if (name === undefined) continue;
       if (name === "render" && ts.isMethodDeclaration(member)) {
         walk(member, "render");
@@ -532,22 +535,34 @@ function heldAs(
   // `{undefined}`, or a `const` holding it, is no model — see `says`.
   const said = (name: string) => says(opening, name, context.resolve);
   const tag = coreElementTag(opening.tagName, context.resolve) ?? opening.tagName.getText();
-  if (tag === "label") return { clicked: labelsABox(node, boxes, context), written: false };
+  const model = (name: "value" | "checked") => (said(name) ? new Set([name]) : NOTHING);
+  if (tag === "label") return { clicked: labelsABox(node, boxes, context), field: false, models: NOTHING };
   if (tag === "input") {
-    if (isABox(node, context)) return { clicked: true, written: said("checked") };
+    // A box's model is `checked`: its `.value` is only what the form sends.
+    if (isABox(node, context)) return { clicked: true, field: true, models: model("checked") };
     // A hidden, a button, a file input holds no model, whatever its `value`.
     if (fieldKind(typeAttributeOf(node), context.resolve) === "unedited") return NEITHER;
-    return { clicked: false, written: said("value") };
+    return { clicked: false, field: true, models: model("value") };
   }
-  if (tag === "select" || tag === "textarea") return { clicked: false, written: said("value") };
+  if (tag === "select" || tag === "textarea") return { clicked: false, field: true, models: model("value") };
   return NEITHER;
 }
 
-/** The inputs with a literal `id` this class renders, and whether each is a box — what a `for` names. */
+/**
+ * The fields with a literal `id` this class renders — an `<input>`, a `<select>`, a `<textarea>`, core's
+ * `Select` and `TextArea` — and whether each is a box: what a `for` names.
+ */
 function boxesOf(cls: ts.ClassLikeDeclaration, context: RuleContext): Map<string, boolean> {
   const boxes = new Map<string, boolean>();
   const ids = (node: ts.Node): void => {
-    if ((ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node)) && openingOf(node).tagName.getText() === "input") {
+    const tag =
+      ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node)
+        ? (coreElementTag(openingOf(node).tagName, context.resolve) ?? openingOf(node).tagName.getText())
+        : undefined;
+    if (
+      (ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node)) &&
+      (tag === "input" || tag === "select" || tag === "textarea")
+    ) {
       const id = openingOf(node).attributes.properties.find(
         (p): p is ts.JsxAttribute => ts.isJsxAttribute(p) && p.name.getText() === "id",
       );
@@ -604,7 +619,11 @@ function refsOf(cls: ts.ClassLikeDeclaration, boxes: Map<string, boolean>, conte
           held.name.text,
           before === undefined
             ? element
-            : { clicked: before.clicked || element.clicked, written: before.written || element.written },
+            : {
+                clicked: before.clicked || element.clicked,
+                field: before.field || element.field,
+                models: new Set([...before.models, ...element.models]),
+              },
         );
       }
     }

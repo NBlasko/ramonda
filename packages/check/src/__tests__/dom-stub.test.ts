@@ -1,6 +1,9 @@
 import ts from "typescript";
 import { describe, expect, test } from "vitest";
 import { domStub, formMembers } from "../domStub";
+import { createProgram } from "../analyze";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const FILE = "/stub.d.ts";
 
@@ -65,5 +68,14 @@ describe("the DOM's stand-ins", () => {
     for (const name of ["getContext", "stub:HTMLInputElement", "stub:CanvasRenderingContext2D"]) {
       expect(names.has(name), name).toBe(false);
     }
+  });
+
+  /** A file that asks for the DOM lib itself — `/// <reference lib="dom" />` — gets nothing: the stand-ins are the DOM. */
+  test("are the only DOM, where a project's file asks for the DOM lib", () => {
+    const fixture = join(dirname(fileURLToPath(import.meta.url)), "fixtures", "dom-reference", "tsconfig.json");
+    const { program } = createProgram(fixture);
+    const domLibs = program.getSourceFiles().filter((file) => /[\\/]lib\.dom(\.[a-z]+)?\.d\.ts$/.test(file.fileName));
+    expect(domLibs.length).toBeGreaterThan(0);
+    expect(domLibs.map((file) => file.text)).toEqual(domLibs.map(() => ""));
   });
 });

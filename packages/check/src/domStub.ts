@@ -6,8 +6,9 @@ import ts from "typescript";
  * The DOM's names, each as a stand-in, for a program that reads types — see `createProgram` in
  * `analyze.ts`.
  *
- * Why stand-ins: one rule, `form-value-in-the-wrong-control`, asks a TYPE, through core's and the
- * form's declarations, which name `HTMLInputElement`, `Event` and the rest. The DOM lib that declares
+ * Why stand-ins: the rules that ask a TYPE (`form-value-in-the-wrong-control`, the form's reset in
+ * `reset-the-model-does-not-hear`, a `type` read off its type) ask it through core's and the form's
+ * declarations, which name `HTMLInputElement`, `Event` and the rest. The DOM lib that declares
  * them is 2.3 MB to parse for contents the answer never reads; its NAMES are all the answer needs.
  * Read from the DOM lib of the TypeScript this package runs, so they are always the names core's and
  * the form's declarations were written against — nothing here is kept by hand.

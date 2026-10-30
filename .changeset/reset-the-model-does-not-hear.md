@@ -17,6 +17,6 @@ is reported under any name — a type alias, another variable, `const clear = fo
 `const { reset } = form` — and so is `reset` on a type a form fits (`const r: Resettable = form`), on a
 value whose type cannot be read, and a form cast to a type that is not one (`form as unknown as Canvas`).
 It trusts the type the author writes, as TypeScript does: a form put through `unknown` and given another
-type is that type from there on.
+type is that type from there on, and an instance of the project's own class is that class.
 A `<button>` whose `type` cannot be read, or is left to a spread, may reset its form, and is reported
 only when that form holds something a reset would undo.

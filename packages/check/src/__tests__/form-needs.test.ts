@@ -57,9 +57,11 @@ describe("a field inside a @ramonda/form form", () => {
         [lineOf('<NoHandlerInput attrs={{ value: "x" }} />'), "bag-without-a-handler", "attrs"],
         [lineOf("class Detached"), "form-not-attached", "form"],
         [lineOf("class SignupForm"), "form-in-a-hook", "form"],
+        [lineOf("class DetachedSignup"), "form-not-attached", "signup"],
+        [lineOf("<TwoFields attrs={bag} />"), "bag-unreadable", "attrs"],
       ]),
     );
-    expect(issues).toHaveLength(26);
+    expect(issues).toHaveLength(28);
   });
 
   test("a complete field, a wrapper handed everything, a harmless bag, a field outside a form and an app's own Form are silent", () => {

@@ -112,10 +112,11 @@ export const formFieldWithoutWhatTheFormNeeds = {
     const found: FormFieldWithoutWhatTheFormNeedsIssue[] = [];
 
     for (const holder of holders) {
-      if (holder.isHook)
-        found.push({ kind: "form-in-a-hook", component: holder.component, detail: "form", ...where(holder) });
+      // Named by the field that holds it, which the report's advice writes as `this.<field>.submit`.
+      const detail = holder.fields[0] ?? "form";
+      if (holder.isHook) found.push({ kind: "form-in-a-hook", component: holder.component, detail, ...where(holder) });
       else if (!holder.attached)
-        found.push({ kind: "form-not-attached", component: holder.component, detail: "form", ...where(holder) });
+        found.push({ kind: "form-not-attached", component: holder.component, detail, ...where(holder) });
     }
 
     // Every class rendered inside a form, through every component it renders in turn.
@@ -220,7 +221,15 @@ export const formFieldWithoutWhatTheFormNeeds = {
       }
     }
 
-    return found;
+    // One prop spread on more than one field is asked once for each — what it wants differs — and its
+    // bag is read at each use as many times: one report says it.
+    const said = new Set<string>();
+    return found.filter((issue) => {
+      const key = `${issue.kind}|${issue.detail}|${issue.file}|${issue.line}|${issue.column}`;
+      if (said.has(key)) return false;
+      said.add(key);
+      return true;
+    });
   },
 } as const satisfies ProjectRule<FormFieldWithoutWhatTheFormNeedsIssue>;
 
@@ -243,6 +252,11 @@ function readBag(
   // no handler and sets no model, as core reads it.
   const keys = new Set<string>();
   for (const property of written.properties) {
+    // A method written in the bag — `oninput(event) { … }` — is a handler written there, as an arrow is.
+    if (ts.isMethodDeclaration(property) && (ts.isIdentifier(property.name) || ts.isStringLiteral(property.name))) {
+      keys.add(property.name.text);
+      continue;
+    }
     if (!ts.isPropertyAssignment(property) && !ts.isShorthandPropertyAssignment(property)) {
       found.push({ kind: "bag-unreadable", component: site.tag, detail: name, ...where(site) });
       return;

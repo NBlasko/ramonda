@@ -86,6 +86,64 @@ class WritesFieldsWithNoModel extends Component {
   }
 }
 
+/** A `#private` helper is entered from commit work as any method is. */
+class ClicksABoxInAPrivateHelper extends Component {
+  @state on = false;
+  box = createRef<HTMLInputElement>();
+  @mounted
+  start() {
+    this.#fill();
+  }
+  #fill() {
+    this.box.current?.click(); // REPORT click in a private helper
+  }
+  render() {
+    return <input type="checkbox" aria-label="b" ref={this.box} checked={this.on} onchange={this.picked} />;
+  }
+  picked() {}
+}
+
+/** An event dispatched at a field this class renders is an edit, whether or not a model holds it. */
+class DispatchesAtAFieldWithNoModel extends Component {
+  field = createRef<HTMLInputElement>();
+  @mounted
+  start() {
+    this.field.current!.dispatchEvent(new Event("input")); // REPORT dispatch at a field with no model
+  }
+  render() {
+    return <input aria-label="t" ref={this.field} oninput={this.typed} />;
+  }
+  typed() {}
+}
+
+/** A label of a text area only moves the focus; a box's `.value` and a text field's `.checked` are no model. */
+class TouchesNoModel extends Component {
+  @state on = false;
+  @state text = "";
+  label = createRef<HTMLLabelElement>();
+  box = createRef<HTMLInputElement>();
+  field = createRef<HTMLInputElement>();
+  @mounted
+  start() {
+    this.label.current?.click();
+    this.box.current!.value = "yes";
+    this.field.current!.checked = true;
+  }
+  render() {
+    return (
+      <div>
+        <label ref={this.label} for="notes">
+          Notes
+        </label>
+        <TextArea id="notes" aria-label="n" value={this.text} oninput={this.typed} />
+        <input type="checkbox" aria-label="b" ref={this.box} checked={this.on} onchange={this.typed} />
+        <input aria-label="f" ref={this.field} value={this.text} oninput={this.typed} />
+      </div>
+    );
+  }
+  typed() {}
+}
+
 /** A ref on a held box in one branch and a free one in the other holds what either does. */
 class WritesARefOnTwoElements extends Component {
   @state on = false;

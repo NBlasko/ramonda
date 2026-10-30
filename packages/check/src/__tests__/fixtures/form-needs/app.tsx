@@ -61,6 +61,18 @@ class BoxInput extends Component<{ attrs?: Record<string, unknown> }> {
   }
 }
 
+/** One prop spread on two fields, a text field and a box: what each wants of it differs. */
+class TwoFields extends Component<{ attrs?: Record<string, unknown> }> {
+  render() {
+    return (
+      <div>
+        <input aria-label="two text" {...this.props.attrs} />
+        <input type="checkbox" aria-label="two box" {...this.props.attrs} />
+      </div>
+    );
+  }
+}
+
 /** Writes nothing of its own: whatever reaches the field is in the spread. */
 class BareInput extends Component<{ attrs?: Record<string, unknown> }> {
   render() {
@@ -192,6 +204,20 @@ class Page extends Component {
         <DefaultsInput field={this.form.fields.email.$} attrs={{ placeholder: "you@example.com" }} />
         <DefaultsInput field={this.form.fields.email.$} attrs={{ oninput: undefined }} />
         <DefaultsInput field={this.form.fields.email.$} attrs={bag} />
+        {/* ✗ one bag that cannot be read, spread on two fields: reported once */}
+        <TwoFields attrs={bag} />
+        {/* ✓ a handler written in the bag as a method, as it is written as an arrow */}
+        <BareInput
+          attrs={{
+            value: "method",
+            name: "m",
+            onblur: this.type,
+            "aria-invalid": false,
+            oninput(event: Event) {
+              void event;
+            },
+          }}
+        />
         {/* ✓ a hidden value through a const is not a field the form asks anything of */}
         <input aria-label="hidden const in form" type={HIDDEN} name="id" value={value} />
         {/* ✗ a box whose type cannot be read, written with `checked`, is a field of the form */}
@@ -258,6 +284,14 @@ class Loose extends Component {
 /** ✗ form-not-attached */
 class Detached extends Component {
   form = this.use(Form, {});
+  render() {
+    return <form>nothing</form>;
+  }
+}
+
+/** ✗ form-not-attached, named by the field that holds it */
+class DetachedSignup extends Component {
+  signup = this.use(Form, {});
   render() {
     return <form>nothing</form>;
   }

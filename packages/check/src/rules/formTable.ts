@@ -58,6 +58,8 @@ export interface FormHolder extends Where {
   isHook: boolean;
   /** Whether the class renders a `<form onsubmit={this.X.submit}>` for it. */
   attached: boolean;
+  /** The fields that hold it — `signup` in `signup = this.use(Form, …)` — for the report to name. */
+  fields: readonly string[];
 }
 
 /** `{...this.props.P}` on a field: what `P` holds is read where the component is used. */
@@ -307,6 +309,7 @@ export function formTableFor(sources: readonly ts.SourceFile[], resolve: Resolve
           component: node.name?.text ?? "(anonymous)",
           isHook: isHookClass(node, resolve),
           attached,
+          fields: [...held.keys()],
           ...positionOf(node.name ?? node),
         });
       }
