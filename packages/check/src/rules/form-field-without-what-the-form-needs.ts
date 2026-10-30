@@ -64,14 +64,16 @@ const FORM_KEYS = new Set([
  * and `aria-invalid`, each by name.
  *
  * A component that takes them as props — a design system's `StyledInput`, writing
- * `name={this.props.name}` — is checked where it is USED inside a form: every use there hands each of
- * those props, by name or through a spread whose type names it — not one it may leave out, as
- * `name?: string` may. A wrapper that hands its own props on, `<StyledInput {...this.props} />`, is
- * checked where IT is used, as `name={this.props.name}` is. A spread of a prop on a field, `{...this.props.attrs}` — the usual way to let a caller
- * overwrite a default — is checked at every use, inside a form or not: each hands it as an object
- * written there, sets none of the form's attributes to nothing, and hands no `value` (`checked`)
- * without an `oninput` or `onchange` beside it, unless the field writes its own by name. A shorthand,
- * `{ oninput }`, is followed to the `const` it names.
+ * `name={this.props.name}` — is checked where it is USED inside a form, and at every use, inside a form
+ * or not, when the field sits in a form of the component's own: each use hands each of those props by
+ * name. A spread hands none for sure — its type does not say what it copies, and a getter, as a form
+ * field's `inputValue` is, is not copied. A wrapper that hands its own props on, `<StyledInput
+ * {...this.props} />`, is checked where IT is used, as `name={this.props.name}` is. A spread of a prop
+ * on a field, `{...this.props.attrs}` — the usual way to let a caller overwrite a default — is checked
+ * at every use, inside a form or not: each hands it as an object written there, sets none of the form's
+ * attributes to nothing, and hands no `value` (`checked`) without an `oninput` or `onchange` beside it,
+ * unless the field writes its own by name. A shorthand, `{ oninput }`, is followed to the `const` it
+ * names.
  *
  * Reported as well, since a form this cannot recognise is a form whose fields this cannot check: a
  * component that holds a `Form` and renders no `<form onsubmit={this.X.submit}>` for it, a hook that
@@ -163,6 +165,9 @@ export const formFieldWithoutWhatTheFormNeeds = {
       wants: Wants;
       // For a spread, what the field writes after it, which the spread cannot override.
       shadowed: readonly string[];
+      // Whether the field it is for is inside a form already, where it is written or further down: then
+      // every use hands it, inside a form or not.
+      held: boolean;
     }[] = [];
     const seen = new Set<string>();
     const ids = new Map<ts.ClassLikeDeclaration, number>();
@@ -172,13 +177,14 @@ export const formFieldWithoutWhatTheFormNeeds = {
       bag: boolean,
       wants: Wants = "nothing",
       shadowed: readonly string[] = [],
+      held = false,
     ) => {
       if (owner === undefined) return;
       if (!ids.has(owner)) ids.set(owner, ids.size);
-      const key = `${ids.get(owner)}|${name}|${bag}|${wants}|${shadowed.join(",")}`;
+      const key = `${ids.get(owner)}|${name}|${bag}|${wants}|${shadowed.join(",")}|${held}`;
       if (seen.has(key)) return;
       seen.add(key);
-      queue.push({ owner, name, bag, wants, shadowed });
+      queue.push({ owner, name, bag, wants, shadowed, held });
     };
 
     for (const field of fields) {
@@ -194,7 +200,7 @@ export const formFieldWithoutWhatTheFormNeeds = {
       }
       for (const name of FORM_ATTRIBUTES) {
         const source = field.attributes[name];
-        if (source.kind === "prop") need(field.owner, source.prop, false);
+        if (source.kind === "prop") need(field.owner, source.prop, false, "nothing", [], field.inForm);
       }
     }
     // A spread of props on a field, anywhere: what each use hands for it is read there.
@@ -212,27 +218,26 @@ export const formFieldWithoutWhatTheFormNeeds = {
     }
     // Walked by its index, as `need` adds to it: no array shifted under every item.
     for (let at = 0; at < queue.length; at++) {
-      const { owner, name, bag, wants, shadowed } = queue[at];
+      const { owner, name, bag, wants, shadowed, held } = queue[at];
       for (const site of usesOf.get(owner) ?? []) {
-        // What a field needs from a form is asked inside one; what a spread on it carries, everywhere.
-        if (!bag && !inContext(site.owner, site.inForm)) continue;
+        // What a field needs from a form is asked inside one — where it is written, or where the use is;
+        // what a spread on it carries, everywhere.
+        if (!bag && !held && !inContext(site.owner, site.inForm)) continue;
         const handed = site.props.get(name);
         if (!site.props.has(name)) {
           // A bag that may come through a spread is not written here, and cannot be read.
           if (bag && (site.spreadMayHand === undefined || site.spreadMayHand.has(name)))
             found.push({ kind: "bag-unreadable", component: site.tag, detail: name, ...where(site) });
-          // Handed through a spread whose type names it, not as one it may leave out: `<StyledInput {...email} />`.
-          else if (!bag && site.spreadHands.has(name)) continue;
           // Handed through the owner's own props, `{...this.props}`: asked of the owner's uses.
-          else if (site.spreadsOwnProps) need(site.owner, name, bag, wants, shadowed);
-          // Not handed — nor surely by a spread, one that may leave it out or whose type cannot be read.
+          else if (site.spreadsOwnProps) need(site.owner, name, bag, wants, shadowed, held || site.inForm);
+          // Not handed by name: a spread may carry it or not — its type does not say what it copies.
           else if (!bag) found.push({ kind: "not-passed", component: site.tag, detail: name, ...where(site) });
           continue;
         }
         if (handed === undefined) continue;
         const prop = propRead(handed);
         if (prop !== undefined) {
-          need(site.owner, prop, bag, wants, shadowed);
+          need(site.owner, prop, bag, wants, shadowed, held || site.inForm);
           continue;
         }
         if (!bag) {

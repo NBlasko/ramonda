@@ -4,7 +4,6 @@ import { positionOf } from "../syntax";
 import { coreElementTag } from "./coreElements";
 import { holdsNothing as holdsNothingIn, openingOf, says, tagOf } from "./element";
 import { unwrap } from "./follow-value";
-import { enclosingElement } from "./html";
 import type { Resolver, Where } from "./rule";
 
 /**
@@ -50,16 +49,14 @@ export interface ComponentSite extends Where {
   /** Each attribute written on the tag, by name, with its value. `undefined` is a bare attribute. */
   props: Map<string, ts.Expression | undefined>;
   /**
-   * Every name the spreads on the tag surely hand, read off their types — `{...email}` with `email` a
-   * field hands its `name`, `value`, `oninput`. A name its type may leave out — `name?: string` — is not
-   * one of them.
+   * Every name the spreads on the tag may hand, read off their types — `undefined` when one cannot be read
+   * (`any`). Only MAY: a type does not say what a spread copies — a getter, as a form field's `inputValue`
+   * is, is not copied, though its type names it — so no name is handed by a spread for sure.
    */
-  spreadHands: ReadonlySet<string>;
-  /** Every name the spreads on the tag may hand, the optional too — `undefined` when one cannot be read (`any`). */
   spreadMayHand: ReadonlySet<string> | undefined;
   /**
    * Whether the tag spreads its owner's own props, `{...this.props}`: a name it needs comes from the
-   * owner's uses, as `name={this.props.name}` does. Not read into `spreadHands` or `spreadMayHand`.
+   * owner's uses, as `name={this.props.name}` does. Not read into `spreadMayHand`.
    */
   spreadsOwnProps: boolean;
 }
@@ -229,7 +226,12 @@ function isFormHook(initializer: ts.Expression | undefined, resolve: Resolver): 
 function formFieldsOf(cls: ts.ClassLikeDeclaration, resolve: Resolver): Set<string> {
   const names = new Set<string>();
   for (const member of cls.members) {
-    if (ts.isPropertyDeclaration(member) && ts.isIdentifier(member.name) && isFormHook(member.initializer, resolve)) {
+    // A private one too, `#form`, read as `this.#form.submit`.
+    if (
+      ts.isPropertyDeclaration(member) &&
+      (ts.isIdentifier(member.name) || ts.isPrivateIdentifier(member.name)) &&
+      isFormHook(member.initializer, resolve)
+    ) {
       names.add(member.name.text);
     }
   }
@@ -354,15 +356,10 @@ export function formTableFor(sources: readonly ts.SourceFile[], resolve: Resolve
   function insideAForm(node: ts.Node, throughChildren: boolean): boolean {
     // A project with no `@ramonda/form` form asks nothing of any ancestor.
     if (formElements.size === 0) return false;
-    // The element that holds `node` — an expression's nearest one, or an element's own parent.
-    let first: ts.Node | undefined = node.parent;
-    while (first !== undefined && !ts.isJsxElement(first) && !ts.isJsxSelfClosingElement(first)) first = first.parent;
-    const start = ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node) ? enclosingElement(node) : first;
-    for (
-      let at = start as ts.JsxElement | ts.JsxSelfClosingElement | undefined;
-      at !== undefined;
-      at = enclosingElement(at)
-    ) {
+    // Every element around it in the render that writes it — through a callback's body too,
+    // `{items.map((item) => { return <input … />; })}` — up to the class member it is written in.
+    for (let at = node.parent; at !== undefined && !ts.isClassElement(at); at = at.parent) {
+      if (!ts.isJsxElement(at) && !ts.isJsxSelfClosingElement(at)) continue;
       if (formElements.has(at)) return true;
       if (throughChildren) {
         const opening = openingOf(at);
@@ -389,7 +386,6 @@ export function formTableFor(sources: readonly ts.SourceFile[], resolve: Resolve
     if (host !== undefined || resolve.coreName(opening.tagName) !== undefined) return;
 
     const props = new Map<string, ts.Expression | undefined>();
-    const spreadHands = new Set<string>();
     let spreadMayHand: Set<string> | undefined = new Set<string>();
     let spreadsOwnProps = false;
     for (const attribute of opening.attributes.properties) {
@@ -403,10 +399,7 @@ export function formTableFor(sources: readonly ts.SourceFile[], resolve: Resolve
       }
       const names = resolve.propertyNames(attribute.expression);
       if (names === undefined) spreadMayHand = undefined;
-      for (const { name, optional } of names ?? []) {
-        if (!optional) spreadHands.add(name);
-        spreadMayHand?.add(name);
-      }
+      for (const name of names ?? []) spreadMayHand?.add(name);
     }
     sites.push({
       owner: enclosingClass(element),
@@ -414,7 +407,6 @@ export function formTableFor(sources: readonly ts.SourceFile[], resolve: Resolve
       tag: opening.tagName.getText(),
       inForm: insideAForm(element, true),
       props,
-      spreadHands,
       spreadMayHand,
       spreadsOwnProps,
       ...positionOf(opening),

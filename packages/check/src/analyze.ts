@@ -672,17 +672,7 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
     coreName: (id: ts.Node) => coreExportName(id, resolveLocal, resolveStep, resolve),
     fromPackage: (id: ts.Node, pkg: string) => importedFromPackage(id, pkg, resolveLocal, resolveStep),
     formValue: (expression: ts.Expression) => formValueOf(checker.getTypeAtLocation(expression)),
-    propertyNames: (expression: ts.Expression) => {
-      const type = checker.getTypeAtLocation(expression);
-      if ((type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) return undefined;
-      const apparent = checker.getApparentType(type);
-      // An index — `Record<string, unknown>` — may hand any name at all.
-      if (checker.getIndexInfosOfType(apparent).length > 0) return undefined;
-      return checker.getPropertiesOfType(apparent).map((property) => ({
-        name: property.name,
-        optional: (property.flags & ts.SymbolFlags.Optional) !== 0,
-      }));
-    },
+    propertyNames: (expression: ts.Expression) => propertyNames(checker.getTypeAtLocation(expression), checker),
     typeLiterals: (expression: ts.Expression, absentAs?: string) => {
       const type = checker.getTypeAtLocation(expression);
       const read: string[] = [];
@@ -4121,6 +4111,29 @@ function formReset(
   if (names === undefined) return held === "form" ? "maybe" : undefined;
   if (held !== "other") return held === "form" ? "reset" : "maybe";
   return aFormFits(receiver, form, checker) ? "fits" : undefined;
+}
+
+/**
+ * The names a spread of a value of this type may hand — see `Resolver.propertyNames`. A union may hand
+ * what any of its members does: `{ a: 1 } | { b: 2 }` may hand `a` and may hand `b`. `null` and
+ * `undefined` in it hand nothing, as a spread of them does.
+ */
+function propertyNames(type: ts.Type, checker: ts.TypeChecker): string[] | undefined {
+  if ((type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) return undefined;
+  if (type.isUnion()) {
+    const names = new Set<string>();
+    for (const member of type.types) {
+      if ((member.flags & (ts.TypeFlags.Undefined | ts.TypeFlags.Null | ts.TypeFlags.Void)) !== 0) continue;
+      const read = propertyNames(member, checker);
+      if (read === undefined) return undefined;
+      for (const name of read) names.add(name);
+    }
+    return [...names];
+  }
+  const apparent = checker.getApparentType(type);
+  // An index — `Record<string, unknown>` — may hand any name at all.
+  if (checker.getIndexInfosOfType(apparent).length > 0) return undefined;
+  return checker.getPropertiesOfType(apparent).map((property) => property.name);
 }
 
 /**

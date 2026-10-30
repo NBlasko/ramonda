@@ -909,3 +909,24 @@ class ClicksThroughARefFunction extends Component {
   }
   picked() {}
 }
+
+/** An event name read off its type: two that are no edit, and one that is. */
+class DispatchesATypedName extends Component {
+  @state text = "";
+  field = createRef<HTMLInputElement>();
+  @mounted
+  start() {
+    this.notify("focus");
+    this.edit("input");
+  }
+  notify(type: "focus" | "blur") {
+    this.field.current?.dispatchEvent(new Event(type));
+  }
+  edit(type: "input" | "focus") {
+    this.field.current?.dispatchEvent(new Event(type)); // REPORT an edit its type names
+  }
+  render() {
+    return <input aria-label="t" ref={this.field} value={this.text} oninput={this.typed} />;
+  }
+  typed() {}
+}

@@ -60,10 +60,29 @@ describe("a field inside a @ramonda/form form", () => {
         [lineOf("class SignupForm"), "form-in-a-hook", "form"],
         [lineOf("class DetachedSignup"), "form-not-attached", "signup"],
         [lineOf("class TwoForms"), "form-not-attached", "login"],
+        // A field inside the holder's own form: every use hands its prop, inside a form or not.
+        [lineOf("<NamedByAProp />"), "not-passed", "n"],
+        [lineOf("<StyledByAProp />"), "not-passed", "n"],
+        [lineOf("<SpreadInItsForm value"), "not-passed", "name"],
+        [lineOf("<SpreadInItsForm value"), "not-passed", "onblur"],
+        [lineOf("<SpreadInItsForm value"), "not-passed", "invalid"],
+        // In a callback with a body, inside the form all the same.
+        [lineOf('aria-label="in a block body"'), "missing", "`name`, `oninput`, `onblur`, `aria-invalid`"],
+        // A form held in a private field.
+        [lineOf('aria-label="in a private form"'), "missing", "`name`, `oninput`, `onblur`, `aria-invalid`"],
+        [lineOf("class PrivateDetached"), "form-not-attached", "#form"],
+        // A union spread may hand what any of its members hands.
+        [lineOf("<BareInput {...either} />"), "bag-unreadable", "attrs"],
         [lineOf('attrs={{ "on:input": undefined }}'), "bag-overrides", "attrs.on:input"],
         [lineOf("<TwoFields attrs={bag} />"), "bag-unreadable", "attrs"],
         [lineOf("<BareInput {...rest} />"), "bag-unreadable", "attrs"],
-        // A spread whose type may leave a name out does not hand it.
+        // A spread hands no prop for sure: its type does not say what it copies (a getter is not copied).
+        ...["name", "value", "oninput", "onblur", "invalid"].map((detail) => [
+          lineOf("<StyledInput {...handed} />"),
+          "not-passed",
+          detail,
+        ]),
+        // Nor one its type may leave out.
         [lineOf("<StyledInput {...partial}"), "not-passed", "name"],
         [lineOf("<StyledInput {...partial}"), "not-passed", "onblur"],
         [lineOf("<StyledInput {...partial}"), "not-passed", "invalid"],
@@ -74,7 +93,7 @@ describe("a field inside a @ramonda/form form", () => {
         [lineOf("<SpreadBare attrs={bag} />"), "bag-unreadable", "attrs"],
       ]),
     );
-    expect(issues).toHaveLength(39);
+    expect(issues).toHaveLength(53);
   });
 
   test("a complete field, a wrapper handed everything, a harmless bag, a field outside a form and an app's own Form are silent", () => {
@@ -85,8 +104,8 @@ describe("a field inside a @ramonda/form form", () => {
       lineOf('aria-label="value as a const"'),
       lineOf('aria-label="nothing, then onchange"') - 1,
       lineOf("<StyledInput", 2),
-      lineOf("<StyledInput {...handed} />"),
       lineOf('<SpreadOuter name="s"'),
+      lineOf('<NamedByAProp n="handed" />'),
       lineOf('<SpreadBare attrs={{ placeholder: "spread" }} />'),
       lineOf("<StyledInput {...this.props} />"),
       lineOf("<BareInput {...this.props} />"),

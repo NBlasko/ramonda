@@ -8,7 +8,7 @@ const NONE = undefined;
 declare const on: boolean;
 declare const bag: Record<string, unknown>;
 declare const rest: Record<string, unknown>;
-/** What a field hands, as its type says — every attribute a wrapper of one takes. */
+/** Every attribute a wrapper takes, as a type says — which says nothing of what a spread of it copies. */
 declare const handed: {
   name: string;
   value: string;
@@ -393,7 +393,7 @@ class HandedThroughASpread extends Component {
   render() {
     return (
       <form onsubmit={this.form.submit}>
-        {/* ✓ all five, through a spread whose type names them */}
+        {/* ✗ not-passed — all five: a spread hands none for sure, whatever its type names */}
         <StyledInput {...handed} />
         {/* ✗ not-passed — name, onblur, invalid: a spread that may leave each out */}
         <StyledInput {...partial} value={value} oninput={handed.oninput} />
@@ -409,3 +409,125 @@ class HandedThroughASpread extends Component {
     );
   }
 }
+
+/** Holds its own form, whose field takes its `name` from a prop: every use hands it, in a form or not. */
+class NamedByAProp extends Component<{ n?: string }> {
+  form = this.use(Form, {});
+  render() {
+    return (
+      <form onsubmit={this.form.submit}>
+        <input
+          aria-label="named by a prop"
+          name={this.props.n}
+          value={value}
+          oninput={handed.oninput}
+          onblur={handed.onblur}
+          aria-invalid={false}
+        />
+      </form>
+    );
+  }
+}
+
+/** Holds its own form, and in it a styled input whose `name` it takes from a prop of its own. */
+class StyledByAProp extends Component<{ n?: string }> {
+  form = this.use(Form, {});
+  render() {
+    return (
+      <form onsubmit={this.form.submit}>
+        <StyledInput
+          name={this.props.n}
+          value={value}
+          oninput={handed.oninput}
+          onblur={handed.onblur}
+          invalid={false}
+        />
+      </form>
+    );
+  }
+}
+
+/** Holds its own form, and in it the styled input handed its own props whole. */
+class SpreadInItsForm extends Component<{
+  name?: string;
+  value: string;
+  oninput: (event: Event) => void;
+  onblur?: (event: Event) => void;
+  invalid?: boolean;
+}> {
+  form = this.use(Form, {});
+  render() {
+    return (
+      <form onsubmit={this.form.submit}>
+        <StyledInput {...this.props} />
+      </form>
+    );
+  }
+}
+
+/** Uses them outside any form. */
+class UsesNamedByAProp extends Component {
+  render() {
+    return (
+      <div>
+        {/* ✗ not-passed — n, through the styled input in its form */}
+        <StyledByAProp />
+        {/* ✗ not-passed — name, onblur, invalid, through its own props spread in its form */}
+        <SpreadInItsForm value={value} oninput={handed.oninput} />
+        {/* ✗ not-passed — n */}
+        <NamedByAProp />
+        {/* ✓ handed */}
+        <NamedByAProp n="handed" />
+      </div>
+    );
+  }
+}
+
+/** A field in a callback with a body, inside the form. */
+class InABlockBody extends Component {
+  form = this.use(Form, {});
+  render() {
+    return (
+      <form onsubmit={this.form.submit}>
+        {[1, 2].map((item) => {
+          return <input aria-label="in a block body" value={String(item)} />;
+        })}
+      </form>
+    );
+  }
+}
+
+/** A form held in a private field. */
+class PrivateForm extends Component {
+  #form = this.use(Form, {});
+  render() {
+    return (
+      <form onsubmit={this.#form.submit}>
+        <input aria-label="in a private form" value={value} />
+      </form>
+    );
+  }
+}
+
+/** ✗ form-not-attached — a private field's form no form attaches. */
+class PrivateDetached extends Component {
+  #form = this.use(Form, {});
+  render() {
+    return <div>nothing</div>;
+  }
+}
+
+/** A spread typed as either of two: a bag only one of them hands may still come through it. */
+declare const either: { attrs: { value: string } } | { other: number };
+class UnionSpread extends Component {
+  render() {
+    return (
+      <div>
+        {/* ✗ bag-unreadable — attrs, which one member hands */}
+        <BareInput {...either} />
+      </div>
+    );
+  }
+}
+
+export { UsesNamedByAProp, InABlockBody, PrivateForm, PrivateDetached, UnionSpread };

@@ -258,10 +258,9 @@ export const fieldSetByAnEvent = {
             const held = method === "dispatchEvent" ? heldBy(callee.expression) : undefined;
             if (method === "dispatchEvent" && reachesAField(callee.expression, 0, held)) {
               const event = at.arguments[0] === undefined ? undefined : eventBuilt(at.arguments[0], resolve);
-              const types =
-                event !== undefined && event.arguments?.[0] !== undefined
-                  ? literalsOf(event.arguments[0], resolve)
-                  : undefined;
+              // Read as written, or off its type: `type: "focus" | "blur"` is those two.
+              const name = event?.arguments?.[0];
+              const types = name === undefined ? undefined : (literalsOf(name, resolve) ?? resolve.typeLiterals(name));
               if (types === undefined) report(at, "unreadable", at.arguments[0]?.getText() ?? "");
               else {
                 for (const type of types) {
