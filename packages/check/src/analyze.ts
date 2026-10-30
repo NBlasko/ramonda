@@ -7,7 +7,7 @@ import type { ComponentGraph, GraphEdge, GraphNode, Where } from "./graph";
 import { hookNamed, isThisUse, positionOf } from "./syntax";
 import { coreExportName, importedFromPackage } from "./rules/core-import";
 import type { FormType, FormValue, Resolver, Silencer } from "./rules/rule";
-import { domStub, formMembers, formMethods } from "./domStub";
+import { domStub } from "./domStub";
 import { DOM_STUB_FILE, isTheDomLib } from "./rules/platform";
 import { unwrap } from "./rules/follow-value";
 import {
@@ -652,6 +652,9 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
  */
 export function analyzeProgram(program: ts.Program, notes: string[] = []): AnalyzeResult {
   const checker = program.getTypeChecker();
+  /** `HTMLFormElement`, found once it is first asked about — most runs never ask. */
+  let form: { type: ts.Type | undefined } | undefined;
+  const theForm = () => (form ??= { type: theFormType(program, checker) }).type;
 
   /**
    * `resolve`, with `coreName` hung on it — see the `Resolver` note in `rules/rule.ts`.
@@ -675,7 +678,10 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
       const apparent = checker.getApparentType(type);
       // An index — `Record<string, unknown>` — may hand any name at all.
       if (checker.getIndexInfosOfType(apparent).length > 0) return undefined;
-      return checker.getPropertiesOfType(apparent).map((property) => property.name);
+      return checker.getPropertiesOfType(apparent).map((property) => ({
+        name: property.name,
+        optional: (property.flags & ts.SymbolFlags.Optional) !== 0,
+      }));
     },
     typeLiterals: (expression: ts.Expression, absentAs?: string) => {
       const type = checker.getTypeAtLocation(expression);
@@ -688,9 +694,9 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
       }
       return read;
     },
-    formCast: (outer: ts.AsExpression | ts.TypeAssertion) => formCast(outer, checker),
+    formCast: (outer: ts.AsExpression | ts.TypeAssertion) => formCast(outer, theForm(), checker),
     formReset: (node: ts.PropertyAccessExpression | ts.ElementAccessExpression | ts.BindingElement) =>
-      formReset(node, checker),
+      formReset(node, theForm(), checker),
   });
 
   /** Symbol id → the context it belongs to, and which half of the pair it is. */
@@ -4085,6 +4091,7 @@ function formTypeOf(type: ts.Type, checker: ts.TypeChecker): FormType {
  */
 function formReset(
   node: ts.PropertyAccessExpression | ts.ElementAccessExpression | ts.BindingElement,
+  form: ts.Type | undefined,
   checker: ts.TypeChecker,
 ): "reset" | "maybe" | "fits" | undefined {
   const key = ts.isPropertyAccessExpression(node)
@@ -4113,51 +4120,43 @@ function formReset(
   const held = formTypeOf(receiver, checker);
   if (names === undefined) return held === "form" ? "maybe" : undefined;
   if (held !== "other") return held === "form" ? "reset" : "maybe";
-  return aFormFits(receiver, checker) ? "fits" : undefined;
+  return aFormFits(receiver, form, checker) ? "fits" : undefined;
 }
 
 /**
- * Whether a form can be held by a value of this type: a type, or a member of a union, whose every
- * required member a form has — by the names `formMembers` reads off the DOM lib, as the stand-ins keep
- * none. A callable type holds no form.
+ * Whether a form can be held by a value of this type, or by a member of its union — TypeScript's own
+ * answer, as the form's interfaces keep their members in the stand-ins: `{ reset(): void }` holds one,
+ * `{ reset?: boolean }` and `{ debounce?: number }` do not.
  */
-function aFormFits(type: ts.Type, checker: ts.TypeChecker): boolean {
-  const names = formMembers();
+function aFormFits(type: ts.Type, form: ts.Type | undefined, checker: ts.TypeChecker): boolean {
+  if (form === undefined) return false;
   return (type.isUnion() ? type.types : [type]).some((member) => {
     // A form is never nothing: `Tab | undefined` holds one only if `Tab` does.
     if ((member.flags & (ts.TypeFlags.Undefined | ts.TypeFlags.Null | ts.TypeFlags.Void)) !== 0) return false;
-    const apparent = checker.getApparentType(member);
-    if (apparent.getCallSignatures().length > 0 || apparent.getConstructSignatures().length > 0) return false;
     // An instance of a class the project declares is that class, as its author wrote it — a form is one
     // only through a cast, and the rule trusts the type the author writes.
+    const apparent = checker.getApparentType(member);
     if (((apparent.getSymbol()?.flags ?? 0) & ts.SymbolFlags.Class) !== 0) return false;
-    // `Record<string, () => void>` asks every member to be a function; a form's are not. Only an index
-    // that takes anything — `Record<string, unknown>` — can hold one.
+    // `Record<string, () => void>` is a map of functions, which TypeScript lets a form into only by the
+    // form's own `[name: string]: any`. Only an index that takes anything — `Record<string, unknown>` —
+    // can hold one.
     const takesAnything = (info: ts.IndexInfo) => (info.type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0;
     if (!checker.getIndexInfosOfType(apparent).every(takesAnything)) return false;
-    // A member the form holds a function in — `reset`, `onclick` — is one a value holding a form can
-    // call: `{ reset: boolean }` is a flag, which no form fits. And one it holds a value in — `length` —
-    // is no function there: `{ length: () => number }` is no form's either.
-    const methods = formMethods();
-    const unread = (property: ts.Symbol) =>
-      (checker.getTypeOfSymbol(property).flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0;
-    const callable = (property: ts.Symbol) => {
-      const type = checker.getTypeOfSymbol(property);
-      return (
-        (type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0 ||
-        // `((event) => any) | null`, as an event handler is typed, is a function where there is one.
-        checker.getApparentType(checker.getNonNullableType(type)).getCallSignatures().length > 0
-      );
-    };
-    return checker
-      .getPropertiesOfType(apparent)
-      .every(
-        (property) =>
-          (property.flags & ts.SymbolFlags.Optional) !== 0 ||
-          (names.has(property.name) && methods.has(property.name) === callable(property)) ||
-          (names.has(property.name) && unread(property)),
-      );
+    return checker.isTypeAssignableTo(form, member);
   });
+}
+
+/** `HTMLFormElement`, as the stand-ins or the DOM lib declare it — none in a program without the DOM. */
+function theFormType(program: ts.Program, checker: ts.TypeChecker): ts.Type | undefined {
+  for (const file of program.getSourceFiles()) {
+    if (file.fileName !== DOM_STUB_FILE && !program.isSourceFileDefaultLibrary(file)) continue;
+    const declared = file.statements.find(
+      (statement): statement is ts.InterfaceDeclaration =>
+        ts.isInterfaceDeclaration(statement) && statement.name.text === "HTMLFormElement",
+    );
+    if (declared !== undefined) return checker.getTypeAtLocation(declared.name);
+  }
+  return undefined;
 }
 
 /**
@@ -4165,14 +4164,18 @@ function aFormFits(type: ts.Type, checker: ts.TypeChecker): boolean {
  * `form as unknown as Canvas` — so its `reset` cannot be followed past it. Asked of the outermost
  * assertion; read down to the value inside it.
  */
-function formCast(outer: ts.AsExpression | ts.TypeAssertion, checker: ts.TypeChecker): boolean {
+function formCast(
+  outer: ts.AsExpression | ts.TypeAssertion,
+  form: ts.Type | undefined,
+  checker: ts.TypeChecker,
+): boolean {
   // The type the assertion names, read from what is written — not by checking the expression.
   const target = checker.getTypeFromTypeNode(outer.type);
   const inner = unwrap(outer);
   if (formTypeOf(checker.getTypeAtLocation(inner), checker) !== "form") return false;
   // A form, or a type a form fits — `form as Resettable`, `form as HTMLElement` — is where its reset is
   // still followed; only a type a form cannot be is a cast that hides it.
-  return formTypeOf(target, checker) !== "form" && !aFormFits(target, checker);
+  return formTypeOf(target, checker) !== "form" && !aFormFits(target, form, checker);
 }
 
 /** The expression of a destructuring's computed name — `{ [RESET]: clear }` — if it has one. */

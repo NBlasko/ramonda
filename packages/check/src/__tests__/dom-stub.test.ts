@@ -1,22 +1,31 @@
 import ts from "typescript";
 import { describe, expect, test } from "vitest";
-import { domStub, formMembers, formMethods } from "../domStub";
+import { domStub } from "../domStub";
 import { createProgram } from "../analyze";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const FILE = "/stub.d.ts";
+const USE = "/use.ts";
 
-/** The stand-ins alone, with the language's own lib: what TypeScript says about them. */
-function diagnostics(): readonly ts.Diagnostic[] {
+/** The stand-ins, and code that uses them, with the language's own lib: what TypeScript says about them. */
+function diagnostics(use = ""): readonly ts.Diagnostic[] {
   const host = ts.createCompilerHost({});
   const source = host.getSourceFile.bind(host);
   const exists = host.fileExists.bind(host);
-  host.getSourceFile = (file, language, onError, create) =>
-    file === FILE ? ts.createSourceFile(file, domStub(), language, true) : source(file, language, onError, create);
-  host.fileExists = (file) => file === FILE || exists(file);
+  const written = new Map([
+    [FILE, domStub()],
+    [USE, use],
+  ]);
+  host.getSourceFile = (file, language, onError, create) => {
+    const text = written.get(file);
+    return text !== undefined
+      ? ts.createSourceFile(file, text, language, true)
+      : source(file, language, onError, create);
+  };
+  host.fileExists = (file) => written.has(file) || exists(file);
   const program = ts.createProgram({
-    rootNames: [FILE],
+    rootNames: [FILE, USE],
     options: { lib: ["lib.esnext.d.ts"], types: [], noEmit: true, strict: true },
     host,
   });
@@ -47,27 +56,30 @@ describe("the DOM's stand-ins", () => {
     expect(stub).toMatch(/^declare function setInterval\(/m);
   });
 
-  test("name every member a form has, its own and every base's", () => {
-    const names = formMembers();
-    for (const name of [
-      "reset",
-      "submit",
-      "elements",
-      "action",
-      "focus",
-      "style",
-      "classList",
-      "click",
-      "addEventListener",
-      "stub:HTMLFormElement",
-      "stub:HTMLElement",
-      "stub:EventTarget",
-    ]) {
-      expect(names.has(name), name).toBe(true);
-    }
-    for (const name of ["getContext", "stub:HTMLInputElement", "stub:CanvasRenderingContext2D"]) {
-      expect(names.has(name), name).toBe(false);
-    }
+  test("keep a form's members, its own and every base's, so TypeScript says what a form fits", () => {
+    const fits = [
+      "{ reset(): void; submit(): void }",
+      "{ elements: HTMLFormControlsCollection; action: string }",
+      "{ focus(): void; addEventListener: Function }",
+      "{ onclick: ((event: PointerEvent) => any) | null }",
+      "HTMLElement",
+      "Record<string, unknown>",
+    ];
+    const fitsNot = [
+      "{ reset?: boolean }",
+      "{ reset: boolean }",
+      "{ debounce?: number }",
+      "{ length: () => number }",
+      "{ getContext(): void }",
+      "HTMLInputElement",
+    ];
+    const use = [...fits, ...fitsNot]
+      .map((type, at) => `export const held${at}: ${type} = null as unknown as HTMLFormElement;`)
+      .join("\n");
+    const refused = diagnostics(use)
+      .filter((d) => d.file?.fileName === USE)
+      .map((d) => d.file!.getLineAndCharacterOfPosition(d.start!).line);
+    expect([...fits, ...fitsNot].filter((_, at) => refused.includes(at))).toEqual(fitsNot);
   });
 
   /** A file that asks for the DOM lib itself — `/// <reference lib="dom" />` — gets nothing: the stand-ins are the DOM. */
@@ -77,11 +89,5 @@ describe("the DOM's stand-ins", () => {
     const domLibs = program.getSourceFiles().filter((file) => /[\\/]lib\.dom(\.[a-z]+)?\.d\.ts$/.test(file.fileName));
     expect(domLibs.length).toBeGreaterThan(0);
     expect(domLibs.map((file) => file.text)).toEqual(domLibs.map(() => ""));
-  });
-
-  test("name each member a form holds a function in — its methods and its event handlers — and no other", () => {
-    const functions = formMethods();
-    expect(["reset", "submit", "onclick", "onerror"].filter((name) => !functions.has(name))).toEqual([]);
-    expect(["length", "id", "action", "elements"].filter((name) => functions.has(name))).toEqual([]);
   });
 });

@@ -47,13 +47,19 @@ export interface ComponentSite extends Where {
   inForm: boolean;
   /** Each attribute written on the tag, by name, with its value. `undefined` is a bare attribute. */
   props: Map<string, ts.Expression | undefined>;
-  /** Whether a spread is written on the tag. */
-  spreads: boolean;
   /**
-   * Every name the spreads on the tag may hand, read off their types — `{...email}` with `email` a field
-   * hands its `name`, `value`, `oninput` — or `undefined` when one of them cannot be read (`any`).
+   * Every name the spreads on the tag surely hand, read off their types — `{...email}` with `email` a
+   * field hands its `name`, `value`, `oninput`. A name its type may leave out — `name?: string` — is not
+   * one of them.
    */
-  spreadNames: ReadonlySet<string> | undefined;
+  spreadHands: ReadonlySet<string>;
+  /** Every name the spreads on the tag may hand, the optional too — `undefined` when one cannot be read (`any`). */
+  spreadMayHand: ReadonlySet<string> | undefined;
+  /**
+   * Whether the tag spreads its owner's own props, `{...this.props}`: a name it needs comes from the
+   * owner's uses, as `name={this.props.name}` does. Not read into `spreadHands` or `spreadMayHand`.
+   */
+  spreadsOwnProps: boolean;
 }
 
 /** A class that holds a `Form` and what became of it. */
@@ -244,6 +250,16 @@ function enclosingClass(node: ts.Node): ts.ClassLikeDeclaration | undefined {
   return undefined;
 }
 
+/** `this.props`, as written. */
+function isOwnProps(expression: ts.Expression): boolean {
+  const written = unwrap(expression);
+  return (
+    ts.isPropertyAccessExpression(written) &&
+    written.name.text === "props" &&
+    unwrap(written.expression).kind === ts.SyntaxKind.ThisKeyword
+  );
+}
+
 /** `this.props.P`, as written — the name, or `undefined`. */
 export function propRead(expression: ts.Expression | undefined): string | undefined {
   if (expression === undefined) return undefined;
@@ -371,15 +387,24 @@ export function formTableFor(sources: readonly ts.SourceFile[], resolve: Resolve
     if (host !== undefined || resolve.coreName(opening.tagName) !== undefined) return;
 
     const props = new Map<string, ts.Expression | undefined>();
-    let spreads = false;
-    let spreadNames: Set<string> | undefined = new Set<string>();
+    const spreadHands = new Set<string>();
+    let spreadMayHand: Set<string> | undefined = new Set<string>();
+    let spreadsOwnProps = false;
     for (const attribute of opening.attributes.properties) {
-      if (ts.isJsxSpreadAttribute(attribute)) {
-        spreads = true;
-        const names = resolve.propertyNames(attribute.expression);
-        if (names === undefined) spreadNames = undefined;
-        else for (const name of names) spreadNames?.add(name);
-      } else props.set(attribute.name.getText(), valueOf(attribute));
+      if (!ts.isJsxSpreadAttribute(attribute)) {
+        props.set(attribute.name.getText(), valueOf(attribute));
+        continue;
+      }
+      if (isOwnProps(attribute.expression)) {
+        spreadsOwnProps = true;
+        continue;
+      }
+      const names = resolve.propertyNames(attribute.expression);
+      if (names === undefined) spreadMayHand = undefined;
+      for (const { name, optional } of names ?? []) {
+        if (!optional) spreadHands.add(name);
+        spreadMayHand?.add(name);
+      }
     }
     sites.push({
       owner: enclosingClass(element),
@@ -387,8 +412,9 @@ export function formTableFor(sources: readonly ts.SourceFile[], resolve: Resolve
       tag: opening.tagName.getText(),
       inForm: insideAForm(element, true),
       props,
-      spreads,
-      spreadNames,
+      spreadHands,
+      spreadMayHand,
+      spreadsOwnProps,
       ...positionOf(opening),
     });
   };

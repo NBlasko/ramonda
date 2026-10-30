@@ -16,6 +16,8 @@ declare const handed: {
   onblur: (event: Event) => void;
   invalid: boolean;
 };
+/** The same, each of it may be left out. */
+declare const partial: Partial<typeof handed>;
 declare const kind: string;
 const HIDDEN = "hidden";
 const oninput = undefined;
@@ -328,13 +330,44 @@ class OwnForm extends Component {
 
 export { Page, Shelled, Loose, Detached, SignupForm, OwnForm };
 
-/** ✓ a wrapper handed all five through a spread whose type names them. */
+/** Hands its own props on whole, one level up: what the styled input needs is asked of its uses. */
+class SpreadOuter extends Component<{
+  name?: string;
+  value: string;
+  oninput: (event: Event) => void;
+  onblur?: (event: Event) => void;
+  invalid?: boolean;
+}> {
+  render() {
+    return <StyledInput {...this.props} />;
+  }
+}
+
+/** Hands its bag on through its own props: what each use hands for it is read there. */
+class SpreadBare extends Component<{ attrs?: Record<string, unknown> }> {
+  render() {
+    return <BareInput {...this.props} />;
+  }
+}
+
+/** Wrappers handed through spreads. */
 class HandedThroughASpread extends Component {
   form = this.use(Form, {});
   render() {
     return (
       <form onsubmit={this.form.submit}>
+        {/* ✓ all five, through a spread whose type names them */}
         <StyledInput {...handed} />
+        {/* ✗ not-passed — name, onblur, invalid: a spread that may leave each out */}
+        <StyledInput {...partial} value={value} oninput={handed.oninput} />
+        {/* ✗ not-passed — name, onblur, invalid: asked of the wrapper that spreads its props */}
+        <SpreadOuter value={value} oninput={handed.oninput} />
+        {/* ✓ all five, handed to the wrapper that spreads its props */}
+        <SpreadOuter name="s" value={value} oninput={handed.oninput} onblur={handed.onblur} invalid={false} />
+        {/* ✗ bag-unreadable — through the wrapper's own props */}
+        <SpreadBare attrs={bag} />
+        {/* ✓ a bag written here, through the wrapper's own props */}
+        <SpreadBare attrs={{ placeholder: "spread" }} />
       </form>
     );
   }

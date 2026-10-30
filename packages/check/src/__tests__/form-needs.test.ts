@@ -60,9 +60,18 @@ describe("a field inside a @ramonda/form form", () => {
         [lineOf("class DetachedSignup"), "form-not-attached", "signup"],
         [lineOf("<TwoFields attrs={bag} />"), "bag-unreadable", "attrs"],
         [lineOf("<BareInput {...rest} />"), "bag-unreadable", "attrs"],
+        // A spread whose type may leave a name out does not hand it.
+        [lineOf("<StyledInput {...partial}"), "not-passed", "name"],
+        [lineOf("<StyledInput {...partial}"), "not-passed", "onblur"],
+        [lineOf("<StyledInput {...partial}"), "not-passed", "invalid"],
+        // `{...this.props}` hands on what the wrapper's own uses hand: asked there.
+        [lineOf("<SpreadOuter value"), "not-passed", "name"],
+        [lineOf("<SpreadOuter value"), "not-passed", "onblur"],
+        [lineOf("<SpreadOuter value"), "not-passed", "invalid"],
+        [lineOf("<SpreadBare attrs={bag} />"), "bag-unreadable", "attrs"],
       ]),
     );
-    expect(issues).toHaveLength(29);
+    expect(issues).toHaveLength(36);
   });
 
   test("a complete field, a wrapper handed everything, a harmless bag, a field outside a form and an app's own Form are silent", () => {
@@ -74,6 +83,10 @@ describe("a field inside a @ramonda/form form", () => {
       lineOf('aria-label="nothing, then onchange"') - 1,
       lineOf("<StyledInput", 2),
       lineOf("<StyledInput {...handed} />"),
+      lineOf('<SpreadOuter name="s"'),
+      lineOf('<SpreadBare attrs={{ placeholder: "spread" }} />'),
+      lineOf("<StyledInput {...this.props} />"),
+      lineOf("<BareInput {...this.props} />"),
       lineOf('attrs={{ placeholder: "you@example.com" }}'),
       lineOf('aria-label="loose"'),
       lineOf("<StyledInput value={value} oninput={this.type} />"),

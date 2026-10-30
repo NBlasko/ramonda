@@ -55,7 +55,9 @@ const FORM_KEYS = new Set(["name", "value", "checked", "oninput", "onchange", "o
  *
  * A component that takes them as props — a design system's `StyledInput`, writing
  * `name={this.props.name}` — is checked where it is USED inside a form: every use there hands each of
- * those props. A spread of a prop on a field, `{...this.props.attrs}` — the usual way to let a caller
+ * those props, by name or through a spread whose type names it — not one it may leave out, as
+ * `name?: string` may. A wrapper that hands its own props on, `<StyledInput {...this.props} />`, is
+ * checked where IT is used, as `name={this.props.name}` is. A spread of a prop on a field, `{...this.props.attrs}` — the usual way to let a caller
  * overwrite a default — is checked at every use, inside a form or not: each hands it as an object
  * written there, sets none of the form's attributes to nothing, and hands no `value` (`checked`)
  * without an `oninput` or `onchange` beside it, unless the field writes its own by name. A shorthand,
@@ -203,14 +205,15 @@ export const formFieldWithoutWhatTheFormNeeds = {
         if (!bag && !inContext(site.owner, site.inForm)) continue;
         const handed = site.props.get(name);
         if (!site.props.has(name)) {
-          // Handed through a spread on the use, by its type — `<StyledInput {...email} />` — or one whose
-          // type cannot be read, which may hand anything.
-          const spread = site.spreads && (site.spreadNames === undefined || site.spreadNames.has(name));
-          if (!bag && !(spread && site.spreadNames !== undefined))
-            found.push({ kind: "not-passed", component: site.tag, detail: name, ...where(site) });
-          // A bag that comes through a spread is not written here, and cannot be read.
-          else if (bag && spread)
+          // A bag that may come through a spread is not written here, and cannot be read.
+          if (bag && (site.spreadMayHand === undefined || site.spreadMayHand.has(name)))
             found.push({ kind: "bag-unreadable", component: site.tag, detail: name, ...where(site) });
+          // Handed through a spread whose type names it, not as one it may leave out: `<StyledInput {...email} />`.
+          else if (!bag && site.spreadHands.has(name)) continue;
+          // Handed through the owner's own props, `{...this.props}`: asked of the owner's uses.
+          else if (site.spreadsOwnProps) need(site.owner, name, bag, wants, shadowed);
+          // Not handed — nor surely by a spread, one that may leave it out or whose type cannot be read.
+          else if (!bag) found.push({ kind: "not-passed", component: site.tag, detail: name, ...where(site) });
           continue;
         }
         if (handed === undefined) continue;

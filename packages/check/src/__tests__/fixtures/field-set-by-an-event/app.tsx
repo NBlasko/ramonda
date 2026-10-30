@@ -763,3 +763,113 @@ class DispatchesAHeldFocus extends Component {
   }
   typed() {}
 }
+
+class ClicksInAnAccessor extends Component {
+  @state on = false;
+  box = createRef<HTMLInputElement>();
+  get view() {
+    this.box.current?.click(); // REPORT click in a getter render reads
+    return null;
+  }
+  // Read by no one: `this.picked = true` only writes.
+  get picked() {
+    this.box.current?.click();
+    return this.on;
+  }
+  set picked(next: boolean) {
+    this.box.current?.click(); // REPORT click in a setter a commit hook writes
+  }
+  get unread() {
+    this.box.current?.click();
+    return null;
+  }
+  @mounted
+  start() {
+    this.picked = true;
+  }
+  render() {
+    return (
+      <div>
+        {this.view}
+        <input type="checkbox" aria-label="b" ref={this.box} checked={this.on} onchange={this.flipped} />
+      </div>
+    );
+  }
+  flipped() {}
+}
+
+class ClicksInALocalRef extends Component {
+  @state on = false;
+  render() {
+    const attach = (node: HTMLInputElement | null) => node?.click(); // REPORT click in a local ref callback
+    function grab(node: HTMLInputElement | null) {
+      node?.click(); // REPORT click in a local function handed as a ref
+    }
+    return (
+      <div>
+        <input type="checkbox" aria-label="a" ref={attach} checked={this.on} onchange={this.flipped} />
+        <input type="checkbox" aria-label="g" ref={grab} checked={this.on} onchange={this.flipped} />
+      </div>
+    );
+  }
+  flipped() {}
+}
+
+class DispatchesThroughTheFormsElements extends Component {
+  @state text = "";
+  form = createRef<HTMLFormElement>();
+  @mounted
+  start() {
+    const form = this.form.current!;
+    form.elements.namedItem("email")?.dispatchEvent(new Event("input")); // REPORT through namedItem
+    form.elements[0].dispatchEvent(new Event("change")); // REPORT through an index
+    (form.elements as any).email.dispatchEvent(new Event("input")); // REPORT through a field's name
+    form.elements.item(1)?.dispatchEvent(new Event("input")); // REPORT through item
+  }
+  render() {
+    return (
+      <form ref={this.form}>
+        <input name="email" aria-label="e" value={this.text} oninput={this.typed} />
+      </form>
+    );
+  }
+  typed() {}
+}
+
+class ClicksThroughCallApplyBind extends Component {
+  @state on = false;
+  box = createRef<HTMLInputElement>();
+  @mounted
+  start() {
+    this.first.call(this);
+    this.second.apply(this, []);
+    this.third.bind(this)();
+    queueMicrotask(this.later.bind(this));
+  }
+  first() {
+    this.box.current?.click(); // REPORT click through call
+  }
+  second() {
+    this.box.current?.click(); // REPORT click through apply
+  }
+  third() {
+    this.box.current?.click(); // REPORT click through a bound call
+  }
+  later() {
+    this.box.current?.click();
+  }
+  render() {
+    return <input type="checkbox" aria-label="b" ref={this.box} checked={this.on} onchange={this.flipped} />;
+  }
+  flipped() {}
+}
+
+class RendersAsAnArrow extends Component {
+  @state on = false;
+  box = createRef<HTMLInputElement>();
+  render = () => {
+    this.box.current?.click(); // REPORT click in a render written as an arrow
+    return <input type="checkbox" aria-label="b" ref={this.box} checked={this.on} onchange={this.flipped} />;
+  };
+  flipped() {}
+}
