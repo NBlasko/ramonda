@@ -53,6 +53,13 @@ describe("a field inside a @ramonda/form form", () => {
         // A handler key that holds nothing carries no handler; one written as nothing on the field is none.
         [lineOf('attrs={{ value: "carried nothing"'), "bag-without-a-handler", "attrs"],
         [lineOf('<NoHandlerInput attrs={{ value: "x" }} />'), "bag-without-a-handler", "attrs"],
+        [lineOf('<NoHandlerInput attrs={{ value: "y", oninput: this.type }} />'), "bag-without-a-handler", "attrs"],
+        [lineOf('<Toggle type="checkbox" attrs={{ checked: on }} />'), "bag-without-a-handler", "attrs"],
+        [
+          lineOf('<Toggle type="text" attrs={{ value: "v", onchange: this.type }} />'),
+          "bag-without-a-handler",
+          "attrs",
+        ],
         [lineOf("class Detached"), "form-not-attached", "form"],
         [lineOf("class SignupForm"), "form-in-a-hook", "form"],
         [lineOf("class SignupThroughABase"), "form-in-a-hook", "form"],
@@ -60,6 +67,8 @@ describe("a field inside a @ramonda/form form", () => {
         [lineOf("class TwoForms"), "form-not-attached", "login"],
         // A field inside the holder's own form: every use hands its prop, inside a form or not.
         [lineOf("<NamedByAProp />"), "not-passed", "n"],
+        // A component rendering with the render it inherits: the field there is inside the form.
+        [lineOf('aria-label="inherited render"'), "missing", "`name`, `oninput`, `onblur`, `aria-invalid`"],
         [lineOf('<AriaInput name="a"'), "not-passed", "aria-invalid"],
         [lineOf("<StyledByAProp />"), "not-passed", "n"],
         [lineOf("<SpreadInItsForm value"), "not-passed", "name"],
@@ -93,7 +102,7 @@ describe("a field inside a @ramonda/form form", () => {
         [lineOf("<SpreadBare attrs={bag} />"), "bag-unreadable", "attrs"],
       ]),
     );
-    expect(issues).toHaveLength(54);
+    expect(issues).toHaveLength(58);
   });
 
   test("a complete field, a wrapper handed everything, a harmless bag, a field outside a form and an app's own Form are silent", () => {
@@ -111,6 +120,8 @@ describe("a field inside a @ramonda/form form", () => {
       lineOf("<BareInput attrs={{ value: undefined }} />"),
       lineOf("attrs={undefined} />"),
       lineOf("<TrackedInput"),
+      lineOf("<BareInput {...hinted} />"),
+      lineOf('<Toggle type="checkbox" attrs={{ checked: on, onchange: this.type }} />'),
       lineOf("attrs={NONE} />"),
       lineOf("keys the field never writes, set to nothing") + 1,
       lineOf('<SpreadBare attrs={{ placeholder: "spread" }} />'),

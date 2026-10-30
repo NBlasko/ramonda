@@ -36,19 +36,21 @@ export interface FormFieldWithoutWhatTheFormNeedsIssue {
 /**
  * What a spread must carry beside its model: `nothing` when the field writes its own handler; on a
  * `text` field an `oninput` beside a `value`; on a `pick` (a select) either handler beside a `value`;
- * on a `box` either handler beside a `checked` — its `value` is only what the form sends.
+ * on a `box` either handler beside a `checked` — its `value` is only what the form sends; on an
+ * `unread` input, whose `type` cannot be read, what a box wants when the spread hands `checked`, and
+ * what a text field wants otherwise.
  */
-type Wants = "nothing" | "text" | "pick" | "box";
+type Wants = "nothing" | "text" | "pick" | "box" | "unread";
 
 /**
  * A field inside a `@ramonda/form` form, written without everything the form needs.
  *
  * The form is recognised by one shape: `<form onsubmit={this.X.submit}>`, where `X` is a field of the
  * same class initialised `this.use(Form, …)` and `Form` is imported from `@ramonda/form`. Every
- * controlled field inside it — written in that render, in a component rendered there (followed
- * through every component it renders), or handed as children to a component that places its children
- * inside one — is written with all five of `name`, `value` (`checked` on a box), `oninput`, `onblur`
- * and `aria-invalid`, each by name.
+ * controlled field inside it — written in that render, in a component rendered there (by its own render
+ * or one it inherits, and through every component it renders), or handed as children to a component that
+ * places its children inside one — is written with all five of `name`, `value` (`checked` on a box),
+ * `oninput`, `onblur` and `aria-invalid`, each by name.
  *
  * A component that takes them as props — a design system's `StyledInput`, writing
  * `name={this.props.name}` — is checked where it is USED inside a form, and at every use, inside a form
@@ -195,7 +197,15 @@ export const formFieldWithoutWhatTheFormNeeds = {
     }
     // A spread of props on a field, anywhere: what each use hands for it is read there.
     for (const bag of bags) {
-      const wants: Wants = bag.handled ? "nothing" : bag.box ? "box" : bag.pick ? "pick" : "text";
+      const wants: Wants = bag.handled
+        ? "nothing"
+        : bag.box
+          ? "box"
+          : bag.unread
+            ? "unread"
+            : bag.pick
+              ? "pick"
+              : "text";
       need(bag.owner, bag.prop, true, wants, bag.shadowed, bag.overridable);
     }
 
@@ -295,14 +305,18 @@ function readBag(
     }
   }
   // `on:input` is the field's own handler as `oninput` is, however it reaches the field.
+  // A handler the field writes after the spread — even as nothing, `oninput={undefined}` — wins over the bag's.
+  const handles = (key: string) => keys.has(key) && !shadowed.includes(key);
+  // A box — or an input whose `type` cannot be read, handed `checked` — takes either handler.
+  const box = wants === "box" || (wants === "unread" && handles("checked"));
   const carries =
-    keys.has("oninput") ||
-    keys.has("on:input") ||
-    (wants !== "text" && (keys.has("onchange") || keys.has("on:change")));
+    handles("oninput") ||
+    handles("on:input") ||
+    ((wants === "pick" || box) && (handles("onchange") || handles("on:change")));
   // A value the field writes after the spread is the field's, whatever the spread says.
   // The model key the spread may set: `checked` on a box, `value` on anything else — and only when the
   // field does not write it after the spread.
-  const model = wants === "box" ? "checked" : "value";
+  const model = box ? "checked" : "value";
   const value = keys.has(model) && !shadowed.includes(model);
   if (wants !== "nothing" && value && !carries) {
     found.push({ kind: "bag-without-a-handler", component: site.tag, detail: name, ...where(site) });

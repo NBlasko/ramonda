@@ -1,6 +1,6 @@
 import { UNEDITED_INPUT_TYPES } from "@ramonda/dom-facts";
 import ts from "typescript";
-import { positionOf } from "../syntax";
+import { memberName, positionOf } from "../syntax";
 import { coreElementTag } from "./coreElements";
 import { holdsNothing as holdsNothingIn, openingOf, says, tagOf } from "./element";
 import { unwrap } from "./follow-value";
@@ -82,6 +82,11 @@ export interface SpreadBag extends Where {
   pick: boolean;
   /** A checkbox or a radio, whose model is `checked`; a `value` on it is only what the form sends. */
   box: boolean;
+  /**
+   * An `<input>` whose `type` cannot be read, written without `checked`: a box or a text field, by what
+   * the spread hands — a box when it hands `checked`.
+   */
+  unread: boolean;
   /** The attributes the field writes after the spread, which it therefore cannot override. */
   shadowed: readonly string[];
   /**
@@ -245,18 +250,14 @@ function formFieldsOf(cls: ts.ClassLikeDeclaration, resolve: Resolver): Set<stri
 }
 
 /** Whether a class extends core's `Hook` — itself, or through a class of the project's that does. */
-function isHookClass(cls: ts.ClassLikeDeclaration, resolve: Resolver, seen = new Set<ts.Node>()): boolean {
-  if (seen.has(cls)) return false;
-  seen.add(cls);
-  for (const clause of cls.heritageClauses ?? []) {
-    if (clause.token !== ts.SyntaxKind.ExtendsKeyword) continue;
-    for (const type of clause.types) {
-      if (resolve.coreName(type.expression) === "Hook") return true;
-      const base = ts.isIdentifier(type.expression) ? resolve(type.expression)?.declarations?.[0] : undefined;
-      if (base !== undefined && ts.isClassDeclaration(base) && isHookClass(base, resolve, seen)) return true;
-    }
-  }
-  return false;
+function isHookClass(cls: ts.ClassLikeDeclaration, resolve: Resolver): boolean {
+  return classChain(cls, resolve).some((at) =>
+    (at.heritageClauses ?? []).some(
+      (clause) =>
+        clause.token === ts.SyntaxKind.ExtendsKeyword &&
+        clause.types.some((type) => resolve.coreName(type.expression) === "Hook"),
+    ),
+  );
 }
 
 function enclosingClass(node: ts.Node): ts.ClassLikeDeclaration | undefined {
@@ -301,9 +302,33 @@ function valueOf(attribute: ts.JsxAttribute): ts.Expression | undefined {
 function readableClass(tagName: ts.JsxTagNameExpression, resolve: Resolver): ts.ClassLikeDeclaration | undefined {
   const declared = resolve(tagName)?.declarations?.[0];
   if (declared === undefined || !(ts.isClassDeclaration(declared) || ts.isClassExpression(declared))) return undefined;
-  // A `declare class` has no render, wherever it is written — the same as one from a package's `.d.ts`.
-  const ambient = ts.getCombinedModifierFlags(declared as ts.Declaration) & ts.ModifierFlags.Ambient;
-  return declared.getSourceFile().isDeclarationFile || ambient !== 0 ? undefined : declared;
+  if (!isReadable(declared)) return undefined;
+  // The class whose render it renders with — its own, or the nearest it inherits from a class of the
+  // project's: the fields written there are that class's.
+  return (
+    classChain(declared, resolve).find(
+      (cls) => isReadable(cls) && cls.members.some((member) => memberName(member) === "render"),
+    ) ?? declared
+  );
+}
+
+/** A class with a body this can read: a `declare class` has none, wherever it is written, nor a package's `.d.ts`. */
+function isReadable(cls: ts.ClassLikeDeclaration): boolean {
+  const ambient = ts.getCombinedModifierFlags(cls as ts.Declaration) & ts.ModifierFlags.Ambient;
+  return !cls.getSourceFile().isDeclarationFile && ambient === 0;
+}
+
+/** A class, then each class it extends that the project's source or a package declares, nearest first. */
+export function classChain(cls: ts.ClassLikeDeclaration, resolve: Resolver): ts.ClassLikeDeclaration[] {
+  const chain = [cls];
+  for (let at = cls; ; ) {
+    const clause = at.heritageClauses?.find((heritage) => heritage.token === ts.SyntaxKind.ExtendsKeyword);
+    const base = clause?.types[0]?.expression;
+    const declared = base !== undefined && ts.isIdentifier(base) ? resolve(base)?.declarations?.[0] : undefined;
+    if (declared === undefined || !ts.isClassDeclaration(declared) || chain.includes(declared)) return chain;
+    chain.push(declared);
+    at = declared;
+  }
 }
 
 export function formTableFor(sources: readonly ts.SourceFile[], resolve: Resolver): FormFacts {
@@ -475,6 +500,7 @@ export function formTableFor(sources: readonly ts.SourceFile[], resolve: Resolve
         handled,
         pick,
         box,
+        unread: kind === "unread" && !box,
         shadowed,
         overridable,
         ...positionOf(opening),

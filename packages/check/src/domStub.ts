@@ -11,7 +11,8 @@ import ts from "typescript";
  * declarations, which name `HTMLInputElement`, `Event` and the rest. The DOM lib that declares
  * them is 2.3 MB to parse for contents the answer never reads; its NAMES are all the answer needs —
  * but for a form's: `HTMLFormElement` and every interface it extends keep their members as the DOM lib
- * writes them, so whether a form fits a type (`reset-the-model-does-not-hear`) is TypeScript's answer.
+ * writes them, with every alias those name (`AutoFill`), so whether a form fits a type
+ * (`reset-the-model-does-not-hear`) is TypeScript's answer.
  * Read from the DOM lib of the TypeScript this package runs, so they are always the names core's and
  * the form's declarations were written against — nothing here is kept by hand.
  *
@@ -36,6 +37,8 @@ let built: string | undefined;
 function standInsFor(lib: string): string {
   /** What each interface says, as written — one body for each time the DOM lib declares it. */
   const bodies = new Map<string, string[]>();
+  /** Each alias as the DOM lib declares it, in one line: `type AutoFill = AutoFillBase | …;`. */
+  const aliasDeclarations = new Map<string, string>();
   const types = new Map<string, number>();
   const aliases = new Set<string>();
   const bases = new Map<string, Set<string>>();
@@ -44,7 +47,10 @@ function standInsFor(lib: string): string {
     const after = match.index + match[0].length;
     const list = generic === undefined ? { count: 0, end: after } : parameters(lib, after - 1);
     if (!types.has(name)) types.set(name, list.count);
-    if (kind === "type") aliases.add(name);
+    if (kind === "type") {
+      aliases.add(name);
+      aliasDeclarations.set(name, lib.slice(match.index, lib.indexOf(";\n", match.index) + 1));
+    }
     const extended = /^ extends ([^{]+) \{/.exec(lib.slice(list.end, lib.indexOf("\n", list.end)))?.[1];
     if (kind === "interface" && extended !== undefined) {
       const known = bases.get(name) ?? new Set<string>();
@@ -96,7 +102,21 @@ function standInsFor(lib: string): string {
       }
     }
   }
+  // An alias a kept body names keeps what it says too — `autocomplete: AutoFill` is a string to TypeScript,
+  // as a type that names it as one expects — and so does every alias that one names in turn.
+  const keptAliases = new Set<string>();
+  const named = (text: string): void => {
+    for (const [word] of text.matchAll(/\w+/g)) {
+      const declaration = aliasDeclarations.get(word);
+      if (declaration === undefined || keptAliases.has(word)) continue;
+      keptAliases.add(word);
+      named(declaration);
+    }
+  };
+  for (const name of form) for (const body of bodies.get(name) ?? []) named(body);
   const declared = [...types].map(([name, count]) => {
+    const kept = keptAliases.has(name) ? aliasDeclarations.get(name) : undefined;
+    if (kept !== undefined) return kept;
     const parameters = count === 0 ? "" : `<${Array.from({ length: count }, (_, i) => `T${i} = any`).join(", ")}>`;
     const mark = `readonly "stub:${name}": never`;
     const body = form.has(name) ? `{ ${mark};${(bodies.get(name) ?? []).join("")}}` : `{ ${mark} }`;

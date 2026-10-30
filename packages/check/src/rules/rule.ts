@@ -552,8 +552,9 @@ export interface Resolver {
    */
   formCast(outer: ts.AsExpression | ts.TypeAssertion): boolean;
   /**
-   * Whether this expression may hold the browser's `HTMLFormElement`, read off its TYPE: it does, or its
-   * type cannot be read (`any`, `unknown`). See `field-set-by-an-event`, which reads a form's `elements`.
+   * Whether this expression may hold the browser's `HTMLFormElement`, read off its TYPE: it does, its type
+   * cannot be read (`any`, `unknown`), or a form fits it (`Element`). See `field-set-by-an-event`, which
+   * reads a form's `elements`.
    */
   mayBeAForm(expression: ts.Expression): boolean;
   /**

@@ -990,7 +990,10 @@ class SettingsAndAWrappedQuery extends Component {
     document.execCommand("styleWithCSS", false, "true");
     document.execCommand(command);
     document.execCommand("delete"); // REPORT a command that edits
+    document.execCommand("InsertText", false, "x"); // REPORT a command that edits, in another case
+    this.label.current!.ownerDocument.execCommand("paste"); // REPORT through an element's document
     this.graph.elements[0].dispatchEvent(new Event("change"));
+    document.querySelector("form")!.elements[0].dispatchEvent(new Event("input")); // REPORT a form found by a query
     document.querySelectorAll("input").forEach(((el) => el.dispatchEvent(new Event("input"))) as (el: Element) => void); // REPORT a query's callback in parentheses
     this.label.current?.click();
   }
@@ -1008,4 +1011,41 @@ class SettingsAndAWrappedQuery extends Component {
     return null;
   }
   typed() {}
+}
+
+/** A project's own base, whose methods its subclasses call. */
+class ClickingBase extends Component {
+  @state on = false;
+  box = createRef<HTMLInputElement>();
+  tick() {
+    this.box.current?.click(); // REPORT click in an inherited method
+  }
+  again() {
+    this.box.current?.click(); // REPORT click in a method reached through super
+  }
+  // Overridden below, by one that clicks nothing: `this.quiet()` there is the subclass's own.
+  quiet() {
+    this.box.current?.click();
+  }
+  render() {
+    return <input type="checkbox" aria-label="b" ref={this.box} checked={this.on} onchange={this.picked} />;
+  }
+  picked() {}
+}
+
+class ClicksThroughItsBase extends ClickingBase {
+  @mounted
+  start() {
+    this.tick();
+    this.quiet();
+  }
+  @updated
+  moved() {
+    super.again();
+  }
+  again() {}
+  quiet() {}
+  render() {
+    return <input type="checkbox" aria-label="b" ref={this.box} checked={this.on} onchange={this.picked} />;
+  }
 }

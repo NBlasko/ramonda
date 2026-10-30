@@ -3,7 +3,7 @@ import { memberName, positionOf } from "../syntax";
 import { coreElementTag } from "./coreElements";
 import { openingOf, says } from "./element";
 import { unwrap } from "./follow-value";
-import { attributeLiterals, fieldKind, literalsOf, typeAttributeOf } from "./formTable";
+import { attributeLiterals, classChain, fieldKind, literalsOf, typeAttributeOf } from "./formTable";
 import { coreDecorators } from "./lifecycle-env";
 import type { Resolver, Rule, RuleContext } from "./rule";
 
@@ -28,17 +28,18 @@ import type { Resolver, Rule, RuleContext } from "./rule";
  * is dispatched at it; and an element the class is handed rather than renders is not read here:
  * `RMD062` reports what reaches it.
  *
- * How far it looks: every method of the class the commit's work calls — `this.method()`, through
- * `.call`, `.apply` or `.bind(…)()` — every accessor it reads or writes, and every function written
- * there that runs now — a callback to `forEach`, `map` or any call this cannot name
- * as later. One handed to `queueMicrotask`, `setTimeout`, `requestAnimationFrame`, a promise's `then`
- * or `addEventListener` runs after the commit. An `async` method is read whole: whether a statement runs
- * before an `await` or after it depends on values the check cannot read — `this.cache ??= await load()`
- * may not wait at all — so an edit anywhere in it is reported, and one meant for later says so by
- * handing it to `queueMicrotask`. A function written as an attribute is not the commit's
- * work either — `onclick={() => …}` is an event handler, which the element calls, and a row whose
- * handler clicks its checkbox does what a `<label>` does; a prop's function is the receiving
- * component's to call — except `ref={(node) => …}`, which runs in the commit.
+ * How far it looks: every method of the class the commit's work calls — its own or one it inherits from
+ * a class of the project's; `this.method()`, `super.method()`, through `.call`, `.apply` or
+ * `.bind(…)()` — every accessor it reads or writes, and every function written there that runs now — a
+ * callback to `forEach`, `map` or any call this cannot name as later. One handed to `queueMicrotask`,
+ * `setTimeout`, `requestAnimationFrame`, a promise's `then` or `addEventListener` runs after the
+ * commit. An `async` method is read whole: whether a statement runs before an `await` or after it
+ * depends on values the check cannot read — `this.cache ??= await load()` may not wait at all — so an
+ * edit anywhere in it is reported, and one meant for later says so by handing it to `queueMicrotask`. A
+ * function written as an attribute is not the commit's work either — `onclick={() => …}` is an event
+ * handler, which the element calls, and a row whose handler clicks its checkbox does what a `<label>`
+ * does; a prop's function is the receiving component's to call — except `ref={(node) => …}`, which runs
+ * in the commit.
  */
 export interface FieldSetByAnEventIssue {
   /** The class whose commit work sends the edit. */
@@ -65,17 +66,17 @@ const EDIT_EVENTS = new Set([
 ]);
 
 /**
- * `document.execCommand` commands that edit a field's text. The rest — `bold` and the other formatting
+ * `document.execCommand` commands that edit a field's text, by lower-case name. The rest — `bold` and the other formatting
  * commands, which a field ignores, and settings such as `styleWithCSS` or `defaultParagraphSeparator` —
  * edit none.
  */
 const EDIT_COMMANDS = new Set([
-  "insertText",
-  "insertHTML",
-  "insertParagraph",
-  "insertLineBreak",
+  "inserttext",
+  "inserthtml",
+  "insertparagraph",
+  "insertlinebreak",
   "delete",
-  "forwardDelete",
+  "forwarddelete",
   "cut",
   "paste",
   "undo",
@@ -155,22 +156,12 @@ export const fieldSetByAnEvent = {
     const { self, resolve } = context;
     const found: FieldSetByAnEventIssue[] = [];
 
-    // The class's own functions, by name: methods and arrow fields — and its accessors, which run where
-    // they are read (`{this.view}`) or written (`this.on = true`).
-    const members = new Map<string, ts.Node>();
-    const getters = new Map<string, ts.GetAccessorDeclaration>();
-    const setters = new Map<string, ts.SetAccessorDeclaration>();
-    for (const member of cls.members) {
-      const name = memberName(member);
-      if (name === undefined) continue;
-      if (ts.isGetAccessorDeclaration(member) && member.body !== undefined) getters.set(name, member);
-      else if (ts.isSetAccessorDeclaration(member) && member.body !== undefined) setters.set(name, member);
-      else if (ts.isMethodDeclaration(member) && member.body !== undefined) members.set(name, member);
-      else if (ts.isPropertyDeclaration(member) && member.initializer !== undefined) {
-        const held = unwrap(member.initializer);
-        if (ts.isArrowFunction(held) || ts.isFunctionExpression(held)) members.set(name, held);
-      }
-    }
+    // The class's functions, by name — its own, then what it inherits from a class of the project's — and
+    // what `super` names: the inherited alone.
+    const chain = classChain(cls, resolve);
+    const own = functionsOf(chain);
+    const inherited = functionsOf(chain.slice(1));
+    const { members } = own;
 
     const boxes = boxesOf(cls, context);
     // Each ref callback's elements, found once: finding them walks the class.
@@ -254,19 +245,21 @@ export const fieldSetByAnEvent = {
           const local = localFunction(at, resolve);
           if (local !== undefined) enter(local);
         }
-        if (
-          ts.isPropertyAccessExpression(at) &&
-          at.expression.kind === ts.SyntaxKind.ThisKeyword &&
-          members.has(at.name.text) &&
-          whenItRuns(at) === "now"
-        ) {
-          enter(members.get(at.name.text) as ts.Node);
-        }
-        if (ts.isPropertyAccessExpression(at) && at.expression.kind === ts.SyntaxKind.ThisKeyword) {
+        // `this.tick()`, and `super.tick()`, which names the inherited one.
+        const functions = !ts.isPropertyAccessExpression(at)
+          ? undefined
+          : at.expression.kind === ts.SyntaxKind.ThisKeyword
+            ? own
+            : at.expression.kind === ts.SyntaxKind.SuperKeyword
+              ? inherited
+              : undefined;
+        if (functions !== undefined && ts.isPropertyAccessExpression(at)) {
+          const fn = functions.members.get(at.name.text);
+          if (fn !== undefined && whenItRuns(at) === "now") enter(fn);
           // An accessor runs where it is used: a getter where it is read, a setter where it is written.
           const used = usedAs(at);
-          const getter = getters.get(at.name.text);
-          const setter = setters.get(at.name.text);
+          const getter = functions.getters.get(at.name.text);
+          const setter = functions.setters.get(at.name.text);
           if (getter !== undefined && used !== "written") enter(getter);
           if (setter !== undefined && used !== "read") enter(setter);
         }
@@ -301,7 +294,8 @@ export const fieldSetByAnEvent = {
               const command = at.arguments[0];
               const commands =
                 command === undefined ? undefined : (literalsOf(command, resolve) ?? resolve.typeLiterals(command));
-              if (commands === undefined || commands.some((name) => EDIT_COMMANDS.has(name)))
+              // A browser reads the name without regard to case: `InsertText` is `insertText`.
+              if (commands === undefined || commands.some((name) => EDIT_COMMANDS.has(name.toLowerCase())))
                 report(at, "exec-command", "execCommand");
             }
           }
@@ -372,6 +366,36 @@ export const fieldSetByAnEvent = {
     return found;
   },
 } as const satisfies Rule<FieldSetByAnEventIssue>;
+
+/** A class's functions by name: methods and arrow fields, and its accessors, kept apart — see `functionsOf`. */
+interface Functions {
+  members: Map<string, ts.Node>;
+  getters: Map<string, ts.GetAccessorDeclaration>;
+  setters: Map<string, ts.SetAccessorDeclaration>;
+}
+
+/**
+ * The functions of these classes, by name — a class first, then the classes it extends: read from the
+ * farthest base in, so a class's own takes the place of what it inherits. Methods and arrow fields, and
+ * accessors, which run where they are read (`{this.view}`) or written (`this.on = true`).
+ */
+function functionsOf(classes: readonly ts.ClassLikeDeclaration[]): Functions {
+  const found: Functions = { members: new Map(), getters: new Map(), setters: new Map() };
+  for (const cls of [...classes].reverse()) {
+    for (const member of cls.members) {
+      const name = memberName(member);
+      if (name === undefined) continue;
+      if (ts.isGetAccessorDeclaration(member) && member.body !== undefined) found.getters.set(name, member);
+      else if (ts.isSetAccessorDeclaration(member) && member.body !== undefined) found.setters.set(name, member);
+      else if (ts.isMethodDeclaration(member) && member.body !== undefined) found.members.set(name, member);
+      else if (ts.isPropertyDeclaration(member) && member.initializer !== undefined) {
+        const held = unwrap(member.initializer);
+        if (ts.isArrowFunction(held) || ts.isFunctionExpression(held)) found.members.set(name, held);
+      }
+    }
+  }
+  return found;
+}
 
 /** Constructors whose callback runs later: an observer is called when what it watches changes. */
 const LATER_CONSTRUCTORS = new Set([
@@ -568,11 +592,11 @@ function eachOfAQuery(declared: ts.Declaration, resolve: Resolver): boolean {
   );
 }
 
-/** `document`, or `window.document`. */
+/** `document`, `window.document`, or an element's `ownerDocument`. */
 function isDocument(expression: ts.Expression): boolean {
   const at = unwrap(expression);
   if (ts.isIdentifier(at)) return at.text === "document";
-  return ts.isPropertyAccessExpression(at) && at.name.text === "document";
+  return ts.isPropertyAccessExpression(at) && (at.name.text === "document" || at.name.text === "ownerDocument");
 }
 
 /**

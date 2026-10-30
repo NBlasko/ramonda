@@ -19,6 +19,8 @@ declare const handed: {
 /** The same, each of it may be left out. */
 declare const partial: Partial<typeof handed>;
 declare const kind: string;
+/** What `hint && { title: hint }` is in a strict project: the empty string, or the object. */
+declare const hinted: "" | 0 | false | { title: string };
 const HIDDEN = "hidden";
 const oninput = undefined;
 /** A class with no render to read, written in this very file. */
@@ -345,6 +347,10 @@ class Loose extends Component {
         <BareInput attrs={{ value: undefined }} />
         <BareInput attrs={{ value: "carried nothing", "on:input": undefined }} />
         <NoHandlerInput attrs={{ value: "x" }} />
+        {/* ✗ a handler in the bag that the field's own `oninput={undefined}`, written after, takes away */}
+        <NoHandlerInput attrs={{ value: "y", oninput: this.type }} />
+        {/* ✓ a spread of a string or an object: neither can carry the bag */}
+        <BareInput {...hinted} />
         {/* ✓ a box's value is what the form sends; ✗ its checked is a model with no handler */}
         <BoxInput attrs={{ value: "yes" }} />
         {/* ✓ `on:input` in the spread is the field's own handler */}
@@ -605,3 +611,50 @@ class UnionSpread extends Component {
 }
 
 export { Generic, UsesNamedByAProp, InABlockBody, PrivateForm, PrivateDetached, UnionSpread };
+
+/** An input whose `type` cannot be read, then a spread: a box or a text field, by what it is handed. */
+class Toggle extends Component<{ type: "checkbox" | "text"; attrs?: Record<string, unknown> }> {
+  render() {
+    return <input aria-label="toggle" type={this.props.type} {...this.props.attrs} />;
+  }
+}
+
+class UsesToggle extends Component {
+  type(_event: Event) {}
+  render() {
+    return (
+      <div>
+        {/* ✗ handed `checked` and no handler: a box that cannot be changed */}
+        <Toggle type="checkbox" attrs={{ checked: on }} />
+        {/* ✓ handed `checked` and `onchange`, a box's handler */}
+        <Toggle type="checkbox" attrs={{ checked: on, onchange: this.type }} />
+        {/* ✗ handed `value` and only `onchange`: as a text field, its handler is `oninput` */}
+        <Toggle type="text" attrs={{ value: "v", onchange: this.type }} />
+      </div>
+    );
+  }
+}
+
+export { Toggle, UsesToggle };
+
+/** A field written in a base class's render, which a subclass renders with. */
+class BaseField extends Component {
+  render() {
+    return <input aria-label="inherited render" value={value} />;
+  }
+}
+
+class SubField extends BaseField {}
+
+class RendersASubField extends Component {
+  form = this.use(Form, {});
+  render() {
+    return (
+      <form onsubmit={this.form.submit}>
+        <SubField />
+      </form>
+    );
+  }
+}
+
+export { RendersASubField };

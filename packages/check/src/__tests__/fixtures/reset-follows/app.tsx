@@ -33,6 +33,8 @@ declare const mixed: { reset(): void; count: number } | Resettable;
 // `void` rather than `undefined`, which the fixtures' non-strict base drops from a union.
 declare const actions: Record<string, () => void>;
 declare const settings: { reset?: boolean; debounce?: number };
+/** A form's `autocomplete` is an `AutoFill`, which is a string: a form fits this. */
+declare const autocompleting: { reset(): void; autocomplete: string };
 declare const maybeClear: { reset?(): void; debounce?: number };
 declare const counterOrNothing: { reset(): void; count: number } | void;
 declare const node: HTMLElement;
@@ -131,6 +133,7 @@ export class Follows extends Component {
     forma as TypedForm<string>; // ✓ a form cast to a form
     forma as { id: string }; // ✓ a form cast to a type naming one of its members
     actions.reset(); // ✓ a map of functions, which a form's members are not
+    autocompleting.reset(); // ✗ form-retyped — a member typed by a DOM alias, read as TypeScript reads it
     settings.reset; // ✓ a flag, every member optional — a form's reset is no flag
     maybeClear.reset?.(); // ✗ form-retyped — a type a form fits, every member optional
     const { [RESET]: clearByAConst } = forma; // ✗ browser-reset — destructured by a const

@@ -685,7 +685,11 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
       return read;
     },
     formCast: (outer: ts.AsExpression | ts.TypeAssertion) => formCast(outer, theForm(), checker),
-    mayBeAForm: (expression: ts.Expression) => formTypeOf(checker.getTypeAtLocation(expression), checker) !== "other",
+    mayBeAForm: (expression: ts.Expression) => {
+      // A form, a type that cannot be read, or one a form fits — `Element`, as `querySelector("form")` is typed.
+      const type = checker.getTypeAtLocation(expression);
+      return formTypeOf(type, checker) !== "other" || aFormFits(type, theForm(), checker);
+    },
     formReset: (node: ts.PropertyAccessExpression | ts.ElementAccessExpression | ts.BindingElement) =>
       formReset(node, theForm(), checker),
   });
@@ -4129,9 +4133,20 @@ function domStubFile(language: ts.ScriptTarget | ts.CreateSourceFileOptions): ts
 
 /**
  * The names a spread of a value of this type may hand — see `Resolver.propertyNames`. A union may hand
- * what any of its members does: `{ a: 1 } | { b: 2 }` may hand `a` and may hand `b`. `null` and
- * `undefined` in it hand nothing, as a spread of them does.
+ * what any of its members does: `{ a: 1 } | { b: 2 }` may hand `a` and may hand `b`. `null`, `undefined`
+ * and a primitive in it hand no name — `{...(hint && { title: hint })}` spreads `""` or the object.
  */
+/** What a spread of a union's member copies no name from: nothing, a boolean, a number, a string's indices. */
+const HANDS_NO_NAME =
+  ts.TypeFlags.Undefined |
+  ts.TypeFlags.Null |
+  ts.TypeFlags.Void |
+  ts.TypeFlags.BooleanLike |
+  ts.TypeFlags.NumberLike |
+  ts.TypeFlags.BigIntLike |
+  ts.TypeFlags.StringLike |
+  ts.TypeFlags.ESSymbolLike;
+
 function propertyNames(type: ts.Type, checker: ts.TypeChecker): string[] | undefined {
   if ((type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) return undefined;
   // A type parameter may hand what its constraint does, and anything at all without one.
@@ -4142,7 +4157,7 @@ function propertyNames(type: ts.Type, checker: ts.TypeChecker): string[] | undef
   if (type.isUnion()) {
     const names = new Set<string>();
     for (const member of type.types) {
-      if ((member.flags & (ts.TypeFlags.Undefined | ts.TypeFlags.Null | ts.TypeFlags.Void)) !== 0) continue;
+      if ((member.flags & HANDS_NO_NAME) !== 0) continue;
       const read = propertyNames(member, checker);
       if (read === undefined) return undefined;
       for (const name of read) names.add(name);
