@@ -43,6 +43,12 @@ class Page extends Component {
         <input type="submit" value={name.inputValue} />
         <input {...html("name")} aria-label="name with the constraints" value={name.inputValue} />
         <input {...html("age")} type="number" aria-label="age, its type after the constraints" value={age.inputValue} />
+        <input
+          type="number"
+          {...html("age")}
+          aria-label="age, its type before the constraints"
+          value={age.inputValue}
+        />
         <input type="date" aria-label="name as a date" value={name.inputValue} />
         <input type="button" value={age.inputValue} />
         {/* ✓ a field that may hold text, and a number the app holds itself */}
@@ -64,12 +70,7 @@ class Page extends Component {
         <input type={numberish} aria-label="name in a maybe number" value={name.inputValue} />
         <input type="checkbox" aria-label="name in a box" value={name.inputValue} />
         <input {...html("age")} aria-label="age with the constraints" value={age.inputValue} />
-        <input
-          type="number"
-          {...html("age")}
-          aria-label="age, its type before the constraints"
-          value={age.inputValue}
-        />
+
         <input {...overrides} aria-label="age in another spread" value={age.inputValue} />
         <input aria-label="agree as text" value={agree.inputValue} />
         <input type="file" aria-label="name in a file input" value={name.inputValue} />

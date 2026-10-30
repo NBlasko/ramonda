@@ -32,8 +32,6 @@ describe("a form value in the wrong control", () => {
       [lineOf("name in a maybe number"), "text", '<input type="number | text">'],
       [lineOf("name in a box"), "text", '<input type="checkbox">'],
       [lineOf("age with the constraints"), "number", "<input>"],
-      // A multi-line element is reported at its opening, three lines above its label.
-      [lineOf("age, its type before the constraints") - 3, "number", '<input type="number">'],
       [lineOf("agree as text"), "no-value", "<input>"],
       [lineOf("name in a file input"), "text", '<input type="file">'],
       [lineOf("any field"), "unreadable", "<input>"],

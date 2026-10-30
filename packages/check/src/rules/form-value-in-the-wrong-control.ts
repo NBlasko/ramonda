@@ -112,13 +112,16 @@ export const formValueInTheWrongControl = {
       '<input type="number" name={age.name} value={age.inputValue} oninput={age.oninput} />\n' +
       '<input type="date" name={born.name} value={born.inputValue} oninput={born.oninput} />\n' +
       "```\n\n" +
-      "`RMF005` reports the same in a running page, once the field holds a value.\n\n",
+      "`RMF005` reports the same in a running page, once the field holds a value of its own kind — which a\n" +
+      "field that starts empty, edited through the wrong control, never does: that one is this check's to find.\n\n",
   },
 
   /**
-   * The schema's constraints spread, `{...html(path)}`, is the one spread this reads through: it can
-   * carry a `type` of email, url, date, time or datetime-local and nothing else — see `isConstraints`.
-   * Any other spread may carry the `type`, and the element is not asked.
+   * The schema's constraints spread, `{...html(path)}`, is the one spread this reads through, in any
+   * order beside the field's attributes: the only `type` it carries comes from a text field's `format`
+   * (email, url, date, time, datetime-local), each a control that hands that field its text back — so it
+   * never makes a pair this reports, nor unmakes one. See `isConstraints`. Any other spread may carry
+   * the `type`, and the element is not asked.
    */
   evenWhenSpreading: true,
 
@@ -160,13 +163,8 @@ export const formValueInTheWrongControl = {
     if (kind === "none") return asksTheForm ? [{ kind: "no-value" as const, control, ...at }] : [];
     // What the control hands back, by the `type` it may have — none, on a `Select`, a `TextArea` or an
     // `<input>` without one, is text.
-    const typed = field === "input" && typeAttribute !== undefined ? types : ["text"];
-    if (typed === undefined) return [{ kind: "type-unread" as const, control, ...at }];
-    // A constraints spread written after the `type`, or with none, may give the input its own: text
-    // (email, url, time, datetime-local) or a day (date).
-    const lastSpread = spreads.length === 0 ? -1 : properties.indexOf(spreads[spreads.length - 1]);
-    const typeAt = typeAttribute === undefined ? -1 : properties.indexOf(typeAttribute);
-    const handsBack = field === "input" && lastSpread > typeAt ? [...typed, "email", "date"] : typed;
+    const handsBack = field === "input" && typeAttribute !== undefined ? types : ["text"];
+    if (handsBack === undefined) return [{ kind: "type-unread" as const, control, ...at }];
     return handsBack.length > 0 && handsBack.every((type) => keeps(type, kind)) ? [] : [{ kind, control, ...at }];
   },
 } as const satisfies ElementRule<FormValueInTheWrongControlIssue>;
