@@ -7,6 +7,7 @@ declare const value: string;
 const NONE = undefined;
 declare const on: boolean;
 declare const bag: Record<string, unknown>;
+declare const rest: Record<string, unknown>;
 declare const kind: string;
 const HIDDEN = "hidden";
 const oninput = undefined;
@@ -204,6 +205,8 @@ class Page extends Component {
         <DefaultsInput field={this.form.fields.email.$} attrs={{ placeholder: "you@example.com" }} />
         <DefaultsInput field={this.form.fields.email.$} attrs={{ oninput: undefined }} />
         <DefaultsInput field={this.form.fields.email.$} attrs={bag} />
+        {/* ✗ a bag that may come through a spread on the use, which cannot be read */}
+        <BareInput {...rest} />
         {/* ✗ one bag that cannot be read, spread on two fields: reported once */}
         <TwoFields attrs={bag} />
         {/* ✓ a handler written in the bag as a method, as it is written as an arrow */}

@@ -7,8 +7,9 @@ import type { ComponentGraph, GraphEdge, GraphNode, Where } from "./graph";
 import { hookNamed, isThisUse, positionOf } from "./syntax";
 import { coreExportName, importedFromPackage } from "./rules/core-import";
 import type { FormType, FormValue, Resolver, Silencer } from "./rules/rule";
-import { domStub, formMembers } from "./domStub";
+import { domStub, formMembers, formMethods } from "./domStub";
 import { DOM_STUB_FILE } from "./rules/platform";
+import { unwrap } from "./rules/follow-value";
 import {
   activate,
   applyClass,
@@ -3967,6 +3968,11 @@ function packageOf(dir: string): { name: string; version: string } {
   return { name: dir.split(/[/\\]/).pop() ?? "app", version: "0.0.0" };
 }
 
+/** TypeScript's own DOM lib files — `lib.dom.d.ts`, `lib.dom.iterable.d.ts`, `lib.dom.asynciterable.d.ts`. */
+function isTheDomLib(fileName: string): boolean {
+  return /[\\/]typescript[\\/]lib[\\/]lib\.dom(\.[a-z]+)?\.d\.ts$/.test(fileName);
+}
+
 /**
  * A compiler host that serves the virtual reading of any file holding a style block.
  *
@@ -3974,11 +3980,6 @@ function packageOf(dir: string): { name: string; version: string } {
  * about module resolution moves. `@ramonda/check` may depend on `@ramonda/css`; the forbidden
  * direction is the other one, and it stays forbidden.
  */
-/** TypeScript's own DOM lib files — `lib.dom.d.ts`, `lib.dom.iterable.d.ts`, `lib.dom.asynciterable.d.ts`. */
-function isTheDomLib(fileName: string): boolean {
-  return /[\\/]typescript[\\/]lib[\\/]lib\.dom(\.[a-z]+)?\.d\.ts$/.test(fileName);
-}
-
 function overlayHost(options: ts.CompilerOptions): ts.CompilerHost {
   const host = ts.createCompilerHost(options);
   const readFromDisk = host.readFile.bind(host);
@@ -4131,9 +4132,23 @@ function aFormFits(type: ts.Type, checker: ts.TypeChecker): boolean {
     // that takes anything — `Record<string, unknown>` — can hold one.
     const takesAnything = (info: ts.IndexInfo) => (info.type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0;
     if (!checker.getIndexInfosOfType(apparent).every(takesAnything)) return false;
+    // A member the form has as a method — `reset` — is one a value holding a form can call: `{ reset:
+    // boolean }` is a flag, which no form fits.
+    const methods = formMethods();
+    const callable = (property: ts.Symbol) => {
+      const type = checker.getTypeOfSymbol(property);
+      return (
+        (type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0 ||
+        checker.getApparentType(type).getCallSignatures().length > 0
+      );
+    };
     return checker
       .getPropertiesOfType(apparent)
-      .every((property) => (property.flags & ts.SymbolFlags.Optional) !== 0 || names.has(property.name));
+      .every(
+        (property) =>
+          (property.flags & ts.SymbolFlags.Optional) !== 0 ||
+          (names.has(property.name) && (!methods.has(property.name) || callable(property))),
+      );
   });
 }
 
@@ -4145,16 +4160,7 @@ function aFormFits(type: ts.Type, checker: ts.TypeChecker): boolean {
 function formCast(outer: ts.AsExpression | ts.TypeAssertion, checker: ts.TypeChecker): boolean {
   // The type the assertion names, read from what is written — not by checking the expression.
   const target = checker.getTypeFromTypeNode(outer.type);
-  let inner: ts.Expression = outer;
-  while (
-    ts.isAsExpression(inner) ||
-    ts.isTypeAssertionExpression(inner) ||
-    ts.isParenthesizedExpression(inner) ||
-    ts.isNonNullExpression(inner) ||
-    ts.isSatisfiesExpression(inner)
-  ) {
-    inner = inner.expression;
-  }
+  const inner = unwrap(outer);
   if (formTypeOf(checker.getTypeAtLocation(inner), checker) !== "form") return false;
   // A form, or a type a form fits — `form as Resettable`, `form as HTMLElement` — is where its reset is
   // still followed; only a type a form cannot be is a cast that hides it.

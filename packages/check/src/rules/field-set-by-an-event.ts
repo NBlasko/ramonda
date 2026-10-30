@@ -151,8 +151,10 @@ export const fieldSetByAnEvent = {
     const heldBy = (receiver: ts.Expression, hops = 0): { name: string; held: Held } | undefined => {
       const at = unwrap(receiver);
       if (ts.isIdentifier(at) && hops < 4) {
-        const element = refCallbackElement(at, context);
-        if (element !== undefined) return { name: at.text, held: heldAs(element, boxes, context) };
+        const elements = refCallbackElements(at, cls, context);
+        if (elements.length > 0) {
+          return { name: at.text, held: elements.map((element) => heldAs(element, boxes, context)).reduce(either) };
+        }
         const declared = resolve(at)?.declarations?.[0];
         if (
           declared !== undefined &&
@@ -207,7 +209,17 @@ export const fieldSetByAnEvent = {
           if (whenItRuns(at) === "now") enter(at);
           return;
         }
-        if (ts.isFunctionDeclaration(at)) return;
+        // A method, an accessor or a class written here is only kept — `this.api = { open() { … } }` —
+        // and runs where it is called, as a function declaration does.
+        if (
+          ts.isFunctionDeclaration(at) ||
+          ts.isMethodDeclaration(at) ||
+          ts.isGetAccessorDeclaration(at) ||
+          ts.isSetAccessorDeclaration(at) ||
+          ts.isClassExpression(at) ||
+          ts.isClassDeclaration(at)
+        )
+          return;
         if (ts.isIdentifier(at) && whenItRuns(at) === "now") {
           const local = localFunction(at, resolve);
           if (local !== undefined) enter(local);
@@ -234,7 +246,9 @@ export const fieldSetByAnEvent = {
               else {
                 const held = heldBy(callee.expression);
                 for (const type of types) {
-                  if (EDIT_EVENTS.has(type)) report(at, "dispatch", type);
+                  // An `input` or a `change` edits the field it is dispatched at — not a label of one,
+                  // which only a click passes on.
+                  if (EDIT_EVENTS.has(type) && (held === undefined || held.held.field)) report(at, "dispatch", type);
                   else if (type === "click" && held !== undefined && held.held.clicked) {
                     report(at, "click", held.name);
                   }
@@ -265,19 +279,42 @@ export const fieldSetByAnEvent = {
         ts.forEachChild(at, look);
       };
 
-      // A function's statements, up to the first one an `async` function is sure to `await` at: what
-      // comes after it runs once the commit is over — see `awaitsAt`.
-      const body = (fn: ts.FunctionLikeDeclaration): void => {
-        const statements = fn.body === undefined ? [] : ts.isBlock(fn.body) ? fn.body.statements : [fn.body];
-        const async = (ts.getCombinedModifierFlags(fn as ts.Declaration) & ts.ModifierFlags.Async) !== 0;
+      /**
+       * Statements in order, up to the first an `async` function is sure to `await` at: what comes after
+       * it runs once the commit is over — see `awaitedAt`. A block and a `try` are read the same way,
+       * inside: `try { await load(); this.box.click(); }` stops at the `await`. Whether one was reached.
+       */
+      const inOrder = (statements: readonly ts.Node[], async: boolean): boolean => {
         for (const statement of statements) {
-          if (async && ts.isStatement(statement) && awaitsAt(statement)) {
-            // What runs before the `await` in it still runs now: `this.x = await load(this.box.click())`.
+          if (!async || !ts.isStatement(statement)) {
             look(statement);
-            return;
+            continue;
+          }
+          if (ts.isBlock(statement)) {
+            if (inOrder(statement.statements, async)) return true;
+            continue;
+          }
+          if (ts.isTryStatement(statement)) {
+            if (inOrder(statement.tryBlock.statements, async)) return true;
+            // With no `await` sure in it, the `catch` may run now, and the `finally` does.
+            if (statement.catchClause !== undefined) look(statement.catchClause);
+            if (statement.finallyBlock !== undefined && inOrder(statement.finallyBlock.statements, async)) return true;
+            continue;
+          }
+          const awaited = awaitedAt(statement);
+          if (awaited !== undefined) {
+            // What runs before the `await` in it still runs now: `this.x = await load(this.box.click())`.
+            look(awaited);
+            return true;
           }
           look(statement);
         }
+        return false;
+      };
+
+      const body = (fn: ts.FunctionLikeDeclaration): void => {
+        const statements = fn.body === undefined ? [] : ts.isBlock(fn.body) ? fn.body.statements : [fn.body];
+        inOrder(statements, (ts.getCombinedModifierFlags(fn as ts.Declaration) & ts.ModifierFlags.Async) !== 0);
       };
 
       const enter = (fn: ts.Node): void => {
@@ -429,28 +466,32 @@ function isAnElementQuery(expression: ts.Expression): boolean {
 }
 
 /**
- * Whether a statement is sure to `await`, whatever its values — `await x;`, `const y = await x;`,
- * `this.data = await load();`, `return await x;`, or a `try` whose first statement is. An `await`
- * behind a branch — an arm of `?:`, the right of `&&`, `||` or `??`, an `if`, a function written there
- * — may not run, and the commit's work goes on past it.
+ * The part of a statement that is sure to `await`, whatever its values — `await x;`,
+ * `const y = await x;`, `this.data = await load();`, `return await x;`, `throw await x;`, or the head
+ * of an `if`, a `switch`, a `while` or a `for … of` that awaits: what runs up to it runs now, and its
+ * branches or its body after it. `undefined` when there is none. An `await` behind a branch — an arm of
+ * `?:`, the right of `&&`, `||` or `??`, inside an `if`'s branch, a function written there — may not
+ * run, and the commit's work goes on past it. A block and a `try` are read inside, by `inOrder`.
  */
-function awaitsAt(statement: ts.Statement): boolean {
-  if (ts.isExpressionStatement(statement)) return surelyAwaits(statement.expression);
-  if (ts.isReturnStatement(statement)) return statement.expression !== undefined && surelyAwaits(statement.expression);
+function awaitedAt(statement: ts.Statement): ts.Node | undefined {
+  const sure = (expression: ts.Expression | undefined) =>
+    expression !== undefined && surelyAwaits(expression) ? expression : undefined;
+  if (ts.isExpressionStatement(statement)) return sure(statement.expression);
+  if (ts.isReturnStatement(statement) || ts.isThrowStatement(statement)) return sure(statement.expression);
   if (ts.isVariableStatement(statement)) {
-    return statement.declarationList.declarations.some(
+    const awaits = statement.declarationList.declarations.some(
       (declaration) => declaration.initializer !== undefined && surelyAwaits(declaration.initializer),
     );
+    return awaits ? statement : undefined;
   }
-  if (ts.isTryStatement(statement)) {
-    const first = statement.tryBlock.statements[0];
-    return first !== undefined && awaitsAt(first);
+  if (ts.isIfStatement(statement) || ts.isWhileStatement(statement) || ts.isSwitchStatement(statement)) {
+    return sure(statement.expression);
   }
-  if (ts.isBlock(statement)) {
-    const first = statement.statements[0];
-    return first !== undefined && awaitsAt(first);
+  if (ts.isForOfStatement(statement)) {
+    // `for await` waits before its first turn; a `for … of` whose list awaits, while reading it.
+    return statement.awaitModifier !== undefined ? statement.expression : sure(statement.expression);
   }
-  return false;
+  return undefined;
 }
 
 /** Whether evaluating an expression is sure to reach an `await` in it — see `awaitsAt`. */
@@ -515,7 +556,10 @@ function labelsABox(
     if (found) return;
     if ((ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node)) && node !== label) {
       const tag = openingOf(node).tagName.getText();
-      // A component's markup is not read here: whatever it renders may be a box.
+      // Core's `Select` and `TextArea` are no box; any other component's markup is not read here, and
+      // whatever it renders may be one.
+      const core = coreElementTag(openingOf(node).tagName, context.resolve);
+      if (core === "select" || core === "textarea") return;
       if (/^[A-Z]/.test(tag) || tag.includes(".")) found = true;
       else if (isABox(node, context)) found = true;
     }
@@ -574,25 +618,56 @@ function boxesOf(cls: ts.ClassLikeDeclaration, context: RuleContext): Map<string
   return boxes;
 }
 
+/** What two elements a ref may be on hold together: what either does — see `Held`. */
+function either(a: Held, b: Held): Held {
+  return { clicked: a.clicked || b.clicked, field: a.field || b.field, models: new Set([...a.models, ...b.models]) };
+}
+
 /**
- * The element a `ref` callback's parameter is: `ref={(node) => …}` is handed the element it is written on.
+ * The elements a `ref` callback's parameter is: `ref={(node) => …}` is handed the element it is written
+ * on, and a method handed as one — `ref={this.attach}` — every element the class writes it on.
  */
-function refCallbackElement(
+function refCallbackElements(
   name: ts.Identifier,
+  cls: ts.ClassLikeDeclaration,
   context: RuleContext,
-): ts.JsxElement | ts.JsxSelfClosingElement | undefined {
+): (ts.JsxElement | ts.JsxSelfClosingElement)[] {
   const declared = context.resolve(name)?.declarations?.[0];
-  if (declared === undefined || !ts.isParameter(declared)) return undefined;
+  if (declared === undefined || !ts.isParameter(declared)) return [];
+  const method = declared.parent;
+  if (ts.isMethodDeclaration(method) && method.parent === cls) {
+    const named = memberName(method);
+    const found: (ts.JsxElement | ts.JsxSelfClosingElement)[] = [];
+    const visit = (node: ts.Node): void => {
+      if (ts.isJsxAttribute(node) && node.name.getText() === "ref" && node.initializer !== undefined) {
+        const written = ts.isJsxExpression(node.initializer) ? node.initializer.expression : undefined;
+        const held = written === undefined ? undefined : unwrap(written);
+        if (
+          held !== undefined &&
+          ts.isPropertyAccessExpression(held) &&
+          held.expression.kind === ts.SyntaxKind.ThisKeyword &&
+          held.name.text === named
+        ) {
+          const opening = node.parent.parent;
+          if (ts.isJsxSelfClosingElement(opening)) found.push(opening);
+          else if (ts.isJsxOpeningElement(opening)) found.push(opening.parent);
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(cls);
+    return found;
+  }
   // Through what only passes it on: `ref={((node) => …)}`, `ref={on ? (node) => … : undefined}`.
   let expression: ts.Node = declared.parent.parent;
   while (ts.isParenthesizedExpression(expression) || ts.isConditionalExpression(expression)) {
     expression = expression.parent;
   }
-  if (!ts.isJsxExpression(expression) || !ts.isJsxAttribute(expression.parent)) return undefined;
-  if (expression.parent.name.getText() !== "ref") return undefined;
+  if (!ts.isJsxExpression(expression) || !ts.isJsxAttribute(expression.parent)) return [];
+  if (expression.parent.name.getText() !== "ref") return [];
   const opening = expression.parent.parent.parent;
-  if (ts.isJsxSelfClosingElement(opening)) return opening;
-  return ts.isJsxOpeningElement(opening) ? opening.parent : undefined;
+  if (ts.isJsxSelfClosingElement(opening)) return [opening];
+  return ts.isJsxOpeningElement(opening) ? [opening.parent] : [];
 }
 
 /**
@@ -615,16 +690,7 @@ function refsOf(cls: ts.ClassLikeDeclaration, boxes: Map<string, boolean>, conte
       ) {
         const element = heldAs(node, boxes, context);
         const before = refs.get(held.name.text);
-        refs.set(
-          held.name.text,
-          before === undefined
-            ? element
-            : {
-                clicked: before.clicked || element.clicked,
-                field: before.field || element.field,
-                models: new Set([...before.models, ...element.models]),
-              },
-        );
+        refs.set(held.name.text, before === undefined ? element : either(before, element));
       }
     }
     ts.forEachChild(node, visit);

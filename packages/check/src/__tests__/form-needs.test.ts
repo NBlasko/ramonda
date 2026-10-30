@@ -59,9 +59,10 @@ describe("a field inside a @ramonda/form form", () => {
         [lineOf("class SignupForm"), "form-in-a-hook", "form"],
         [lineOf("class DetachedSignup"), "form-not-attached", "signup"],
         [lineOf("<TwoFields attrs={bag} />"), "bag-unreadable", "attrs"],
+        [lineOf("<BareInput {...rest} />"), "bag-unreadable", "attrs"],
       ]),
     );
-    expect(issues).toHaveLength(28);
+    expect(issues).toHaveLength(29);
   });
 
   test("a complete field, a wrapper handed everything, a harmless bag, a field outside a form and an app's own Form are silent", () => {

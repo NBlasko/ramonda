@@ -204,6 +204,9 @@ export const formFieldWithoutWhatTheFormNeeds = {
         const handed = site.props.get(name);
         if (!site.props.has(name)) {
           if (!bag) found.push({ kind: "not-passed", component: site.tag, detail: name, ...where(site) });
+          // A bag not named here may still come through a spread on the use, which cannot be read.
+          else if (site.spreads)
+            found.push({ kind: "bag-unreadable", component: site.tag, detail: name, ...where(site) });
           continue;
         }
         if (handed === undefined) continue;

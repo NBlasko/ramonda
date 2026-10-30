@@ -37,17 +37,25 @@ export function formMembers(): ReadonlySet<string> {
   return read().formMembers;
 }
 
-let built: { stub: string; formMembers: ReadonlySet<string> } | undefined;
+/** Which of `formMembers` a form has as a method — `reset`, `submit` — which a type a form fits has as one too. */
+export function formMethods(): ReadonlySet<string> {
+  return read().formMethods;
+}
 
-function read(): { stub: string; formMembers: ReadonlySet<string> } {
+type Read = { stub: string; formMembers: ReadonlySet<string>; formMethods: ReadonlySet<string> };
+
+let built: Read | undefined;
+
+function read(): Read {
   if (built === undefined) {
     built = standInsFor(readFileSync(join(dirname(ts.getDefaultLibFilePath({})), "lib.dom.d.ts"), "utf8"));
   }
   return built;
 }
 
-function standInsFor(lib: string): { stub: string; formMembers: ReadonlySet<string> } {
+function standInsFor(lib: string): Read {
   const members = new Map<string, Set<string>>();
+  const methods = new Map<string, Set<string>>();
   const types = new Map<string, number>();
   const aliases = new Set<string>();
   const bases = new Map<string, Set<string>>();
@@ -68,8 +76,14 @@ function standInsFor(lib: string): { stub: string; formMembers: ReadonlySet<stri
       // The body runs to the `}` that closes it at the start of a line, as the DOM lib writes it.
       const body = lib.slice(list.end, lib.indexOf("\n}", list.end));
       const own = members.get(name) ?? new Set<string>();
-      for (const member of body.matchAll(/^ {4}(?:readonly |get |set )?(\w+)\??[(:<]/gm)) own.add(member[1]);
+      const called = methods.get(name) ?? new Set<string>();
+      for (const member of body.matchAll(/^ {4}(readonly |get |set )?(\w+)\??([(:<])/gm)) {
+        own.add(member[2]);
+        // `name(` or `name<T>(` with no `get`/`set` before it: a method.
+        if (member[1] === undefined && member[3] !== ":") called.add(member[2]);
+      }
       members.set(name, own);
+      methods.set(name, called);
     }
   }
   const values = new Map<string, string>();
@@ -96,14 +110,16 @@ function standInsFor(lib: string): { stub: string; formMembers: ReadonlySet<stri
     return `interface ${name}${parameters}${extended.length === 0 ? "" : ` extends ${extended.join(", ")}`} ${body}`;
   });
   const formMembers = new Set<string>();
+  const formMethods = new Set<string>();
   const visit = (name: string): void => {
     if (formMembers.has(`stub:${name}`)) return;
     formMembers.add(`stub:${name}`);
     for (const member of members.get(name) ?? []) formMembers.add(member);
+    for (const member of methods.get(name) ?? []) formMethods.add(member);
     for (const base of bases.get(name) ?? []) visit(base);
   };
   visit("HTMLFormElement");
-  return { stub: [...declared, ...values.values()].join("\n"), formMembers };
+  return { stub: [...declared, ...values.values()].join("\n"), formMembers, formMethods };
 }
 
 /** How many type parameters the list opening at `open` holds — its top-level commas, plus one — and where it ends. */

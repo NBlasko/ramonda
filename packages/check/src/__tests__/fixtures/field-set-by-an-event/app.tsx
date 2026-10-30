@@ -144,6 +144,92 @@ class TouchesNoModel extends Component {
   typed() {}
 }
 
+/** What an `async` hook does past its first sure `await` runs once the commit is over — inside a `try` too. */
+class AwaitsBeforeTheEdit extends Component {
+  @state on = false;
+  box = createRef<HTMLInputElement>();
+  api: { open(): void } | undefined;
+  @mounted
+  async start() {
+    try {
+      await this.load();
+      this.box.current?.click();
+    } catch {}
+  }
+  @mounted
+  async later() {
+    try {
+      this.box.current?.click(); // REPORT click before the await in a try
+      await this.load();
+    } catch {}
+    this.box.current?.click();
+  }
+  @mounted
+  async ready() {
+    if (await this.load()) {
+    }
+    this.box.current?.click();
+  }
+  @mounted
+  keep() {
+    // Only kept: it runs where it is called.
+    this.api = {
+      // @ts-expect-error — the object's own `this`; what the rule reads is that the method is only kept
+      open() {
+        this.box.current?.click();
+      },
+    };
+  }
+  async load() {
+    return true;
+  }
+  render() {
+    return <input type="checkbox" aria-label="b" ref={this.box} checked={this.on} onchange={this.picked} />;
+  }
+  picked() {}
+}
+
+/** A ref callback written as a method is handed the element it is written on. */
+class ClicksThroughARefMethod extends Component {
+  @state on = false;
+  attach(node: HTMLInputElement | null) {
+    node?.click(); // REPORT click through a ref method
+  }
+  render() {
+    return <input type="checkbox" aria-label="b" ref={this.attach} checked={this.on} onchange={this.picked} />;
+  }
+  picked() {}
+}
+
+/** An `input` or a `change` at a label edits nothing; a click at a label of a `Select` only moves the focus. */
+class TouchesLabels extends Component {
+  @state on = false;
+  @state size = "m";
+  boxLabel = createRef<HTMLLabelElement>();
+  selectLabel = createRef<HTMLLabelElement>();
+  @mounted
+  start() {
+    this.boxLabel.current?.dispatchEvent(new Event("change"));
+    this.selectLabel.current?.click();
+  }
+  render() {
+    return (
+      <div>
+        <label ref={this.boxLabel}>
+          <input type="checkbox" aria-label="b" checked={this.on} onchange={this.picked} />
+        </label>
+        <label ref={this.selectLabel}>
+          Size
+          <Select aria-label="s" value={this.size} onchange={this.picked}>
+            <option value="m">m</option>
+          </Select>
+        </label>
+      </div>
+    );
+  }
+  picked() {}
+}
+
 /** A ref on a held box in one branch and a free one in the other holds what either does. */
 class WritesARefOnTwoElements extends Component {
   @state on = false;
