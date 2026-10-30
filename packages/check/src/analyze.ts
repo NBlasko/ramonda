@@ -685,6 +685,7 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
       return read;
     },
     formCast: (outer: ts.AsExpression | ts.TypeAssertion) => formCast(outer, theForm(), checker),
+    mayBeAForm: (expression: ts.Expression) => formTypeOf(checker.getTypeAtLocation(expression), checker) !== "other",
     formReset: (node: ts.PropertyAccessExpression | ts.ElementAccessExpression | ts.BindingElement) =>
       formReset(node, theForm(), checker),
   });
@@ -4005,7 +4006,7 @@ function overlayHost(options: ts.CompilerOptions): ts.CompilerHost {
   host.readFile = (fileName) =>
     fileName === DOM_STUB_FILE ? domStub() : (virtual(fileName) ?? readFromDisk(fileName));
   host.getSourceFile = (fileName, language, onError, shouldCreate) => {
-    if (fileName === DOM_STUB_FILE) return ts.createSourceFile(fileName, domStub(), language, true);
+    if (fileName === DOM_STUB_FILE) return domStubFile(language);
     // The DOM lib a file asks for itself — `/// <reference lib="dom" />` — read as nothing: the stand-ins
     // are the DOM here, and both at once would merge every interface with its stand-in.
     if (isTheDomLib(fileName)) return ts.createSourceFile(fileName, "", language, true);
@@ -4113,6 +4114,19 @@ function formReset(
   return aFormFits(receiver, form, checker) ? "fits" : undefined;
 }
 
+/** The stand-ins, parsed once for each language version: every program in a process shares them. */
+const domStubFiles = new Map<ts.ScriptTarget, ts.SourceFile>();
+
+function domStubFile(language: ts.ScriptTarget | ts.CreateSourceFileOptions): ts.SourceFile {
+  const version = typeof language === "object" ? language.languageVersion : language;
+  let file = domStubFiles.get(version);
+  if (file === undefined) {
+    file = ts.createSourceFile(DOM_STUB_FILE, domStub(), language, true);
+    domStubFiles.set(version, file);
+  }
+  return file;
+}
+
 /**
  * The names a spread of a value of this type may hand — see `Resolver.propertyNames`. A union may hand
  * what any of its members does: `{ a: 1 } | { b: 2 }` may hand `a` and may hand `b`. `null` and
@@ -4120,6 +4134,11 @@ function formReset(
  */
 function propertyNames(type: ts.Type, checker: ts.TypeChecker): string[] | undefined {
   if ((type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) return undefined;
+  // A type parameter may hand what its constraint does, and anything at all without one.
+  if ((type.flags & ts.TypeFlags.TypeParameter) !== 0) {
+    const constraint = checker.getBaseConstraintOfType(type);
+    return constraint === undefined || constraint === type ? undefined : propertyNames(constraint, checker);
+  }
   if (type.isUnion()) {
     const names = new Set<string>();
     for (const member of type.types) {

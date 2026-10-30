@@ -40,19 +40,6 @@ export interface FormFieldWithoutWhatTheFormNeedsIssue {
  */
 type Wants = "nothing" | "text" | "pick" | "box";
 
-/** The names a field's form attributes may be handed under, in a spread written last on it. */
-const FORM_KEYS = new Set([
-  "name",
-  "value",
-  "checked",
-  "oninput",
-  "onchange",
-  "on:input",
-  "on:change",
-  "onblur",
-  "aria-invalid",
-]);
-
 /**
  * A field inside a `@ramonda/form` form, written without everything the form needs.
  *
@@ -248,7 +235,8 @@ export const formFieldWithoutWhatTheFormNeeds = {
             found.push({ kind: "not-passed", component: site.tag, detail: name, ...where(site) });
           continue;
         }
-        readBag(handed, site, name, wants, shadowed, overridable, holdsNothing, found);
+        // A bag handed as nothing — `attrs={undefined}` — spreads nothing, as one left off does.
+        if (!holdsNothing(handed)) readBag(handed, site, name, wants, shadowed, overridable, holdsNothing, found);
       }
     }
 
@@ -302,7 +290,7 @@ function readBag(
     const held = ts.isPropertyAssignment(property) ? property.initializer : property.name;
     if (!holdsNothing(held)) keys.add(key);
     // Only what the field writes before the spread is taken away: a key it never writes is no override.
-    else if (FORM_KEYS.has(key) && overridable.includes(key)) {
+    else if (overridable.includes(key)) {
       found.push({ kind: "bag-overrides", component: site.tag, detail: `${name}.${key}`, ...where(site) });
     }
   }

@@ -64,6 +64,48 @@ class ColonInput extends Component<{ field: any; attrs?: Record<string, unknown>
   }
 }
 
+/** Takes `aria-invalid` under its own name, read by index. */
+class AriaInput extends Component<{
+  name: string;
+  value: string;
+  oninput: (event: Event) => void;
+  onblur: (event: Event) => void;
+  "aria-invalid"?: boolean;
+}> {
+  render() {
+    return (
+      <input
+        aria-label="aria"
+        name={this.props.name}
+        value={this.props.value}
+        oninput={this.props.oninput}
+        onblur={this.props.onblur}
+        aria-invalid={this.props["aria-invalid"]}
+      />
+    );
+  }
+}
+
+/** A text field with a `change` handler of its own beside the form's, then a spread. */
+class TrackedInput extends Component<{ field: any; attrs?: Record<string, unknown> }> {
+  render() {
+    const f = this.props.field;
+    return (
+      <input
+        aria-label="tracked"
+        name={f.name}
+        value={f.inputValue}
+        oninput={f.oninput}
+        onblur={f.onblur}
+        aria-invalid={f.invalid}
+        onchange={this.track}
+        {...this.props.attrs}
+      />
+    );
+  }
+  track() {}
+}
+
 /** Defaults, then a spread last that may overwrite them. */
 class DefaultsInput extends Component<{ field: any; attrs?: Record<string, unknown> }> {
   render() {
@@ -233,6 +275,11 @@ class Page extends Component {
         <DefaultsInput field={this.form.fields.email.$} attrs={{ placeholder: "you@example.com" }} />
         <DefaultsInput field={this.form.fields.email.$} attrs={{ oninput: undefined }} />
         <DefaultsInput field={this.form.fields.email.$} attrs={bag} />
+        {/* ✓ a text field's own `onchange` taken away: not one of the form's, whose handler is `oninput` */}
+        <TrackedInput field={this.form.fields.email.$} attrs={{ onchange: undefined }} />
+        {/* ✓ a bag handed as nothing, written or through a const: it spreads nothing */}
+        <DefaultsInput field={this.form.fields.email.$} attrs={undefined} />
+        <DefaultsInput field={this.form.fields.email.$} attrs={NONE} />
         {/* ✓ keys the field never writes, set to nothing: its `oninput` stays, `on:input` is another */}
         <DefaultsInput
           field={this.form.fields.email.$}
@@ -412,6 +459,8 @@ class HandedThroughASpread extends Component {
         <StyledInput {...partial} value={value} oninput={handed.oninput} />
         {/* ✗ not-passed — name, onblur, invalid: asked of the wrapper that spreads its props */}
         <SpreadOuter value={value} oninput={handed.oninput} />
+        {/* ✗ not-passed — aria-invalid, which the input reads by index */}
+        <AriaInput name="a" value={value} oninput={handed.oninput} onblur={handed.onblur} />
         {/* ✓ all five, handed to the wrapper that spreads its props */}
         <SpreadOuter name="s" value={value} oninput={handed.oninput} onblur={handed.onblur} invalid={false} />
         {/* ✗ bag-unreadable — through the wrapper's own props */}
@@ -530,6 +579,18 @@ class PrivateDetached extends Component {
   }
 }
 
+/** Spreads a value of a type it is given: what it hands cannot be read. */
+class Generic<P> extends Component<{ extra: P }> {
+  render() {
+    return (
+      <div>
+        {/* ✗ bag-unreadable — attrs, which a spread of any type may carry */}
+        <BareInput {...this.props.extra} />
+      </div>
+    );
+  }
+}
+
 /** A spread typed as either of two: a bag only one of them hands may still come through it. */
 declare const either: { attrs: { value: string } } | { other: number };
 class UnionSpread extends Component {
@@ -543,4 +604,4 @@ class UnionSpread extends Component {
   }
 }
 
-export { UsesNamedByAProp, InABlockBody, PrivateForm, PrivateDetached, UnionSpread };
+export { Generic, UsesNamedByAProp, InABlockBody, PrivateForm, PrivateDetached, UnionSpread };

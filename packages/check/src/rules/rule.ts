@@ -552,6 +552,11 @@ export interface Resolver {
    */
   formCast(outer: ts.AsExpression | ts.TypeAssertion): boolean;
   /**
+   * Whether this expression may hold the browser's `HTMLFormElement`, read off its TYPE: it does, or its
+   * type cannot be read (`any`, `unknown`). See `field-set-by-an-event`, which reads a form's `elements`.
+   */
+  mayBeAForm(expression: ts.Expression): boolean;
+  /**
    * Whether this member access reaches the browser's form reset, read off the receiver's TYPE:
    * `reset` — it takes `reset` from a form (`form.reset`, `form["reset"]`, `form[RESET]`,
    * `const { reset } = form`); `maybe` — `reset` on a value whose type cannot be read, or a key that

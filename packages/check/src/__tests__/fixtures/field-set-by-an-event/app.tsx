@@ -1,5 +1,6 @@
 import {
   Component,
+  ErrorBoundary,
   Select,
   TextArea,
   createRef,
@@ -973,6 +974,38 @@ class ClicksWhatMayBeABox extends Component {
         </label>
       </div>
     );
+  }
+  typed() {}
+}
+
+declare const command: "bold" | "italic";
+
+/** Commands that edit no field, by name or by type; and a query's callback in parentheses. */
+class SettingsAndAWrappedQuery extends Component {
+  @state text = "";
+  graph = { elements: [] as EventTarget[] };
+  label = createRef<HTMLLabelElement>();
+  @mounted
+  start() {
+    document.execCommand("styleWithCSS", false, "true");
+    document.execCommand(command);
+    document.execCommand("delete"); // REPORT a command that edits
+    this.graph.elements[0].dispatchEvent(new Event("change"));
+    document.querySelectorAll("input").forEach(((el) => el.dispatchEvent(new Event("input"))) as (el: Element) => void); // REPORT a query's callback in parentheses
+    this.label.current?.click();
+  }
+  render() {
+    return (
+      <label ref={this.label}>
+        Name
+        <ErrorBoundary fallback={this.fallback}>
+          <input aria-label="t" value={this.text} oninput={this.typed} />
+        </ErrorBoundary>
+      </label>
+    );
+  }
+  fallback() {
+    return null;
   }
   typed() {}
 }

@@ -2,6 +2,7 @@ import ts from "typescript";
 import { describe, expect, test } from "vitest";
 import { domStub } from "../domStub";
 import { createProgram } from "../analyze";
+import { DOM_STUB_FILE } from "../rules/platform";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -80,6 +81,14 @@ describe("the DOM's stand-ins", () => {
       .filter((d) => d.file?.fileName === USE)
       .map((d) => d.file!.getLineAndCharacterOfPosition(d.start!).line);
     expect([...fits, ...fitsNot].filter((_, at) => refused.includes(at))).toEqual(fitsNot);
+  });
+
+  test("are parsed once, and shared by every program after", () => {
+    const fixture = join(dirname(fileURLToPath(import.meta.url)), "fixtures", "dom-reference", "tsconfig.json");
+    const stub = (program: ts.Program) => program.getSourceFiles().find((file) => file.fileName === DOM_STUB_FILE);
+    const first = stub(createProgram(fixture).program);
+    expect(first).toBeDefined();
+    expect(stub(createProgram(fixture).program)).toBe(first);
   });
 
   /** A file that asks for the DOM lib itself — `/// <reference lib="dom" />` — gets nothing: the stand-ins are the DOM. */

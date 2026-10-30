@@ -85,8 +85,9 @@ export interface SpreadBag extends Where {
   /** The attributes the field writes after the spread, which it therefore cannot override. */
   shadowed: readonly string[];
   /**
-   * The attributes the field writes before it, with something — what the spread can take away. A
-   * handler is taken away under its own spelling only: `"on:input": undefined` leaves `oninput`.
+   * The form's attributes the field writes before it, with something — what the spread can take away.
+   * Its form attributes by its kind: a text field's handler is `oninput`, so its own `onchange` is not
+   * one. A handler is taken away under its own spelling only: `"on:input": undefined` leaves `oninput`.
    */
   overridable: readonly string[];
 }
@@ -275,14 +276,18 @@ function isOwnProps(expression: ts.Expression): boolean {
   );
 }
 
-/** `this.props.P`, as written — the name, or `undefined`. */
+/** `this.props.P`, or `this.props["aria-invalid"]`, as written — the name, or `undefined`. */
 export function propRead(expression: ts.Expression | undefined): string | undefined {
   if (expression === undefined) return undefined;
   const written = unwrap(expression);
-  if (!ts.isPropertyAccessExpression(written)) return undefined;
+  let name: string;
+  if (ts.isPropertyAccessExpression(written)) name = written.name.text;
+  else if (ts.isElementAccessExpression(written) && ts.isStringLiteralLike(written.argumentExpression))
+    name = written.argumentExpression.text;
+  else return undefined;
   const object = unwrap(written.expression);
   if (!ts.isPropertyAccessExpression(object) || object.name.text !== "props") return undefined;
-  return object.expression.kind === ts.SyntaxKind.ThisKeyword ? written.name.text : undefined;
+  return object.expression.kind === ts.SyntaxKind.ThisKeyword ? name : undefined;
 }
 
 function valueOf(attribute: ts.JsxAttribute): ts.Expression | undefined {
@@ -445,6 +450,9 @@ export function formTableFor(sources: readonly ts.SourceFile[], resolve: Resolve
     // Every `{...this.props.P}` on a field, controlled or not: it may carry a model, or take one away.
     // A text field's own handler is `oninput` — its `change` comes on blur; a pick's is either.
     const writes = pick ? ["oninput", "onchange", "on:input", "on:change"] : ["oninput", "on:input"];
+    // What the form writes on a field of this kind, under every spelling of its handler — a box's
+    // `value` too, which tells a radio from the others in its group.
+    const formAttributes = ["name", "value", ...(box ? ["checked"] : []), ...writes, "onblur", "aria-invalid"];
     const properties = opening.attributes.properties;
     properties.forEach((attribute, index) => {
       if (!ts.isJsxSpreadAttribute(attribute)) return;
@@ -460,7 +468,7 @@ export function formTableFor(sources: readonly ts.SourceFile[], resolve: Resolve
         .slice(0, index)
         .filter((earlier): earlier is ts.JsxAttribute => ts.isJsxAttribute(earlier))
         .map((earlier) => earlier.name.getText())
-        .filter((name) => said(name) && !shadowed.includes(name));
+        .filter((name) => formAttributes.includes(name) && said(name) && !shadowed.includes(name));
       bags.push({
         owner: enclosingClass(element),
         prop,

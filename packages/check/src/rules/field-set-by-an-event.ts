@@ -64,6 +64,24 @@ const EDIT_EVENTS = new Set([
   "compositionend",
 ]);
 
+/**
+ * `document.execCommand` commands that edit a field's text. The rest — `bold` and the other formatting
+ * commands, which a field ignores, and settings such as `styleWithCSS` or `defaultParagraphSeparator` —
+ * edit none.
+ */
+const EDIT_COMMANDS = new Set([
+  "insertText",
+  "insertHTML",
+  "insertParagraph",
+  "insertLineBreak",
+  "delete",
+  "forwardDelete",
+  "cut",
+  "paste",
+  "undo",
+  "redo",
+]);
+
 /** The decorators whose method a commit runs. */
 const COMMIT_DECORATORS = new Set(["created", "mounted", "updated", "destroyed", "watchProp", "catchError"]);
 
@@ -196,7 +214,7 @@ export const fieldSetByAnEvent = {
       const at = unwrap(receiver);
       if (ts.isIdentifier(at) && hops < 4) {
         const declared = resolve(at)?.declarations?.[0];
-        if (declared !== undefined && eachOfAQuery(declared)) return true;
+        if (declared !== undefined && eachOfAQuery(declared, resolve)) return true;
         return (
           declared !== undefined &&
           ts.isVariableDeclaration(declared) &&
@@ -205,7 +223,7 @@ export const fieldSetByAnEvent = {
           reachesAField(declared.initializer, hops + 1)
         );
       }
-      return isAnElementQuery(at);
+      return isAnElementQuery(at, resolve);
     };
 
     const visited = new Set<ts.Node>();
@@ -278,7 +296,14 @@ export const fieldSetByAnEvent = {
               const held = heldBy(callee.expression);
               if (held !== undefined && held.held.clicked) report(at, "click", held.name);
             }
-            if (method === "execCommand" && isDocument(callee.expression)) report(at, "exec-command", "execCommand");
+            if (method === "execCommand" && isDocument(callee.expression)) {
+              // A command read as written or off its type; one that cannot be read may be an edit.
+              const command = at.arguments[0];
+              const commands =
+                command === undefined ? undefined : (literalsOf(command, resolve) ?? resolve.typeLiterals(command));
+              if (commands === undefined || commands.some((name) => EDIT_COMMANDS.has(name)))
+                report(at, "exec-command", "execCommand");
+            }
           }
         }
         if (
@@ -503,18 +528,21 @@ const ELEMENT_QUERIES = new Set([
  * a form's own list of its fields, `form.elements`, with one taken from it: `.elements[0]`,
  * `.elements.email`, `.elements.namedItem("email")`.
  */
-function isAnElementQuery(expression: ts.Expression): boolean {
+function isAnElementQuery(expression: ts.Expression, resolve: Resolver): boolean {
   const at = unwrap(expression);
-  if (ts.isPropertyAccessExpression(at) && at.name.text === "elements") return true;
-  if (ts.isElementAccessExpression(at)) return isAnElementQuery(at.expression);
-  if (ts.isPropertyAccessExpression(at)) {
-    const list = unwrap(at.expression);
-    return ts.isPropertyAccessExpression(list) && list.name.text === "elements";
-  }
+  // A form's `elements`, by the type of what it is taken from: a store's `elements` is no form's.
+  const formsElements = (list: ts.Expression) => {
+    const read = unwrap(list);
+    return ts.isPropertyAccessExpression(read) && read.name.text === "elements" && resolve.mayBeAForm(read.expression);
+  };
+  if (formsElements(at)) return true;
+  if (ts.isElementAccessExpression(at)) return isAnElementQuery(at.expression, resolve);
+  if (ts.isPropertyAccessExpression(at)) return formsElements(at.expression);
   if (!ts.isCallExpression(at)) return false;
   const callee = unwrap(at.expression);
   if (!ts.isPropertyAccessExpression(callee)) return false;
-  if (callee.name.text === "item" || callee.name.text === "namedItem") return isAnElementQuery(callee.expression);
+  if (callee.name.text === "item" || callee.name.text === "namedItem")
+    return isAnElementQuery(callee.expression, resolve);
   return ELEMENT_QUERIES.has(callee.name.text);
 }
 
@@ -522,15 +550,22 @@ function isAnElementQuery(expression: ts.Expression): boolean {
  * Whether a name is each element of a query's list: `for (const el of root.querySelectorAll("input"))`,
  * or the first parameter of a callback handed to its `forEach`.
  */
-function eachOfAQuery(declared: ts.Declaration): boolean {
+function eachOfAQuery(declared: ts.Declaration, resolve: Resolver): boolean {
   const list = declared.parent;
   if (ts.isVariableDeclarationList(list) && ts.isForOfStatement(list.parent))
-    return isAnElementQuery(list.parent.expression);
+    return isAnElementQuery(list.parent.expression, resolve);
   if (!ts.isParameter(declared) || declared.parent.parameters[0] !== declared) return false;
-  const call = declared.parent.parent;
+  // Through what only passes the callback on: `forEach(((el) => …))`.
+  let call: ts.Node = declared.parent.parent;
+  while (ts.isParenthesizedExpression(call) || ts.isAsExpression(call) || ts.isSatisfiesExpression(call))
+    call = call.parent;
   if (!ts.isCallExpression(call)) return false;
   const callee = unwrap(call.expression);
-  return ts.isPropertyAccessExpression(callee) && callee.name.text === "forEach" && isAnElementQuery(callee.expression);
+  return (
+    ts.isPropertyAccessExpression(callee) &&
+    callee.name.text === "forEach" &&
+    isAnElementQuery(callee.expression, resolve)
+  );
 }
 
 /** `document`, or `window.document`. */
@@ -552,8 +587,9 @@ function isABox(node: ts.JsxElement | ts.JsxSelfClosingElement, context: RuleCon
 
 /**
  * Whether clicking a `<label>` edits a field: it labels a checkbox or a radio — inside it, or named by
- * `for` — or what it labels cannot be read: a component inside it, a `for` that is not a literal, or
- * names no field this class renders. A label of a text field only moves the focus.
+ * `for` — or what it labels cannot be read: an app's component inside it (core's place their children,
+ * which are read), a `for` that is not a literal, or one that names no field this class renders. A label
+ * of a text field only moves the focus.
  */
 function labelsABox(
   label: ts.JsxElement | ts.JsxSelfClosingElement,
@@ -577,7 +613,10 @@ function labelsABox(
       // whatever it renders may be one.
       const core = coreElementTag(openingOf(node).tagName, context.resolve);
       if (core === "select" || core === "textarea") return;
-      if (/^[A-Z]/.test(tag) || tag.includes(".")) found = true;
+      // Core's other components — `ErrorBoundary`, `Portal` — render their children where they stand,
+      // and those are read here.
+      const placesItsChildren = context.resolve.coreName(openingOf(node).tagName) !== undefined;
+      if (!placesItsChildren && (/^[A-Z]/.test(tag) || tag.includes("."))) found = true;
       else if (isABox(node, context)) found = true;
     }
     ts.forEachChild(node, visit);

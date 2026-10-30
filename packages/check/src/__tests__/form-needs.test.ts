@@ -60,6 +60,7 @@ describe("a field inside a @ramonda/form form", () => {
         [lineOf("class TwoForms"), "form-not-attached", "login"],
         // A field inside the holder's own form: every use hands its prop, inside a form or not.
         [lineOf("<NamedByAProp />"), "not-passed", "n"],
+        [lineOf('<AriaInput name="a"'), "not-passed", "aria-invalid"],
         [lineOf("<StyledByAProp />"), "not-passed", "n"],
         [lineOf("<SpreadInItsForm value"), "not-passed", "name"],
         [lineOf("<SpreadInItsForm value"), "not-passed", "onblur"],
@@ -71,6 +72,7 @@ describe("a field inside a @ramonda/form form", () => {
         [lineOf("class PrivateDetached"), "form-not-attached", "#form"],
         // A union spread may hand what any of its members hands.
         [lineOf("<BareInput {...either} />"), "bag-unreadable", "attrs"],
+        [lineOf("<BareInput {...this.props.extra} />"), "bag-unreadable", "attrs"],
         [lineOf('attrs={{ "on:input": undefined }}'), "bag-overrides", "attrs.on:input"],
         [lineOf("<TwoFields attrs={bag} />"), "bag-unreadable", "attrs"],
         [lineOf("<BareInput {...rest} />"), "bag-unreadable", "attrs"],
@@ -91,7 +93,7 @@ describe("a field inside a @ramonda/form form", () => {
         [lineOf("<SpreadBare attrs={bag} />"), "bag-unreadable", "attrs"],
       ]),
     );
-    expect(issues).toHaveLength(52);
+    expect(issues).toHaveLength(54);
   });
 
   test("a complete field, a wrapper handed everything, a harmless bag, a field outside a form and an app's own Form are silent", () => {
@@ -107,6 +109,9 @@ describe("a field inside a @ramonda/form form", () => {
       // A key set to nothing that the field never writes takes nothing away, and sets no model that needs
       // a handler: the bare input writes nothing before its spread.
       lineOf("<BareInput attrs={{ value: undefined }} />"),
+      lineOf("attrs={undefined} />"),
+      lineOf("<TrackedInput"),
+      lineOf("attrs={NONE} />"),
       lineOf("keys the field never writes, set to nothing") + 1,
       lineOf('<SpreadBare attrs={{ placeholder: "spread" }} />'),
       lineOf("<StyledInput {...this.props} />"),
