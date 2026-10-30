@@ -154,13 +154,15 @@ export const fieldSetByAnEvent = {
     }
 
     const boxes = boxesOf(cls, context);
+    // Each ref callback's elements, found once: finding them walks the class.
+    const refElements = new Map<ts.ParameterDeclaration, (ts.JsxElement | ts.JsxSelfClosingElement)[]>();
     const refs = refsOf(cls, boxes, context);
 
     // The ref a receiver names: `this.box.current`, with `?.`, `!` or a `const` one name away.
     const heldBy = (receiver: ts.Expression, hops = 0): { name: string; held: Held } | undefined => {
       const at = unwrap(receiver);
       if (ts.isIdentifier(at) && hops < 4) {
-        const elements = refCallbackElements(at, cls, context);
+        const elements = refCallbackElements(at, cls, context, refElements);
         if (elements.length > 0) {
           return { name: at.text, held: elements.map((element) => heldAs(element, boxes, context)).reduce(either) };
         }
@@ -188,8 +190,7 @@ export const fieldSetByAnEvent = {
      * a ref, or an element found by a query — which may be one. `document`, `window` and any other
      * object — a store that extends `EventTarget` — cannot: a field hears what is dispatched at it.
      */
-    const reachesAField = (receiver: ts.Expression, hops = 0): boolean => {
-      const held = heldBy(receiver);
+    const reachesAField = (receiver: ts.Expression, hops = 0, held = heldBy(receiver)): boolean => {
       if (held !== undefined) return held.held.clicked || held.held.field;
       const at = unwrap(receiver);
       if (ts.isIdentifier(at) && hops < 4) {
@@ -243,25 +244,19 @@ export const fieldSetByAnEvent = {
           enter(members.get(at.name.text) as ts.Node);
         }
         if (ts.isPropertyAccessExpression(at) && at.expression.kind === ts.SyntaxKind.ThisKeyword) {
-          // An accessor runs where it is used: a getter where it is read, a setter where it is written —
-          // `this.on = …` only writes, `this.count += 1` reads as well.
-          const assigned =
-            ts.isBinaryExpression(at.parent) &&
-            at.parent.left === at &&
-            at.parent.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
-            at.parent.operatorToken.kind <= ts.SyntaxKind.LastAssignment
-              ? at.parent.operatorToken.kind
-              : undefined;
+          // An accessor runs where it is used: a getter where it is read, a setter where it is written.
+          const used = usedAs(at);
           const getter = getters.get(at.name.text);
           const setter = setters.get(at.name.text);
-          if (getter !== undefined && assigned !== ts.SyntaxKind.EqualsToken) enter(getter);
-          if (setter !== undefined && assigned !== undefined) enter(setter);
+          if (getter !== undefined && used !== "written") enter(getter);
+          if (setter !== undefined && used !== "read") enter(setter);
         }
         if (ts.isCallExpression(at)) {
           const callee = unwrap(at.expression);
           if (ts.isPropertyAccessExpression(callee)) {
             const method = callee.name.text;
-            if (method === "dispatchEvent" && reachesAField(callee.expression)) {
+            const held = method === "dispatchEvent" ? heldBy(callee.expression) : undefined;
+            if (method === "dispatchEvent" && reachesAField(callee.expression, 0, held)) {
               const event = at.arguments[0] === undefined ? undefined : eventBuilt(at.arguments[0], resolve);
               const types =
                 event !== undefined && event.arguments?.[0] !== undefined
@@ -269,7 +264,6 @@ export const fieldSetByAnEvent = {
                   : undefined;
               if (types === undefined) report(at, "unreadable", at.arguments[0]?.getText() ?? "");
               else {
-                const held = heldBy(callee.expression);
                 for (const type of types) {
                   // An `input` or a `change` edits the field it is dispatched at — not a label of one,
                   // which only a click passes on.
@@ -413,6 +407,44 @@ function whenItRuns(value: ts.Node): "now" | "later" | "kept" {
     return parent.parent.name.getText() === "ref" ? "now" : "later";
   }
   return "kept";
+}
+
+/**
+ * How an expression is used: `written` — the target of `=`, of a destructuring (`[this.on] = pair`) or
+ * of a `for…of`; `both` — `this.count += 1`, `this.count++`; `read` — anything else.
+ */
+function usedAs(target: ts.Expression): "read" | "written" | "both" {
+  const parent = target.parent;
+  if (
+    (ts.isPrefixUnaryExpression(parent) || ts.isPostfixUnaryExpression(parent)) &&
+    (parent.operator === ts.SyntaxKind.PlusPlusToken || parent.operator === ts.SyntaxKind.MinusMinusToken)
+  ) {
+    return "both";
+  }
+  // Up through a destructuring, if it is in one, to what it is assigned from: `[this.a, { b: this.b }] = pair`.
+  let at: ts.Node = target;
+  for (;;) {
+    const up = at.parent;
+    if (ts.isBinaryExpression(up) && up.left === at) {
+      const kind = up.operatorToken.kind;
+      if (kind === ts.SyntaxKind.EqualsToken) return "written";
+      return at === target && kind >= ts.SyntaxKind.FirstAssignment && kind <= ts.SyntaxKind.LastAssignment
+        ? "both"
+        : "read";
+    }
+    if (ts.isForOfStatement(up) || ts.isForInStatement(up)) return up.initializer === at ? "written" : "read";
+    if (
+      ts.isArrayLiteralExpression(up) ||
+      ts.isObjectLiteralExpression(up) ||
+      ts.isSpreadElement(up) ||
+      ts.isSpreadAssignment(up) ||
+      (ts.isPropertyAssignment(up) && up.initializer === at)
+    ) {
+      at = up;
+      continue;
+    }
+    return "read";
+  }
 }
 
 /** Whether a callee is one of `LATER`, by its name: `queueMicrotask`, `promise.then`. */
@@ -614,12 +646,38 @@ function refCallbackElements(
   name: ts.Identifier,
   cls: ts.ClassLikeDeclaration,
   context: RuleContext,
+  found: Map<ts.ParameterDeclaration, (ts.JsxElement | ts.JsxSelfClosingElement)[]>,
 ): (ts.JsxElement | ts.JsxSelfClosingElement)[] {
   const declared = context.resolve(name)?.declarations?.[0];
   if (declared === undefined || !ts.isParameter(declared)) return [];
-  // A method handed as a ref — `ref={this.attach}` — or an arrow kept in a field, `attach = (node) => …`.
+  let elements = found.get(declared);
+  if (elements === undefined) {
+    elements = elementsOfRefCallback(declared, cls, context);
+    found.set(declared, elements);
+  }
+  return elements;
+}
+
+/** The elements a `ref` callback whose parameter this is is handed — see `refCallbackElements`. */
+function elementsOfRefCallback(
+  declared: ts.ParameterDeclaration,
+  cls: ts.ClassLikeDeclaration,
+  context: RuleContext,
+): (ts.JsxElement | ts.JsxSelfClosingElement)[] {
+  // A method handed as a ref — `ref={this.attach}` — or a function kept in a field, `attach = (node) => …`,
+  // read through what only passes it on, as the class's own functions are: `attach = ((node) => …)`.
   const fn = declared.parent;
-  const method = ts.isArrowFunction(fn) && ts.isPropertyDeclaration(fn.parent) ? fn.parent : fn;
+  let written: ts.Node = fn;
+  while (
+    ts.isParenthesizedExpression(written.parent) ||
+    ts.isAsExpression(written.parent) ||
+    ts.isSatisfiesExpression(written.parent) ||
+    ts.isNonNullExpression(written.parent)
+  ) {
+    written = written.parent;
+  }
+  const isFunction = ts.isArrowFunction(fn) || ts.isFunctionExpression(fn);
+  const method = isFunction && ts.isPropertyDeclaration(written.parent) ? written.parent : fn;
   if ((ts.isMethodDeclaration(method) || ts.isPropertyDeclaration(method)) && method.parent === cls) {
     const named = memberName(method);
     return elementsWithARef(
@@ -635,10 +693,8 @@ function refCallbackElements(
   const local =
     ts.isFunctionDeclaration(fn) && fn.name !== undefined
       ? fn
-      : (ts.isArrowFunction(fn) || ts.isFunctionExpression(fn)) &&
-          ts.isVariableDeclaration(fn.parent) &&
-          fn.parent.initializer === fn
-        ? fn.parent
+      : isFunction && ts.isVariableDeclaration(written.parent) && written.parent.initializer === written
+        ? written.parent
         : undefined;
   if (local !== undefined) {
     return elementsWithARef(cls, (held) => ts.isIdentifier(held) && context.resolve(held)?.declarations?.[0] === local);

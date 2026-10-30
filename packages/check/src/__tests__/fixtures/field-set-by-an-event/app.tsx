@@ -779,6 +779,18 @@ class ClicksInAnAccessor extends Component {
   set picked(next: boolean) {
     this.box.current?.click(); // REPORT click in a setter a commit hook writes
   }
+  get count() {
+    return 0;
+  }
+  set count(next: number) {
+    this.box.current?.click(); // REPORT click in a setter a commit hook increments
+  }
+  set paired(next: boolean) {
+    this.box.current?.click(); // REPORT click in a setter a destructuring writes
+  }
+  set looped(next: boolean) {
+    this.box.current?.click(); // REPORT click in a setter a for…of writes
+  }
   get unread() {
     this.box.current?.click();
     return null;
@@ -786,6 +798,10 @@ class ClicksInAnAccessor extends Component {
   @mounted
   start() {
     this.picked = true;
+    this.count++;
+    [this.paired] = [true];
+    for (this.looped of [true]) {
+    }
   }
   render() {
     return (
@@ -872,4 +888,24 @@ class RendersAsAnArrow extends Component {
     return <input type="checkbox" aria-label="b" ref={this.box} checked={this.on} onchange={this.flipped} />;
   };
   flipped() {}
+}
+
+/** A function expression kept in a field, and an arrow kept in parentheses, are ref callbacks too. */
+class ClicksThroughARefFunction extends Component {
+  @state on = false;
+  attach = function (node: HTMLInputElement | null) {
+    node?.click(); // REPORT click through a ref function expression
+  };
+  grab = ((node: HTMLInputElement | null) => {
+    node?.click(); // REPORT click through a parenthesized ref arrow
+  }) as (node: HTMLInputElement | null) => void;
+  render() {
+    return (
+      <div>
+        <input type="checkbox" aria-label="a" ref={this.attach} checked={this.on} onchange={this.picked} />
+        <input type="checkbox" aria-label="g" ref={this.grab} checked={this.on} onchange={this.picked} />
+      </div>
+    );
+  }
+  picked() {}
 }

@@ -54,10 +54,13 @@ describe("a field inside a @ramonda/form form", () => {
         [lineOf("attrs={{ value: undefined }}"), "bag-overrides", "attrs.value"],
         // A handler key that holds nothing carries no handler; one written as nothing on the field is none.
         [lineOf('attrs={{ value: "carried nothing"'), "bag-without-a-handler", "attrs"],
+        [lineOf('attrs={{ value: "carried nothing"'), "bag-overrides", "attrs.on:input"],
         [lineOf('<NoHandlerInput attrs={{ value: "x" }} />'), "bag-without-a-handler", "attrs"],
         [lineOf("class Detached"), "form-not-attached", "form"],
         [lineOf("class SignupForm"), "form-in-a-hook", "form"],
         [lineOf("class DetachedSignup"), "form-not-attached", "signup"],
+        [lineOf("class TwoForms"), "form-not-attached", "login"],
+        [lineOf('attrs={{ "on:input": undefined }}'), "bag-overrides", "attrs.on:input"],
         [lineOf("<TwoFields attrs={bag} />"), "bag-unreadable", "attrs"],
         [lineOf("<BareInput {...rest} />"), "bag-unreadable", "attrs"],
         // A spread whose type may leave a name out does not hand it.
@@ -71,7 +74,7 @@ describe("a field inside a @ramonda/form form", () => {
         [lineOf("<SpreadBare attrs={bag} />"), "bag-unreadable", "attrs"],
       ]),
     );
-    expect(issues).toHaveLength(36);
+    expect(issues).toHaveLength(39);
   });
 
   test("a complete field, a wrapper handed everything, a harmless bag, a field outside a form and an app's own Form are silent", () => {

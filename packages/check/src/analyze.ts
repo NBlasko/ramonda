@@ -4142,7 +4142,8 @@ function aFormFits(type: ts.Type, form: ts.Type | undefined, checker: ts.TypeChe
     // can hold one.
     const takesAnything = (info: ts.IndexInfo) => (info.type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0;
     if (!checker.getIndexInfosOfType(apparent).every(takesAnything)) return false;
-    return checker.isTypeAssignableTo(form, member);
+    // A type parameter holds what its constraint does: `<T extends { reset(): void }>(t: T)` can be a form.
+    return checker.isTypeAssignableTo(form, member.isTypeParameter() ? apparent : member);
   });
 }
 

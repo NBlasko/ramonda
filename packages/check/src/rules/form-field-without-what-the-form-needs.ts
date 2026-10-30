@@ -41,7 +41,17 @@ export interface FormFieldWithoutWhatTheFormNeedsIssue {
 type Wants = "nothing" | "text" | "pick" | "box";
 
 /** The names a field's form attributes may be handed under, in a spread written last on it. */
-const FORM_KEYS = new Set(["name", "value", "checked", "oninput", "onchange", "onblur", "aria-invalid"]);
+const FORM_KEYS = new Set([
+  "name",
+  "value",
+  "checked",
+  "oninput",
+  "onchange",
+  "on:input",
+  "on:change",
+  "onblur",
+  "aria-invalid",
+]);
 
 /**
  * A field inside a `@ramonda/form` form, written without everything the form needs.
@@ -115,10 +125,13 @@ export const formFieldWithoutWhatTheFormNeeds = {
 
     for (const holder of holders) {
       // Named by the field that holds it, which the report's advice writes as `this.<field>.submit`.
-      const detail = holder.fields[0] ?? "form";
-      if (holder.isHook) found.push({ kind: "form-in-a-hook", component: holder.component, detail, ...where(holder) });
-      else if (!holder.attached)
-        found.push({ kind: "form-not-attached", component: holder.component, detail, ...where(holder) });
+      if (holder.isHook) {
+        const detail = holder.fields[0] ?? "form";
+        found.push({ kind: "form-in-a-hook", component: holder.component, detail, ...where(holder) });
+        continue;
+      }
+      for (const field of holder.unattached)
+        found.push({ kind: "form-not-attached", component: holder.component, detail: field, ...where(holder) });
     }
 
     // Every class rendered inside a form, through every component it renders in turn.

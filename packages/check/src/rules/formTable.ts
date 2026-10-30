@@ -11,10 +11,12 @@ import type { Resolver, Where } from "./rule";
  * The project's `@ramonda/form` forms, the fields inside them, and every place a component is used
  * inside one — collected in one pass, judged by `form-field-without-what-the-form-needs`.
  *
- * Every question here is about DECLARATIONS and source, never about types, as everywhere in this
- * package: where a field of a class was declared and what initialises it, where an identifier was
- * imported from, what attributes an element is written with. A form is recognised by exactly one
- * shape — see `ramondaFormElements` — so nothing is inferred from names or guessed through a chain.
+ * Most questions here are about DECLARATIONS and source: where a field of a class was declared and what
+ * initialises it, where an identifier was imported from, what attributes an element is written with. Two
+ * are asked of a TYPE, where the source does not say: the names a spread on a component hands
+ * (`resolve.propertyNames`), and the strings an attribute written as an expression can be
+ * (`resolve.typeLiterals`). A form is recognised by exactly one shape — see `ramondaFormElements` — so
+ * nothing is inferred from names or guessed through a chain.
  */
 
 /** What `@ramonda/form` needs on a control, each written by name. */
@@ -67,10 +69,10 @@ export interface FormHolder extends Where {
   component: string;
   /** A hook holding one — `class SignupForm extends Hook { form = this.use(Form, …) }`. */
   isHook: boolean;
-  /** Whether the class renders a `<form onsubmit={this.X.submit}>` for it. */
-  attached: boolean;
-  /** The fields that hold it — `signup` in `signup = this.use(Form, …)` — for the report to name. */
+  /** The fields that hold one — `signup` in `signup = this.use(Form, …)` — for the report to name. */
   fields: readonly string[];
+  /** Those of them for which the class renders no `<form onsubmit={this.X.submit}>`. */
+  unattached: readonly string[];
 }
 
 /** `{...this.props.P}` on a field: what `P` holds is read where the component is used. */
@@ -302,7 +304,7 @@ export function formTableFor(sources: readonly ts.SourceFile[], resolve: Resolve
     if (ts.isClassDeclaration(node) || ts.isClassExpression(node)) {
       const held = formFieldsOf(node, resolve);
       if (held.size > 0) {
-        let attached = false;
+        const attached = new Set<string>();
         const look = (inner: ts.Node): void => {
           if ((ts.isJsxElement(inner) || ts.isJsxSelfClosingElement(inner)) && tagOf(inner) === "form") {
             const submit = openingOf(inner).attributes.properties.find(
@@ -320,7 +322,7 @@ export function formTableFor(sources: readonly ts.SourceFile[], resolve: Resolve
               enclosingClass(inner) === node
             ) {
               formElements.add(inner);
-              attached = true;
+              attached.add(written.expression.name.text);
             }
           }
           ts.forEachChild(inner, look);
@@ -329,8 +331,8 @@ export function formTableFor(sources: readonly ts.SourceFile[], resolve: Resolve
         holders.push({
           component: node.name?.text ?? "(anonymous)",
           isHook: isHookClass(node, resolve),
-          attached,
           fields: [...held.keys()],
+          unattached: [...held.keys()].filter((field) => !attached.has(field)),
           ...positionOf(node.name ?? node),
         });
       }

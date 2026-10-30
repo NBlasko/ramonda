@@ -59,7 +59,12 @@ function asResettable(): Resettable {
   return forma;
 }
 
-export { byAName, clearBoth };
+/** A generic helper: a form can be what its constraint holds. */
+function clearAny<T extends { reset(): void }>(target: T) {
+  target.reset(); // ✗ form-retyped
+}
+
+export { byAName, clearAny, clearBoth };
 
 export class Follows extends Component {
   form = this.use(Form, {});

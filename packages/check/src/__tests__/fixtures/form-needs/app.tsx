@@ -46,6 +46,24 @@ class StyledInput extends Component<{
   }
 }
 
+/** The same, its handler spelled `on:input`. */
+class ColonInput extends Component<{ field: any; attrs?: Record<string, unknown> }> {
+  render() {
+    const f = this.props.field;
+    return (
+      <input
+        aria-label="colon"
+        name={f.name}
+        value={f.inputValue}
+        on:input={f.oninput}
+        onblur={f.onblur}
+        aria-invalid={f.invalid}
+        {...this.props.attrs}
+      />
+    );
+  }
+}
+
 /** Defaults, then a spread last that may overwrite them. */
 class DefaultsInput extends Component<{ field: any; attrs?: Record<string, unknown> }> {
   render() {
@@ -215,6 +233,8 @@ class Page extends Component {
         <DefaultsInput field={this.form.fields.email.$} attrs={{ placeholder: "you@example.com" }} />
         <DefaultsInput field={this.form.fields.email.$} attrs={{ oninput: undefined }} />
         <DefaultsInput field={this.form.fields.email.$} attrs={bag} />
+        {/* ✗ a bag that sets the field's `on:input` to nothing */}
+        <ColonInput field={this.form.fields.email.$} attrs={{ "on:input": undefined }} />
         {/* ✗ a bag that may come through a spread on the use, which cannot be read */}
         <BareInput {...rest} />
         {/* ✗ one bag that cannot be read, spread on two fields: reported once */}
@@ -307,6 +327,23 @@ class DetachedSignup extends Component {
   signup = this.use(Form, {});
   render() {
     return <form>nothing</form>;
+  }
+}
+
+/** ✗ form-not-attached — `login`: one form of two is attached, the other is not. */
+class TwoForms extends Component {
+  signup = this.use(Form, {});
+  login = this.use(Form, {});
+  render() {
+    return (
+      <div>
+        <form onsubmit={this.signup.submit}>signup</form>
+        <form onsubmit={this.sendLogin}>login</form>
+      </div>
+    );
+  }
+  sendLogin() {
+    this.login.submit();
   }
 }
 
