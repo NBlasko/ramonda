@@ -121,6 +121,13 @@ export class Portal extends Hook<PortalProps> {
   private resolvedFrom: PortalTarget | undefined;
   private resolvedTo: Element | undefined;
 
+  /**
+   * The container and the children the block was last reconciled into and with: a run of the props
+   * factory that hands over the same two has nothing to move — see `replace`.
+   */
+  private reconciledTo: Element | undefined;
+  private reconciledChildren: unknown;
+
   /** Where the block waits while it has no target — see `leave`. */
   private waiting: DocumentFragment | undefined;
 
@@ -217,6 +224,11 @@ export class Portal extends Hook<PortalProps> {
     (props: PortalProps) => props.target,
   )
   replace(): void {
+    // `portalTarget("modal")` written in the factory is a new token on every run, so the target's
+    // selector never stays quiet: what decides is the container it names. The same container, and
+    // children that say the same, is nothing to reconcile — only a document query.
+    const target = this.nesting.suspended ? undefined : this.element;
+    if (target !== undefined && target === this.reconciledTo && this.props.children === this.reconciledChildren) return;
     this.reconcile();
   }
 
@@ -257,6 +269,8 @@ export class Portal extends Hook<PortalProps> {
       // the reconcile's error is the one that goes on: it is the real failure.
       try {
         this.region.reconcile(this.props.children, target);
+        this.reconciledTo = target;
+        this.reconciledChildren = this.props.children;
       } catch (error) {
         try {
           this.nesting.open();
@@ -287,6 +301,7 @@ export class Portal extends Hook<PortalProps> {
    * component does — one rule, rather than a paused state to know about.
    */
   private leave(): void {
+    this.reconciledTo = undefined;
     if (this.area?.placed) {
       // A fragment of the block's own document: one of this document would adopt every node of a
       // block that lives in an iframe, and adopt them back when it opens.

@@ -1271,6 +1271,53 @@ describe("Portal follows its props", () => {
     app.unmount();
     second.remove();
   });
+
+  /**
+   * `portalTarget("name")` written in the factory is a new token on every run. The container it names,
+   * and children that say the same, are no change: the block is not reconciled again — counted, as a
+   * reconcile is the whole block's work. A change to what the children say still is.
+   */
+  test("a factory run that names the same container with the same children reconciles nothing", async () => {
+    const container = document.createElement("div");
+    container.setAttribute(PORTAL_TARGET_ATTR, "same");
+    document.body.append(container);
+    class Page extends Component {
+      @state count = 0;
+      portal = this.use(Portal, (self: Page) => ({
+        children: <b>{self.count > 0 ? "on" : "off"}</b>,
+        target: portalTarget("same"),
+      }));
+      render() {
+        return <p>{this.count}</p>;
+      }
+    }
+    const app = await getDOM<Page>(<Page />);
+    await app.settle();
+    const original = ChildrenRegion.prototype.reconcile;
+    let reconciles = 0;
+    ChildrenRegion.prototype.reconcile = function (this: ChildrenRegion, ...args: Parameters<typeof original>) {
+      reconciles++;
+      return original.apply(this, args);
+    };
+    try {
+      app.instance.count = 1;
+      await app.settle();
+      const afterTheChange = reconciles;
+      for (const count of [2, 3, 4, 5, 6]) {
+        app.instance.count = count;
+        await app.settle();
+      }
+      expect({ afterTheChange, afterTheSame: reconciles - afterTheChange, shown: container.textContent }).toEqual({
+        afterTheChange: 1,
+        afterTheSame: 0,
+        shown: "on",
+      });
+    } finally {
+      ChildrenRegion.prototype.reconcile = original;
+      app.unmount();
+      container.remove();
+    }
+  });
 });
 
 const ROWS = ["r"];
