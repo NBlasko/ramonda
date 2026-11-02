@@ -4,6 +4,7 @@ import {
   Select,
   TextArea,
   createRef,
+  createRef as makeRef,
   created,
   destroyed,
   mounted,
@@ -1187,4 +1188,95 @@ class DispatchesAMapsKey extends Component {
     return <input aria-label="t" ref={this.field} value={this.text} oninput={this.typed} />;
   }
   typed() {}
+}
+
+/** A getter a base declares, which a subclass's field hides. */
+class GetterInABase extends Component {
+  @state on = false;
+  box = createRef<HTMLInputElement>();
+  get view(): unknown {
+    this.box.current?.click();
+    return 1;
+  }
+  render() {
+    return <input type="checkbox" aria-label="b" ref={this.box} checked={this.on} onchange={this.flip} />;
+  }
+  flip() {}
+}
+
+class HidesTheGetter extends GetterInABase {
+  // A field: reading `this.view` reads it, and the getter never runs.
+  view = 2;
+  @mounted
+  start() {
+    console.log(this.view);
+  }
+}
+
+/** `#private` names are their own class's: the subclass's `#prime` is not the one its base calls. */
+class PrivateBase extends Component {
+  @state on = false;
+  box = createRef<HTMLInputElement>();
+  #own = createRef<HTMLInputElement>();
+  render() {
+    this.#prime();
+    return (
+      <div>
+        <input type="checkbox" aria-label="b" ref={this.box} checked={this.on} onchange={this.flip} />
+        <input type="checkbox" aria-label="o" ref={this.#own} checked={this.on} onchange={this.flip} />
+      </div>
+    );
+  }
+  #prime() {}
+  flip() {}
+}
+
+class PrivateSub extends PrivateBase {
+  #own = createRef<HTMLInputElement>();
+  // Called by no one: the base's render calls the base's `#prime`.
+  #prime() {
+    this.box.current?.click();
+  }
+  @mounted
+  start() {
+    // This class's `#own`, which no element holds: the base's `#own` is another field.
+    this.#own.current?.click();
+  }
+}
+
+/** One callback two refs are made with: handed the elements of both. */
+class OneCallbackTwoRefs extends Component {
+  @state on = false;
+  box = createRef<HTMLInputElement>(this.attached);
+  wrap = createRef<HTMLDivElement>(this.attached);
+  attached(node: HTMLElement | null) {
+    node?.click(); // REPORT click in a callback two refs share
+  }
+  render() {
+    return (
+      <div ref={this.wrap}>
+        <input type="checkbox" aria-label="b" ref={this.box} checked={this.on} onchange={this.flip} />
+      </div>
+    );
+  }
+  flip() {}
+}
+
+/** A `document` of the app's own, and core's `createRef` under another name. */
+class LocalDocumentAndARenamedRef extends Component {
+  @state on = false;
+  box: { current: HTMLInputElement | null };
+  constructor(props: unknown) {
+    super(props);
+    this.box = makeRef<HTMLInputElement>((node) => node?.click()); // REPORT click in a renamed createRef's callback
+  }
+  @mounted
+  start() {
+    const document = { execCommand(_command: string) {} };
+    document.execCommand("insertText");
+  }
+  render() {
+    return <input type="checkbox" aria-label="b" ref={this.box} checked={this.on} onchange={this.flip} />;
+  }
+  flip() {}
 }

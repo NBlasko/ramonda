@@ -14,8 +14,8 @@ import type { Resolver, Where } from "./rule";
  * initialises it, where an identifier was imported from, what attributes an element is written with. Two
  * are asked of a TYPE, where the source does not say: the names a spread on a component hands
  * (`resolve.propertyNames`), and the strings an attribute written as an expression can be
- * (`resolve.typeLiterals`). A form is recognised by exactly one shape — see `ramondaFormElements` — so
- * nothing is inferred from names or guessed through a chain.
+ * (`resolve.typeLiterals`). A form is recognised by exactly one shape — see the first pass of
+ * `formTableFor` — so nothing is inferred from names or guessed through a chain.
  */
 
 /** What `@ramonda/form` needs on a control, each written by name. */

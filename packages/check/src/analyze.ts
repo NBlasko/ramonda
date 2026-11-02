@@ -4172,6 +4172,16 @@ function propertyNames(type: ts.Type, checker: ts.TypeChecker): string[] | undef
     const constraint = checker.getBaseConstraintOfType(type);
     return constraint === undefined || constraint === type ? undefined : propertyNames(constraint, checker);
   }
+  // An intersection hands what each of its members does — and anything, if one may: `P & { title }`.
+  if (type.isIntersection()) {
+    const names = new Set<string>();
+    for (const member of type.types) {
+      const read = propertyNames(member, checker);
+      if (read === undefined) return undefined;
+      for (const name of read) names.add(name);
+    }
+    return [...names];
+  }
   if (type.isUnion()) {
     const names = new Set<string>();
     for (const member of type.types) {

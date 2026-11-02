@@ -91,6 +91,7 @@ describe("a field inside a @ramonda/form form", () => {
         // A union spread may hand what any of its members hands.
         [lineOf("<BareInput {...either} />"), "bag-unreadable", "attrs"],
         [lineOf("<BareInput {...this.props.extra} />"), "bag-unreadable", "attrs"],
+        [lineOf("<BareInput {...(this.props.extra as P & { title: string })} />"), "bag-unreadable", "attrs"],
         [lineOf("<BareInput {...anObject} />"), "bag-unreadable", "attrs"],
         [lineOf("<BareInput {...anything} />"), "bag-unreadable", "attrs"],
         [lineOf('attrs={{ "on:input": undefined }}'), "bag-overrides", "attrs.on:input"],
@@ -113,7 +114,7 @@ describe("a field inside a @ramonda/form form", () => {
         [lineOf("<SpreadBare attrs={bag} />"), "bag-unreadable", "attrs"],
       ]),
     );
-    expect(issues).toHaveLength(66);
+    expect(issues).toHaveLength(67);
   });
 
   test("a base reached as `module.Base` lends its render", () => {

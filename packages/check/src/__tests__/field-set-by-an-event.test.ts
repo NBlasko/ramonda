@@ -42,6 +42,7 @@ describe("a field set by an event while a commit runs", () => {
       "click node ← the ref callback of this.other",
       "click node ← the ref callback of this.local",
     ]);
+    expect(by("LocalDocumentAndARenamedRef")).toEqual(["click node ← the ref callback of this.box"]);
     expect(by("EditsFromEveryCommitHook")).toEqual([
       "dispatch change ← the constructor",
       "dispatch beforeinput ← @created made",

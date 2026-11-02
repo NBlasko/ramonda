@@ -5,6 +5,7 @@ import { openingOf, says } from "./element";
 import { unwrap } from "./follow-value";
 import { attributeLiterals, classChain, type FieldKind, fieldKind, literalsOf, typeAttributeOf } from "./formTable";
 import { coreDecorators } from "./lifecycle-env";
+import { namesThePlatform } from "./platform";
 import type { Resolver, Rule, RuleContext } from "./rule";
 
 /**
@@ -165,8 +166,7 @@ export const fieldSetByAnEvent = {
     const { members } = own;
     const supers = new Map<ts.ClassLikeDeclaration, Functions>();
     const inheritedBy = (written: ts.Node): Functions | undefined => {
-      let at: ts.Node | undefined = written.parent;
-      while (at !== undefined && !ts.isClassLike(at)) at = at.parent;
+      const at = classAround(written);
       const index = at === undefined ? -1 : chain.indexOf(at);
       if (at === undefined || index === -1) return undefined;
       let found = supers.get(at);
@@ -176,24 +176,44 @@ export const fieldSetByAnEvent = {
       }
       return found;
     };
+    // `this.#prime` is the `#prime` of the class it is written in.
+    const privates = new Map<ts.ClassLikeDeclaration, Functions>();
+    const privateIn = (written: ts.Node): Functions | undefined => {
+      const at = classAround(written);
+      if (at === undefined || !chain.includes(at)) return undefined;
+      let found = privates.get(at);
+      if (found === undefined) {
+        found = privateFunctionsOf(at);
+        privates.set(at, found);
+      }
+      return found;
+    };
+    // A field a ref is kept in, by name — a `#private` one with the class it is the field of.
+    const fieldKey = (name: ts.MemberName, written: ts.Node): string => {
+      if (!ts.isPrivateIdentifier(name)) return name.text;
+      const at = classAround(written);
+      return `${name.text}@${at === undefined ? -1 : chain.indexOf(at)}`;
+    };
 
     // What the class renders — with its own render or one it inherits — read across its chain.
     // Read when an edit-shaped call first asks: most classes send none.
     let refsRead: Map<string, Held> | undefined;
     const refs = (): Map<string, Held> => {
-      refsRead ??= refsOf(chain, boxesOf(chain, context), context);
+      refsRead ??= refsOf(chain, boxesOf(chain, context), context, fieldKey);
       return refsRead;
     };
 
     // A ref's callback — `box = createRef(this.attached)` — runs in the commit, handed the element that
     // ref is attached to: its parameter is that element, and its body commit work.
-    const callbackOf = new Map<ts.ParameterDeclaration, string>();
-    const callbackRoots: { field: string; fn: ts.Node }[] = [];
-    for (const { field, callback } of refCallbacks(chain, resolve)) {
+    // One callback a class makes two refs with is handed the elements of both.
+    const callbackOf = new Map<ts.ParameterDeclaration, string[]>();
+    const callbackRoots: { name: string; fn: ts.Node }[] = [];
+    for (const { field, name, callback } of refCallbacks(chain, resolve, fieldKey)) {
       const fn = functionHandedAs(callback);
       if (fn === undefined) continue;
-      if (fn.parameters[0] !== undefined) callbackOf.set(fn.parameters[0], field);
-      callbackRoots.push({ field, fn });
+      const parameter = fn.parameters[0];
+      if (parameter !== undefined) callbackOf.set(parameter, [...(callbackOf.get(parameter) ?? []), field]);
+      callbackRoots.push({ name, fn });
     }
     // The function a callback is handed as: written there, `this.attached`, a local one, or one `.bind`.
     function functionHandedAs(handed: ts.Expression): ts.SignatureDeclaration | undefined {
@@ -203,7 +223,7 @@ export const fieldSetByAnEvent = {
       if (ts.isArrowFunction(at) || ts.isFunctionExpression(at)) return at;
       if (ts.isIdentifier(at)) return localFunction(at, resolve);
       if (ts.isPropertyAccessExpression(at) && at.expression.kind === ts.SyntaxKind.ThisKeyword) {
-        const member = members.get(at.name.text);
+        const member = (ts.isPrivateIdentifier(at.name) ? privateIn(at)?.members : members)?.get(at.name.text);
         return member !== undefined && ts.isFunctionLike(member) ? member : undefined;
       }
       return undefined;
@@ -215,10 +235,10 @@ export const fieldSetByAnEvent = {
       if (ts.isIdentifier(at) && hops < 4) {
         const declared = resolve(at)?.declarations?.[0];
         // A ref callback's parameter: the element its ref is attached to.
-        const field = declared !== undefined && ts.isParameter(declared) ? callbackOf.get(declared) : undefined;
-        if (field !== undefined) {
-          const held = refs().get(field);
-          return held === undefined ? undefined : { name: at.text, held };
+        const fields = declared !== undefined && ts.isParameter(declared) ? callbackOf.get(declared) : undefined;
+        if (fields !== undefined) {
+          const held = fields.flatMap((field) => refs().get(field) ?? []);
+          return held.length === 0 ? undefined : { name: at.text, held: held.reduce(either) };
         }
         if (
           declared !== undefined &&
@@ -238,7 +258,7 @@ export const fieldSetByAnEvent = {
         !isTheComponent(owner.expression)
       )
         return undefined;
-      const held = refs().get(owner.name.text);
+      const held = refs().get(fieldKey(owner.name, owner));
       return held === undefined ? undefined : { name: `this.${owner.name.text}`, held };
     };
 
@@ -247,7 +267,7 @@ export const fieldSetByAnEvent = {
      * a ref, or an element found by a query — which may be one. `document`, `window` and any other
      * object — a store that extends `EventTarget` — cannot: a field hears what is dispatched at it.
      */
-    const reachesAField = (receiver: ts.Expression, hops = 0, held = heldBy(receiver)): boolean => {
+    const reachesAField = (receiver: ts.Expression, held: ReturnType<typeof heldBy>, hops = 0): boolean => {
       if (held !== undefined) return held.held.clicked || held.held.field;
       const at = unwrap(receiver);
       if (ts.isIdentifier(at) && hops < 4) {
@@ -258,7 +278,7 @@ export const fieldSetByAnEvent = {
           ts.isVariableDeclaration(declared) &&
           declared.initializer !== undefined &&
           (ts.getCombinedNodeFlags(declared) & ts.NodeFlags.Const) !== 0 &&
-          reachesAField(declared.initializer, hops + 1)
+          reachesAField(declared.initializer, heldBy(declared.initializer), hops + 1)
         );
       }
       return isAnElementQuery(at, resolve);
@@ -274,7 +294,7 @@ export const fieldSetByAnEvent = {
         // here, a local one named here, or the class's own: each is read when what it is handed to runs
         // it now, and left when that is later or when it is only kept.
         if (ts.isArrowFunction(at) || ts.isFunctionExpression(at)) {
-          if (whenItRuns(at) === "now") enter(at);
+          if (whenItRuns(at, resolve) === "now") enter(at);
           return;
         }
         // A method, an accessor or a class written here is only kept — `this.api = { open() { … } }` —
@@ -288,7 +308,7 @@ export const fieldSetByAnEvent = {
           ts.isClassDeclaration(at)
         )
           return;
-        if (ts.isIdentifier(at) && whenItRuns(at) === "now") {
+        if (ts.isIdentifier(at) && whenItRuns(at, resolve) === "now") {
           const local = localFunction(at, resolve);
           if (local !== undefined) enter(local);
         }
@@ -296,14 +316,16 @@ export const fieldSetByAnEvent = {
         const functions =
           !ts.isPropertyAccessExpression(at) || !isTheComponent(at.expression)
             ? undefined
-            : at.expression.kind === ts.SyntaxKind.ThisKeyword
-              ? own
-              : at.expression.kind === ts.SyntaxKind.SuperKeyword
-                ? inheritedBy(at)
-                : undefined;
+            : ts.isPrivateIdentifier(at.name)
+              ? privateIn(at)
+              : at.expression.kind === ts.SyntaxKind.ThisKeyword
+                ? own
+                : at.expression.kind === ts.SyntaxKind.SuperKeyword
+                  ? inheritedBy(at)
+                  : undefined;
         if (functions !== undefined && ts.isPropertyAccessExpression(at)) {
           const fn = functions.members.get(at.name.text);
-          if (fn !== undefined && whenItRuns(at) === "now") enter(fn);
+          if (fn !== undefined && whenItRuns(at, resolve) === "now") enter(fn);
           // An accessor runs where it is used: a getter where it is read, a setter where it is written.
           const used = usedAs(at);
           const getter = functions.getters.get(at.name.text);
@@ -316,7 +338,7 @@ export const fieldSetByAnEvent = {
           if (ts.isPropertyAccessExpression(callee)) {
             const method = callee.name.text;
             const held = method === "dispatchEvent" ? heldBy(callee.expression) : undefined;
-            if (method === "dispatchEvent" && reachesAField(callee.expression, 0, held)) {
+            if (method === "dispatchEvent" && reachesAField(callee.expression, held)) {
               const event = at.arguments[0] === undefined ? undefined : eventBuilt(at.arguments[0], resolve);
               // Read as written, or off its type: `type: "focus" | "blur"` is those two.
               const name = event?.arguments?.[0];
@@ -337,7 +359,7 @@ export const fieldSetByAnEvent = {
               const held = heldBy(callee.expression);
               if (held !== undefined && held.held.clicked) report(at, "click", held.name);
             }
-            if (method === "execCommand" && isDocument(callee.expression)) {
+            if (method === "execCommand" && isDocument(callee.expression, resolve)) {
               // A command read as written or off its type; one that cannot be read may be an edit.
               const command = at.arguments[0];
               const commands =
@@ -405,7 +427,7 @@ export const fieldSetByAnEvent = {
     // `render() {}`, `render = () => …`, or the render it inherits — what its commit renders with.
     const render = members.get("render");
     if (render !== undefined) walk(render, "render");
-    for (const { field, fn } of callbackRoots) walk(fn, `the ref callback of this.${field}`);
+    for (const { name, fn } of callbackRoots) walk(fn, `the ref callback of this.${name}`);
     // `this.method()` reached from two roots is read once, and reported under the first.
     return found;
   },
@@ -426,9 +448,20 @@ interface Functions {
 function functionsOf(classes: readonly ts.ClassLikeDeclaration[]): Functions {
   const found: Functions = { members: new Map(), getters: new Map(), setters: new Map() };
   for (const cls of [...classes].reverse()) {
+    // A name the class declares, of any kind, hides every one it inherits: a field over a getter, a
+    // method over a field. A `#private` name is its own class's alone — see `privateFunctionsOf`.
+    const declared = cls.members
+      .filter((member) => member.name === undefined || !ts.isPrivateIdentifier(member.name))
+      .map((member) => memberName(member))
+      .filter((name): name is string => name !== undefined);
+    for (const name of declared) {
+      found.members.delete(name);
+      found.getters.delete(name);
+      found.setters.delete(name);
+    }
     for (const member of cls.members) {
       const name = memberName(member);
-      if (name === undefined) continue;
+      if (name === undefined || (member.name !== undefined && ts.isPrivateIdentifier(member.name))) continue;
       if (ts.isGetAccessorDeclaration(member) && member.body !== undefined) found.getters.set(name, member);
       else if (ts.isSetAccessorDeclaration(member) && member.body !== undefined) found.setters.set(name, member);
       else if (ts.isMethodDeclaration(member) && member.body !== undefined) found.members.set(name, member);
@@ -438,11 +471,34 @@ function functionsOf(classes: readonly ts.ClassLikeDeclaration[]): Functions {
         const held = member.initializer === undefined ? undefined : unwrap(member.initializer);
         if (held !== undefined && (ts.isArrowFunction(held) || ts.isFunctionExpression(held)))
           found.members.set(name, held);
-        else found.members.delete(name);
       }
     }
   }
   return found;
+}
+
+/** A class's `#private` functions: `this.#prime()` written in a class is that class's own `#prime`. */
+function privateFunctionsOf(cls: ts.ClassLikeDeclaration): Functions {
+  const found: Functions = { members: new Map(), getters: new Map(), setters: new Map() };
+  for (const member of cls.members) {
+    if (member.name === undefined || !ts.isPrivateIdentifier(member.name)) continue;
+    const name = member.name.text;
+    if (ts.isGetAccessorDeclaration(member) && member.body !== undefined) found.getters.set(name, member);
+    else if (ts.isSetAccessorDeclaration(member) && member.body !== undefined) found.setters.set(name, member);
+    else if (ts.isMethodDeclaration(member) && member.body !== undefined) found.members.set(name, member);
+    else if (ts.isPropertyDeclaration(member) && member.initializer !== undefined) {
+      const held = unwrap(member.initializer);
+      if (ts.isArrowFunction(held) || ts.isFunctionExpression(held)) found.members.set(name, held);
+    }
+  }
+  return found;
+}
+
+/** The class a node is written in, nearest first. */
+function classAround(node: ts.Node): ts.ClassLikeDeclaration | undefined {
+  let at: ts.Node | undefined = node.parent;
+  while (at !== undefined && !ts.isClassLike(at)) at = at.parent;
+  return at;
 }
 
 /** Constructors whose callback runs later: an observer is called when what it watches changes. */
@@ -462,7 +518,7 @@ const LATER_CONSTRUCTORS = new Set([
  * through what only passes it on: parentheses, `as`, `!`, an arm of `?:`, a side of `??`, `||` and
  * `&&`.
  */
-function whenItRuns(value: ts.Node): "now" | "later" | "kept" {
+function whenItRuns(value: ts.Node, resolve: Resolver): "now" | "later" | "kept" {
   const at = passedOn(value);
   const parent = at.parent;
   // `fn.call(…)` and `fn.apply(…)` run it there; `fn.bind(…)` is it again, run wherever that is.
@@ -473,13 +529,17 @@ function whenItRuns(value: ts.Node): "now" | "later" | "kept" {
     ts.isCallExpression(parent.parent) &&
     parent.parent.expression === parent
   ) {
-    return parent.name.text === "bind" ? whenItRuns(parent.parent) : "now";
+    return parent.name.text === "bind" ? whenItRuns(parent.parent, resolve) : "now";
   }
   if (ts.isCallExpression(parent)) {
     if (parent.expression === at) return "now";
     // A ref's callback runs when its element is attached — read from there, see `refCallbacks`.
     if (parent.arguments.some((argument) => argument === at))
-      return namedCreateRef(parent.expression) ? "kept" : namedLater(parent.expression) ? "later" : "now";
+      return resolve.coreName(parent.expression) === "createRef"
+        ? "kept"
+        : namedLater(parent.expression)
+          ? "later"
+          : "now";
   }
   if (ts.isNewExpression(parent) && parent.arguments?.some((argument) => argument === at)) {
     const made = unwrap(parent.expression);
@@ -571,12 +631,6 @@ function isTheComponent(self: ts.Node): boolean {
       return false;
   }
   return false;
-}
-
-/** Whether a callee is core's `createRef`, by its name. */
-function namedCreateRef(callee: ts.Expression): boolean {
-  const at = unwrap(callee);
-  return ts.isIdentifier(at) && at.text === "createRef";
 }
 
 /** Whether a callee is one of `LATER`, by its name: `queueMicrotask`, `promise.then`. */
@@ -675,10 +729,10 @@ function eachOfAQuery(declared: ts.Declaration, resolve: Resolver): boolean {
   );
 }
 
-/** `document`, `window.document`, or an element's `ownerDocument`. */
-function isDocument(expression: ts.Expression): boolean {
+/** The platform's `document` — not a `const document = editor.doc` — `window.document`, or an element's `ownerDocument`. */
+function isDocument(expression: ts.Expression, resolve: Resolver): boolean {
   const at = unwrap(expression);
-  if (ts.isIdentifier(at)) return at.text === "document";
+  if (ts.isIdentifier(at)) return at.text === "document" && namesThePlatform(at, resolve);
   return ts.isPropertyAccessExpression(at) && (at.name.text === "document" || at.name.text === "ownerDocument");
 }
 
@@ -806,8 +860,9 @@ function either(a: Held, b: Held): Held {
 function refCallbacks(
   classes: readonly ts.ClassLikeDeclaration[],
   resolve: Resolver,
-): { field: string; callback: ts.Expression }[] {
-  const found: { field: string; callback: ts.Expression }[] = [];
+  fieldKey: (name: ts.MemberName, written: ts.Node) => string,
+): { field: string; name: string; callback: ts.Expression }[] {
+  const found: { field: string; name: string; callback: ts.Expression }[] = [];
   const handedTo = (value: ts.Expression | undefined): ts.Expression | undefined => {
     const call = value === undefined ? undefined : unwrap(value);
     if (call === undefined || !ts.isCallExpression(call) || resolve.coreName(call.expression) !== "createRef")
@@ -817,7 +872,7 @@ function refCallbacks(
   const visit = (node: ts.Node): void => {
     if (ts.isPropertyDeclaration(node) && (ts.isIdentifier(node.name) || ts.isPrivateIdentifier(node.name))) {
       const callback = handedTo(node.initializer);
-      if (callback !== undefined) found.push({ field: node.name.text, callback });
+      if (callback !== undefined) found.push({ field: fieldKey(node.name, node), name: node.name.text, callback });
     }
     if (
       ts.isBinaryExpression(node) &&
@@ -826,7 +881,8 @@ function refCallbacks(
       node.left.expression.kind === ts.SyntaxKind.ThisKeyword
     ) {
       const callback = handedTo(node.right);
-      if (callback !== undefined) found.push({ field: node.left.name.text, callback });
+      if (callback !== undefined)
+        found.push({ field: fieldKey(node.left.name, node), name: node.left.name.text, callback });
     }
     ts.forEachChild(node, visit);
   };
@@ -842,6 +898,7 @@ function refsOf(
   classes: readonly ts.ClassLikeDeclaration[],
   boxes: Map<string, boolean>,
   context: RuleContext,
+  fieldKey: (name: ts.MemberName, written: ts.Node) => string,
 ): Map<string, Held> {
   const refs = new Map<string, Held>();
   const visit = (node: ts.Node): void => {
@@ -857,8 +914,9 @@ function refsOf(
         held.expression.kind === ts.SyntaxKind.ThisKeyword
       ) {
         const element = heldAs(node, boxes, context);
-        const before = refs.get(held.name.text);
-        refs.set(held.name.text, before === undefined ? element : either(before, element));
+        const key = fieldKey(held.name, held);
+        const before = refs.get(key);
+        refs.set(key, before === undefined ? element : either(before, element));
       }
     }
     ts.forEachChild(node, visit);

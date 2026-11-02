@@ -609,6 +609,8 @@ class Generic<P> extends Component<{ extra: P }> {
       <div>
         {/* ✗ bag-unreadable — attrs, which a spread of any type may carry */}
         <BareInput {...this.props.extra} />
+        {/* ✗ bag-unreadable — attrs: an intersection with a type parameter may hand anything */}
+        <BareInput {...(this.props.extra as P & { title: string })} />
       </div>
     );
   }
