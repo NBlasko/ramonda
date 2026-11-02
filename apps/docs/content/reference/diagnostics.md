@@ -1265,6 +1265,10 @@ keystroke — and the schema reports a value the reader never typed wrong.
 <input aria-label="Age" type="number" name={age.name} value={age.inputValue} oninput={age.oninput} />  // ✓
 ```
 
+A `Select` hands back the chosen option's text, and no control picks a number from a list: a number
+field chosen from one is taken as a number by the schema — `z.coerce.number()` in Zod — which is what
+the report says there.
+
 Reported once the field holds a number or a day, naming the `type` to write — and for a field that holds
 text, edited through `type="number"`, `type="range"` or a checkbox, which hand back a number or true or
 false — and for a field that holds true or false, edited through a control that hands back text, which

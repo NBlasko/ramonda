@@ -140,7 +140,8 @@ export const fieldTheUserCannotChange = {
             "has a value and only `onchange`, which comes on blur — every keystroke is undone before it.",
           both: "has a value and a default — the value wins, and the default says nothing.",
           literal: "has a value written as itself — no handler can move it, so every edit is undone.",
-          "unknown-spread": "is controlled, and a spread on it may or may not carry its handler — nothing says which.",
+          "unknown-spread":
+            "has a spread that may set its model, and may or may not carry its handler — nothing says which.",
           "handler-may-be-missing": "takes its handler from a prop declared optional — a caller may leave it out.",
           "change-after-its-input":
             "has a value and only `onchange`, which comes after the `input` the field already answered — write it as `oninput`.",

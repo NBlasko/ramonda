@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { analyzeProject } from "../analyze";
+import { fieldTheUserCannotChange } from "../rules/field-the-user-cannot-change";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const found = () =>
@@ -116,5 +117,16 @@ describe("a field the user cannot change", () => {
         .map(([rule]) => rule);
       expect(reported, label).toEqual([]);
     }
+  });
+});
+
+describe("what the unknown-spread report says", () => {
+  /** A spread may make a field controlled or not: the report says that much, and no more. */
+  test("it does not claim the field is controlled", () => {
+    const [said] = fieldTheUserCannotChange.report
+      .lines({ component: "input", kind: "unknown-spread", file: "app.tsx", line: 1, column: 1 })
+      .slice(1);
+    expect(said).not.toContain("is controlled");
+    expect(said).toContain("may set its model");
   });
 });

@@ -256,9 +256,14 @@ export class FieldHandle {
           : type === "date"
             ? "a day"
             : "text";
+    // A select hands back the chosen option's text, and no `type` of its own changes that: a choice of
+    // numbers is a number once the schema takes it as one.
+    const fix = type.startsWith("select")
+      ? `a choice of ${wants === "number" ? "numbers" : "days"} is taken as one by the schema — \`z.coerce.${wants === "number" ? "number" : "date"}()\` in Zod`
+      : `it belongs in \`<input type="${wants}">\``;
     report(
       "RMF005",
-      `\`${this.path}\` holds a ${wants === "number" ? "number" : "day"}, and its control (\`type="${type}"\`) hands back ${handsBack}: it belongs in \`<input type="${wants}">\`.`,
+      `\`${this.path}\` holds a ${wants === "number" ? "number" : "day"}, and its control (\`type="${type}"\`) hands back ${handsBack}: ${fix}.`,
       { path: this.path, type, wants },
     );
   }

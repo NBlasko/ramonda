@@ -143,3 +143,36 @@ test("a box's field through a Select is not reported", async () => {
     unmount();
   }
 });
+
+/**
+ * A number field in a `Select` is told what fixes it: a select hands back the chosen option's text, and
+ * no `<input type="number">` picks from a list — the schema takes the choice as a number.
+ */
+test("a number field through a Select is told to take the choice as a number", async () => {
+  const schema = anything<{ x?: number | string }>();
+  class Page extends Component {
+    private f = this.use(Form<typeof schema>, () => ({ schema, defaultValues: { x: 1 }, onSubmit: () => {} }));
+    render(): RamondaNode {
+      const x = this.f.fields.x.$;
+      return (
+        <Select aria-label="X" name={x.name} value={String(this.f.values.x)} oninput={x.oninput}>
+          <option value="1">One</option>
+          <option value="2">Two</option>
+        </Select>
+      );
+    }
+  }
+  const { container, unmount } = render((<Page />) as never);
+  try {
+    const select = container.querySelector("select") as HTMLSelectElement;
+    await act(async () => {
+      select.value = "2";
+      select.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    const found = records.filter((record) => record.code === "RMF005");
+    expect(found.map((record) => record.message.includes("z.coerce.number()"))).toEqual([true]);
+    expect(found[0]?.message).not.toContain('<input type="number">');
+  } finally {
+    unmount();
+  }
+});

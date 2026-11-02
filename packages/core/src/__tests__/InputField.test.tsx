@@ -319,6 +319,25 @@ describe("an input's own handlers", () => {
     expect({ calls: app.instance.calls, touched }).toEqual({ calls: ["a", "b", "a"], touched: [false, false] });
   });
 
+  /** One function under both names is called once, as a listener added twice is. */
+  test("one function written as `oninput` and `on:input` runs once", async () => {
+    class Same extends Component {
+      calls = 0;
+      counted() {
+        this.calls++;
+      }
+      render() {
+        const untyped: Record<string, unknown> = { "on:input": this.counted };
+        return <input id="i" aria-label="Same" oninput={this.counted} {...untyped} />;
+      }
+    }
+    const app = await getDOM<Same>(<Same />);
+    await app.settle();
+    typeInto(app.container.querySelector("#i") as HTMLInputElement, "x");
+
+    expect(app.instance.calls).toBe(1);
+  });
+
   /** A handler the first one takes away — a render it settled dropped it — is not called, as a listener removed mid-dispatch is not. */
   test("`on:input` taken away by `oninput`'s own render is not called", async () => {
     class Drops extends Component {

@@ -815,8 +815,10 @@ function callOwn(input: Kept, type: string, event: Event): boolean {
   const handlers = input[OWN]?.[type];
   if (handlers === undefined) return false;
   const names = [...handlers.keys()];
+  // One function under both names — `oninput={h}` and `on:input={h}` — is called once, as a listener
+  // added twice is.
   return callInTurn(
-    names.map((name) => handlers.get(name)),
+    [...new Set(names.map((name) => handlers.get(name)))],
     event,
     // Asked by its name, which the handler is kept under: no copy of the rest for each.
     (handler) => names.some((name) => handlers.get(name) === handler),

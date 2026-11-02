@@ -99,8 +99,9 @@ sees that none is missing.
 | `Date` | `type="date" value={x.inputValue}` — the day, as `YYYY-MM-DD`; emptied, it holds nothing (`undefined`), so a date that may be empty takes it — `z.date().nullish()` |
 | an object or a list | no control holds one: its `$` has no `oninput`, and writing it is a type error |
 
-`inputValue` is typed by the value (`InputValue<T>`), so a `Date` handed to `value` directly is a
-compile error rather than a field that shows nothing. A number shows as `FormNumber`, a date as
+`inputValue` is what a control shows of the value (`InputValue<T>`): a date as its `YYYY-MM-DD`. An
+element's `value` takes anything, so a `Date` written there directly — `value={born.value}` — compiles,
+and the field shows nothing: write `inputValue`. A number shows as `FormNumber`, a date as
 `FormDay` and text as `FormText` — a `number` and two `string`s, marked for `ramonda-check`, which
 reads the mark below.
 

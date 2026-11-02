@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { analyzeProject } from "../analyze";
+import { formValueInTheWrongControl } from "../rules/form-value-in-the-wrong-control";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const fixture = join(here, "fixtures", "form-value");
@@ -36,5 +37,20 @@ describe("a form value in the wrong control", () => {
       [lineOf("name in a file input"), "text", '<input type="file">'],
       [lineOf("any field"), "unreadable", "<input>"],
     ]);
+  });
+});
+
+describe("what the report tells the author", () => {
+  const line = (control: string) =>
+    formValueInTheWrongControl.report
+      .lines({ kind: "number", control, file: "app.tsx", line: 1, column: 1 })
+      .slice(1)
+      .join("\n");
+
+  /** A choice from a list has no number input to move to: the schema takes the option's text as a number. */
+  test("a number in a Select is told to take the choice as a number, an input to take its type", () => {
+    expect(line("<Select>")).toContain("z.coerce.number()");
+    expect(line("<Select>")).not.toContain('<input type="number">');
+    expect(line("<input>")).toContain('<input type="number">');
   });
 });
