@@ -2,7 +2,7 @@ import { UNEDITED_INPUT_TYPES } from "@ramonda/dom-facts";
 import ts from "typescript";
 import { memberName, positionOf } from "../syntax";
 import { coreElementTag } from "./coreElements";
-import { holdsNothing as holdsNothingIn, openingOf, says, tagOf } from "./element";
+import { holdsNothing as holdsNothingIn, openingOf, says, tagOf, trueAttr } from "./element";
 import { unwrap } from "./follow-value";
 import type { Resolver, Where } from "./rule";
 
@@ -22,7 +22,12 @@ import type { Resolver, Where } from "./rule";
 export const FORM_ATTRIBUTES = ["name", "value", "oninput", "onblur", "aria-invalid"] as const;
 
 /** Where a field's attribute comes from: written on it, a prop of its component, or nowhere. */
-export type AttributeSource = { kind: "written" } | { kind: "prop"; prop: string } | { kind: "missing" };
+/**
+ * Where a field's attribute comes from: written on it, a prop of its component, or nowhere. A pick's
+ * handler may come from either of two props — `oninput={this.props.oninput}` and
+ * `onchange={this.props.onchange}` — and `or` names the other, which a use may hand instead.
+ */
+export type AttributeSource = { kind: "written" } | { kind: "prop"; prop: string; or?: string } | { kind: "missing" };
 
 /** A controlled field, as the rule needs to see it. */
 export interface FormField extends Where {
@@ -627,6 +632,10 @@ export function formTableFor(sources: readonly ts.SourceFile[], resolve: Resolve
     const modelName = box ? "checked" : "value";
     // No model — not written, or written as nothing, through a `const` too: the field is the user's.
     if (!said(modelName)) return;
+    // A field that takes no input — `disabled` as written, or a `readonly` text field, as
+    // `field-the-user-cannot-change` reads it — needs nothing a form edits with.
+    const still = pick ? ["disabled"] : ["readonly", "readOnly", "disabled"];
+    if (still.some((name) => trueAttr(element, name, resolve) === true)) return;
 
     const sourceOf = (name: string): AttributeSource => {
       const attribute = written.get(name);
@@ -639,8 +648,18 @@ export function formTableFor(sources: readonly ts.SourceFile[], resolve: Resolve
     };
     // `on:input` is as much the field's own as `oninput`; a spelling written as nothing is no handler.
     const spelled = (name: string) => (said(name) ? name : `on:${name.slice(2)}`);
-    const writer =
-      said("oninput") || said("on:input") || !pick ? sourceOf(spelled("oninput")) : sourceOf(spelled("onchange"));
+    // A text field's handler is its `oninput`; a pick's is either, written on it or taken from a prop.
+    const input = sourceOf(spelled("oninput"));
+    const change = sourceOf(spelled("onchange"));
+    const writer: AttributeSource = !pick
+      ? input
+      : input.kind === "written" || change.kind === "written"
+        ? { kind: "written" }
+        : input.kind === "prop" && change.kind === "prop"
+          ? { kind: "prop", prop: input.prop, or: change.prop }
+          : input.kind === "prop"
+            ? input
+            : change;
 
     fields.push({
       owner: enclosingClass(element),

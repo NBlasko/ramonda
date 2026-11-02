@@ -688,6 +688,17 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
       return read;
     },
     formCast: (outer: ts.AsExpression | ts.TypeAssertion) => formCast(outer, theForm(), checker),
+    mayBeFromTheDom: (expression: ts.Expression) => {
+      const type = checker.getNonNullableType(checker.getTypeAtLocation(expression));
+      return (type.isUnion() ? type.types : [type]).some((member) => {
+        if ((member.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) return true;
+        const declarations = checker.getApparentType(member).getSymbol()?.declarations ?? [];
+        return declarations.some((declared) => {
+          const file = declared.getSourceFile();
+          return file.fileName === DOM_STUB_FILE || program.isSourceFileDefaultLibrary(file);
+        });
+      });
+    },
     mayBeAForm: (expression: ts.Expression) => {
       // A form, a type that cannot be read, or one a form fits — `Element`, as `querySelector("form")` is typed.
       const type = checker.getTypeAtLocation(expression);

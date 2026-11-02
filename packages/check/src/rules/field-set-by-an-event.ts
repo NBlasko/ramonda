@@ -1,7 +1,7 @@
 import ts from "typescript";
 import { memberName, positionOf } from "../syntax";
 import { coreElementTag } from "./coreElements";
-import { openingOf, says } from "./element";
+import { openingOf, says, trueAttr } from "./element";
 import { unwrap } from "./follow-value";
 import {
   attributeLiterals,
@@ -215,7 +215,8 @@ export const fieldSetByAnEvent = {
     // ref is attached to: its parameter is that element, and its body commit work.
     // One callback a class makes two refs with is handed the elements of both.
     const callbackOf = new Map<ts.ParameterDeclaration, string[]>();
-    const callbackRoots: { name: string; fn: ts.Node }[] = [];
+    // One callback, walked once, named after every ref made with it: `this.a, this.b`.
+    const callbackRoots = new Map<ts.Node, string[]>();
     // A field a nearer class declares again — `box = createRef()` over a base's `box = createRef(cb)` — is
     // that class's ref: the base's callback is never handed an element. `declare box` writes no field.
     // So does one its constructor assigns again — `this.box = createRef()` — over its own field too.
@@ -246,7 +247,7 @@ export const fieldSetByAnEvent = {
       if (fn === undefined) continue;
       const parameter = fn.parameters[0];
       if (parameter !== undefined) callbackOf.set(parameter, [...(callbackOf.get(parameter) ?? []), field]);
-      callbackRoots.push({ name, fn });
+      callbackRoots.set(fn, [...(callbackRoots.get(fn) ?? []), `this.${name}`]);
     }
     // The function a callback is handed as: written there, `this.attached`, a local one, or one `.bind`.
     function functionHandedAs(handed: ts.Expression): ts.SignatureDeclaration | undefined {
@@ -468,7 +469,7 @@ export const fieldSetByAnEvent = {
     // `render() {}`, `render = () => …`, or the render it inherits — what its commit renders with.
     const render = members.get("render");
     if (render !== undefined) walk(render, "render");
-    for (const { name, fn } of callbackRoots) walk(fn, `the ref callback of this.${name}`);
+    for (const [fn, names] of callbackRoots) walk(fn, `the ref callback of ${names.join(", ")}`);
     // `this.method()` reached from two roots is read once, and reported under the first.
     return found;
   },
@@ -765,7 +766,8 @@ function isAnElementQuery(expression: ts.Expression, resolve: Resolver): boolean
   if (!ts.isPropertyAccessExpression(callee)) return false;
   if (callee.name.text === "item" || callee.name.text === "namedItem")
     return isAnElementQuery(callee.expression, resolve);
-  return ELEMENT_QUERIES.has(callee.name.text);
+  // A query the DOM answers: `closest` on an app's own graph finds no element.
+  return ELEMENT_QUERIES.has(callee.name.text) && resolve.mayBeFromTheDom(callee.expression);
 }
 
 /**
@@ -883,7 +885,8 @@ function heldAs(
     const kind = fieldKind(typeAttributeOf(node), context.resolve);
     if (isABox(node, context)) {
       return {
-        clicked: true,
+        // `click()` on a control `disabled` as written does nothing.
+        clicked: trueAttr(node, "disabled", context.resolve) !== true,
         field: true,
         models: kind === "unread" ? new Set([...model("checked"), ...model("value")]) : model("checked"),
       };

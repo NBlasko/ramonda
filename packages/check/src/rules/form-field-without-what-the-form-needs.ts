@@ -62,6 +62,13 @@ interface Need {
   held: boolean;
   /** For a spread, whether the field writes its own `onchange` — see `SpreadBag.changes`. */
   changes: boolean;
+  /** Another prop a use may hand instead: a pick's other handler — see `AttributeSource`. */
+  or?: string;
+  /**
+   * The prop the field's model comes from, `value={this.props.value}`: a use that hands none leaves the
+   * field the user's, as a field written with no `value` is, and is asked nothing.
+   */
+  model?: string;
 }
 
 /** One attribute a field takes from a prop: no spread, nothing it wants beside it. */
@@ -171,14 +178,16 @@ export const formFieldWithoutWhatTheFormNeeds = {
 
     // What the fields inside a form need from the components that write them — see `Need`.
     const queue: Need[] = [];
+    // A prop handed bare — `<X value />` — is `true`; one written as nothing is nothing.
+    const holdsNothingHanded = (value: ts.Expression | undefined) => value !== undefined && holdsNothing(value);
     const seen = new Set<string>();
     const ids = new Map<ts.ClassLikeDeclaration, number>();
     const need = (asked: Omit<Need, "owner"> & { owner: ts.ClassLikeDeclaration | undefined }) => {
       const { owner } = asked;
       if (owner === undefined) return;
       if (!ids.has(owner)) ids.set(owner, ids.size);
-      const { name, bag, wants, shadowed, overridable, held, changes } = asked;
-      const key = `${ids.get(owner)}|${name}|${bag}|${wants}|${shadowed.join(",")}|${overridable.join(",")}|${held}|${changes}`;
+      const { name, bag, wants, shadowed, overridable, held, changes, or, model } = asked;
+      const key = `${ids.get(owner)}|${name}|${bag}|${wants}|${shadowed.join(",")}|${overridable.join(",")}|${held}|${changes}|${or}|${model}`;
       if (seen.has(key)) return;
       seen.add(key);
       queue.push({ ...asked, owner });
@@ -195,10 +204,12 @@ export const formFieldWithoutWhatTheFormNeeds = {
           ...where(field),
         });
       }
+      const value = field.attributes.value;
+      const model = value.kind === "prop" ? value.prop : undefined;
       for (const name of FORM_ATTRIBUTES) {
         const source = field.attributes[name];
         if (source.kind === "prop") {
-          need({ ...A_PROP, owner: field.owner, name: source.prop, held: field.inForm });
+          need({ ...A_PROP, owner: field.owner, name: source.prop, or: source.or, model, held: field.inForm });
         }
       }
     }
@@ -243,26 +254,44 @@ export const formFieldWithoutWhatTheFormNeeds = {
         // What a field needs from a form is asked inside one — where it is written, or where the use is;
         // what a spread on it carries, everywhere.
         if (!bag && !held && !inContext(site.owner, site.inForm)) continue;
-        const handed = site.props.get(name);
-        if (!site.props.has(name)) {
+        // A use that hands the field no model — not by name, and through no spread that may carry it —
+        // leaves it the user's: nothing is asked of it.
+        const hands = (prop: string) =>
+          (site.props.has(prop) && !holdsNothingHanded(site.props.get(prop))) ||
+          site.spreadsOwnProps ||
+          site.spreadMayHand === undefined ||
+          site.spreadMayHand.has(prop);
+        if (!bag && asked.model !== undefined && !hands(asked.model)) continue;
+        // What a prop the use hands is, one level up: `onchange={this.props.change}` is `change` there.
+        const through = (prop: string | undefined) => {
+          const value = prop === undefined ? undefined : site.props.get(prop);
+          return value === undefined ? undefined : propRead(value);
+        };
+        // A pick's handler, by either of its names.
+        const handedAs =
+          !bag && asked.or !== undefined && !site.props.has(name) && site.props.has(asked.or) ? asked.or : name;
+        const next = { model: through(asked.model), or: handedAs === name ? through(asked.or) : undefined };
+        const named = asked.or === undefined ? name : `${name}\` or \`${asked.or}`;
+        const handed = site.props.get(handedAs);
+        if (!site.props.has(handedAs)) {
           // A bag that may come through a spread is not written here, and cannot be read.
           if (bag && (site.spreadMayHand === undefined || site.spreadMayHand.has(name)))
             found.push({ kind: "bag-unreadable", component: site.tag, detail: name, ...where(site) });
           // Handed through the owner's own props, `{...this.props}`: asked of the owner's uses.
           else if (site.spreadsOwnProps) need({ ...asked, owner: site.owner, held: held || site.inForm });
           // Not handed by name: a spread may carry it or not — its type does not say what it copies.
-          else if (!bag) found.push({ kind: "not-passed", component: site.tag, detail: name, ...where(site) });
+          else if (!bag) found.push({ kind: "not-passed", component: site.tag, detail: named, ...where(site) });
           continue;
         }
         if (handed === undefined) continue;
         const prop = propRead(handed);
         if (prop !== undefined) {
-          need({ ...asked, owner: site.owner, name: prop, held: held || site.inForm });
+          need({ ...asked, ...next, owner: site.owner, name: prop, held: held || site.inForm });
           continue;
         }
         if (!bag) {
           if (holdsNothing(handed))
-            found.push({ kind: "not-passed", component: site.tag, detail: name, ...where(site) });
+            found.push({ kind: "not-passed", component: site.tag, detail: named, ...where(site) });
           continue;
         }
         // A bag handed as nothing — `attrs={undefined}` — spreads nothing, as one left off does.
@@ -293,7 +322,9 @@ function readBag(
   // What it hands cannot be read: one report, and nothing more is asked of it.
   const unreadable = () => found.push({ kind: "bag-unreadable", component: site.tag, detail: name, ...where(site) });
   const written = unwrap(handed);
-  if (!ts.isObjectLiteralExpression(written)) {
+  // An object with a spread in it — `{ oninput: undefined, ...handlers }` — may set any key again,
+  // wherever the spread stands: it cannot be read, and no key of it is asked about alone.
+  if (!ts.isObjectLiteralExpression(written) || written.properties.some(ts.isSpreadAssignment)) {
     unreadable();
     return;
   }

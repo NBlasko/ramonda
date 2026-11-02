@@ -856,3 +856,75 @@ class DeclaresTheForm extends HoldsAForm {
 }
 
 export { RedeclaresTheForm, DeclaresTheForm };
+
+/** A select a design system writes, handed either handler. */
+class StyledSelect extends Component<{
+  name: string;
+  value: string;
+  oninput?: (event: Event) => void;
+  onchange?: (event: Event) => void;
+  onblur: (event: Event) => void;
+  invalid: boolean;
+}> {
+  render() {
+    return (
+      <Select
+        aria-label="styled select"
+        name={this.props.name}
+        value={this.props.value}
+        oninput={this.props.oninput}
+        onchange={this.props.onchange}
+        onblur={this.props.onblur}
+        aria-invalid={this.props.invalid}
+      />
+    );
+  }
+}
+
+/** Hands its own props on to the styled select under names of its own. */
+class OuterSelect extends Component<{
+  v?: string;
+  value?: string;
+  a?: (event: Event) => void;
+  b?: (event: Event) => void;
+}> {
+  render() {
+    return (
+      <StyledSelect
+        name="outer"
+        value={this.props.v}
+        oninput={this.props.a}
+        onchange={this.props.b}
+        onblur={handed.onblur}
+        invalid={false}
+      />
+    );
+  }
+}
+
+class EdgesOfAForm extends Component {
+  form = this.use(Form, {});
+  render() {
+    return (
+      <form onsubmit={this.form.submit}>
+        {/* ✓ a select handed `onchange`, one of its two handlers */}
+        <StyledSelect name="size" value={value} onchange={handed.oninput} onblur={handed.onblur} invalid={false} />
+        {/* ✗ not-passed — neither handler */}
+        <StyledSelect name="size" value={value} onblur={handed.onblur} invalid={false} />
+        {/* ✓ fields that take no input */}
+        <input aria-label="total read only" value={value} readonly />
+        <input aria-label="total disabled" value={value} disabled />
+        {/* ✓ a wrapper handed no model: its field is the user's, as an input written with no value is */}
+        <StyledInput placeholder="search" />
+        {/* ✓ handed the other handler, `b`, under the outer name */}
+        <OuterSelect v={value} b={handed.oninput} />
+        {/* ✓ handed no `v`, the model under the outer name: a `value` prop is not it */}
+        <OuterSelect value={value} />
+        {/* ✗ bag-unreadable — once: a spread in it may set its handler again */}
+        <DefaultsInput field={this.form.fields.email.$} attrs={{ oninput: undefined, ...rest }} />
+      </form>
+    );
+  }
+}
+
+export { EdgesOfAForm };

@@ -558,6 +558,12 @@ export interface Resolver {
    */
   mayBeAForm(expression: ts.Expression): boolean;
   /**
+   * Whether this expression may hold one of the DOM's objects — an element, the document — read off its
+   * TYPE: one the DOM lib (or its stand-ins) declares, or one that cannot be read. A store's own
+   * `closest()` is not the DOM's. See `field-set-by-an-event`, which reads a query by its receiver.
+   */
+  mayBeFromTheDom(expression: ts.Expression): boolean;
+  /**
    * Whether this member access reaches the browser's form reset, read off the receiver's TYPE:
    * `reset` — it takes `reset` from a form (`form.reset`, `form["reset"]`, `form[RESET]`,
    * `const { reset } = form`); `maybe` — `reset` on a value whose type cannot be read, or a key that

@@ -1484,3 +1484,36 @@ class RemadeInItsOwnConstructor extends Component {
   }
   flip() {}
 }
+
+/** An app's own graph, with a `closest` that finds no element. */
+declare class Graph {
+  closest(point: number): EventTarget;
+}
+
+/** A disabled box, one callback two refs share, and a store's `closest`. */
+class DisabledSharedAndAGraph extends Component {
+  @state on = false;
+  @state text = "";
+  box = createRef<HTMLInputElement>();
+  a = createRef<HTMLDivElement>(this.attached);
+  b = createRef<HTMLInputElement>(this.attached);
+  graph = new Graph();
+  @mounted
+  start() {
+    // `click()` on a control written `disabled` does nothing.
+    this.box.current?.click();
+    this.graph.closest(1).dispatchEvent(new Event("change"));
+  }
+  attached(node: HTMLElement | null) {
+    node?.dispatchEvent(new Event("input")); // REPORT the field reached through the second ref
+  }
+  render() {
+    return (
+      <div ref={this.a}>
+        <input type="checkbox" aria-label="d" ref={this.box} checked={this.on} onchange={this.flip} disabled />
+        <input aria-label="t" ref={this.b} value={this.text} oninput={this.flip} />
+      </div>
+    );
+  }
+  flip() {}
+}

@@ -68,6 +68,8 @@ describe("a field inside a @ramonda/form form", () => {
         [lineOf("class TwoForms"), "form-not-attached", "login"],
         [lineOf("const ConstHolder"), "form-not-attached", "signup"],
         [lineOf("const ParenHolder"), "form-not-attached", "signup"],
+        [lineOf('<StyledSelect name="size" value={value} onblur'), "not-passed", "oninput` or `onchange"],
+        [lineOf("attrs={{ oninput: undefined, ...rest }}"), "bag-unreadable", "attrs"],
         // A field inside the holder's own form: every use hands its prop, inside a form or not.
         [lineOf("<NamedByAProp />"), "not-passed", "n"],
         // A component rendering with the render it inherits: the field there is inside the form.
@@ -118,7 +120,7 @@ describe("a field inside a @ramonda/form form", () => {
         [lineOf("<SpreadBare attrs={bag} />"), "bag-unreadable", "attrs"],
       ]),
     );
-    expect(issues).toHaveLength(70);
+    expect(issues).toHaveLength(72);
   });
 
   test("a holder a `const` keeps is named by it, and a field with no handler is told which one it needs", () => {
@@ -172,6 +174,12 @@ describe("a field inside a @ramonda/form form", () => {
       lineOf("<TwoSpreads a="),
       lineOf("<EarlySpread field={this.type} attrs={bag} />"),
       lineOf('aria-label="in a plain form"'),
+      lineOf('<StyledSelect name="size" value={value} onchange'),
+      lineOf('aria-label="total read only"'),
+      lineOf('aria-label="total disabled"'),
+      lineOf('<StyledInput placeholder="search" />'),
+      lineOf("<OuterSelect v={value} b={handed.oninput} />"),
+      lineOf("<OuterSelect value={value} />"),
       lineOf('<ToggleWithItsOwn type="checkbox" attrs={{ checked: on }} />'),
       lineOf('aria-label="in a footer"'),
       lineOf("<BareInput {...hinted} />"),
