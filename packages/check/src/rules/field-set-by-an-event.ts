@@ -3,7 +3,15 @@ import { memberName, positionOf } from "../syntax";
 import { coreElementTag } from "./coreElements";
 import { openingOf, says } from "./element";
 import { unwrap } from "./follow-value";
-import { attributeLiterals, classChain, type FieldKind, fieldKind, literalsOf, typeAttributeOf } from "./formTable";
+import {
+  attributeLiterals,
+  classChain,
+  fieldKind,
+  kindOfType,
+  literalsOf,
+  typeAttributeOf,
+  typeLiterals,
+} from "./formTable";
 import { coreDecorators } from "./lifecycle-env";
 import { namesThePlatform } from "./platform";
 import type { Resolver, Rule, RuleContext } from "./rule";
@@ -210,9 +218,15 @@ export const fieldSetByAnEvent = {
     const callbackRoots: { name: string; fn: ts.Node }[] = [];
     // A field a nearer class declares again — `box = createRef()` over a base's `box = createRef(cb)` — is
     // that class's ref: the base's callback is never handed an element. `declare box` writes no field.
+    // So does one its constructor assigns again — `this.box = createRef()` — over its own field too.
     const redeclared = new Set<string>();
     const madeHere = chain.flatMap((cls) => {
-      const made = refCallbacksIn(cls, resolve).filter(({ name, at }) => !redeclared.has(fieldKey(name, at)));
+      const replaced = assignedByTheConstructor(cls, (name, at) => fieldKey(name, at));
+      const made = refCallbacksIn(cls, resolve).filter(
+        ({ name, at }) =>
+          !redeclared.has(fieldKey(name, at)) && !(ts.isPropertyDeclaration(at) && replaced.has(fieldKey(name, at))),
+      );
+      for (const key of replaced) redeclared.add(key);
       for (const member of cls.members) {
         const declare = (ts.getCombinedModifierFlags(member as ts.Declaration) & ts.ModifierFlags.Ambient) !== 0;
         if (
@@ -364,9 +378,14 @@ export const fieldSetByAnEvent = {
               // Read as written, or off its type: `type: "focus" | "blur"` is those two.
               const name = event?.arguments?.[0];
               const types = name === undefined ? undefined : (literalsOf(name, resolve) ?? resolve.typeLiterals(name));
-              if (types === undefined) report(at, "unreadable", at.arguments[0]?.getText() ?? "");
-              else {
-                for (const type of types) {
+              // At a label, only a mouse event's click edits anything: a plain event of any type edits nothing.
+              const atALabelOnly =
+                held !== undefined && !held.held.field && event !== undefined && !isAMouseEvent(event);
+              if (types === undefined) {
+                if (!atALabelOnly) report(at, "unreadable", at.arguments[0]?.getText() ?? "");
+              } else {
+                // One report for each type, however many arms name it: `on ? "input" : "input"`.
+                for (const type of new Set(types)) {
                   // An `input` or a `change` edits the field it is dispatched at — not a label of one,
                   // which only a click passes on.
                   if (EDIT_EVENTS.has(type) && (held === undefined || held.held.field)) report(at, "dispatch", type);
@@ -563,12 +582,13 @@ function whenItRuns(value: ts.Node, resolve: Resolver): "now" | "later" | "kept"
   if (ts.isCallExpression(parent)) {
     if (parent.expression === at) return "now";
     // A ref's callback runs when its element is attached — read from there, see `refCallbacks`.
-    if (parent.arguments.some((argument) => argument === at))
-      return resolve.coreName(parent.expression) === "createRef"
-        ? "kept"
-        : namedLater(parent.expression)
-          ? "later"
-          : "now";
+    if (parent.arguments.some((argument) => argument === at)) {
+      if (resolve.coreName(parent.expression) === "createRef") return "kept";
+      // Handed to a call that makes an attribute's value — `onclick={once(() => …)}` — it is that
+      // attribute's: an event handler, which the element calls.
+      if (isAnAttributesValue(parent)) return "later";
+      return namedLater(parent.expression) ? "later" : "now";
+    }
   }
   if (ts.isNewExpression(parent) && parent.arguments?.some((argument) => argument === at)) {
     const made = unwrap(parent.expression);
@@ -660,6 +680,12 @@ function isTheComponent(self: ts.Node): boolean {
       return false;
   }
   return false;
+}
+
+/** Whether an expression is what a JSX attribute is set to, through what only passes it on. */
+function isAnAttributesValue(expression: ts.Node): boolean {
+  const at = passedOn(expression);
+  return ts.isJsxExpression(at.parent) && ts.isJsxAttribute(at.parent.parent);
 }
 
 /** Whether a callee is one of `LATER`, by its name: `queueMicrotask`, `promise.then`. */
@@ -787,12 +813,12 @@ function isDocument(expression: ts.Expression, resolve: Resolver): boolean {
  * `type={kind}` with `kind: "checkbox" | "text"` may be either, and nothing says a click on it edits nothing.
  */
 function isABox(node: ts.JsxElement | ts.JsxSelfClosingElement, context: RuleContext): boolean {
-  return openingOf(node).tagName.getText() === "input" && mayBeABox(fieldKind(typeAttributeOf(node), context.resolve));
-}
-
-/** Whether an input of this kind may be a checkbox or a radio — see `isABox`. */
-function mayBeABox(kind: FieldKind): boolean {
-  return kind === "box" || kind === "unread";
+  if (openingOf(node).tagName.getText() !== "input") return false;
+  // Every `type` it can be, when they can be read — `"hidden" | "text"` is never a box — or none read.
+  const typeAttribute = typeAttributeOf(node);
+  if (typeAttribute === undefined) return false;
+  const types = typeLiterals(typeAttribute, context.resolve);
+  return types === undefined || types.some((type) => kindOfType(type) === "box");
 }
 
 /**
@@ -855,7 +881,7 @@ function heldAs(
     // A box's model is `checked`: its `.value` is only what the form sends. One whose `type` cannot be
     // read may be a box or a text field, and its model either.
     const kind = fieldKind(typeAttributeOf(node), context.resolve);
-    if (mayBeABox(kind)) {
+    if (isABox(node, context)) {
       return {
         clicked: true,
         field: true,
@@ -942,6 +968,30 @@ function refCallbacksIn(
   visit(cls);
   refCallbacksRead.set(cls, found);
   return found;
+}
+
+/** Every field a class's constructor assigns, `this.box = …`, by its key — see `fieldKey`. */
+function assignedByTheConstructor(
+  cls: ts.ClassLikeDeclaration,
+  fieldKey: (name: ts.MemberName, written: ts.Node) => string,
+): Set<string> {
+  const assigned = new Set<string>();
+  const constructor = cls.members.find(ts.isConstructorDeclaration);
+  const visit = (node: ts.Node): void => {
+    // A function or a class written there runs at another time, with another `this`.
+    if (ts.isClassLike(node) || ts.isFunctionExpression(node) || ts.isFunctionDeclaration(node)) return;
+    if (
+      ts.isBinaryExpression(node) &&
+      node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+      ts.isPropertyAccessExpression(node.left) &&
+      node.left.expression.kind === ts.SyntaxKind.ThisKeyword
+    ) {
+      assigned.add(fieldKey(node.left.name, node));
+    }
+    ts.forEachChild(node, visit);
+  };
+  if (constructor?.body !== undefined) visit(constructor.body);
+  return assigned;
 }
 
 /** What `refCallbacksIn` read of each class. */

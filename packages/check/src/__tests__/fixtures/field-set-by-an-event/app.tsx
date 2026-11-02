@@ -1398,3 +1398,89 @@ class DeclaresItsBox extends CallbackKeptBase {
   }
   flip() {}
 }
+
+declare function once<T>(fn: T): T;
+
+/** No box among the types an input can be; a plain event at a label; a handler wrapped in a call. */
+class NoBoxAmongTheTypes extends Component {
+  @state on = false;
+  @state locked = false;
+  @state text = "";
+  box = createRef<HTMLInputElement>();
+  label = createRef<HTMLLabelElement>();
+  boxLabel = createRef<HTMLLabelElement>();
+  field = createRef<HTMLInputElement>();
+  @mounted
+  start() {
+    // A label of a field that is hidden or text: a click there only moves the focus.
+    this.label.current?.click();
+    this.field.current?.click();
+    // A plain event at a label: only a mouse event's click is passed on, whatever its type is.
+    this.boxLabel.current?.dispatchEvent(new Event(kind));
+    // Two arms naming one event: one edit, one report.
+    const type = this.locked ? "input" : "input";
+    this.field.current?.dispatchEvent(new Event(type)); // REPORT one dispatch for two arms naming it
+  }
+  render() {
+    return (
+      <div>
+        <label ref={this.label}>
+          Name{" "}
+          <input
+            type={this.locked ? "hidden" : "text"}
+            aria-label="n"
+            ref={this.field}
+            value={this.text}
+            oninput={this.flip}
+          />
+        </label>
+        <label ref={this.boxLabel}>
+          <input type="checkbox" aria-label="c" checked={this.on} onchange={this.flip} />
+        </label>
+        <input type="checkbox" aria-label="b" ref={this.box} checked={this.on} onchange={this.flip} />
+        <button type="button" onclick={once(() => this.box.current?.click())}>
+          Once
+        </button>
+      </div>
+    );
+  }
+  flip() {}
+}
+
+/** A ref its constructor makes again, without the callback the field made it with. */
+class RefRemadeBase extends Component {
+  @state on = false;
+  box = createRef<HTMLInputElement>(this.attached);
+  attached(node: HTMLInputElement | null) {
+    node?.click(); // REPORT the base's own ref has its callback
+  }
+  render() {
+    return <input type="checkbox" aria-label="b" ref={this.box} checked={this.on} onchange={this.flip} />;
+  }
+  flip() {}
+}
+
+// Its constructor makes `box` again with no callback: `attached` is never handed an element here.
+class RemadeByTheConstructor extends RefRemadeBase {
+  constructor(props: unknown) {
+    super(props);
+    this.box = createRef<HTMLInputElement>();
+  }
+}
+
+/** Its own field made with a callback, made again by its constructor without one. */
+class RemadeInItsOwnConstructor extends Component {
+  @state on = false;
+  box = createRef<HTMLInputElement>(this.attached);
+  constructor(props: unknown) {
+    super(props);
+    this.box = createRef<HTMLInputElement>();
+  }
+  attached(node: HTMLInputElement | null) {
+    node?.click();
+  }
+  render() {
+    return <input type="checkbox" aria-label="b" ref={this.box} checked={this.on} onchange={this.flip} />;
+  }
+  flip() {}
+}

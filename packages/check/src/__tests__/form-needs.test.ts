@@ -140,6 +140,11 @@ describe("a field inside a @ramonda/form form", () => {
       .lines({ kind: "bag-unreadable", component: "Bare", detail: "attrs", file: "app.tsx", line: 1, column: 1 })
       .slice(1);
     expect(unread).not.toContain("over its form attributes");
+    // A field in the component's own form asks every use, inside a form or not.
+    const [notPassed] = formFieldWithoutWhatTheFormNeeds.report
+      .lines({ kind: "not-passed", component: "SearchForm", detail: "oninput", file: "app.tsx", line: 1, column: 1 })
+      .slice(1);
+    expect(notPassed).not.toContain("is used inside");
   });
 
   test("a base reached as `module.Base` lends its render", () => {

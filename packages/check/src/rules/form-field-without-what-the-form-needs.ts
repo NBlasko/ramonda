@@ -107,7 +107,7 @@ export const formFieldWithoutWhatTheFormNeeds = {
       `    <${issue.component}> ${
         {
           missing: `is inside a @ramonda/form form and is written without ${issue.detail}.`,
-          "not-passed": `is used inside a @ramonda/form form and is not handed \`${issue.detail}\`, which a field in it is written with.`,
+          "not-passed": `is not handed \`${issue.detail}\`, which a field it writes in a @ramonda/form form is written with.`,
           "bag-overrides": `is handed \`${issue.detail}\` set to nothing, in what a field in it spreads last.`,
           "bag-without-a-handler": `is handed \`${issue.detail}\` with a value and no handler for it beside it — \`oninput\` on a text field, either \`oninput\` or \`onchange\` on a box or a select — so the field it is spread on cannot be changed.`,
           "bag-unreadable": `is handed \`${issue.detail}\` as something this cannot read — a field in it spreads it last, so what it sets there, or takes away, cannot be shown.`,

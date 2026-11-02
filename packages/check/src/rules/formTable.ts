@@ -121,7 +121,8 @@ export interface FormFacts {
  */
 export type FieldKind = "box" | "text" | "unedited" | "unread";
 
-function kindOfType(type: string): FieldKind {
+/** The kind of field one `type` makes. */
+export function kindOfType(type: string): FieldKind {
   const lower = type.toLowerCase();
   if (lower === "checkbox" || lower === "radio") return "box";
   return UNEDITED_INPUT_TYPES.has(lower) ? "unedited" : "text";
