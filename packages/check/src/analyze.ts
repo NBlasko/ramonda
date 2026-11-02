@@ -688,7 +688,7 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
     mayBeAForm: (expression: ts.Expression) => {
       // A form, a type that cannot be read, or one a form fits — `Element`, as `querySelector("form")` is typed.
       const type = checker.getTypeAtLocation(expression);
-      return formTypeOf(type, checker) !== "other" || aFormFits(type, theForm(), checker);
+      return formTypeOf(type, theForm(), checker) !== "other" || aFormFits(type, theForm(), checker);
     },
     formReset: (node: ts.PropertyAccessExpression | ts.ElementAccessExpression | ts.BindingElement) =>
       formReset(node, theForm(), checker),
@@ -4054,26 +4054,39 @@ const UNREAD =
   ts.TypeFlags.Index;
 
 /**
- * Whether a value of this type is the browser's `HTMLFormElement`: `form` when it is or extends it,
- * alone or in a union (`HTMLFormElement | null`); `unread` when it cannot be read (`any`, `unknown`)
- * and so may be; `other` for anything else.
+ * Whether a value of this type is the browser's `HTMLFormElement` — `form`, the one the stand-ins or the
+ * DOM lib declare: a project's own `interface HTMLFormElement` in a module is another — when it is or
+ * extends it, alone or in a union (`HTMLFormElement | null`); `unread` when it cannot be read (`any`,
+ * `unknown`) and so may be; `other` for anything else. Asked again and again of the same types: each is
+ * answered once.
  */
-function formTypeOf(type: ts.Type, checker: ts.TypeChecker): FormType {
+function formTypeOf(type: ts.Type, form: ts.Type | undefined, checker: ts.TypeChecker): FormType {
+  const known = formTypes.get(type);
+  if (known !== undefined) return known;
+  const answer = formTypeRead(type, form, checker);
+  formTypes.set(type, answer);
+  return answer;
+}
+
+/** What `formTypeOf` answered for each type. */
+const formTypes = new WeakMap<ts.Type, FormType>();
+
+function formTypeRead(type: ts.Type, form: ts.Type | undefined, checker: ts.TypeChecker): FormType {
   if ((type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) return "unread";
   if (type.isUnion() || type.isIntersection()) {
-    const answers = type.types.map((member) => formTypeOf(member, checker));
+    const answers = type.types.map((member) => formTypeOf(member, form, checker));
     return answers.includes("form") ? "form" : answers.includes("unread") ? "unread" : "other";
   }
   const apparent = checker.getApparentType(type);
-  if (apparent !== type) return formTypeOf(apparent, checker);
-  if (type.getSymbol()?.name === "HTMLFormElement") return "form";
+  if (apparent !== type) return formTypeOf(apparent, form, checker);
+  if (form !== undefined && type.getSymbol() !== undefined && type.getSymbol() === form.getSymbol()) return "form";
   // `TypedForm<Signup>` is an instance of a generic interface: its bases are its declaration's.
   const declared =
     (type.flags & ts.TypeFlags.Object) !== 0 && ((type as ts.ObjectType).objectFlags & ts.ObjectFlags.Reference) !== 0
       ? (type as ts.TypeReference).target
       : type;
   const bases = declared.isClassOrInterface() ? (checker.getBaseTypes(declared) ?? []) : [];
-  return bases.some((base) => formTypeOf(base, checker) === "form") ? "form" : "other";
+  return bases.some((base) => formTypeOf(base, form, checker) === "form") ? "form" : "other";
 }
 
 /**
@@ -4089,6 +4102,8 @@ function formReset(
   form: ts.Type | undefined,
   checker: ts.TypeChecker,
 ): "reset" | "maybe" | "fits" | undefined {
+  // `const { ...rest } = form` takes the members the pattern leaves, by no name: no `reset` is taken.
+  if (ts.isBindingElement(node) && node.dotDotDotToken !== undefined) return undefined;
   const key = ts.isPropertyAccessExpression(node)
     ? node.name
     : ts.isElementAccessExpression(node)
@@ -4112,7 +4127,7 @@ function formReset(
   const names = written !== undefined ? [written] : keyNames(key, checker);
   if (names !== undefined && !names.includes("reset")) return undefined;
   const receiver = checker.getTypeAtLocation(ts.isBindingElement(node) ? node.parent : node.expression);
-  const held = formTypeOf(receiver, checker);
+  const held = formTypeOf(receiver, form, checker);
   if (names === undefined) return held === "form" ? "maybe" : undefined;
   if (held !== "other") return held === "form" ? "reset" : "maybe";
   return aFormFits(receiver, form, checker) ? "fits" : undefined;
@@ -4225,10 +4240,10 @@ function formCast(
   // The type the assertion names, read from what is written — not by checking the expression.
   const target = checker.getTypeFromTypeNode(outer.type);
   const inner = unwrap(outer);
-  if (formTypeOf(checker.getTypeAtLocation(inner), checker) !== "form") return false;
+  if (formTypeOf(checker.getTypeAtLocation(inner), form, checker) !== "form") return false;
   // A form, or a type a form fits — `form as Resettable`, `form as HTMLElement` — is where its reset is
   // still followed; only a type a form cannot be is a cast that hides it.
-  return formTypeOf(target, checker) !== "form" && !aFormFits(target, form, checker);
+  return formTypeOf(target, form, checker) !== "form" && !aFormFits(target, form, checker);
 }
 
 /** The expression of a destructuring's computed name — `{ [RESET]: clear }` — if it has one. */
@@ -4245,8 +4260,9 @@ function computedKey(node: ts.BindingElement): ts.Expression | undefined {
 function keyNames(key: ts.Node, checker: ts.TypeChecker): string[] | undefined {
   const type = checker.getTypeAtLocation(key);
   const members = type.isUnion() ? type.types : [type];
-  if (!members.every((member) => member.isStringLiteral() || (member.flags & ts.TypeFlags.NumberLike) !== 0))
-    return undefined;
+  // A number or a symbol names no member a reset could be: `form[0]`, `form[Symbol.iterator]`.
+  const namesNothing = ts.TypeFlags.NumberLike | ts.TypeFlags.ESSymbolLike;
+  if (!members.every((member) => member.isStringLiteral() || (member.flags & namesNothing) !== 0)) return undefined;
   return members.flatMap((member) => (member.isStringLiteral() ? [member.value] : []));
 }
 

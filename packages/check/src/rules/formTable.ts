@@ -305,20 +305,21 @@ function readableClass(tagName: ts.JsxTagNameExpression, resolve: Resolver): ts.
   // Asked of every component around every element read: answered once for each declaration.
   const known = readableClasses.get(declaration);
   if (known !== undefined) return known ?? undefined;
-  // A class, or one a `const` holds: `const Row = class extends Component { … }`.
-  const held =
-    ts.isVariableDeclaration(declaration) && declaration.initializer !== undefined
-      ? unwrap(declaration.initializer)
-      : declaration;
-  const declared = ts.isClassDeclaration(held) || ts.isClassExpression(held) ? held : undefined;
-  // The class whose render it renders with — its own, or the nearest it inherits from a class of the
-  // project's: the fields written there are that class's.
+  const declared = classOf(declaration);
+  // The class whose render it renders with — its own, or the nearest it inherits: the fields written
+  // there are that class's. One a package declares cannot be read, and neither can the class using it.
+  const renders =
+    declared === undefined || !isReadable(declared)
+      ? undefined
+      : classChain(declared, resolve).find((cls) => cls.members.some((member) => memberName(member) === "render"));
   const found =
     declared === undefined || !isReadable(declared)
       ? undefined
-      : (classChain(declared, resolve).find(
-          (cls) => isReadable(cls) && cls.members.some((member) => memberName(member) === "render"),
-        ) ?? declared);
+      : renders === undefined
+        ? declared
+        : isReadable(renders)
+          ? renders
+          : undefined;
   readableClasses.set(declaration, found ?? null);
   return found;
 }
@@ -332,17 +333,30 @@ function isReadable(cls: ts.ClassLikeDeclaration): boolean {
   return !cls.getSourceFile().isDeclarationFile && ambient === 0;
 }
 
-/** A class, then each class it extends that the project's source or a package declares, nearest first. */
+/**
+ * A class, then each class it extends that the project's source or a package declares, nearest first —
+ * named as `Base` or `ui.Base`, declared as a class or held by a `const`.
+ */
 export function classChain(cls: ts.ClassLikeDeclaration, resolve: Resolver): ts.ClassLikeDeclaration[] {
   const chain = [cls];
   for (let at = cls; ; ) {
     const clause = at.heritageClauses?.find((heritage) => heritage.token === ts.SyntaxKind.ExtendsKeyword);
     const base = clause?.types[0]?.expression;
-    const declared = base !== undefined && ts.isIdentifier(base) ? resolve(base)?.declarations?.[0] : undefined;
-    if (declared === undefined || !ts.isClassDeclaration(declared) || chain.includes(declared)) return chain;
+    const named = base !== undefined && (ts.isIdentifier(base) || ts.isPropertyAccessExpression(base));
+    const declared = named ? classOf(resolve(base)?.declarations?.[0]) : undefined;
+    if (declared === undefined || chain.includes(declared)) return chain;
     chain.push(declared);
     at = declared;
   }
+}
+
+/** The class a declaration is, or the one a `const` holds: `const Row = class extends Component { … }`. */
+function classOf(declaration: ts.Declaration | undefined): ts.ClassLikeDeclaration | undefined {
+  const held =
+    declaration !== undefined && ts.isVariableDeclaration(declaration) && declaration.initializer !== undefined
+      ? unwrap(declaration.initializer)
+      : declaration;
+  return held !== undefined && (ts.isClassDeclaration(held) || ts.isClassExpression(held)) ? held : undefined;
 }
 
 export function formTableFor(sources: readonly ts.SourceFile[], resolve: Resolver): FormFacts {

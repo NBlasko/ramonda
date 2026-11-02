@@ -42,6 +42,29 @@ export interface FormFieldWithoutWhatTheFormNeedsIssue {
  */
 type Wants = "nothing" | "text" | "pick" | "box" | "unread";
 
+/** A prop a field takes, asked of the uses of the component that writes it. */
+interface Need {
+  owner: ts.ClassLikeDeclaration;
+  /** The prop's name. */
+  name: string;
+  /** A spread of it on a field — `{...this.props.attrs}` — rather than one attribute. */
+  bag: boolean;
+  /** For a spread, what it must carry beside a model — see `Wants`. */
+  wants: Wants;
+  /** For a spread, what the field writes after it, which the spread cannot override. */
+  shadowed: readonly string[];
+  /** For a spread, the form's attributes the field writes before it, which the spread can take away. */
+  overridable: readonly string[];
+  /**
+   * Whether the field it is for is inside a form already, where it is written or further down: then every
+   * use hands it, inside a form or not.
+   */
+  held: boolean;
+}
+
+/** One attribute a field takes from a prop: no spread, nothing it wants beside it. */
+const A_PROP = { bag: false, wants: "nothing", shadowed: [], overridable: [] } as const;
+
 /**
  * A field inside a `@ramonda/form` form, written without everything the form needs.
  *
@@ -144,39 +167,19 @@ export const formFieldWithoutWhatTheFormNeeds = {
       }
     }
 
-    // What the fields inside a form need from the components that write them.
-    // `wants`: for a spread, what it must carry beside a `value` — nothing when the field writes its own
-    // handler, `oninput` on a text field, whose `change` comes on blur, and either on a pick.
-    const queue: {
-      owner: ts.ClassLikeDeclaration;
-      name: string;
-      bag: boolean;
-      wants: Wants;
-      // For a spread, what the field writes after it, which the spread cannot override.
-      shadowed: readonly string[];
-      // For a spread, what the field writes before it, which the spread can take away.
-      overridable: readonly string[];
-      // Whether the field it is for is inside a form already, where it is written or further down: then
-      // every use hands it, inside a form or not.
-      held: boolean;
-    }[] = [];
+    // What the fields inside a form need from the components that write them — see `Need`.
+    const queue: Need[] = [];
     const seen = new Set<string>();
     const ids = new Map<ts.ClassLikeDeclaration, number>();
-    const need = (
-      owner: ts.ClassLikeDeclaration | undefined,
-      name: string,
-      bag: boolean,
-      wants: Wants = "nothing",
-      shadowed: readonly string[] = [],
-      overridable: readonly string[] = [],
-      held = false,
-    ) => {
+    const need = (asked: Omit<Need, "owner"> & { owner: ts.ClassLikeDeclaration | undefined }) => {
+      const { owner } = asked;
       if (owner === undefined) return;
       if (!ids.has(owner)) ids.set(owner, ids.size);
+      const { name, bag, wants, shadowed, overridable, held } = asked;
       const key = `${ids.get(owner)}|${name}|${bag}|${wants}|${shadowed.join(",")}|${overridable.join(",")}|${held}`;
       if (seen.has(key)) return;
       seen.add(key);
-      queue.push({ owner, name, bag, wants, shadowed, overridable, held });
+      queue.push({ ...asked, owner });
     };
 
     for (const field of fields) {
@@ -192,7 +195,9 @@ export const formFieldWithoutWhatTheFormNeeds = {
       }
       for (const name of FORM_ATTRIBUTES) {
         const source = field.attributes[name];
-        if (source.kind === "prop") need(field.owner, source.prop, false, "nothing", [], [], field.inForm);
+        if (source.kind === "prop") {
+          need({ ...A_PROP, owner: field.owner, name: source.prop, held: field.inForm });
+        }
       }
     }
     // A spread of props on a field, anywhere: what each use hands for it is read there.
@@ -206,7 +211,15 @@ export const formFieldWithoutWhatTheFormNeeds = {
             : bag.pick
               ? "pick"
               : "text";
-      need(bag.owner, bag.prop, true, wants, bag.shadowed, bag.overridable);
+      need({
+        owner: bag.owner,
+        name: bag.prop,
+        bag: true,
+        wants,
+        shadowed: bag.shadowed,
+        overridable: bag.overridable,
+        held: false,
+      });
     }
 
     // Each use by the component it renders: an item is asked of its own uses, not of every use there is.
@@ -218,7 +231,8 @@ export const formFieldWithoutWhatTheFormNeeds = {
     }
     // Walked by its index, as `need` adds to it: no array shifted under every item.
     for (let at = 0; at < queue.length; at++) {
-      const { owner, name, bag, wants, shadowed, overridable, held } = queue[at];
+      const asked = queue[at];
+      const { owner, name, bag, held } = asked;
       for (const site of usesOf.get(owner) ?? []) {
         // What a field needs from a form is asked inside one — where it is written, or where the use is;
         // what a spread on it carries, everywhere.
@@ -229,7 +243,7 @@ export const formFieldWithoutWhatTheFormNeeds = {
           if (bag && (site.spreadMayHand === undefined || site.spreadMayHand.has(name)))
             found.push({ kind: "bag-unreadable", component: site.tag, detail: name, ...where(site) });
           // Handed through the owner's own props, `{...this.props}`: asked of the owner's uses.
-          else if (site.spreadsOwnProps) need(site.owner, name, bag, wants, shadowed, overridable, held || site.inForm);
+          else if (site.spreadsOwnProps) need({ ...asked, owner: site.owner, held: held || site.inForm });
           // Not handed by name: a spread may carry it or not — its type does not say what it copies.
           else if (!bag) found.push({ kind: "not-passed", component: site.tag, detail: name, ...where(site) });
           continue;
@@ -237,7 +251,7 @@ export const formFieldWithoutWhatTheFormNeeds = {
         if (handed === undefined) continue;
         const prop = propRead(handed);
         if (prop !== undefined) {
-          need(site.owner, prop, bag, wants, shadowed, overridable, held || site.inForm);
+          need({ ...asked, owner: site.owner, name: prop, held: held || site.inForm });
           continue;
         }
         if (!bag) {
@@ -246,7 +260,7 @@ export const formFieldWithoutWhatTheFormNeeds = {
           continue;
         }
         // A bag handed as nothing — `attrs={undefined}` — spreads nothing, as one left off does.
-        if (!holdsNothing(handed)) readBag(handed, site, name, wants, shadowed, overridable, holdsNothing, found);
+        if (!holdsNothing(handed)) readBag(handed, site, asked, holdsNothing, found);
       }
     }
 
@@ -266,10 +280,7 @@ export const formFieldWithoutWhatTheFormNeeds = {
 function readBag(
   handed: ts.Expression,
   site: ComponentSite,
-  name: string,
-  wants: Wants,
-  shadowed: readonly string[],
-  overridable: readonly string[],
+  { name, wants, shadowed, overridable }: Need,
   holdsNothing: (expression: ts.Expression) => boolean,
   found: FormFieldWithoutWhatTheFormNeedsIssue[],
 ): void {

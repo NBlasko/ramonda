@@ -73,6 +73,9 @@ describe("a field inside a @ramonda/form form", () => {
         [lineOf('aria-label="class in a const"'), "missing", "`name`, `onblur`, `aria-invalid`"],
         // A form a base class holds, attached by the class extending it.
         [lineOf('aria-label="in a form held by a base"'), "missing", "`name`, `onblur`, `aria-invalid`"],
+        // A render a package declares cannot be read; one a `const` holds can.
+        [lineOf("<MyField />"), "unreadable-component", "MyField"],
+        [lineOf('aria-label="const base"'), "missing", "`name`, `onblur`, `aria-invalid`"],
         [lineOf('<AriaInput name="a"'), "not-passed", "aria-invalid"],
         [lineOf("<StyledByAProp />"), "not-passed", "n"],
         [lineOf("<SpreadInItsForm value"), "not-passed", "name"],
@@ -108,7 +111,14 @@ describe("a field inside a @ramonda/form form", () => {
         [lineOf("<SpreadBare attrs={bag} />"), "bag-unreadable", "attrs"],
       ]),
     );
-    expect(issues).toHaveLength(62);
+    expect(issues).toHaveLength(65);
+  });
+
+  test("a base reached as `module.Base` lends its render", () => {
+    const inBases = found().filter((issue) => issue.file.endsWith("bases.tsx"));
+    expect(inBases.map((issue) => [issue.kind, issue.detail])).toEqual([
+      ["missing", "`name`, `onblur`, `aria-invalid`"],
+    ]);
   });
 
   test("a complete field, a wrapper handed everything, a harmless bag, a field outside a form and an app's own Form are silent", () => {

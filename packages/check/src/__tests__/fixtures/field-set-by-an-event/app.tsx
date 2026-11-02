@@ -1114,3 +1114,50 @@ class UsesARefMethodInABase extends RefsInABase {
     return <input type="checkbox" aria-label="c" ref={this.attach} checked={this.on} onchange={this.flip} />;
   }
 }
+
+/** Three classes deep: `super.start()` in the middle one reaches the first. */
+class FirstOfThree extends Component {
+  @state on = false;
+  box = createRef<HTMLInputElement>();
+  start() {
+    this.box.current?.click(); // REPORT click reached through a middle class's super
+  }
+  render() {
+    return <input type="checkbox" aria-label="b" ref={this.box} checked={this.on} onchange={this.flip} />;
+  }
+  flip() {}
+}
+
+class SecondOfThree extends FirstOfThree {
+  start() {
+    super.start();
+  }
+}
+
+class ThirdOfThree extends SecondOfThree {
+  @mounted
+  go() {
+    this.start();
+  }
+}
+
+/** A handler taken away when the component goes: never run there. */
+class RemovesItsListener extends Component {
+  @state on = false;
+  box = createRef<HTMLInputElement>();
+  @mounted
+  start() {
+    document.addEventListener("keydown", this.onKey);
+  }
+  @destroyed
+  stop() {
+    document.removeEventListener("keydown", this.onKey);
+  }
+  onKey = () => {
+    this.box.current?.click();
+  };
+  render() {
+    return <input type="checkbox" aria-label="b" ref={this.box} checked={this.on} onchange={this.flip} />;
+  }
+  flip() {}
+}

@@ -86,7 +86,7 @@ const EDIT_COMMANDS = new Set([
 /** The decorators whose method a commit runs. */
 const COMMIT_DECORATORS = new Set(["created", "mounted", "updated", "destroyed", "watchProp", "catchError"]);
 
-/** Calls that run the function handed to them after the current work: what they are given is not the commit's. */
+/** Calls that run the function handed to them after the current work, or never: what they are given is not the commit's. */
 const LATER = new Set([
   "queueMicrotask",
   "setTimeout",
@@ -97,6 +97,8 @@ const LATER = new Set([
   "catch",
   "finally",
   "addEventListener",
+  // Takes the handler away; it runs it neither now nor later.
+  "removeEventListener",
 ]);
 
 /**
@@ -157,11 +159,23 @@ export const fieldSetByAnEvent = {
     const found: FieldSetByAnEventIssue[] = [];
 
     // The class's functions, by name — its own, then what it inherits from a class of the project's — and
-    // what `super` names: the inherited alone.
+    // what `super` names where it is written: what the class writing it inherits, not the component.
     const chain = classChain(cls, resolve);
     const own = functionsOf(chain);
-    const inherited = functionsOf(chain.slice(1));
     const { members } = own;
+    const supers = new Map<ts.ClassLikeDeclaration, Functions>();
+    const inheritedBy = (written: ts.Node): Functions | undefined => {
+      let at: ts.Node | undefined = written.parent;
+      while (at !== undefined && !ts.isClassLike(at)) at = at.parent;
+      const index = at === undefined ? -1 : chain.indexOf(at);
+      if (at === undefined || index === -1) return undefined;
+      let found = supers.get(at);
+      if (found === undefined) {
+        found = functionsOf(chain.slice(index + 1));
+        supers.set(at, found);
+      }
+      return found;
+    };
 
     // What the class renders — with its own render or one it inherits — read across its chain.
     const boxes = boxesOf(chain, context);
@@ -252,7 +266,7 @@ export const fieldSetByAnEvent = {
           : at.expression.kind === ts.SyntaxKind.ThisKeyword
             ? own
             : at.expression.kind === ts.SyntaxKind.SuperKeyword
-              ? inherited
+              ? inheritedBy(at)
               : undefined;
         if (functions !== undefined && ts.isPropertyAccessExpression(at)) {
           const fn = functions.members.get(at.name.text);

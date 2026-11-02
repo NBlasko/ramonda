@@ -1,7 +1,8 @@
 import { Component, Hook, Select } from "@ramonda/core";
 import { Form } from "@ramonda/form";
 import { Form as Mine } from "./myForm";
-import { Fancy } from "./ui";
+import * as bases from "./bases";
+import { Fancy, LibField } from "./ui";
 
 declare const value: string;
 const NONE = undefined;
@@ -702,3 +703,33 @@ class SubRenders extends BaseHolder {
 }
 
 export { SubRenders };
+
+/** A class extending a package's field: the render it uses cannot be read. */
+class MyField extends LibField {}
+
+/** A class extending a `const` that holds one. */
+const ConstBase = class extends Component {
+  render() {
+    return <input aria-label="const base" value={value} oninput={handed.oninput} />;
+  }
+};
+class FromAConstBase extends ConstBase {}
+
+/** A class extending one reached as `bases.NamedBase`. */
+class FromANamespace extends bases.NamedBase {}
+
+class RendersInheritedFields extends Component {
+  form = this.use(Form, {});
+  render() {
+    return (
+      <form onsubmit={this.form.submit}>
+        {/* ✗ unreadable-component — MyField */}
+        <MyField />
+        <FromAConstBase />
+        <FromANamespace />
+      </form>
+    );
+  }
+}
+
+export { RendersInheritedFields };
