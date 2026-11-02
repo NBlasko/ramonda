@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { analyzeProject } from "../analyze";
+import { formFieldWithoutWhatTheFormNeeds } from "../rules/form-field-without-what-the-form-needs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const fixture = join(here, "fixtures", "form-needs");
@@ -65,6 +66,7 @@ describe("a field inside a @ramonda/form form", () => {
         [lineOf("class SignupThroughABase"), "form-in-a-hook", "form"],
         [lineOf("class DetachedSignup"), "form-not-attached", "signup"],
         [lineOf("class TwoForms"), "form-not-attached", "login"],
+        [lineOf("const ConstHolder"), "form-not-attached", "signup"],
         // A field inside the holder's own form: every use hands its prop, inside a form or not.
         [lineOf("<NamedByAProp />"), "not-passed", "n"],
         // A component rendering with the render it inherits: the field there is inside the form.
@@ -114,7 +116,22 @@ describe("a field inside a @ramonda/form form", () => {
         [lineOf("<SpreadBare attrs={bag} />"), "bag-unreadable", "attrs"],
       ]),
     );
-    expect(issues).toHaveLength(67);
+    expect(issues).toHaveLength(68);
+  });
+
+  test("a holder a `const` keeps is named by it, and a field with no handler is told which one it needs", () => {
+    expect(found().find((issue) => issue.line === lineOf("const ConstHolder"))?.component).toBe("ConstHolder");
+    const [line] = formFieldWithoutWhatTheFormNeeds.report
+      .lines({
+        kind: "bag-without-a-handler",
+        component: "Bare",
+        detail: "attrs",
+        file: "app.tsx",
+        line: 1,
+        column: 1,
+      })
+      .slice(1);
+    expect(line).toContain("`oninput` on a text field");
   });
 
   test("a base reached as `module.Base` lends its render", () => {
@@ -140,6 +157,8 @@ describe("a field inside a @ramonda/form form", () => {
       lineOf("attrs={undefined} />"),
       lineOf("<TrackedInput"),
       lineOf("<TwoSpreads a="),
+      lineOf("<EarlySpread field={this.type} attrs={bag} />"),
+      lineOf('aria-label="in a footer"'),
       lineOf("<BareInput {...hinted} />"),
       lineOf("class BaseHolder"),
       lineOf("class SignupPage"),

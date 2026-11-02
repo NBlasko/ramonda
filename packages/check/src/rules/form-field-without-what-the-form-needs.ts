@@ -107,7 +107,7 @@ export const formFieldWithoutWhatTheFormNeeds = {
           missing: `is inside a @ramonda/form form and is written without ${issue.detail}.`,
           "not-passed": `is used inside a @ramonda/form form and is not handed \`${issue.detail}\`, which a field in it is written with.`,
           "bag-overrides": `is handed \`${issue.detail}\` set to nothing, in what a field in it spreads last.`,
-          "bag-without-a-handler": `is handed \`${issue.detail}\` with a value and no \`oninput\` or \`onchange\` beside it, so the field it is spread on cannot be changed.`,
+          "bag-without-a-handler": `is handed \`${issue.detail}\` with a value and no handler for it beside it — \`oninput\` on a text field, either \`oninput\` or \`onchange\` on a box or a select — so the field it is spread on cannot be changed.`,
           "bag-unreadable": `is handed \`${issue.detail}\` as something this cannot read — a field in it spreads it last, over its form attributes.`,
           "unreadable-component":
             "is used inside a @ramonda/form form, and its render cannot be read to check its fields.",
@@ -233,6 +233,9 @@ export const formFieldWithoutWhatTheFormNeeds = {
     for (let at = 0; at < queue.length; at++) {
       const asked = queue[at];
       const { owner, name, bag, held } = asked;
+      // A spread nothing it hands can make wrong — written first, on a field with its own handler — is
+      // not asked about at all.
+      if (bag && asked.wants === "nothing" && asked.overridable.length === 0) continue;
       for (const site of usesOf.get(owner) ?? []) {
         // What a field needs from a form is asked inside one — where it is written, or where the use is;
         // what a spread on it carries, everywhere.

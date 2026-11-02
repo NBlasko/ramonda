@@ -450,7 +450,9 @@ function functionsOf(classes: readonly ts.ClassLikeDeclaration[]): Functions {
   for (const cls of [...classes].reverse()) {
     // A name the class declares, of any kind, hides every one it inherits: a field over a getter, a
     // method over a field. A `#private` name is its own class's alone — see `privateFunctionsOf`.
-    const declared = cls.members
+    // A `static` member is the class's, not its instances': `this.tick()` never names it.
+    const instance = cls.members.filter((member) => !isStatic(member));
+    const declared = instance
       .filter((member) => member.name === undefined || !ts.isPrivateIdentifier(member.name))
       .map((member) => memberName(member))
       .filter((name): name is string => name !== undefined);
@@ -459,7 +461,7 @@ function functionsOf(classes: readonly ts.ClassLikeDeclaration[]): Functions {
       found.getters.delete(name);
       found.setters.delete(name);
     }
-    for (const member of cls.members) {
+    for (const member of instance) {
       const name = memberName(member);
       if (name === undefined || (member.name !== undefined && ts.isPrivateIdentifier(member.name))) continue;
       if (ts.isGetAccessorDeclaration(member) && member.body !== undefined) found.getters.set(name, member);
@@ -481,7 +483,7 @@ function functionsOf(classes: readonly ts.ClassLikeDeclaration[]): Functions {
 function privateFunctionsOf(cls: ts.ClassLikeDeclaration): Functions {
   const found: Functions = { members: new Map(), getters: new Map(), setters: new Map() };
   for (const member of cls.members) {
-    if (member.name === undefined || !ts.isPrivateIdentifier(member.name)) continue;
+    if (member.name === undefined || !ts.isPrivateIdentifier(member.name) || isStatic(member)) continue;
     const name = member.name.text;
     if (ts.isGetAccessorDeclaration(member) && member.body !== undefined) found.getters.set(name, member);
     else if (ts.isSetAccessorDeclaration(member) && member.body !== undefined) found.setters.set(name, member);
@@ -492,6 +494,11 @@ function privateFunctionsOf(cls: ts.ClassLikeDeclaration): Functions {
     }
   }
   return found;
+}
+
+/** Whether a class member is `static`. */
+function isStatic(member: ts.ClassElement): boolean {
+  return (ts.getCombinedModifierFlags(member as ts.Declaration) & ts.ModifierFlags.Static) !== 0;
 }
 
 /** The class a node is written in, nearest first. */
@@ -729,11 +736,22 @@ function eachOfAQuery(declared: ts.Declaration, resolve: Resolver): boolean {
   );
 }
 
-/** The platform's `document` — not a `const document = editor.doc` — `window.document`, or an element's `ownerDocument`. */
+/**
+ * The platform's `document` — not a `const document = editor.doc`, nor a model's `this.model.document` —
+ * reached as `document`, `window.document` or `globalThis.document`, or an element's `ownerDocument`.
+ */
 function isDocument(expression: ts.Expression, resolve: Resolver): boolean {
   const at = unwrap(expression);
   if (ts.isIdentifier(at)) return at.text === "document" && namesThePlatform(at, resolve);
-  return ts.isPropertyAccessExpression(at) && (at.name.text === "document" || at.name.text === "ownerDocument");
+  if (!ts.isPropertyAccessExpression(at)) return false;
+  if (at.name.text === "ownerDocument") return true;
+  const owner = unwrap(at.expression);
+  return (
+    at.name.text === "document" &&
+    ts.isIdentifier(owner) &&
+    ["window", "globalThis", "self"].includes(owner.text) &&
+    namesThePlatform(owner, resolve)
+  );
 }
 
 /**

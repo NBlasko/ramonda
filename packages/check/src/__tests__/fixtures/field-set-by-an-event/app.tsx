@@ -1280,3 +1280,28 @@ class LocalDocumentAndARenamedRef extends Component {
   }
   flip() {}
 }
+
+/** A base with an instance method that does nothing. */
+class CalmBase extends Component {
+  calm() {}
+}
+
+/** A model's own `document`, the window's, and a static method of the inherited instance method's name. */
+class DocumentsAndStatics extends CalmBase {
+  @state text = "";
+  model = { document: { execCommand(_command: string) {} } };
+  @mounted
+  start() {
+    this.model.document.execCommand("insertText");
+    window.document.execCommand("insertText"); // REPORT the window's document
+    this.calm();
+  }
+  // The class's own, not an instance's: `this.calm()` above calls the base's.
+  static calm() {
+    document.querySelector("input")!.dispatchEvent(new Event("input"));
+  }
+  render() {
+    return <input aria-label="t" value={this.text} oninput={this.typed} />;
+  }
+  typed() {}
+}

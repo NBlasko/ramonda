@@ -421,7 +421,12 @@ export function formTableFor(sources: readonly ts.SourceFile[], resolve: Resolve
       if (chain.includes(cls)) for (const field of by) attached.add(field);
     }
     holders.push({
-      component: cls.name?.text ?? "(anonymous)",
+      // A class a `const` holds is named by it: `const Signup = class extends Component { … }`.
+      component:
+        cls.name?.text ??
+        (ts.isVariableDeclaration(cls.parent) && ts.isIdentifier(cls.parent.name)
+          ? cls.parent.name.text
+          : "(anonymous)"),
       isHook: isHookClass(cls, resolve),
       fields: [...fields],
       unattached: [...fields].filter((field) => !attached.has(field)),
@@ -444,10 +449,18 @@ export function formTableFor(sources: readonly ts.SourceFile[], resolve: Resolve
     if (formElements.size === 0) return false;
     // Every element around it in the render that writes it — through a callback's body too,
     // `{items.map((item) => { return <input … />; })}` — up to the class member it is written in.
+    // One handed in an attribute — `footer={<input … />}` — is that component's to place: not among the
+    // children it puts in its form.
+    let attributeOf: ts.Node | undefined;
     for (let at = node.parent; at !== undefined && !ts.isClassElement(at); at = at.parent) {
+      if (ts.isJsxAttribute(at)) {
+        const opening = at.parent.parent;
+        attributeOf = ts.isJsxOpeningElement(opening) ? opening.parent : opening;
+        continue;
+      }
       if (!ts.isJsxElement(at) && !ts.isJsxSelfClosingElement(at)) continue;
       if (formElements.has(at)) return true;
-      if (throughChildren) {
+      if (throughChildren && at !== attributeOf) {
         const opening = openingOf(at);
         const target = tagOf(at) === undefined ? readableClass(opening.tagName, resolve) : undefined;
         if (target !== undefined && childrenInForm.has(target)) return true;

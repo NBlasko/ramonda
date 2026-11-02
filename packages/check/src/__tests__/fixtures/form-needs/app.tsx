@@ -382,6 +382,8 @@ class Loose extends Component {
         <DefaultsInput field={this.type} attrs={{ oninput }} />
         {/* ✓ a spread written first cannot override what is written after it */}
         <EarlySpread field={this.type} attrs={{ value: undefined, oninput: undefined }} />
+        {/* ✓ a bag that cannot be read, spread where nothing it hands can make the field wrong */}
+        <EarlySpread field={this.type} attrs={bag} />
         {/* ✓ a value with its handler beside it */}
         <DefaultsInput field={this.type} attrs={{ value: "x", oninput: this.type }} />
       </div>
@@ -763,3 +765,36 @@ class SignupPage extends FormPage {
 }
 
 export { SignupPage };
+
+/** Places its children in its form, and a footer outside it. */
+class FormWithAFooter extends Component<{ children?: unknown; footer?: unknown }> {
+  form = this.use(Form, {});
+  render() {
+    return (
+      <div>
+        <form onsubmit={this.form.submit}>{this.props.children}</form>
+        <footer>{this.props.footer}</footer>
+      </div>
+    );
+  }
+}
+
+class UsesAFooter extends Component {
+  render() {
+    return (
+      <FormWithAFooter footer={<input aria-label="in a footer" value={value} oninput={handed.oninput} />}>
+        <p>Nothing to fill in</p>
+      </FormWithAFooter>
+    );
+  }
+}
+
+/** ✗ form-not-attached — named by the `const` that holds it. */
+const ConstHolder = class extends Component {
+  signup = this.use(Form, {});
+  render() {
+    return <div>nothing</div>;
+  }
+};
+
+export { UsesAFooter, ConstHolder };
