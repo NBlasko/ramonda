@@ -36,6 +36,12 @@ describe("a field set by an event while a commit runs", () => {
     expect(by("ClicksALabel")).toEqual(["click this.label ← @mounted start"]);
     expect(by("DispatchesAnUnreadableEvent")).toEqual(["unreadable new Event(kind) ← @mounted start"]);
     expect(by("EditsTheFocusedField")).toEqual(["exec-command execCommand ← @mounted start"]);
+    // A ref's callback, wherever the ref is made — a field, or the constructor — runs as its element attaches.
+    expect(by("ClicksThroughABoundRef")).toEqual([
+      "click node ← the ref callback of this.box",
+      "click node ← the ref callback of this.other",
+      "click node ← the ref callback of this.local",
+    ]);
     expect(by("EditsFromEveryCommitHook")).toEqual([
       "dispatch change ← the constructor",
       "dispatch beforeinput ← @created made",

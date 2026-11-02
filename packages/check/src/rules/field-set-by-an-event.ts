@@ -18,7 +18,7 @@ import type { Resolver, Rule, RuleContext } from "./rule";
  * there is a value set by an event: what the field should show is state, `this.on = true`.
  *
  * What is an edit: dispatching `input`, `change`, `beforeinput` or a composition event at a field this
- * class renders — held by a ref, or handed to a `ref` callback — or at an element a query finds, or a
+ * class renders — held by a ref, or handed to a ref's callback — or at an element a query finds, or a
  * form's `elements` hands, which may be one; a `click` on a checkbox, a radio or a `<label>` of one
  * that this class renders, by method or as a dispatched event; writing `.value` or `.checked` on a
  * field it renders with that model; `document.execCommand`, which edits the focused field. An event
@@ -38,8 +38,8 @@ import type { Resolver, Rule, RuleContext } from "./rule";
  * edit anywhere in it is reported, and one meant for later says so by handing it to `queueMicrotask`. A
  * function written as an attribute is not the commit's work either — `onclick={() => …}` is an event
  * handler, which the element calls, and a row whose handler clicks its checkbox does what a `<label>`
- * does; a prop's function is the receiving component's to call — except `ref={(node) => …}`, which runs
- * in the commit.
+ * does; a prop's function is the receiving component's to call. A ref's callback is the commit's work:
+ * core calls `box = createRef(this.attached)`'s `attached` with the element as it attaches it.
  */
 export interface FieldSetByAnEventIssue {
   /** The class whose commit work sends the edit. */
@@ -178,20 +178,48 @@ export const fieldSetByAnEvent = {
     };
 
     // What the class renders — with its own render or one it inherits — read across its chain.
-    const boxes = boxesOf(chain, context);
-    // Each ref callback's elements, found once: finding them walks the class.
-    const refElements = new Map<ts.ParameterDeclaration, (ts.JsxElement | ts.JsxSelfClosingElement)[]>();
-    const refs = refsOf(chain, boxes, context);
+    // Read when an edit-shaped call first asks: most classes send none.
+    let refsRead: Map<string, Held> | undefined;
+    const refs = (): Map<string, Held> => {
+      refsRead ??= refsOf(chain, boxesOf(chain, context), context);
+      return refsRead;
+    };
+
+    // A ref's callback — `box = createRef(this.attached)` — runs in the commit, handed the element that
+    // ref is attached to: its parameter is that element, and its body commit work.
+    const callbackOf = new Map<ts.ParameterDeclaration, string>();
+    const callbackRoots: { field: string; fn: ts.Node }[] = [];
+    for (const { field, callback } of refCallbacks(chain, resolve)) {
+      const fn = functionHandedAs(callback);
+      if (fn === undefined) continue;
+      if (fn.parameters[0] !== undefined) callbackOf.set(fn.parameters[0], field);
+      callbackRoots.push({ field, fn });
+    }
+    // The function a callback is handed as: written there, `this.attached`, a local one, or one `.bind`.
+    function functionHandedAs(handed: ts.Expression): ts.SignatureDeclaration | undefined {
+      let at = unwrap(handed);
+      if (ts.isCallExpression(at) && ts.isPropertyAccessExpression(at.expression) && at.expression.name.text === "bind")
+        at = unwrap(at.expression.expression);
+      if (ts.isArrowFunction(at) || ts.isFunctionExpression(at)) return at;
+      if (ts.isIdentifier(at)) return localFunction(at, resolve);
+      if (ts.isPropertyAccessExpression(at) && at.expression.kind === ts.SyntaxKind.ThisKeyword) {
+        const member = members.get(at.name.text);
+        return member !== undefined && ts.isFunctionLike(member) ? member : undefined;
+      }
+      return undefined;
+    }
 
     // The ref a receiver names: `this.box.current`, with `?.`, `!` or a `const` one name away.
     const heldBy = (receiver: ts.Expression, hops = 0): { name: string; held: Held } | undefined => {
       const at = unwrap(receiver);
       if (ts.isIdentifier(at) && hops < 4) {
-        const elements = refCallbackElements(at, chain, context, refElements);
-        if (elements.length > 0) {
-          return { name: at.text, held: elements.map((element) => heldAs(element, boxes, context)).reduce(either) };
-        }
         const declared = resolve(at)?.declarations?.[0];
+        // A ref callback's parameter: the element its ref is attached to.
+        const field = declared !== undefined && ts.isParameter(declared) ? callbackOf.get(declared) : undefined;
+        if (field !== undefined) {
+          const held = refs().get(field);
+          return held === undefined ? undefined : { name: at.text, held };
+        }
         if (
           declared !== undefined &&
           ts.isVariableDeclaration(declared) &&
@@ -204,9 +232,13 @@ export const fieldSetByAnEvent = {
       }
       if (!ts.isPropertyAccessExpression(at) || at.name.text !== "current") return undefined;
       const owner = unwrap(at.expression);
-      if (!ts.isPropertyAccessExpression(owner) || owner.expression.kind !== ts.SyntaxKind.ThisKeyword)
+      if (
+        !ts.isPropertyAccessExpression(owner) ||
+        owner.expression.kind !== ts.SyntaxKind.ThisKeyword ||
+        !isTheComponent(owner.expression)
+      )
         return undefined;
-      const held = refs.get(owner.name.text);
+      const held = refs().get(owner.name.text);
       return held === undefined ? undefined : { name: `this.${owner.name.text}`, held };
     };
 
@@ -261,13 +293,14 @@ export const fieldSetByAnEvent = {
           if (local !== undefined) enter(local);
         }
         // `this.tick()`, and `super.tick()`, which names the inherited one.
-        const functions = !ts.isPropertyAccessExpression(at)
-          ? undefined
-          : at.expression.kind === ts.SyntaxKind.ThisKeyword
-            ? own
-            : at.expression.kind === ts.SyntaxKind.SuperKeyword
-              ? inheritedBy(at)
-              : undefined;
+        const functions =
+          !ts.isPropertyAccessExpression(at) || !isTheComponent(at.expression)
+            ? undefined
+            : at.expression.kind === ts.SyntaxKind.ThisKeyword
+              ? own
+              : at.expression.kind === ts.SyntaxKind.SuperKeyword
+                ? inheritedBy(at)
+                : undefined;
         if (functions !== undefined && ts.isPropertyAccessExpression(at)) {
           const fn = functions.members.get(at.name.text);
           if (fn !== undefined && whenItRuns(at) === "now") enter(fn);
@@ -315,19 +348,17 @@ export const fieldSetByAnEvent = {
             }
           }
         }
-        if (
-          ts.isBinaryExpression(at) &&
-          at.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
-          at.operatorToken.kind <= ts.SyntaxKind.LastAssignment &&
-          ts.isPropertyAccessExpression(at.left) &&
-          (at.left.name.text === "value" || at.left.name.text === "checked")
-        ) {
-          const held = heldBy(at.left.expression);
+        // `.value` or `.checked` written — `=`, `+=`, `++`, a destructuring — by name or by `["checked"]`.
+        const member = ts.isPropertyAccessExpression(at)
+          ? at.name.text
+          : ts.isElementAccessExpression(at) && ts.isStringLiteralLike(at.argumentExpression)
+            ? at.argumentExpression.text
+            : undefined;
+        if ((member === "value" || member === "checked") && usedAs(at as ts.Expression) !== "read") {
+          const held = heldBy((at as ts.PropertyAccessExpression | ts.ElementAccessExpression).expression);
           // Only a field with a model: `.value` on a hidden input, `.checked` on a box no model holds,
           // is the element's own and the page's, as core reads it.
-          if (held !== undefined && held.held.models.has(at.left.name.text as "value" | "checked")) {
-            report(at.left, "write", `${held.name}.${at.left.name.text}`);
-          }
+          if (held !== undefined && held.held.models.has(member)) report(at, "write", `${held.name}.${member}`);
         }
         ts.forEachChild(at, look);
       };
@@ -364,19 +395,17 @@ export const fieldSetByAnEvent = {
         continue;
       }
       const name = memberName(member);
-      if (name === undefined) continue;
-      // `render() {}`, or `render = () => …`.
-      if (name === "render") {
-        const fn = members.get(name);
-        if (fn !== undefined) walk(fn, "render");
-        continue;
-      }
+      if (name === undefined || name === "render") continue;
       for (const { name: decorator } of coreDecorators(member, context)) {
         if (!COMMIT_DECORATORS.has(decorator)) continue;
         const fn = members.get(name);
         if (fn !== undefined) walk(fn, `@${decorator} ${name}`);
       }
     }
+    // `render() {}`, `render = () => …`, or the render it inherits — what its commit renders with.
+    const render = members.get("render");
+    if (render !== undefined) walk(render, "render");
+    for (const { field, fn } of callbackRoots) walk(fn, `the ref callback of this.${field}`);
     // `this.method()` reached from two roots is read once, and reported under the first.
     return found;
   },
@@ -403,9 +432,13 @@ function functionsOf(classes: readonly ts.ClassLikeDeclaration[]): Functions {
       if (ts.isGetAccessorDeclaration(member) && member.body !== undefined) found.getters.set(name, member);
       else if (ts.isSetAccessorDeclaration(member) && member.body !== undefined) found.setters.set(name, member);
       else if (ts.isMethodDeclaration(member) && member.body !== undefined) found.members.set(name, member);
-      else if (ts.isPropertyDeclaration(member) && member.initializer !== undefined) {
-        const held = unwrap(member.initializer);
-        if (ts.isArrowFunction(held) || ts.isFunctionExpression(held)) found.members.set(name, held);
+      else if (ts.isPropertyDeclaration(member)) {
+        // A field holding a function written there is one; any other — `start = this.go.bind(this)` —
+        // is not one this reads, and hides what the class inherits under its name.
+        const held = member.initializer === undefined ? undefined : unwrap(member.initializer);
+        if (held !== undefined && (ts.isArrowFunction(held) || ts.isFunctionExpression(held)))
+          found.members.set(name, held);
+        else found.members.delete(name);
       }
     }
   }
@@ -424,9 +457,10 @@ const LATER_CONSTRUCTORS = new Set([
  * When a function value runs, by where it is used: `now` — called there, or handed to a call that is
  * not known to run it later (`forEach`, `new Promise`, a function this cannot name); `later` — handed
  * to one of `LATER`, an observer, or written as an attribute (`onclick={…}` is an event handler, a
- * prop's function is the receiving component's to call) other than `ref`, which runs in the commit;
- * `kept` — stored or returned, for whoever reads it: its uses decide. Read through what only passes it
- * on: parentheses, `as`, `!`, an arm of `?:`, a side of `??`, `||` and `&&`.
+ * prop's function is the receiving component's to call); `kept` — stored or returned, for whoever reads
+ * it, or handed to `createRef`: its uses decide, and a ref's callback is read where it runs. Read
+ * through what only passes it on: parentheses, `as`, `!`, an arm of `?:`, a side of `??`, `||` and
+ * `&&`.
  */
 function whenItRuns(value: ts.Node): "now" | "later" | "kept" {
   const at = passedOn(value);
@@ -443,15 +477,15 @@ function whenItRuns(value: ts.Node): "now" | "later" | "kept" {
   }
   if (ts.isCallExpression(parent)) {
     if (parent.expression === at) return "now";
-    if (parent.arguments.some((argument) => argument === at)) return namedLater(parent.expression) ? "later" : "now";
+    // A ref's callback runs when its element is attached — read from there, see `refCallbacks`.
+    if (parent.arguments.some((argument) => argument === at))
+      return namedCreateRef(parent.expression) ? "kept" : namedLater(parent.expression) ? "later" : "now";
   }
   if (ts.isNewExpression(parent) && parent.arguments?.some((argument) => argument === at)) {
     const made = unwrap(parent.expression);
     return ts.isIdentifier(made) && LATER_CONSTRUCTORS.has(made.text) ? "later" : "now";
   }
-  if (ts.isJsxExpression(parent) && ts.isJsxAttribute(parent.parent)) {
-    return parent.parent.name.getText() === "ref" ? "now" : "later";
-  }
+  if (ts.isJsxExpression(parent) && ts.isJsxAttribute(parent.parent)) return "later";
   return "kept";
 }
 
@@ -517,6 +551,32 @@ function passedOn(value: ts.Node): ts.Node {
     }
     return at;
   }
+}
+
+/**
+ * Whether `this` here is the component: written in its class, not inside a `function` — whose `this` is
+ * whatever calls it, `forEach(function () { … }, other)`, unless the class keeps it in a field as one of
+ * its own — nor in an object's method. An arrow keeps the `this` around it.
+ */
+function isTheComponent(self: ts.Node): boolean {
+  for (let at = self.parent; at !== undefined; at = at.parent) {
+    if (ts.isClassLike(at)) return true;
+    // A `function` kept in a field — `attach = function () { … }` — is called as the class's own method.
+    if (ts.isFunctionDeclaration(at) || (ts.isFunctionExpression(at) && !ts.isPropertyDeclaration(passedOn(at).parent)))
+      return false;
+    if (
+      (ts.isMethodDeclaration(at) || ts.isGetAccessorDeclaration(at) || ts.isSetAccessorDeclaration(at)) &&
+      ts.isObjectLiteralExpression(at.parent)
+    )
+      return false;
+  }
+  return false;
+}
+
+/** Whether a callee is core's `createRef`, by its name. */
+function namedCreateRef(callee: ts.Expression): boolean {
+  const at = unwrap(callee);
+  return ts.isIdentifier(at) && at.text === "createRef";
 }
 
 /** Whether a callee is one of `LATER`, by its name: `queueMicrotask`, `promise.then`. */
@@ -740,97 +800,33 @@ function either(a: Held, b: Held): Held {
 }
 
 /**
- * The elements a `ref` callback's parameter is: `ref={(node) => …}` is handed the element it is written
- * on, and a method handed as one — `ref={this.attach}` — every element the class writes it on.
+ * Each ref the class makes with a callback — `box = createRef(this.attached)`, or `this.box = createRef(cb)`
+ * — by the field it is kept in: core calls the callback when the element is attached, in the commit.
  */
-function refCallbackElements(
-  name: ts.Identifier,
-  chain: readonly ts.ClassLikeDeclaration[],
-  context: RuleContext,
-  found: Map<ts.ParameterDeclaration, (ts.JsxElement | ts.JsxSelfClosingElement)[]>,
-): (ts.JsxElement | ts.JsxSelfClosingElement)[] {
-  const declared = context.resolve(name)?.declarations?.[0];
-  if (declared === undefined || !ts.isParameter(declared)) return [];
-  let elements = found.get(declared);
-  if (elements === undefined) {
-    elements = elementsOfRefCallback(declared, chain, context);
-    found.set(declared, elements);
-  }
-  return elements;
-}
-
-/** The elements a `ref` callback whose parameter this is is handed — see `refCallbackElements`. */
-function elementsOfRefCallback(
-  declared: ts.ParameterDeclaration,
-  chain: readonly ts.ClassLikeDeclaration[],
-  context: RuleContext,
-): (ts.JsxElement | ts.JsxSelfClosingElement)[] {
-  // A method handed as a ref — `ref={this.attach}`, the class's own or one it inherits — or a function
-  // kept in a field, `attach = (node) => …`, read through what only passes it on: `attach = ((node) => …)`.
-  const fn = declared.parent;
-  const written = passedOn(fn);
-  const isFunction = ts.isArrowFunction(fn) || ts.isFunctionExpression(fn);
-  const method = isFunction && ts.isPropertyDeclaration(written.parent) ? written.parent : fn;
-  if (
-    (ts.isMethodDeclaration(method) || ts.isPropertyDeclaration(method)) &&
-    chain.some((cls) => cls === method.parent)
-  ) {
-    const named = memberName(method);
-    return elementsWithARef(
-      chain,
-      (held) =>
-        ts.isPropertyAccessExpression(held) &&
-        held.expression.kind === ts.SyntaxKind.ThisKeyword &&
-        held.name.text === named,
-    );
-  }
-  // A function named where it is written — `const attach = (node) => …`, `function attach(node) {}` —
-  // and handed as a ref by that name: every element it is written on.
-  const local =
-    ts.isFunctionDeclaration(fn) && fn.name !== undefined
-      ? fn
-      : isFunction && ts.isVariableDeclaration(written.parent) && written.parent.initializer === written
-        ? written.parent
-        : undefined;
-  if (local !== undefined) {
-    return elementsWithARef(
-      chain,
-      (held) => ts.isIdentifier(held) && context.resolve(held)?.declarations?.[0] === local,
-    );
-  }
-  // Through what only passes it on: `ref={((node) => …)}`, `ref={on ? (node) => … : undefined}`,
-  // `ref={on && ((node) => …)}`.
-  const expression = written.parent;
-  if (!ts.isJsxExpression(expression) || !ts.isJsxAttribute(expression.parent)) return [];
-  if (expression.parent.name.getText() !== "ref") return [];
-  const opening = expression.parent.parent.parent;
-  if (ts.isJsxSelfClosingElement(opening)) return [opening];
-  return ts.isJsxOpeningElement(opening) ? [opening.parent] : [];
-}
-
-/** Every element this class writes a `ref` on that holds what `names` says it is, or that bound. */
-function elementsWithARef(
+function refCallbacks(
   classes: readonly ts.ClassLikeDeclaration[],
-  names: (held: ts.Expression) => boolean,
-): (ts.JsxElement | ts.JsxSelfClosingElement)[] {
-  const found: (ts.JsxElement | ts.JsxSelfClosingElement)[] = [];
+  resolve: Resolver,
+): { field: string; callback: ts.Expression }[] {
+  const found: { field: string; callback: ts.Expression }[] = [];
+  const handedTo = (value: ts.Expression | undefined): ts.Expression | undefined => {
+    const call = value === undefined ? undefined : unwrap(value);
+    if (call === undefined || !ts.isCallExpression(call) || resolve.coreName(call.expression) !== "createRef")
+      return undefined;
+    return call.arguments[0];
+  };
   const visit = (node: ts.Node): void => {
-    if (ts.isJsxAttribute(node) && node.name.getText() === "ref" && node.initializer !== undefined) {
-      const written = ts.isJsxExpression(node.initializer) ? node.initializer.expression : undefined;
-      // `ref={this.attach.bind(this)}` hands the method all the same.
-      const held = written === undefined ? undefined : unwrap(written);
-      const bound =
-        held !== undefined &&
-        ts.isCallExpression(held) &&
-        ts.isPropertyAccessExpression(held.expression) &&
-        held.expression.name.text === "bind"
-          ? unwrap(held.expression.expression)
-          : held;
-      if (bound !== undefined && names(bound)) {
-        const opening = node.parent.parent;
-        if (ts.isJsxSelfClosingElement(opening)) found.push(opening);
-        else if (ts.isJsxOpeningElement(opening)) found.push(opening.parent);
-      }
+    if (ts.isPropertyDeclaration(node) && (ts.isIdentifier(node.name) || ts.isPrivateIdentifier(node.name))) {
+      const callback = handedTo(node.initializer);
+      if (callback !== undefined) found.push({ field: node.name.text, callback });
+    }
+    if (
+      ts.isBinaryExpression(node) &&
+      node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+      ts.isPropertyAccessExpression(node.left) &&
+      node.left.expression.kind === ts.SyntaxKind.ThisKeyword
+    ) {
+      const callback = handedTo(node.right);
+      if (callback !== undefined) found.push({ field: node.left.name.text, callback });
     }
     ts.forEachChild(node, visit);
   };

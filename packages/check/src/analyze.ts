@@ -677,6 +677,9 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
       const type = checker.getTypeAtLocation(expression);
       const read: string[] = [];
       for (const member of type.isUnion() ? type.types : [type]) {
+        // A stand-in's mark — `keyof HTMLElementEventMap` is `"stub:HTMLElementEventMap"` here — names
+        // nothing the DOM lib would: what that type can be is not read.
+        if (member.isStringLiteral() && member.value.startsWith("stub:")) return undefined;
         if (member.isStringLiteral()) read.push(member.value);
         else if (absentAs !== undefined && (member.flags & (ts.TypeFlags.Undefined | ts.TypeFlags.Null)) !== 0)
           read.push(absentAs);

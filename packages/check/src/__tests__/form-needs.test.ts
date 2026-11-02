@@ -73,6 +73,8 @@ describe("a field inside a @ramonda/form form", () => {
         [lineOf('aria-label="class in a const"'), "missing", "`name`, `onblur`, `aria-invalid`"],
         // A form a base class holds, attached by the class extending it.
         [lineOf('aria-label="in a form held by a base"'), "missing", "`name`, `onblur`, `aria-invalid`"],
+        // A form a subclass holds, written by the render it inherits.
+        [lineOf(`aria-label="in a page's form"`), "missing", "`name`, `onblur`, `aria-invalid`"],
         // A render a package declares cannot be read; one a `const` holds can.
         [lineOf("<MyField />"), "unreadable-component", "MyField"],
         [lineOf('aria-label="const base"'), "missing", "`name`, `onblur`, `aria-invalid`"],
@@ -111,7 +113,7 @@ describe("a field inside a @ramonda/form form", () => {
         [lineOf("<SpreadBare attrs={bag} />"), "bag-unreadable", "attrs"],
       ]),
     );
-    expect(issues).toHaveLength(65);
+    expect(issues).toHaveLength(66);
   });
 
   test("a base reached as `module.Base` lends its render", () => {
@@ -136,8 +138,10 @@ describe("a field inside a @ramonda/form form", () => {
       lineOf("<BareInput attrs={{ value: undefined }} />"),
       lineOf("attrs={undefined} />"),
       lineOf("<TrackedInput"),
+      lineOf("<TwoSpreads a="),
       lineOf("<BareInput {...hinted} />"),
       lineOf("class BaseHolder"),
+      lineOf("class SignupPage"),
       lineOf('<BareInput {...(on ? { title: "t" } : {})} />'),
       lineOf('<Toggle type="checkbox" attrs={{ checked: on, onchange: this.type }} />'),
       lineOf("attrs={NONE} />"),

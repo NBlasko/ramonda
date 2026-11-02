@@ -91,6 +91,13 @@ class AriaInput extends Component<{
   }
 }
 
+/** Two spreads: the later may override the earlier, which is not read alone. */
+class TwoSpreads extends Component<{ a?: Record<string, unknown>; b?: Record<string, unknown> }> {
+  render() {
+    return <input aria-label="two spreads" {...this.props.a} {...this.props.b} />;
+  }
+}
+
 /** A text field with a `change` handler of its own beside the form's, then a spread. */
 class TrackedInput extends Component<{ field: any; attrs?: Record<string, unknown> }> {
   render() {
@@ -282,6 +289,8 @@ class Page extends Component {
         <DefaultsInput field={this.form.fields.email.$} attrs={bag} />
         {/* ✓ a text field's own `onchange` taken away: not one of the form's, whose handler is `oninput` */}
         <TrackedInput field={this.form.fields.email.$} attrs={{ onchange: undefined }} />
+        {/* ✓ a value in the earlier spread, its handler in the later */}
+        <TwoSpreads a={{ value: "x" }} b={{ oninput: this.type }} />
         {/* ✓ a bag handed as nothing, written or through a const: it spreads nothing */}
         <DefaultsInput field={this.form.fields.email.$} attrs={undefined} />
         <DefaultsInput field={this.form.fields.email.$} attrs={NONE} />
@@ -733,3 +742,22 @@ class RendersInheritedFields extends Component {
 }
 
 export { RendersInheritedFields };
+
+/** A page whose render writes the form, for a subclass to hold it. */
+abstract class FormPage extends Component {
+  abstract form: { submit: (event: Event) => void };
+  render() {
+    return (
+      <form onsubmit={this.form.submit}>
+        <input aria-label="in a page's form" value={value} oninput={handed.oninput} />
+      </form>
+    );
+  }
+}
+
+/** Holds the form its base's render writes. */
+class SignupPage extends FormPage {
+  form = this.use(Form, {});
+}
+
+export { SignupPage };

@@ -398,7 +398,7 @@ export function formTableFor(sources: readonly ts.SourceFile[], resolve: Resolve
               ts.isPropertyAccessExpression(written.expression) &&
               written.expression.expression.kind === ts.SyntaxKind.ThisKeyword &&
               held.has(written.expression.name.text) &&
-              enclosingClass(inner) === node
+              chain.some((cls) => cls === enclosingClass(inner))
             ) {
               formElements.add(inner);
               attached.add(written.expression.name.text);
@@ -406,7 +406,8 @@ export function formTableFor(sources: readonly ts.SourceFile[], resolve: Resolve
           }
           ts.forEachChild(inner, look);
         };
-        ts.forEachChild(node, look);
+        // Its own render, or the one it inherits: `<form onsubmit={this.form.submit}>` there is its form.
+        for (const cls of chain) ts.forEachChild(cls, look);
         attachedBy.set(node, { chain, fields: attached });
       }
     }
@@ -525,6 +526,8 @@ export function formTableFor(sources: readonly ts.SourceFile[], resolve: Resolve
     const properties = opening.attributes.properties;
     properties.forEach((attribute, index) => {
       if (!ts.isJsxSpreadAttribute(attribute)) return;
+      // The spread written last: one a later spread may override is not read alone.
+      if (properties.slice(index + 1).some(ts.isJsxSpreadAttribute)) return;
       const prop = propRead(attribute.expression);
       if (prop === undefined) return;
       const handled = writes.some((name) => said(name));

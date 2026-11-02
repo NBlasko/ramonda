@@ -81,10 +81,10 @@ const A_PROP = { bag: false, wants: "nothing", shadowed: [], overridable: [] } a
  * name. A spread hands none for sure — its type does not say what it copies, and a getter, as a form
  * field's `inputValue` is, is not copied. A wrapper that hands its own props on, `<StyledInput
  * {...this.props} />`, is checked where IT is used, as `name={this.props.name}` is. A spread of a prop
- * on a field, `{...this.props.attrs}` — the usual way to let a caller overwrite a default — is checked
- * at every use, inside a form or not: each hands it as an object written there, sets none of the form's
- * attributes the field writes before it to nothing, and hands no `value` (`checked`) without an
- * `oninput` or `onchange` beside it, unless the field writes its own by name. A shorthand, `{ oninput
+ * written last on a field, `{...this.props.attrs}` — the usual way to let a caller overwrite a default —
+ * is checked at every use, inside a form or not: each hands it as an object written there, sets none of
+ * the form's attributes the field writes before it to nothing, and hands no `value` (`checked`) without
+ * an `oninput` or `onchange` beside it, unless the field writes its own by name. A shorthand, `{ oninput
  * }`, is followed to the `const` it names.
  *
  * Reported as well, since a form this cannot recognise is a form whose fields this cannot check: a
@@ -284,9 +284,11 @@ function readBag(
   holdsNothing: (expression: ts.Expression) => boolean,
   found: FormFieldWithoutWhatTheFormNeedsIssue[],
 ): void {
+  // What it hands cannot be read: one report, and nothing more is asked of it.
+  const unreadable = () => found.push({ kind: "bag-unreadable", component: site.tag, detail: name, ...where(site) });
   const written = unwrap(handed);
   if (!ts.isObjectLiteralExpression(written)) {
-    found.push({ kind: "bag-unreadable", component: site.tag, detail: name, ...where(site) });
+    unreadable();
     return;
   }
   // The keys the bag sets to something: a key that holds nothing — `{ oninput: undefined }` — carries
@@ -299,12 +301,12 @@ function readBag(
       continue;
     }
     if (!ts.isPropertyAssignment(property) && !ts.isShorthandPropertyAssignment(property)) {
-      found.push({ kind: "bag-unreadable", component: site.tag, detail: name, ...where(site) });
+      unreadable();
       return;
     }
     const key = ts.isIdentifier(property.name) || ts.isStringLiteral(property.name) ? property.name.text : undefined;
     if (key === undefined) {
-      found.push({ kind: "bag-unreadable", component: site.tag, detail: name, ...where(site) });
+      unreadable();
       return;
     }
     // `{ oninput }` is `{ oninput: oninput }`, and the name is followed to what it holds.

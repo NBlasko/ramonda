@@ -214,26 +214,27 @@ class DispatchesAtQueriedFields extends Component {
   }
 }
 
-/** An arrow kept in a field and handed as a ref is handed the element it is written on. */
+/** A ref made with an arrow callback: core calls it with the element as it attaches it. */
 class ClicksThroughARefArrow extends Component {
   @state on = false;
-  attach = (node: HTMLInputElement | null) => {
-    node?.click(); // REPORT click through a ref arrow
-  };
+  box = createRef<HTMLInputElement>((node) => {
+    node?.click(); // REPORT click in a ref's arrow callback
+  });
   render() {
-    return <input type="checkbox" aria-label="b" ref={this.attach} checked={this.on} onchange={this.picked} />;
+    return <input type="checkbox" aria-label="b" ref={this.box} checked={this.on} onchange={this.picked} />;
   }
   picked() {}
 }
 
-/** A ref callback written as a method is handed the element it is written on. */
+/** A ref made with a method as its callback. */
 class ClicksThroughARefMethod extends Component {
   @state on = false;
-  attach(node: HTMLInputElement | null) {
-    node?.click(); // REPORT click through a ref method
+  box = createRef<HTMLInputElement>(this.attached);
+  attached(node: HTMLInputElement | null) {
+    node?.click(); // REPORT click in a ref's method callback
   }
   render() {
-    return <input type="checkbox" aria-label="b" ref={this.attach} checked={this.on} onchange={this.picked} />;
+    return <input type="checkbox" aria-label="b" ref={this.box} checked={this.on} onchange={this.picked} />;
   }
   picked() {}
 }
@@ -622,17 +623,11 @@ class ClicksALabelForABox extends Component {
 
 class ARefCallbackRunsInTheCommit extends Component {
   @state on = false;
+  box = createRef<HTMLInputElement>((node) => node?.dispatchEvent(new Event("change"))); // REPORT ref callback
   render() {
-    return (
-      <input
-        type="checkbox"
-        aria-label="b"
-        ref={(node: HTMLInputElement | null) => node?.dispatchEvent(new Event("change"))} // REPORT ref callback
-        checked={this.on}
-        onchange={() => {}}
-      />
-    );
+    return <input type="checkbox" aria-label="b" ref={this.box} checked={this.on} onchange={this.flipped} />;
   }
+  flipped() {}
 }
 
 declare function load(): Promise<string>;
@@ -683,22 +678,6 @@ class DispatchesAHeldEdit extends Component {
     return <input aria-label="t" ref={this.field} value={this.text} oninput={this.typed} />;
   }
   typed() {}
-}
-
-class RefCallbackInAConditional extends Component {
-  @state on = false;
-  render() {
-    return (
-      <input
-        type="checkbox"
-        aria-label="b"
-        ref={this.on ? (node: HTMLInputElement | null) => node?.click() : undefined} // REPORT ref in a conditional
-        checked={this.on}
-        onchange={this.flipped}
-      />
-    );
-  }
-  flipped() {}
 }
 
 class HandlerHeldInALocal extends Component {
@@ -815,23 +794,6 @@ class ClicksInAnAccessor extends Component {
   flipped() {}
 }
 
-class ClicksInALocalRef extends Component {
-  @state on = false;
-  render() {
-    const attach = (node: HTMLInputElement | null) => node?.click(); // REPORT click in a local ref callback
-    function grab(node: HTMLInputElement | null) {
-      node?.click(); // REPORT click in a local function handed as a ref
-    }
-    return (
-      <div>
-        <input type="checkbox" aria-label="a" ref={attach} checked={this.on} onchange={this.flipped} />
-        <input type="checkbox" aria-label="g" ref={grab} checked={this.on} onchange={this.flipped} />
-      </div>
-    );
-  }
-  flipped() {}
-}
-
 class DispatchesThroughTheFormsElements extends Component {
   @state text = "";
   form = createRef<HTMLFormElement>();
@@ -891,22 +853,15 @@ class RendersAsAnArrow extends Component {
   flipped() {}
 }
 
-/** A function expression kept in a field, and an arrow kept in parentheses, are ref callbacks too. */
+/** A function expression kept in a field, made the callback of a ref kept in another. */
 class ClicksThroughARefFunction extends Component {
   @state on = false;
   attach = function (node: HTMLInputElement | null) {
-    node?.click(); // REPORT click through a ref function expression
+    node?.click(); // REPORT click in a ref's function-expression callback
   };
-  grab = ((node: HTMLInputElement | null) => {
-    node?.click(); // REPORT click through a parenthesized ref arrow
-  }) as (node: HTMLInputElement | null) => void;
+  box = createRef<HTMLInputElement>(this.attach);
   render() {
-    return (
-      <div>
-        <input type="checkbox" aria-label="a" ref={this.attach} checked={this.on} onchange={this.picked} />
-        <input type="checkbox" aria-label="g" ref={this.grab} checked={this.on} onchange={this.picked} />
-      </div>
-    );
+    return <input type="checkbox" aria-label="a" ref={this.box} checked={this.on} onchange={this.picked} />;
   }
   picked() {}
 }
@@ -932,15 +887,28 @@ class DispatchesATypedName extends Component {
   typed() {}
 }
 
-/** A method handed as a ref through `.bind`. */
+/** A method made a ref's callback through `.bind`, and a ref kept by the constructor. */
 class ClicksThroughABoundRef extends Component {
   @state on = false;
+  box = createRef<HTMLInputElement>(this.attach.bind(this));
+  other: { current: HTMLInputElement | null };
+  local: { current: HTMLInputElement | null };
+  constructor(props: unknown) {
+    super(props);
+    this.other = createRef<HTMLInputElement>((node) => node?.click()); // REPORT click in a ref callback the constructor makes
+    const grab = (node: HTMLInputElement | null) => node?.click(); // REPORT click in a local function made a ref's callback
+    this.local = createRef<HTMLInputElement>(grab);
+  }
   attach(node: HTMLInputElement | null) {
-    node?.click(); // REPORT click through a bound ref method
+    node?.click(); // REPORT click in a bound ref callback
   }
   render() {
     return (
-      <input type="checkbox" aria-label="b" ref={this.attach.bind(this)} checked={this.on} onchange={this.picked} />
+      <div>
+        <input type="checkbox" aria-label="b" ref={this.box} checked={this.on} onchange={this.picked} />
+        <input type="checkbox" aria-label="o" ref={this.other} checked={this.on} onchange={this.picked} />
+        <input type="checkbox" aria-label="l" ref={this.local} checked={this.on} onchange={this.picked} />
+      </div>
     );
   }
   picked() {}
@@ -1050,33 +1018,6 @@ class ClicksThroughItsBase extends ClickingBase {
   }
 }
 
-/** An inline ref callback through `&&` and `as`, which only pass it on. */
-class RefCallbackThroughAnd extends Component {
-  @state on = false;
-  @state shown = true;
-  render() {
-    return (
-      <div>
-        <input
-          type="checkbox"
-          aria-label="a"
-          checked={this.on}
-          onchange={this.flip}
-          ref={this.shown && ((node: HTMLInputElement | null) => node?.click())} // REPORT through &&
-        />
-        <input
-          type="checkbox"
-          aria-label="b"
-          checked={this.on}
-          onchange={this.flip}
-          ref={((node: HTMLInputElement | null) => node?.click()) as (node: HTMLInputElement | null) => void} // REPORT through as
-        />
-      </div>
-    );
-  }
-  flip() {}
-}
-
 /** A ref callback method a base declares, and a ref its render attaches, used by a subclass. */
 class RefsInABase extends Component {
   @state on = false;
@@ -1110,8 +1051,9 @@ class UsesRefsInABase extends RefsInABase {
 }
 
 class UsesARefMethodInABase extends RefsInABase {
+  third = createRef<HTMLInputElement>(this.attach);
   render() {
-    return <input type="checkbox" aria-label="c" ref={this.attach} checked={this.on} onchange={this.flip} />;
+    return <input type="checkbox" aria-label="c" ref={this.third} checked={this.on} onchange={this.flip} />;
   }
 }
 
@@ -1160,4 +1102,89 @@ class RemovesItsListener extends Component {
     return <input type="checkbox" aria-label="b" ref={this.box} checked={this.on} onchange={this.flip} />;
   }
   flip() {}
+}
+
+/** A base whose render calls a method a subclass gives a body. */
+class RendersWithAHook extends Component {
+  @state on = false;
+  box = createRef<HTMLInputElement>();
+  render() {
+    this.setup();
+    return <input type="checkbox" aria-label="b" ref={this.box} checked={this.on} onchange={this.flip} />;
+  }
+  setup() {}
+  flip() {}
+}
+
+class FillsTheHook extends RendersWithAHook {
+  setup() {
+    this.box.current?.click(); // REPORT click in a method an inherited render calls
+  }
+}
+
+/** A field that is not a function hides the base method of its name; a `function`'s `this` is not the class. */
+class ShadowsAndOtherThis extends ClickingBase {
+  @state count = 0;
+  num = createRef<HTMLInputElement>();
+  // Hides the base's clicking `tick`.
+  @mounted
+  tick = this.nothing.bind(this);
+  @updated
+  moved() {
+    [1].forEach(
+      function (this: { box: { current: HTMLInputElement | null }; press(): void }) {
+        this.box.current?.click();
+        this.press();
+      },
+      { box: createRef<HTMLInputElement>(), press() {} },
+    );
+    this.num.current!.value++; // REPORT write by ++
+    this.box.current!["checked"] = true; // REPORT write by an index
+  }
+  nothing() {}
+  // Called by no one here: the `press` above is the object's.
+  press() {
+    this.box.current?.click();
+  }
+  render() {
+    return (
+      <div>
+        <input type="checkbox" aria-label="b" ref={this.box} checked={this.on} onchange={this.picked} />
+        <input type="number" aria-label="n" ref={this.num} value={this.count} oninput={this.picked} />
+      </div>
+    );
+  }
+}
+
+/** A `function` kept in a field is the class's own method: its `this` is the component. */
+class FieldFunctionThis extends Component {
+  @state on = false;
+  box = createRef<HTMLInputElement>();
+  go = function (this: FieldFunctionThis) {
+    this.box.current?.click(); // REPORT click in a field's function, called as the class's method
+  };
+  @mounted
+  start() {
+    this.go();
+  }
+  render() {
+    return <input type="checkbox" aria-label="b" ref={this.box} checked={this.on} onchange={this.flip} />;
+  }
+  flip() {}
+}
+
+declare const anEventName: () => keyof HTMLElementEventMap;
+
+/** An event named by a DOM map's keys: with the real DOM lib, `input` among them. */
+class DispatchesAMapsKey extends Component {
+  @state text = "";
+  field = createRef<HTMLInputElement>();
+  @mounted
+  start() {
+    this.field.current?.dispatchEvent(new Event(anEventName())); // REPORT a type read off a stand-in
+  }
+  render() {
+    return <input aria-label="t" ref={this.field} value={this.text} oninput={this.typed} />;
+  }
+  typed() {}
 }
