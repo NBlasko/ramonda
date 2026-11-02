@@ -633,6 +633,16 @@ class UnionSpread extends Component {
 
 export { Generic, UsesNamedByAProp, InABlockBody, PrivateForm, PrivateDetached, UnionSpread };
 
+/** The same, with a `change` handler of its own: a box's handler, once the spread makes it a box. */
+class ToggleWithItsOwn extends Component<{ type: "checkbox" | "text"; attrs?: Record<string, unknown> }> {
+  render() {
+    return (
+      <input aria-label="toggle with its own" type={this.props.type} onchange={this.toggled} {...this.props.attrs} />
+    );
+  }
+  toggled() {}
+}
+
 /** An input whose `type` cannot be read, then a spread: a box or a text field, by what it is handed. */
 class Toggle extends Component<{ type: "checkbox" | "text"; attrs?: Record<string, unknown> }> {
   render() {
@@ -649,6 +659,8 @@ class UsesToggle extends Component {
         <Toggle type="checkbox" attrs={{ checked: on }} />
         {/* ✓ handed `checked` and `onchange`, a box's handler */}
         <Toggle type="checkbox" attrs={{ checked: on, onchange: this.type }} />
+        {/* ✓ handed `checked`, beside the field's own `onchange` */}
+        <ToggleWithItsOwn type="checkbox" attrs={{ checked: on }} />
         {/* ✗ handed `value` and only `onchange`: as a text field, its handler is `oninput` */}
         <Toggle type="text" attrs={{ value: "v", onchange: this.type }} />
       </div>
@@ -797,4 +809,12 @@ const ConstHolder = class extends Component {
   }
 };
 
-export { UsesAFooter, ConstHolder };
+/** ✗ form-not-attached — named by its `const`, through the `satisfies` after it. */
+const ParenHolder = class extends Component {
+  signup = this.use(Form, {});
+  render() {
+    return <div>nothing</div>;
+  }
+} satisfies object;
+
+export { UsesAFooter, ConstHolder, ParenHolder };

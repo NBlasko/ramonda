@@ -208,7 +208,9 @@ export const fieldSetByAnEvent = {
     // One callback a class makes two refs with is handed the elements of both.
     const callbackOf = new Map<ts.ParameterDeclaration, string[]>();
     const callbackRoots: { name: string; fn: ts.Node }[] = [];
-    for (const { field, name, callback } of refCallbacks(chain, resolve, fieldKey)) {
+    for (const { name: written, at, callback } of chain.flatMap((cls) => refCallbacksIn(cls, resolve))) {
+      const field = fieldKey(written, at);
+      const name = written.text;
       const fn = functionHandedAs(callback);
       if (fn === undefined) continue;
       const parameter = fn.parameters[0];
@@ -779,8 +781,12 @@ function labelsABox(
   context: RuleContext,
 ): boolean {
   const opening = openingOf(label);
+  // A `for` written as nothing — `for={undefined}` — is none, as core reads it.
   const forAttribute = opening.attributes.properties.find(
-    (p): p is ts.JsxAttribute => ts.isJsxAttribute(p) && ["for", "htmlFor"].includes(p.name.getText()),
+    (p): p is ts.JsxAttribute =>
+      ts.isJsxAttribute(p) &&
+      ["for", "htmlFor"].includes(p.name.getText()) &&
+      says(opening, p.name.getText(), context.resolve),
   );
   if (forAttribute !== undefined) {
     const ids = attributeLiterals(forAttribute, context.resolve);
@@ -845,6 +851,7 @@ function heldAs(
 function boxesOf(classes: readonly ts.ClassLikeDeclaration[], context: RuleContext): Map<string, boolean> {
   const boxes = new Map<string, boolean>();
   const ids = (node: ts.Node): void => {
+    if (ts.isClassLike(node) && !classes.includes(node)) return;
     const tag =
       ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node)
         ? (coreElementTag(openingOf(node).tagName, context.resolve) ?? openingOf(node).tagName.getText())
@@ -872,15 +879,17 @@ function either(a: Held, b: Held): Held {
 }
 
 /**
- * Each ref the class makes with a callback — `box = createRef(this.attached)`, or `this.box = createRef(cb)`
- * — by the field it is kept in: core calls the callback when the element is attached, in the commit.
+ * Each ref a class makes with a callback — `box = createRef(this.attached)`, or `this.box = createRef(cb)`
+ * — by the field it is kept in: core calls the callback when the element is attached, in the commit. A
+ * class written inside it makes refs of its own, and is not read. Read once for each class.
  */
-function refCallbacks(
-  classes: readonly ts.ClassLikeDeclaration[],
+function refCallbacksIn(
+  cls: ts.ClassLikeDeclaration,
   resolve: Resolver,
-  fieldKey: (name: ts.MemberName, written: ts.Node) => string,
-): { field: string; name: string; callback: ts.Expression }[] {
-  const found: { field: string; name: string; callback: ts.Expression }[] = [];
+): { name: ts.MemberName; at: ts.Node; callback: ts.Expression }[] {
+  const known = refCallbacksRead.get(cls);
+  if (known !== undefined) return known;
+  const found: { name: ts.MemberName; at: ts.Node; callback: ts.Expression }[] = [];
   const handedTo = (value: ts.Expression | undefined): ts.Expression | undefined => {
     const call = value === undefined ? undefined : unwrap(value);
     if (call === undefined || !ts.isCallExpression(call) || resolve.coreName(call.expression) !== "createRef")
@@ -888,9 +897,10 @@ function refCallbacks(
     return call.arguments[0];
   };
   const visit = (node: ts.Node): void => {
+    if (ts.isClassLike(node) && node !== cls) return;
     if (ts.isPropertyDeclaration(node) && (ts.isIdentifier(node.name) || ts.isPrivateIdentifier(node.name))) {
       const callback = handedTo(node.initializer);
-      if (callback !== undefined) found.push({ field: fieldKey(node.name, node), name: node.name.text, callback });
+      if (callback !== undefined) found.push({ name: node.name, at: node, callback });
     }
     if (
       ts.isBinaryExpression(node) &&
@@ -899,14 +909,20 @@ function refCallbacks(
       node.left.expression.kind === ts.SyntaxKind.ThisKeyword
     ) {
       const callback = handedTo(node.right);
-      if (callback !== undefined)
-        found.push({ field: fieldKey(node.left.name, node), name: node.left.name.text, callback });
+      if (callback !== undefined) found.push({ name: node.left.name, at: node, callback });
     }
     ts.forEachChild(node, visit);
   };
-  for (const cls of classes) visit(cls);
+  visit(cls);
+  refCallbacksRead.set(cls, found);
   return found;
 }
+
+/** What `refCallbacksIn` read of each class. */
+const refCallbacksRead = new WeakMap<
+  ts.ClassLikeDeclaration,
+  { name: ts.MemberName; at: ts.Node; callback: ts.Expression }[]
+>();
 
 /**
  * Every ref this class renders, by field name, and what it is attached to: a checkbox or a radio, a
@@ -920,6 +936,8 @@ function refsOf(
 ): Map<string, Held> {
   const refs = new Map<string, Held>();
   const visit = (node: ts.Node): void => {
+    // A class written inside one keeps refs of its own.
+    if (ts.isClassLike(node) && !classes.includes(node)) return;
     if (ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node)) {
       const opening = openingOf(node);
       const attributes = opening.attributes.properties.filter(ts.isJsxAttribute);

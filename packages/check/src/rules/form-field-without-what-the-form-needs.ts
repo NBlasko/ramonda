@@ -60,10 +60,12 @@ interface Need {
    * use hands it, inside a form or not.
    */
   held: boolean;
+  /** For a spread, whether the field writes its own `onchange` — see `SpreadBag.changes`. */
+  changes: boolean;
 }
 
 /** One attribute a field takes from a prop: no spread, nothing it wants beside it. */
-const A_PROP = { bag: false, wants: "nothing", shadowed: [], overridable: [] } as const;
+const A_PROP = { bag: false, wants: "nothing", shadowed: [], overridable: [], changes: false } as const;
 
 /**
  * A field inside a `@ramonda/form` form, written without everything the form needs.
@@ -175,8 +177,8 @@ export const formFieldWithoutWhatTheFormNeeds = {
       const { owner } = asked;
       if (owner === undefined) return;
       if (!ids.has(owner)) ids.set(owner, ids.size);
-      const { name, bag, wants, shadowed, overridable, held } = asked;
-      const key = `${ids.get(owner)}|${name}|${bag}|${wants}|${shadowed.join(",")}|${overridable.join(",")}|${held}`;
+      const { name, bag, wants, shadowed, overridable, held, changes } = asked;
+      const key = `${ids.get(owner)}|${name}|${bag}|${wants}|${shadowed.join(",")}|${overridable.join(",")}|${held}|${changes}`;
       if (seen.has(key)) return;
       seen.add(key);
       queue.push({ ...asked, owner });
@@ -219,6 +221,7 @@ export const formFieldWithoutWhatTheFormNeeds = {
         shadowed: bag.shadowed,
         overridable: bag.overridable,
         held: false,
+        changes: bag.changes,
       });
     }
 
@@ -283,7 +286,7 @@ export const formFieldWithoutWhatTheFormNeeds = {
 function readBag(
   handed: ts.Expression,
   site: ComponentSite,
-  { name, wants, shadowed, overridable }: Need,
+  { name, wants, shadowed, overridable, changes }: Need,
   holdsNothing: (expression: ts.Expression) => boolean,
   found: FormFieldWithoutWhatTheFormNeedsIssue[],
 ): void {
@@ -325,10 +328,11 @@ function readBag(
   const handles = (key: string) => keys.has(key) && !shadowed.includes(key);
   // A box — or an input whose `type` cannot be read, handed `checked` — takes either handler.
   const box = wants === "box" || (wants === "unread" && handles("checked"));
+  // A box's own `onchange`, written on the field, is a handler too.
   const carries =
     handles("oninput") ||
     handles("on:input") ||
-    ((wants === "pick" || box) && (handles("onchange") || handles("on:change")));
+    ((wants === "pick" || box) && (handles("onchange") || handles("on:change") || changes));
   // A value the field writes after the spread is the field's, whatever the spread says.
   // The model key the spread may set: `checked` on a box, `value` on anything else — and only when the
   // field does not write it after the spread.

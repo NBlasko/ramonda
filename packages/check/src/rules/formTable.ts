@@ -87,6 +87,11 @@ export interface SpreadBag extends Where {
    * the spread hands — a box when it hands `checked`.
    */
   unread: boolean;
+  /**
+   * Whether the field writes its own `onchange` (`on:change`) — a box's handler, which an `unread` input
+   * the spread makes a box has without the spread's.
+   */
+  changes: boolean;
   /** The attributes the field writes after the spread, which it therefore cannot override. */
   shadowed: readonly string[];
   /**
@@ -233,8 +238,51 @@ function isFormHook(initializer: ts.Expression | undefined, resolve: Resolver): 
   return declared !== undefined && ts.isClassDeclaration(declared) && declared.name?.text === "Form";
 }
 
-/** The names of a class's fields that hold a `Form`. */
+/**
+ * Every `<form onsubmit={this.X.submit}>` a class writes, with the field `X` it names — whether that field
+ * holds a form is asked of the class that renders it. Read once for each class.
+ */
+function formsSubmittedIn(
+  cls: ts.ClassLikeDeclaration,
+): { form: ts.JsxElement | ts.JsxSelfClosingElement; field: string }[] {
+  const known = formsSubmitted.get(cls);
+  if (known !== undefined) return known;
+  const found: { form: ts.JsxElement | ts.JsxSelfClosingElement; field: string }[] = [];
+  const look = (inner: ts.Node): void => {
+    if ((ts.isJsxElement(inner) || ts.isJsxSelfClosingElement(inner)) && tagOf(inner) === "form") {
+      const submit = openingOf(inner).attributes.properties.find(
+        (p): p is ts.JsxAttribute => ts.isJsxAttribute(p) && p.name.getText() === "onsubmit",
+      );
+      const handler = submit === undefined ? undefined : valueOf(submit);
+      const written = handler === undefined ? undefined : unwrap(handler);
+      if (
+        written !== undefined &&
+        ts.isPropertyAccessExpression(written) &&
+        written.name.text === "submit" &&
+        ts.isPropertyAccessExpression(written.expression) &&
+        written.expression.expression.kind === ts.SyntaxKind.ThisKeyword &&
+        enclosingClass(inner) === cls
+      ) {
+        found.push({ form: inner, field: written.expression.name.text });
+      }
+    }
+    ts.forEachChild(inner, look);
+  };
+  ts.forEachChild(cls, look);
+  formsSubmitted.set(cls, found);
+  return found;
+}
+
+/** What `formsSubmittedIn` read of each class. */
+const formsSubmitted = new WeakMap<
+  ts.ClassLikeDeclaration,
+  { form: ts.JsxElement | ts.JsxSelfClosingElement; field: string }[]
+>();
+
+/** The names of a class's fields that hold a `Form`. Read once for each class. */
 function formFieldsOf(cls: ts.ClassLikeDeclaration, resolve: Resolver): Set<string> {
+  const known = formFieldsRead.get(cls);
+  if (known !== undefined) return known;
   const names = new Set<string>();
   for (const member of cls.members) {
     // A private one too, `#form`, read as `this.#form.submit`.
@@ -246,8 +294,25 @@ function formFieldsOf(cls: ts.ClassLikeDeclaration, resolve: Resolver): Set<stri
       names.add(member.name.text);
     }
   }
+  formFieldsRead.set(cls, names);
   return names;
 }
+
+/** The name of the `const` a class is held by, through what only passes it on: `const Signup = (class …)`. */
+function constName(cls: ts.ClassLikeDeclaration): string | undefined {
+  let at: ts.Node = cls;
+  while (
+    ts.isParenthesizedExpression(at.parent) ||
+    ts.isAsExpression(at.parent) ||
+    ts.isSatisfiesExpression(at.parent) ||
+    ts.isNonNullExpression(at.parent)
+  )
+    at = at.parent;
+  return ts.isVariableDeclaration(at.parent) && ts.isIdentifier(at.parent.name) ? at.parent.name.text : undefined;
+}
+
+/** What `formFieldsOf` read of each class. */
+const formFieldsRead = new WeakMap<ts.ClassLikeDeclaration, Set<string>>();
 
 /** Whether a class extends core's `Hook` — itself, or through a class of the project's that does. */
 function isHookClass(cls: ts.ClassLikeDeclaration, resolve: Resolver): boolean {
@@ -306,20 +371,16 @@ function readableClass(tagName: ts.JsxTagNameExpression, resolve: Resolver): ts.
   const known = readableClasses.get(declaration);
   if (known !== undefined) return known ?? undefined;
   const declared = classOf(declaration);
+  if (declared === undefined || !isReadable(declared)) {
+    readableClasses.set(declaration, null);
+    return undefined;
+  }
   // The class whose render it renders with — its own, or the nearest it inherits: the fields written
   // there are that class's. One a package declares cannot be read, and neither can the class using it.
-  const renders =
-    declared === undefined || !isReadable(declared)
-      ? undefined
-      : classChain(declared, resolve).find((cls) => cls.members.some((member) => memberName(member) === "render"));
-  const found =
-    declared === undefined || !isReadable(declared)
-      ? undefined
-      : renders === undefined
-        ? declared
-        : isReadable(renders)
-          ? renders
-          : undefined;
+  const renders = classChain(declared, resolve).find((cls) =>
+    cls.members.some((member) => memberName(member) === "render"),
+  );
+  const found = renders === undefined ? declared : isReadable(renders) ? renders : undefined;
   readableClasses.set(declaration, found ?? null);
   return found;
 }
@@ -384,30 +445,14 @@ export function formTableFor(sources: readonly ts.SourceFile[], resolve: Resolve
       const held = new Set([...own, ...chain.slice(1).flatMap((base) => [...formFieldsOf(base, resolve)])]);
       if (held.size > 0) {
         const attached = new Set<string>();
-        const look = (inner: ts.Node): void => {
-          if ((ts.isJsxElement(inner) || ts.isJsxSelfClosingElement(inner)) && tagOf(inner) === "form") {
-            const submit = openingOf(inner).attributes.properties.find(
-              (p): p is ts.JsxAttribute => ts.isJsxAttribute(p) && p.name.getText() === "onsubmit",
-            );
-            const handler = submit === undefined ? undefined : valueOf(submit);
-            const written = handler === undefined ? undefined : unwrap(handler);
-            if (
-              written !== undefined &&
-              ts.isPropertyAccessExpression(written) &&
-              written.name.text === "submit" &&
-              ts.isPropertyAccessExpression(written.expression) &&
-              written.expression.expression.kind === ts.SyntaxKind.ThisKeyword &&
-              held.has(written.expression.name.text) &&
-              chain.some((cls) => cls === enclosingClass(inner))
-            ) {
-              formElements.add(inner);
-              attached.add(written.expression.name.text);
-            }
-          }
-          ts.forEachChild(inner, look);
-        };
         // Its own render, or the one it inherits: `<form onsubmit={this.form.submit}>` there is its form.
-        for (const cls of chain) ts.forEachChild(cls, look);
+        for (const cls of chain) {
+          for (const { form, field } of formsSubmittedIn(cls)) {
+            if (!held.has(field)) continue;
+            formElements.add(form);
+            attached.add(field);
+          }
+        }
         attachedBy.set(node, { chain, fields: attached });
       }
     }
@@ -422,11 +467,7 @@ export function formTableFor(sources: readonly ts.SourceFile[], resolve: Resolve
     }
     holders.push({
       // A class a `const` holds is named by it: `const Signup = class extends Component { … }`.
-      component:
-        cls.name?.text ??
-        (ts.isVariableDeclaration(cls.parent) && ts.isIdentifier(cls.parent.name)
-          ? cls.parent.name.text
-          : "(anonymous)"),
+      component: cls.name?.text ?? constName(cls) ?? "(anonymous)",
       isHook: isHookClass(cls, resolve),
       fields: [...fields],
       unattached: [...fields].filter((field) => !attached.has(field)),
@@ -561,6 +602,7 @@ export function formTableFor(sources: readonly ts.SourceFile[], resolve: Resolve
         pick,
         box,
         unread: kind === "unread" && !box,
+        changes: said("onchange") || said("on:change"),
         shadowed,
         overridable,
         ...positionOf(opening),

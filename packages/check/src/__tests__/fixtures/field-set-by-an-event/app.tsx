@@ -1305,3 +1305,49 @@ class DocumentsAndStatics extends CalmBase {
   }
   typed() {}
 }
+
+/** A class written inside a component makes refs of its own; a `for` written as nothing is none. */
+class NestedRefAndAnEmptyFor extends Component {
+  @state on = false;
+  @state typed = "";
+  box = createRef<HTMLInputElement>();
+  label = createRef<HTMLLabelElement>();
+  text = createRef<HTMLInputElement>();
+  other = createRef<HTMLLabelElement>();
+  @mounted
+  start() {
+    const Helper = class {
+      box = createRef<HTMLInputElement>((el) => el?.click());
+      text = createRef<HTMLInputElement>();
+      render() {
+        return (
+          <div>
+            <input type="checkbox" aria-label="h" ref={this.text} />
+            <input type="checkbox" aria-label="s" id="shared-id" />
+          </div>
+        );
+      }
+    };
+    new Helper();
+    this.label.current?.click();
+    // The component's `text` is on a text field: the helper's checkbox is another object's ref.
+    this.text.current?.click();
+    // Its `for` names the component's text field; the helper's box of that id is another render's.
+    this.other.current?.click();
+  }
+  render() {
+    return (
+      <div>
+        <input type="checkbox" aria-label="b" ref={this.box} checked={this.on} onchange={this.flip} />
+        <label ref={this.label} for={undefined}>
+          Name <input type="text" aria-label="n" ref={this.text} value={this.typed} oninput={this.flip} />
+        </label>
+        <input type="text" aria-label="shared" id="shared-id" value={this.typed} oninput={this.flip} />
+        <label for="shared-id" ref={this.other}>
+          Shared
+        </label>
+      </div>
+    );
+  }
+  flip() {}
+}
