@@ -78,6 +78,7 @@ describe("a field inside a @ramonda/form form", () => {
         [lineOf('aria-label="in a form held by a base"'), "missing", "`name`, `onblur`, `aria-invalid`"],
         // A form a subclass holds, written by the render it inherits.
         [lineOf(`aria-label="in a page's form"`), "missing", "`name`, `onblur`, `aria-invalid`"],
+        [lineOf('aria-label="in a declared form"'), "missing", "`name`, `onblur`, `aria-invalid`"],
         // A render a package declares cannot be read; one a `const` holds can.
         [lineOf("<MyField />"), "unreadable-component", "MyField"],
         [lineOf('aria-label="const base"'), "missing", "`name`, `onblur`, `aria-invalid`"],
@@ -117,7 +118,7 @@ describe("a field inside a @ramonda/form form", () => {
         [lineOf("<SpreadBare attrs={bag} />"), "bag-unreadable", "attrs"],
       ]),
     );
-    expect(issues).toHaveLength(69);
+    expect(issues).toHaveLength(70);
   });
 
   test("a holder a `const` keeps is named by it, and a field with no handler is told which one it needs", () => {
@@ -134,6 +135,11 @@ describe("a field inside a @ramonda/form form", () => {
       })
       .slice(1);
     expect(line).toContain("`oninput` on a text field");
+    // A field may write nothing before its spread: the message does not say it does.
+    const [unread] = formFieldWithoutWhatTheFormNeeds.report
+      .lines({ kind: "bag-unreadable", component: "Bare", detail: "attrs", file: "app.tsx", line: 1, column: 1 })
+      .slice(1);
+    expect(unread).not.toContain("over its form attributes");
   });
 
   test("a base reached as `module.Base` lends its render", () => {
@@ -160,6 +166,7 @@ describe("a field inside a @ramonda/form form", () => {
       lineOf("<TrackedInput"),
       lineOf("<TwoSpreads a="),
       lineOf("<EarlySpread field={this.type} attrs={bag} />"),
+      lineOf('aria-label="in a plain form"'),
       lineOf('<ToggleWithItsOwn type="checkbox" attrs={{ checked: on }} />'),
       lineOf('aria-label="in a footer"'),
       lineOf("<BareInput {...hinted} />"),

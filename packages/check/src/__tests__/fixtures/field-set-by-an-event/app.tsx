@@ -1351,3 +1351,50 @@ class NestedRefAndAnEmptyFor extends Component {
   }
   flip() {}
 }
+
+/** A `click` built as a plain event, a ref a subclass makes again, and another instance's `#private`. */
+class CallbackBase extends Component {
+  @state on = false;
+  box = createRef<HTMLInputElement>(this.attached);
+  attached(node: HTMLInputElement | null) {
+    node?.click();
+  }
+}
+
+class PlainClicksAndPeers extends CallbackBase {
+  // Made again without a callback: the base's `attached` is never handed an element.
+  box = createRef<HTMLInputElement>();
+  peers: PlainClicksAndPeers[] = [];
+  @mounted
+  start() {
+    // Neither toggles a box: only a mouse event's `click` activates.
+    this.box.current?.dispatchEvent(new Event("click"));
+    this.box.current?.dispatchEvent(new CustomEvent("click"));
+    // Another instance's `#prime`, clicking that instance's box.
+    for (const peer of this.peers) peer.#prime();
+  }
+  #prime() {
+    this.box.current?.click();
+  }
+  render() {
+    return <input type="checkbox" aria-label="b" ref={this.box} checked={this.on} onchange={this.flip} />;
+  }
+  flip() {}
+}
+
+/** A base whose ref is made with a callback; a subclass only narrows its type with `declare`. */
+class CallbackKeptBase extends Component {
+  @state on = false;
+  box = createRef<HTMLInputElement>(this.attached);
+  attached(node: HTMLInputElement | null) {
+    node?.click(); // REPORT click in a base's ref callback a `declare` does not replace
+  }
+}
+
+class DeclaresItsBox extends CallbackKeptBase {
+  declare box: { current: HTMLInputElement | null };
+  render() {
+    return <input type="checkbox" aria-label="b" ref={this.box} checked={this.on} onchange={this.flip} />;
+  }
+  flip() {}
+}

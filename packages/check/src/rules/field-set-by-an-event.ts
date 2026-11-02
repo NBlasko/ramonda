@@ -208,7 +208,24 @@ export const fieldSetByAnEvent = {
     // One callback a class makes two refs with is handed the elements of both.
     const callbackOf = new Map<ts.ParameterDeclaration, string[]>();
     const callbackRoots: { name: string; fn: ts.Node }[] = [];
-    for (const { name: written, at, callback } of chain.flatMap((cls) => refCallbacksIn(cls, resolve))) {
+    // A field a nearer class declares again — `box = createRef()` over a base's `box = createRef(cb)` — is
+    // that class's ref: the base's callback is never handed an element. `declare box` writes no field.
+    const redeclared = new Set<string>();
+    const madeHere = chain.flatMap((cls) => {
+      const made = refCallbacksIn(cls, resolve).filter(({ name, at }) => !redeclared.has(fieldKey(name, at)));
+      for (const member of cls.members) {
+        const declare = (ts.getCombinedModifierFlags(member as ts.Declaration) & ts.ModifierFlags.Ambient) !== 0;
+        if (
+          ts.isPropertyDeclaration(member) &&
+          !declare &&
+          member.name !== undefined &&
+          !ts.isComputedPropertyName(member.name)
+        )
+          redeclared.add(fieldKey(member.name as ts.MemberName, member));
+      }
+      return made;
+    });
+    for (const { name: written, at, callback } of madeHere) {
       const field = fieldKey(written, at);
       const name = written.text;
       const fn = functionHandedAs(callback);
@@ -319,7 +336,9 @@ export const fieldSetByAnEvent = {
           !ts.isPropertyAccessExpression(at) || !isTheComponent(at.expression)
             ? undefined
             : ts.isPrivateIdentifier(at.name)
-              ? privateIn(at)
+              ? at.expression.kind === ts.SyntaxKind.ThisKeyword
+                ? privateIn(at)
+                : undefined
               : at.expression.kind === ts.SyntaxKind.ThisKeyword
                 ? own
                 : at.expression.kind === ts.SyntaxKind.SuperKeyword
@@ -351,7 +370,8 @@ export const fieldSetByAnEvent = {
                   // An `input` or a `change` edits the field it is dispatched at — not a label of one,
                   // which only a click passes on.
                   if (EDIT_EVENTS.has(type) && (held === undefined || held.held.field)) report(at, "dispatch", type);
-                  else if (type === "click" && held !== undefined && held.held.clicked) {
+                  // Only a mouse event's `click` activates: `new Event("click")` toggles nothing.
+                  else if (type === "click" && isAMouseEvent(event) && held !== undefined && held.held.clicked) {
                     report(at, "click", held.name);
                   }
                 }
@@ -680,6 +700,12 @@ function eventBuilt(argument: ts.Expression, resolve: Resolver, hops = 0): ts.Ne
     return undefined;
   }
   return eventBuilt(declared.initializer, resolve, hops + 1);
+}
+
+/** Whether an event is built as a `MouseEvent` or a `PointerEvent`: the only `click` that activates. */
+function isAMouseEvent(event: ts.NewExpression | undefined): boolean {
+  const made = event === undefined ? undefined : unwrap(event.expression);
+  return made !== undefined && ts.isIdentifier(made) && (made.text === "MouseEvent" || made.text === "PointerEvent");
 }
 
 /** `querySelector(…)`, `getElementById(…)` and their family: an element that may be a field. */

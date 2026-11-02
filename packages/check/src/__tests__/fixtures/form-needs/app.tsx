@@ -818,3 +818,41 @@ const ParenHolder = class extends Component {
 } satisfies object;
 
 export { UsesAFooter, ConstHolder, ParenHolder };
+
+/** A plain object with a `submit`, which a subclass puts where its base held a form. */
+declare class Plain {
+  submit(event: Event): void;
+}
+
+class HoldsAForm extends Component {
+  form = this.use(Form, {});
+  render() {
+    return <form onsubmit={this.form.submit}>held</form>;
+  }
+}
+
+/** Declares `form` again, as no form: its `<form>` is not a @ramonda/form one. */
+class RedeclaresTheForm extends HoldsAForm {
+  form = new Plain();
+  render() {
+    return (
+      <form onsubmit={this.form.submit}>
+        <input aria-label="in a plain form" value={value} oninput={handed.oninput} />
+      </form>
+    );
+  }
+}
+
+/** Only narrows the form's type with `declare`: the field is still the base's form. */
+class DeclaresTheForm extends HoldsAForm {
+  declare form: HoldsAForm["form"];
+  render() {
+    return (
+      <form onsubmit={this.form.submit}>
+        <input aria-label="in a declared form" value={value} oninput={handed.oninput} />
+      </form>
+    );
+  }
+}
+
+export { RedeclaresTheForm, DeclaresTheForm };

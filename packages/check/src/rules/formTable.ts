@@ -441,8 +441,22 @@ export function formTableFor(sources: readonly ts.SourceFile[], resolve: Resolve
       const chain = classChain(node, resolve);
       const own = formFieldsOf(node, resolve);
       if (own.size > 0) ownForms.push({ cls: node, fields: own });
-      // What it holds: its own, and what it inherits.
-      const held = new Set([...own, ...chain.slice(1).flatMap((base) => [...formFieldsOf(base, resolve)])]);
+      // What it holds: its own, and what it inherits under a name no nearer class declares again —
+      // `form = new Plain()` over a base's `form = this.use(Form, …)` is no form.
+      const held = new Set<string>();
+      const declared = new Set<string>();
+      for (const cls of chain) {
+        for (const field of formFieldsOf(cls, resolve)) if (!declared.has(field)) held.add(field);
+        for (const member of cls.members) {
+          const ambient = (ts.getCombinedModifierFlags(member as ts.Declaration) & ts.ModifierFlags.Ambient) !== 0;
+          if (
+            ts.isPropertyDeclaration(member) &&
+            !ambient &&
+            (ts.isIdentifier(member.name) || ts.isPrivateIdentifier(member.name))
+          )
+            declared.add(member.name.text);
+        }
+      }
       if (held.size > 0) {
         const attached = new Set<string>();
         // Its own render, or the one it inherits: `<form onsubmit={this.form.submit}>` there is its form.
