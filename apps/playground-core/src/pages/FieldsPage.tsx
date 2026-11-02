@@ -52,7 +52,7 @@ class Sized extends Component {
   render() {
     return (
       <section style={box}>
-        <h3 style={{ margin: "0 0 0.25rem" }}>A form's reset</h3>
+        <h3 style={{ margin: "0 0 0.25rem" }}>5 — a form's reset</h3>
         <p style={hint}>Pick another size, then press Reset: the select goes back to m.</p>
         <form>
           <Select id="size" name="size" aria-label="Size" defaultValue="m">
@@ -96,7 +96,7 @@ class Between extends Component {
   render() {
     return (
       <section style={box}>
-        <h3 style={{ margin: "0 0 0.25rem" }}>3 — a render in the middle of an event</h3>
+        <h3 style={{ margin: "0 0 0.25rem" }}>6 — a render in the middle of an event</h3>
         <p style={hint}>Type into the field, and pick a size: both keep what you did.</p>
         <form oninput={this.touch}>
           <TextArea id="between-text" aria-label="Typed" value={this.text} oninput={this.typed} />
@@ -151,7 +151,7 @@ class Refused extends Component {
   render() {
     return (
       <section style={box}>
-        <h3 style={{ margin: "0 0 0.25rem" }}>4 — a refused pick is never drawn</h3>
+        <h3 style={{ margin: "0 0 0.25rem" }}>7 — a refused pick is never drawn</h3>
         <p style={hint}>Pick l, or type a fourth character: neither shows, even for a frame.</p>
         <form onchange={this.heard}>
           <Select id="refused-size" aria-label="Size" value={this.size} onchange={this.picked}>
@@ -197,7 +197,7 @@ class RefusedInput extends Component {
   render() {
     return (
       <section style={box}>
-        <h3 style={{ margin: "0 0 0.25rem" }}>5 — the same, on an input</h3>
+        <h3 style={{ margin: "0 0 0.25rem" }}>8 — the same, on an input</h3>
         <p style={hint}>Type a fourth character, tick the box, pick l: none of them shows, even for a frame.</p>
         <input id="refused-input" aria-label="Three at most" value={this.text} oninput={this.typed} />
         <label>
@@ -236,7 +236,7 @@ class Signed extends Component {
   render() {
     return (
       <section style={box}>
-        <h3 style={{ margin: "0 0 0.25rem" }}>6 — a number on its way</h3>
+        <h3 style={{ margin: "0 0 0.25rem" }}>9 — a number on its way</h3>
         <p style={hint}>Select all and type -3: the minus stays while the number is not one yet.</p>
         <input id="signed" type="number" aria-label="Amount" value={this.amount} oninput={this.typed} />
         <output id="signed-model" style={readout}>
@@ -255,8 +255,8 @@ export class FieldsPage extends Component {
         <h2>Fields in a browser</h2>
         <Composed id="skips" title="1 — a handler that skips composing input" skipsComposing={true} field="textarea" />
         <Composed id="takes" title="2 — a handler that takes every input" skipsComposing={false} field="textarea" />
-        <Composed id="skips-input" title="1 — the same, on an input" skipsComposing={true} field="input" />
-        <Composed id="takes-input" title="2 — the same, on an input" skipsComposing={false} field="input" />
+        <Composed id="skips-input" title="3 — the same as 1, on an input" skipsComposing={true} field="input" />
+        <Composed id="takes-input" title="4 — the same as 2, on an input" skipsComposing={false} field="input" />
         <Sized />
         <Between />
         <Refused />

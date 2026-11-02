@@ -7,18 +7,17 @@
  * through the same path a real input method does: measured, Firefox then sends `compositionend` and
  * an ordinary `input` with the word, which the field recognises as the word it already handed over.
  *
- * It is Playwright's own Firefox, so there is nothing more to install. It runs against `dist`, like
- * the spec: build first.
+ * It is Playwright's own Firefox: `pnpm exec playwright install firefox` installs it. It runs against
+ * `dist`, like the spec: build first.
  */
 import { spawn } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { firefox } from "@playwright/test";
 
 const PREVIEW = 4174;
-const MARIONETTE = 2829;
 
 /**
  * What each handler must have taken: a handler that waits for the finished word, the word once; one
@@ -104,7 +103,15 @@ function marionette(port) {
 async function connect() {
   const deadline = Date.now() + REPLY;
   while (Date.now() < deadline) {
-    const attempt = marionette(MARIONETTE);
+    // The port this Firefox chose — `marionette.port` 0 — as it writes it into its profile: a fixed port
+    // could greet another Firefox that holds it, and drive and quit that one.
+    const file = join(profile, "MarionetteActivePort");
+    const port = existsSync(file) ? Number(readFileSync(file, "utf8").trim()) : undefined;
+    if (port === undefined || !Number.isInteger(port) || port === 0) {
+      await wait(200);
+      continue;
+    }
+    const attempt = marionette(port);
     try {
       return await within(attempt, Math.max(deadline - Date.now(), 1), "Marionette's greeting");
     } catch (error) {
@@ -136,7 +143,7 @@ const preview = spawn("pnpm", ["exec", "vite", "preview", "--port", String(PREVI
   detached: true,
 });
 const profile = mkdtempSync(join(tmpdir(), "ramonda-firefox-"));
-writeFileSync(join(profile, "user.js"), `user_pref("marionette.port", ${MARIONETTE});\n`);
+writeFileSync(join(profile, "user.js"), `user_pref("marionette.port", 0);\n`);
 const browser = spawn(
   firefox.executablePath(),
   ["--marionette", "-remote-allow-system-access", "--headless", "--no-remote", "--profile", profile],
@@ -178,6 +185,17 @@ const cleanUp = async (session) => {
 };
 let failed = false;
 let session;
+// A process that cannot start — Firefox not installed — is an `error` and no exit: the other one is
+// stopped, rather than left holding its port.
+for (const [child, what] of [
+  [preview, "vite preview"],
+  [browser, "Firefox"],
+]) {
+  child.once("error", (error) => {
+    console.error(`${what} could not start: ${error.message}`);
+    cleanUp(session).then(() => process.exit(1));
+  });
+}
 for (const signal of ["SIGINT", "SIGTERM"]) {
   process.once(signal, () => {
     console.error(`stopped by ${signal}`);
@@ -200,7 +218,7 @@ try {
           throw new Error(`vite preview exited (${preview.exitCode}): port ${PREVIEW} is taken`);
         break;
       } catch (error) {
-        if (attempt > 50 || /no answer/.test(error.message)) throw error;
+        if (attempt > 50 || /no answer|is taken/.test(error.message)) throw error;
         await wait(200);
       }
     }

@@ -43,6 +43,26 @@ test.describe("fields only a browser settles", () => {
   }
 
   /**
+   * Picks `value` in a select as Chromium was measured to — the select takes it, its `input` is sent, what
+   * that queued runs, then its `change` — from a script: an arrow key changes a closed select on Linux
+   * and Windows, but opens its list on macOS, so a keyboard pick would test a different thing there.
+   * Both events in one task, as a pick sends them; the `change` after a macrotask, so whatever the
+   * `input` scheduled has run — a render between the two — before it comes.
+   */
+  async function pick(page: import("@playwright/test").Page, selector: string, value: string) {
+    await page.evaluate(
+      async ([selector, value]) => {
+        const select = document.querySelector(selector) as HTMLSelectElement;
+        select.value = value;
+        select.dispatchEvent(new Event("input", { bubbles: true }));
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+      },
+      [selector, value] as const,
+    );
+  }
+
+  /**
    * A readout that says `text`, and still says it once nothing more has come: `toHaveText` passes on
    * the first reading that matches, and a word handed over a second time, a little later, must not.
    */
@@ -90,14 +110,12 @@ test.describe("fields only a browser settles", () => {
   /**
    * A render between the events of one pick — the form around the fields counts every `input`, and the
    * select shows the count — does not write an old value back: each field's model is its own handler's
-   * by then, the select's included, whose `change` comes after that render. Picked from the keyboard:
-   * `selectOption` sends both events from one script, with no render between them.
+   * by then, the select's included, whose `change` comes after that render. Picked through `pick`:
+   * `selectOption` sends both events with no render between them.
    */
   test("a render in the middle of an event keeps what the user did", async ({ page }) => {
     await page.locator("#between-text").pressSequentially("abc");
-    await page.locator("#between-size").focus();
-    // From m, ArrowDown is l.
-    await page.keyboard.press("ArrowDown");
+    await pick(page, "#between-size", "l");
     await expect(page.locator("#between-size")).toHaveAttribute("title", "4 changes");
     await expect(page.locator("#between-model")).toHaveText('{"text":"abc","size":"l"}');
     await expect(page.locator("#between-text")).toHaveValue("abc");
@@ -147,10 +165,9 @@ test.describe("fields only a browser settles", () => {
 
   test("a refused pick is never drawn, and the form reads what the select keeps", async ({ page }) => {
     await watchFrames(page, "#refused-size");
-    await page.locator("#refused-size").focus();
-    // From m, ArrowDown is l — refused every time, so the select is back on m for the next one.
+    // l, refused every time, so the select is back on m for the next one.
     for (let i = 0; i < 20; i++) {
-      await page.keyboard.press("ArrowDown");
+      await pick(page, "#refused-size", "l");
       await page.waitForTimeout(40);
     }
     // The frames first: a put-back too late shows in them, whatever the form reads after.
