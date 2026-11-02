@@ -159,8 +159,31 @@ const stop = (child) =>
     }
   });
 
+/** Both processes, stopped and the profile removed — on the way out, and on a Ctrl-C or a `timeout`. */
+let cleaned;
+const cleanUp = async (session) => {
+  cleaned ??= (async () => {
+    await session?.send("Marionette:Quit", { flags: ["eForceQuit"] }).catch(() => {});
+    session?.close();
+    // Firefox writes to its profile until it has exited, so the profile goes after it.
+    await stop(browser);
+    await stop(preview);
+    try {
+      rmSync(profile, { recursive: true, force: true });
+    } catch (error) {
+      console.warn(`left the profile at ${profile}: ${error.message}`);
+    }
+  })();
+  return cleaned;
+};
 let failed = false;
 let session;
+for (const signal of ["SIGINT", "SIGTERM"]) {
+  process.once(signal, () => {
+    console.error(`stopped by ${signal}`);
+    cleanUp(session).then(() => process.exit(1));
+  });
+}
 try {
   session = await connect();
   await session.send("WebDriver:NewSession", { capabilities: {} });
@@ -171,13 +194,28 @@ try {
     for (let attempt = 0; ; attempt++) {
       try {
         await session.send("WebDriver:Navigate", { url: `http://localhost:${PREVIEW}/fields` });
+        // `--strictPort` makes a preview whose port is taken exit: a page served then is another
+        // process's — one left from an earlier run, serving an older build.
+        if (preview.exitCode !== null)
+          throw new Error(`vite preview exited (${preview.exitCode}): port ${PREVIEW} is taken`);
         break;
       } catch (error) {
         if (attempt > 50 || /no answer/.test(error.message)) throw error;
         await wait(200);
       }
     }
-    await session.send("WebDriver:ExecuteScript", { script: `document.getElementById("${id}").focus();`, args: [] });
+    // What the browser sends the field, recorded before anything of the page hears it: Firefox's own
+    // `input` after the word is what this script is here for, and a run without it proves nothing.
+    await session.send("WebDriver:ExecuteScript", {
+      script: `
+        const field = document.getElementById("${id}");
+        window.sent = [];
+        field.addEventListener("input", (event) => window.sent.push(event.isComposing ? "composing" : "input"), true);
+        field.addEventListener("compositionend", () => window.sent.push("end"), true);
+        field.focus();
+      `,
+      args: [],
+    });
     await session.send("Marionette:SetContext", { value: "chrome" });
     await session.send("WebDriver:ExecuteScript", { script: COMPOSE, args: [] });
     await session.send("Marionette:SetContext", { value: "content" });
@@ -201,7 +239,10 @@ try {
     // pass on the first reading that looked right.
     await wait(500);
     [field, taken] = await read();
-    const right = field === "日本" && taken === expected;
+    const sent = (await session.send("WebDriver:ExecuteScript", { script: "return window.sent;", args: [] })).value;
+    const trailing = sent.lastIndexOf("input") > sent.lastIndexOf("end") && sent.includes("end");
+    if (!trailing) console.log(`  firefox sent no input after the word: ${JSON.stringify(sent)}`);
+    const right = field === "日本" && taken === expected && trailing;
     if (!right) failed = true;
     console.log(
       `${right ? "✓" : "✘"} firefox › ${id}: field ${JSON.stringify(field)}, taken ${taken}${right ? "" : ` — expected ${expected}`}`,
@@ -211,15 +252,6 @@ try {
   failed = true;
   console.error(error);
 } finally {
-  await session?.send("Marionette:Quit", { flags: ["eForceQuit"] }).catch(() => {});
-  session?.close();
-  // Firefox writes to its profile until it has exited, so the profile goes after it.
-  await stop(browser);
-  await stop(preview);
-  try {
-    rmSync(profile, { recursive: true, force: true });
-  } catch (error) {
-    console.warn(`left the profile at ${profile}: ${error.message}`);
-  }
+  await cleanUp(session);
 }
 process.exit(failed ? 1 : 0);

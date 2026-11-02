@@ -70,15 +70,16 @@ class Sized extends Component {
 }
 
 /**
- * A browser drains microtasks between the listeners of one event, so a render can land in the
- * middle of it. Here each field writes its own model, and the form around them flips other state on
- * every `input` — a "Save" button coming on is the usual reason. The render that causes lands before
- * the select's `change`: the pick is the model's already, so it is not written back over.
+ * A browser drains microtasks between the events of one pick, so a render can land in the middle of
+ * it. Here each field writes its own model, and the form around them counts every `input` — a "Save"
+ * button that says how many changes there are is the usual reason. The select shows that count too, so
+ * the render it causes renders the select, between its `input` and its `change`: the pick is the
+ * model's already, so it is not written back over.
  */
 class Between extends Component {
   @state text = "";
   @state size = "m";
-  @state touched = false;
+  @state changes = 0;
 
   typed(event: EventOn<HTMLTextAreaElement>) {
     this.text = event.currentTarget.value;
@@ -89,7 +90,7 @@ class Between extends Component {
   }
 
   touch() {
-    this.touched = true;
+    this.changes++;
   }
 
   render() {
@@ -99,13 +100,19 @@ class Between extends Component {
         <p style={hint}>Type into the field, and pick a size: both keep what you did.</p>
         <form oninput={this.touch}>
           <TextArea id="between-text" aria-label="Typed" value={this.text} oninput={this.typed} />
-          <Select id="between-size" aria-label="Size" value={this.size} onchange={this.picked}>
+          <Select
+            id="between-size"
+            aria-label="Size"
+            title={`${this.changes} changes`}
+            value={this.size}
+            onchange={this.picked}
+          >
             <option value="s">s</option>
             <option value="m">m</option>
             <option value="l">l</option>
           </Select>
-          <button type="button" disabled={!this.touched}>
-            Save
+          <button type="button" disabled={this.changes === 0}>
+            Save {this.changes}
           </button>
         </form>
         <output id="between-model" style={readout}>
