@@ -51,6 +51,22 @@ let flushing = false;
  */
 const MAX_WORK_PER_FLUSH = 100_000;
 
+/**
+ * DOM work the diff leaves for after the builds and before the first `@mounted`: what the browser moved
+ * while the nodes went in, put right before any app code reads or changes it — a radio's pick a new
+ * default took, see `keepThePick` in `Attribute.ts`. Run before each mount, since a mount may flush a
+ * build of its own.
+ */
+const beforeTheMounts: (() => void)[] = [];
+
+export function queueBeforeTheMounts(work: () => void): void {
+  beforeTheMounts.push(work);
+}
+
+function runBeforeTheMounts(): void {
+  if (beforeTheMounts.length > 0) for (const work of beforeTheMounts.splice(0)) work();
+}
+
 export function queuePostCommit(component: BaseComponent, cb: () => unknown): void {
   pending.push({ component, cb });
 }
@@ -282,7 +298,9 @@ export function flushPostCommit(): void {
 
   try {
     let ran = 0;
-    while (pending.length > 0) {
+    for (;;) {
+      runBeforeTheMounts();
+      if (pending.length === 0) break;
       if (++ran > MAX_WORK_PER_FLUSH) {
         pending.length = 0;
         throw new Error(

@@ -1,8 +1,16 @@
 import type { EnhancedHTMLNode } from "../types/vdom";
 import { IS_SVG, KEY_SYM, STYLE_SYM, REF_SYM, BOOLEAN_ATTRIBUTES, keptInAProperty } from "../helpers/constants";
 import { checkBooleanAttribute } from "../debug/booleanAttribute";
-import { INPUT_OWN_EVENTS, composingIn, controlInput, groupOf, keepOwnHandler, showsTheModel } from "./field";
-import { queueAfterCommit } from "./commit";
+import {
+  INPUT_OWN_EVENTS,
+  composingIn,
+  controlInput,
+  groupOf,
+  heldByAModel,
+  keepOwnHandler,
+  showsTheModel,
+} from "./field";
+import { queueBeforeTheMounts } from "./commit";
 type NodeAttributes = Record<string, any>;
 
 /**
@@ -55,7 +63,7 @@ function writeDefaults(input: HTMLInputElement, attributes: NodeAttributes, onSe
   if ("defaultChecked" in attributes && typeof attributes.checked !== "boolean") {
     const on = attributes.defaultChecked === true;
     if (input.hasAttribute("checked") === on) return;
-    if (on && !onServer && input.type === "radio" && input.name !== "") keepThePick(input);
+    if (!onServer && input.type === "radio" && input.name !== "") keepThePick(input);
     input.toggleAttribute("checked", on);
   }
 }
@@ -63,11 +71,13 @@ function writeDefaults(input: HTMLInputElement, attributes: NodeAttributes, onSe
 /**
  * A radio's default turned on takes its group's choice in a browser — when the attribute is written, or
  * when a new radio carrying it is put in the page. So the radio the user picked is noted BEFORE, while
- * the page still shows it, and checked again once the commit has put every radio where it goes: the
- * new default changes only where a reset returns, as a `Select`'s does.
+ * the page still shows it, and checked again once the diff has put every radio where it goes and before
+ * any `@mounted` runs: the new default changes only where a reset returns, as a `Select`'s does, and
+ * whatever a `@mounted` then does to the radios stands.
  *
- * Put back only while the default still holds the choice: a radio something checked meanwhile — a
- * `@mounted` — is left as it is.
+ * Before the mounts nothing but the diff has touched the radios, so a pick outside the radio's group is
+ * on still and checking it again changes nothing, and one the render removed is off the page. A pick a
+ * model has taken over is left to it: what a model says is what its radio shows.
  */
 function keepThePick(input: HTMLInputElement): void {
   // A radio not yet in the page has no group to ask, so its picks are the document's — one put into a
@@ -76,10 +86,8 @@ function keepThePick(input: HTMLInputElement): void {
     ? groupOf(input)
     : Array.from(input.ownerDocument.querySelectorAll<HTMLInputElement>('input[type="radio"]'));
   const picks = radios.filter(radioWasPicked);
-  // A pick in another group is on still, and one the render removed is off the page: checking either
-  // again changes nothing.
-  queueAfterCommit(() => {
-    if (input.checked) for (const pick of picks) pick.checked = true;
+  queueBeforeTheMounts(() => {
+    for (const pick of picks) if (!heldByAModel(pick)) pick.checked = true;
   });
 }
 

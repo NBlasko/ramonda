@@ -144,6 +144,50 @@ test("a box's field through a Select is not reported", async () => {
   }
 });
 
+/** A number field chosen through radios is told the same: a radio hands back its own `value`, as text. */
+test("a number field through radios is told to take the choice as a number", async () => {
+  const schema = anything<{ x?: number | string }>();
+  class Page extends Component {
+    private f = this.use(Form<typeof schema>, () => ({ schema, defaultValues: { x: 1 }, onSubmit: () => {} }));
+    render(): RamondaNode {
+      const x = this.f.fields.x.$;
+      return (
+        <div>
+          <input
+            type="radio"
+            aria-label="One"
+            name={x.name}
+            value="1"
+            checked={this.f.values.x === 1}
+            oninput={x.oninput}
+          />
+          <input
+            type="radio"
+            aria-label="Two"
+            name={x.name}
+            value="2"
+            checked={this.f.values.x === 2}
+            oninput={x.oninput}
+          />
+        </div>
+      );
+    }
+  }
+  const { container, unmount } = render((<Page />) as never);
+  try {
+    const two = container.querySelectorAll("input")[1] as HTMLInputElement;
+    await act(async () => {
+      two.checked = true;
+      two.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    const found = records.filter((record) => record.code === "RMF005");
+    expect(found.map((record) => record.message.includes("z.coerce.number()"))).toEqual([true]);
+    expect(found[0]?.message).not.toContain('<input type="number">');
+  } finally {
+    unmount();
+  }
+});
+
 /**
  * A number field in a `Select` is told what fixes it: a select hands back the chosen option's text, and
  * no `<input type="number">` picks from a list — the schema takes the choice as a number.

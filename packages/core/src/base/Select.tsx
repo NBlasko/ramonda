@@ -79,8 +79,11 @@ export class Select extends Component<SelectProps> {
    */
   private d = false;
 
-  /** `k` — the options the user's last pick chose: the default shown again, and not those, is a reset. */
-  private k: ReadonlySet<HTMLOptionElement> | undefined;
+  /**
+   * `k` — the options the user's last pick chose, and how many: the default shown again, and not those, is
+   * a reset. Held weakly, so options a render replaces are not kept alive by a pick that chose them.
+   */
+  private k: Pick | undefined;
 
   /** `h` — the caller's ref as of the last HAND-OVER, so a swapped one can be let go of. */
   private h: RefTarget<HTMLSelectElement> | undefined;
@@ -129,7 +132,9 @@ export class Select extends Component<SelectProps> {
       if (fallback != null) {
         // What it shows says the rest. Something other than a default it has is a pick — one made on a
         // served page before the script arrived has no event to note it. The default again, and not
-        // what the user last picked, is a form's reset: the select is as it starts.
+        // what the user last picked, is a form's reset: the select is as it starts. With no default
+        // yet — its option has not arrived — what the browser chose is not told apart from a pick made
+        // with no event, and the default is applied when its option comes.
         const asItStarts = showsItsDefault(select);
         if (!this.d) this.d = !asItStarts && Array.from(select.options).some(isADefault);
         else if (asItStarts && !choosing(select, this.k)) this.d = false;
@@ -196,7 +201,8 @@ export class Select extends Component<SelectProps> {
   /** The listener a `defaultValue` select notes the user's pick with: from then on it is theirs. */
   p(event: Event): void {
     this.d = true;
-    this.k = new Set((event.currentTarget as HTMLSelectElement).selectedOptions);
+    const chosen = Array.from((event.currentTarget as HTMLSelectElement).selectedOptions);
+    this.k = { options: new WeakSet(chosen), size: chosen.length };
     heard(this, event);
   }
 
@@ -234,10 +240,15 @@ function showsItsDefault(select: HTMLSelectElement): boolean {
   return Array.from(select.options).every((option) => option.selected === option.defaultSelected);
 }
 
-/** Whether `select` shows exactly `options`. */
-function choosing(select: HTMLSelectElement, options: ReadonlySet<HTMLOptionElement> | undefined): boolean {
+interface Pick {
+  readonly options: WeakSet<HTMLOptionElement>;
+  readonly size: number;
+}
+
+/** Whether `select` shows exactly the options `pick` chose. */
+function choosing(select: HTMLSelectElement, pick: Pick | undefined): boolean {
   const chosen = select.selectedOptions;
-  return options !== undefined && options.size === chosen.length && Array.from(chosen).every((o) => options.has(o));
+  return pick !== undefined && pick.size === chosen.length && Array.from(chosen).every((o) => pick.options.has(o));
 }
 
 function isADefault(option: HTMLOptionElement): boolean {
@@ -260,4 +271,6 @@ function keepingTheChoice(select: HTMLSelectElement, write: () => boolean): void
   if (!write()) return;
   const options = select.options;
   for (let i = 0; i < options.length; i++) options[i].selected = chosen.has(options[i]);
+  // A drop-down left with none chosen picks its first again: nothing chosen is said outright.
+  if (chosen.size === 0) select.selectedIndex = -1;
 }

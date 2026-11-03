@@ -1000,6 +1000,68 @@ describe("a default select whose default moves", () => {
   });
 });
 
+describe("a default select whose option arrives later", () => {
+  class Later extends Component<{ size?: number; first?: "disabled" }> {
+    @state options = ["a"];
+    render() {
+      return (
+        <div>
+          <Select defaultValue="b" size={this.props.size}>
+            <option value="" disabled={this.props.first === "disabled"}>
+              Choose…
+            </option>
+            {this.options.map((v) => (
+              <option key={v} value={v}>
+                {v}
+              </option>
+            ))}
+          </Select>
+        </div>
+      );
+    }
+  }
+
+  test("untouched, it moves to the default when its option arrives — after a first option nobody can choose, and in a list box", async () => {
+    for (const props of [{}, { first: "disabled" as const }, { size: 3 }]) {
+      const app = await getDOM<Later>(<Later {...props} />);
+      await app.settle();
+      const select = app.container.querySelector("select") as HTMLSelectElement;
+      app.instance.options = ["a", "b"];
+      await app.settle();
+      expect({ props, shown: select.value }).toEqual({ props, shown: "b" });
+    }
+  });
+});
+
+describe("a default select left with nothing chosen", () => {
+  test("stays with nothing chosen when the default moves", async () => {
+    class Blank extends Component {
+      @state saved = "b";
+      render() {
+        return (
+          <Select defaultValue={this.saved}>
+            {["a", "b", "c"].map((v) => (
+              <option key={v} value={v}>
+                {v}
+              </option>
+            ))}
+          </Select>
+        );
+      }
+    }
+    const app = await getDOM<Blank>(<Blank />);
+    await app.settle();
+    const select = app.container.querySelector("select") as HTMLSelectElement;
+    select.selectedIndex = -1;
+    app.instance.saved = "c";
+    await app.settle();
+    expect({ index: select.selectedIndex, reset: Array.from(select.options, (o) => o.defaultSelected) }).toEqual({
+      index: -1,
+      reset: [false, false, true],
+    });
+  });
+});
+
 describe("why attributes go on before the children", () => {
   test("a multiple select keeps every option the model picked", async () => {
     /**

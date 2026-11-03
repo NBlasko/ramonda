@@ -1,7 +1,7 @@
 import { describe, test, expect } from "vitest";
 import { getDOM } from "../test/setup";
 import { mounted, state } from "../base/decorators";
-import { Component, TextArea, bootstrap, unmount, type EventOn } from "../index";
+import { Component, TextArea, bootstrap, createRef, unmount, type EventOn } from "../index";
 import { componentAt } from "../core/DiffAndMerge";
 import { renderToString } from "../hydration/ssr";
 import { flushSync } from "../testing";
@@ -408,33 +408,90 @@ describe("a radio group whose default moves", () => {
     expect(asked).toEqual([]);
   });
 
-  test("a radio a component checks when it mounts in that commit is left as it is", async () => {
-    class Chooser extends Component {
-      @mounted
-      choose() {
-        (document.querySelector("#a") as HTMLInputElement).checked = true;
+  /** What a commit's own `@mounted` does to the radios is the last word: the pick is put back before it runs. */
+  class Mounting extends Component<{ does: "check" | "reset" | "reset-other"; group: string }> {
+    private own = createRef<HTMLInputElement>();
+    @mounted
+    act() {
+      const own = this.own.current as HTMLInputElement;
+      if (this.props.does === "check") own.checked = true;
+      else (own.form as HTMLFormElement).reset();
+    }
+    render() {
+      return <input id="added" ref={this.own} type="radio" name={this.props.group} value="added" defaultChecked />;
+    }
+  }
+  class WithAMount extends Component {
+    @state shows: "check" | "reset" | "reset-other" | undefined;
+    render() {
+      return (
+        <div>
+          <form id="sizes">
+            <input id="a" type="radio" name="size" value="a" defaultChecked />
+            <input id="b" type="radio" name="size" value="b" />
+            {this.shows === "check" || this.shows === "reset" ? <Mounting does={this.shows} group="size" /> : null}
+          </form>
+          <form id="others">
+            <input id="x" type="radio" name="other" value="x" defaultChecked />
+            <input id="y" type="radio" name="other" value="y" />
+            {this.shows === "reset-other" ? <Mounting does="reset-other" group="size" /> : null}
+          </form>
+        </div>
+      );
+    }
+  }
+  const mounting = async (shows: "check" | "reset" | "reset-other") => {
+    const app = await getDOM<WithAMount>(<WithAMount />);
+    await app.settle();
+    const radio = (id: string) => app.container.querySelector(`#${id}`) as HTMLInputElement;
+    radio("b").click();
+    radio("y").click();
+    app.instance.shows = shows;
+    await app.settle();
+    return ["a", "b", "added", "x", "y"].filter((id) => radio(id)?.checked);
+  };
+
+  test("a pick the render hands to a model that says unchecked stays unchecked", async () => {
+    class Handed extends Component {
+      @state held = false;
+      @state added = false;
+      chose(event: EventOn<HTMLInputElement>) {
+        this.added = event.currentTarget.checked;
       }
       render() {
-        return <output />;
-      }
-    }
-    class Sized extends Sizes {
-      override render() {
         return (
-          <div>
-            {super.render()}
-            {this.saved === "b" ? <Chooser /> : null}
-          </div>
+          <form>
+            <input id="a" type="radio" name="size" value="a" defaultChecked />
+            {/* Before the radio the model takes, so the pick is noted while it is still on. */}
+            {this.added ? <input id="c" type="radio" name="size" value="c" defaultChecked /> : null}
+            {this.held ? (
+              <input id="b" type="radio" name="size" value="b" checked={false} onchange={this.chose} />
+            ) : (
+              <input id="b" type="radio" name="size" value="b" />
+            )}
+          </form>
         );
       }
     }
-    const app = await getDOM<Sized>(<Sized />);
+    const app = await getDOM<Handed>(<Handed />);
     await app.settle();
-    (app.container.querySelector("#c") as HTMLInputElement).click();
-    app.instance.saved = "b";
+    const radio = (id: string) => app.container.querySelector(`#${id}`) as HTMLInputElement;
+    radio("b").click();
+    app.instance.held = true;
+    app.instance.added = true;
     await app.settle();
-    const checked = ["a", "b", "c"].filter((id) => (app.container.querySelector(`#${id}`) as HTMLInputElement).checked);
-    expect(checked).toEqual(["a"]);
+    expect(["a", "b", "c"].filter((id) => radio(id)?.checked)).toEqual(["c"]);
+  });
+
+  test("a new default radio its own @mounted checks stays checked", async () => {
+    expect(await mounting("check")).toEqual(["added", "y"]);
+  });
+
+  test("a reset a @mounted runs in that commit stands — in the new radio's group and in another", async () => {
+    // Two radios of the group start checked now, and HTML takes the later one.
+    expect(await mounting("reset")).toEqual(["added", "y"]);
+    // The new radio is a group of its own there, and starts checked.
+    expect(await mounting("reset-other")).toEqual(["b", "added", "x"]);
   });
 });
 

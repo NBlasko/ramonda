@@ -85,7 +85,7 @@ const SPECS: Record<FormCode, Spec> = __DEV__
           'so a number field written without `type="number"` fills the form with text, a text field in a ' +
           "slider fills it with a number, and the schema reports a value the reader never typed wrong. Put " +
           "the field in a control that hands back what it holds. A `Select` hands back the chosen option's " +
-          "text, and no control picks a number from a list: there the schema takes the choice as a number — " +
+          "text and a radio its own `value`, and no control picks a number from a list: there the schema takes the choice as a number — " +
           "`z.coerce.number()` in Zod. `ramonda-check` reports the same before it ships, as " +
           "`form-value-in-the-wrong-control`.",
       },
