@@ -130,6 +130,13 @@ test.describe("fields only a browser settles", () => {
     await expect(colour).toHaveValue("red");
   });
 
+  test("a select whose options are all replaced starts on the first of the new ones", async ({ page }) => {
+    const city = page.locator("#city");
+    await expect(city).toHaveValue("Beograd");
+    await page.locator("#country").click();
+    await expect(city).toHaveValue("Zagreb");
+  });
+
   test("a form's reset returns a defaultValue select to its default", async ({ page }) => {
     const size = page.locator("#size");
     await expect(size).toHaveValue("m");

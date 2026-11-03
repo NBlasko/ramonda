@@ -506,8 +506,7 @@ function executeChangesOnStringNode(
   placeholderComponent: MaybeComponent,
   maybeenhancedNode: MaybeEnhancedNode | EnhancedChildNode,
 ) {
-  const built = maybeenhancedNode?.nodeName !== vnode.name;
-  const enhancedNode = built ? createElement(vnode) : maybeenhancedNode;
+  const enhancedNode = maybeenhancedNode?.nodeName === vnode.name ? maybeenhancedNode : createElement(vnode);
 
   // The side this element is being built for, taken from the component that owns it rather than
   // from the module-level flag: `renderEnv` is restored before the first `await`, so a re-render
@@ -525,36 +524,8 @@ function executeChangesOnStringNode(
   // correctly-placed nodes look misplaced and cause pointless moves.
   unmountChildrenNodes(cloneChildren, false);
   if (orderedNodes !== null) reorderChildren(enhancedNode, orderedNodes);
-  if (built && enhancedNode.nodeName === "SELECT") chooseInOrder(enhancedNode as HTMLSelectElement);
 
   return enhancedNode;
-}
-
-/**
- * A select chooses as its options arrive: the first one put in while none is chosen, and one carrying
- * `selected`. The diff puts children in last-first, so a drop-down it builds took its LAST option — a
- * served page, parsed in order, shows the last one carrying `selected`, or else the first a reader can
- * choose. That one is chosen here, so a select built here starts where the served one does.
- *
- * Only that option is chosen by a script, and it is the one the select falls back to whenever it is
- * left with none: a `defaultValue` written after still moves the choice, and one taken away returns
- * it there. A `multiple` select or a list box chooses nothing as options arrive, so order is no matter
- * to them.
- */
-function chooseInOrder(select: HTMLSelectElement): void {
-  if (select.multiple || select.size > 1) return;
-  const options = Array.from(select.options);
-  const marked = options.filter(carriesSelected);
-  const chosen = marked.length > 0 ? marked[marked.length - 1] : options.find(canBeChosen);
-  if (chosen !== undefined) chosen.selected = true;
-}
-
-function carriesSelected(option: HTMLOptionElement): boolean {
-  return option.hasAttribute("selected");
-}
-
-function canBeChosen(option: HTMLOptionElement): boolean {
-  return !option.matches(":disabled");
 }
 
 function createElement(vnodeString: VNodeString): SVGElement | HTMLElement {
@@ -1543,16 +1514,25 @@ export function reorderChildren(
   const focused = document.activeElement;
   const keepFocus = focused !== null && focused !== document.body;
 
+  /**
+   * Each run of nodes that go in between two that stay goes in FIRST to LAST, as a parser puts them.
+   * The walk finds them last-first, and inserting them so made a parent that answers to arrival order
+   * read the run backwards: a `<select>` chooses the first option put in while none is chosen, so a
+   * select whose options arrived — built, or a city list after its country changed — showed its LAST
+   * one (measured in Chromium), where the served page shows the first. One insertion per node either way.
+   */
+  // `end` closes the run being gathered; `reference` is what it goes in front of.
+  let end = length;
   for (let n = length - 1; n >= 0; n--) {
-    const node = orderedNodes[n];
     if (keepIndex >= 0 && keep[keepIndex] === n) {
-      // Already in relative order: leave it, and let it anchor the ones before.
+      // Already in relative order: leave it, and let it anchor the run after it.
+      for (let i = n + 1; i < end; i++) parent.insertBefore(orderedNodes[i], reference);
       keepIndex--;
-    } else {
-      parent.insertBefore(node, reference);
+      reference = orderedNodes[n];
+      end = n;
     }
-    reference = node;
   }
+  for (let i = 0; i < end; i++) parent.insertBefore(orderedNodes[i], reference);
 
   /**
    * Only if it actually LOST the focus, which is not the same as having been moved.

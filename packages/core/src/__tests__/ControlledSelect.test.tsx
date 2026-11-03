@@ -1103,6 +1103,38 @@ describe("a select with no value and no default", () => {
   });
 });
 
+/** Options that arrive in a select already on the page start it where a served page would. */
+describe("a kept select whose options change", () => {
+  class Cities extends Component {
+    @state cities: string[] = [];
+    render() {
+      return (
+        <div>
+          <Select aria-label="City">
+            {this.cities.map((v) => (
+              <option key={v} value={v}>
+                {v}
+              </option>
+            ))}
+          </Select>
+        </div>
+      );
+    }
+  }
+
+  test("starts on the first option that arrives, and on the first of a whole new list", async () => {
+    const app = await getDOM<Cities>(<Cities />);
+    await app.settle();
+    const select = app.container.querySelector("select") as HTMLSelectElement;
+    app.instance.cities = ["a1", "a2", "a3"];
+    await app.settle();
+    const arrived = select.value;
+    app.instance.cities = ["b1", "b2", "b3"];
+    await app.settle();
+    expect({ arrived, replaced: select.value }).toEqual({ arrived: "a1", replaced: "b1" });
+  });
+});
+
 describe("an option's selected written past the types", () => {
   test("is taken off when the render stops saying it", async () => {
     class Spread extends Component {

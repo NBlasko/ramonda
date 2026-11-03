@@ -44,18 +44,36 @@ class Composed extends Component<{ id: string; title: string; skipsComposing: bo
   }
 }
 
+/** Each country's cities, a list a select gets whole and then gets another of. */
+const CITIES = { rs: ["Beograd", "Novi Sad", "Niš"], hr: ["Zagreb", "Split", "Rijeka"] };
+
+function cityOption(city: string) {
+  return (
+    <option key={city} value={city}>
+      {city}
+    </option>
+  );
+}
+
 /**
  * A `defaultValue` select in a form: pick another size, press Reset, and it is back on `m`. The
  * default is written as the option's `selected` attribute, which is what a reset returns to. Beside
  * it, a select with neither starts on its first option, as a served page does.
  */
 class Sized extends Component {
+  @state country: keyof typeof CITIES = "rs";
+
+  swap() {
+    this.country = this.country === "rs" ? "hr" : "rs";
+  }
+
   render() {
     return (
       <section style={box}>
         <h3 style={{ margin: "0 0 0.25rem" }}>5 — a form's reset</h3>
         <p style={hint}>
-          Pick another size, then press Reset: the select goes back to m. The colour, set by nothing, starts on red.
+          Pick another size, then press Reset: the select goes back to m. The colour, set by nothing, starts on red; the
+          city starts on the first of its country's, and on the first of the other country's.
         </p>
         <form>
           <Select id="size" name="size" aria-label="Size" defaultValue="m">
@@ -68,6 +86,12 @@ class Sized extends Component {
             <option value="green">green</option>
             <option value="blue">blue</option>
           </Select>
+          <Select id="city" name="city" aria-label="City" style={{ marginLeft: "0.4rem" }}>
+            {CITIES[this.country].map(cityOption)}
+          </Select>
+          <button id="country" type="button" onclick={this.swap} style={{ marginLeft: "0.4rem" }}>
+            Other country
+          </button>
           <button id="reset" type="reset" style={{ marginLeft: "0.4rem" }}>
             Reset
           </button>

@@ -519,7 +519,9 @@ describe("a radio group whose default moves", () => {
 
   test("a radio its model holds checked stays checked when another radio's default moves", async () => {
     class Held extends Component {
-      @state saved = "c";
+      // No default at the start: one beside a radio the model holds checked contradicts it, and a page,
+      // served or built, shows the later of the two.
+      @state saved = "";
       kept() {}
       render() {
         return (
@@ -535,13 +537,13 @@ describe("a radio group whose default moves", () => {
     const app = await getDOM<Held>(<Held />);
     await app.settle();
     const radio = (id: string) => app.container.querySelector(`#${id}`) as HTMLInputElement;
-    const before = ["a", "b", "c", "d"].filter((id) => radio(id).checked);
-    app.instance.saved = "d";
-    await app.settle();
-    expect({ before, after: ["a", "b", "c", "d"].filter((id) => radio(id).checked) }).toEqual({
-      before: ["a"],
-      after: ["a"],
-    });
+    const shown = [["a", "b", "c", "d"].filter((id) => radio(id).checked)];
+    for (const next of ["c", "d"]) {
+      app.instance.saved = next;
+      await app.settle();
+      shown.push(["a", "b", "c", "d"].filter((id) => radio(id).checked));
+    }
+    expect(shown).toEqual([["a"], ["a"], ["a"]]);
   });
 
   test("a render that throws leaves no pick to put back over a later one", async () => {
