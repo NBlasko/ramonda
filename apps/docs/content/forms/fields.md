@@ -167,7 +167,7 @@ own cannot be changed. A word typed through an input method — Japanese, Chines
 keyboard, an accent on a Mac — reaches the handler at every step, `isComposing` saying it is not
 finished, so a search typed on any device runs as the user types; the field is not written until the
 word ends. A handler that waits for the finished word returns while `isComposing`, and is handed the
-word once when it ends, in every browser. A field whose text is read when the form is sent, rather than held in state, takes
+word once when it ends — in Chromium and in Firefox, where it is measured. A field whose text is read when the form is sent, rather than held in state, takes
 `defaultValue` instead: it shows that first and then belongs to the user, and a form's reset returns
 to it.
 
@@ -180,8 +180,9 @@ What a field shows is set through the model, never by sending the field an event
 the start is the field's initial state, `@state accepted = true`; one learned on mount is written in
 `@mounted`, `this.draft = this.saved`. A field learns its model through render, and the work a
 commit runs — `@mounted`, `@updated`, `render()` — is still running when an edit sent from there
-arrives, so [`field-set-by-an-event`](/reference/check) reports one before it ships and
-[`RMD062`](/reference/diagnostics/rmd062) when it runs.
+arrives. [`field-set-by-an-event`](/reference/check) reports one before it ships, and
+[`RMD062`](/reference/diagnostics/rmd062) reports the next event of that commit that reads the
+model while the first edit's render waits.
 
 ### Refusing or rewriting an edit — the handler decides
 

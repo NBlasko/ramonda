@@ -282,6 +282,57 @@ describe("an uncontrolled input across a render", () => {
   });
 });
 
+/** A radio group's default that moves — a refetch, a saved draft — after the user picked, or before. */
+describe("a radio group whose default moves", () => {
+  class Sizes extends Component {
+    @state saved = "a";
+    render() {
+      return (
+        <div>
+          <form>
+            <input id="elsewhere" type="radio" name="size" value="elsewhere" />
+          </form>
+          <form id="sizes">
+            <input id="gift" type="radio" name="wrap" value="gift" />
+            <input id="box" type="checkbox" name="size" value="box" />
+            {["a", "b", "c"].map((v) => (
+              <input key={v} id={v} type="radio" name="size" value={v} defaultChecked={this.saved === v} />
+            ))}
+          </form>
+        </div>
+      );
+    }
+  }
+
+  const moved = async (picks: string[], ...saved: string[]) => {
+    const app = await getDOM<Sizes>(<Sizes />);
+    await app.settle();
+    const radio = (id: string) => app.container.querySelector(`#${id}`) as HTMLInputElement;
+    for (const pick of picks) radio(pick).click();
+    for (const next of saved) {
+      app.instance.saved = next;
+      await app.settle();
+    }
+    const form = app.container.querySelector("#sizes") as HTMLFormElement;
+    const shown = ["a", "b", "c"].filter((id) => radio(id).checked);
+    form.reset();
+    return { shown, reset: ["a", "b", "c"].filter((id) => radio(id).checked) };
+  };
+
+  test("a pick stays, and a reset returns to the new default — wherever the new default stands", async () => {
+    expect(await moved(["c"], "b")).toEqual({ shown: ["c"], reset: ["b"] });
+    // Not taken for it: a pick before it in another form, another group or of another kind.
+    expect(await moved(["elsewhere", "gift", "box", "c"], "b")).toEqual({ shown: ["c"], reset: ["b"] });
+    expect(await moved(["a"], "c")).toEqual({ shown: ["a"], reset: ["c"] });
+  });
+
+  test("before any pick the default is what the group shows — and a pick in another group is not one", async () => {
+    expect(await moved([], "b")).toEqual({ shown: ["b"], reset: ["b"] });
+    expect(await moved([], "c", "a")).toEqual({ shown: ["a"], reset: ["a"] });
+    expect(await moved(["gift"], "b")).toEqual({ shown: ["b"], reset: ["b"] });
+  });
+});
+
 /**
  * Each handler handed to an `<input>` is one of its own, as a listener is. `on:input` is refused by the
  * types; this is a caller they do not reach, through a spread of something untyped.

@@ -170,9 +170,10 @@ const modals = portalTarget("modals");
 this.use(Portal, () => ({ children: <Dialog />, target: modals }));
 ```
 
-Make the token once — a module constant, as here, or a field — rather than inside the callback.
-`target: portalTarget("modals")` written there is a new token every time the callback runs, and the
-portal reconciles its whole block each time to follow it.
+A token kept once — a module constant, as here, or a field — finds its container once. Written
+inside the callback, `target: portalTarget("modals")` is a new token on every run and finds the
+container again, so the portal follows a container a layout mounts again; a run that finds the same
+container with the same children moves nothing.
 
 The server collects that target's content and hands it back on `page.portals`, keyed by the
 name — from `renderPage` for a per-request render and from `renderStatic` for a baked one.

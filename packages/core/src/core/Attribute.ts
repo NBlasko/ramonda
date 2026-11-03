@@ -53,8 +53,29 @@ function writeDefaults(input: HTMLInputElement, attributes: NodeAttributes): voi
   }
   if ("defaultChecked" in attributes && typeof attributes.checked !== "boolean") {
     const on = attributes.defaultChecked === true;
-    if (input.hasAttribute("checked") !== on) input.toggleAttribute("checked", on);
+    if (input.hasAttribute("checked") === on) return;
+    // Turned on, a radio's default takes the group's choice in a browser — so the radio the user
+    // picked is put back right after, and the new default changes only where a reset returns, as a
+    // `Select`'s does. A picked radio is one that is on while no default says so.
+    const picked = pickedIn(input);
+    input.toggleAttribute("checked", on);
+    if (picked !== undefined) picked.checked = true;
   }
+}
+
+/**
+ * The radio of `input`'s group the user (or a script) picked: on, with no `checked` attribute. One that
+ * is on AND still the default is not told apart from one never touched — the old default, re-picked,
+ * when the new default comes before it in the page.
+ */
+function pickedIn(input: HTMLInputElement): HTMLInputElement | undefined {
+  // The whole tree, so a radio outside its form that names it with `form="…"` is in the group.
+  for (const other of (input.getRootNode() as ParentNode).querySelectorAll("input")) {
+    if (other === input || other.type !== "radio") continue;
+    if (other.name !== input.name || other.form !== input.form) continue;
+    if (other.checked && !other.hasAttribute("checked")) return other;
+  }
+  return undefined;
 }
 
 /**
@@ -591,8 +612,13 @@ function removePreviousFromenhancedNode(
  * An `<input>`'s `value` or `checked` attribute that its `defaultValue` or `defaultChecked` holds:
  * `writeDefaults` writes it, and only when the default changes. Taken away here and written back
  * there, a radio's `checked` would turn the default back on and the user's pick off, on every pass.
+ *
+ * An `<option>`'s `selected` is its `Select`'s, the same way — the types refuse it on the option, so
+ * the render never says it. Taken away on hydration and written back by the select, it took the
+ * option the reader picked before the script arrived.
  */
 function heldAsADefault(enhancedNode: EnhancedHTMLNode, name: string, nextAttributes: NodeAttributes): boolean {
+  if (enhancedNode.nodeName === "OPTION") return name === "selected";
   if (enhancedNode.nodeName !== "INPUT") return false;
   // Exactly when `writeDefaults` writes it: a default beside the model's `value` or `checked` is not.
   if (name === "value") return "defaultValue" in nextAttributes && nextAttributes.value == null;

@@ -841,6 +841,62 @@ describe("a served select, hydrated", () => {
   });
 });
 
+describe("a served default select, hydrated", () => {
+  class Served extends Component<{ multiple: boolean }> {
+    render() {
+      return (
+        <Select defaultValue="b" multiple={this.props.multiple}>
+          {["a", "b", "c"].map((v) => (
+            <option key={v} value={v}>
+              {v}
+            </option>
+          ))}
+        </Select>
+      );
+    }
+  }
+
+  // The reader picks before the script arrives — or the browser restores a form's state.
+  const pickedBeforeTheScript = async (pick: (select: HTMLSelectElement) => void, multiple = false) => {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    container.innerHTML = await renderToString(<Served multiple={multiple} />);
+    const select = container.querySelector("select") as HTMLSelectElement;
+    pick(select);
+
+    hydrateRoot(<Served multiple={multiple} />, container);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const after = {
+      chosen: Array.from(select.selectedOptions, (option) => option.value),
+      reset: Array.from(select.options, (option) => option.defaultSelected),
+    };
+    container.remove();
+    return after;
+  };
+
+  test("a pick made before hydration stays, and a reset still returns to the default", async () => {
+    expect(await pickedBeforeTheScript((select) => (select.value = "a"))).toEqual({
+      chosen: ["a"],
+      reset: [false, true, false],
+    });
+    expect(await pickedBeforeTheScript((select) => (select.value = "c"))).toEqual({
+      chosen: ["c"],
+      reset: [false, true, false],
+    });
+  });
+
+  test("a multiple select keeps every option the reader picked", async () => {
+    const pick = (select: HTMLSelectElement) => {
+      select.options[0].selected = true;
+      select.options[1].selected = false;
+      select.options[2].selected = true;
+    };
+    expect(await pickedBeforeTheScript(pick, true)).toEqual({ chosen: ["a", "c"], reset: [false, true, false] });
+  });
+});
+
 describe("why attributes go on before the children", () => {
   test("a multiple select keeps every option the model picked", async () => {
     /**
