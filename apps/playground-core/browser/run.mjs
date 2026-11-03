@@ -4,16 +4,15 @@
  *
  * A script of its own, so the arguments given to `test:browser` reach Playwright: `test:browser
  * fields.spec.ts --grep paste` runs that part of the Chromium suite. Any argument narrows the run to
- * Chromium; the Firefox script runs with the whole suite, given none. A `--` pnpm passes through ahead
- * of them is dropped. Playwright is found where this package installs it, so the script runs the same
+ * Chromium; the Firefox script runs with the whole suite, given none. A `--` pnpm passes through is
+ * dropped, wherever it stands. Playwright is found where this package installs it, so the script runs the same
  * through pnpm and as `node browser/run.mjs`.
  */
 import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 
-const given = process.argv.slice(2);
-const filters = given[0] === "--" ? given.slice(1) : given;
+const filters = process.argv.slice(2).filter(notASeparator);
 const playwright = createRequire(import.meta.url).resolve("@playwright/test/cli");
 const chromium = run(process.execPath, [playwright, "test", ...filters]);
 const firefox =
@@ -21,6 +20,11 @@ const firefox =
     ? 0
     : run(process.execPath, [fileURLToPath(new URL("./firefox-composition.mjs", import.meta.url))]);
 process.exit(chromium !== 0 ? chromium : firefox);
+
+/** pnpm hands a `--` through as written, wherever it stands: Playwright would read what follows as files. */
+function notASeparator(arg) {
+  return arg !== "--";
+}
 
 /** Runs a command with this terminal, and answers its exit code — 1 when it could not start, or ended on a signal. */
 function run(command, args) {

@@ -1474,7 +1474,6 @@ export function reorderChildren(
   }
 
   const keep = keptInOrder(current, fresh);
-  let keepIndex = keep.length - 1;
   /**
    * Where an insertion lands when nothing of this run follows it.
    *
@@ -1489,7 +1488,7 @@ export function reorderChildren(
    * node the host's claim pool skips to, which is what keeps the two passes agreeing about which
    * nodes are whose.
    */
-  let reference: ChildNode | null = anchor ?? firstHostedBlock(parent);
+  const reference: ChildNode | null = anchor ?? firstHostedBlock(parent);
 
   /**
    * Whoever the reader was typing in, if this parent holds them.
@@ -1515,24 +1514,22 @@ export function reorderChildren(
   const keepFocus = focused !== null && focused !== document.body;
 
   /**
-   * Each run of nodes that go in between two that stay goes in FIRST to LAST, as a parser puts them.
-   * The walk finds them last-first, and inserting them so made a parent that answers to arrival order
-   * read the run backwards: a `<select>` chooses the first option put in while none is chosen, so a
-   * select whose options arrived — built, or a city list after its country changed — showed its LAST
-   * one (measured in Chromium), where the served page shows the first. One insertion per node either way.
+   * Walked FIRST to LAST, each node that goes in placed before the next one that stays: the nodes
+   * arrive in the order a parser puts them. A parent that answers to arrival order reads them as the
+   * page does — a `<select>` chooses the first option put in while none is chosen, two radios of one
+   * group carrying `checked` leave the later one checked, and a `<details name>` group keeps the later
+   * one open. Walked last-first, a select whose options arrived showed its LAST one (measured in
+   * Chromium), where the served page shows the first. One insertion per node either way.
    */
-  // `end` closes the run being gathered; `reference` is what it goes in front of.
-  let end = length;
-  for (let n = length - 1; n >= 0; n--) {
-    if (keepIndex >= 0 && keep[keepIndex] === n) {
-      // Already in relative order: leave it, and let it anchor the run after it.
-      for (let i = n + 1; i < end; i++) parent.insertBefore(orderedNodes[i], reference);
-      keepIndex--;
-      reference = orderedNodes[n];
-      end = n;
+  let next = 0;
+  for (let n = 0; n < length; n++) {
+    if (next < keep.length && keep[next] === n) {
+      // Already in relative order: leave it, and let it anchor the ones before it.
+      next++;
+    } else {
+      parent.insertBefore(orderedNodes[n], next < keep.length ? orderedNodes[keep[next]] : reference);
     }
   }
-  for (let i = 0; i < end; i++) parent.insertBefore(orderedNodes[i], reference);
 
   /**
    * Only if it actually LOST the focus, which is not the same as having been moved.

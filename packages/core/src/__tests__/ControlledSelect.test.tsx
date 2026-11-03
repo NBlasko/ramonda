@@ -1135,6 +1135,38 @@ describe("a kept select whose options change", () => {
   });
 });
 
+describe("a select whose options change in two places at once", () => {
+  class Two extends Component {
+    @state mine = ["a1", "a2"];
+    @state all = ["x1", "x2"];
+    render() {
+      return (
+        <div>
+          <Select aria-label="Pick">
+            <option disabled value="">
+              pick
+            </option>
+            {this.mine.map(optionOf)}
+            <option disabled value="-">
+              ----
+            </option>
+            {this.all.map(optionOf)}
+          </Select>
+        </div>
+      );
+    }
+  }
+
+  test("starts on the first that arrives in the page, as a served page does", async () => {
+    const app = await getDOM<Two>(<Two />);
+    await app.settle();
+    app.instance.mine = ["b1", "b2"];
+    app.instance.all = ["y1", "y2"];
+    await app.settle();
+    expect((app.container.querySelector("select") as HTMLSelectElement).value).toBe("b1");
+  });
+});
+
 describe("an option's selected written past the types", () => {
   test("is taken off when the render stops saying it", async () => {
     class Spread extends Component {
@@ -1207,8 +1239,8 @@ describe("a caller's own ref", () => {
    * component never saw its own element, `settle` returned on its first line, and no choice was ever
    * applied. Silently, because a select with no answer still shows an option.
    *
-   * Three options with the MIDDLE one asked for, because two would pass by accident: the last option
-   * is inserted first and a select with no selection takes the first option it is handed.
+   * Three options with the MIDDLE one asked for, because an end one would pass by accident: a select
+   * with no choice applied shows the first option it is handed, which is an end of the list.
    */
   test("gets the element, and the choice is still applied", async () => {
     class Own extends Component {
@@ -1294,4 +1326,12 @@ async function pickAsABrowserDoes(select: HTMLSelectElement, value: string): Pro
   select.dispatchEvent(new Event("input", { bubbles: true }));
   select.dispatchEvent(new Event("change", { bubbles: true }));
   await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+function optionOf(value: string) {
+  return (
+    <option key={value} value={value}>
+      {value}
+    </option>
+  );
 }

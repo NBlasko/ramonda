@@ -103,7 +103,7 @@ describe("reorderChildren fuzz", () => {
  * arrival order — a `<select>` choosing the first option put in — reads the run as the page does.
  */
 describe("the order nodes go in", () => {
-  test("each run between two that stay arrives first to last", async () => {
+  test("the nodes that go in arrive first to last, on both sides of one that stays", async () => {
     const parent = document.createElement("div");
     const label = (text: string) => {
       const el = document.createElement("i");
@@ -120,6 +120,6 @@ describe("the order nodes go in", () => {
     reorderChildren(parent, [label("a"), label("b"), kept, label("c"), label("d")]);
     await Promise.resolve();
     observer.disconnect();
-    expect({ arrived, order: order(parent) }).toEqual({ arrived: ["c", "d", "a", "b"], order: "a,b,k,c,d" });
+    expect({ arrived, order: order(parent) }).toEqual({ arrived: ["a", "b", "c", "d"], order: "a,b,k,c,d" });
   });
 });
