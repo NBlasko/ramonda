@@ -12,9 +12,9 @@ follows is what actually reaches the HTML and what happens when the browser pick
 
 ## What is in the markup
 
-Every control carries `name` and `value`, so the server-rendered page is a real HTML form before a
-line of JavaScript runs. It has the values, and it posts under the names you
-declared in the schema. `aria-invalid` is there only on a field with a message to show.
+Every control carries `name` and its value — `value`, or `checked` on a box — so the server-rendered
+page is a real HTML form before a line of JavaScript runs. It has the values, and it posts under the
+names you declared in the schema. `aria-invalid` is there only on a field with a message to show.
 
 ```html
 <input name="email" value="" />

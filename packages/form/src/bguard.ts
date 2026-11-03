@@ -105,8 +105,9 @@ const INPUT_TYPES: Record<string, HtmlConstraints["type"]> = {
  * - **Without `noValidate`**, the browser answers first. Reasonable if you want native behaviour and
  *   the schema only as the server-side truth.
  *
- * The constraints carry nothing a field is written with — no `name`, `value`, handler or
- * `aria-invalid` — so they sit beside the field's own attributes in any order.
+ * The constraints carry a `type` when the schema's `format` names one, and nothing else a field is
+ * written with — no `name`, `value`, handler or `aria-invalid`. Spread them first: a `type` the field
+ * writes after them is the one it gets.
  */
 export function htmlConstraints<S extends StandardSchemaV1>(schema: S): (path: string | Path) => HtmlConstraints {
   // Rendered once. `dialect: null` because nothing here reads `$schema`, and it would be the only

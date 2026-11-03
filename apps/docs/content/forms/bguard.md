@@ -129,8 +129,9 @@ which validation the reader sees:
 - **Without it**, the browser answers first. Reasonable if you want native behaviour and treat the
   schema as the server-side truth.
 
-The constraints carry nothing a field is written with — no `name`, `value`, handler or `aria-invalid`
-— so the spread sits beside the field's own five attributes, and `@ramonda/check` knows what it holds:
+The constraints carry a `type` when the schema's `format` names one, and nothing else a field is
+written with — no `name`, `value`, handler or `aria-invalid`. The spread goes first, beside the field's
+own five attributes: a `type` the field writes after it is the one it gets. `@ramonda/check` knows what it holds:
 it reads where `html` came from, `htmlConstraints` from `@ramonda/form/bguard`.
 
 ## Cross-field rules that point at nothing — `unknownRefPaths`

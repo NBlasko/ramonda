@@ -90,8 +90,10 @@ typo is a compile error and renaming a schema field breaks the render rather tha
 producing `undefined`. See [Fields](/forms/fields).
 
 **A control is written with five attributes, each by name** — `name`, `value`, `oninput`, `onblur`
-and `aria-invalid` — all read off the field's `$`. Every one is there to see where the control is,
-and `@ramonda/check` reports a field in the form that is missing one.
+and `aria-invalid` — all read off the field's `$`; a box writes `checked` in place of `value`, and a
+number or a day writes its `type` too, since the control's `type` is what the field reads back. Every
+one is there to see where the control is, and `@ramonda/check` reports a field in the form that is
+missing one.
 
 ## Try it
 
