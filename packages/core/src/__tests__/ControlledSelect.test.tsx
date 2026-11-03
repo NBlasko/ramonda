@@ -4,6 +4,8 @@ import { state } from "../base/decorators";
 import { Component, Select, createRef } from "../index";
 import { renderToString } from "../hydration/ssr";
 import { hydrateRoot } from "../hydration/hydrate";
+import { componentAt } from "../core/DiffAndMerge";
+import { flushSync } from "../testing";
 
 /**
  * A `<select>` is the one element whose own state is not a property of itself: it is which CHILD is
@@ -894,6 +896,107 @@ describe("a served default select, hydrated", () => {
       select.options[2].selected = true;
     };
     expect(await pickedBeforeTheScript(pick, true)).toEqual({ chosen: ["a", "c"], reset: [false, true, false] });
+  });
+});
+
+describe("a default select whose default moves", () => {
+  class Saved extends Component<{ multiple?: boolean }> {
+    @state saved = "b";
+    render() {
+      return (
+        <form>
+          <Select defaultValue={this.saved} multiple={this.props.multiple}>
+            {["a", "b", "c"].map((v) => (
+              <option key={v} value={v}>
+                {v}
+              </option>
+            ))}
+          </Select>
+        </form>
+      );
+    }
+  }
+
+  const after = (select: HTMLSelectElement) => {
+    const shown = select.value;
+    select.form?.reset();
+    return { shown, reset: select.value };
+  };
+
+  test("a pick made on the served page before the script stays when the default moves later", async () => {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    container.innerHTML = await renderToString(<Saved />);
+    const select = container.querySelector("select") as HTMLSelectElement;
+    select.value = "c";
+    hydrateRoot(<Saved />, container);
+    await Promise.resolve();
+    await Promise.resolve();
+    (componentAt(select.form as HTMLFormElement) as Saved).saved = "a";
+    flushSync();
+    const result = after(select);
+    container.remove();
+    expect(result).toEqual({ shown: "c", reset: "a" });
+  });
+
+  test("after a reset the select is untouched again, and follows the default", async () => {
+    const app = await getDOM<Saved>(<Saved />);
+    await app.settle();
+    const select = app.container.querySelector("select") as HTMLSelectElement;
+    select.value = "c";
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+    select.form?.reset();
+    app.instance.saved = "a";
+    await app.settle();
+    expect(after(select)).toEqual({ shown: "a", reset: "a" });
+  });
+
+  const chosen = (select: HTMLSelectElement) => Array.from(select.selectedOptions, (option) => option.value);
+  const pickEach = (select: HTMLSelectElement, values: string[]) => {
+    for (const option of Array.from(select.options)) option.selected = values.includes(option.value);
+  };
+
+  test("a multiple select keeps a served pick that includes the default", async () => {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    container.innerHTML = await renderToString(<Saved multiple />);
+    const select = container.querySelector("select") as HTMLSelectElement;
+    // Added to the default, as a ctrl-click does: only the option clicked is touched.
+    (select.options[2] as HTMLOptionElement).selected = true;
+    hydrateRoot(<Saved multiple />, container);
+    await Promise.resolve();
+    await Promise.resolve();
+    (componentAt(select.form as HTMLFormElement) as Saved).saved = "a";
+    flushSync();
+    const shown = chosen(select);
+    container.remove();
+    expect(shown).toEqual(["b", "c"]);
+  });
+
+  test("a multiple select reset after a pick that included the default follows the next default", async () => {
+    const app = await getDOM<Saved>(<Saved multiple />);
+    await app.settle();
+    const select = app.container.querySelector("select") as HTMLSelectElement;
+    pickEach(select, ["a", "b"]);
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+    select.form?.reset();
+    app.instance.saved = "c";
+    await app.settle();
+    expect(chosen(select)).toEqual(["c"]);
+  });
+
+  test("a pick after hydration, and after a reset, still stays", async () => {
+    const app = await getDOM<Saved>(<Saved />);
+    await app.settle();
+    const select = app.container.querySelector("select") as HTMLSelectElement;
+    select.value = "c";
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+    select.form?.reset();
+    select.value = "a";
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+    app.instance.saved = "c";
+    await app.settle();
+    expect(after(select)).toEqual({ shown: "a", reset: "c" });
   });
 });
 

@@ -169,7 +169,8 @@ finished, so a search typed on any device runs as the user types; the field is n
 word ends. A handler that waits for the finished word returns while `isComposing`, and is handed the
 word once when it ends — in Chromium and in Firefox, where it is measured. A field whose text is read when the form is sent, rather than held in state, takes
 `defaultValue` instead: it shows that first and then belongs to the user, and a form's reset returns
-to it.
+to it. A default that changes later — a saved draft that loads — moves the field while it shows its
+default; once the user has picked, it moves only where a reset returns.
 
 ```tsx
 <TextArea aria-label="Draft" value={this.draft} oninput={this.onInput} />;   // held by the model

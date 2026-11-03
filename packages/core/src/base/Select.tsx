@@ -73,10 +73,14 @@ export class Select extends Component<SelectProps> {
   private e = createRef<HTMLSelectElement>((node) => this.g(node));
 
   /**
-   * `d` — whether the start is settled for good: the user has picked, or a `value` has held the select.
-   * Until then a `defaultValue` is where it starts, applied whenever an option it names is there.
+   * `d` — whether the start is settled: the user has picked, or a `value` has held the select, until a
+   * reset shows the default again. Until then a `defaultValue` is where it starts, applied whenever an
+   * option it names is there.
    */
   private d = false;
+
+  /** `k` — the options the user's last pick chose: the default shown again, and not those, is a reset. */
+  private k: ReadonlySet<HTMLOptionElement> | undefined;
 
   /** `h` — the caller's ref as of the last HAND-OVER, so a swapped one can be let go of. */
   private h: RefTarget<HTMLSelectElement> | undefined;
@@ -123,6 +127,12 @@ export class Select extends Component<SelectProps> {
     if (chosen == null) {
       const fallback = this.props.defaultValue;
       if (fallback != null) {
+        // What it shows says the rest. Something other than a default it has is a pick — one made on a
+        // served page before the script arrived has no event to note it. The default again, and not
+        // what the user last picked, is a form's reset: the select is as it starts.
+        const asItStarts = showsItsDefault(select);
+        if (!this.d) this.d = !asItStarts && Array.from(select.options).some(isADefault);
+        else if (asItStarts && !choosing(select, this.k)) this.d = false;
         // Never picked in: the default is what it shows.
         if (!this.d) this.start(select, fallback);
         // Settled for good — the user picked, or a value held it — and a later default still says
@@ -186,6 +196,7 @@ export class Select extends Component<SelectProps> {
   /** The listener a `defaultValue` select notes the user's pick with: from then on it is theirs. */
   p(event: Event): void {
     this.d = true;
+    this.k = new Set((event.currentTarget as HTMLSelectElement).selectedOptions);
     heard(this, event);
   }
 
@@ -218,6 +229,21 @@ function wantedOf(chosen: string | number | readonly (string | number)[]): Set<s
 }
 
 /** Gives an option the `selected` attribute or takes it away, and touches it only when it says otherwise. */
+/** Whether every option is chosen exactly when its default says — as a select starts, and a reset leaves it. */
+function showsItsDefault(select: HTMLSelectElement): boolean {
+  return Array.from(select.options).every((option) => option.selected === option.defaultSelected);
+}
+
+/** Whether `select` shows exactly `options`. */
+function choosing(select: HTMLSelectElement, options: ReadonlySet<HTMLOptionElement> | undefined): boolean {
+  const chosen = select.selectedOptions;
+  return options !== undefined && options.size === chosen.length && Array.from(chosen).every((o) => options.has(o));
+}
+
+function isADefault(option: HTMLOptionElement): boolean {
+  return option.defaultSelected;
+}
+
 function markDefault(option: HTMLOptionElement, on: boolean): boolean {
   if (option.hasAttribute("selected") === on) return false;
   if (on) option.setAttribute("selected", "");

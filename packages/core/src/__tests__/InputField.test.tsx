@@ -1,7 +1,8 @@
 import { describe, test, expect } from "vitest";
 import { getDOM } from "../test/setup";
-import { state } from "../base/decorators";
-import { Component, TextArea, type EventOn } from "../index";
+import { mounted, state } from "../base/decorators";
+import { Component, TextArea, bootstrap, unmount, type EventOn } from "../index";
+import { componentAt } from "../core/DiffAndMerge";
 import { renderToString } from "../hydration/ssr";
 import { flushSync } from "../testing";
 
@@ -286,6 +287,7 @@ describe("an uncontrolled input across a render", () => {
 describe("a radio group whose default moves", () => {
   class Sizes extends Component {
     @state saved = "a";
+    @state sizes = ["a", "b", "c"];
     render() {
       return (
         <div>
@@ -295,7 +297,7 @@ describe("a radio group whose default moves", () => {
           <form id="sizes">
             <input id="gift" type="radio" name="wrap" value="gift" />
             <input id="box" type="checkbox" name="size" value="box" />
-            {["a", "b", "c"].map((v) => (
+            {this.sizes.map((v) => (
               <input key={v} id={v} type="radio" name="size" value={v} defaultChecked={this.saved === v} />
             ))}
           </form>
@@ -304,32 +306,135 @@ describe("a radio group whose default moves", () => {
     }
   }
 
-  const moved = async (picks: string[], ...saved: string[]) => {
+  /** A step: a click, `reset`, or what the next render holds — the default, and the radios. */
+  type Step = string | { saved?: string; sizes?: string[] };
+
+  const moved = async (...steps: Step[]) => {
     const app = await getDOM<Sizes>(<Sizes />);
     await app.settle();
-    const radio = (id: string) => app.container.querySelector(`#${id}`) as HTMLInputElement;
-    for (const pick of picks) radio(pick).click();
-    for (const next of saved) {
-      app.instance.saved = next;
-      await app.settle();
-    }
     const form = app.container.querySelector("#sizes") as HTMLFormElement;
-    const shown = ["a", "b", "c"].filter((id) => radio(id).checked);
+    const checked = () =>
+      Array.from(form.querySelectorAll<HTMLInputElement>('input[type="radio"][name="size"]'))
+        .filter((radio) => radio.checked)
+        .map((radio) => radio.id);
+    for (const step of steps) {
+      if (step === "reset") form.reset();
+      else if (typeof step === "string") (app.container.querySelector(`#${step}`) as HTMLInputElement).click();
+      else {
+        if (step.saved !== undefined) app.instance.saved = step.saved;
+        if (step.sizes !== undefined) app.instance.sizes = step.sizes;
+        await app.settle();
+      }
+    }
+    const shown = checked();
     form.reset();
-    return { shown, reset: ["a", "b", "c"].filter((id) => radio(id).checked) };
+    return { shown, reset: checked() };
   };
 
   test("a pick stays, and a reset returns to the new default — wherever the new default stands", async () => {
-    expect(await moved(["c"], "b")).toEqual({ shown: ["c"], reset: ["b"] });
+    expect(await moved("c", { saved: "b" })).toEqual({ shown: ["c"], reset: ["b"] });
     // Not taken for it: a pick before it in another form, another group or of another kind.
-    expect(await moved(["elsewhere", "gift", "box", "c"], "b")).toEqual({ shown: ["c"], reset: ["b"] });
-    expect(await moved(["a"], "c")).toEqual({ shown: ["a"], reset: ["c"] });
+    expect(await moved("elsewhere", "gift", "box", "c", { saved: "b" })).toEqual({ shown: ["c"], reset: ["b"] });
+    expect(await moved("a", { saved: "c" })).toEqual({ shown: ["a"], reset: ["c"] });
   });
 
-  test("before any pick the default is what the group shows — and a pick in another group is not one", async () => {
-    expect(await moved([], "b")).toEqual({ shown: ["b"], reset: ["b"] });
-    expect(await moved([], "c", "a")).toEqual({ shown: ["a"], reset: ["a"] });
-    expect(await moved(["gift"], "b")).toEqual({ shown: ["b"], reset: ["b"] });
+  test("a pick stays when the new default is a radio the render adds", async () => {
+    expect(await moved("c", { saved: "d", sizes: ["d", "b", "c"] })).toEqual({ shown: ["c"], reset: ["d"] });
+  });
+
+  test("a pick the render removes leaves the new default checked", async () => {
+    expect(await moved("c", { saved: "b", sizes: ["a", "b"] })).toEqual({ shown: ["b"], reset: ["b"] });
+  });
+
+  test("before any pick, and after a reset, the default is what the group shows", async () => {
+    expect(await moved({ saved: "b" })).toEqual({ shown: ["b"], reset: ["b"] });
+    expect(await moved({ saved: "c" }, { saved: "a" })).toEqual({ shown: ["a"], reset: ["a"] });
+    expect(await moved("gift", { saved: "b" })).toEqual({ shown: ["b"], reset: ["b"] });
+    expect(await moved("c", "reset", { saved: "b" })).toEqual({ shown: ["b"], reset: ["b"] });
+  });
+
+  test("a pick in a shadow root stays when the default moves there", async () => {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = document.createElement("div");
+    host.attachShadow({ mode: "open" }).appendChild(root);
+    bootstrap(<Sizes />, root);
+    flushSync();
+    const radio = (id: string) => root.querySelector(`#${id}`) as HTMLInputElement;
+    radio("c").click();
+    (componentAt(root) as Sizes).saved = "b";
+    flushSync();
+    const shown = ["a", "b", "c"].filter((id) => radio(id).checked);
+    unmount(root);
+    host.remove();
+    expect(shown).toEqual(["c"]);
+  });
+
+  test("a default that joins no radio group — a box, a radio without a name, the server's — asks no group", async () => {
+    class Defaults extends Component {
+      @state on = false;
+      render() {
+        return (
+          <div>
+            {this.on ? <input type="checkbox" name="size" defaultChecked /> : null}
+            {this.on ? <input type="radio" defaultChecked /> : null}
+            <input type="checkbox" name="size" defaultChecked={this.on} />
+            <input type="radio" defaultChecked={this.on} />
+          </div>
+        );
+      }
+    }
+    const app = await getDOM<Defaults>(<Defaults />);
+    await app.settle();
+    const asked: unknown[] = [];
+    const queryAll = Document.prototype.querySelectorAll;
+    const elementQueryAll = Element.prototype.querySelectorAll;
+    Document.prototype.querySelectorAll = function (this: Document, selector: string) {
+      asked.push(selector);
+      return queryAll.call(this, selector);
+    } as typeof queryAll;
+    Element.prototype.querySelectorAll = function (this: Element, selector: string) {
+      asked.push(selector);
+      return elementQueryAll.call(this, selector);
+    } as typeof elementQueryAll;
+    try {
+      app.instance.on = true;
+      await app.settle();
+      await renderToString(<Sizes />);
+    } finally {
+      Document.prototype.querySelectorAll = queryAll;
+      Element.prototype.querySelectorAll = elementQueryAll;
+    }
+    expect(asked).toEqual([]);
+  });
+
+  test("a radio a component checks when it mounts in that commit is left as it is", async () => {
+    class Chooser extends Component {
+      @mounted
+      choose() {
+        (document.querySelector("#a") as HTMLInputElement).checked = true;
+      }
+      render() {
+        return <output />;
+      }
+    }
+    class Sized extends Sizes {
+      override render() {
+        return (
+          <div>
+            {super.render()}
+            {this.saved === "b" ? <Chooser /> : null}
+          </div>
+        );
+      }
+    }
+    const app = await getDOM<Sized>(<Sized />);
+    await app.settle();
+    (app.container.querySelector("#c") as HTMLInputElement).click();
+    app.instance.saved = "b";
+    await app.settle();
+    const checked = ["a", "b", "c"].filter((id) => (app.container.querySelector(`#${id}`) as HTMLInputElement).checked);
+    expect(checked).toEqual(["a"]);
   });
 });
 

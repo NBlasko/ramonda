@@ -833,7 +833,7 @@ function isRadio(input: HTMLInputElement): boolean {
  * The radios of `input`'s group: the same `name` in the same form — its `elements`, which hold a radio
  * tied to it by `form="id"` from outside the element too — or in the same root without one.
  */
-function groupOf(input: HTMLInputElement): HTMLInputElement[] {
+export function groupOf(input: HTMLInputElement): HTMLInputElement[] {
   if (input.name === "") return [input];
   // Without a form, only the radios, rather than every input on the page — and the name compared here,
   // so a name no selector can hold (a line break, from data) is a name like any other.

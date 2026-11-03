@@ -1,7 +1,8 @@
 import type { EnhancedHTMLNode } from "../types/vdom";
 import { IS_SVG, KEY_SYM, STYLE_SYM, REF_SYM, BOOLEAN_ATTRIBUTES, keptInAProperty } from "../helpers/constants";
 import { checkBooleanAttribute } from "../debug/booleanAttribute";
-import { INPUT_OWN_EVENTS, composingIn, controlInput, keepOwnHandler, showsTheModel } from "./field";
+import { INPUT_OWN_EVENTS, composingIn, controlInput, groupOf, keepOwnHandler, showsTheModel } from "./field";
+import { queueAfterCommit } from "./commit";
 type NodeAttributes = Record<string, any>;
 
 /**
@@ -29,7 +30,7 @@ export function applyChangesOnAttributes(enhancedNode: ChildNode, rawNextAttribu
    * would never see.
    */
   if (enhancedNode.nodeName === "INPUT") {
-    writeDefaults(enhancedNode as unknown as HTMLInputElement, rawNextAttributes);
+    writeDefaults(enhancedNode as unknown as HTMLInputElement, rawNextAttributes, onServer);
     if (!onServer) controlInput(enhancedNode as unknown as HTMLInputElement, rawNextAttributes);
   }
 }
@@ -43,7 +44,7 @@ export function applyChangesOnAttributes(enhancedNode: ChildNode, rawNextAttribu
  * Here rather than in the attribute loop, because neither is an attribute of its own name for the
  * diff to read back, so a default taken away — `defaultChecked` turned `false` — would never be seen.
  */
-function writeDefaults(input: HTMLInputElement, attributes: NodeAttributes): void {
+function writeDefaults(input: HTMLInputElement, attributes: NodeAttributes, onServer: boolean): void {
   // A field with a `value` (`checked`) is the model's, and so is that attribute: a default written
   // beside it — even as `undefined`, passed straight through by a wrapper — does not touch it.
   if ("defaultValue" in attributes && attributes.value == null) {
@@ -54,28 +55,41 @@ function writeDefaults(input: HTMLInputElement, attributes: NodeAttributes): voi
   if ("defaultChecked" in attributes && typeof attributes.checked !== "boolean") {
     const on = attributes.defaultChecked === true;
     if (input.hasAttribute("checked") === on) return;
-    // Turned on, a radio's default takes the group's choice in a browser — so the radio the user
-    // picked is put back right after, and the new default changes only where a reset returns, as a
-    // `Select`'s does. A picked radio is one that is on while no default says so.
-    const picked = pickedIn(input);
+    if (on && !onServer && input.type === "radio" && input.name !== "") keepThePick(input);
     input.toggleAttribute("checked", on);
-    if (picked !== undefined) picked.checked = true;
   }
 }
 
 /**
- * The radio of `input`'s group the user (or a script) picked: on, with no `checked` attribute. One that
- * is on AND still the default is not told apart from one never touched — the old default, re-picked,
- * when the new default comes before it in the page.
+ * A radio's default turned on takes its group's choice in a browser — when the attribute is written, or
+ * when a new radio carrying it is put in the page. So the radio the user picked is noted BEFORE, while
+ * the page still shows it, and checked again once the commit has put every radio where it goes: the
+ * new default changes only where a reset returns, as a `Select`'s does.
+ *
+ * Put back only while the default still holds the choice: a radio something checked meanwhile — a
+ * `@mounted` — is left as it is.
  */
-function pickedIn(input: HTMLInputElement): HTMLInputElement | undefined {
-  // The whole tree, so a radio outside its form that names it with `form="…"` is in the group.
-  for (const other of (input.getRootNode() as ParentNode).querySelectorAll("input")) {
-    if (other === input || other.type !== "radio") continue;
-    if (other.name !== input.name || other.form !== input.form) continue;
-    if (other.checked && !other.hasAttribute("checked")) return other;
-  }
-  return undefined;
+function keepThePick(input: HTMLInputElement): void {
+  // A radio not yet in the page has no group to ask, so its picks are the document's — one put into a
+  // shadow root finds none of the picks there.
+  const radios = input.isConnected
+    ? groupOf(input)
+    : Array.from(input.ownerDocument.querySelectorAll<HTMLInputElement>('input[type="radio"]'));
+  const picks = radios.filter(radioWasPicked);
+  // A pick in another group is on still, and one the render removed is off the page: checking either
+  // again changes nothing.
+  queueAfterCommit(() => {
+    if (input.checked) for (const pick of picks) pick.checked = true;
+  });
+}
+
+/**
+ * Picked by the user (or a script): on, with no `checked` attribute saying it starts so. One that is on
+ * AND still the default is not told apart from one never touched — the old default, picked again, when
+ * the new default comes before it in the page.
+ */
+function radioWasPicked(radio: HTMLInputElement): boolean {
+  return radio.checked && !radio.hasAttribute("checked");
 }
 
 /**

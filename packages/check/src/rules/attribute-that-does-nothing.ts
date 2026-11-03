@@ -129,7 +129,8 @@ export const attributeThatDoesNothing = {
     severity: "error",
     reportedWhen:
       "one of six camelCase names — `httpEquiv`, `acceptCharset`, `defaultValue`, `defaultChecked`, " +
-      "`innerHTML`, `textContent` — reaches the DOM as itself, where no browser reads it",
+      "`innerHTML`, `textContent` — reaches the DOM as itself, where no browser reads it; `defaultValue` " +
+      "and `defaultChecked` are where an `<input>`, a `Select` or a `TextArea` starts, and reported elsewhere",
     heading: (found) => `${found.length} attribute(s) that reach the DOM and do nothing:`,
     lines: (issue) => [
       `  ${issue.file}:${issue.line}:${issue.column}`,

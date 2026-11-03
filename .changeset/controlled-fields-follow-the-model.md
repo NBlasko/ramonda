@@ -42,7 +42,8 @@ the composition going until its `compositionend` or the next ordinary edit.
 `defaultValue` (and `defaultChecked`) starts a field the user owns — for a form whose fields are read
 when it is sent. It is written as the field's default — the `value` attribute, the `checked`
 attribute, the option's `selected` — so a served page shows it before any script runs, and a form's
-reset returns to it. A `value` of `null` or `undefined` is no value. The field's handler is called as a
+reset returns to it. A default that changes later moves the field while it shows its default, and
+otherwise only where a reset returns: the user's pick stays. A `value` of `null` or `undefined` is no value. The field's handler is called as a
 listener is, with the element as `this`, and may be a function or a listener object; one written
 `on:input` — a type error now, see below — reaching the field anyway is its own as much as `oninput`.
 

@@ -240,7 +240,7 @@ so a rule cannot be added without appearing here.
 | [`function-used-as-a-tag`](/rules/function-used-as-a-tag) | a plain function is written in tag position, where it names nothing the framework can construct — and the compiler only refuses the shapes that do not return exactly one element — also [`RMD011`](/reference/diagnostics/rmd011) |
 | [`click-with-no-keyboard-path`](/rules/click-with-no-keyboard-path) | a click handler sits on a non-interactive element with no key handler, no `tabIndex`, no `role` and nothing interactive inside it |
 | [`access-key`](/rules/access-key) | an `accessKey` is written, which overrides a shortcut the reader's own software may be using |
-| [`attribute-that-does-nothing`](/rules/attribute-that-does-nothing) | one of six camelCase names — `httpEquiv`, `acceptCharset`, `defaultValue`, `defaultChecked`, `innerHTML`, `textContent` — reaches the DOM as itself, where no browser reads it |
+| [`attribute-that-does-nothing`](/rules/attribute-that-does-nothing) | one of six camelCase names — `httpEquiv`, `acceptCharset`, `defaultValue`, `defaultChecked`, `innerHTML`, `textContent` — reaches the DOM as itself, where no browser reads it; `defaultValue` and `defaultChecked` are where an `<input>`, a `Select` or a `TextArea` starts, and reported elsewhere |
 | [`media-with-no-captions`](/rules/media-with-no-captions) | a `video` or `audio` element carries no `<track>`, so nothing on the page says what is in it |
 | [`duplicate-id`](/rules/duplicate-id) | two elements in one render carry the same literal `id`, and both are always present |
 | [`heading-skips-a-level`](/rules/heading-skips-a-level) | a heading is more than one level below the heading before it, both written in the same render |
