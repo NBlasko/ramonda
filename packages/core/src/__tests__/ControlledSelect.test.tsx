@@ -1135,6 +1135,58 @@ describe("a kept select whose options change", () => {
   });
 });
 
+describe("a default select whose picked options are all gone", () => {
+  test("is as it starts again, and shows its default", async () => {
+    class Country extends Component {
+      @state country: "rs" | "hr" = "rs";
+      render() {
+        const cities = this.country === "rs" ? ["Beograd", "Novi Sad", "Niš"] : ["Zagreb", "Split", "Rijeka"];
+        return (
+          <div>
+            <Select aria-label="City" defaultValue={this.country === "rs" ? "Novi Sad" : "Split"}>
+              {cities.map(optionOf)}
+            </Select>
+          </div>
+        );
+      }
+    }
+    const app = await getDOM<Country>(<Country />);
+    await app.settle();
+    const select = app.container.querySelector("select") as HTMLSelectElement;
+    select.value = "Niš";
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+    app.instance.country = "hr";
+    await app.settle();
+    expect(select.value).toBe("Split");
+  });
+});
+
+describe("a multiple default select the user emptied", () => {
+  test("stays empty when its default moves", async () => {
+    class Tags extends Component {
+      @state saved = "a";
+      render() {
+        return (
+          <div>
+            <Select aria-label="Tags" multiple defaultValue={[this.saved]}>
+              {["a", "b", "c"].map(optionOf)}
+            </Select>
+          </div>
+        );
+      }
+    }
+    const app = await getDOM<Tags>(<Tags />);
+    await app.settle();
+    const select = app.container.querySelector("select") as HTMLSelectElement;
+    // The one option chosen, clicked off: the only one the user touched.
+    (select.options[0] as HTMLOptionElement).selected = false;
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+    app.instance.saved = "b";
+    await app.settle();
+    expect(Array.from(select.selectedOptions, (o) => o.value)).toEqual([]);
+  });
+});
+
 describe("a select whose options change in two places at once", () => {
   class Two extends Component {
     @state mine = ["a1", "a2"];

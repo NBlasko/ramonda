@@ -256,7 +256,7 @@ export class FieldHandle {
           : type === "date"
             ? "a day"
             : "text";
-    // A select hands back the chosen option's text, and a radio its own `value`, and no `type` changes
+    // A select hands back the chosen option's `value`, and a radio its own `value`, and no `type` changes
     // that: a choice of numbers is a number once the schema takes it as one.
     const fix =
       type.startsWith("select") || type === "radio"

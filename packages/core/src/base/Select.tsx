@@ -137,7 +137,7 @@ export class Select extends Component<SelectProps> {
         // with no event, and the default is applied when its option comes.
         const asItStarts = showsItsDefault(select);
         if (!this.d) this.d = !asItStarts && Array.from(select.options).some(isADefault);
-        else if (asItStarts && !choosing(select, this.k)) this.d = false;
+        else if ((asItStarts && !choosing(select, this.k)) || pickGone(select, this.k)) this.d = false;
         // Never picked in: the default is what it shows.
         if (!this.d) this.start(select, fallback);
         // Settled for good — the user picked, or a value held it — and a later default still says
@@ -248,6 +248,15 @@ interface Pick {
 function choosing(select: HTMLSelectElement, pick: Pick | undefined): boolean {
   const chosen = select.selectedOptions;
   return pick !== undefined && pick.size === chosen.length && Array.from(chosen).every((o) => pick.options.has(o));
+}
+
+/**
+ * Whether none of the options the user's last pick chose is in the select any more — a city list after
+ * its country changed. The pick is gone with them, and what the select shows then is the browser's,
+ * so the default is where it starts again.
+ */
+function pickGone(select: HTMLSelectElement, pick: Pick | undefined): boolean {
+  return pick !== undefined && pick.size > 0 && !Array.from(select.options).some((o) => pick.options.has(o));
 }
 
 function isADefault(option: HTMLOptionElement): boolean {

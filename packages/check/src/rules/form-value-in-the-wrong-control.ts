@@ -91,7 +91,7 @@ export const formValueInTheWrongControl = {
       `  ${issue.file}:${issue.line}:${issue.column}`,
       issue.kind === "number"
         ? issue.control === "<Select>"
-          ? `    a number field's value in ${issue.control}, which hands back the chosen option's text — take it as a number in the schema, \`z.coerce.number()\` in Zod.`
+          ? `    a number field's value in ${issue.control}, which hands back the chosen option's \`value\` as text — take it as a number in the schema, \`z.coerce.number()\` in Zod.`
           : `    a number field's value in ${issue.control}, which does not hand back a number — write \`<input type="number">\`.`
         : issue.kind === "day"
           ? `    a date field's value in ${issue.control}, which does not hand back a day — write \`<input type="date">\`.`

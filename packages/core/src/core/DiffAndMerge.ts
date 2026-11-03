@@ -1516,9 +1516,8 @@ export function reorderChildren(
   /**
    * Walked FIRST to LAST, each node that goes in placed before the next one that stays: the nodes
    * arrive in the order a parser puts them. A parent that answers to arrival order reads them as the
-   * page does — a `<select>` chooses the first option put in while none is chosen, two radios of one
-   * group carrying `checked` leave the later one checked, and a `<details name>` group keeps the later
-   * one open. Walked last-first, a select whose options arrived showed its LAST one (measured in
+   * page does — a `<select>` chooses the first option put in while none is chosen, and two radios of
+   * one group carrying `checked` leave the later one checked. Walked last-first, a select whose options arrived showed its LAST one (measured in
    * Chromium), where the served page shows the first. One insertion per node either way.
    */
   let next = 0;

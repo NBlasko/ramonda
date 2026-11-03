@@ -189,7 +189,7 @@ test("a number field through radios is told to take the choice as a number", asy
 });
 
 /**
- * A number field in a `Select` is told what fixes it: a select hands back the chosen option's text, and
+ * A number field in a `Select` is told what fixes it: a select hands back the chosen option's `value`, and
  * no `<input type="number">` picks from a list — the schema takes the choice as a number.
  */
 test("a number field through a Select is told to take the choice as a number", async () => {
