@@ -8,7 +8,7 @@
     "dev": "vite",
     "build": "vite build",
     "check-types": "ramonda-css tsconfig.json",
-    "test:browser": "playwright test; chromium=$?; node browser/firefox-composition.mjs && exit $chromium",
+    "test:browser": "node browser/run.mjs",
     "lint": "ramonda-css lint src",
     "format": "ramonda-css format src",
     "format:check": "ramonda-css format --check src"

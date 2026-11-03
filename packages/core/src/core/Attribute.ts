@@ -85,7 +85,11 @@ function keepThePick(input: HTMLInputElement): void {
   // put into a shadow root finds none of the picks there.
   const radios = input.isConnected ? groupOf(input) : Array.from(input.ownerDocument.getElementsByName(input.name));
   const picks = (radios as HTMLInputElement[]).filter(radioWasPicked);
+  if (picks.length === 0) return;
   queueBeforeTheMounts(() => {
+    // The default no longer holds the choice: a commit that threw before its mounts left this queued,
+    // and the user has picked since. A pick since of the new default itself is not told apart.
+    if (!input.checked) return;
     const group = groupOf(input);
     for (const pick of picks) {
       if (group.includes(pick) && (!heldByAModel(pick) || pick.hasAttribute("checked"))) pick.checked = true;
