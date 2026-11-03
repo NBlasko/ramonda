@@ -63,7 +63,7 @@ function writeDefaults(input: HTMLInputElement, attributes: NodeAttributes, onSe
   if ("defaultChecked" in attributes && typeof attributes.checked !== "boolean") {
     const on = attributes.defaultChecked === true;
     if (input.hasAttribute("checked") === on) return;
-    if (!onServer && input.type === "radio" && input.name !== "") keepThePick(input);
+    if (on && !onServer && input.type === "radio" && input.name !== "") keepThePick(input);
     input.toggleAttribute("checked", on);
   }
 }
@@ -75,29 +75,32 @@ function writeDefaults(input: HTMLInputElement, attributes: NodeAttributes, onSe
  * any `@mounted` runs: the new default changes only where a reset returns, as a `Select`'s does, and
  * whatever a `@mounted` then does to the radios stands.
  *
- * Before the mounts nothing but the diff has touched the radios, so a pick outside the radio's group is
- * on still and checking it again changes nothing, and one the render removed is off the page. A pick a
- * model has taken over is left to it: what a model says is what its radio shows.
+ * Only a pick in the radio's group once it is in place is put back — a commit that threw before its
+ * mounts leaves this queued for the next, and a radio it never put in the page has no group to take —
+ * and a radio a model holds only while the model still says it is on: what a model says is what its
+ * radio shows.
  */
 function keepThePick(input: HTMLInputElement): void {
-  // A radio not yet in the page has no group to ask, so its picks are the document's — one put into a
-  // shadow root finds none of the picks there.
-  const radios = input.isConnected
-    ? groupOf(input)
-    : Array.from(input.ownerDocument.querySelectorAll<HTMLInputElement>('input[type="radio"]'));
-  const picks = radios.filter(radioWasPicked);
+  // A radio not yet in the page has no group to ask, so its picks are the document's of its name — one
+  // put into a shadow root finds none of the picks there.
+  const radios = input.isConnected ? groupOf(input) : Array.from(input.ownerDocument.getElementsByName(input.name));
+  const picks = (radios as HTMLInputElement[]).filter(radioWasPicked);
   queueBeforeTheMounts(() => {
-    for (const pick of picks) if (!heldByAModel(pick)) pick.checked = true;
+    const group = groupOf(input);
+    for (const pick of picks) {
+      if (group.includes(pick) && (!heldByAModel(pick) || pick.hasAttribute("checked"))) pick.checked = true;
+    }
   });
 }
 
 /**
- * Picked by the user (or a script): on, with no `checked` attribute saying it starts so. One that is on
- * AND still the default is not told apart from one never touched — the old default, picked again, when
- * the new default comes before it in the page.
+ * Picked by the user (or a script), or held on by a model: on, with no `checked` attribute saying it
+ * starts so — a model's radio carries the attribute as what it says. One that is on AND still the default
+ * is not told apart from one never touched — the old default, picked again, when the new default comes
+ * before it in the page.
  */
 function radioWasPicked(radio: HTMLInputElement): boolean {
-  return radio.checked && !radio.hasAttribute("checked");
+  return radio.checked && (heldByAModel(radio) || !radio.hasAttribute("checked"));
 }
 
 /**

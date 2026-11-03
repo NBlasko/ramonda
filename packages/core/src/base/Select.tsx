@@ -234,7 +234,6 @@ function wantedOf(chosen: string | number | readonly (string | number)[]): Set<s
   return new Set(Array.isArray(chosen) ? chosen.map(String) : [String(chosen)]);
 }
 
-/** Gives an option the `selected` attribute or takes it away, and touches it only when it says otherwise. */
 /** Whether every option is chosen exactly when its default says — as a select starts, and a reset leaves it. */
 function showsItsDefault(select: HTMLSelectElement): boolean {
   return Array.from(select.options).every((option) => option.selected === option.defaultSelected);
@@ -255,6 +254,7 @@ function isADefault(option: HTMLOptionElement): boolean {
   return option.defaultSelected;
 }
 
+/** Gives an option the `selected` attribute or takes it away, and touches it only when it says otherwise. */
 function markDefault(option: HTMLOptionElement, on: boolean): boolean {
   if (option.hasAttribute("selected") === on) return false;
   if (on) option.setAttribute("selected", "");

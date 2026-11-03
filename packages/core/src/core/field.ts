@@ -919,15 +919,15 @@ function listen(input: Kept, types: Iterable<string>): void {
   }
 }
 
-/**
- * After an `<input>`'s attribute pass: whether it is controlled — a `value`, or a `checked` that is
- * `true` or `false`.
- */
 /** Whether a model holds `input` — its `checked` or `value` is the model's, not the user's. */
 export function heldByAModel(input: HTMLInputElement): boolean {
   return (input as Kept)[CONTROLLED] === true;
 }
 
+/**
+ * After an `<input>`'s attribute pass: whether it is controlled — a `value`, or a `checked` that is
+ * `true` or `false`.
+ */
 export function controlInput(input: HTMLInputElement, attributes: Record<string, unknown>): void {
   const kept = input as Kept;
   const box = isBox(input);

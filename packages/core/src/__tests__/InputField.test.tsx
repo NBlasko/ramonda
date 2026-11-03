@@ -370,7 +370,7 @@ describe("a radio group whose default moves", () => {
     expect(shown).toEqual(["c"]);
   });
 
-  test("a default that joins no radio group — a box, a radio without a name, the server's — asks no group", async () => {
+  test("a default that joins no radio group — a box, a radio without a name, the server's — or is turned off asks no group", async () => {
     class Defaults extends Component {
       @state on = false;
       render() {
@@ -380,6 +380,8 @@ describe("a radio group whose default moves", () => {
             {this.on ? <input type="radio" defaultChecked /> : null}
             <input type="checkbox" name="size" defaultChecked={this.on} />
             <input type="radio" defaultChecked={this.on} />
+            {/* A default turned off can only take its own radio off: there is no pick to keep. */}
+            <input type="radio" name="size" defaultChecked={!this.on} />
           </div>
         );
       }
@@ -481,6 +483,64 @@ describe("a radio group whose default moves", () => {
     app.instance.added = true;
     await app.settle();
     expect(["a", "b", "c"].filter((id) => radio(id)?.checked)).toEqual(["c"]);
+  });
+
+  test("a radio its model holds checked stays checked when another radio's default moves", async () => {
+    class Held extends Component {
+      @state saved = "c";
+      kept() {}
+      render() {
+        return (
+          <form>
+            <input id="a" type="radio" name="g" value="a" checked={true} onchange={this.kept} />
+            <input id="b" type="radio" name="g" value="b" />
+            <input id="c" type="radio" name="g" value="c" defaultChecked={this.saved === "c"} />
+            <input id="d" type="radio" name="g" value="d" defaultChecked={this.saved === "d"} />
+          </form>
+        );
+      }
+    }
+    const app = await getDOM<Held>(<Held />);
+    await app.settle();
+    const radio = (id: string) => app.container.querySelector(`#${id}`) as HTMLInputElement;
+    const before = ["a", "b", "c", "d"].filter((id) => radio(id).checked);
+    app.instance.saved = "d";
+    await app.settle();
+    expect({ before, after: ["a", "b", "c", "d"].filter((id) => radio(id).checked) }).toEqual({
+      before: ["a"],
+      after: ["a"],
+    });
+  });
+
+  test("a render that throws leaves no pick to put back over a later one", async () => {
+    class Breaks extends Component {
+      render(): never {
+        throw new Error("planted by the test");
+      }
+    }
+    class Widget extends Component {
+      render() {
+        return (
+          <div>
+            {/* The page's group name: the pick is noted, and the radio never joins the group. */}
+            <input type="radio" name="size" defaultChecked />
+            <Breaks />
+          </div>
+        );
+      }
+    }
+    const app = await getDOM<Sizes>(<Sizes />);
+    await app.settle();
+    const radio = (id: string) => app.container.querySelector(`#${id}`) as HTMLInputElement;
+    radio("b").click();
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    expect(() => bootstrap(<Widget />, host)).toThrow("planted by the test");
+    host.remove();
+    radio("c").click();
+    app.instance.sizes = ["a", "b", "c", "e"];
+    await app.settle();
+    expect(["a", "b", "c"].filter((id) => radio(id).checked)).toEqual(["c"]);
   });
 
   test("a new default radio its own @mounted checks stays checked", async () => {
