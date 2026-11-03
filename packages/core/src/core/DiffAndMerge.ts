@@ -506,7 +506,8 @@ function executeChangesOnStringNode(
   placeholderComponent: MaybeComponent,
   maybeenhancedNode: MaybeEnhancedNode | EnhancedChildNode,
 ) {
-  const enhancedNode = maybeenhancedNode?.nodeName === vnode.name ? maybeenhancedNode : createElement(vnode);
+  const built = maybeenhancedNode?.nodeName !== vnode.name;
+  const enhancedNode = built ? createElement(vnode) : maybeenhancedNode;
 
   // The side this element is being built for, taken from the component that owns it rather than
   // from the module-level flag: `renderEnv` is restored before the first `await`, so a re-render
@@ -524,8 +525,36 @@ function executeChangesOnStringNode(
   // correctly-placed nodes look misplaced and cause pointless moves.
   unmountChildrenNodes(cloneChildren, false);
   if (orderedNodes !== null) reorderChildren(enhancedNode, orderedNodes);
+  if (built && enhancedNode.nodeName === "SELECT") chooseInOrder(enhancedNode as HTMLSelectElement);
 
   return enhancedNode;
+}
+
+/**
+ * A select chooses as its options arrive: the first one put in while none is chosen, and one carrying
+ * `selected`. The diff puts children in last-first, so a drop-down it builds took its LAST option — a
+ * served page, parsed in order, shows the last one carrying `selected`, or else the first a reader can
+ * choose. That one is chosen here, so a select built here starts where the served one does.
+ *
+ * Only that option is chosen by a script, and it is the one the select falls back to whenever it is
+ * left with none: a `defaultValue` written after still moves the choice, and one taken away returns
+ * it there. A `multiple` select or a list box chooses nothing as options arrive, so order is no matter
+ * to them.
+ */
+function chooseInOrder(select: HTMLSelectElement): void {
+  if (select.multiple || select.size > 1) return;
+  const options = Array.from(select.options);
+  const marked = options.filter(carriesSelected);
+  const chosen = marked.length > 0 ? marked[marked.length - 1] : options.find(canBeChosen);
+  if (chosen !== undefined) chosen.selected = true;
+}
+
+function carriesSelected(option: HTMLOptionElement): boolean {
+  return option.hasAttribute("selected");
+}
+
+function canBeChosen(option: HTMLOptionElement): boolean {
+  return !option.matches(":disabled");
 }
 
 function createElement(vnodeString: VNodeString): SVGElement | HTMLElement {

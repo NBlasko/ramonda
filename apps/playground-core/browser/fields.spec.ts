@@ -122,6 +122,14 @@ test.describe("fields only a browser settles", () => {
     await expect(page.locator("#between-size")).toHaveValue("l");
   });
 
+  test("a select set by nothing starts on its first option, as a served page does", async ({ page }) => {
+    const colour = page.locator("#colour");
+    await expect(colour).toHaveValue("red");
+    await colour.selectOption("blue");
+    await page.locator("#reset").click();
+    await expect(colour).toHaveValue("red");
+  });
+
   test("a form's reset returns a defaultValue select to its default", async ({ page }) => {
     const size = page.locator("#size");
     await expect(size).toHaveValue("m");

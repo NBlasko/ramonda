@@ -154,13 +154,14 @@ anyway under a server DOM shim.
 
 ### Types
 
-All 38, grouped by what they belong to. The server and per-request ones are explained under
+All 41, grouped by what they belong to. The server and per-request ones are explained under
 [Server rendering](#server-rendering); the rest are the shape of whatever they are named for.
 
-**Markup** — `VNode` · `RamondaNode` · `ComponentChild` · `ComponentClassKind`
+**Markup** — `VNode` · `RamondaNode` · `ComponentChild` · `ComponentClassKind` · `EventOn`
 
 **Hooks and options** — `HookMeta` · `HeadOptions` · `MetaTag` · `LinkTag` · `PortalProps` · `PortalTarget` · `Each` · `ItemRender` · `ItemComponent` · `Identity` ·
-`AsyncLoadProps` · `AsyncLoadFailure` · `Lazy` · `ContextOptions` · `ErrorBoundaryFallbackProps` · `SelectProps` · `TextAreaProps`
+`AsyncLoadProps` · `AsyncLoadFailure` · `Lazy` · `ContextOptions` · `ErrorBoundaryFallbackProps` · `SelectProps` · `TextAreaProps` ·
+`ListenerProps` · `ScheduledProps`
 
 **Refs and subscriptions** — `RefCallback` · `RefTarget` · `SubscriptionOwner` · `Disconnect`
 

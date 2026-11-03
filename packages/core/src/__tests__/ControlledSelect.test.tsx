@@ -1062,6 +1062,74 @@ describe("a default select left with nothing chosen", () => {
   });
 });
 
+/** A select nobody sets starts where a served page starts: what HTML makes of its options in order. */
+describe("a select with no value and no default", () => {
+  // Past the types, as an untyped spread carries it: the option that says it starts chosen.
+  const MARKED: Record<string, unknown> = { selected: true };
+  class Bare extends Component<{ size?: number; first?: boolean; multiple?: boolean; marked?: boolean }> {
+    render() {
+      return (
+        <div>
+          <Select aria-label="Size" size={this.props.size} multiple={this.props.multiple}>
+            <option value="a" disabled={this.props.first === false}>
+              a
+            </option>
+            <option value="b" {...(this.props.marked ? MARKED : {})}>
+              b
+            </option>
+            {["c"].map((v) => (
+              <option key={v} value={v}>
+                {v}
+              </option>
+            ))}
+          </Select>
+        </div>
+      );
+    }
+  }
+
+  test("starts on its first option a reader can choose, and a list box on none — as the served page does", async () => {
+    const shown: unknown[] = [];
+    const served: unknown[] = [];
+    for (const props of [{}, { first: false }, { size: 3 }, { multiple: true }, { marked: true }]) {
+      const app = await getDOM<Bare>(<Bare {...props} />);
+      await app.settle();
+      shown.push((app.container.querySelector("select") as HTMLSelectElement).selectedIndex);
+      const host = document.createElement("div");
+      host.innerHTML = await renderToString(<Bare {...props} />);
+      served.push((host.querySelector("select") as HTMLSelectElement).selectedIndex);
+    }
+    expect({ shown, served }).toEqual({ shown: [0, 1, -1, -1, 1], served: [0, 1, -1, -1, 1] });
+  });
+});
+
+describe("an option's selected written past the types", () => {
+  test("is taken off when the render stops saying it", async () => {
+    class Spread extends Component {
+      @state pick = "b";
+      render() {
+        return (
+          <Select aria-label="Size">
+            {["a", "b", "c"].map((v) => (
+              <option key={v} value={v} {...({ selected: this.pick === v } as Record<string, unknown>)}>
+                {v}
+              </option>
+            ))}
+          </Select>
+        );
+      }
+    }
+    const app = await getDOM<Spread>(<Spread />);
+    await app.settle();
+    for (const next of ["c", "a"]) {
+      app.instance.pick = next;
+      await app.settle();
+    }
+    const select = app.container.querySelector("select") as HTMLSelectElement;
+    expect(Array.from(select.options, (o) => o.hasAttribute("selected"))).toEqual([true, false, false]);
+  });
+});
+
 describe("why attributes go on before the children", () => {
   test("a multiple select keeps every option the model picked", async () => {
     /**

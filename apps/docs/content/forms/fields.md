@@ -86,8 +86,8 @@ const email = f.email.$;
 ```
 
 `oninput` and `onblur` are built once per field and reused, so writing them on every render does not
-re-attach a listener. Every attribute is there to read where the control is, and `@ramonda/check`
-sees that none is missing.
+re-attach a listener. Every attribute is there to read where the control is, and inside a form it
+recognises — `<form onsubmit={this.form.submit}>` — `@ramonda/check` reports a control that is missing one.
 
 **What you write follows the value's type:**
 

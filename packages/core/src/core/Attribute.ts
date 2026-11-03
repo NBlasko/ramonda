@@ -642,12 +642,13 @@ function removePreviousFromenhancedNode(
  * `writeDefaults` writes it, and only when the default changes. Taken away here and written back
  * there, a radio's `checked` would turn the default back on and the user's pick off, on every pass.
  *
- * An `<option>`'s `selected` is its `Select`'s, the same way — the types refuse it on the option, so
- * the render never says it. Taken away on hydration and written back by the select, it took the
- * option the reader picked before the script arrived.
+ * An `<option>`'s `selected` is its `Select`'s, the same way, while the render says nothing of it — the
+ * types refuse it on the option. Taken away on hydration and written back by the select, it took the
+ * option the reader picked before the script arrived. One the render does say, past the types, is the
+ * render's to take away.
  */
 function heldAsADefault(enhancedNode: EnhancedHTMLNode, name: string, nextAttributes: NodeAttributes): boolean {
-  if (enhancedNode.nodeName === "OPTION") return name === "selected";
+  if (enhancedNode.nodeName === "OPTION") return name === "selected" && !("selected" in nextAttributes);
   if (enhancedNode.nodeName !== "INPUT") return false;
   // Exactly when `writeDefaults` writes it: a default beside the model's `value` or `checked` is not.
   if (name === "value") return "defaultValue" in nextAttributes && nextAttributes.value == null;

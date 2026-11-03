@@ -46,19 +46,27 @@ class Composed extends Component<{ id: string; title: string; skipsComposing: bo
 
 /**
  * A `defaultValue` select in a form: pick another size, press Reset, and it is back on `m`. The
- * default is written as the option's `selected` attribute, which is what a reset returns to.
+ * default is written as the option's `selected` attribute, which is what a reset returns to. Beside
+ * it, a select with neither starts on its first option, as a served page does.
  */
 class Sized extends Component {
   render() {
     return (
       <section style={box}>
         <h3 style={{ margin: "0 0 0.25rem" }}>5 — a form's reset</h3>
-        <p style={hint}>Pick another size, then press Reset: the select goes back to m.</p>
+        <p style={hint}>
+          Pick another size, then press Reset: the select goes back to m. The colour, set by nothing, starts on red.
+        </p>
         <form>
           <Select id="size" name="size" aria-label="Size" defaultValue="m">
             <option value="s">s</option>
             <option value="m">m</option>
             <option value="l">l</option>
+          </Select>
+          <Select id="colour" name="colour" aria-label="Colour" style={{ marginLeft: "0.4rem" }}>
+            <option value="red">red</option>
+            <option value="green">green</option>
+            <option value="blue">blue</option>
           </Select>
           <button id="reset" type="reset" style={{ marginLeft: "0.4rem" }}>
             Reset

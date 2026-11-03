@@ -169,10 +169,10 @@ export interface RefusedOnForm {
 }
 
 /**
- * `selected` on an `<option>`, which `Select` overwrites on every render.
+ * `selected` on an `<option>`, which `Select` writes from its `value` or its `defaultValue`.
  *
  * The choice belongs to the select, not to the option, and `Select` applies it by walking EVERY
- * option and setting each one from its `value` — on and off, for all of them. So an option that
+ * option and setting each one from its `value` or `defaultValue` — on and off, for all of them. So an option that
  * asked to be chosen is turned off again a moment later. The attribute is not competing with
  * `value` and losing sometimes; it does nothing, while being the one line on the page that looks
  * like it chooses.
@@ -183,7 +183,7 @@ export interface RefusedOnForm {
  * widened somewhere, a JavaScript file.
  */
 export interface RefusedOnOption {
-  selected: "the choice belongs to the select — write <Select value={x}>, which sets this on every option";
+  selected: "the choice belongs to the select — write <Select value={x}>, or <Select defaultValue={x}> for where it starts";
 }
 
 /**

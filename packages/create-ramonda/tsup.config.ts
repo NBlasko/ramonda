@@ -40,6 +40,15 @@ for (const folder of [
 }
 
 /**
+ * Tools a generated project gets at exactly the version this repo is checked with. A formatter
+ * changes what it prints within a minor — Biome 2.6 formats Markdown, and a project made the day it
+ * came out failed its own `biome format .` on the template's README — so a caret hands every new
+ * project a version nobody here has run. Declared exactly in the workspace too, so the two cannot
+ * drift: a range there is refused at build time.
+ */
+const EXACT = new Set(["@biomejs/biome"]);
+
+/**
  * The third-party ranges come from the workspace too, from whichever package actually uses
  * the tool — so a generated project gets the combination the framework is tested against.
  *
@@ -50,15 +59,6 @@ for (const folder of [
  * Exact pins are widened to a caret: this repo pins some tools exactly on purpose (a
  * reproducible lockfile), which is not what a generated project wants — except for `EXACT`.
  */
-/**
- * Tools a generated project gets at exactly the version this repo is checked with. A formatter
- * changes what it prints within a minor — Biome 2.6 formats Markdown, and a project made the day it
- * came out failed its own `biome format .` on the template's README — so a caret hands every new
- * project a version nobody here has run. Declared exactly in the workspace too, so the two cannot
- * drift: a range there is refused at build time.
- */
-const EXACT = new Set(["@biomejs/biome"]);
-
 function toolRanges(): Record<string, string> {
   const sources: Record<string, string> = {
     vitest: "../core",
