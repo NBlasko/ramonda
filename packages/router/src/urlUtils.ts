@@ -227,16 +227,21 @@ export function samePairs(a: Record<string, string>, b: Record<string, string>):
 }
 
 /**
- * A route state made well-formed, ONCE, where it enters — `keepUnchanged`, which `Router.init` runs the
- * restored state through before anything reads it.
+ * A route state made well-formed — what the Router reads through, on every read, and `keepUnchanged`
+ * on every write.
  *
  * What a page restores is JSON: its owners are a plain object, so `constructor` reads as the `Object`
  * function. One the PREVIOUS router version rendered has no `hashScopes` at all, a `hashTags` instead —
- * measured, the client threw and the app did not hydrate until the cache was purged. A second review
- * found that tolerance patched at three readers and missing at three more; here it is one place, and
- * the type is true everywhere after it. A state that is already well-formed comes back as itself, so
- * its owners keep their identity.
+ * measured, the client threw and the app did not hydrate until the cache was purged. It is repaired on
+ * READ because core restores the field from the blob with no hook for the Router, and a component's
+ * own `@created` can read it before `init` re-reads the URL.
+ *
+ * Free when the state is already well-formed — it comes back as itself — and the SAME repaired object
+ * for the same raw one, so a provider reading it four times publishes one identity. Only the fields a
+ * state has: the old `hashTags` is not carried into what is written next.
  */
+const REPAIRED = new WeakMap<object, RouterState>();
+
 export function wellFormed(state: RouterState): RouterState {
   const given = state as Partial<RouterState>;
   const scopes = given.hashScopes;
@@ -247,11 +252,19 @@ export function wellFormed(state: RouterState): RouterState {
     Object.getPrototypeOf(scopes) === null
   )
     return state;
+  const known = REPAIRED.get(state);
+  if (known !== undefined) return known;
   const fixed = owners();
-  if (scopes !== undefined && scopes !== null && typeof scopes === "object") {
+  if (typeof scopes === "object" && scopes !== null) {
     for (const owner of Object.keys(scopes)) fixed[owner] = scopes[owner]!;
   }
-  return { ...state, baseUrl: given.baseUrl ?? "/", queryParams: given.queryParams ?? {}, hashScopes: fixed };
+  const repaired: RouterState = {
+    baseUrl: given.baseUrl ?? "/",
+    queryParams: given.queryParams ?? {},
+    hashScopes: fixed,
+  };
+  REPAIRED.set(state, repaired);
+  return repaired;
 }
 
 /**

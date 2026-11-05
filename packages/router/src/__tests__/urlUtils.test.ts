@@ -1,6 +1,7 @@
 import { describe, test, expect } from "vitest";
 import {
   keepUnchanged,
+  wellFormed,
   parseUrl,
   parseUrlString,
   buildUrl,
@@ -162,6 +163,11 @@ describe("a restored state", () => {
     const replaced = keepUnchanged(old, parseUrlString("/#b=2"));
     expect(Object.getPrototypeOf(replaced.hashScopes)).toBeNull();
     expect(buildUrl(replaced)).toBe("/#b=2");
+
+    // The same raw state repairs to the same object — read four times by one provider, it must not
+    // publish four identities — and carries only the fields a state has, not the old `hashTags`.
+    expect(wellFormed(old)).toBe(wellFormed(old));
+    expect(Object.keys(wellFormed(old)).sort()).toEqual(["baseUrl", "hashScopes", "queryParams"]);
 
     // `null` is a shape to repair too, not one to throw on.
     const nulled = JSON.parse('{"baseUrl":"/","queryParams":{},"hashScopes":null}');

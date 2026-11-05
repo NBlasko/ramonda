@@ -65,7 +65,11 @@ async function collect(target, out, walked = new Set()) {
   // indexing step runs AFTER this check. Point the command at what you want checked; that is the
   // control, not a name this file happens to know.
   for (const entry of await readdir(target, { withFileTypes: true })) {
-    await collect(join(target, entry.name), out, walked);
+    const path = join(target, entry.name);
+    // A link that points nowhere is no file to check. `stat` throws on one, and the whole run said
+    // "cannot read dist" over an image a link still named after it was removed.
+    if (entry.isSymbolicLink() && (await stat(path).catch(() => undefined)) === undefined) continue;
+    await collect(path, out, walked);
   }
 }
 

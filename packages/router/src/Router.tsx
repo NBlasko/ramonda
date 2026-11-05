@@ -178,13 +178,13 @@ export class Router extends Hook {
   // come from a <RouteOutlet> below, so only a Navigator under an outlet has them.
   /**
    * The route state, well-formed. Every READ goes through here — the store, the getters, the provider —
-   * and only the two writes touch `routeState` itself.
+   * and only the writes touch `routeState` itself: the store's `write`, `init` and `popstate`.
    *
    * A page restores this field from its blob before `init` re-reads the URL, and the component using
    * the Router runs its own `@created` before that: a read there met the restored state as it was.
    * One the previous router version rendered has no `hashScopes`, and a third review measured a
    * TypeError on that path after the readers' own guards had been taken out. Repaired here, once
-   * per read, and free when the state is already well-formed: `wellFormed` hands that back as itself.
+   * per read: free when the state is already well-formed, and one repaired object per raw one.
    */
   private get route(): RouterState {
     return wellFormed(this.routeState);
@@ -275,13 +275,16 @@ export class Router extends Hook {
    * provider. Dropping the modifier entirely would put it in the public API,
    * which for a hook means any consumer could read it.
    */
-  protected routeProvider = this.use(RouteProvider, () => ({
-    state: this.route,
-    baseUrl: this.route.baseUrl,
-    queryParams: this.route.queryParams,
-    hashScopes: this.route.hashScopes,
-    nav: this.nav,
-  }));
+  protected routeProvider = this.use(RouteProvider, () => {
+    const route = this.route;
+    return {
+      state: route,
+      baseUrl: route.baseUrl,
+      queryParams: route.queryParams,
+      hashScopes: route.hashScopes,
+      nav: this.nav,
+    };
+  });
 }
 
 export interface RouteOutletProps {

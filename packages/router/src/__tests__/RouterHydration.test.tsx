@@ -195,7 +195,9 @@ describe("Router hydration", () => {
     expect(old).not.toContain("hashScopes");
     const { container } = render(<Reads />, { hydrate: old });
     expect(container.querySelector("#players")).toBeTruthy();
-    expect(seen).toBeDefined();
+    // Read BEFORE `init` re-read the URL — after it, the hash would say `tab: "film"`. Without this the
+    // test could pass with the read happening after the repair it exists to cover.
+    expect(seen).toEqual({});
   });
 
   test("hydrating at the same URL keeps the server's route", async () => {

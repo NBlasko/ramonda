@@ -74,7 +74,25 @@ describe("check-bundle", () => {
 
     const { code, output } = await runGuard(looped);
     expect(code).toBe(0);
-    expect(output).toContain("1 emitted file(s) parse");
+    // Exactly one: "11 emitted" would also contain "1 emitted", and a walk that went round a few
+    // times before stopping would pass.
+    expect(output).toMatch(/(?<!\d)1 emitted file\(s\) parse/);
+  });
+
+  /**
+   * A link that points nowhere is not a file to check. `stat` follows links, so one dangling link
+   * anywhere in the build — an image removed from `public/` that a link still names — made the walk
+   * throw, and the tool said "cannot read dist" and failed the build over a file it never needed.
+   */
+  test("skips a link that points nowhere", async () => {
+    const dangling = join(dir, "dangling");
+    await mkdir(dangling, { recursive: true });
+    await writeFile(join(dangling, "index.js"), "export const a = 1;\n");
+    await symlink(join(dangling, "removed.png"), join(dangling, "old.png"));
+
+    const { code, output } = await runGuard(dangling);
+    expect(code).toBe(0);
+    expect(output).toMatch(/(?<!\d)1 emitted file\(s\) parse/);
   });
 
   test("fails on a surviving decorator — the bug it was written for", async () => {

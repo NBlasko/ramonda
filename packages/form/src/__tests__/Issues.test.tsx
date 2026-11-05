@@ -243,3 +243,111 @@ describe("an issue that changes in what JSON or one side's keys cannot see", () 
     }
   });
 });
+
+/**
+ * An issue carrying a value that refers to itself — a validator that puts the offending input on the
+ * issue, and an input with a back-reference. `equal` walks objects, and without a guard it walked this
+ * one until the stack ran out, from inside the form's validation. Found by a fourth review.
+ */
+describe("an issue whose value refers to itself", () => {
+  interface Tree {
+    name: string;
+    mode: string;
+  }
+  /**
+   * The guard is the path from the root, not every object seen: one object held in two places is no
+   * loop. A guard that kept every visit called `{ a: X, b: X }` different from an equal copy, and
+   * `equal` also decides whether a form's defaults moved.
+   */
+  test("an object held in two places is still equal to an equal copy", async () => {
+    let renders = 0;
+    const shared = { min: 3 };
+    const twice: StandardSchemaV1<Tree, Tree> = {
+      "~standard": {
+        version: 1,
+        vendor: "test",
+        // A FRESH object per run, held twice: one module constant would be the same object every
+        // run, and `Object.is` would answer before the guard was ever asked — measured, the test
+        // passed with the wrong guard in place.
+        validate: () => {
+          const fresh = { ...shared };
+          return {
+            issues: [{ message: "Invalid", path: ["name"], a: fresh, b: fresh, both: [fresh, fresh] } as never],
+          };
+        },
+      },
+    };
+    let form!: Form<typeof twice>;
+    class Count extends Component<{ of: FieldNode<string> }> {
+      f = this.use(Field<string>, () => ({ of: this.props.of }));
+      render(): RamondaNode {
+        renders++;
+        return <p>{this.f.issues.length}</p>;
+      }
+    }
+    class Page extends Component {
+      private f = this.use(Form<typeof twice>, () => ({
+        schema: twice,
+        defaultValues: { name: "x", mode: "a" },
+        onSubmit: () => {},
+      }));
+      render(): RamondaNode {
+        form = this.f;
+        return <Count of={this.f.fields.name} />;
+      }
+    }
+    const { unmount } = render((<Page />) as never);
+    try {
+      await act(async () => form.submit());
+      const after = renders;
+      // The same issue again, with `shared` in two places: no change, so no wake.
+      await act(async () => form.fields.mode.$.set("b"));
+      expect(renders).toBe(after);
+    } finally {
+      unmount();
+    }
+  });
+
+  const cyclic: StandardSchemaV1<Tree, Tree> = {
+    "~standard": {
+      version: 1,
+      vendor: "test",
+      validate: () => {
+        const input: Record<string, unknown> = { kind: "node" };
+        input.self = input;
+        return { issues: [{ message: "Invalid", path: ["name"], input } as never] };
+      },
+    },
+  };
+
+  test("is compared without running out of stack", async () => {
+    let form!: Form<typeof cyclic>;
+    class Page extends Component {
+      private f = this.use(Form<typeof cyclic>, () => ({
+        schema: cyclic,
+        defaultValues: { name: "x", mode: "a" },
+        onSubmit: () => {},
+      }));
+      render(): RamondaNode {
+        form = this.f;
+        return <Count of={this.f.fields.name} />;
+      }
+    }
+    // Through `Field`: the comparison runs only for a field something listens to, and a page reading
+    // the form directly passed with the fault in place.
+    class Count extends Component<{ of: FieldNode<string> }> {
+      f = this.use(Field<string>, () => ({ of: this.props.of }));
+      render(): RamondaNode {
+        return <p id="n">{this.f.issues.length}</p>;
+      }
+    }
+    const { unmount } = render((<Page />) as never);
+    try {
+      await act(async () => form.submit());
+      await act(async () => form.fields.mode.$.set("b"));
+      expect(form.fields.name.$.errors).toEqual(["Invalid"]);
+    } finally {
+      unmount();
+    }
+  });
+});

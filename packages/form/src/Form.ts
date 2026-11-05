@@ -1516,7 +1516,7 @@ function adopt(
  * objects and compares everything else with `Object.is`, so a `Date` or a `File` is one
  * comparison rather than a walk of its internals.
  */
-function equal(a: unknown, b: unknown): boolean {
+function equal(a: unknown, b: unknown, walking: Set<object> = new Set()): boolean {
   if (Object.is(a, b)) return true;
 
   /**
@@ -1529,17 +1529,35 @@ function equal(a: unknown, b: unknown): boolean {
    */
   if (a instanceof Date && b instanceof Date) return a.getTime() === b.getTime();
 
-  if (Array.isArray(a) && Array.isArray(b)) {
-    return a.length === b.length && a.every((item, index) => equal(item, b[index]));
-  }
+  const array = Array.isArray(a) && Array.isArray(b);
+  if (!array && !(isPlain(a) && isPlain(b))) return false;
 
-  if (isPlain(a) && isPlain(b)) {
-    const keys = Object.keys(a);
-    if (keys.length !== Object.keys(b).length) return false;
-    return keys.every((key) => key in b && equal(a[key], b[key]));
+  /**
+   * A value that refers to itself — an issue carrying the input it was raised on, with a back-reference
+   * — is walked once: met again on the way DOWN, it counts as different. A field woken once too often is
+   * harmless, and the walk without this ran until the stack did. Found by a fourth review.
+   *
+   * The way down only, not every object seen: it is taken off again on the way back up. One object held
+   * in two places is no loop, and a guard that kept every visit called `{ a: X, b: X }` different from
+   * an equal copy — measured — while `equal` also decides whether a form's defaults moved.
+   */
+  const node = a as object;
+  if (walking.has(node)) return false;
+  walking.add(node);
+  try {
+    if (array) {
+      const left = a as unknown[];
+      const right = b as unknown[];
+      return left.length === right.length && left.every((item, index) => equal(item, right[index], walking));
+    }
+    const left = a as Record<string, unknown>;
+    const right = b as Record<string, unknown>;
+    const keys = Object.keys(left);
+    if (keys.length !== Object.keys(right).length) return false;
+    return keys.every((key) => key in right && equal(left[key], right[key], walking));
+  } finally {
+    walking.delete(node);
   }
-
-  return false;
 }
 
 function isPlain(value: unknown): value is Record<string, unknown> {

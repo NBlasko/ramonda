@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
-import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { createIsrCache, fileStore } from "@ramonda/router/server";
@@ -143,20 +143,15 @@ async function bakeShared(path) {
  */
 function listClientFiles() {
   const files = new Map();
-  // Folders already walked, by their real path: a link that points back up would otherwise loop.
-  const walked = new Set();
   const walk = (dir) => {
     if (!existsSync(dir)) return;
-    const real = realpathSync(dir);
-    if (walked.has(real)) return;
-    walked.add(real);
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       const file = join(dir, entry.name);
-      // A symlink is followed, to a file or to a folder, as a file read is: `cpSync` keeps a link from
-      // `public/` as a link, and a linked favicon or a linked folder of images is still the site's.
-      const target = entry.isSymbolicLink() ? statSync(file, { throwIfNoEntry: false }) : entry;
-      if (target?.isDirectory()) walk(file);
-      else if (target?.isFile()) files.set(`/${relative(CLIENT, file).split(sep).join("/")}`, file);
+      // Real files and folders only. The build copies `public/` with links resolved, so a link here
+      // was put here by hand after the build, and following one could serve anything it points at —
+      // `..`, a folder holding `.env`, the whole disk. It is not followed.
+      if (entry.isDirectory()) walk(file);
+      else if (entry.isFile()) files.set(`/${relative(CLIENT, file).split(sep).join("/")}`, file);
     }
   };
   walk(CLIENT);

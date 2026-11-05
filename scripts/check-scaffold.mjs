@@ -366,6 +366,10 @@ async function serves(port, attempt = 0) {
       if (inFolder.status !== 200 || inFolder.body !== ROBOTS) {
         fail(`/images/logo.txt, in a symlinked folder in public/, was served as ${inFolder.status} ${inFolder.type}`);
       }
+      const escaped = await get("/escape/package.json");
+      if (escaped === "retry") return "retry";
+      if (escaped.body.includes('"dependencies"'))
+        fail("/escape/package.json served the project through a link in dist/client");
       const linked = await get("/linked.txt");
       if (linked === "retry") return "retry";
       if (linked.status !== 200 || linked.body !== ROBOTS) {
@@ -603,9 +607,13 @@ try {
   // `npm run build && npm start` — found by an agent publishing a JSON file with its site.
   mkdirSync(join(app, "public"), { recursive: true });
   writeFileSync(join(app, "public", "robots.txt"), ROBOTS);
-  // And a symlink, which `cpSync` copies as a link: the server read the list of files once and kept
-  // only regular ones, so a linked favicon became a rendered 404. Found by a second review.
+  // And links — to a file and to a folder — which the build copies as what they point at. The server
+  // follows no link, so these are served only because the copy resolved them. Reviews found a linked
+  // favicon and a linked folder of images each becoming a rendered 404.
   symlinkSync("robots.txt", join(app, "public", "linked.txt"));
+  mkdirSync(join(app, "shared-images"), { recursive: true });
+  writeFileSync(join(app, "shared-images", "logo.txt"), ROBOTS);
+  symlinkSync(join(app, "shared-images"), join(app, "public", "images"));
 
   // A block in a `.ts` file with no markup, which the docs say works like one in a `.tsx`. Dev, the
   // tests and the type check took it; the SSR production build did not — its plugin filter named only
@@ -811,17 +819,10 @@ try {
     } catch (error) {
       fail("`npm ci --omit=dev` failed — a production install of the generated project", outputOf(error));
     }
-    // A linked FOLDER, and a link back up to its own folder, put straight into what the server
-    // serves — after the build, so no tool but the server walks them. In `public/` they broke tools
-    // that are not this template's, measured: Vite's copy stops with ELOOP, and `biome lint .` stops
-    // with an internal error ("path is expected to be under the root"). What is tested is the
-    // server's own walk: a third review found it did not enter a linked folder, so every file in one
-    // became a rendered 404, and a walk that follows links must not loop.
-    const shared = join(app, "shared-images");
-    mkdirSync(shared, { recursive: true });
-    writeFileSync(join(shared, "logo.txt"), ROBOTS);
-    symlinkSync(shared, join(shared, "loop"));
-    symlinkSync(shared, join(app, "dist", "client", "images"));
+    // A link put into what the server serves AFTER the build, pointing at the project itself. The
+    // server follows no link, so nothing under it is served — a fourth review found that following
+    // links would have served `server.mjs`, `package.json` and `.env` through one like this.
+    symlinkSync(app, join(app, "dist", "client", "escape"));
     await servesSomewhere();
     checks.push("a production install that serves");
   }
