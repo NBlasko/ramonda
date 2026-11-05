@@ -1059,12 +1059,17 @@ export function memoized<T extends (...args: any[]) => any>(
     // As for `@compute` — see `debug/cachedRender.ts`.
     if (__DEV__ && context.name === "render") markCachedRender(this);
 
-    let instanceMap = memoMap.get(this);
-
-    if (!instanceMap) {
-      instanceMap = new Map();
-      memoMap.set(this, instanceMap);
-    }
+    /**
+     * One cache per INSTANCE, shared by every `@memoized` method on it — so it is swept, and let go of,
+     * once per instance: by the first method's initializer, which is the one that makes it. Registered
+     * once per method, the sweep ran as often as there were methods in every commit: the first marked
+     * every entry unused and the second deleted them all, so each commit rebuilt every handler and
+     * everything holding one re-rendered. Measured on js-framework-benchmark's row, handed `select(id)`
+     * and `remove(id)`: every row re-rendered on every select.
+     */
+    if (memoMap.has(this)) return;
+    const instanceMap = new Map<string, MemoEntry>();
+    memoMap.set(this, instanceMap);
 
     attachEffect(this, () => cleanUp(instanceMap), true);
 
@@ -1078,10 +1083,9 @@ export function memoized<T extends (...args: any[]) => any>(
      * and it keeps firing for a handler nobody can reach. `@compute`, the props cache and the context
      * consumer all register the same way, and `releaseMemoEntry`'s own comment says why.
      */
-    const map = instanceMap;
     this[GLOBAL_RUNTIME].clearReactives.push(() => {
-      for (const entry of map.values()) releaseMemoEntry(entry);
-      map.clear();
+      for (const entry of instanceMap.values()) releaseMemoEntry(entry);
+      instanceMap.clear();
     });
   });
 
