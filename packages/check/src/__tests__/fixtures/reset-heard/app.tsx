@@ -220,4 +220,26 @@ class Resets extends Component<{ children?: unknown }> {
   }
 }
 
-export { Resets, clearAny };
+/** A select's children are its options, which hold no field: their list is read or not, nothing hides there. */
+function cityOption(city: string) {
+  return (
+    <option key={city} value={city}>
+      {city}
+    </option>
+  );
+}
+
+class CityReset extends Component {
+  render() {
+    return (
+      <form>
+        <Select aria-label="City" name="city" defaultValue="Niš">
+          {rows.map(cityOption)}
+        </Select>
+        <button type="reset">city reset</button>
+      </form>
+    );
+  }
+}
+
+export { Resets, clearAny, CityReset };

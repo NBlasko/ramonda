@@ -48,7 +48,8 @@ export interface SelectProps extends Partial<RefusedVerbatimStandard> {
   value?: string | number | readonly (string | number)[];
   /**
    * Which option shows FIRST, after which the select is the user's: a pick is never put back. A later
-   * one still says where a form's reset returns. For a select whose choice is read when the form is
+   * one still says where a form's reset returns, and shows once every option the user picked is
+   * gone — a city list after its country changed. For a select whose choice is read when the form is
    * sent rather than held in state. Not with `value`.
    */
   defaultValue?: string | number | readonly (string | number)[];
@@ -135,11 +136,22 @@ export class Select extends Component<SelectProps> {
         // what the user last picked, is a form's reset: the select is as it starts. With no default
         // yet — its option has not arrived — what the browser chose is not told apart from a pick made
         // with no event, and the default is applied when its option comes.
+        // A pick, by an event or without one, is noted as the options it chose; once none of them is
+        // left — a city list after its country changed — the pick is gone with them.
         const asItStarts = showsItsDefault(select);
-        if (!this.d) this.d = !asItStarts && Array.from(select.options).some(isADefault);
-        else if ((asItStarts && !choosing(select, this.k)) || pickGone(select, this.k)) this.d = false;
-        // Never picked in: the default is what it shows.
-        if (!this.d) this.start(select, fallback);
+        if (!this.d) {
+          this.d = !asItStarts && Array.from(select.options).some(isADefault);
+          if (this.d) this.k = pickOf(select);
+        } else if ((asItStarts && !choosing(select, this.k)) || pickGone(select, this.k)) {
+          this.d = false;
+        }
+        // Never picked in: the default is what it shows — said outright, since writing the attribute
+        // moves the choice only onto an option nothing has chosen by script, and leaves it where the
+        // browser put it when the default's option stayed.
+        if (!this.d) {
+          this.start(select, fallback);
+          showDefault(select);
+        }
         // Settled for good — the user picked, or a value held it — and a later default still says
         // where a reset returns, as a TextArea's does. Writing the attribute moves the choice in a
         // browser, so what the select shows is put back right after, when anything was written.
@@ -201,8 +213,7 @@ export class Select extends Component<SelectProps> {
   /** The listener a `defaultValue` select notes the user's pick with: from then on it is theirs. */
   p(event: Event): void {
     this.d = true;
-    const chosen = Array.from((event.currentTarget as HTMLSelectElement).selectedOptions);
-    this.k = { options: new WeakSet(chosen), size: chosen.length };
+    this.k = pickOf(event.currentTarget as HTMLSelectElement);
     heard(this, event);
   }
 
@@ -248,6 +259,28 @@ interface Pick {
 function choosing(select: HTMLSelectElement, pick: Pick | undefined): boolean {
   const chosen = select.selectedOptions;
   return pick !== undefined && pick.size === chosen.length && Array.from(chosen).every((o) => pick.options.has(o));
+}
+
+/** The options `select` shows chosen, held weakly so a render that replaces them lets them go. */
+function pickOf(select: HTMLSelectElement): Pick {
+  const chosen = Array.from(select.selectedOptions);
+  return { options: new WeakSet(chosen), size: chosen.length };
+}
+
+/**
+ * Chooses what the defaults say: every option of a `multiple` select as its own does, and a drop-down's
+ * one that carries the default — `start` marks one. With none carrying one yet, what the browser chose
+ * stays.
+ */
+function showDefault(select: HTMLSelectElement): void {
+  const options = Array.from(select.options);
+  // `multiple` read off the attribute, as `start` does: the server's DOM has no property for it.
+  if (select.hasAttribute("multiple")) {
+    for (const option of options) option.selected = option.defaultSelected;
+    return;
+  }
+  const chosen = options.find(isADefault);
+  if (chosen !== undefined) chosen.selected = true;
 }
 
 /**

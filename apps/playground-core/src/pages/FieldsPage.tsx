@@ -62,9 +62,14 @@ function cityOption(city: string) {
  */
 class Sized extends Component {
   @state country: keyof typeof CITIES = "rs";
+  @state renders = 0;
 
   swap() {
     this.country = this.country === "rs" ? "hr" : "rs";
+  }
+
+  again() {
+    this.renders++;
   }
 
   render() {
@@ -73,7 +78,8 @@ class Sized extends Component {
         <h3 style={{ margin: "0 0 0.25rem" }}>5 — a form's reset</h3>
         <p style={hint}>
           Pick another size, then press Reset: the select goes back to m. The colour, set by nothing, starts on red; the
-          city starts on the first of its country's, and on the first of the other country's.
+          city starts on the first of its country's, and on the first of the other country's. The second city starts on
+          Choose…, and is back on it when the country changes after a pick.
         </p>
         <form>
           <Select id="size" name="size" aria-label="Size" defaultValue="m">
@@ -89,6 +95,27 @@ class Sized extends Component {
           <Select id="city" name="city" aria-label="City" style={{ marginLeft: "0.4rem" }}>
             {CITIES[this.country].map(cityOption)}
           </Select>
+          <Select
+            id="city-chosen"
+            name="city-chosen"
+            aria-label="Chosen city"
+            defaultValue=""
+            style={{ marginLeft: "0.4rem" }}
+          >
+            <option value="" disabled>
+              Choose…
+            </option>
+            {CITIES[this.country].map(cityOption)}
+          </Select>
+          <button
+            id="again"
+            type="button"
+            onclick={this.again}
+            data-renders={this.renders}
+            style={{ marginLeft: "0.4rem" }}
+          >
+            Render again
+          </button>
           <button id="country" type="button" onclick={this.swap} style={{ marginLeft: "0.4rem" }}>
             Other country
           </button>

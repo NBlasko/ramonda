@@ -43,7 +43,8 @@ the composition going until its `compositionend` or the next ordinary edit.
 when it is sent. It is written as the field's default — the `value` attribute, the `checked`
 attribute, the option's `selected` — so a served page shows it before any script runs, and a form's
 reset returns to it. A default that changes later moves the field while it shows its default, and
-otherwise only where a reset returns: the user's pick stays. A `Select` with neither starts on its first
+otherwise only where a reset returns: the user's pick stays, and a `Select` whose picked options are all
+replaced shows its default again. A `Select` with neither starts on its first
 option a reader can choose, on the client as on a served page, and so does one whose options all arrive
 later or are all replaced: the children a render adds go in first to last, as a parser puts them. A `value` of `null` or `undefined` is no value. The field's handler is called as a
 listener is, with the element as `this`, and may be a function or a listener object; one written

@@ -137,6 +137,25 @@ test.describe("fields only a browser settles", () => {
     await expect(city).toHaveValue("Zagreb");
   });
 
+  test("a picked select is back on its default when every option it chose is replaced", async ({ page }) => {
+    const city = page.locator("#city-chosen");
+    await expect(city).toHaveValue("");
+    await city.selectOption("Niš");
+    await page.locator("#country").click();
+    await expect(city).toHaveValue("");
+  });
+
+  test("so is one a script picked, with no event", async ({ page }) => {
+    const city = page.locator("#city-chosen");
+    await city.evaluate((select: HTMLSelectElement) => {
+      select.value = "Niš";
+    });
+    await page.locator("#again").click();
+    await expect(city).toHaveValue("Niš");
+    await page.locator("#country").click();
+    await expect(city).toHaveValue("");
+  });
+
   test("a form's reset returns a defaultValue select to its default", async ({ page }) => {
     const size = page.locator("#size");
     await expect(size).toHaveValue("m");

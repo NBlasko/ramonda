@@ -112,6 +112,8 @@ function firstProblem(
       found = { kind: "controlled-field", at: opening, detail: opening.tagName.getText() };
       return;
     }
+    // A select's children are its options, and an option holds no field: there is nothing in them to hide.
+    if (fieldTag === "select") return;
     const host = tagOf(node);
     const field = host === undefined ? coreElementTag(opening.tagName, resolve) : undefined;
     if (host === undefined && field === undefined) {

@@ -170,7 +170,8 @@ word ends. A handler that waits for the finished word returns while `isComposing
 word once when it ends — in Chromium and in Firefox, where it is measured. A field whose text is read when the form is sent, rather than held in state, takes
 `defaultValue` instead: it shows that first and then belongs to the user, and a form's reset returns
 to it. A default that changes later — a saved draft that loads — moves the field while it shows its
-default; once the user has picked, it moves only where a reset returns.
+default; once the user has picked, it moves only where a reset returns. A `Select` whose picked options
+are all replaced — a city list after its country changed — shows its default again.
 
 ```tsx
 <TextArea aria-label="Draft" value={this.draft} oninput={this.onInput} />;   // held by the model

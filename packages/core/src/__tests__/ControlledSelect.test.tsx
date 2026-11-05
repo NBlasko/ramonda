@@ -1161,6 +1161,120 @@ describe("a default select whose picked options are all gone", () => {
   });
 });
 
+/** Round 108's shapes: a default that stays through the swap, a pick with no event, and what comes after. */
+describe("a default select whose options are replaced after a pick", () => {
+  class Cities extends Component<{ choose?: boolean; multiple?: boolean }> {
+    @state country: "rs" | "hr" = "rs";
+    @state saved: string | undefined;
+    @state renders = 0;
+    render() {
+      const cities = this.country === "rs" ? ["Beograd", "Novi Sad", "Niš"] : ["Zagreb", "Split", "Rijeka"];
+      const fallback = this.props.choose ? "" : (this.saved ?? (this.country === "rs" ? "Novi Sad" : "Split"));
+      return (
+        <div>
+          <output>{this.renders}</output>
+          <Select
+            aria-label="City"
+            multiple={this.props.multiple}
+            defaultValue={this.props.multiple ? [fallback] : fallback}
+          >
+            {this.props.choose ? (
+              <option value="" disabled={!this.props.multiple}>
+                Choose…
+              </option>
+            ) : null}
+            {cities.map(optionOf)}
+          </Select>
+        </div>
+      );
+    }
+  }
+
+  const mount = async (props: { choose?: boolean; multiple?: boolean } = {}) => {
+    const app = await getDOM<Cities>(<Cities {...props} />);
+    await app.settle();
+    const select = app.container.querySelector("select") as HTMLSelectElement;
+    const chosen = () => Array.from(select.selectedOptions, (o) => o.value);
+    const pick = (value: string) => {
+      for (const option of Array.from(select.options)) if (option.value === value) option.selected = true;
+      if (props.multiple)
+        for (const option of Array.from(select.options)) if (option.value === "") option.selected = false;
+    };
+    return { app, select, chosen, pick };
+  };
+
+  test("a default option that stays through the swap is shown again, and the select is untouched after", async () => {
+    const { app, select, chosen, pick } = await mount({ choose: true });
+    pick("Niš");
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+    app.instance.country = "hr";
+    await app.settle();
+    const swapped = chosen();
+    app.instance.country = "rs";
+    await app.settle();
+    expect({ swapped, back: chosen() }).toEqual({ swapped: [""], back: [""] });
+  });
+
+  test("in a multiple select, the default option that stays is chosen again", async () => {
+    const { app, select, chosen, pick } = await mount({ choose: true, multiple: true });
+    pick("Niš");
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+    app.instance.country = "hr";
+    await app.settle();
+    expect(chosen()).toEqual([""]);
+  });
+
+  test("in a multiple select with two defaults, both are chosen again", async () => {
+    class Two extends Component {
+      @state country: "rs" | "hr" = "rs";
+      render() {
+        const cities = this.country === "rs" ? ["Beograd", "Niš"] : ["Zagreb", "Split"];
+        return (
+          <div>
+            <Select aria-label="Cities" multiple defaultValue={["any", "all"]}>
+              {["any", "all", ...cities].map(optionOf)}
+            </Select>
+          </div>
+        );
+      }
+    }
+    const app = await getDOM<Two>(<Two />);
+    await app.settle();
+    const select = app.container.querySelector("select") as HTMLSelectElement;
+    for (const option of Array.from(select.options)) option.selected = option.value === "Niš";
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+    app.instance.country = "hr";
+    await app.settle();
+    expect(Array.from(select.selectedOptions, (o) => o.value)).toEqual(["any", "all"]);
+  });
+
+  test("a pick made with no event is gone with its options too", async () => {
+    const { app, select, chosen } = await mount();
+    select.value = "Niš";
+    app.instance.renders++;
+    await app.settle();
+    const kept = chosen();
+    app.instance.country = "hr";
+    await app.settle();
+    expect({ kept, swapped: chosen() }).toEqual({ kept: ["Niš"], swapped: ["Split"] });
+  });
+
+  test("once the pick is gone, a later default moves it, whatever renders came between", async () => {
+    const { app, select, chosen } = await mount();
+    select.value = "Niš";
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+    app.instance.country = "hr";
+    await app.settle();
+    for (let i = 0; i < 3; i++) {
+      app.instance.renders++;
+      await app.settle();
+    }
+    app.instance.saved = "Rijeka";
+    await app.settle();
+    expect(chosen()).toEqual(["Rijeka"]);
+  });
+});
+
 describe("a multiple default select the user emptied", () => {
   test("stays empty when its default moves", async () => {
     class Tags extends Component {
