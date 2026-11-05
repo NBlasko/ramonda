@@ -501,12 +501,39 @@ function buildDetachedNode(
   }
 }
 
+/**
+ * The children of an element built this pass — elements and text, no region among them. What
+ * `applyDiffOnChildren` and `reorderChildren` do for it, without the reading: no pool of existing
+ * children to claim from (there are none), no positions to keep (nothing is placed), each node appended
+ * in order. Each is stamped as `claimOrMount` stamps one it builds — see `stampBuilt`.
+ */
+function appendBuiltChildren(vnodeChildren: unknown[], placeholderComponent: MaybeComponent, parent: ChildNode): void {
+  if (__DEV__) lintChildKeys(vnodeChildren, placeholderComponent);
+  for (let slot = 0; slot < vnodeChildren.length; slot++) {
+    const vchild = filterVirtualChild(vnodeChildren[slot]);
+    if (vchild === undefined) continue;
+    const node = buildDetachedNode(vchild, placeholderComponent, parent);
+    if (node === undefined) continue;
+    stampBuilt(node, vchild, slot);
+    parent.appendChild(node);
+  }
+}
+
+/**
+ * A node built this instant carries no slot, so there is nothing to read and nothing to clear — only an
+ * unkeyed child has anything to write. See `stampSlot` for why a keyed one carries none.
+ */
+function stampBuilt(node: ChildNode, vchild: ComponentChild, slot: number): void {
+  if (typeof vchild === "string" || vchild.attributes?.key == null) (node as EnhancedChildNode)[SLOT_SYM] = slot;
+}
+
 function executeChangesOnStringNode(
   vnode: VNodeString,
   placeholderComponent: MaybeComponent,
   maybeenhancedNode: MaybeEnhancedNode | EnhancedChildNode,
 ) {
-  const enhancedNode = maybeenhancedNode?.nodeName === vnode.name ? maybeenhancedNode : createElement(vnode);
+  const built = maybeenhancedNode?.nodeName !== vnode.name;
+  const enhancedNode = built ? createElement(vnode) : maybeenhancedNode;
 
   // The side this element is being built for, taken from the component that owns it rather than
   // from the module-level flag: `renderEnv` is restored before the first `await`, so a re-render
@@ -514,9 +541,16 @@ function executeChangesOnStringNode(
   // inherited down the tree and survives the drain — see `createComponent`.
   const onServer = placeholderComponent?.[COMPONENT_RUNTIME]?.env === "server";
 
-  applyChangesOnAttributes(enhancedNode, vnode.attributes, onServer);
+  applyChangesOnAttributes(enhancedNode, vnode.attributes, onServer, built);
 
   const vnodeChildren = vnode.children;
+
+  // A new element has no children to claim, keep or move: each is built and appended, in order. Those
+  // that are regions — a list, a component — keep the path that knows them.
+  if (built && (vnodeChildren as { [HAS_REGION]?: boolean })[HAS_REGION] !== true) {
+    appendBuiltChildren(vnodeChildren, placeholderComponent, enhancedNode);
+    return enhancedNode;
+  }
 
   const { cloneChildren, orderedNodes } = applyDiffOnChildren(vnodeChildren, placeholderComponent, enhancedNode);
 
@@ -779,9 +813,7 @@ function claimOrMount(
   // Built, not inserted: `reorderChildren` places it, after the nodes this
   // render drops have been unmounted. See buildDetachedNode.
   const mounted = buildDetachedNode(vchild, placeholderComponent, parent);
-  // A node built this instant carries no slot, so there is nothing to read and nothing to
-  // clear — only an unkeyed child has anything to write.
-  if (mounted && !keyed) (mounted as EnhancedChildNode)[SLOT_SYM] = slot;
+  if (mounted) stampBuilt(mounted, vchild, slot);
   cloneChildren.push(DONE);
   return mounted;
 }

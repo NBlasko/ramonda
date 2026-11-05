@@ -13,6 +13,9 @@ import {
 import { queueBeforeTheMounts } from "./commit";
 type NodeAttributes = Record<string, any>;
 
+/** What an element built this pass already carries: nothing. Read, never written. */
+const NONE: NodeAttributes = Object.freeze({});
+
 /**
  * `onServer` skips attaching event listeners, which a server render has no use for.
  *
@@ -23,11 +26,19 @@ type NodeAttributes = Record<string, any>;
  *
  * Passed as a parameter rather than looked up per attribute: it is one property read per ELEMENT, and
  * the loop below runs per attribute.
+ *
+ * `built` says the element was created for this pass: it has no attributes, listeners or key yet, so
+ * there is nothing to read back — and so, from nothing, nothing to take away.
  */
-export function applyChangesOnAttributes(enhancedNode: ChildNode, rawNextAttributes: NodeAttributes, onServer = false) {
+export function applyChangesOnAttributes(
+  enhancedNode: ChildNode,
+  rawNextAttributes: NodeAttributes,
+  onServer = false,
+  built = false,
+) {
   if (!("tagName" in enhancedNode)) return;
 
-  const previousAttributes = getAllFromNode(enhancedNode as EnhancedHTMLNode);
+  const previousAttributes = built ? NONE : getAllFromNode(enhancedNode as EnhancedHTMLNode);
   const nextAttributes = formatAttributes(rawNextAttributes);
   removePreviousFromenhancedNode(enhancedNode as EnhancedHTMLNode, previousAttributes, nextAttributes);
   attachNextOnenhancedNode(enhancedNode as EnhancedHTMLNode, previousAttributes, nextAttributes, onServer);
