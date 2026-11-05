@@ -44,7 +44,9 @@ const NO_FIELD_ISSUES: readonly FieldIssue[] = Object.freeze([]);
 /** The issue a field shows, without the path that only placed it. */
 function fieldIssue(issue: StandardIssue): FieldIssue {
   const { path: _path, ...rest } = issue as StandardIssue & Record<string, unknown>;
-  return rest as FieldIssue;
+  // `message` by name as well: a spread copies only OWN properties, and an issue may be a class
+  // instance whose `message` is a getter on its prototype — measured, the field's issue had none.
+  return { ...rest, message: issue.message } as FieldIssue;
 }
 
 /**

@@ -99,6 +99,8 @@ export function registerFailOnDiagnostics(): void {
   };
   if (typeof g.beforeEach !== "function" || typeof g.afterEach !== "function") return;
 
+  // Installed only here, beside the hooks that empty it. Installed at import as well, it collected
+  // every record of a run that had opted out, and nothing ever emptied it.
   install();
   g.beforeEach(startTest);
   g.afterEach(() => {
@@ -112,7 +114,3 @@ export function registerFailOnDiagnostics(): void {
     if (failure) throw failure;
   });
 }
-
-// The sink is there from the first import, so a test calling `diagnosticsFailure` by hand sees what
-// happened even where no global hooks exist.
-install();

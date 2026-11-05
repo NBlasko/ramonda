@@ -1516,7 +1516,7 @@ function adopt(
  * objects and compares everything else with `Object.is`, so a `Date` or a `File` is one
  * comparison rather than a walk of its internals.
  */
-function equal(a: unknown, b: unknown, walking: Set<object> = new Set()): boolean {
+function equal(a: unknown, b: unknown, walking?: Set<object>): boolean {
   if (Object.is(a, b)) return true;
 
   /**
@@ -1541,6 +1541,9 @@ function equal(a: unknown, b: unknown, walking: Set<object> = new Set()): boolea
    * in two places is no loop, and a guard that kept every visit called `{ a: X, b: X }` different from
    * an equal copy — measured — while `equal` also decides whether a form's defaults moved.
    */
+  // Made only on the first descent: `equal` runs per field per render for `dirty`, and most calls are
+  // two primitives that `Object.is` already settled above.
+  walking ??= new Set();
   const node = a as object;
   if (walking.has(node)) return false;
   walking.add(node);

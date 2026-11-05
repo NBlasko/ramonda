@@ -685,8 +685,6 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
    */
   private fetchOnMount(): Promise<void> {
     if (this.props.enabled === false) return Promise.resolve();
-    // Data only the browser has: the server renders the query loading, and the client fetches.
-    if (this.props.clientOnly === true && this.onServer) return Promise.resolve();
 
     const entry = this.client.getEntry<TData>(this.props.key);
     const hasResult = entry.updatedAt > 0 || entry.errorUpdatedAt > 0;
@@ -842,6 +840,11 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
    */
   private fetchIfNeeded(force: boolean): Promise<void> {
     if (this.props.enabled === false) return Promise.resolve();
+    // Data only the browser has: the server renders the query loading, and the client fetches. Here,
+    // where every path that fetches meets, beside `enabled` — not in the mount path alone, where a key
+    // that moved during the server render, or an invalidation there, still ran the fetcher on the
+    // server. Found by the final review.
+    if (this.props.clientOnly === true && this.onServer) return Promise.resolve();
 
     const options = this.behaviour();
     // Resolved against the client's defaults before asking about staleness: an

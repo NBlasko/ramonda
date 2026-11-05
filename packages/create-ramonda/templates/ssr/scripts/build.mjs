@@ -18,6 +18,7 @@ import {
   readdirSync,
   readFileSync,
   realpathSync,
+  rmSync,
   statSync,
   writeFileSync,
 } from "node:fs";
@@ -50,6 +51,10 @@ const shared = {
 //
 // Not `cpSync(…, { dereference: true })`: measured on Node 24, that resolves only the folder it is
 // handed and copies every link INSIDE it as a link.
+// Emptied first. `dist/client` is written whole by this script, and a file deleted from `public/`
+// since the last build stayed there otherwise — listed by the server at startup and served at its old
+// URL. Found by the final review. Only this folder: `dist/static` and an ISR cache are not ours here.
+rmSync("dist/client", { recursive: true, force: true });
 if (existsSync("public")) copyResolved("public", "dist/client", new Set());
 
 function copyResolved(from, to, above) {

@@ -1,4 +1,4 @@
-import { Component, renderToString } from "@ramonda/core";
+import { Component, created, renderToString, state } from "@ramonda/core";
 import type { RamondaNode } from "@ramonda/core";
 import { act, render } from "@ramonda/testing-library";
 import { beforeEach, describe, expect, test } from "vitest";
@@ -125,5 +125,38 @@ describe("an infinite query", () => {
     const html = await renderToString(<App />);
     expect(pages).toBe(0);
     expect(html).toContain("pending");
+  });
+});
+
+/**
+ * Every way a query fetches, not only the first. The guard sat in the mount path alone, so a key that
+ * moved during the server render — or an invalidation there — still ran the browser-only fetcher on
+ * the server. Found by the final review.
+ */
+describe("clientOnly: true, on every path that fetches", () => {
+  test("a key that changes during the server render does not fetch there", async () => {
+    class Card extends Component {
+      @state id = 1;
+      private stored = this.use(Query, (self: Card) => ({
+        key: ["stored", self.id],
+        fetch: fromTheBrowser,
+        clientOnly: true,
+      }));
+      @created async moveKey(): Promise<void> {
+        await Promise.resolve();
+        this.id = 2;
+      }
+      render(): RamondaNode {
+        return <p>{this.stored.isPending ? "pending" : "loaded"}</p>;
+      }
+    }
+    class App extends Component {
+      private provider = this.use(QueryClientProvider);
+      render(): RamondaNode {
+        return <Card />;
+      }
+    }
+    await renderToString(<App />);
+    expect(calls).toBe(0);
   });
 });

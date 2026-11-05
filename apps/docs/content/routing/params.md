@@ -258,9 +258,12 @@ is `#nav=analytics`.
   cannot move it.
 - **A key clears only what it owns.** Put a filter panel beside it in `<HashLevel of="panel">`, and
   switching `nav` leaves the panel's keys alone.
-- **Only a change clears.** Writing the value a key already has keeps what it owns.
+- **Only a change clears.** Writing the value a key already has keeps what it owns. A key that was not
+  in the URL and now is counts as a change, even when the value is the one the page showed by
+  default: the router sees the URL, not the default.
 - **An updater gets its own keys.** `prev` in the video page holds `tab`, not `nav`, so spreading it
-  does not copy the parent's key down.
+  does not copy the parent's key down. Spread `prev`, not `hashParams`: `hashParams` holds the
+  parent's keys too, and spreading it writes them into this page's own part of the hash.
 - **A component reads its own line.** `hashParams` holds the top's keys and every owner's down to its
   own, so the video page reads `nav` too. A key it writes itself wins over its parent's, for it alone:
   the workspace still reads its own `nav`. A sibling's keys are not in it, so the filter panel and the

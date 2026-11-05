@@ -366,6 +366,10 @@ async function serves(port, attempt = 0) {
       if (inFolder.status !== 200 || inFolder.body !== ROBOTS) {
         fail(`/images/logo.txt, in a symlinked folder in public/, was served as ${inFolder.status} ${inFolder.type}`);
       }
+      const leftover = await get("/deleted-since.txt");
+      if (leftover === "retry") return "retry";
+      if (leftover.body.includes("no longer in public"))
+        fail("/deleted-since.txt, left by a previous build, was still served");
       const escaped = await get("/escape/package.json");
       if (escaped === "retry") return "retry";
       if (escaped.body.includes('"dependencies"'))
@@ -663,6 +667,14 @@ try {
   if (!withAddon) {
     await devIsQuiet();
     checks.push("a dev server that starts with no unresolved import");
+  }
+
+  // What a PREVIOUS build left in `dist/client` — a file since deleted from `public/`. The build copied
+  // `public/` over whatever was there and cleaned nothing, so the server listed the leftover and kept
+  // serving it at its old URL. Found by the final review.
+  if (mode === "ssr") {
+    mkdirSync(join(app, "dist", "client"), { recursive: true });
+    writeFileSync(join(app, "dist", "client", "deleted-since.txt"), "a file no longer in public/\n");
   }
 
   const buildProject = () => {

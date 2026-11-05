@@ -351,3 +351,50 @@ describe("an issue whose value refers to itself", () => {
     }
   });
 });
+
+/**
+ * An issue that is a class instance, its `message` a getter on the prototype. Standard Schema promises
+ * the shape, not a plain object, and a spread copies only own properties: the field's issue had no
+ * `message`. Found by the final review.
+ */
+describe("an issue that is a class instance", () => {
+  class Problem {
+    readonly path = ["name"];
+    readonly code = "too_short";
+    get message(): string {
+      return "Too short";
+    }
+  }
+  const classy: StandardSchemaV1<Values, Values> = {
+    "~standard": {
+      version: 1,
+      vendor: "test",
+      validate: (value: unknown) =>
+        (value as Values).name.length >= 3 ? { value: value as Values } : { issues: [new Problem() as never] },
+    },
+  };
+
+  test("keeps its message, and what it carries of its own", () => {
+    let form!: Form<typeof classy>;
+    class Page extends Component {
+      private f = this.use(Form<typeof classy>, () => ({
+        schema: classy,
+        defaultValues: { name: "" },
+        onSubmit: () => {},
+      }));
+      render(): RamondaNode {
+        form = this.f;
+        return <form />;
+      }
+    }
+    const { unmount } = render((<Page />) as never);
+    try {
+      form.fields.name.$.set("ab");
+      expect(form.fields.name.$.errors).toEqual(["Too short"]);
+      expect(form.fields.name.$.issues[0]?.message).toBe("Too short");
+      expect(form.fields.name.$.issues[0]?.code).toBe("too_short");
+    } finally {
+      unmount();
+    }
+  });
+});
