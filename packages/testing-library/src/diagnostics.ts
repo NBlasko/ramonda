@@ -1,4 +1,3 @@
-import { resetDiagnostics } from "@ramonda/core/testing";
 import { autoCleanupOn, cleanup } from "./cleanup";
 
 /**
@@ -51,8 +50,9 @@ export function startTest(): void {
   seen = [];
   allowed.clear();
   // A diagnostic is said once per process. Without this, the first test to make a mistake takes the
-  // only report, and every later test making it passes in silence.
-  resetDiagnostics();
+  // only report, and every later test making it passes in silence. Each package hands over its own way
+  // to forget, in one global set — core's, `@ramonda/query`'s — so this depends on none of them.
+  for (const forget of globalThis.__RAMONDA_DIAGNOSTICS_RESET__ ?? []) forget();
 }
 
 /** What this test reported that it did not allow, as the error that fails it — and takes it. */

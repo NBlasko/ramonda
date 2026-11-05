@@ -11,7 +11,7 @@ import {
 } from "@ramonda/core";
 import type { RamondaNode } from "@ramonda/core";
 import { createNavigator, detachedNavigator, type RouterNavigator } from "./store";
-import { keepUnchanged, ownedBy, parseUrl } from "./urlUtils";
+import { hashParamsFor, keepUnchanged, ownedBy, parseUrl } from "./urlUtils";
 import { assertPattern, matchCompiled, type ParamsOf, type RouteConfig, type RouteParams } from "./match";
 import type { HashParamsUpdater, PartialNavigateOptions, RouterState, SearchParamsUpdater } from "./types";
 
@@ -28,9 +28,17 @@ interface RouteContextValue {
   state: RouterState;
   baseUrl: string;
   queryParams: Record<string, string>;
-  hashParams: Record<string, string>;
+  /** Every owner's keys, by owner. Each `Navigator` reads its own line of it — see `hashParamsFor`. */
+  hashScopes: Record<string, Record<string, string>>;
   nav: RouterNavigator;
 }
+
+/**
+ * What is published when the route state has no `hashScopes` — one restored from a page the previous
+ * router version rendered. One object, so the provider's callback does not hand out a fresh `{}` on
+ * every run.
+ */
+const NO_SCOPES: Record<string, Record<string, string>> = Object.freeze(Object.create(null));
 
 /** Published by <RouteOutlet>, because that is what does the matching. */
 interface ParamsContextValue {
@@ -49,7 +57,6 @@ const EMPTY_STATE: RouterState = {
   baseUrl: "/",
   queryParams: {},
   hashScopes: {},
-  hashParams: {},
 };
 
 const [RouteProvider, RouteConsumer] = createContext<RouteContextValue>(
@@ -57,7 +64,7 @@ const [RouteProvider, RouteConsumer] = createContext<RouteContextValue>(
     state: EMPTY_STATE,
     baseUrl: "/",
     queryParams: {},
-    hashParams: {},
+    hashScopes: NO_SCOPES,
     nav: detachedNavigator,
   },
   /**
@@ -179,9 +186,11 @@ export class Router extends Hook {
   get searchParams(): Record<string, string> {
     return this.routeState.queryParams;
   }
+  /** The top of the hash — what a component with no `<HashLevel>` above it reads. */
   get hashParams(): Record<string, string> {
-    return this.routeState.hashParams;
+    return this.topHash.read(this.routeState.hashScopes, "");
   }
+  private topHash = new HashReading();
 
   push(href: string, opts?: { scroll?: boolean }): void {
     this.nav.push(href, opts);
@@ -260,7 +269,7 @@ export class Router extends Hook {
     state: this.routeState,
     baseUrl: this.routeState.baseUrl,
     queryParams: this.routeState.queryParams,
-    hashParams: this.routeState.hashParams,
+    hashScopes: this.routeState.hashScopes ?? NO_SCOPES,
     nav: this.nav,
   }));
 }
@@ -317,9 +326,14 @@ export class Navigator extends Hook {
   get searchParams(): Record<string, string> {
     return this.ctx.queryParams;
   }
+  /**
+   * The hash as this component's place sees it: the top, every owner down to its own, and its own —
+   * the line it writes. The nearer owner wins a key both use; a sibling's keys are not in it.
+   */
   get hashParams(): Record<string, string> {
-    return this.ctx.hashParams;
+    return this.hash.read(this.ctx.hashScopes, this.hashOwner.owner);
   }
+  private hash = new HashReading();
 
   /**
    * The matched route's `:params`. Needs a `<RouteOutlet>` above.
@@ -382,6 +396,28 @@ export class Navigator extends Hook {
   }
   forward(): void {
     this.ctx.nav.forward();
+  }
+}
+
+/**
+ * One reader's view of the hash, handed back as the SAME object until the owners change.
+ *
+ * Worked out per reader, so a fresh object per read would make a component that passes `hashParams` to
+ * a child rebuild that child every render — what RMD020 reports. A plain cache, not `@compute`: the
+ * input is already one signal, `hashScopes`, and its identity says whether anything moved.
+ */
+class HashReading {
+  private scopes: Record<string, Record<string, string>> | undefined;
+  private owner: string | undefined;
+  private value: Record<string, string> | undefined;
+
+  read(scopes: Record<string, Record<string, string>> | undefined, owner: string): Record<string, string> {
+    if (this.value === undefined || scopes !== this.scopes || owner !== this.owner) {
+      this.scopes = scopes;
+      this.owner = owner;
+      this.value = hashParamsFor(scopes, owner);
+    }
+    return this.value;
   }
 }
 

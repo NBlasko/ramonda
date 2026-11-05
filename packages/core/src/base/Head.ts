@@ -452,7 +452,11 @@ export function resetHeadRegistry(): void {
   if (registry !== undefined) {
     for (const name of ROOT_ATTRIBUTES) {
       const { original, applied } = registry.root[name];
-      if (applied !== undefined) restoreRootAttribute(name, original);
+      // By the rule `applyRegistry` uses: only while `<html>` still holds what a `Head` wrote. A
+      // value the app set itself since is the app's, at the end of a request as at any other time.
+      if (applied !== undefined && document.documentElement.getAttribute(name) === applied) {
+        restoreRootAttribute(name, original);
+      }
     }
   }
 

@@ -58,7 +58,8 @@ says what it should be *given what it is now*, which is the form that survives t
 same tick.
 
 `RouterState` is the whole URL structured — `baseUrl`, `queryParams` as a flat record, the hash
-as `hashScopes`, one record per owner, and `hashParams`, every key in one record for reading. It is the source of truth at
+as `hashScopes`, one record per owner. A component's `hashParams` is worked out from it, for the line
+that component stands on. It is the source of truth at
 runtime: the URL is rebuilt from it, and read back only at startup and on back/forward.
 
 ## Scrolling is your choice, per call

@@ -71,6 +71,22 @@ describe("a component reading one part of the URL", () => {
     expect(renders.hash).toBe(before.hash + 1);
   });
 
+  /**
+   * `hashParams` is worked out per reader now, from the owners — and handed back as the SAME object
+   * until the hash moves. A fresh object per read would make a component that passes it to a child
+   * rebuild that child every render, which RMD020 exists to report.
+   */
+  test("reads the same hashParams object until the hash moves", async () => {
+    render(<App />);
+    const first = nav.hashParams;
+    expect(nav.hashParams).toBe(first);
+    await act(async () => nav.updateSearchParams({ x: "9" }));
+    expect(nav.hashParams).toBe(first);
+    await act(async () => nav.updateHashParams({ h: "9" }));
+    expect(nav.hashParams).not.toBe(first);
+    expect(nav.hashParams).toEqual({ h: "9" });
+  });
+
   test("and does not re-render on back/forward that leaves its part as it was", async () => {
     render(<App />);
     const before = { ...renders };

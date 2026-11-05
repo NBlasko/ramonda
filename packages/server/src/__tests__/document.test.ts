@@ -97,6 +97,29 @@ describe("fillDocument writes the page's lang and dir on <html>", () => {
     expect(fillDocument({ template: SCAFFOLDED, html: "", lang: "$&" })).toContain('<html lang="$&amp;">');
   });
 
+  /**
+   * The attribute itself, not the text `lang=` wherever it appears. Found by a review of this branch: a
+   * search over the raw attribute string matched inside another attribute's quoted value and broke it,
+   * and missed a `lang` written with no value, so a second `lang` was appended and the first one won.
+   */
+  test("`lang=` inside another attribute's value is that value, not the attribute", () => {
+    const shell = `<!doctype html><html class="x lang=fr" data-note='dir=ltr'><head></head><body><!--ssr--></body></html>`;
+    const out = fillDocument({ template: shell, html: "", lang: "de", dir: "rtl" });
+    expect(out).toContain(`<html class="x lang=fr" data-note='dir=ltr' lang="de" dir="rtl">`);
+  });
+
+  test("a valueless `lang` is replaced, not left beside a second one", () => {
+    const shell = `<!doctype html><html lang data-x><head></head><body><!--ssr--></body></html>`;
+    expect(fillDocument({ template: shell, html: "", lang: "sr" })).toContain(`<html lang="sr" data-x>`);
+  });
+
+  test("a single-quoted and an unquoted `lang` are replaced too", () => {
+    const quoted = `<!doctype html><html lang='en'><head></head><body><!--ssr--></body></html>`;
+    expect(fillDocument({ template: quoted, html: "", lang: "sr" })).toContain(`<html lang="sr">`);
+    const bare = `<!doctype html><html LANG=en><head></head><body><!--ssr--></body></html>`;
+    expect(fillDocument({ template: bare, html: "", lang: "sr" })).toContain(`<html lang="sr">`);
+  });
+
   test("only the <html> element, not a lang written further down the shell", () => {
     const shell = `<!doctype html><html lang="en"><head></head><body><p lang="en">x</p><!--ssr--></body></html>`;
     const out = fillDocument({ template: shell, html: "", lang: "sr" });

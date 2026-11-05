@@ -3,8 +3,16 @@ import type { RouterState } from "./types";
 // Pure, framework-agnostic URL <-> state functions. Depend only on the standard
 // `URL` / `URLSearchParams` / `window.location` browser APIs.
 
+/**
+ * A record with no prototype. Keys come from the URL, and in a plain object `__proto__` is not a key:
+ * writing it replaces the object's prototype. Here it is a name like any other.
+ */
+function record<T>(): Record<string, T> {
+  return Object.create(null) as Record<string, T>;
+}
+
 function parseQueryParams(search: string): Record<string, string> {
-  const out: Record<string, string> = {};
+  const out = record<string>();
   const sp = new URLSearchParams(search);
   sp.forEach((value, key) => {
     out[key] = value;
@@ -25,14 +33,15 @@ function parseQueryParams(search: string): Record<string, string> {
  */
 function parseHash(hash: string): Record<string, Record<string, string>> {
   const body = hash.startsWith("#") ? hash.slice(1) : hash;
-  if (body === "") return {};
+  const scopes = record<Record<string, string>>();
+  if (body === "") return scopes;
   const [top = "", ...rest] = body.split("#");
-  const scopes: Record<string, Record<string, string>> = { "": parseQueryParams(top) };
+  scopes[""] = parseQueryParams(top);
   for (const segment of rest) {
     const colon = segment.indexOf(":");
     const owner = colon === -1 ? "" : segment.slice(0, colon);
     const pairs = parseQueryParams(colon === -1 ? segment : segment.slice(colon + 1));
-    scopes[owner] = { ...scopes[owner], ...pairs };
+    scopes[owner] = Object.assign(record<string>(), scopes[owner], pairs);
   }
   return scopes;
 }
@@ -50,11 +59,31 @@ export function ownedBy(owner: string, key: string): string {
   return owner === "" ? ownerKey(key) : `${owner}.${ownerKey(key)}`;
 }
 
-/** The owners, and every key of them in one record for reading. A deeper owner's key wins a clash. */
-export function withHashScopes(
-  scopes: Record<string, Record<string, string>>,
-): Pick<RouterState, "hashScopes" | "hashParams"> {
-  return { hashScopes: scopes, hashParams: Object.assign({}, ...orderedOwners(scopes).map((o) => scopes[o])) };
+/**
+ * What a writer under `owner` reads: the top, every owner on the way down to its own, and its own — the
+ * same line it writes. The nearer owner wins a key both use.
+ *
+ * Its line and nothing else. One record of every owner's keys let a child's key shadow its parent's —
+ * a page writing its own `nav` made the parent read it, and unmount the page — and let two siblings
+ * that use one name read whichever wrote last. Found by a review of this branch.
+ *
+ * `scopes` may be missing: a state restored from a page the previous router version rendered has no
+ * `hashScopes`, and reads as an empty hash until the URL is read again on mount.
+ */
+export function hashParamsFor(
+  scopes: Record<string, Record<string, string>> | undefined,
+  owner: string,
+): Record<string, string> {
+  const out = record<string>();
+  if (scopes === undefined) return out;
+  Object.assign(out, scopes[""]);
+  if (owner === "") return out;
+  let line = "";
+  for (const key of owner.split(".")) {
+    line = line === "" ? key : `${line}.${key}`;
+    Object.assign(out, scopes[line]);
+  }
+  return out;
 }
 
 /** The top first, then each owner after the one that owns it — the order a URL is written in. */
@@ -85,7 +114,7 @@ export function writeHashScope(
   const cleared = [...changed].map((key) => ownedBy(owner, key));
   const isCleared = (o: string) => cleared.some((c) => o === c || o.startsWith(`${c}.`));
 
-  const out: Record<string, Record<string, string>> = {};
+  const out = record<Record<string, string>>();
   for (const [o, pairs] of Object.entries(scopes)) if (o !== owner && !isCleared(o)) out[o] = pairs;
   out[owner] = next;
   return out;
@@ -137,7 +166,7 @@ export function parseUrl(): RouterState {
   return {
     baseUrl: normalizePathname(window.location.pathname),
     queryParams: parseQueryParams(window.location.search),
-    ...withHashScopes(parseHash(window.location.hash)),
+    hashScopes: parseHash(window.location.hash),
   };
 }
 
@@ -147,7 +176,7 @@ export function parseUrlString(url: string): RouterState {
   return {
     baseUrl: normalizePathname(parsed.pathname),
     queryParams: parseQueryParams(parsed.search),
-    ...withHashScopes(parseHash(parsed.hash)),
+    hashScopes: parseHash(parsed.hash),
   };
 }
 
@@ -194,14 +223,19 @@ function samePairs(a: Record<string, string>, b: Record<string, string>): boolea
  * back/forward alike.
  */
 export function keepUnchanged(prev: RouterState, next: RouterState): RouterState {
-  const queryParams = samePairs(prev.queryParams, next.queryParams) ? prev.queryParams : next.queryParams;
-  const hashParams = samePairs(prev.hashParams, next.hashParams) ? prev.hashParams : next.hashParams;
-  const prevOwners = Object.keys(prev.hashScopes);
+  // `prev` can be a state restored from a page the PREVIOUS router version rendered: no `hashScopes`,
+  // a `hashTags` instead. Measured: the client threw here and the app did not hydrate until the cache
+  // was purged. Read as empty, it is simply replaced by what the URL says.
+  const prevQuery = prev.queryParams ?? {};
+  const prevScopes = prev.hashScopes ?? {};
+  const queryParams = samePairs(prevQuery, next.queryParams) ? prevQuery : next.queryParams;
+  const prevOwners = Object.keys(prevScopes);
   const hashScopes =
+    prev.hashScopes !== undefined &&
     prevOwners.length === Object.keys(next.hashScopes).length &&
-    prevOwners.every((o) => Object.hasOwn(next.hashScopes, o) && samePairs(prev.hashScopes[o]!, next.hashScopes[o]!))
+    prevOwners.every((o) => Object.hasOwn(next.hashScopes, o) && samePairs(prevScopes[o]!, next.hashScopes[o]!))
       ? prev.hashScopes
       : next.hashScopes;
-  if (queryParams === next.queryParams && hashParams === next.hashParams && hashScopes === next.hashScopes) return next;
-  return { ...next, queryParams, hashParams, hashScopes };
+  if (queryParams === next.queryParams && hashScopes === next.hashScopes) return next;
+  return { ...next, queryParams, hashScopes };
 }

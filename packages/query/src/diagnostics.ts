@@ -26,6 +26,12 @@ declare global {
   }
 
   var __RAMONDA_DIAGNOSTICS__: ((record: RamondaDiagnostic) => void) | undefined;
+  /**
+   * How a test forgets what each package already said. Every package that says a diagnostic once per
+   * process adds its reset here in development, and `@ramonda/testing-library` calls them all before
+   * each test — one set, as there is one sink, so the harness depends on no package but core.
+   */
+  var __RAMONDA_DIAGNOSTICS_RESET__: Set<() => void> | undefined;
 }
 
 /** An `error` promises a fix, and the union is what makes that a compile error rather than a review note. */
@@ -100,3 +106,6 @@ export function report(code: QueryCode, message: string, dedupKey: string, data?
 export function resetQueryDiagnostics(): void {
   reported.clear();
 }
+
+// Forgotten before each test with every other package's — see `__RAMONDA_DIAGNOSTICS_RESET__`.
+if (__DEV__) (globalThis.__RAMONDA_DIAGNOSTICS_RESET__ ??= new Set()).add(resetQueryDiagnostics);

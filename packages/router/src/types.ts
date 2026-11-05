@@ -18,8 +18,6 @@ export interface RouterState {
    * the URL, so a reload and back/forward keep them.
    */
   hashScopes: Record<string, Record<string, string>>;
-  /** Every owner's keys in one record, for reading: `{ nav: "video", tab: "comments", sort: "new" }`. */
-  hashParams: Record<string, string>;
 }
 
 export interface NavigateOptions {

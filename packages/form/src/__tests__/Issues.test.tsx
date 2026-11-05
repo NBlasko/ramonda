@@ -1,7 +1,9 @@
 import { Component, type RamondaNode } from "@ramonda/core";
-import { render } from "@ramonda/testing-library";
+import { act, render } from "@ramonda/testing-library";
 import { describe, expect, test } from "vitest";
 import { Form } from "../Form";
+import { Field } from "../field";
+import type { FieldNode } from "../types";
 import type { StandardSchemaV1 } from "../types";
 
 /**
@@ -87,6 +89,72 @@ describe("a field's issues", () => {
       form.setError("name", "taken");
       expect(form.fields.name.$.issues.map((issue) => issue.message)).toContain("taken");
       expect(form.fields.name.$.issues.find((issue) => issue.message === "taken")?.code).toBeUndefined();
+    } finally {
+      unmount();
+    }
+  });
+});
+
+/**
+ * An issue that changes while its message does not — the case a translation by `code` lives in.
+ *
+ * Found by a review of this branch: a field woke only when its MESSAGES changed, so `{ message:
+ * "Invalid", code: "s:minLength" }` becoming `{ message: "Invalid", code: "s:pattern" }` never
+ * re-rendered a field reading `issues`, and the app kept showing the first translation. Driven from
+ * ANOTHER field, so the field's own value does not move and cannot wake it on its own: a test that
+ * changed the field itself passed with the fault in place.
+ */
+describe("a field reading its issues", () => {
+  interface Pair {
+    name: string;
+    strict: string;
+  }
+  const crossField: StandardSchemaV1<Pair, Pair> = {
+    "~standard": {
+      version: 1,
+      vendor: "test",
+      validate: (value: unknown) => {
+        const { strict } = value as Pair;
+        return {
+          issues: [
+            { message: "Invalid", path: ["name"], code: strict === "yes" ? "s:pattern" : "s:minLength" } as never,
+          ],
+        };
+      },
+    },
+  };
+
+  test("re-renders when only an issue's code changes", async () => {
+    let renders = 0;
+    class Code extends Component<{ of: FieldNode<string> }> {
+      f = this.use(Field<string>, () => ({ of: this.props.of }));
+      render(): RamondaNode {
+        renders++;
+        return <p id="code">{String(this.f.issues[0]?.code ?? "none")}</p>;
+      }
+    }
+    let form!: Form<typeof crossField>;
+    class Page extends Component {
+      private f = this.use(Form<typeof crossField>, () => ({
+        schema: crossField,
+        defaultValues: { name: "x", strict: "no" },
+        onSubmit: () => {},
+      }));
+      render(): RamondaNode {
+        form = this.f;
+        return <Code of={this.f.fields.name} />;
+      }
+    }
+    const { container, unmount } = render((<Page />) as never);
+    try {
+      await act(async () => form.submit());
+      expect(container.querySelector("#code")!.textContent).toBe("s:minLength");
+      await act(async () => form.fields.strict.$.set("yes"));
+      // The name field's value and message are both unchanged; only its issue's code moved.
+      expect(form.fields.name.$.errors).toEqual(["Invalid"]);
+      expect(form.fields.name.$.issues[0]?.code).toBe("s:pattern");
+      expect(container.querySelector("#code")!.textContent).toBe("s:pattern");
+      expect(renders).toBeGreaterThan(1);
     } finally {
       unmount();
     }

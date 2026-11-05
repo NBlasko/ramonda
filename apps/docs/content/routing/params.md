@@ -43,7 +43,7 @@ What it gives you:
 | `params(pattern)` | the `:params` of that pattern, typed from it |
 | `params<T>()` | the same values, typed by what you assert — the untyped door |
 | `searchParams` | `?a=1&b=2` → `{ a: "1", b: "2" }` |
-| `hashParams` | `#a=1&b=2` → `{ a: "1", b: "2" }`, read as the query is. A bare `#install` is `{ install: "" }` — the name of a section. With [levels](#a-hash-in-levels), every key in one record |
+| `hashParams` | `#a=1&b=2` → `{ a: "1", b: "2" }`, read as the query is. A bare `#install` is `{ install: "" }` — the name of a section. With [levels](#a-hash-in-levels), the keys on this component's own line |
 
 ## You react to the part you read
 
@@ -261,8 +261,10 @@ is `#nav=analytics`.
 - **Only a change clears.** Writing the value a key already has keeps what it owns.
 - **An updater gets its own keys.** `prev` in the video page holds `tab`, not `nav`, so spreading it
   does not copy the parent's key down.
-- **Reading is flat.** `hashParams` holds every key in one record, so the page can read `nav` too. If
-  two owners use the same key, the deeper one wins, so give each its own keys.
+- **A component reads its own line.** `hashParams` holds the top's keys and every owner's down to its
+  own, so the video page reads `nav` too. A key it writes itself wins over its parent's, for it alone:
+  the workspace still reads its own `nav`. A sibling's keys are not in it, so the filter panel and the
+  video page may both use `tab`.
 - **The owners are in the URL.** Each `#` segment after the first names its owner before a `:`, and
   `&` separates its keys. A reload, a shared link and Back keep who owns what. Nothing depends on what
   is mounted.

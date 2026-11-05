@@ -6,7 +6,7 @@ import type {
   SearchParamsUpdater,
   StateUpdater,
 } from "./types";
-import { buildUrl, keepUnchanged, parseUrlString, withHashScopes, writeHashScope } from "./urlUtils";
+import { buildUrl, keepUnchanged, parseUrlString, writeHashScope } from "./urlUtils";
 
 /**
  * How the navigator reaches the route state. Deliberately just two functions
@@ -129,10 +129,11 @@ export function createNavigator(store: RouteStateAccess, onServerRedirect?: (url
     updateHashParams(next, opts = {}, owner = "") {
       updateState(
         (prev) => {
-          const own = prev.hashScopes[owner] ?? {};
+          const scopes = prev.hashScopes ?? {};
+          const own = (Object.hasOwn(scopes, owner) ? scopes[owner] : undefined) ?? {};
           return {
             ...prev,
-            ...withHashScopes(writeHashScope(prev.hashScopes, owner, typeof next === "function" ? next(own) : next)),
+            hashScopes: writeHashScope(scopes, owner, typeof next === "function" ? next(own) : next),
           };
         },
         { replace: opts.replace, scroll: opts.scroll === true },

@@ -109,21 +109,80 @@ export function fillDocument({ template, html, title, head, lang, dir, portals }
 const PORTALS_MARKER = "<!--portals-->";
 
 /**
- * One attribute on the shell's `<html>` element, replaced if it is there and added if not. Only that
- * element: the first `<html` tag, which `<!doctype html>` is not, and an attribute that starts after
- * whitespace — so `data-lang` is not `lang`. Nothing to write leaves the shell exactly as it was.
+ * One attribute on the shell's `<html>` element, replaced if it is there and added if not. Nothing to
+ * write leaves the shell exactly as it was.
+ *
+ * The attributes are READ, not searched: a quoted value is one value, so `class="x lang=fr"` holds no
+ * `lang`, and `<html lang>` — an attribute with no value — is one to replace, not a reason to add a
+ * second that the browser would ignore. Found by a review: a search over the raw text did both
+ * wrong. Only the first `<html` tag, which `<!doctype html>` is not.
  */
 function setRootAttribute(shell: string, name: "lang" | "dir", value: string | undefined): string {
   if (value === undefined) return shell;
+  const tag = htmlTag(shell);
+  if (tag === undefined) return shell;
+
   const written = `${name}="${escapeAttribute(value)}"`;
-  const existing = new RegExp(`(\\s)${name}\\s*=\\s*(?:"[^"]*"|'[^']*'|[^\\s>]+)`, "i");
-  return shell.replace(/<html(\s[^>]*)?>/i, (_tag, attributes: string | undefined) => {
-    const before = attributes ?? "";
-    const after = existing.test(before)
-      ? before.replace(existing, (_m, space: string) => `${space}${written}`)
-      : `${before} ${written}`;
-    return `<html${after}>`;
-  });
+  const found = tag.attributes.find((attribute) => attribute.name.toLowerCase() === name);
+  const inside =
+    found === undefined
+      ? `${shell.slice(tag.start, tag.end)} ${written}`
+      : `${shell.slice(tag.start, found.start)}${written}${shell.slice(found.end, tag.end)}`;
+  return `${shell.slice(0, tag.start)}${inside}${shell.slice(tag.end)}`;
+}
+
+interface Attribute {
+  name: string;
+  /** Where the attribute starts and ends in the shell, value included. */
+  start: number;
+  end: number;
+}
+
+/**
+ * The first `<html …>` tag: where its attributes start and end (before the `>`), and each attribute.
+ * A `>` inside a quoted value does not end the tag.
+ */
+function htmlTag(shell: string): { start: number; end: number; attributes: Attribute[] } | undefined {
+  const open = /<html(?=[\s>/])/i.exec(shell);
+  if (open === null) return undefined;
+  const start = open.index + open[0].length;
+  const attributes: Attribute[] = [];
+  let at = start;
+  const isSpace = (c: string | undefined) => c === " " || c === "\n" || c === "\t" || c === "\r" || c === "\f";
+
+  for (;;) {
+    while (isSpace(shell[at])) at++;
+    const c = shell[at];
+    if (c === undefined) return undefined;
+    if (c === ">" || (c === "/" && shell[at + 1] === ">")) return { start, end: at, attributes };
+
+    const nameStart = at;
+    while (shell[at] !== undefined && !isSpace(shell[at]) && !"=>/".includes(shell[at]!)) at++;
+    const attributeName = shell.slice(nameStart, at);
+    if (attributeName === "") {
+      at++; // a stray `/` or `=`: step over it
+      continue;
+    }
+
+    let end = at;
+    let look = at;
+    while (isSpace(shell[look])) look++;
+    if (shell[look] === "=") {
+      look++;
+      while (isSpace(shell[look])) look++;
+      const quote = shell[look];
+      if (quote === '"' || quote === "'") {
+        const close = shell.indexOf(quote, look + 1);
+        if (close === -1) return undefined;
+        end = close + 1;
+      } else {
+        end = look;
+        while (shell[end] !== undefined && !isSpace(shell[end]) && shell[end] !== ">") end++;
+      }
+      at = end;
+    }
+    attributes.push({ name: attributeName, start: nameStart, end });
+  }
 }
 
 /**

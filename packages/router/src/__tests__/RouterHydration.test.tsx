@@ -134,6 +134,34 @@ describe("Router hydration", () => {
     expect(baseUrlFrom(container)).toBe("/");
   });
 
+  /**
+   * A page baked or cached by the previous router version carries the hash the old way, `hashTags`,
+   * and no `hashScopes`. Served after a deploy, the new client restored it and threw in
+   * `keepUnchanged`, so the app did not hydrate until the cache was purged. The URL is read again on
+   * mount anyway, so a shape it does not know is treated as empty.
+   */
+  test("a blob from before hashScopes still hydrates, at the client's URL", async () => {
+    setUrl("/players#tab=film");
+    const html = await renderToString(<App />);
+    expect(html).toContain("hashScopes");
+    // The blob is JSON in the component's opening comment; rewritten to the old shape, as the old
+    // router wrote it.
+    const old = html.replace(/^<!--c0 (.*?)-->/, (_m, json: string) => {
+      const blob = JSON.parse(json);
+      const route = blob.hooks[0].state.routeState;
+      delete route.hashScopes;
+      delete route.hashParams;
+      route.hashTags = [{ key: "tab", value: "film", level: 0 }];
+      return `<!--c0 ${JSON.stringify(blob)}-->`;
+    });
+    expect(old).toContain("hashTags");
+    expect(old).not.toContain("hashScopes");
+
+    const { container } = render(<App />, { hydrate: old });
+    expect(container.querySelector("#players")).toBeTruthy();
+    expect(baseUrlFrom(container)).toBe("/players");
+  });
+
   test("hydrating at the same URL keeps the server's route", async () => {
     setUrl("/players");
     const html = await renderToString(<App />);

@@ -15,7 +15,7 @@ import * as api from "../index";
  * becoming API by accident — is invisible in a diff and permanent once shipped.
  */
 
-const EXPECTED = ["flushSync", "rerenderRoot", "getComponentInstance", "getComponentsIn", "resetDiagnostics"];
+const EXPECTED = ["flushSync", "rerenderRoot", "getComponentInstance", "getComponentsIn"];
 
 describe("the testing seam", () => {
   test("exports exactly what a harness needs, and nothing beside it", () => {

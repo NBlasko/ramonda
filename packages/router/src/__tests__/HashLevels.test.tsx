@@ -226,12 +226,113 @@ describe("a change to a key", () => {
   });
 });
 
+/**
+ * What a component READS is its own line — the top, every owner down to its own, and its own — the
+ * same line it writes. One record of every owner's keys let a child's key shadow its parent's (a page
+ * writing its own `nav` made the parent read it, and unmount the page) and let two siblings using one
+ * name read whichever wrote last. Found by a review of this branch.
+ */
+describe("what a component reads", () => {
+  test("a page's own key does not change what its parent reads", async () => {
+    const App = app(Shell);
+    render(<App />);
+    await write("shell", { nav: "video" });
+    await write("video", { nav: "menu" });
+    expect(hash()).toBe("#nav=video#nav:nav=menu");
+    expect(navs.shell!.hashParams).toEqual({ nav: "video" });
+    // The page sees its own, which is nearer than its parent's.
+    expect(navs.video!.hashParams).toEqual({ nav: "menu" });
+  });
+
+  test("two siblings using one name each read their own", async () => {
+    const App = app(Shell);
+    render(<App />);
+    await write("shell", { nav: "video", panel: "open" });
+    await write("video", { tab: "comments" });
+    await write("filters", { tab: "recent" });
+    expect(navs.video!.hashParams.tab).toBe("comments");
+    expect(navs.filters!.hashParams.tab).toBe("recent");
+    expect(navs.shell!.hashParams).toEqual({ nav: "video", panel: "open" });
+  });
+
+  test("two levels down reads the whole line above it", async () => {
+    const App = app(DeepShell);
+    render(<App />);
+    await write("shell", { nav: "video" });
+    await write("video", { tab: "comments" });
+    await write("comments", { page: "2" });
+    expect(navs.comments!.hashParams).toEqual({ nav: "video", tab: "comments", page: "2" });
+    expect(navs.video!.hashParams).toEqual({ nav: "video", tab: "comments" });
+  });
+});
+
+/**
+ * Owners come from the URL, so an owner named `__proto__` or `constructor` is text like any other. In
+ * a plain object, `scopes["__proto__"] = …` replaced the record's prototype instead of adding an owner.
+ */
+describe("a name from the URL is only a name", () => {
+  test("`__proto__` and `constructor` are owners like any other", async () => {
+    window.history.pushState(null, "", "/#x=1#__proto__:a=1#constructor:b=2");
+    class Proto extends Component {
+      nav = this.use(Navigator);
+      @created keep() {
+        navs.proto = this.nav;
+      }
+      render() {
+        return <p>proto</p>;
+      }
+    }
+    class Owners extends Component {
+      nav = this.use(Navigator);
+      @created keep() {
+        navs.shell = this.nav;
+      }
+      render() {
+        return (
+          <div>
+            <HashLevel of="constructor">
+              <Proto />
+            </HashLevel>
+          </div>
+        );
+      }
+    }
+    class App extends Component {
+      router = this.use(Router);
+      render(): RamondaNode {
+        return <Owners />;
+      }
+    }
+    render(<App />);
+    expect(navs.shell!.hashParams).toEqual({ x: "1" });
+    // The page under `constructor` reads that owner's own keys, not the `Object` function.
+    expect(navs.proto!.hashParams).toEqual({ x: "1", b: "2" });
+    await act(async () =>
+      navs.proto!.updateHashParams((prev) => {
+        expect(Object.keys(prev)).toEqual(["b"]);
+        return { ...prev, c: "3" };
+      }),
+    );
+    expect(hash()).toContain("#constructor:b=2&c=3");
+    expect(hash()).toContain("#__proto__:a=1");
+  });
+
+  test("`?__proto__=x` is a query key like any other", () => {
+    window.history.pushState(null, "", "/?__proto__=x");
+    const App = app(Video);
+    render(<App />);
+    expect(Object.keys(navs.video!.searchParams)).toEqual(["__proto__"]);
+  });
+});
+
 describe("the owners are in the URL", () => {
   test("a page loaded on a deep URL knows which key owns which", async () => {
     window.history.pushState(null, "", "/#nav=video&panel=open#nav:tab=comments#panel:filter=new");
     const App = app(Shell);
     render(<App />);
-    expect(navs.video!.hashParams).toEqual({ nav: "video", panel: "open", tab: "comments", filter: "new" });
+    // Its own line, top to itself: the top's keys and its own, never a sibling's.
+    expect(navs.video!.hashParams).toEqual({ nav: "video", panel: "open", tab: "comments" });
+    expect(navs.filters!.hashParams).toEqual({ nav: "video", panel: "open", filter: "new" });
     await write("shell", { nav: "analytics" });
     expect(hash()).toBe("#nav=analytics&panel=open#panel:filter=new");
   });

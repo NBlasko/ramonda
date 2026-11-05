@@ -1,8 +1,8 @@
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { dirname, join, resolve, sep } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { createIsrCache, fileStore } from "@ramonda/router/server";
 import { escapeHtml, fillDocument, installDom, mimeFor, parseCookies } from "@ramonda/server";
 
@@ -33,6 +33,10 @@ let prodTemplate;
 let staticSet;
 let isr;
 const STATIC = resolve(here, "dist/static");
+/** What the build wrote for the browser: the bundle under `assets/`, and everything from `public/`. */
+const CLIENT = resolve(here, "dist", "client");
+/** Every file under `CLIENT` by its URL, read once at startup — see `listClientFiles`. */
+let clientFiles = new Map();
 const origin = `http://localhost:${PORT}`;
 
 // Made before Vite, which takes it for hot reload. `vite` is set below, before the first request.
@@ -56,6 +60,7 @@ if (isProd) {
   prodPrerender = mod.prerender;
   prodPlan = mod.plan();
   staticSet = new Set(prodPlan.static);
+  clientFiles = listClientFiles();
   isr = createIsrCache({
     plan: prodPlan,
     // Where baked ISR pages live. A directory, so the cache survives a restart and is shared by
@@ -129,15 +134,31 @@ async function bakeShared(path) {
   }
 }
 
-/** What the build wrote for the browser: the bundle under `assets/`, and everything from `public/`. */
-const CLIENT = resolve(here, "dist", "client");
+/**
+ * Every file under `dist/client`, by the URL it is served at — read ONCE, when production starts.
+ *
+ * A lookup per request instead of a disk check per request: every page asked the disk first, for a
+ * file that almost never exists. The build writes `dist/client` and nothing changes it while the
+ * server runs. The shell, `index.html`, is left out — it still holds `<!--ssr-->`; pages are rendered.
+ */
+function listClientFiles() {
+  const files = new Map();
+  const walk = (dir) => {
+    if (!existsSync(dir)) return;
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const file = join(dir, entry.name);
+      if (entry.isDirectory()) walk(file);
+      else if (entry.isFile()) files.set(`/${relative(CLIENT, file).split(sep).join("/")}`, file);
+    }
+  };
+  walk(CLIENT);
+  files.delete("/index.html");
+  return files;
+}
 
 /**
- * The file a URL names under `dist/client`, or `undefined`.
- *
- * Only a FILE, only inside `dist/client` — `resolve` takes the `..` out, and anything that lands
- * outside is refused — and never the shell, `index.html`, which still holds `<!--ssr-->`: the pages
- * are rendered below.
+ * The file a URL names under `dist/client`, or `undefined`. Only one the build wrote: a path that
+ * climbs out with `..`, encoded or not, names nothing on the list.
  */
 function clientFile(path) {
   let decoded;
@@ -146,9 +167,7 @@ function clientFile(path) {
   } catch {
     return undefined;
   }
-  const file = resolve(CLIENT, `.${decoded}`);
-  if (!file.startsWith(CLIENT + sep) || file === join(CLIENT, "index.html")) return undefined;
-  return existsSync(file) && statSync(file).isFile() ? file : undefined;
+  return clientFiles.get(decoded);
 }
 
 async function renderProd(req, res) {

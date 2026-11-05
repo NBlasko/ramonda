@@ -120,6 +120,41 @@ describe("on the client", () => {
   });
 });
 
+describe("when the registry is reset", () => {
+  /**
+   * The reset at a request's end gives `<html>` back by the same rule a page going away does: only
+   * while it still holds what a `Head` wrote. It restored unconditionally, so a value the app wrote
+   * itself since was overwritten. Found by a review: two rules for one slot.
+   */
+  test("hands back what <html> had, unless something else wrote it since", async () => {
+    html().setAttribute("lang", "en");
+    class Page extends Component {
+      head = this.use(Head, () => ({ lang: "fr" }));
+      render() {
+        return <p>bonjour</p>;
+      }
+    }
+    await getDOM(<Page />);
+    expect(html().getAttribute("lang")).toBe("fr");
+    html().setAttribute("lang", "de");
+    resetHeadRegistry();
+    expect(html().getAttribute("lang")).toBe("de");
+  });
+
+  test("and does hand it back while it is still the Head's", async () => {
+    html().setAttribute("lang", "en");
+    class Page extends Component {
+      head = this.use(Head, () => ({ lang: "fr" }));
+      render() {
+        return <p>bonjour</p>;
+      }
+    }
+    await getDOM(<Page />);
+    resetHeadRegistry();
+    expect(html().getAttribute("lang")).toBe("en");
+  });
+});
+
 describe("on the server", () => {
   test("renderPage returns them beside the title", async () => {
     class Page extends Component {

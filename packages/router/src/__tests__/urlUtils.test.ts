@@ -6,7 +6,7 @@ import {
   sanitizeHref,
   normalizePathname,
   ownedBy,
-  withHashScopes,
+  hashParamsFor,
 } from "../urlUtils";
 
 describe("urlUtils", () => {
@@ -14,7 +14,7 @@ describe("urlUtils", () => {
     const s = parseUrlString("/players/123?a=1&b=2#tab=film&play=5");
     expect(s.baseUrl).toBe("/players/123");
     expect(s.queryParams).toEqual({ a: "1", b: "2" });
-    expect(s.hashParams).toEqual({ tab: "film", play: "5" });
+    expect(hashParamsFor(s.hashScopes, "")).toEqual({ tab: "film", play: "5" });
   });
 
   /**
@@ -23,31 +23,29 @@ describe("urlUtils", () => {
    * `k2` without a word. Found by an agent building an app from the docs alone.
    */
   test("parseUrlString: every pair in the hash, as in the query", () => {
-    expect(parseUrlString("/view#k1=v1&k2=v2").hashParams).toEqual({ k1: "v1", k2: "v2" });
-    expect(parseUrlString("/view#access_token=abc&state=xyz").hashParams).toEqual({
+    expect(hashParamsFor(parseUrlString("/view#k1=v1&k2=v2").hashScopes, "")).toEqual({ k1: "v1", k2: "v2" });
+    expect(hashParamsFor(parseUrlString("/view#access_token=abc&state=xyz").hashScopes, "")).toEqual({
       access_token: "abc",
       state: "xyz",
     });
   });
 
   test("parseUrlString: a bare hash names a section, and is a key with no value", () => {
-    expect(parseUrlString("/x#open").hashParams).toEqual({ open: "" });
+    expect(hashParamsFor(parseUrlString("/x#open").hashScopes, "")).toEqual({ open: "" });
   });
 
   test("buildUrl: state → URL, the hash written as the query is", () => {
     const url = buildUrl({
       baseUrl: "/players/123",
       queryParams: { a: "1", b: "2" },
-      ...withHashScopes({ "": { tab: "film", play: "5" } }),
+      hashScopes: { "": { tab: "film", play: "5" } },
     });
     expect(url).toBe("/players/123?a=1&b=2#tab=film&play=5");
   });
 
   test("buildUrl: a section stays a bare name, and a hash value is encoded", () => {
-    expect(buildUrl({ baseUrl: "/x", queryParams: {}, ...withHashScopes({ "": { install: "" } }) })).toBe("/x#install");
-    expect(buildUrl({ baseUrl: "/x", queryParams: {}, ...withHashScopes({ "": { q: "a b&c" } }) })).toBe(
-      "/x#q=a%20b%26c",
-    );
+    expect(buildUrl({ baseUrl: "/x", queryParams: {}, hashScopes: { "": { install: "" } } })).toBe("/x#install");
+    expect(buildUrl({ baseUrl: "/x", queryParams: {}, hashScopes: { "": { q: "a b&c" } } })).toBe("/x#q=a%20b%26c");
   });
 
   /**
@@ -57,10 +55,10 @@ describe("urlUtils", () => {
   test("the hash by owner: a segment per owner, and structure never mistaken for a value", () => {
     const s = parseUrlString("/v#nav=video#nav:tab=comments&sort=new");
     expect(s.hashScopes).toEqual({ "": { nav: "video" }, nav: { tab: "comments", sort: "new" } });
-    expect(s.hashParams).toEqual({ nav: "video", tab: "comments", sort: "new" });
+    expect(hashParamsFor(s.hashScopes, "nav")).toEqual({ nav: "video", tab: "comments", sort: "new" });
     expect(buildUrl(s)).toBe("/v#nav=video#nav:tab=comments&sort=new");
 
-    const odd = buildUrl({ baseUrl: "/v", queryParams: {}, ...withHashScopes({ "": { "a:b": "c#d" } }) });
+    const odd = buildUrl({ baseUrl: "/v", queryParams: {}, hashScopes: { "": { "a:b": "c#d" } } });
     expect(odd).toBe("/v#a%3Ab=c%23d");
     expect(parseUrlString(odd).hashScopes).toEqual({ "": { "a:b": "c#d" } });
 
@@ -68,7 +66,7 @@ describe("urlUtils", () => {
     expect(ownedBy("nav", "tab")).toBe("nav.tab");
 
     expect(parseUrlString("/v##nav:tab=comments").hashScopes).toEqual({ "": {}, nav: { tab: "comments" } });
-    expect(buildUrl({ baseUrl: "/v", queryParams: {}, ...withHashScopes({ "": { a: "1" }, nav: {} }) })).toBe("/v#a=1");
+    expect(buildUrl({ baseUrl: "/v", queryParams: {}, hashScopes: { "": { a: "1" }, nav: {} } })).toBe("/v#a=1");
   });
 
   test("round-trip: a hash with several pairs comes back whole", () => {
@@ -85,7 +83,7 @@ describe("urlUtils", () => {
     const url = buildUrl({
       baseUrl: "/s",
       queryParams: { q: "a b&c" },
-      ...withHashScopes({}),
+      hashScopes: {},
     });
     expect(url).toBe("/s?q=a%20b%26c");
   });

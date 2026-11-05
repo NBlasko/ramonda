@@ -3,8 +3,8 @@ import { created, destroyed, Hook, INSPECT, type RenderEnv, state, watchProp } f
 import { ASPECT, EVERY_ASPECT, type FieldHandle, type FieldHost, FieldTree, type Watcher } from "./fieldTree";
 import { FACT, type FormFacts, FormProvider, type FormWatcher } from "./formState";
 import { childKey, keyPrefix, type Path, parsePath, pathKey, readAt, ROOT, writeAt } from "./path";
-import type { FieldNode, FormProps, InferIn, InferOut, StandardSchemaV1, ValidateOn } from "./types";
-import { type Issues, NO_ISSUES, NO_MESSAGES, validate, withIssue } from "./validate";
+import type { FieldIssue, FieldNode, FormProps, InferIn, InferOut, StandardSchemaV1, ValidateOn } from "./types";
+import { type Issues, issuesOf, NO_ISSUES, NO_MESSAGES, validate, withIssue } from "./validate";
 import { report } from "./diagnostics";
 
 /**
@@ -1073,7 +1073,11 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
       const was = before.get(key);
       const now = after.get(key);
       if (was === now) continue;
-      if (was !== undefined && now !== undefined && sameMessages(was, now)) continue;
+      // The messages, AND what the schema put beside them. A field reading `issues` translates by
+      // `code`, and an issue can change its code while its message stays the same — measured, the
+      // field kept showing the first translation.
+      if (was !== undefined && now !== undefined && sameMessages(was, now) && sameIssues(issuesOf(was), issuesOf(now)))
+        continue;
 
       for (const watcher of set) watcher.bump(ASPECT.messages);
     }
@@ -1355,6 +1359,34 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
  */
 function sameMessages(a: readonly string[], b: readonly string[]): boolean {
   return a.length === b.length && a.every((message, index) => message === b[index]);
+}
+
+/**
+ * Whether two fields' issues say the same thing, field by field of each issue.
+ *
+ * A value is compared as itself, and an object one (bguard's `expected`, a nested detail) by its
+ * JSON, because a validation builds every issue fresh. One that cannot be written as JSON counts as
+ * changed: waking a field once too often is harmless, and missing a change is the fault.
+ */
+function sameIssues(a: readonly FieldIssue[], b: readonly FieldIssue[]): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((issue, index) => {
+    const other = b[index]! as Record<string, unknown>;
+    const own = issue as Record<string, unknown>;
+    const keys = Object.keys(own);
+    if (keys.length !== Object.keys(other).length) return false;
+    return keys.every((key) => {
+      const x = own[key];
+      const y = other[key];
+      if (Object.is(x, y)) return true;
+      if (typeof x !== "object" || typeof y !== "object" || x === null || y === null) return false;
+      try {
+        return JSON.stringify(x) === JSON.stringify(y);
+      } catch {
+        return false;
+      }
+    });
+  });
 }
 
 function isPromise<T>(value: T | Promise<T>): value is Promise<T> {

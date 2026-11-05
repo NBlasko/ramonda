@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { Component, configureDev } from "@ramonda/core";
 import type { RamondaNode } from "@ramonda/core";
 import { allowDiagnostics, render } from "../index";
-import { diagnosticsFailure } from "../diagnostics";
+import { diagnosticsFailure, startTest } from "../diagnostics";
 
 /**
  * A development diagnostic fails the test it happened in.
@@ -54,6 +54,32 @@ describe("a diagnostic during a test", () => {
       time: 0,
     } as never);
     expect(diagnosticsFailure()?.message).toContain("RMD999");
+  });
+});
+
+/**
+ * Every package that says a diagnostic once per process hands over a way to forget, in ONE global set,
+ * the way every package reports through one global sink. Core's was reached through a seam and
+ * `@ramonda/query`'s through nothing, so the second test to repeat a query mistake passed in silence.
+ * Found by a review of this branch.
+ */
+describe("before each test", () => {
+  test("every package's record of what it already said is forgotten", () => {
+    let forgotten = 0;
+    const forget = () => {
+      forgotten++;
+    };
+    (globalThis.__RAMONDA_DIAGNOSTICS_RESET__ ??= new Set()).add(forget);
+    try {
+      startTest();
+      expect(forgotten).toBe(1);
+    } finally {
+      globalThis.__RAMONDA_DIAGNOSTICS_RESET__?.delete(forget);
+    }
+  });
+
+  test("core's own is one of them", () => {
+    expect(globalThis.__RAMONDA_DIAGNOSTICS_RESET__?.size ?? 0).toBeGreaterThan(0);
   });
 });
 
