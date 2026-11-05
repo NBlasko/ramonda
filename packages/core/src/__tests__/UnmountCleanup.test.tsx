@@ -1,6 +1,6 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { getDOM, findOne } from "../test/setup";
-import { Component, state, destroyed, interval, createContext } from "../index";
+import { Component, state, destroyed, interval, createContext, list, createRef } from "../index";
 import { effectLike } from "../test/effectLike";
 
 const [Provider, Ctx] = createContext({ v: "a" });
@@ -177,5 +177,73 @@ describe("unmount cleanup", () => {
     app.instance.show = false;
     await app.settle();
     expect(count(sig)).toBe(1);
+  });
+});
+
+/**
+ * A row taken away is walked for what it holds — a ref, a block's record, a field — and the walk goes by
+ * `firstChild` / `nextSibling`. Through `childNodes` it read a NodeList per node: measured in Chromium on
+ * 1000 benchmark rows, 7.3 ms against 2.3, and on js-framework-benchmark's clear it was a third of the time.
+ */
+describe("what a removed row is walked through", () => {
+  interface Row {
+    readonly id: number;
+  }
+
+  class Table extends Component {
+    @state rows: Row[] = Array.from({ length: 20 }, (_, i) => ({ id: i + 1 }));
+    readonly field = createRef<HTMLInputElement>();
+    row(row: Row) {
+      return (
+        <tr key={row.id}>
+          <td>{row.id}</td>
+          <td>
+            <a>
+              <span>x</span>
+            </a>
+          </td>
+          {row.id === 3 ? (
+            <td>
+              <input aria-label="Third" ref={this.field} />
+            </td>
+          ) : null}
+        </tr>
+      );
+    }
+    render() {
+      return (
+        <table>
+          <tbody>{list(this.rows, this.row)}</tbody>
+        </table>
+      );
+    }
+  }
+
+  test("by its siblings, never a NodeList, and what it held is let go", async () => {
+    // The input in the third row holds a ref and is a field: both are let go by the walk.
+    const app = await getDOM<Table>(<Table />);
+    await app.settle();
+    const held = app.instance.field.current;
+    const descriptor = Object.getOwnPropertyDescriptor(Node.prototype, "childNodes") as PropertyDescriptor;
+    let lists = 0;
+    Object.defineProperty(Node.prototype, "childNodes", {
+      ...descriptor,
+      get(this: Node) {
+        // Only inside a row: the table above them is diffed as well, which is another question.
+        if ((this.nodeType === Node.ELEMENT_NODE ? (this as Element) : this.parentElement)?.closest("tr")) lists++;
+        return descriptor.get?.call(this);
+      },
+    });
+    try {
+      app.instance.rows = [];
+      await app.settle();
+    } finally {
+      Object.defineProperty(Node.prototype, "childNodes", descriptor);
+    }
+    expect({ held: held !== null, lists, after: app.instance.field.current }).toEqual({
+      held: true,
+      lists: 0,
+      after: null,
+    });
   });
 });
