@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeAll, afterAll } from "vitest";
 import { execFile } from "node:child_process";
-import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
+import { mkdtemp, rm, writeFile, mkdir, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -56,6 +56,23 @@ describe("check-bundle", () => {
     await writeFile(join(good, "index.js"), "export const a = 1;\nclass B {}\n");
 
     const { code, output } = await runGuard(good);
+    expect(code).toBe(0);
+    expect(output).toContain("1 emitted file(s) parse");
+  });
+
+  /**
+   * A folder that links back up to itself — a symlinked folder of images in `public/`, copied into the
+   * build as a link. It is walked once: `stat` follows links, so the walk descended `loop/loop/loop/…`
+   * until the system refused, and the build failed with ELOOP. Found while testing the SSR template's
+   * own walk, which had the same hole.
+   */
+  test("walks a folder that links back to itself once", async () => {
+    const looped = join(dir, "looped");
+    await mkdir(looped, { recursive: true });
+    await writeFile(join(looped, "index.js"), "export const a = 1;\n");
+    await symlink(looped, join(looped, "loop"));
+
+    const { code, output } = await runGuard(looped);
     expect(code).toBe(0);
     expect(output).toContain("1 emitted file(s) parse");
   });

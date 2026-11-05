@@ -447,8 +447,10 @@ export function resetHeadRegistry(): void {
   const registry = registries.get(document);
   registries.delete(document);
 
-  // What the request wrote on `<html>` goes back, as its tags do: a server renders the next request
-  // into this same element, and a page that says nothing must not be served the last one's language.
+  // What a `Head` wrote on `<html>` in this request goes back, as its tags do: a server renders the
+  // next request into this same element, and a page that says nothing must not be served the last
+  // one's language. Only what a `Head` wrote: app code that sets `documentElement.lang` itself on the
+  // server is writing to a shared DOM like any other direct write, and is the app's to undo.
   if (registry !== undefined) {
     for (const name of ROOT_ATTRIBUTES) {
       const { original, applied } = registry.root[name];

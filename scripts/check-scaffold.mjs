@@ -361,6 +361,11 @@ async function serves(port, attempt = 0) {
       if (robots.status !== 200 || robots.body !== ROBOTS || !robots.type.startsWith("text/plain")) {
         fail(`/robots.txt from public/ was served as ${robots.status} ${robots.type}`, robots.body.slice(0, 200));
       }
+      const inFolder = await get("/images/logo.txt");
+      if (inFolder === "retry") return "retry";
+      if (inFolder.status !== 200 || inFolder.body !== ROBOTS) {
+        fail(`/images/logo.txt, in a symlinked folder in public/, was served as ${inFolder.status} ${inFolder.type}`);
+      }
       const linked = await get("/linked.txt");
       if (linked === "retry") return "retry";
       if (linked.status !== 200 || linked.body !== ROBOTS) {
@@ -806,6 +811,17 @@ try {
     } catch (error) {
       fail("`npm ci --omit=dev` failed — a production install of the generated project", outputOf(error));
     }
+    // A linked FOLDER, and a link back up to its own folder, put straight into what the server
+    // serves — after the build, so no tool but the server walks them. In `public/` they broke tools
+    // that are not this template's, measured: Vite's copy stops with ELOOP, and `biome lint .` stops
+    // with an internal error ("path is expected to be under the root"). What is tested is the
+    // server's own walk: a third review found it did not enter a linked folder, so every file in one
+    // became a rendered 404, and a walk that follows links must not loop.
+    const shared = join(app, "shared-images");
+    mkdirSync(shared, { recursive: true });
+    writeFileSync(join(shared, "logo.txt"), ROBOTS);
+    symlinkSync(shared, join(shared, "loop"));
+    symlinkSync(shared, join(app, "dist", "client", "images"));
     await servesSomewhere();
     checks.push("a production install that serves");
   }

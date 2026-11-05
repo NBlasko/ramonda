@@ -1,5 +1,5 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
-import { Component, renderToString } from "@ramonda/core";
+import { Component, created, renderToString } from "@ramonda/core";
 import type { RamondaNode } from "@ramonda/core";
 import { allowDiagnostics, render } from "@ramonda/testing-library";
 import { Router, RouteOutlet, Navigator } from "../Router";
@@ -160,6 +160,42 @@ describe("Router hydration", () => {
     const { container } = render(<App />, { hydrate: old });
     expect(container.querySelector("#players")).toBeTruthy();
     expect(baseUrlFrom(container)).toBe("/players");
+  });
+
+  /**
+   * And read BEFORE `Router.init` repairs it. The component that uses the Router runs its own
+   * `@created` first — its method decorator registered before the field that uses the hook — so a read
+   * there met the restored state as it was. A third review found the guards had been removed from the
+   * readers and the repair left only in `init`.
+   */
+  test("a blob from before hashScopes can be read before the Router has re-read the URL", async () => {
+    let seen: Record<string, string> | undefined;
+    class Reads extends Component {
+      @created({ env: "client" }) early(): void {
+        seen = this.router.hashParams;
+      }
+      router = this.use(Router);
+      render() {
+        return (
+          <div>
+            <RouteOutlet routes={routes} />
+          </div>
+        );
+      }
+    }
+    setUrl("/players#tab=film");
+    const html = await renderToString(<Reads />);
+    const old = html.replace(/^<!--c0 (.*?)-->/, (_m, json: string) => {
+      const blob = JSON.parse(json);
+      const route = blob.hooks[0].state.routeState;
+      delete route.hashScopes;
+      route.hashTags = [{ key: "tab", value: "film", level: 0 }];
+      return `<!--c0 ${JSON.stringify(blob)}-->`;
+    });
+    expect(old).not.toContain("hashScopes");
+    const { container } = render(<Reads />, { hydrate: old });
+    expect(container.querySelector("#players")).toBeTruthy();
+    expect(seen).toBeDefined();
   });
 
   test("hydrating at the same URL keeps the server's route", async () => {

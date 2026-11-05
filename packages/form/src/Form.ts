@@ -1362,45 +1362,17 @@ function sameMessages(a: readonly string[], b: readonly string[]): boolean {
 }
 
 /**
- * Whether two fields' issues say the same thing, field by field of each issue.
+ * Whether two fields' issues say the same thing — by `equal`, the comparison this file already uses for
+ * "has this field moved from its default".
  *
- * Every key of EITHER issue: a key one has and the other lacks is a change, even where the first's
- * value is `undefined`. A value is compared as itself; a plain object or array (bguard's `expected`, a
- * nested detail) by its JSON, because a validation builds every issue fresh. Anything else — a
- * `RegExp`, a `Set`, a `Map`, a `Date` — counts as changed unless it is the same object: JSON writes
- * them all as `{}`, so two different patterns compared equal. Waking a field once too often is
- * harmless; missing a change is the fault. Both holes found by a second review.
+ * It walks arrays and plain objects at every depth, a key one side has and the other lacks is a
+ * change, and a `RegExp`, `Set` or `Map` is compared by identity. A validation builds every issue
+ * fresh, so two different patterns are two objects, and a field reading `issues` is woken. Three
+ * reviews got here: first only the messages were compared, then one side's keys and JSON — which
+ * writes a `RegExp` as `{}` — and then the same JSON one level down, in a second copy of this logic.
  */
 function sameIssues(a: readonly FieldIssue[], b: readonly FieldIssue[]): boolean {
-  if (a.length !== b.length) return false;
-  return a.every((issue, index) => {
-    const own = issue as Record<string, unknown>;
-    const other = b[index]! as Record<string, unknown>;
-    const keys = new Set([...Object.keys(own), ...Object.keys(other)]);
-    for (const key of keys) {
-      if (!Object.hasOwn(own, key) || !Object.hasOwn(other, key)) return false;
-      if (!sameValue(own[key], other[key])) return false;
-    }
-    return true;
-  });
-}
-
-function sameValue(x: unknown, y: unknown): boolean {
-  if (Object.is(x, y)) return true;
-  if (!isPlainData(x) || !isPlainData(y)) return false;
-  try {
-    return JSON.stringify(x) === JSON.stringify(y);
-  } catch {
-    return false;
-  }
-}
-
-/** An array or an object literal — what JSON writes faithfully. */
-function isPlainData(value: unknown): boolean {
-  if (typeof value !== "object" || value === null) return false;
-  if (Array.isArray(value)) return true;
-  const proto = Object.getPrototypeOf(value);
-  return proto === Object.prototype || proto === null;
+  return a.length === b.length && a.every((issue, index) => equal(issue, b[index]));
 }
 
 function isPromise<T>(value: T | Promise<T>): value is Promise<T> {

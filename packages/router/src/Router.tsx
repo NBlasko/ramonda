@@ -11,7 +11,7 @@ import {
 } from "@ramonda/core";
 import type { RamondaNode } from "@ramonda/core";
 import { createNavigator, detachedNavigator, type RouterNavigator } from "./store";
-import { hashParamsFor, keepUnchanged, ownedBy, parseUrl, samePairs } from "./urlUtils";
+import { hashParamsFor, keepUnchanged, ownedBy, parseUrl, samePairs, wellFormed } from "./urlUtils";
 import { assertPattern, matchCompiled, type ParamsOf, type RouteConfig, type RouteParams } from "./match";
 import type { HashParamsUpdater, PartialNavigateOptions, RouterState, SearchParamsUpdater } from "./types";
 
@@ -52,7 +52,7 @@ interface ParamsContextValue {
 const EMPTY_STATE: RouterState = {
   baseUrl: "/",
   queryParams: {},
-  hashScopes: {},
+  hashScopes: NO_SCOPES,
 };
 
 const [RouteProvider, RouteConsumer] = createContext<RouteContextValue>(
@@ -163,7 +163,7 @@ export class Router extends Hook {
   /** Stable for this Router's lifetime, so consumers never see a new identity. */
   private nav = createNavigator(
     {
-      read: () => this.routeState,
+      read: () => this.route,
       write: (next) => {
         this.routeState = next;
       },
@@ -176,15 +176,29 @@ export class Router extends Hook {
   // using a Navigator. It reads its own `routeState` (not context), because the
   // Router sits ABOVE its own provider. The one thing missing is `params()`: those
   // come from a <RouteOutlet> below, so only a Navigator under an outlet has them.
+  /**
+   * The route state, well-formed. Every READ goes through here — the store, the getters, the provider —
+   * and only the two writes touch `routeState` itself.
+   *
+   * A page restores this field from its blob before `init` re-reads the URL, and the component using
+   * the Router runs its own `@created` before that: a read there met the restored state as it was.
+   * One the previous router version rendered has no `hashScopes`, and a third review measured a
+   * TypeError on that path after the readers' own guards had been taken out. Repaired here, once
+   * per read, and free when the state is already well-formed: `wellFormed` hands that back as itself.
+   */
+  private get route(): RouterState {
+    return wellFormed(this.routeState);
+  }
+
   get pathname(): string {
-    return this.routeState.baseUrl;
+    return this.route.baseUrl;
   }
   get searchParams(): Record<string, string> {
-    return this.routeState.queryParams;
+    return this.route.queryParams;
   }
   /** The top of the hash — what a component with no `<HashLevel>` above it reads. */
   get hashParams(): Record<string, string> {
-    return this.topHash.read(this.routeState.hashScopes, "");
+    return this.topHash.read(this.route.hashScopes, "");
   }
   private topHash = new HashReading();
 
@@ -262,10 +276,10 @@ export class Router extends Hook {
    * which for a hook means any consumer could read it.
    */
   protected routeProvider = this.use(RouteProvider, () => ({
-    state: this.routeState,
-    baseUrl: this.routeState.baseUrl,
-    queryParams: this.routeState.queryParams,
-    hashScopes: this.routeState.hashScopes,
+    state: this.route,
+    baseUrl: this.route.baseUrl,
+    queryParams: this.route.queryParams,
+    hashScopes: this.route.hashScopes,
     nav: this.nav,
   }));
 }
@@ -415,9 +429,8 @@ class HashReading {
       this.scopes = scopes;
       this.owner = owner;
       if (!same) this.value = next;
-      return same ? this.value! : next;
     }
-    return this.value;
+    return this.value!;
   }
 }
 

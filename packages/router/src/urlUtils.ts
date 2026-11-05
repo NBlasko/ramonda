@@ -19,7 +19,11 @@ function owners(): Record<string, Record<string, string>> {
  * a second review found that broke app code no changeset warned about.
  */
 function put(out: Record<string, string>, key: string, value: string): void {
-  Object.defineProperty(out, key, { value, enumerable: true, writable: true, configurable: true });
+  // Only the one name that needs it: `defineProperty` is the slow path, and this runs for every key of
+  // every URL parse and every reader's line. Every other name is an ordinary assignment.
+  if (key === "__proto__")
+    Object.defineProperty(out, key, { value, enumerable: true, writable: true, configurable: true });
+  else out[key] = value;
 }
 
 /** `Object.assign`, but through `put` — assignment would run the `__proto__` setter. */
@@ -233,10 +237,16 @@ export function samePairs(a: Record<string, string>, b: Record<string, string>):
  * the type is true everywhere after it. A state that is already well-formed comes back as itself, so
  * its owners keep their identity.
  */
-function wellFormed(state: RouterState): RouterState {
+export function wellFormed(state: RouterState): RouterState {
   const given = state as Partial<RouterState>;
   const scopes = given.hashScopes;
-  if (given.queryParams !== undefined && scopes !== undefined && Object.getPrototypeOf(scopes) === null) return state;
+  if (
+    given.queryParams !== undefined &&
+    typeof scopes === "object" &&
+    scopes !== null &&
+    Object.getPrototypeOf(scopes) === null
+  )
+    return state;
   const fixed = owners();
   if (scopes !== undefined && scopes !== null && typeof scopes === "object") {
     for (const owner of Object.keys(scopes)) fixed[owner] = scopes[owner]!;

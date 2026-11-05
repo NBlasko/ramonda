@@ -162,5 +162,9 @@ describe("a restored state", () => {
     const replaced = keepUnchanged(old, parseUrlString("/#b=2"));
     expect(Object.getPrototypeOf(replaced.hashScopes)).toBeNull();
     expect(buildUrl(replaced)).toBe("/#b=2");
+
+    // `null` is a shape to repair too, not one to throw on.
+    const nulled = JSON.parse('{"baseUrl":"/","queryParams":{},"hashScopes":null}');
+    expect(Object.getPrototypeOf(keepUnchanged(nulled, parseUrlString("/#c=3")).hashScopes)).toBeNull();
   });
 });

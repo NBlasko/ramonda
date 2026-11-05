@@ -178,6 +178,11 @@ describe("an issue that changes in what JSON or one side's keys cannot see", () 
     d: { expected: /^\d+$/ },
     e: { expected: new Set([1]) },
     f: { expected: new Set([2]) },
+    // One level down — a third review found JSON still compared these, and wrote both as `{}`.
+    g: { params: { pattern: /^[a-z]+$/ } },
+    h: { params: { pattern: /^\d+$/ } },
+    i: { params: { min: undefined } },
+    j: { params: {} },
   };
   const bySide: StandardSchemaV1<Mode, Mode> = {
     "~standard": {
@@ -193,6 +198,8 @@ describe("an issue that changes in what JSON or one side's keys cannot see", () 
     ["a key only the new issue has", "a", "b", "params"],
     ["a different RegExp", "c", "d", "expected"],
     ["a Set with other contents", "e", "f", "expected"],
+    ["a different RegExp one level down", "g", "h", "params"],
+    ["a key present but undefined one level down, then gone", "i", "j", "params"],
   ])("re-renders on %s", async (_what, from, to, key) => {
     class Shows extends Component<{ of: FieldNode<string> }> {
       f = this.use(Field<string>, () => ({ of: this.props.of }));
@@ -203,7 +210,11 @@ describe("an issue that changes in what JSON or one side's keys cannot see", () 
           <p id="shows">
             {value instanceof Set
               ? [...value].join(",")
-              : String(value instanceof RegExp ? value.source : JSON.stringify(value))}
+              : value instanceof RegExp
+                ? value.source
+                : JSON.stringify(value, (_k, v) =>
+                    v instanceof RegExp ? v.source : v === undefined ? "<undefined>" : v,
+                  )}
           </p>
         );
       }
