@@ -150,7 +150,9 @@ export class Select extends Component<SelectProps> {
         // browser put it when the default's option stayed.
         if (!this.d) {
           this.start(select, fallback);
-          showDefault(select);
+          // The server says it through the attribute alone: its DOM keeps no `defaultSelected`, and
+          // linkedom's `selected` setter takes the attribute off.
+          if (!onServer) showDefault(select);
         }
         // Settled for good — the user picked, or a value held it — and a later default still says
         // where a reset returns, as a TextArea's does. Writing the attribute moves the choice in a
@@ -159,12 +161,16 @@ export class Select extends Component<SelectProps> {
       }
       return;
     }
-    this.d = true;
+    // A value holds the select, and what it held is a pick once a `defaultValue` takes over — on a
+    // served page too, where the default's attribute alone would read as untouched. The server keeps
+    // none of it: it renders once, and a field written there is state the client never receives.
+    if (!onServer) this.d = true;
 
     // One write, and the browser works out which option it means. A `multiple` select has no single
     // value to write, and the server cannot write a property at all, so both answer per option.
     if (!onServer && !Array.isArray(chosen)) {
       select.value = String(chosen);
+      this.k = pickOf(select);
       return;
     }
     const wanted = wantedOf(chosen);
@@ -176,6 +182,7 @@ export class Select extends Component<SelectProps> {
       // The served page's only way to say the choice: the attribute, before any script runs.
       if (onServer) markDefault(option, on);
     }
+    if (!onServer) this.k = pickOf(select);
   }
 
   /**

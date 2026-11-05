@@ -1275,6 +1275,90 @@ describe("a default select whose options are replaced after a pick", () => {
   });
 });
 
+/**
+ * The server's DOM is not a browser's: linkedom keeps no `defaultSelected`, and its `selected` setter takes
+ * the attribute off. So a server render says the choice through the attribute alone.
+ */
+describe("a default select on the server", () => {
+  test("is written through the attribute, never the property", async () => {
+    class Tags extends Component {
+      render() {
+        return (
+          <Select aria-label="Tags" multiple defaultValue={["a", "c"]}>
+            {["a", "b", "c"].map(optionOf)}
+          </Select>
+        );
+      }
+    }
+    const descriptor = Object.getOwnPropertyDescriptor(HTMLOptionElement.prototype, "selected") as PropertyDescriptor;
+    let writes = 0;
+    Object.defineProperty(HTMLOptionElement.prototype, "selected", {
+      ...descriptor,
+      set(this: HTMLOptionElement, on: boolean) {
+        writes++;
+        descriptor.set?.call(this, on);
+      },
+    });
+    let html: string;
+    try {
+      html = await renderToString(<Tags />);
+    } finally {
+      Object.defineProperty(HTMLOptionElement.prototype, "selected", descriptor);
+    }
+    expect({ writes, marked: (html.match(/selected=""/g) ?? []).length }).toEqual({ writes: 0, marked: 2 });
+  });
+});
+
+/** A `value` that lets go of the select for a `defaultValue`: the option the value held stays, served or not. */
+describe("a select switched from value to defaultValue", () => {
+  class Switch extends Component<{ multiple?: boolean }> {
+    @state held = true;
+    render() {
+      const many = this.props.multiple === true;
+      return (
+        <div>
+          {this.held ? (
+            <Select aria-label="Size" multiple={many} value={many ? ["b"] : "b"}>
+              {["a", "b", "c"].map(optionOf)}
+            </Select>
+          ) : (
+            <Select aria-label="Size" multiple={many} defaultValue={many ? ["c"] : "c"}>
+              {["a", "b", "c"].map(optionOf)}
+            </Select>
+          )}
+        </div>
+      );
+    }
+  }
+
+  const chosen = (select: HTMLSelectElement) => Array.from(select.selectedOptions, (o) => o.value);
+
+  test("keeps what the value held, on a served page as on a built one — single and multiple", async () => {
+    const shown: Record<string, string[]> = {};
+    for (const multiple of [false, true]) {
+      const built = await getDOM<Switch>(<Switch multiple={multiple} />);
+      await built.settle();
+      built.instance.held = false;
+      await built.settle();
+      shown[`built${multiple ? " multiple" : ""}`] = chosen(
+        built.container.querySelector("select") as HTMLSelectElement,
+      );
+
+      const container = document.createElement("div");
+      document.body.appendChild(container);
+      container.innerHTML = await renderToString(<Switch multiple={multiple} />);
+      hydrateRoot(<Switch multiple={multiple} />, container);
+      await Promise.resolve();
+      await Promise.resolve();
+      (componentAt(container.firstElementChild as Element) as Switch).held = false;
+      flushSync();
+      shown[`served${multiple ? " multiple" : ""}`] = chosen(container.querySelector("select") as HTMLSelectElement);
+      container.remove();
+    }
+    expect(shown).toEqual({ built: ["b"], served: ["b"], "built multiple": ["b"], "served multiple": ["b"] });
+  });
+});
+
 describe("a multiple default select the user emptied", () => {
   test("stays empty when its default moves", async () => {
     class Tags extends Component {
