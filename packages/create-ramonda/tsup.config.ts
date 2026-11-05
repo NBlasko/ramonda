@@ -40,6 +40,15 @@ for (const folder of [
 }
 
 /**
+ * Tools a generated project gets at exactly the version this repo is checked with. A formatter
+ * changes what it prints within a minor — Biome 2.6 formats Markdown, and a project made the day it
+ * came out failed its own `biome format .` on the template's README — so a caret hands every new
+ * project a version nobody here has run. Declared exactly in the workspace too, so the two cannot
+ * drift: a range there is refused at build time.
+ */
+const EXACT = new Set(["@biomejs/biome"]);
+
+/**
  * The third-party ranges come from the workspace too, from whichever package actually uses
  * the tool — so a generated project gets the combination the framework is tested against.
  *
@@ -48,7 +57,7 @@ for (const folder of [
  * scaffolded project therefore ran its tests on a major the framework does not use.
  *
  * Exact pins are widened to a caret: this repo pins some tools exactly on purpose (a
- * reproducible lockfile), which is not what a generated project wants.
+ * reproducible lockfile), which is not what a generated project wants — except for `EXACT`.
  */
 function toolRanges(): Record<string, string> {
   const sources: Record<string, string> = {
@@ -72,6 +81,13 @@ function toolRanges(): Record<string, string> {
     };
     const found = { ...pkg.dependencies, ...pkg.devDependencies }[tool];
     if (!found) throw new Error(`[create-ramonda] ${tool} is not declared in ${source}`);
+    if (EXACT.has(tool)) {
+      if (!/^\d+\.\d+\.\d+$/.test(found)) {
+        throw new Error(`[create-ramonda] ${tool} must be declared exactly in ${source}, not as ${found}`);
+      }
+      out[tool] = found;
+      continue;
+    }
     out[tool] = /^[\d]/.test(found) ? `^${found}` : found;
   }
   return out;

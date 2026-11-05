@@ -2,7 +2,8 @@ import { Component } from "./Component";
 import { createRef } from "./Ref";
 import { mounted, updated } from "./decorators";
 import { __h } from "../vdom/h";
-import { forwarded, given } from "./forwarded";
+import { answer, controlled, forwarded, given, heard } from "./forwarded";
+import type { RefusedVerbatimStandard } from "../types/commonTypes";
 import type { RamondaNode, RenderEnv } from "../types/vdom";
 import type { RefTarget } from "./Ref";
 
@@ -23,9 +24,13 @@ import type { RefTarget } from "./Ref";
  * - **The server** serializes markup, and neither the property nor the selection is serialized. So
  *   the chosen option is given the `selected` ATTRIBUTE, which is where HTML keeps it and the only
  *   half a served page can carry: the right option is showing before any script runs.
+ *
+ * A `defaultValue` is the attribute on both sides, because the attribute is what HTML calls the
+ * default: a form's reset returns to it.
  */
 
-export interface SelectProps {
+/** `on:input` is refused as on any element: a standard event has one spelling — see `RefusedVerbatimStandard`. */
+export interface SelectProps extends Partial<RefusedVerbatimStandard> {
   /**
    * Anything a `<select>` takes, passed straight through.
    *
@@ -36,8 +41,18 @@ export interface SelectProps {
    */
   // biome-ignore lint/suspicious/noExplicitAny: the same latitude the tag's own type gives
   [attribute: Lowercase<string>]: any;
-  /** Which option is showing. An array for a `multiple` select, which holds more than one. */
-  value: string | number | readonly (string | number)[];
+  /**
+   * Which option is showing, held by the model: after every pick the select shows this again, so a
+   * handler that does not move it undoes the pick. An array for a `multiple` select.
+   */
+  value?: string | number | readonly (string | number)[];
+  /**
+   * Which option shows FIRST, after which the select is the user's: a pick is never put back. A later
+   * one still says where a form's reset returns, and shows once every option the user picked is
+   * gone — a city list after its country changed. For a select whose choice is read when the form is
+   * sent rather than held in state. Not with `value`.
+   */
+  defaultValue?: string | number | readonly (string | number)[];
   children?: RamondaNode;
   className?: string;
   key?: string | number;
@@ -57,6 +72,22 @@ export class Select extends Component<SelectProps> {
    * at all.
    */
   private e = createRef<HTMLSelectElement>((node) => this.g(node));
+
+  /**
+   * `d` — whether the start is settled: the user has picked, or a `value` has held the select, until a
+   * reset shows the default again. Until then a `defaultValue` is where it starts, applied whenever an
+   * option it names is there.
+   */
+  private d = false;
+
+  /** `o` — the options `settle` saw last: a choice read among others is the browser's, not a pick. */
+  private o = new SeenOptions();
+
+  /**
+   * `k` — the options the user's last pick chose, and how many: the default shown again, and not those, is
+   * a reset. Held weakly, so options a render replaces are not kept alive by a pick that chose them.
+   */
+  private k: Pick | undefined;
 
   /** `h` — the caller's ref as of the last HAND-OVER, so a swapped one can be let go of. */
   private h: RefTarget<HTMLSelectElement> | undefined;
@@ -93,32 +124,119 @@ export class Select extends Component<SelectProps> {
   settle(env: RenderEnv = "client"): void {
     const select = this.e.current;
     if (!select) return;
+    try {
+      this.decide(select, env);
+    } finally {
+      // The server renders once: there is no next look, and a field written there is state a client
+      // never receives.
+      if (env !== "server") this.o.note(select);
+    }
+  }
 
+  /** What `settle` writes, on the select in hand. */
+  private decide(select: HTMLSelectElement, env: RenderEnv): void {
     // A caller may hand over a DIFFERENT ref between renders, and the element's own ref did not
     // change, so nothing else would notice. This is the one moment that can.
     if (this.h !== this.props.ref) this.g(select);
 
     const onServer = env === "server";
     const chosen = this.props.value;
+    if (chosen == null) {
+      const fallback = this.props.defaultValue;
+      if (fallback != null) {
+        // What it shows says the rest. Something other than a default it has is a pick — one made on a
+        // served page before the script arrived has no event to note it. The default again, and not
+        // what the user last picked, is a form's reset: the select is as it starts. With no default
+        // yet — its option has not arrived — what the browser chose is not told apart from a pick made
+        // with no event, and the default is applied when its option comes.
+        // A pick, by an event or without one, is noted as the options it chose; once none of them is
+        // left — a city list after its country changed — the pick is gone with them.
+        // Read off what it shows only among the options it showed last time: where they changed, the
+        // browser chose — an option a render removed takes a script's unseen pick with it.
+        const asItStarts = showsItsDefault(select);
+        if (!this.d) {
+          this.d = !this.o.changed(select) && !asItStarts && Array.from(select.options).some(isADefault);
+          if (this.d) this.k = pickOf(select);
+        } else if ((asItStarts && !choosing(select, this.k)) || pickGone(select, this.k)) {
+          this.d = false;
+        }
+        // Never picked in: the default is what it shows — said outright, since writing the attribute
+        // moves the choice only onto an option nothing has chosen by script, and leaves it where the
+        // browser put it when the default's option stayed.
+        if (!this.d) {
+          this.start(select, fallback);
+          // The server says it through the attribute alone: its DOM keeps no `defaultSelected`, and
+          // linkedom's `selected` setter takes the attribute off.
+          if (!onServer) showDefault(select);
+        }
+        // Settled for good — the user picked, or a value held it — and a later default still says
+        // where a reset returns, as a TextArea's does. Writing the attribute moves the choice in a
+        // browser, so what the select shows is put back right after, when anything was written.
+        else keepingTheChoice(select, () => this.start(select, fallback));
+      }
+      return;
+    }
+    // A value holds the select, and what it held is a pick once a `defaultValue` takes over — on a
+    // served page too, where the default's attribute alone would read as untouched. The server keeps
+    // none of it: it renders once, and a field written there is state the client never receives.
+    if (!onServer) this.d = true;
 
     // One write, and the browser works out which option it means. A `multiple` select has no single
     // value to write, and the server cannot write a property at all, so both answer per option.
     if (!onServer && !Array.isArray(chosen)) {
       select.value = String(chosen);
+      this.k = pickOf(select);
       return;
     }
-
-    const wanted = Array.isArray(chosen) ? new Set(chosen.map(String)) : undefined;
-    const only = wanted === undefined ? String(chosen) : "";
+    const wanted = wantedOf(chosen);
     const options = select.options;
     for (let i = 0; i < options.length; i++) {
       const option = options[i];
-      const on = wanted === undefined ? option.value === only : wanted.has(option.value);
+      const on = wanted.has(option.value);
       option.selected = on;
-      if (!onServer) continue;
-      if (on) option.setAttribute("selected", "");
-      else option.removeAttribute("selected");
+      // The served page's only way to say the choice: the attribute, before any script runs.
+      if (onServer) markDefault(option, on);
     }
+    if (!onServer) this.k = pickOf(select);
+  }
+
+  /**
+   * A `defaultValue` is where the select starts until the user picks — so options that arrive later,
+   * after a "Choose…" that was there first, still start on the saved choice, and one that arrives
+   * after a pick leaves the pick showing and changes only where a reset returns. It is written once
+   * an option it names is there; one that names none yet takes the old default's attribute off.
+   *
+   * It is written where HTML keeps a default, the `selected` ATTRIBUTE, on both sides: so a form's
+   * reset returns to it, as a `TextArea`'s does to its text. `select.value` would show it and leave
+   * the form believing the first option is the default. Only an option whose attribute says
+   * otherwise is written.
+   */
+  private start(select: HTMLSelectElement, chosen: string | number | readonly (string | number)[]): boolean {
+    const wanted = wantedOf(chosen);
+    const options = select.options;
+    // A single select starts on the FIRST option of that value, as `select.value` would pick it: a later
+    // one sharing it — a disabled separator — is not marked too, or the last marked would win.
+    let wrote = false;
+    let marked = false;
+    for (let i = 0; i < options.length; i++) {
+      // `multiple` read off the attribute: the server's DOM has no property for it.
+      const on = wanted.has(options[i].value) && (select.hasAttribute("multiple") || !marked);
+      if (on) marked = true;
+      wrote = markDefault(options[i], on) || wrote;
+    }
+    return wrote;
+  }
+
+  /** The listener a controlled select answers its events with — see `answer` in `forwarded.ts`. */
+  a(event: Event): void {
+    answer(this, event, true);
+  }
+
+  /** The listener a `defaultValue` select notes the user's pick with: from then on it is theirs. */
+  p(event: Event): void {
+    this.d = true;
+    this.k = pickOf(event.currentTarget as HTMLSelectElement);
+    heard(this, event);
   }
 
   render() {
@@ -128,10 +246,115 @@ export class Select extends Component<SelectProps> {
      * there is nothing to suppress: the refusal keeps meaning exactly what it says at every call
      * site that writes the tag, and this one does not write it.
      */
+    // A pick is `input` then `change`, both at once: either is the moment to answer.
+    // Without a `value` the select is the user's, and a pick is noted — a `defaultValue` may yet
+    // arrive, and must not move a select somebody has already picked in.
+    const field = controlled(this, this.a, ["oninput", "onchange"], this.p);
     return __h(
       "select",
-      { ...forwarded(this, ["value", "children", "ref"]), ref: this.e },
+      {
+        ...forwarded(this, ["value", "defaultValue", "children", "ref", ...field.replaced]),
+        ...field.listeners,
+        ref: this.e,
+      },
       ...given(this.props.children),
     );
   }
+}
+
+/** The option values a choice names, written as an option's `value` is: strings. */
+function wantedOf(chosen: string | number | readonly (string | number)[]): Set<string> {
+  return new Set(Array.isArray(chosen) ? chosen.map(String) : [String(chosen)]);
+}
+
+/** Whether every option is chosen exactly when its default says — as a select starts, and a reset leaves it. */
+function showsItsDefault(select: HTMLSelectElement): boolean {
+  return Array.from(select.options).every((option) => option.selected === option.defaultSelected);
+}
+
+/** The options a select held when last looked at, held weakly — and whether it holds others now. */
+class SeenOptions {
+  private seen: WeakSet<HTMLOptionElement> | undefined;
+  private count = 0;
+
+  /** Never on the first look: a served page's options are the ones it was parsed with. */
+  changed(select: HTMLSelectElement): boolean {
+    const seen = this.seen;
+    if (seen === undefined) return false;
+    const options = Array.from(select.options);
+    return options.length !== this.count || options.some((option) => !seen.has(option));
+  }
+
+  note(select: HTMLSelectElement): void {
+    const options = Array.from(select.options);
+    this.seen = new WeakSet(options);
+    this.count = options.length;
+  }
+}
+
+interface Pick {
+  readonly options: WeakSet<HTMLOptionElement>;
+  readonly size: number;
+}
+
+/** Whether `select` shows exactly the options `pick` chose. */
+function choosing(select: HTMLSelectElement, pick: Pick | undefined): boolean {
+  const chosen = select.selectedOptions;
+  return pick !== undefined && pick.size === chosen.length && Array.from(chosen).every((o) => pick.options.has(o));
+}
+
+/** The options `select` shows chosen, held weakly so a render that replaces them lets them go. */
+function pickOf(select: HTMLSelectElement): Pick {
+  const chosen = Array.from(select.selectedOptions);
+  return { options: new WeakSet(chosen), size: chosen.length };
+}
+
+/**
+ * Chooses what the defaults say: every option of a `multiple` select as its own does, and a drop-down's
+ * one that carries the default — `start` marks one. With none carrying one yet, what the browser chose
+ * stays.
+ */
+function showDefault(select: HTMLSelectElement): void {
+  const options = Array.from(select.options);
+  // `multiple` read off the attribute, as `start` does: the server's DOM has no property for it.
+  if (select.hasAttribute("multiple")) {
+    for (const option of options) option.selected = option.defaultSelected;
+    return;
+  }
+  const chosen = options.find(isADefault);
+  if (chosen !== undefined) chosen.selected = true;
+}
+
+/**
+ * Whether none of the options the user's last pick chose is in the select any more — a city list after
+ * its country changed. The pick is gone with them, and what the select shows then is the browser's,
+ * so the default is where it starts again.
+ */
+function pickGone(select: HTMLSelectElement, pick: Pick | undefined): boolean {
+  return pick !== undefined && pick.size > 0 && !Array.from(select.options).some((o) => pick.options.has(o));
+}
+
+function isADefault(option: HTMLOptionElement): boolean {
+  return option.defaultSelected;
+}
+
+/** Gives an option the `selected` attribute or takes it away, and touches it only when it says otherwise. */
+function markDefault(option: HTMLOptionElement, on: boolean): boolean {
+  if (option.hasAttribute("selected") === on) return false;
+  if (on) option.setAttribute("selected", "");
+  else option.removeAttribute("selected");
+  return true;
+}
+
+/**
+ * Runs `write` and, when it wrote anything, puts back the very options that were chosen before it —
+ * the elements, not their values, since two options may share one (a "Choose…" and a separator).
+ */
+function keepingTheChoice(select: HTMLSelectElement, write: () => boolean): void {
+  const chosen = new Set(Array.from(select.selectedOptions));
+  if (!write()) return;
+  const options = select.options;
+  for (let i = 0; i < options.length; i++) options[i].selected = chosen.has(options[i]);
+  // A drop-down left with none chosen picks its first again: nothing chosen is said outright.
+  if (chosen.size === 0) select.selectedIndex = -1;
 }

@@ -241,12 +241,12 @@ and a write from anywhere else never reaches its input.
 [ramonda-check] 1 component(s) reading a form field they do not watch:
 
   src/TextField.tsx:9:23
-    <TextField> reads `bind` from a field in its props, so it will
+    <TextField> reads `inputValue` from a field in its props, so it will
     never show a change to it — the component does not re-render at all.
 ```
 
 Two deliberate things make it so, and neither is going to change. A field node is **one object for
-the life of the form** — a fresh one per access means a fresh `bind.onInput` per access, which
+the life of the form** — a fresh one per access means a fresh `oninput` per access, which
 `RMD020` reports — so the props diff has nothing to notice and skips the component. And a hook's
 state belongs to whoever **used** the hook, so the form's counter wakes the form's owner and nobody
 else.
@@ -259,7 +259,16 @@ class TextField extends Component<{ of: FieldNode<string> }> {
   f = this.use(Field<string>, () => ({ of: this.props.of }));
 
   render() {
-    return <input {...this.f.bind} />;
+    return (
+      <input
+        aria-label="Text"
+        name={this.f.name}
+        value={this.f.inputValue}
+        oninput={this.f.oninput}
+        onblur={this.f.onblur}
+        aria-invalid={this.f.invalid}
+      />
+    );
   }
 }
 ```

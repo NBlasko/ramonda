@@ -12,14 +12,14 @@ follows is what actually reaches the HTML and what happens when the browser pick
 
 ## What is in the markup
 
-`bind` puts `name` and `value` on every control, so the server-rendered page is a real HTML
-form before a line of JavaScript runs. It has the values, and it posts under the names you
-declared in the schema.
+Every control carries `name` and its value — `value`, or `checked` on a box — so the server-rendered
+page is a real HTML form before a line of JavaScript runs. It has the values, and it posts under the
+names you declared in the schema. `aria-invalid` is there only on a field with a message to show.
 
 ```html
-<input name="email" value="" aria-invalid="false" />
-<input name="address.city" value="Beograd" aria-invalid="false" />
-<input name="tags[0]" value="ramonda" aria-invalid="false" />
+<input name="email" value="" />
+<input name="address.city" value="Beograd" />
+<input name="tags[0]" value="ramonda" />
 ```
 
 A field's `name` is its path, which is also what `setError` takes — so an API that answers with

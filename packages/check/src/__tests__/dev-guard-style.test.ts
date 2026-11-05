@@ -29,6 +29,7 @@ describe("a `__DEV__` guard written as an operator", () => {
       // recognised it. Both read `guardsDev` now.
       '23 && publish("chained")',
       '24 && publish("parens")',
+      '60 ?: publish("stopped")',
     ]);
   });
 
@@ -67,7 +68,7 @@ describe("a `__DEV__` guard written as an operator", () => {
     // were a brace, a blank and a `return (`, so it would have passed while the rule reported every
     // value position. Only the length beside it held the line.
     for (const line of [44, 45, 50]) expect(lines).not.toContain(line);
-    expect(found()).toHaveLength(4);
+    expect(found()).toHaveLength(5);
   });
 
   /**

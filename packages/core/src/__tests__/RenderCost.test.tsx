@@ -3,8 +3,9 @@ import { getDOM } from "../test/setup";
 import { state } from "../base/decorators";
 import { Component } from "../base/Component";
 import { list } from "../base/list";
-import { findOne } from "../test/setup";
+import { findOne, instanceOf } from "../test/setup";
 import { CHILD_RECORD } from "../helpers/constants";
+import { COMPONENT_RUNTIME } from "../core/runtime";
 
 /**
  * What a render costs the DOM, asserted.
@@ -539,5 +540,166 @@ describe("what a component costs, against the same markup without one", () => {
     // The same `<ul>`, in the same place, untouched.
     expect(dom.container.querySelector("#rows")).toBe(list300);
     dom.unmount();
+  });
+});
+
+/**
+ * A group handed back whole — `<ul>{this.props.children}</ul>`, where settled markup keeps last
+ * pass's array — moved nothing, so the element around it is not walked to restore an order that
+ * stands. Counted as reads of `nextSibling` from row to row, since a walk that finds everything in
+ * place mutates nothing: before, every render of the panel walked all 1000 rows.
+ */
+describe("a group that did not change", () => {
+  test("is not walked when the component around it renders", async () => {
+    class Panel extends Component<{ children?: unknown }> {
+      @state n = 0;
+      render() {
+        return (
+          <section>
+            <p>{this.n}</p>
+            <ul>{this.props.children as never}</ul>
+          </section>
+        );
+      }
+    }
+    const items = Array.from({ length: 1000 }, (_, i) => i);
+    class Owner extends Component {
+      render() {
+        return (
+          <Panel>
+            {items.map((i) => (
+              <li key={i}>{i}</li>
+            ))}
+          </Panel>
+        );
+      }
+    }
+    const app = await getDOM<Owner>(<Owner />);
+    const panel = instanceOf(app.container.querySelector("section") as Element) as unknown as Panel;
+
+    const descriptor = Object.getOwnPropertyDescriptor(Node.prototype, "nextSibling")!;
+    let reads = 0;
+    Object.defineProperty(Node.prototype, "nextSibling", {
+      ...descriptor,
+      get() {
+        // A walk of the `<ul>` steps from row to row; each row's own text is not this question.
+        if ((this as Node).nodeName === "LI") reads++;
+        return descriptor.get!.call(this);
+      },
+    });
+    try {
+      panel.n = 1;
+      await app.settle();
+    } finally {
+      Object.defineProperty(Node.prototype, "nextSibling", descriptor);
+    }
+
+    expect(reads).toBe(0);
+  });
+
+  /**
+   * A group of COMPONENT rows is kept whole too: the same vnode carries the same props, and a row
+   * that changes on its own renders itself. Counted as reads of the rows' props, which looking at a
+   * component row starts with: 0 per render, where looking at every row reads 4000.
+   */
+  test("nor are its component rows looked at", async () => {
+    class Row extends Component<{ n: number }> {
+      render() {
+        return <li>{this.props.n}</li>;
+      }
+    }
+    class Panel extends Component<{ children?: unknown }> {
+      @state n = 0;
+      render() {
+        return (
+          <section>
+            <p>{this.n}</p>
+            <ul>{this.props.children as never}</ul>
+          </section>
+        );
+      }
+    }
+    const items = Array.from({ length: 1000 }, (_, i) => i);
+    class Owner extends Component {
+      render() {
+        return (
+          <Panel>
+            {items.map((i) => (
+              <Row key={i} n={i} />
+            ))}
+          </Panel>
+        );
+      }
+    }
+    const app = await getDOM<Owner>(<Owner />);
+    const panel = instanceOf(app.container.querySelector("section") as Element) as unknown as Panel;
+    let reads = 0;
+    for (const li of app.container.querySelectorAll("li")) {
+      const runtime = instanceOf<Row>(li)[COMPONENT_RUNTIME];
+      runtime.rawProps = new Proxy(runtime.rawProps, {
+        get(target, key, receiver) {
+          reads++;
+          return Reflect.get(target, key, receiver);
+        },
+      });
+    }
+    reads = 0;
+    panel.n = 1;
+    await app.settle();
+
+    expect(reads).toBe(0);
+  });
+
+  /**
+   * Nor are its rows diffed one by one: a group with no `list()` anywhere in it is the same markup when
+   * it is the same object, and is kept whole. Counted as reads of a row's `nodeName`, which the diff
+   * of an element asks first: 0 per render, where diffing every row reads 1000.
+   */
+  test("nor are its rows diffed", async () => {
+    class Panel extends Component<{ children?: unknown }> {
+      @state n = 0;
+      render() {
+        return (
+          <section>
+            <p>{this.n}</p>
+            <ul>{this.props.children as never}</ul>
+          </section>
+        );
+      }
+    }
+    const items = Array.from({ length: 1000 }, (_, i) => i);
+    class Owner extends Component {
+      render() {
+        return (
+          <Panel>
+            {items.map((i) => (
+              // A group inside each row is markup too, and does not stop the skip.
+              <li key={i}>{[<b key="b">{i}</b>, <i key="i">.</i>]}</li>
+            ))}
+          </Panel>
+        );
+      }
+    }
+    const app = await getDOM<Owner>(<Owner />);
+    const panel = instanceOf(app.container.querySelector("section") as Element) as unknown as Panel;
+
+    const descriptor = Object.getOwnPropertyDescriptor(Node.prototype, "nodeName")!;
+    let reads = 0;
+    Object.defineProperty(Node.prototype, "nodeName", {
+      ...descriptor,
+      get() {
+        const name = descriptor.get!.call(this) as string;
+        if (name === "LI") reads++;
+        return name;
+      },
+    });
+    try {
+      panel.n = 1;
+      await app.settle();
+    } finally {
+      Object.defineProperty(Node.prototype, "nodeName", descriptor);
+    }
+
+    expect(reads).toBe(0);
   });
 });

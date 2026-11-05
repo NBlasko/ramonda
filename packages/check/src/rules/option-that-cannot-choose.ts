@@ -1,7 +1,7 @@
 import ts from "typescript";
 import { positionOf } from "../syntax";
 import { coreElementTag } from "./coreElements";
-import { openingOf, tagOf } from "./element";
+import { contextFor, openingOf, tagOf, writtenAsNothing } from "./element";
 import { enclosingElement } from "./html";
 import type { ElementContext, ElementRule, JsxElementLike, TextEdit } from "./rule";
 
@@ -45,17 +45,29 @@ export interface OptionThatCannotChooseIssue {
 }
 
 /**
- * Whether a `<Select>` encloses this option, at any depth.
+ * Whether a `<Select>` that decides the choice encloses this option, at any depth: one with a `value`
+ * or a `defaultValue`, which it sets on every option, or a spread that may carry one. A select with
+ * neither — or with one written as `{null}`, which core reads as none — leaves its options alone, and
+ * there `selected` is what chooses.
  *
  * `<optgroup>` is the ordinary reason for the depth — a grouped select puts its options one level
  * further in — and the walk reads each ancestor's tag the way every rule does now, so the
  * `<Select>` COMPONENT answers "select" exactly as the refused tag would have.
  */
-function insideASelect(element: JsxElementLike, resolve: ElementContext["resolve"]): boolean {
+function insideADecidingSelect(element: JsxElementLike, resolve: ElementContext["resolve"]): boolean {
   let at = enclosingElement(element);
   while (at !== undefined) {
     const tag = tagOf(at) ?? coreElementTag(openingOf(at).tagName, resolve);
-    if (tag === "select") return true;
+    if (tag === "select") {
+      // A spread may carry either — `{...this.props.attrs}` may hold `value` — so it decides as well.
+      const select = contextFor(at, resolve);
+      return (
+        select.spreads ||
+        select.attributes.some(
+          (attribute) => ["value", "defaultValue"].includes(attribute.name) && !writtenAsNothing(attribute, resolve),
+        )
+      );
+    }
     at = enclosingElement(at);
   }
   return false;
@@ -66,13 +78,15 @@ export const optionThatCannotChoose = {
 
   report: {
     severity: "error",
-    reportedWhen: "`selected` is written on an `<option>` inside a `<Select>`, which sets it from `value` instead",
+    reportedWhen:
+      "`selected` is written on an `<option>` inside a `<Select>` that has a `value` or a `defaultValue` " +
+      "(or a spread that may carry one), which sets every option from it instead",
     heading: (found) => `${found.length} \`<option selected>\` that decide(s) nothing:`,
     lines: (issue) => [
       `  ${issue.file}:${issue.line}:${issue.column}`,
       issue.value === undefined
-        ? "    `selected` here is overwritten — `Select` sets it on every option from its `value`."
-        : `    \`selected\` on \`value="${issue.value}"\` is overwritten — \`Select\` sets it from its own \`value\`.`,
+        ? "    `selected` here is overwritten — `Select` sets it on every option from its `value` or `defaultValue`."
+        : `    \`selected\` on \`value="${issue.value}"\` is overwritten — \`Select\` sets it from its own \`value\` or \`defaultValue\`.`,
     ],
     advice:
       "`Select` decides the choice, and it does it by walking EVERY option and setting each one on\n" +
@@ -85,8 +99,9 @@ export const optionThatCannotChoose = {
       '  <option value="m">Medium</option>\n' +
       "</Select>\n" +
       "```\n\n" +
-      "For an initial choice, that is what the state behind `value` starts as. For several, `value`\n" +
-      "takes an array and the select is `multiple`.\n\n" +
+      "For a choice held in state, that is what the state behind `value` starts as. For one the user\n" +
+      "owns and the form sends, `defaultValue` says where it starts. For several, either takes an\n" +
+      "array and the select is `multiple`.\n\n" +
       "This is the fault the refused `<select>` tag could not reach. The tag is refused because HTML\n" +
       "settles competing `selected` claims by keeping the LAST one, and gives a select with no claim\n" +
       "its first option — so the same markup meant different things depending on the order the\n" +
@@ -120,7 +135,7 @@ export const optionThatCannotChoose = {
      */
     if (!has("selected")) return [];
 
-    if (!insideASelect(element, resolve)) return [];
+    if (!insideADecidingSelect(element, resolve)) return [];
 
     const value = attr("value");
 

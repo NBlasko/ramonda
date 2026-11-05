@@ -1,6 +1,7 @@
 import { diagnose } from "./diagnostics";
 import { classify, type Kind } from "./renderStability";
 import { valueEqualThorough } from "../helpers/valueEqual";
+import { isSameMarkup } from "../helpers/settleMarkup";
 
 /**
  * DEV-only: calls a hook's props callback twice and reports anything that came out
@@ -128,6 +129,13 @@ export function checkPropsStability(
       // Not built in place — it came from somewhere that HAS an identity. Any run it had is over,
       // and leaving the count standing would let a key that was fixed report later from a stale
       // tally.
+      runs.delete(key);
+      continue;
+    }
+
+    // Markup that says the same is settled by the runtime, which hands the hook back the old node —
+    // nothing here for the app to fix. See `helpers/settleMarkup.ts`.
+    if (isSameMarkup(key, a, b)) {
       runs.delete(key);
       continue;
     }

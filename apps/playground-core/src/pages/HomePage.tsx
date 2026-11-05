@@ -27,6 +27,11 @@ export class HomePage extends Component {
             <Link href="/caret">→ The caret in a controlled field</Link>
           </li>
           <li>
+            <Link href="/fields">
+              → Fields only a browser settles: a composed word, a form's reset, a refused edit, a number on its way
+            </Link>
+          </li>
+          <li>
             <Link href="/async">→ AsyncLoad (code splitting)</Link>
           </li>
           <li>

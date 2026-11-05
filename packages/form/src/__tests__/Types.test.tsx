@@ -2,7 +2,16 @@ import { Component } from "@ramonda/core";
 import type { RamondaNode } from "@ramonda/core";
 import { describe, expect, test } from "vitest";
 import { Form } from "../Form";
-import type { FieldApi, InferIn, InferOut, StandardSchemaV1 } from "../types";
+import type {
+  FieldApi,
+  FormDay,
+  FormNumber,
+  FormText,
+  InferIn,
+  InferOut,
+  InputValue,
+  StandardSchemaV1,
+} from "../types";
 
 /**
  * The type-level contract. Almost all of this is checked by `pnpm check-types` rather
@@ -190,17 +199,19 @@ class Signup extends Component {
   }
 
   /* -------------------------------------------------------------- *
-   * 3. bind, chosen by the value's type.
+   * 3. What a control is written with, typed by the value.
    * -------------------------------------------------------------- */
-  binds(): void {
+  controls(): void {
     const f = this.form.fields;
 
-    expectType<string>()(f.email.$.bind.value);
-    expectType<string>()(f.email.$.bind.name);
-    expectType<boolean>()(f.agree.$.bind.checked);
-    expectType<"checkbox">()(f.agree.$.bind.type);
-    expectType<"number">()(f.age.$.bind.type);
-    expectType<"date">()(f.born.$.bind.type);
+    expectType<string>()(f.email.$.inputValue);
+    expectType<string>()(f.email.$.name);
+    expectType<boolean>()(f.agree.$.value);
+    expectType<number | "">()(f.age.$.inputValue);
+    expectType<string>()(f.born.$.inputValue);
+    expectType<boolean>()(f.email.$.invalid);
+    expectType<(event: Event) => void>()(f.email.$.oninput);
+    expectType<(event: Event) => void>()(f.email.$.onblur);
   }
 
   /* -------------------------------------------------------------- *
@@ -213,7 +224,7 @@ class Signup extends Component {
     expectType<string>()(f.tags.$.rows[0].id);
     expectType<number>()(f.tags.$.rows[0].index);
     expectType<string>()(f.tags[0].$.value);
-    expectType<string>()(f.tags.$.rows[0].field.$.bind.value);
+    expectType<string>()(f.tags.$.rows[0].field.$.inputValue);
     f.tags.$.append("new");
     f.tags.$.insert(0, "first");
     f.tags.$.remove(1);
@@ -248,17 +259,11 @@ class Signup extends Component {
     // @ts-expect-error - a string leaf has no children
     void f.email.street;
 
-    // @ts-expect-error - an object node carries no `bind`
-    void f.address.$.bind;
+    // @ts-expect-error - an object node is held by no one control
+    void f.address.$.oninput;
 
-    // @ts-expect-error - an array node carries no `bind`
-    void f.tags.$.bind;
-
-    // @ts-expect-error - a text bind has no `checked`
-    void f.email.$.bind.checked;
-
-    // @ts-expect-error - a checkbox bind has no `value`
-    void f.agree.$.bind.value;
+    // @ts-expect-error - an array node is held by no one control
+    void f.tags.$.inputValue;
 
     // @ts-expect-error - wrong element type appended
     f.tags.$.append(3);
@@ -321,4 +326,19 @@ describe("the form's type surface", () => {
     expect(Signup.name).toBe("Signup");
     expect(Awkward.name).toBe("Awkward");
   });
+});
+
+/**
+ * A field that holds a string or a number shows either: `inputValue` is typed as what it returns — a
+ * number or a day marked as the form's, for `ramonda-check` to tell from any other.
+ */
+test("a field of a union shows each member as its control would", () => {
+  assertType<Equals<InputValue<string | number>, FormText | FormNumber | "">>();
+  assertType<Equals<InputValue<number | undefined>, FormNumber | "">>();
+  assertType<Equals<InputValue<Date>, FormDay | "">>();
+  assertType<Equals<InputValue<boolean>, never>>();
+  assertType<Equals<InputValue<File>, never>>();
+  assertType<Equals<InputValue<"s" | "m">, FormText>>();
+  assertType<Equals<InputValue<string | undefined>, FormText>>();
+  expect(true).toBe(true);
 });

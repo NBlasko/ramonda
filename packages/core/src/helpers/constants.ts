@@ -69,9 +69,13 @@ export const PROPS_GATE = Symbol("propsGate");
 /** The prop names a hook declared with `@StableProps`, held on the class. */
 export const STABLE_PROPS = Symbol("stableProps");
 /**
- * DEV only. Marks a children array that `normalizeChildren` built — so a nested array
- * WITHOUT it came from the app (a `.map`, a `filter`, an array literal) rather than from
- * JSX or from `{this.props.children}` being passed down. See RMD023.
+ * Marks a children array the framework built rather than the app.
+ *
+ * In DEV, `normalizeChildren` puts it on every array it builds, so a nested array WITHOUT it came
+ * from the app (a `.map`, a `filter`, an array literal) rather than from JSX or from
+ * `{this.props.children}` being passed down — see RMD023. In every build, `createRamonda` puts it on
+ * the children array a component vnode carries, so the markup comparison can tell JSX's children from
+ * an array the app handed over as `children` itself — see `helpers/settleMarkup.ts`.
  */
 export const OWN_CHILDREN = Symbol("ownChildren");
 /**

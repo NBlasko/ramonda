@@ -177,7 +177,7 @@ importers:
         version: link:packages/css
     devDependencies:
       '@biomejs/biome':
-        specifier: ^2.5.15
+        specifier: 2.5.15
         version: 2.5.15
       '@changesets/cli':
         specifier: ^3.0.3

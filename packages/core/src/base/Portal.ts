@@ -1,6 +1,7 @@
 import { Hook } from "./Hook";
 import { ownerRuntime } from "../core/renderEnv";
-import { GLOBAL_RUNTIME } from "../core/runtime";
+import { COMPONENT_RUNTIME, GLOBAL_RUNTIME } from "../core/runtime";
+import type { EnclosingBlock, NestedBlock } from "../core/enclosingBlock";
 import { created, destroyed, watchProp } from "./decorators";
 import { ChildrenRegion, isOpenAnchor } from "../core/childrenRegion";
 import { isPortalTarget, resolvePortalTarget, type PortalTarget } from "./portalTarget";
@@ -60,10 +61,11 @@ export interface PortalProps {
  * ## Reactivity — it rides the render cycle, on purpose
  *
  * `@created` (env `shared`, so a server render places the children too) does the
- * first reconcile; `@watchProp` on `children` does every later one. Because the
- * props factory is cached on the signals it read, `children` only gets a new
- * identity when something it depends on actually moved — so an unrelated render
- * of the owner does not re-reconcile. When the head DID change, the owner's
+ * first reconcile; `@watchProp` on `children` and `target` together does every
+ * later one. Because the props factory is cached on the signals it read, and
+ * markup that says the same keeps its old object, `children` only changes when
+ * something it shows actually moved — so an unrelated render of the owner does
+ * not re-reconcile. When the head DID change, the owner's
  * render is the cost, and that is accepted: a portal is a portal.
  *
  * ## A reactive `target`, and "inline"
@@ -73,10 +75,11 @@ export interface PortalProps {
  * second copy. That is also how "inline" is done: there is no `disabled` flag,
  * because a hook has no position of its own to fall back to, so instead you aim
  * `target` at an element in your own render. A `target` absent at mount and
- * supplied later is placed then, not lost. (A target change is noticed through the
- * same `children` signal, which a props factory rebuilds each run; a factory
- * returning a genuinely STABLE `children` while only `target` moves would not
- * re-reconcile — the uncommon case, worth knowing.)
+ * supplied later is placed then, not lost. A target that goes away takes the
+ * block off the page and brings the same nodes back with it — see `leave` — and
+ * closes the portals inside its block with it, see `Nesting`. A
+ * target change is watched on its own, so it moves the nodes whether or not
+ * `children` changed with it.
  *
  * ## Events follow the DOM, not the logical tree
  *
@@ -102,19 +105,34 @@ export class Portal extends Hook<PortalProps> {
    * then take the hydration `adopt` path and sweep up every other portal's
    * marked nodes.
    */
-  private placed = false;
+  private ranOnce = false;
 
   /**
    * The last token this resolved, and what it resolved to.
    *
    * Cached because resolving a token on the client is a document query and, when
    * nothing has emitted the container, an append — repeating that on every
-   * reconcile would search the document for a node it already holds, and a
-   * container removed from under it would be replaced by a second one rather
-   * than reported.
+   * reconcile would search the document for a node it already holds. Keyed by the
+   * token itself: `portalTarget("modal")` written in the props factory is a new
+   * token on every run, and each one looks the container up again, which is how a
+   * container a layout has mounted again is found. A token kept in a field is
+   * resolved once.
    */
   private resolvedFrom: PortalTarget | undefined;
   private resolvedTo: Element | undefined;
+
+  /**
+   * The container and the children the block was last reconciled into and with: a run of the props
+   * factory that hands over the same two has nothing to move — see `replace`.
+   */
+  private reconciledTo: Element | undefined;
+  private reconciledChildren: unknown;
+
+  /** Where the block waits while it has no target — see `leave`. */
+  private waiting: DocumentFragment | undefined;
+
+  /** How this portal closes and opens with the ones around it and inside it — see `Nesting`. */
+  private readonly nesting = new Nesting(() => this.reconcile());
 
   /** The real element to render into, whichever form `target` took. */
   private get element(): Element | undefined {
@@ -133,12 +151,13 @@ export class Portal extends Hook<PortalProps> {
   }
 
   private get region(): ChildrenRegion {
-    return (this.area ??= new ChildrenRegion(this[GLOBAL_RUNTIME].owner, "Portal"));
+    return (this.area ??= new ChildrenRegion(this[GLOBAL_RUNTIME].owner, "Portal", this.nesting));
   }
 
   @created({ env: "shared" })
   place(): void {
-    this.placed = true;
+    this.ranOnce = true;
+    this.nesting.enter(this[GLOBAL_RUNTIME].owner);
     this.reconcile();
   }
 
@@ -159,7 +178,7 @@ export class Portal extends Hook<PortalProps> {
    * reads the state blob off a host and adopts it as the instance's own.
    *
    * On a NORMAL client build the `shared` create already placed the block, so
-   * `placed` is set and this does nothing.
+   * `ranOnce` is set and this does nothing.
    *
    * Several portals may share one target. Each takes the first UNCLAIMED block —
    * adopts run in the same tree order the server placed in, so the first portal
@@ -168,10 +187,16 @@ export class Portal extends Hook<PortalProps> {
    */
   @created({ env: "client" })
   adopt(): void {
-    if (this.placed) return;
-    this.placed = true;
+    if (this.ranOnce) return;
+    this.ranOnce = true;
+    // An enclosing block is always open while it hydrates its own children, so this starts open.
+    this.nesting.enter(this[GLOBAL_RUNTIME].owner);
     const target = this.element;
-    if (!target) return;
+    // No target: off the page from the start, as a client build of it is — see `leave`.
+    if (!target) {
+      this.leave();
+      return;
+    }
 
     const open = firstUnclaimedBlock(target);
     // No block: the server rendered nothing here (or this page was never server
@@ -186,13 +211,30 @@ export class Portal extends Hook<PortalProps> {
     this.region.hydrate(this.props.children, target, open);
   }
 
-  @watchProp((props: PortalProps) => props.children)
+  /**
+   * A new `children` or a new `target`, watched together so a change to both reconciles once.
+   *
+   * The target needs its own selector: markup that says the same keeps its old object
+   * (`helpers/settleMarkup.ts`), so `children` alone would stay quiet when only the target moved —
+   * an inline portal aimed at an element the owner's first render produced, or a modal moving to
+   * `document.body`.
+   */
+  @watchProp(
+    (props: PortalProps) => props.children,
+    (props: PortalProps) => props.target,
+  )
   replace(): void {
+    // `portalTarget("modal")` written in the factory is a new token on every run, so the target's
+    // selector never stays quiet: what decides is the container it names. The same container, and
+    // children that say the same, is nothing to reconcile — only a document query.
+    const target = this.nesting.suspended ? undefined : this.element;
+    if (target !== undefined && target === this.reconciledTo && this.props.children === this.reconciledChildren) return;
     this.reconcile();
   }
 
   @destroyed
   clear(): void {
+    this.nesting.detach();
     // Unmounts the block, releases the list regions' scopes, and takes the anchor
     // out. No flush here: a portal clearing itself is part of a larger teardown,
     // whose enclosing flush drains commit-level work once.
@@ -217,10 +259,57 @@ export class Portal extends Hook<PortalProps> {
    * scoped to a block, so nothing here re-implements the diff any more.
    */
   private reconcile(): void {
-    const target = this.element;
-    if (!target) return;
+    const target = this.nesting.suspended ? undefined : this.element;
+    if (target) {
+      // The children are reconciled while this still counts as closed, and only then is it opened
+      // with the portals inside. A portal whose owner the reconcile removes is gone before it would
+      // have built what it gained while closed, and one the reconcile builds starts closed and opens
+      // after the ones already there, in the order they joined.
+      // Opened even when the reconcile throws — the block is back on the page whatever it built — and
+      // the reconcile's error is the one that goes on: it is the real failure.
+      try {
+        this.region.reconcile(this.props.children, target);
+        this.reconciledTo = target;
+        this.reconciledChildren = this.props.children;
+      } catch (error) {
+        try {
+          this.nesting.open();
+        } catch (inner) {
+          throw new AggregateError([error, inner], "A portal's children and a portal inside it both failed to open");
+        }
+        throw error;
+      }
+      this.nesting.open();
+      return;
+    }
+    this.leave();
+  }
 
-    this.region.reconcile(this.props.children, target);
+  /**
+   * With no target, the block waits OFF the page, in a fragment of its own.
+   *
+   * A target that goes away is how a portal is closed — `target: open ? document.body : undefined` —
+   * so the block must leave the page with it. It moves, the same nodes, into a fragment, and moves
+   * back when a target returns: a component in it keeps its state and is not destroyed. A fragment
+   * rather than nowhere, because the nodes keep a parent: a component in the block re-renders on its
+   * own state while it waits.
+   *
+   * The CHILDREN are not reconciled while it waits, only when a target returns — so a component the
+   * children gain meanwhile is created on the page, where its `@mounted` can measure and focus. A
+   * block whose target is absent from the start is likewise built only when one arrives. A component
+   * already IN the block still renders on its own state while it waits, off the page, as every
+   * component does — one rule, rather than a paused state to know about.
+   */
+  private leave(): void {
+    this.reconciledTo = undefined;
+    if (this.area?.placed) {
+      // A fragment of the block's own document: one of this document would adopt every node of a
+      // block that lives in an iframe, and adopt them back when it opens.
+      const home = this.area.ownerDocument ?? document;
+      if (this.waiting?.ownerDocument !== home) this.waiting = home.createDocumentFragment();
+      this.area.park(this.waiting as unknown as ChildNode);
+    }
+    this.nesting.close();
   }
 }
 
@@ -242,4 +331,99 @@ function firstUnclaimedBlock(target: Element): Comment | undefined {
     if (!claimed.has(anchor)) return anchor;
   }
   return undefined;
+}
+
+/**
+ * Portals inside portals close and open together.
+ *
+ * A modal's dropdown is portalled to a layer of its own, so it is not in the modal's block: closing
+ * the modal took the modal off the page and left the dropdown on it, open and clickable. So a portal
+ * whose owner renders inside another portal's block joins that one, which closes it when it closes
+ * and opens it when it opens — whatever its own target says. The owner knows its block from how it
+ * was built (`ComponentRuntime.block`).
+ *
+ * Its own object rather than members of `Portal`, so none of it is part of the hook anybody can call:
+ * `resume()` on a dropdown whose modal is closed would put it back on the page alone.
+ */
+class Nesting implements EnclosingBlock, NestedBlock {
+  /** The block this portal's owner renders in, if any. */
+  private outer: EnclosingBlock | undefined;
+  /** The portals inside this one's block. */
+  private readonly inner = new Set<NestedBlock>();
+  /** Whether an enclosing portal is closed, which closes this one whatever its own target. */
+  suspended = false;
+  /** Whether this block is off the page: its target went away, or an enclosing portal closed. */
+  private gone = false;
+
+  constructor(private readonly reconcile: () => void) {}
+
+  get away(): boolean {
+    return this.gone;
+  }
+
+  join(inner: NestedBlock): void {
+    this.inner.add(inner);
+  }
+
+  part(inner: NestedBlock): void {
+    this.inner.delete(inner);
+  }
+
+  /** Leaves the block this one joined — the portal is going. */
+  detach(): void {
+    this.outer?.part(this);
+    this.outer = undefined;
+  }
+
+  suspend(): void {
+    if (this.suspended) return;
+    this.suspended = true;
+    this.reconcile();
+  }
+
+  resume(): void {
+    if (!this.suspended) return;
+    this.suspended = false;
+    this.reconcile();
+  }
+
+  /** Joins the block the owner renders in, and starts closed if that one is. */
+  enter(owner: unknown): void {
+    const outer = (owner as { [COMPONENT_RUNTIME]?: { block?: EnclosingBlock } } | undefined)?.[COMPONENT_RUNTIME]
+      ?.block;
+    if (outer === undefined || outer === this) return;
+    this.outer = outer;
+    outer.join(this);
+    this.suspended = outer.away;
+  }
+
+  /** On the page again, and the portals inside with it — every one, even past one that throws. */
+  open(): void {
+    this.gone = false;
+    everyOne(this.inner, (inner) => inner.resume(), "open");
+  }
+
+  /** Off the page, and the portals inside with it — every one, even past one that throws. */
+  close(): void {
+    this.gone = true;
+    everyOne(this.inner, (inner) => inner.suspend(), "close");
+  }
+}
+
+/**
+ * Runs `step` for every inner portal, and then throws what failed: the one error as it is, or every
+ * one of them together — none is dropped, and no portal is skipped because one before it threw.
+ */
+function everyOne(inner: ReadonlySet<NestedBlock>, step: (one: NestedBlock) => void, doing: string): void {
+  const failed: unknown[] = [];
+  for (const one of [...inner]) {
+    try {
+      step(one);
+    } catch (error) {
+      failed.push(error);
+    }
+  }
+  if (failed.length === 1) throw failed[0];
+  if (failed.length > 1)
+    throw new AggregateError(failed, `${failed.length} portals inside a portal failed to ${doing}`);
 }

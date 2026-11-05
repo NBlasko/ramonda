@@ -1252,6 +1252,30 @@ const schema = object({
 });
 ```
 
+## RMF005 — a field edited through a control that hands back another kind
+
+A field turns what its control produced back into its value by the control's own `type`:
+`type="number"` and `type="range"` hand back a number, `type="checkbox"` true or false, `type="date"` a
+day to a `Date` and text to a date written as text, and every other control hands back its text.
+So a field holding a number, written without `type="number"`, fills the form with text on the first
+keystroke — and the schema reports a value the reader never typed wrong.
+
+```tsx expect-report:form-value-in-the-wrong-control
+<input aria-label="Age" name={age.name} value={age.inputValue} oninput={age.oninput} />                // ✗ text
+<input aria-label="Age" type="number" name={age.name} value={age.inputValue} oninput={age.oninput} />  // ✓
+```
+
+A `Select` hands back the chosen option's `value` and a radio its own, both as text, and no control picks a
+number from a list: a number field chosen from one is taken as a number by the schema — `z.coerce.number()` in Zod — which is what
+the report says there.
+
+Reported once the field holds a number or a day, naming the `type` to write — and for a field that holds
+text, edited through `type="number"`, `type="range"` or a checkbox, which hand back a number or true or
+false — and for a field that holds true or false, edited through an `<input>` that hands back text, which
+belongs in `<input type="checkbox" checked={…}>`. `ramonda-check` reports
+the same before it ships, as [`form-value-in-the-wrong-control`](/reference/check) — and that one reads
+the markup, so it finds a field that is still empty too.
+
 # Query — `RMQ`
 
 ## RMQ001 — a query key that cannot be hashed
@@ -1857,8 +1881,12 @@ import { Component, TextArea, createRef, state } from "@ramonda/core";
 class Editor extends Component {
   @state text = "";
 
+  type(event: Event) {
+    this.text = (event.target as HTMLTextAreaElement).value;
+  }
+
   render() {
-    return <TextArea aria-label="Draft" value={this.text} ref={createRef()} />;   // ✗ a new ref every render
+    return <TextArea aria-label="Draft" value={this.text} oninput={this.type} ref={createRef()} />;   // ✗ a new ref every render
   }
 }
 ```
@@ -1881,8 +1909,12 @@ class Editor extends Component {
   private field = createRef<HTMLTextAreaElement>();       // ✓ one identity, for its whole life
   @state text = "";
 
+  type(event: Event) {
+    this.text = (event.target as HTMLTextAreaElement).value;
+  }
+
   render() {
-    return <TextArea aria-label="Draft" value={this.text} ref={this.field} />;
+    return <TextArea aria-label="Draft" value={this.text} oninput={this.type} ref={this.field} />;
   }
 }
 ```
@@ -1893,3 +1925,69 @@ A callback belongs on a field too — `createRef<T>((node) => this.arrived(node)
 `ramonda-check` reports the same call before it ships, as
 [`ref-built-where-it-cannot-be-kept`](/reference/check).
 
+## RMD062 — A field read its model while a commit ran
+
+```tsx expect-report:field-set-by-an-event
+import { Component, createRef, mounted, state, type EventOn } from "@ramonda/core";
+
+class Terms extends Component {
+  @state accepted = false;
+  private box = createRef<HTMLInputElement>();
+
+  flipped(event: EventOn<HTMLInputElement>) {
+    this.accepted = event.currentTarget.checked;
+  }
+
+  @mounted
+  start() {
+    this.box.current?.click();   // ✗ a value set by an event, while the commit runs
+  }
+
+  render() {
+    return (
+      <input type="checkbox" aria-label="Terms" ref={this.box} checked={this.accepted} onchange={this.flipped} />
+    );
+  }
+}
+```
+
+A field learns its model through render, and the render an edit's handler causes runs once the
+commit is over. The work a commit runs — `render()`, the constructor, `@created`, `@mounted`,
+`@updated`, `@destroyed`, `@watchProp`, `@catchError` — is still running when the edit arrives.
+
+One edit from there is answered like any. The next read of the model is what goes wrong: whether
+the handler took the first edit or refused it is known once its render has run, so the next event
+in the same commit reads the model as it was — a `change` after a refused `input` reaches
+`onchange` with the text the handler refused, and a word an input method ends there is handed to
+`oninput` again although the handler took it. The edit is still answered — this is reported, not
+thrown.
+
+What a field shows is **state**. Write it, and the commit's render shows it:
+
+```tsx
+import { Component, createRef, state, type EventOn } from "@ramonda/core";
+
+class Terms extends Component {
+  @state accepted = true;                                   // ✓ known at the start
+  private box = createRef<HTMLInputElement>();
+
+  flipped(event: EventOn<HTMLInputElement>) {
+    this.accepted = event.currentTarget.checked;
+  }
+
+  render() {
+    return (
+      <input type="checkbox" aria-label="Terms" ref={this.box} checked={this.accepted} onchange={this.flipped} />
+    );
+  }
+}
+```
+
+A value learned on mount is written in `@mounted` — `this.accepted = this.saved` — and an edit that
+must go through the field's handler and the form around it is sent once the commit is over:
+`queueMicrotask(() => this.box.current?.click())`. A library handed the field tells you its value
+through its own callback, which writes state. An event handler is not a commit's work: a row whose
+`onclick` clicks its checkbox does what a `<label>` does.
+
+`ramonda-check` reports the same edit before it ships, as
+[`field-set-by-an-event`](/reference/check).

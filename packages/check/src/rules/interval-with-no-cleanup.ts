@@ -1,5 +1,6 @@
 import ts from "typescript";
 import { memberName, positionOf } from "../syntax";
+import { namesThePlatform } from "./platform";
 import { heritage } from "./render-reach";
 import type { Rule, RuleContext } from "./rule";
 
@@ -70,10 +71,9 @@ function isSetInterval(call: ts.CallExpression, resolve: RuleContext["resolve"])
       ["window", "globalThis", "self"].includes(callee.expression.text)
     );
   }
-  // A bare `setInterval` that resolves to NOTHING is the platform's — the same question
-  // `browser-url` asks about `location`, and it costs no type: the program is built with no lib, so
-  // a name the browser owns has no declaration and one the app wrote does.
-  return ts.isIdentifier(callee) && callee.text === "setInterval" && resolve(callee) === undefined;
+  // A bare `setInterval` the platform owns, not one the app wrote — the same question `browser-url`
+  // asks about `location`.
+  return ts.isIdentifier(callee) && callee.text === "setInterval" && namesThePlatform(callee, resolve);
 }
 
 /**

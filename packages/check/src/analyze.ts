@@ -5,8 +5,11 @@ import ts from "typescript";
 import { declarationEntryOf, fingerprint, loadFragment, packageRootOf } from "./fragment";
 import type { ComponentGraph, GraphEdge, GraphNode, Where } from "./graph";
 import { hookNamed, isThisUse, positionOf } from "./syntax";
-import { coreExportName } from "./rules/core-import";
-import type { Resolver, Silencer } from "./rules/rule";
+import { coreExportName, importedFromPackage } from "./rules/core-import";
+import type { FormType, FormValue, Resolver, Silencer } from "./rules/rule";
+import { domStub } from "./domStub";
+import { DOM_STUB_FILE, isTheDomLib } from "./rules/platform";
+import { unwrap } from "./rules/follow-value";
 import {
   activate,
   applyClass,
@@ -649,6 +652,9 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
  */
 export function analyzeProgram(program: ts.Program, notes: string[] = []): AnalyzeResult {
   const checker = program.getTypeChecker();
+  /** `HTMLFormElement`, found once it is first asked about — most runs never ask. */
+  let form: { type: ts.Type | undefined } | undefined;
+  const theForm = () => (form ??= { type: theFormType(program, checker) }).type;
 
   /**
    * `resolve`, with `coreName` hung on it — see the `Resolver` note in `rules/rule.ts`.
@@ -664,6 +670,42 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
    */
   const resolver: Resolver = Object.assign(resolve, {
     coreName: (id: ts.Node) => coreExportName(id, resolveLocal, resolveStep, resolve),
+    fromPackage: (id: ts.Node, pkg: string) => importedFromPackage(id, pkg, resolveLocal, resolveStep),
+    formValue: (expression: ts.Expression) => formValueOf(checker.getTypeAtLocation(expression)),
+    propertyNames: (expression: ts.Expression) => propertyNames(checker.getTypeAtLocation(expression), checker),
+    typeLiterals: (expression: ts.Expression, absentAs?: string) => {
+      const type = checker.getTypeAtLocation(expression);
+      const read: string[] = [];
+      for (const member of type.isUnion() ? type.types : [type]) {
+        // A stand-in's mark — `keyof HTMLElementEventMap` is `"stub:HTMLElementEventMap"` here — names
+        // nothing the DOM lib would: what that type can be is not read.
+        if (member.isStringLiteral() && member.value.startsWith("stub:")) return undefined;
+        if (member.isStringLiteral()) read.push(member.value);
+        else if (absentAs !== undefined && (member.flags & (ts.TypeFlags.Undefined | ts.TypeFlags.Null)) !== 0)
+          read.push(absentAs);
+        else return undefined;
+      }
+      return read;
+    },
+    formCast: (outer: ts.AsExpression | ts.TypeAssertion) => formCast(outer, theForm(), checker),
+    mayBeFromTheDom: (expression: ts.Expression) => {
+      const type = checker.getNonNullableType(checker.getTypeAtLocation(expression));
+      return (type.isUnion() ? type.types : [type]).some((member) => {
+        if ((member.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) return true;
+        const declarations = checker.getApparentType(member).getSymbol()?.declarations ?? [];
+        return declarations.some((declared) => {
+          const file = declared.getSourceFile();
+          return file.fileName === DOM_STUB_FILE || program.isSourceFileDefaultLibrary(file);
+        });
+      });
+    },
+    mayBeAForm: (expression: ts.Expression) => {
+      // A form, a type that cannot be read, or one a form fits — `Element`, as `querySelector("form")` is typed.
+      const type = checker.getTypeAtLocation(expression);
+      return formTypeOf(type, theForm(), checker) !== "other" || aFormFits(type, theForm(), checker);
+    },
+    formReset: (node: ts.PropertyAccessExpression | ts.ElementAccessExpression | ts.BindingElement) =>
+      formReset(node, theForm(), checker),
   });
 
   /** Symbol id → the context it belongs to, and which half of the pair it is. */
@@ -3960,6 +4002,9 @@ function overlayHost(options: ts.CompilerOptions): ts.CompilerHost {
   const host = ts.createCompilerHost(options);
   const readFromDisk = host.readFile.bind(host);
   const sourceFromDisk = host.getSourceFile.bind(host);
+  // The DOM's stand-ins, a file no disk holds — see `createProgram`.
+  const exists = host.fileExists.bind(host);
+  host.fileExists = (fileName) => fileName === DOM_STUB_FILE || exists(fileName);
 
   /**
    * Text → its virtual copy, or `undefined` when the file holds no block. One read per file.
@@ -3976,8 +4021,13 @@ function overlayHost(options: ts.CompilerOptions): ts.CompilerHost {
     return virtualFile(text, { tolerant: true })?.code;
   };
 
-  host.readFile = (fileName) => virtual(fileName) ?? readFromDisk(fileName);
+  host.readFile = (fileName) =>
+    fileName === DOM_STUB_FILE ? domStub() : (virtual(fileName) ?? readFromDisk(fileName));
   host.getSourceFile = (fileName, language, onError, shouldCreate) => {
+    if (fileName === DOM_STUB_FILE) return domStubFile(language);
+    // The DOM lib a file asks for itself — `/// <reference lib="dom" />` — read as nothing: the stand-ins
+    // are the DOM here, and both at once would merge every interface with its stand-in.
+    if (isTheDomLib(fileName)) return ts.createSourceFile(fileName, "", language, true);
     const code = virtual(fileName);
     return code === undefined
       ? sourceFromDisk(fileName, language, onError, shouldCreate)
@@ -3987,7 +4037,260 @@ function overlayHost(options: ts.CompilerOptions): ts.CompilerHost {
   return host;
 }
 
-function createProgram(tsconfigPath: string): {
+/**
+ * What a form shows in a value of this type: the marks `@ramonda/form` puts on the number and the day
+ * its fields show (`FormNumber`, `FormDay`). A union is a number only when every member that is not
+ * the emptied field's `""` is one — a field that may hold text shows text too.
+ */
+function formValueOf(type: ts.Type): FormValue {
+  // `never`: what `InputValue` makes of a value no control's `value` shows — a boolean, a file.
+  if ((type.flags & ts.TypeFlags.Never) !== 0) return "none";
+  const members = (type.isUnion() ? type.types : [type]).filter(
+    (member) => !(member.isStringLiteral() && member.value === ""),
+  );
+  // A type not read yet is read later, by each use: `InputValue<T>` in a generic component, `T` itself.
+  if (members.some((member) => (member.flags & UNREAD) !== 0)) return "unread";
+  if (members.length === 0) return "other";
+  if (members.every((member) => member.getProperty("@ramonda/form:number") !== undefined)) return "number";
+  if (members.every((member) => member.getProperty("@ramonda/form:day") !== undefined)) return "day";
+  if (members.every((member) => member.getProperty("@ramonda/form:text") !== undefined)) return "text";
+  return "other";
+}
+
+/** A type that cannot be read here: anything, or one a generic's use decides. */
+const UNREAD =
+  ts.TypeFlags.Any |
+  ts.TypeFlags.Unknown |
+  ts.TypeFlags.TypeParameter |
+  ts.TypeFlags.Conditional |
+  ts.TypeFlags.IndexedAccess |
+  ts.TypeFlags.Substitution |
+  ts.TypeFlags.Index;
+
+/**
+ * Whether a value of this type is the browser's `HTMLFormElement` — `form`, the one the stand-ins or the
+ * DOM lib declare: a project's own `interface HTMLFormElement` in a module is another — when it is or
+ * extends it, alone or in a union (`HTMLFormElement | null`); `unread` when it cannot be read (`any`,
+ * `unknown`) and so may be; `other` for anything else. Asked again and again of the same types: each is
+ * answered once.
+ */
+function formTypeOf(type: ts.Type, form: ts.Type | undefined, checker: ts.TypeChecker): FormType {
+  const known = formTypes.get(type);
+  if (known !== undefined) return known;
+  const answer = formTypeRead(type, form, checker);
+  formTypes.set(type, answer);
+  return answer;
+}
+
+/** What `formTypeOf` answered for each type. */
+const formTypes = new WeakMap<ts.Type, FormType>();
+
+function formTypeRead(type: ts.Type, form: ts.Type | undefined, checker: ts.TypeChecker): FormType {
+  if ((type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) return "unread";
+  if (type.isUnion() || type.isIntersection()) {
+    const answers = type.types.map((member) => formTypeOf(member, form, checker));
+    return answers.includes("form") ? "form" : answers.includes("unread") ? "unread" : "other";
+  }
+  const apparent = checker.getApparentType(type);
+  if (apparent !== type) return formTypeOf(apparent, form, checker);
+  if (form !== undefined && type.getSymbol() !== undefined && type.getSymbol() === form.getSymbol()) return "form";
+  // `TypedForm<Signup>` is an instance of a generic interface: its bases are its declaration's.
+  const declared =
+    (type.flags & ts.TypeFlags.Object) !== 0 && ((type as ts.ObjectType).objectFlags & ts.ObjectFlags.Reference) !== 0
+      ? (type as ts.TypeReference).target
+      : type;
+  const bases = declared.isClassOrInterface() ? (checker.getBaseTypes(declared) ?? []) : [];
+  return bases.some((base) => formTypeOf(base, form, checker) === "form") ? "form" : "other";
+}
+
+/**
+ * Whether this access reaches the browser's form reset — see `Resolver.formReset`. Read off the
+ * receiver's TYPE and the member it takes: `reset` taken from a form is the reset, whatever the form
+ * is called and whatever the taken method is called after — `const clear = form.reset`,
+ * `const { reset: clear } = form` are both reported where they take it. A receiver of another type
+ * is asked whether a form FITS it — `const r: Resettable = form` holds one, and `r.reset()` is the
+ * browser's under another declaration.
+ */
+function formReset(
+  node: ts.PropertyAccessExpression | ts.ElementAccessExpression | ts.BindingElement,
+  form: ts.Type | undefined,
+  checker: ts.TypeChecker,
+): "reset" | "maybe" | "fits" | undefined {
+  // `const { ...rest } = form` takes the members the pattern leaves, by no name: no `reset` is taken.
+  if (ts.isBindingElement(node) && node.dotDotDotToken !== undefined) return undefined;
+  const key = ts.isPropertyAccessExpression(node)
+    ? node.name
+    : ts.isElementAccessExpression(node)
+      ? node.argumentExpression
+      : node.propertyName === undefined
+        ? node.name
+        : ts.isComputedPropertyName(node.propertyName)
+          ? node.propertyName.expression
+          : node.propertyName;
+  // A member's own name is its text, and so is an index written as one; any other index is a value,
+  // read by its type. The key before the receiver: most keys are not `reset`, and end it there.
+  // A name is read by its text where it IS a name — `form.reset`, `{ reset }`, `{ reset: clear }`; a
+  // computed one — `form[RESET]`, `{ [RESET]: clear }` — is a value like any index.
+  const named = ts.isPropertyAccessExpression(node) || (ts.isBindingElement(node) && key !== computedKey(node));
+  const written =
+    (named && (ts.isIdentifier(key) || ts.isPrivateIdentifier(key))) ||
+    ts.isStringLiteralLike(key) ||
+    ts.isNumericLiteral(key)
+      ? key.text
+      : undefined;
+  const names = written !== undefined ? [written] : keyNames(key, checker);
+  if (names !== undefined && !names.includes("reset")) return undefined;
+  const receiver = checker.getTypeAtLocation(ts.isBindingElement(node) ? node.parent : node.expression);
+  const held = formTypeOf(receiver, form, checker);
+  if (names === undefined) return held === "form" ? "maybe" : undefined;
+  if (held !== "other") return held === "form" ? "reset" : "maybe";
+  return aFormFits(receiver, form, checker) ? "fits" : undefined;
+}
+
+/** The stand-ins, parsed once for each language version: every program in a process shares them. */
+const domStubFiles = new Map<ts.ScriptTarget, ts.SourceFile>();
+
+function domStubFile(language: ts.ScriptTarget | ts.CreateSourceFileOptions): ts.SourceFile {
+  const version = typeof language === "object" ? language.languageVersion : language;
+  let file = domStubFiles.get(version);
+  if (file === undefined) {
+    file = ts.createSourceFile(DOM_STUB_FILE, domStub(), language, true);
+    domStubFiles.set(version, file);
+  }
+  return file;
+}
+
+/**
+ * The names a spread of a value of this type may hand — see `Resolver.propertyNames`. A union may hand
+ * what any of its members does: `{ a: 1 } | { b: 2 }` may hand `a` and may hand `b`. `null`, `undefined`
+ * and a primitive in it hand no name — `{...(hint && { title: hint })}` spreads `""` or the object.
+ */
+/** What a spread of a union's member copies no name from: nothing, a boolean, a number, a string's indices. */
+const HANDS_NO_NAME =
+  ts.TypeFlags.Undefined |
+  ts.TypeFlags.Null |
+  ts.TypeFlags.Void |
+  ts.TypeFlags.BooleanLike |
+  ts.TypeFlags.NumberLike |
+  ts.TypeFlags.BigIntLike |
+  ts.TypeFlags.StringLike |
+  ts.TypeFlags.ESSymbolLike;
+
+function propertyNames(type: ts.Type, checker: ts.TypeChecker): string[] | undefined {
+  if ((type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) return undefined;
+  // A type parameter may hand what its constraint does, and anything at all without one.
+  if ((type.flags & ts.TypeFlags.TypeParameter) !== 0) {
+    const constraint = checker.getBaseConstraintOfType(type);
+    return constraint === undefined || constraint === type ? undefined : propertyNames(constraint, checker);
+  }
+  // An intersection hands what each of its members does — and anything, if one may: `P & { title }`.
+  if (type.isIntersection()) {
+    const names = new Set<string>();
+    for (const member of type.types) {
+      const read = propertyNames(member, checker);
+      if (read === undefined) return undefined;
+      for (const name of read) names.add(name);
+    }
+    return [...names];
+  }
+  if (type.isUnion()) {
+    const names = new Set<string>();
+    for (const member of type.types) {
+      if ((member.flags & HANDS_NO_NAME) !== 0) continue;
+      const read = propertyNames(member, checker);
+      if (read === undefined) return undefined;
+      for (const name of read) names.add(name);
+    }
+    return [...names];
+  }
+  const apparent = checker.getApparentType(type);
+  // An index — `Record<string, unknown>` — may hand any name at all, and so may a type that names none,
+  // `object` or `{}`: but an empty object written there, `cond ? { title } : {}`, hands nothing.
+  if (checker.getIndexInfosOfType(apparent).length > 0) return undefined;
+  const names = checker.getPropertiesOfType(apparent).map((property) => property.name);
+  const written =
+    (apparent.flags & ts.TypeFlags.Object) !== 0 &&
+    ((apparent as ts.ObjectType).objectFlags & ts.ObjectFlags.ObjectLiteral) !== 0;
+  return names.length === 0 && !written ? undefined : names;
+}
+
+/**
+ * Whether a form can be held by a value of this type, or by a member of its union — TypeScript's own
+ * answer, as the form's interfaces keep their members in the stand-ins: `{ reset(): void }` holds one,
+ * `{ reset?: boolean }` and `{ debounce?: number }` do not.
+ */
+function aFormFits(type: ts.Type, form: ts.Type | undefined, checker: ts.TypeChecker): boolean {
+  if (form === undefined) return false;
+  return (type.isUnion() ? type.types : [type]).some((member) => {
+    // A form is never nothing: `Tab | undefined` holds one only if `Tab` does.
+    if ((member.flags & (ts.TypeFlags.Undefined | ts.TypeFlags.Null | ts.TypeFlags.Void)) !== 0) return false;
+    // An instance of a class the project declares is that class, as its author wrote it — a form is one
+    // only through a cast, and the rule trusts the type the author writes.
+    const apparent = checker.getApparentType(member);
+    if (((apparent.getSymbol()?.flags ?? 0) & ts.SymbolFlags.Class) !== 0) return false;
+    // `Record<string, () => void>` is a map of functions, which TypeScript lets a form into only by the
+    // form's own `[name: string]: any`. Only an index that takes anything — `Record<string, unknown>` —
+    // can hold one.
+    const takesAnything = (info: ts.IndexInfo) => (info.type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0;
+    if (!checker.getIndexInfosOfType(apparent).every(takesAnything)) return false;
+    // A type parameter holds what its constraint does: `<T extends { reset(): void }>(t: T)` can be a form.
+    return checker.isTypeAssignableTo(form, member.isTypeParameter() ? apparent : member);
+  });
+}
+
+/** `HTMLFormElement`, as the stand-ins or the DOM lib declare it — none in a program without the DOM. */
+function theFormType(program: ts.Program, checker: ts.TypeChecker): ts.Type | undefined {
+  for (const file of program.getSourceFiles()) {
+    if (file.fileName !== DOM_STUB_FILE && !program.isSourceFileDefaultLibrary(file)) continue;
+    const declared = file.statements.find(
+      (statement): statement is ts.InterfaceDeclaration =>
+        ts.isInterfaceDeclaration(statement) && statement.name.text === "HTMLFormElement",
+    );
+    if (declared !== undefined) return checker.getTypeAtLocation(declared.name);
+  }
+  return undefined;
+}
+
+/**
+ * Whether this assertion puts a form under a type that is not one and does not hold one —
+ * `form as unknown as Canvas` — so its `reset` cannot be followed past it. Asked of the outermost
+ * assertion; read down to the value inside it.
+ */
+function formCast(
+  outer: ts.AsExpression | ts.TypeAssertion,
+  form: ts.Type | undefined,
+  checker: ts.TypeChecker,
+): boolean {
+  // The type the assertion names, read from what is written — not by checking the expression.
+  const target = checker.getTypeFromTypeNode(outer.type);
+  const inner = unwrap(outer);
+  if (formTypeOf(checker.getTypeAtLocation(inner), form, checker) !== "form") return false;
+  // A form, or a type a form fits — `form as Resettable`, `form as HTMLElement` — is where its reset is
+  // still followed; only a type a form cannot be is a cast that hides it.
+  return formTypeOf(target, form, checker) !== "form" && !aFormFits(target, form, checker);
+}
+
+/** The expression of a destructuring's computed name — `{ [RESET]: clear }` — if it has one. */
+function computedKey(node: ts.BindingElement): ts.Expression | undefined {
+  return node.propertyName !== undefined && ts.isComputedPropertyName(node.propertyName)
+    ? node.propertyName.expression
+    : undefined;
+}
+
+/**
+ * The member names an index can be, read by its type: the literals it holds, none for a number (a
+ * form's controls by index), `undefined` when it cannot be read.
+ */
+function keyNames(key: ts.Node, checker: ts.TypeChecker): string[] | undefined {
+  const type = checker.getTypeAtLocation(key);
+  const members = type.isUnion() ? type.types : [type];
+  // A number or a symbol names no member a reset could be: `form[0]`, `form[Symbol.iterator]`.
+  const namesNothing = ts.TypeFlags.NumberLike | ts.TypeFlags.ESSymbolLike;
+  if (!members.every((member) => member.isStringLiteral() || (member.flags & namesNothing) !== 0)) return undefined;
+  return members.flatMap((member) => (member.isStringLiteral() ? [member.value] : []));
+}
+
+export function createProgram(tsconfigPath: string): {
   program: ts.Program;
   notes: string[];
 } {
@@ -4014,7 +4317,7 @@ function createProgram(tsconfigPath: string): {
     for (const error of parsed.errors) notes.push(String(ts.flattenDiagnosticMessageText(error.messageText, " ")));
   }
   const program = ts.createProgram({
-    rootNames: parsed.fileNames,
+    rootNames: [...parsed.fileNames, DOM_STUB_FILE],
     /**
      * The host, with `@@( … )` style blocks turned into TSX before the compiler sees them.
      *
@@ -4038,23 +4341,26 @@ function createProgram(tsconfigPath: string): {
      */
     host: overlayHost(parsed.options),
     /**
-     * The project's own options, minus the two that load declaration files this analyzer will
-     * never look at.
+     * The project's own options, with the language's lib in place of whatever lib it names, and no
+     * `@types/*`.
      *
-     * It asks the checker exactly two things — `getSymbolAtLocation` and `getAliasedSymbol` —
-     * both of which are binder work over the files it walks. It never asks for a TYPE, so
-     * `Array`, `Promise` and the DOM are megabytes of parsing for nothing, and so is every
-     * `@types/*` package a project happens to have installed.
+     * Most rules ask the checker two things — `getSymbolAtLocation` and `getAliasedSymbol` — binder
+     * work over the files it walks. The questions about a TYPE (`formValue`, `formReset`, `formCast`,
+     * `typeLiterals` — see `Resolver`) need what core's and the form's declarations name: the
+     * language's lib, and the DOM's names. Not the DOM lib, which is 2.3 MB of parsing for contents
+     * the answer never reads — each of its names is a distinct stand-in instead, `domStub`, the extra
+     * root file above. `@types/*` packages a project happens to have installed are parsing for nothing.
+     * `ramonda-check` runs FIRST in an app's `build`, so what it parses is added to every build.
      *
-     * Measured on this repo's docs app (68 components): 2.4s → 0.35s, and on a small fixture
-     * 214 source files → 2. That matters beyond a fast test suite — `ramonda-check`
-     * runs FIRST in an app's `build`, so this was a second or more added to every build.
+     * Measured 2026-10-28 on a Linux laptop (Ryzen 5 2500U, 8 threads, Node 24.15), the median of five
+     * runs against the same run with `noLib`: +0.16 to +0.26 s on each of this repo's four apps, from
+     * the smallest to the docs app — the lib's cost, the same whatever the app's size.
      *
-     * `noLib` makes the program report errors about missing globals. Nothing here reads
+     * The program reports errors about whatever the stand-ins leave out. Nothing here reads
      * diagnostics: the analyzer's job is to say which context has no provider, and a project
      * that does not compile is `tsc`'s news to break, not this tool's.
      */
-    options: { ...parsed.options, noLib: true, types: [] },
+    options: { ...parsed.options, noLib: false, lib: ["lib.esnext.d.ts"], types: [] },
   });
   return { program, notes };
 }

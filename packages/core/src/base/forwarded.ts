@@ -1,5 +1,6 @@
 import type { Component } from "./Component";
 import { COMPONENT_RUNTIME } from "../core/runtime";
+import { answerEdit, callHandler, callInTurn, forgetField, type FieldControl } from "../core/field";
 import type { ComponentChild, RamondaNode } from "../types/vdom";
 
 /**
@@ -47,4 +48,132 @@ export function forwarded(component: Component<any>, consumed: readonly string[]
     out[name] = props[name];
   }
   return out;
+}
+
+/**
+ * What a field's element is given, and the names of the app's handlers that moves.
+ *
+ * A CONTROLLED field — one with a `value` — gets `listener` on each event in `answered`, calling the
+ * app's own through `answer`. A handler written `on:input` is the field's own as much as `oninput`
+ * is, as on a plain `<input>`: it is taken off the element too and called by the field, which then
+ * shows the model — so an edit neither of them took is put back. A field without a `value` is the page's: it
+ * gets `uncontrolled` on the same events when it needs to hear them — a `Select` notes the user's
+ * pick — and nothing otherwise.
+ */
+export function controlled(
+  // biome-ignore lint/suspicious/noExplicitAny: any component, whatever its props
+  component: Component<any>,
+  listener: (event: Event) => void,
+  answered: readonly ("oninput" | "onchange")[],
+  uncontrolled?: (event: Event) => void,
+) {
+  // `null` as much as `undefined`: a value still loading is no value, not the text "null".
+  if (component[COMPONENT_RUNTIME].rawProps["value"] == null) {
+    // A composition it let go of in the middle ends with the app, not here, and must not leave the
+    // field waiting for that end once it holds a value again.
+    forgetField(component);
+    const listeners: Record<string, (event: Event) => void> = {};
+    if (uncontrolled !== undefined) for (const name of answered) listeners[name] = uncontrolled;
+    return { replaced: Object.keys(listeners), listeners };
+  }
+  // The composition's start and end too: a settle set before a composition began must not land in it.
+  // And the blur, which a composition can be lost to with no end of its own.
+  // And `beforeinput`, where the selection an edit found is read, for a refusal to put back.
+  const listeners: Record<string, (event: Event) => void> = {
+    onbeforeinput: listener,
+    oncompositionstart: listener,
+    oncompositionend: listener,
+    onblur: listener,
+  };
+  for (const name of answered) listeners[name] = listener;
+  // `on:input` beside `oninput`, and so on: each is called by `answer`, none is attached.
+  const replaced = Object.keys(listeners).flatMap((name) => [name, `on:${name.slice(2)}`]);
+  return { replaced, listeners };
+}
+
+/** The app's own handler for this event, called as a listener would be — see `callHandler`. */
+// biome-ignore lint/suspicious/noExplicitAny: any component, whatever its props
+export function heard(component: Component<any>, event: Event): void {
+  callHandler(component[COMPONENT_RUNTIME].rawProps[`on${event.type}`], event);
+}
+
+/*
+ * TODO(webkit): measure the end of a composition in Safari, on a Mac.
+ *
+ * Chromium and Firefox are measured with a real composition (see "When it ends" on `answerEdit` in
+ * `core/field.ts`); WebKit
+ * is not — there is no driver here that types through an input method in it. The code does not
+ * depend on the order a browser uses, so it should hold, but nothing has shown that it does.
+ *
+ * Chromium is checked by `apps/playground-core/browser/fields.spec.ts`, Firefox by
+ * `browser/firefox-composition.mjs`, both against the playground's `/fields` page.
+ *
+ * 1. System Settings → Keyboard → Input Sources: add Japanese – Romaji.
+ * 2. Build the playground, `vite preview` it, and open `/fields` in Safari.
+ * 3. In each of the four composed fields — "skips" and "takes" on a `TextArea`, the same two on an
+ *    `<input>`, which reaches the field through the attribute pass rather than this file — switch to
+ *    Japanese, type `nihon`, Space, Enter.
+ *
+ * Right: every field keeps 日本; each "skips" readout is `["日本"]`, and each "takes" readout lists
+ * the steps Safari sent and ends in 日本 once. Wrong: a field comes back empty, or a readout ends in
+ * 日本 twice — then log `input` (with its `inputType` and `isComposing`) and `compositionend` on the
+ * field to see the order Safari sends them in, which is what this code has to answer. One thing to
+ * look for: an `input` Safari sends after `compositionend` under another `inputType` than Firefox's
+ * `insertCompositionText` is not recognised as the word already shown, and a handler hears it twice.
+ *
+ * 4. In each of the four, type `nihon` again and, before Enter, press Tab to leave the field. Right:
+ *    the field keeps what was typed, and that field's readout has it once at its end — as Chromium
+ *    and Firefox do. Wrong: an empty
+ *    field, which means Safari sends `compositionend` after the blur and something wrote the field in
+ *    between — see "A composition lost" on `answerEdit`.
+ *
+ * 5. On a Mac, an accent is composed too: in each "skips" field, with a Latin layout, type Option-E
+ *    then `e`. Right: é, once in that field's readout.
+ *
+ * Delete this note once it is measured.
+ */
+
+/**
+ * A `Select` or a `TextArea` answering an edit — see `answerEdit`, which a plain `<input>` answers
+ * through as well. The model is the component's `value`; its handlers are its props.
+ */
+// biome-ignore lint/suspicious/noExplicitAny: any component, whatever its props
+export function answer(component: Component<any> & { settle(): void }, event: Event, pick = false): void {
+  answerEdit(controlFor(component, pick), event);
+}
+
+/** One control per component, as an `<input>` keeps one per element: every member reads the props live. */
+// biome-ignore lint/suspicious/noExplicitAny: any component, whatever its props
+const controls = new WeakMap<Component<any>, FieldControl>();
+
+// biome-ignore lint/suspicious/noExplicitAny: any component, whatever its props
+function controlFor(component: Component<any> & { settle(): void }, pick: boolean): FieldControl {
+  const existing = controls.get(component);
+  if (existing !== undefined) return existing;
+  const runtime = component[COMPONENT_RUNTIME];
+  const control: FieldControl = {
+    key: component,
+    pick,
+    model: () => runtime.rawProps.value,
+    prev: () => {
+      const model = runtime.rawProps.value;
+      if (Array.isArray(model)) return model.map(String);
+      // A textarea keeps its line breaks as `\n`: a model written with `\r\n` is read as the text it
+      // shows, for every comparison and every caret put back — see `showsTheModel`.
+      return pick ? String(model ?? "") : String(model ?? "").replace(/\r\n?/g, "\n");
+    },
+    // Both spellings, in the order a listener would be — `oninput`, then `on:input` — and the first one
+    // stopping the event for the rest stops the second.
+    own: (type, own) =>
+      callInTurn(
+        [runtime.rawProps[`on${type}`], runtime.rawProps[`on:${type}`]],
+        own,
+        // Read again for each: a render the first one settled may have taken the second away.
+        (handler) => handler === runtime.rawProps[`on${type}`] || handler === runtime.rawProps[`on:${type}`],
+      ),
+    settle: () => component.settle(),
+    gone: () => runtime.isDestroyed === true,
+  };
+  controls.set(component, control);
+  return control;
 }

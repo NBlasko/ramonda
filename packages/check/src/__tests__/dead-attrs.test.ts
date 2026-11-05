@@ -20,8 +20,10 @@ describe("an attribute that does nothing", () => {
       "httpEquiv",
       "acceptCharset",
       "acceptcharset",
+      "defaultvalue",
       "defaultValue",
-      "defaultChecked",
+      "defaultvalue",
+      "defaultvalue",
       "innerHTML",
       "textContent",
     ]);
@@ -39,6 +41,26 @@ describe("an attribute that does nothing", () => {
     for (const ok of ["http-equiv", "accept-charset", "value", "checked", "className", "htmlFor"]) {
       expect(names).not.toContain(ok);
     }
+  });
+
+  /**
+   * A rename is offered only where it does something: `defaultvalue` on an `<input>` or a `TextArea`
+   * becomes the `defaultValue` it meant; on a `<textarea>` written as itself, which drops it, and on a
+   * `<div>`, no spelling helps.
+   */
+  test("a default's rename is offered only where it works", () => {
+    const found = run().findings["attribute-that-does-nothing"];
+    const offer = (tag: string, attribute: string) =>
+      found.find((issue) => issue.tag === tag && issue.attribute === attribute)?.edit?.text ?? null;
+    expect({
+      input: offer("input", "defaultvalue"),
+      div: offer("div", "defaultValue"),
+      textarea: found.filter((issue) => issue.tag === "textarea").map((issue) => issue.edit?.text ?? null),
+    }).toEqual({
+      input: "defaultValue",
+      div: null,
+      textarea: [null, "defaultValue"],
+    });
   });
 
   /** A component's props are its own; only a host element writes to the document. */

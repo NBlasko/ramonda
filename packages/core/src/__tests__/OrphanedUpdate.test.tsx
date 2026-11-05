@@ -2,6 +2,8 @@ import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { getDOM, instanceOf } from "../test/setup";
 import { Component, state, Ref, bootstrap, unmount } from "../index";
 import { resetDiagnostics } from "../debug/diagnostics";
+import { created } from "../base/decorators";
+import { Portal } from "../base/Portal";
 
 /**
  * RMD016 — a component still mounted inside DOM that is no longer in the
@@ -173,6 +175,43 @@ describe("RMD016: updating an orphaned tree", () => {
     app.instance.n = 1;
     await app.settle();
     await tick();
+
+    expect(codes).not.toContain("RMD016");
+  });
+});
+
+/**
+ * A component inside a CLOSED portal renders off the page on purpose: a closed portal's block waits
+ * in a fragment, and what is in it goes on rendering on its own state. That is not an orphan.
+ */
+describe("RMD016 and a closed portal", () => {
+  test("a component in a closed portal renders without a report", async () => {
+    let inside: Ticker | undefined;
+    class Ticker extends Component {
+      @state n = 0;
+      @created
+      known() {
+        inside = this;
+      }
+      render() {
+        return <b>{String(this.n)}</b>;
+      }
+    }
+    class Page extends Component {
+      @state open = true;
+      modal = this.use(Portal, (self: Page) => ({
+        children: <Ticker />,
+        target: (self.open ? document.body : undefined) as Element,
+      }));
+      render() {
+        return <div>page</div>;
+      }
+    }
+    const { instance, settle } = await getDOM<Page>(<Page />);
+    instance.open = false;
+    await settle();
+    inside!.n = 1;
+    await settle();
 
     expect(codes).not.toContain("RMD016");
   });

@@ -1,6 +1,16 @@
 import type { EnhancedHTMLNode } from "../types/vdom";
 import { IS_SVG, KEY_SYM, STYLE_SYM, REF_SYM, BOOLEAN_ATTRIBUTES, keptInAProperty } from "../helpers/constants";
 import { checkBooleanAttribute } from "../debug/booleanAttribute";
+import {
+  INPUT_OWN_EVENTS,
+  composingIn,
+  controlInput,
+  groupOf,
+  heldByAModel,
+  keepOwnHandler,
+  showsTheModel,
+} from "./field";
+import { queueBeforeTheMounts } from "./commit";
 type NodeAttributes = Record<string, any>;
 
 /**
@@ -22,6 +32,79 @@ export function applyChangesOnAttributes(enhancedNode: ChildNode, rawNextAttribu
   removePreviousFromenhancedNode(enhancedNode as EnhancedHTMLNode, previousAttributes, nextAttributes);
   attachNextOnenhancedNode(enhancedNode as EnhancedHTMLNode, previousAttributes, nextAttributes, onServer);
   releaseDroppedRef(enhancedNode as EnhancedHTMLNode, nextAttributes.ref);
+  /**
+   * An `<input>` is told, on every pass, whether it is controlled — a pass that no longer has a
+   * `value` lets the field go, which the attribute diff, reading attributes back off the element,
+   * would never see.
+   */
+  if (enhancedNode.nodeName === "INPUT") {
+    writeDefaults(enhancedNode as unknown as HTMLInputElement, rawNextAttributes, onServer);
+    if (!onServer) controlInput(enhancedNode as unknown as HTMLInputElement, rawNextAttributes);
+  }
+}
+
+/**
+ * `defaultValue` and `defaultChecked` on an `<input>`: where an uncontrolled field STARTS, and nothing
+ * more. Written as the attribute HTML keeps a default in — `value`, or `checked` — which the property
+ * follows until the user edits and a form's reset returns to, on both sides, so a served page starts
+ * on it before any script runs. Nothing writes the property: the field is the user's.
+ *
+ * Here rather than in the attribute loop, because neither is an attribute of its own name for the
+ * diff to read back, so a default taken away — `defaultChecked` turned `false` — would never be seen.
+ */
+function writeDefaults(input: HTMLInputElement, attributes: NodeAttributes, onServer: boolean): void {
+  // A field with a `value` (`checked`) is the model's, and so is that attribute: a default written
+  // beside it — even as `undefined`, passed straight through by a wrapper — does not touch it.
+  if ("defaultValue" in attributes && attributes.value == null) {
+    const value = attributes.defaultValue;
+    if (value == null) input.removeAttribute("value");
+    else if (input.getAttribute("value") !== String(value)) input.setAttribute("value", String(value));
+  }
+  if ("defaultChecked" in attributes && typeof attributes.checked !== "boolean") {
+    const on = attributes.defaultChecked === true;
+    if (input.hasAttribute("checked") === on) return;
+    if (on && !onServer && input.type === "radio" && input.name !== "") keepThePick(input);
+    input.toggleAttribute("checked", on);
+  }
+}
+
+/**
+ * A radio's default turned on takes its group's choice in a browser — when the attribute is written, or
+ * when a new radio carrying it is put in the page. So the radio the user picked is noted BEFORE, while
+ * the page still shows it, and checked again once the diff has put every radio where it goes and before
+ * any `@mounted` runs: the new default changes only where a reset returns, as a `Select`'s does, and
+ * whatever a `@mounted` then does to the radios stands.
+ *
+ * Only a pick in the radio's group once it is in place is put back — a commit that threw before its
+ * mounts leaves this queued for the next, and a radio it never put in the page has no group to take —
+ * and a radio a model holds only while the model still says it is on: what a model says is what its
+ * radio shows.
+ */
+function keepThePick(input: HTMLInputElement): void {
+  // A radio not yet in the page has no group to ask, so its picks are the document's of its name — one
+  // put into a shadow root finds none of the picks there.
+  const radios = input.isConnected ? groupOf(input) : Array.from(input.ownerDocument.getElementsByName(input.name));
+  const picks = (radios as HTMLInputElement[]).filter(radioWasPicked);
+  if (picks.length === 0) return;
+  queueBeforeTheMounts(() => {
+    // The default no longer holds the choice: a commit that threw before its mounts left this queued,
+    // and the user has picked since. A pick since of the new default itself is not told apart.
+    if (!input.checked) return;
+    const group = groupOf(input);
+    for (const pick of picks) {
+      if (group.includes(pick) && (!heldByAModel(pick) || pick.hasAttribute("checked"))) pick.checked = true;
+    }
+  });
+}
+
+/**
+ * Picked by the user (or a script), or held on by a model: on, with no `checked` attribute saying it
+ * starts so — a model's radio carries the attribute as what it says. One that is on AND still the default
+ * is not told apart from one never touched — the old default, picked again, when the new default comes
+ * before it in the page.
+ */
+function radioWasPicked(radio: HTMLInputElement): boolean {
+  return radio.checked && (heldByAModel(radio) || !radio.hasAttribute("checked"));
 }
 
 /**
@@ -136,7 +219,7 @@ export function formatAttributes(attributes: NodeAttributes): Record<string, any
  * whose `type` is `number`, `email`, `date` or `color`, and a value written to one of those is a
  * value written to a field with no caret to keep.
  */
-function writeValue(enhancedNode: EnhancedHTMLNode, value: unknown, onServer: boolean): void {
+export function writeValue(enhancedNode: EnhancedHTMLNode, value: unknown, onServer: boolean): void {
   const field = enhancedNode as unknown as {
     value: unknown;
     selectionStart: number | null;
@@ -255,6 +338,9 @@ function setNextOnenhancedNode(enhancedNode: EnhancedHTMLNode, name: string, val
    */
   if (value === true && isBooleanAttribute(name)) value = "";
 
+  // Nor are an `<input>`'s defaults attributes of those names: `writeDefaults` writes them.
+  if ((name === "defaultValue" || name === "defaultChecked") && enhancedNode.nodeName === "INPUT") return;
+
   if (name === "ref") {
     // Remembered on the node so unmount can clear it. Without that, `current`
     // kept pointing at a detached element: `if (ref.current) ref.current.focus()`
@@ -289,8 +375,13 @@ function setNextOnenhancedNode(enhancedNode: EnhancedHTMLNode, name: string, val
   if (name === "value") {
     // Both, because they say different things about the same element: the property is the value NOW,
     // and the attribute is the one it started with — which is also the only half a server render can
-    // serialize.
-    writeValue(enhancedNode, value, onServer);
+    // serialize. Not the property while an input method is composing in the field: writing it would
+    // cancel the word, and the field shows the model once the word ends — see `composingIn`. Nor on an
+    // `<input>` that already shows the model: a number field with `-` typed on the way to `-3` reports
+    // `""`, the model holds `""`, and writing `""` back would take the `-` away — see `showsTheModel`.
+    const input = enhancedNode.nodeName === "INPUT";
+    const shown = input && showsTheModel(enhancedNode as unknown as HTMLInputElement, value);
+    if (!shown && (!input || !composingIn(enhancedNode))) writeValue(enhancedNode, value, onServer);
     enhancedNode.setAttribute(name, value);
     return;
   }
@@ -374,6 +465,17 @@ function setNextOnenhancedNode(enhancedNode: EnhancedHTMLNode, name: string, val
     enhancedNode._listeners ??= {};
     const listeners = enhancedNode._listeners;
 
+    /**
+     * An `<input>`'s own handlers for the events its field answers are KEPT, not attached: its field
+     * listener calls them, so it knows when they have returned — see `answerEdit`. Recorded among the
+     * listeners all the same, so the next pass compares them as it does any.
+     */
+    if (enhancedNode.nodeName === "INPUT" && INPUT_OWN_EVENTS.has(type)) {
+      listeners[name] = value;
+      keepOwnHandler(enhancedNode as unknown as HTMLInputElement, name, type, value);
+      return;
+    }
+
     if (listeners[name]) {
       enhancedNode.removeEventListener(type, listeners[name]);
     }
@@ -455,6 +557,8 @@ function formPropertyDiverged(enhancedNode: EnhancedHTMLNode, name: string, next
   // A boolean attribute is on when it is PRESENT, so any visible value means a
   // ticked box — `checked=""` and the mistaken `checked="false"` (RMD029) both.
   if (name === "checked") return live !== true;
+  // A number field's `1.50` already shows the model's 1.5 — see `showsTheModel`.
+  if (enhancedNode.nodeName === "INPUT") return !showsTheModel(enhancedNode as unknown as HTMLInputElement, next);
   return !attributesEqual(next, live);
 }
 
@@ -520,12 +624,36 @@ function removePreviousFromenhancedNode(
 
     if (name.startsWith("on")) {
       const listeners = enhancedNode._listeners ?? {};
-      enhancedNode.removeEventListener(eventTypeOf(name), previousAttributes[name]);
+      const type = eventTypeOf(name);
+      if (enhancedNode.nodeName === "INPUT" && INPUT_OWN_EVENTS.has(type)) {
+        keepOwnHandler(enhancedNode as unknown as HTMLInputElement, name, type, undefined);
+      } else {
+        enhancedNode.removeEventListener(type, previousAttributes[name]);
+      }
       delete listeners[name];
-    } else {
+    } else if (!heldAsADefault(enhancedNode, name, nextAttributes)) {
       removeByQualifiedName(enhancedNode, name);
     }
   }
+}
+
+/**
+ * An `<input>`'s `value` or `checked` attribute that its `defaultValue` or `defaultChecked` holds:
+ * `writeDefaults` writes it, and only when the default changes. Taken away here and written back
+ * there, a radio's `checked` would turn the default back on and the user's pick off, on every pass.
+ *
+ * An `<option>`'s `selected` is its `Select`'s, the same way, while the render says nothing of it — the
+ * types refuse it on the option. Taken away on hydration and written back by the select, it took the
+ * option the reader picked before the script arrived. One the render does say, past the types, is the
+ * render's to take away.
+ */
+function heldAsADefault(enhancedNode: EnhancedHTMLNode, name: string, nextAttributes: NodeAttributes): boolean {
+  if (enhancedNode.nodeName === "OPTION") return name === "selected" && !("selected" in nextAttributes);
+  if (enhancedNode.nodeName !== "INPUT") return false;
+  // Exactly when `writeDefaults` writes it: a default beside the model's `value` or `checked` is not.
+  if (name === "value") return "defaultValue" in nextAttributes && nextAttributes.value == null;
+  if (name === "checked") return "defaultChecked" in nextAttributes && typeof nextAttributes.checked !== "boolean";
+  return false;
 }
 
 /**

@@ -2,6 +2,12 @@ import { describe, test, expect, beforeEach } from "vitest";
 import { Component } from "../base/Component";
 import { state, created, mounted, destroyed } from "../base/decorators";
 import { Portal } from "../base/Portal";
+import { State } from "../reactivity/State";
+import { bootstrap } from "../index";
+import { createRef } from "../base/Ref";
+import { ChildrenRegion } from "../core/childrenRegion";
+import { portalTarget, PORTAL_TARGET_ATTR } from "../base/portalTarget";
+import { list } from "../base/list";
 import { getDOM, findAll } from "../test/setup";
 import { resetDiagnostics } from "../debug/diagnostics";
 import type { RamondaNode } from "../types/vdom";
@@ -268,6 +274,596 @@ describe("Portal follows a reactive target", () => {
   });
 
   /**
+   * A component the children gain while the block is away is created on the page, when the target
+   * returns — its `@mounted` sees an element in the document, which is what lets it measure or focus.
+   */
+  test("a component added while the block is away is mounted on the page", async () => {
+    const mountedInDocument: boolean[] = [];
+    class Chart extends Component {
+      el = createRef<HTMLElement>();
+      @mounted
+      measure() {
+        mountedInDocument.push(this.el.current?.isConnected === true);
+      }
+      render() {
+        return <i ref={this.el}>chart</i>;
+      }
+    }
+    class Page extends Component {
+      @state open = true;
+      @state withChart = false;
+      portal = this.use(Portal, (self: Page) => ({
+        children: self.withChart ? [<b key="d">dialog</b>, <Chart key="c" />] : [<b key="d">dialog</b>],
+        target: (self.open ? document.body : undefined) as Element,
+      }));
+      render() {
+        return <div>page</div>;
+      }
+    }
+    const { instance, settle } = await getDOM<Page>(<Page />);
+    try {
+      instance.open = false;
+      await settle();
+      instance.withChart = true;
+      await settle();
+      expect(mountedInDocument).toEqual([]);
+      instance.open = true;
+      await settle();
+      expect(mountedInDocument).toEqual([true]);
+    } finally {
+      instance.open = false;
+      await settle();
+    }
+  });
+
+  /**
+   * A row inside a waiting block that its own signal changes is not rebuilt off the page either: a
+   * component the row gains is created when the target returns, on the page.
+   */
+  test("a list row in a block that is away is rebuilt when it returns", async () => {
+    const mountedInDocument: boolean[] = [];
+    class Badge extends Component {
+      el = createRef<HTMLElement>();
+      @mounted
+      measure() {
+        mountedInDocument.push(this.el.current?.isConnected === true);
+      }
+      render() {
+        return <i ref={this.el}>new</i>;
+      }
+    }
+    class Page extends Component {
+      @state open = true;
+      @state fresh = false;
+      items = [{ id: 1 }];
+      row = (_item: { id: number }) => <li>{this.fresh ? <Badge /> : "old"}</li>;
+      portal = this.use(Portal, (self: Page) => ({
+        children: <ul>{list(self.items, self.row)}</ul>,
+        target: (self.open ? document.body : undefined) as Element,
+      }));
+      render() {
+        return <div>page</div>;
+      }
+    }
+    const { instance, settle } = await getDOM<Page>(<Page />);
+    try {
+      instance.open = false;
+      await settle();
+      instance.fresh = true;
+      await settle();
+      expect(mountedInDocument).toEqual([]);
+      instance.open = true;
+      await settle();
+      expect(mountedInDocument).toEqual([true]);
+    } finally {
+      instance.open = false;
+      await settle();
+    }
+  });
+
+  /**
+   * A block that comes back takes the place it left, not the end of the target: two portals in one
+   * container keep their order across a close and an open — a modal reopened under a toast stays
+   * under it.
+   */
+  test("a block that comes back takes the place it left", async () => {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    class Page extends Component {
+      @state open = true;
+      first = this.use(Portal, (self: Page) => ({
+        children: <b id="order-first">first</b>,
+        target: (self.open ? host : undefined) as Element,
+      }));
+      second = this.use(Portal, () => ({ children: <b id="order-second">second</b>, target: host }));
+      render() {
+        return <div>page</div>;
+      }
+    }
+    const { instance, settle } = await getDOM<Page>(<Page />);
+    const order = () => Array.from(host.querySelectorAll("b"), (b) => b.id);
+    try {
+      expect(order()).toEqual(["order-first", "order-second"]);
+      instance.open = false;
+      await settle();
+      expect(order()).toEqual(["order-second"]);
+      instance.open = true;
+      await settle();
+      expect(order()).toEqual(["order-first", "order-second"]);
+    } finally {
+      host.remove();
+    }
+  });
+
+  /**
+   * Coming back into an element the owner renders leaves that element's own children in their order:
+   * nothing of the portal's stays among them while it is away. Measured before: a mark left in the
+   * host split its paragraphs around the block — 1, 3, the guest, 2.
+   */
+  test("a block that comes back into the owner's own element keeps that element's children in order", async () => {
+    class Page extends Component {
+      @state open = true;
+      @state items = [1];
+      section = createRef<HTMLElement>();
+      portal = this.use(Portal, (self: Page) => ({
+        children: <b id="inline-guest">guest</b>,
+        target: (self.open ? self.section.current : undefined) as Element,
+      }));
+      render() {
+        return (
+          <section ref={this.section}>
+            {this.items.map((i) => (
+              <p key={i}>{i}</p>
+            ))}
+          </section>
+        );
+      }
+    }
+    const { instance, settle, container } = await getDOM<Page>(<Page />);
+    const shown = () => Array.from(container.querySelector("section")!.children, (child) => child.textContent);
+    // The section exists only after the first render, so the factory sees it on its next run.
+    instance.open = false;
+    await settle();
+    instance.open = true;
+    await settle();
+    expect(shown()).toEqual(["1", "guest"]);
+
+    instance.open = false;
+    await settle();
+    instance.items = [1, 2];
+    await settle();
+    instance.open = true;
+    await settle();
+    instance.items = [1, 2, 3];
+    await settle();
+
+    expect(shown()).toEqual(["1", "2", "3", "guest"]);
+  });
+
+  /**
+   * Closing a portal closes the portals inside it. A modal's dropdown, portalled to a layer of its
+   * own, leaves the page with the modal and comes back with it — the same component, not destroyed —
+   * and one the modal gains while closed is built only when it opens.
+   */
+  describe("a portal inside a portal", () => {
+    let layer: HTMLElement;
+    let destroyedMenus = 0;
+    class Menu extends Component<{ id: string }> {
+      @state picked = "none";
+      @destroyed
+      gone() {
+        destroyedMenus++;
+      }
+      render() {
+        return <ul id={this.props.id}>{this.picked}</ul>;
+      }
+    }
+    let dialog: Dialog | undefined;
+    class Dialog extends Component {
+      /** Its own state, so it renders off the page while the modal is closed. */
+      @state second = false;
+      menu = this.use(Portal, () => ({ children: <Menu id="nested-menu" />, target: layer }));
+      @created
+      known() {
+        dialog = this;
+      }
+      render() {
+        return <div id="nested-dialog">{this.second ? <Dropdown /> : null}</div>;
+      }
+    }
+    class Dropdown extends Component {
+      menu = this.use(Portal, () => ({ children: <Menu id="nested-second" />, target: layer }));
+      render() {
+        return <i>dropdown</i>;
+      }
+    }
+    class Page extends Component {
+      @state open = true;
+      modal = this.use(Portal, (self: Page) => ({
+        children: <Dialog />,
+        target: (self.open ? document.body : undefined) as Element,
+      }));
+      render() {
+        return <div>page</div>;
+      }
+    }
+    beforeEach(() => {
+      layer = document.createElement("aside");
+      document.body.appendChild(layer);
+      destroyedMenus = 0;
+    });
+
+    test("closing the outer one takes the inner one off the page, and opening brings it back", async () => {
+      const { instance, settle } = await getDOM<Page>(<Page />);
+      try {
+        const menu = layer.querySelector("#nested-menu");
+        expect(menu).not.toBeNull();
+        instance.open = false;
+        await settle();
+        expect(layer.querySelector("#nested-menu")).toBeNull();
+        instance.open = true;
+        await settle();
+        expect({ same: layer.querySelector("#nested-menu") === menu, destroyedMenus }).toEqual({
+          same: true,
+          destroyedMenus: 0,
+        });
+      } finally {
+        instance.open = false;
+        await settle();
+        layer.remove();
+      }
+    });
+
+    /**
+     * A ROOT started from inside a modal is not inside it: it has no parent, and its portals belong to
+     * nothing. Closing the modal leaves its toasts where they are.
+     */
+    test("a root started from inside a closed portal is not closed with it", async () => {
+      class Toasts extends Component {
+        toast = this.use(Portal, () => ({ children: <b id="nested-toast">saved</b>, target: layer }));
+        render() {
+          return <i>toasts</i>;
+        }
+      }
+      const elsewhere = document.createElement("div");
+      document.body.appendChild(elsewhere);
+      class Starter extends Component {
+        @created
+        start() {
+          bootstrap(<Toasts />, elsewhere);
+        }
+        render() {
+          return <b>starter</b>;
+        }
+      }
+      class Host extends Component {
+        @state open = true;
+        modal = this.use(Portal, (self: Host) => ({
+          children: <Starter />,
+          target: (self.open ? document.body : undefined) as Element,
+        }));
+        render() {
+          return <div>host</div>;
+        }
+      }
+      const { instance, settle } = await getDOM<Host>(<Host />);
+      try {
+        await settle();
+        expect(layer.querySelector("#nested-toast")).not.toBeNull();
+        instance.open = false;
+        await settle();
+        expect(layer.querySelector("#nested-toast")).not.toBeNull();
+      } finally {
+        elsewhere.remove();
+        layer.remove();
+      }
+    });
+
+    /**
+     * Opening brings the inner portals back before the outer one's children are reconciled, so one
+     * those children build then goes after them — the layer keeps the order of the tree.
+     */
+    test("an inner portal built as the outer one opens goes after the ones already there", async () => {
+      class Tip extends Component {
+        tip = this.use(Portal, () => ({ children: <b id="nested-tip">tip</b>, target: layer }));
+        render() {
+          return <i>tip</i>;
+        }
+      }
+      class Modal extends Component<{ tip: boolean }> {
+        menu = this.use(Portal, () => ({ children: <b id="nested-first">menu</b>, target: layer }));
+        render() {
+          return <div>{this.props.tip ? <Tip /> : null}</div>;
+        }
+      }
+      class Host extends Component {
+        @state open = true;
+        @state tip = false;
+        modal = this.use(Portal, (self: Host) => ({
+          children: <Modal tip={self.tip} />,
+          target: (self.open ? document.body : undefined) as Element,
+        }));
+        render() {
+          return <div>host</div>;
+        }
+      }
+      const { instance, settle } = await getDOM<Host>(<Host />);
+      try {
+        instance.open = false;
+        await settle();
+        instance.tip = true;
+        await settle();
+        instance.open = true;
+        await settle();
+        expect(Array.from(layer.querySelectorAll("b"), (b) => b.id)).toEqual(["nested-first", "nested-tip"]);
+      } finally {
+        instance.open = false;
+        await settle();
+        layer.remove();
+      }
+    });
+
+    /**
+     * An inner portal whose owner the reopening removes is not opened first: what it gained while
+     * closed is never built, mounted and torn down for nothing.
+     */
+    test("an inner portal whose owner goes as the outer one opens builds nothing", async () => {
+      let built = 0;
+      class Row extends Component {
+        @created
+        counted() {
+          built++;
+        }
+        render() {
+          return <li>row</li>;
+        }
+      }
+      let picker: Picker | undefined;
+      class Picker extends Component {
+        @state rows = false;
+        menu = this.use(Portal, (self: Picker) => ({
+          children: <ul>{self.rows ? <Row /> : null}</ul>,
+          target: layer,
+        }));
+        @created
+        known() {
+          picker = this;
+        }
+        render() {
+          return <i>picker</i>;
+        }
+      }
+      class Host extends Component {
+        @state open = true;
+        @state confirm = false;
+        modal = this.use(Portal, (self: Host) => ({
+          children: self.confirm ? <b>confirm</b> : <Picker />,
+          target: (self.open ? document.body : undefined) as Element,
+        }));
+        render() {
+          return <div>host</div>;
+        }
+      }
+      const { instance, settle } = await getDOM<Host>(<Host />);
+      try {
+        instance.open = false;
+        await settle();
+        picker!.rows = true;
+        await settle();
+        instance.confirm = true;
+        await settle();
+        instance.open = true;
+        await settle();
+        expect(built).toBe(0);
+      } finally {
+        instance.open = false;
+        await settle();
+        layer.remove();
+      }
+    });
+
+    /**
+     * A reopening whose reconcile throws — a child's `@destroyed` — still opens the portals inside:
+     * the block is back on the page, and a dropdown left closed would be lost for good.
+     */
+    test("a reconcile that throws on opening still opens the inner portals", async () => {
+      class Fragile extends Component {
+        @destroyed
+        boom() {
+          throw new Error("teardown failed");
+        }
+        render() {
+          return <i>fragile</i>;
+        }
+      }
+      class Shell extends Component<{ fragile: boolean }> {
+        menu = this.use(Portal, () => ({ children: <b id="nested-kept">menu</b>, target: layer }));
+        render() {
+          return <div>{this.props.fragile ? <Fragile /> : null}</div>;
+        }
+      }
+      class Host extends Component {
+        @state open = true;
+        @state fragile = true;
+        modal = this.use(Portal, (self: Host) => ({
+          children: <Shell fragile={self.fragile} />,
+          target: (self.open ? document.body : undefined) as Element,
+        }));
+        render() {
+          return <div>host</div>;
+        }
+      }
+      const { instance, settle } = await getDOM<Host>(<Host />);
+      try {
+        instance.open = false;
+        await settle();
+        instance.fragile = false;
+        await settle();
+        instance.open = true;
+        await settle().catch(() => {});
+        expect(layer.querySelector("#nested-kept")).not.toBeNull();
+      } finally {
+        layer.remove();
+      }
+    });
+
+    test("an inner portal the closed one gains is built when it opens", async () => {
+      const { instance, settle } = await getDOM<Page>(<Page />);
+      try {
+        instance.open = false;
+        await settle();
+        dialog!.second = true;
+        await settle();
+        expect(layer.querySelector("#nested-second")).toBeNull();
+        instance.open = true;
+        await settle();
+        expect(layer.querySelector("#nested-second")).not.toBeNull();
+      } finally {
+        instance.open = false;
+        await settle();
+        layer.remove();
+      }
+    });
+  });
+
+  /** A list row changing in a closed portal does not render the portal's owner for nothing. */
+  test("a row changing in a closed portal renders nothing", async () => {
+    let renders = 0;
+    // A signal the page does not own, so only the row reads it.
+    const price = new State(1);
+    class Page extends Component {
+      @state open = true;
+      items = [{ id: 1 }];
+      row = (_item: { id: number }) => <li>{price.get()}</li>;
+      portal = this.use(Portal, (self: Page) => ({
+        children: <ul>{list(self.items, self.row)}</ul>,
+        target: (self.open ? document.body : undefined) as Element,
+      }));
+      render() {
+        renders++;
+        return <div>page</div>;
+      }
+    }
+    const { instance, settle } = await getDOM<Page>(<Page />);
+    instance.open = false;
+    await settle();
+    renders = 0;
+    for (let tick = 2; tick <= 4; tick++) {
+      price.set(tick);
+      await settle();
+    }
+    expect(renders).toBe(0);
+  });
+
+  /** A block in another document — an iframe — waits in a fragment of that document, not of this one. */
+  test("a block closed in an iframe stays in the iframe's document", async () => {
+    const frame = document.createElement("iframe");
+    document.body.appendChild(frame);
+    const inside = frame.contentDocument!.body;
+    class Page extends Component {
+      @state open = true;
+      portal = this.use(Portal, (self: Page) => ({
+        children: <b id="framed">framed</b>,
+        target: (self.open ? inside : undefined) as Element,
+      }));
+      render() {
+        return <div>page</div>;
+      }
+    }
+    const { instance, settle } = await getDOM<Page>(<Page />);
+    try {
+      const node = inside.querySelector("#framed")!;
+      instance.open = false;
+      await settle();
+      expect(node.ownerDocument).toBe(frame.contentDocument);
+    } finally {
+      frame.remove();
+    }
+  });
+
+  /** A block whose target is absent from the start is not built off the page: nothing is created yet. */
+  test("a target absent at mount builds nothing until it arrives", async () => {
+    let made = 0;
+    class Toast extends Component<{ n: number }> {
+      @created
+      made() {
+        made++;
+      }
+      render() {
+        return <b>saved</b>;
+      }
+    }
+    class Page extends Component {
+      @state root: Element | null = null;
+      @state tick = 0;
+      portal = this.use(Portal, (self: Page) => ({ children: <Toast n={self.tick} />, target: self.root as Element }));
+      render() {
+        return <div>page</div>;
+      }
+    }
+    const { instance, settle } = await getDOM<Page>(<Page />);
+    instance.tick = 1;
+    await settle();
+    expect(made).toBe(0);
+  });
+
+  /**
+   * A target that goes away takes the block off the page — `target: open ? document.body : undefined`
+   * is how a modal closes — and brings the SAME nodes back when it returns: the component in it keeps
+   * its state, is not destroyed while away, and hears what changed meanwhile once it is back.
+   */
+  test("a target that goes away takes the block off the page, and back", async () => {
+    let destroyedCount = 0;
+    class Dialog extends Component<{ title: string }> {
+      @state typed = "";
+      @destroyed
+      gone() {
+        destroyedCount++;
+      }
+      render() {
+        return <b id="away-dialog">{this.props.title}</b>;
+      }
+    }
+    class Page extends Component {
+      @state open = true;
+      @state title = "first";
+      portal = this.use(Portal, (self: Page) => ({
+        children: <Dialog title={self.title} />,
+        target: (self.open ? document.body : undefined) as Element,
+      }));
+      render() {
+        return <div id="away-page">page</div>;
+      }
+    }
+
+    const { instance, settle } = await getDOM<Page>(<Page />);
+    const shown = document.getElementById("away-dialog")!;
+    expect(shown.parentNode).toBe(document.body);
+
+    try {
+      instance.open = false;
+      await settle();
+      expect(document.getElementById("away-dialog")).toBeNull();
+      expect(destroyedCount).toBe(0);
+
+      instance.title = "second";
+      await settle();
+      instance.open = true;
+      await settle();
+
+      const back = document.getElementById("away-dialog")!;
+      expect({ same: back === shown, text: back.textContent, destroyedCount }).toEqual({
+        same: true,
+        text: "second",
+        destroyedCount: 0,
+      });
+    } finally {
+      instance.open = false;
+      await settle();
+    }
+  });
+
+  /**
    * Absent at mount, supplied later — which the class doc promises and nothing measured.
    *
    * It is not an error state. A portal declared beside a container that is not on screen yet is
@@ -518,3 +1114,210 @@ describe("Portal is a full lifecycle boundary", () => {
     target.remove();
   });
 });
+
+describe("Portal follows its props", () => {
+  /**
+   * `children` and `target` are watched together, so one update that changes both moves and
+   * re-renders the block in a single reconcile rather than two.
+   */
+  test("a change to children and target together reconciles once", async () => {
+    const first = document.createElement("div");
+    const second = document.createElement("div");
+    document.body.append(first, second);
+
+    class Page extends Component {
+      @state there = false;
+      portal = this.use(Portal, (self: Page) => ({
+        children: <b>{self.there ? "second" : "first"}</b>,
+        target: self.there ? second : first,
+      }));
+      render() {
+        return <p>page</p>;
+      }
+    }
+
+    // Counted where the portal's block is reconciled.
+    const proto = ChildrenRegion.prototype as unknown as { reconcile(...args: unknown[]): void };
+    const original = proto.reconcile;
+    let reconciles = 0;
+    proto.reconcile = function (this: unknown, ...args: unknown[]) {
+      reconciles++;
+      original.apply(this, args);
+    };
+    const app = await getDOM<Page>(<Page />);
+    try {
+      await app.settle();
+      reconciles = 0;
+      app.instance.there = true;
+      await app.settle();
+    } finally {
+      proto.reconcile = original;
+    }
+
+    expect(reconciles).toBe(1);
+    expect(second.textContent).toBe("second");
+    expect(first.textContent).toBe("");
+    app.unmount();
+    first.remove();
+    second.remove();
+  });
+
+  /**
+   * A `list()` of the same array and callback, as a portal's children, does not reconcile the block
+   * again on a factory run that changed nothing it shows: its descriptor is stamped by the block, and
+   * the next one arrives unstamped.
+   */
+  test("a list() as children does not reconcile again on an unrelated factory run", async () => {
+    const proto = ChildrenRegion.prototype as unknown as { reconcile(...args: unknown[]): void };
+    const original = proto.reconcile;
+    let reconciles = 0;
+    proto.reconcile = function (this: unknown, ...args: unknown[]) {
+      reconciles++;
+      original.apply(this, args);
+    };
+    class Page extends Component {
+      @state tick = 0;
+      row(r: string) {
+        return <i>{r}</i>;
+      }
+      portal = this.use(Portal, (self: Page) => ({
+        children: list(ROWS, self.row),
+        target: document.body,
+        n: self.tick,
+      }));
+      render() {
+        return <p>{this.tick}</p>;
+      }
+    }
+    const app = await getDOM<Page>(<Page />);
+    try {
+      await app.settle();
+      reconciles = 0;
+      app.instance.tick = 1;
+      await app.settle();
+    } finally {
+      proto.reconcile = original;
+    }
+
+    expect(reconciles).toBe(0);
+    app.unmount();
+  });
+
+  /**
+   * A container that was not on the page when the portal first reconciled — it was appended one of
+   * its own — is where the block goes once the page has it.
+   */
+  test("a named target's container that arrives later is where the block goes", async () => {
+    class Page extends Component {
+      @state tick = 0;
+      portal = this.use(Portal, (self: Page) => ({
+        children: <b>here</b>,
+        target: portalTarget("late"),
+        n: self.tick,
+      }));
+      render() {
+        return <p>{this.tick}</p>;
+      }
+    }
+    const app = await getDOM<Page>(<Page />);
+    await app.settle();
+    const appended = document.querySelector(`[${PORTAL_TARGET_ATTR}="late"]`);
+    expect(appended?.textContent).toBe("here");
+
+    const real = document.createElement("div");
+    real.setAttribute(PORTAL_TARGET_ATTR, "late");
+    document.body.prepend(real);
+    app.instance.tick = 1;
+    await app.settle();
+
+    expect(real.textContent).toBe("here");
+    app.unmount();
+    real.remove();
+    appended?.remove();
+  });
+
+  /**
+   * A container replaced under the same name — a layout that renders it, unmounted and mounted
+   * again — is the one the block moves to on the next run of the props factory, which hands over a
+   * new token and so looks the container up again.
+   */
+  test("a named target's container replaced under it is followed", async () => {
+    const first = document.createElement("div");
+    first.setAttribute(PORTAL_TARGET_ATTR, "swap");
+    document.body.append(first);
+    class Page extends Component {
+      @state tick = 0;
+      portal = this.use(Portal, (self: Page) => ({
+        children: <b>moved</b>,
+        target: portalTarget("swap"),
+        n: self.tick,
+      }));
+      render() {
+        return <p>{this.tick}</p>;
+      }
+    }
+    const app = await getDOM<Page>(<Page />);
+    await app.settle();
+    expect(first.textContent).toBe("moved");
+
+    first.remove();
+    const second = document.createElement("div");
+    second.setAttribute(PORTAL_TARGET_ATTR, "swap");
+    document.body.append(second);
+    app.instance.tick = 1;
+    await app.settle();
+
+    expect(second.textContent).toBe("moved");
+    app.unmount();
+    second.remove();
+  });
+
+  /**
+   * `portalTarget("name")` written in the factory is a new token on every run. The container it names,
+   * and children that say the same, are no change: the block is not reconciled again — counted, as a
+   * reconcile is the whole block's work. A change to what the children say still is.
+   */
+  test("a factory run that names the same container with the same children reconciles nothing", async () => {
+    const container = document.createElement("div");
+    container.setAttribute(PORTAL_TARGET_ATTR, "same");
+    document.body.append(container);
+    class Page extends Component {
+      @state count = 0;
+      portal = this.use(Portal, (self: Page) => ({
+        children: <b>{self.count > 0 ? "on" : "off"}</b>,
+        target: portalTarget("same"),
+      }));
+      render() {
+        return <p>{this.count}</p>;
+      }
+    }
+    const app = await getDOM<Page>(<Page />);
+    await app.settle();
+    const original = ChildrenRegion.prototype.reconcile;
+    let reconciles = 0;
+    ChildrenRegion.prototype.reconcile = function (this: ChildrenRegion, ...args: Parameters<typeof original>) {
+      reconciles++;
+      return original.apply(this, args);
+    };
+    try {
+      app.instance.count = 1;
+      await app.settle();
+      const afterTheChange = reconciles;
+      for (const count of [2, 3, 4, 5, 6]) {
+        app.instance.count = count;
+        await app.settle();
+      }
+      expect({ afterTheChange, afterTheSame: reconciles - afterTheChange, shown: container.textContent }).toEqual({
+        afterTheChange: 1,
+        afterTheSame: 0,
+        shown: "on",
+      });
+    } finally {
+      ChildrenRegion.prototype.reconcile = original;
+      app.unmount();
+      container.remove();
+    }
+  });
+});
+
+const ROWS = ["r"];

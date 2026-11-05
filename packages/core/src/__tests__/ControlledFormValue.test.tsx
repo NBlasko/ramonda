@@ -19,10 +19,10 @@ import { Component, state } from "../index";
  * caret to the end, and a control that jumps on every unrelated render is its own
  * bug.
  *
- * Known gap, deliberately not tested here: a handler that REJECTS a keystroke
- * (leaving `@state` untouched) schedules no render at all, so nothing re-applies
- * the value. Fixing that means deciding what an input with a `value` and no
- * handler should be, which is a design question, not a defect in this diff.
+ * A control with a `value` or a `checked` and no handler of its own shows the
+ * model the moment it is touched — the field answers the edit in its own listener
+ * (`answerEdit` in `core/field.ts`) — and a render after that still writes the
+ * model whenever it moves.
  */
 
 describe("controlled form values", () => {
@@ -52,10 +52,9 @@ describe("controlled form values", () => {
     const input = app.container.querySelector("input")!;
     expect(input.value).toBe("abc");
 
-    // Typing changes the property; the attribute still reads "abc", which is
-    // exactly what the diff used to compare against.
+    // Typing changes the property, and the field puts the model back at once: no handler moved it.
     await app.user.type(input, "d");
-    expect(input.value).toBe("abcd");
+    expect(input.value).toBe("abc");
 
     app.instance.tick++;
     await app.settle();
@@ -87,7 +86,7 @@ describe("controlled form values", () => {
     expect(box.checked).toBe(false);
 
     await app.user.click(box);
-    expect(box.checked).toBe(true);
+    expect(box.checked).toBe(false);
 
     app.instance.tick++;
     await app.settle();
@@ -196,9 +195,9 @@ describe("controlled form values", () => {
     await app.settle();
     expect(picked()).toEqual(["b"]);
 
-    // The user picks a third; the model never agreed.
+    // The user picks a third; the model never agreed, so the group is put back at once.
     await app.user.click(c);
-    expect(picked()).toEqual(["c"]);
+    expect(picked()).toEqual(["b"]);
 
     app.instance.tick++;
     await app.settle();

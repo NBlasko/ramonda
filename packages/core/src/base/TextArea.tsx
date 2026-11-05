@@ -1,8 +1,12 @@
+import { writeValue } from "../core/Attribute";
+import type { EnhancedHTMLNode } from "../types/vdom";
 import { Component } from "./Component";
 import { createRef } from "./Ref";
 import { mounted, updated } from "./decorators";
 import { __h } from "../vdom/h";
-import { forwarded, given } from "./forwarded";
+import { composingIn, showsTheModel } from "../core/field";
+import { answer, controlled, forwarded, given } from "./forwarded";
+import type { RefusedVerbatimStandard } from "../types/commonTypes";
 import type { RefTarget } from "./Ref";
 
 /**
@@ -23,7 +27,8 @@ import type { RefTarget } from "./Ref";
  * its DEFAULT value: it stops driving the element the moment somebody types in it, and from then on
  * the property is the only thing that speaks.
  */
-export interface TextAreaProps {
+/** `on:input` is refused as on any element: a standard event has one spelling — see `RefusedVerbatimStandard`. */
+export interface TextAreaProps extends Partial<RefusedVerbatimStandard> {
   /**
    * Anything a `<textarea>` takes, passed straight through.
    *
@@ -33,8 +38,16 @@ export interface TextAreaProps {
    */
   // biome-ignore lint/suspicious/noExplicitAny: the same latitude the tag's own type gives
   [attribute: Lowercase<string>]: any;
-  /** What the field holds. */
-  value: string | number;
+  /**
+   * What the field holds, held by the model: after every input the field shows this again, so a
+   * handler that does not move it undoes the keystroke.
+   */
+  value?: string | number;
+  /**
+   * What the field holds FIRST, after which it is the user's: it is never put back. For a field whose
+   * text is read when the form is sent rather than held in state. Not with `value`.
+   */
+  defaultValue?: string | number;
   className?: string;
   key?: string | number;
   ref?: RefTarget<HTMLTextAreaElement>;
@@ -78,26 +91,29 @@ export class TextArea extends Component<TextAreaProps> {
 
     /**
      * A caller may hand over a DIFFERENT ref between renders, and the element's own ref did not
-     * change, so nothing else would notice. This is the one moment that can — **but it does not
-     * arrive on the swap itself.**
-     *
-     * `helpers/arePropsBagsEqual.ts` ignores `ref` on purpose, and its reason is measured: an
-     * inline `ref={createRef()}` would otherwise re-render the child on every parent render. So a
-     * render whose ONLY change is the ref is not a props change at all — this component is never
-     * queued, `rawProps` is not even replaced, and the line below does not run. The swap is honoured
-     * by the next update, whatever causes it.
-     *
-     * That premise — "pointed at the host element when the component is created and never read
-     * again" — stopped being true when this component and `Select` were written to hand the caller's
-     * ref over themselves. `Select` passes its own version of this test only because its children
-     * are rebuilt on every parent render, so it always has another reason to update; a `TextArea`
-     * whose value did not change has none. Measured and pinned in
-     * `__tests__/ControlledTextarea.test.tsx`, and the fix is a decision about that comparison
-     * rather than about this line.
+     * change, so nothing else would notice. This is the one moment that can — and it arrives on the
+     * swap itself: `ref` is compared like every other prop (`helpers/arePropsBagsEqual.ts`), so a
+     * render whose only change is the ref is still a props change. Pinned in
+     * `__tests__/ControlledTextarea.test.tsx`.
      */
     if (this.h !== this.props.ref) this.g(field);
 
-    field.value = String(this.props.value);
+    // A `defaultValue` field is the user's: its text child said where it starts, and nothing more.
+    if (this.props.value == null) return;
+    // Not while an input method is composing in it: writing the field would cancel the word, and its
+    // `compositionend` shows the model.
+    if (composingIn(this)) return;
+    // Through the attribute layer's own write, which keeps the caret across a rewrite of the same
+    // length — an upper-casing handler leaves it where the user typed, as an `<input>` does.
+    // Only a value that differs: writing the same one would collapse the user's selection, and
+    // `writeValue` is the write for a value that has changed.
+    const model = String(this.props.value);
+    if (!showsTheModel(field, model)) writeValue(field as unknown as EnhancedHTMLNode, model, false);
+  }
+
+  /** The listener a controlled field answers its events with — see `answer` in `forwarded.ts`. */
+  a(event: Event): void {
+    answer(this, event);
   }
 
   render() {
@@ -107,7 +123,11 @@ export class TextArea extends Component<TextAreaProps> {
      * there is nothing to suppress: the refusal keeps meaning exactly what it says at every call
      * site that writes the tag, and this one does not write it.
      */
-    const text = String(this.props.value);
+    // `value`, or else `defaultValue` — the text child is where a textarea's default lives. A later
+    // `defaultValue` reaches a field nobody has typed in, and stops at one somebody has: the browser
+    // keeps an edited field's own value and no longer reads its text, which is the whole of what a
+    // default is.
+    const text = this.props.value == null ? String(this.props.defaultValue ?? "") : String(this.props.value);
 
     /**
      * An EMPTY value is no child at all, not a child that is the empty string.
@@ -117,9 +137,16 @@ export class TextArea extends Component<TextAreaProps> {
      * node disagrees with it. Measured: RMD007, *rendered the text "" but the server sent nothing* —
      * a report about correct markup, which is the worst kind.
      */
+    // `change` too: one a TextArea gets with no `input` before it — an autofill, a change dispatched
+    // alone — is an edit, and is answered as one; the tail of a typed edit only reaches `onchange`.
+    const field = controlled(this, this.a, ["oninput", "onchange"]);
     return __h(
       "textarea",
-      { ...forwarded(this, ["value", "children", "ref"]), ref: this.e },
+      {
+        ...forwarded(this, ["value", "defaultValue", "children", "ref", ...field.replaced]),
+        ...field.listeners,
+        ref: this.e,
+      },
       ...given(text || undefined),
     );
   }

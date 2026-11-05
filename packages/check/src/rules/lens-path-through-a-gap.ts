@@ -1,6 +1,9 @@
 import ts from "typescript";
+import { isNothing } from "./element";
+import { unwrap } from "./follow-value";
 import { positionOf } from "../syntax";
 import { importedFromPackage } from "./core-import";
+import { namesThePlatform } from "./platform";
 import { guardedBy, type Means } from "./guard-walk";
 import type { ModuleContext, ModuleRule } from "./rule";
 
@@ -27,8 +30,8 @@ import type { ModuleContext, ModuleRule } from "./rule";
  *
  * ## What it can prove, and where it goes quiet
  *
- * This package may not ask the compiler for a type: the program is built with `noLib` and `types`
- * overridden, and `resolve` — where a name was DECLARED — is the whole of what it asks. So the path
+ * This package does not ask the compiler for a type here — see "What it may NOT do" in `rule.ts` —
+ * and `resolve` — where a name was DECLARED — is the whole of what it asks. So the path
  * is read from DECLARATIONS and from type annotations as written:
  *
  * - the root of the chain has to resolve to something with a written annotation (a `const`, a
@@ -303,7 +306,7 @@ function narrowing(text: string, resolve: ModuleContext["resolve"]): Means {
    * be reassigned, so its truthiness is the path's at the moment it was read.
    */
   const isPath = (node: ts.Expression): boolean => {
-    const bare = stripParens(node);
+    const bare = unwrap(node);
     if (pathText(bare) === text) return true;
     if (!ts.isIdentifier(bare)) return false;
     const declaration = resolve(bare)?.declarations?.[0];
@@ -321,19 +324,19 @@ function narrowing(text: string, resolve: ModuleContext["resolve"]): Means {
    * reached from the `!==` arm below.
    */
   const isThroughPath = (node: ts.Expression): boolean => {
-    const longer = pathText(stripParens(node));
+    const longer = pathText(unwrap(node));
     return longer !== undefined && longer.startsWith(`${text}.`);
   };
 
-  /** `Boolean(x)`, and only the global one: a name declared in this project resolves, the lib's does not. */
+  /** `Boolean(x)`, and only the global one — not a `Boolean` this project declares. */
   const asBooleanCall = (node: ts.Expression): ts.Expression | undefined => {
     if (!ts.isCallExpression(node) || node.arguments.length !== 1) return undefined;
     if (!ts.isIdentifier(node.expression) || node.expression.text !== "Boolean") return undefined;
-    return resolve(node.expression) === undefined ? node.arguments[0] : undefined;
+    return namesThePlatform(node.expression, resolve) ? node.arguments[0] : undefined;
   };
 
   const proves = (condition: ts.Expression): boolean => {
-    const node = stripParens(condition);
+    const node = unwrap(condition);
     if (isPath(node) || isThroughPath(node)) return true;
     if (ts.isPrefixUnaryExpression(node) && node.operator === ts.SyntaxKind.ExclamationToken) {
       return refutes(node.operand);
@@ -344,13 +347,13 @@ function narrowing(text: string, resolve: ModuleContext["resolve"]): Means {
       const { operatorToken: op, left, right } = node;
       // `a && b` proves the path when either side does: both have to hold for the guarded code to run.
       if (op.kind === ts.SyntaxKind.AmpersandAmpersandToken) return proves(left) || proves(right);
-      if (isNotEqual(op.kind)) return isPath(left) ? isEmptiness(right) : isPath(right) && isEmptiness(left);
+      if (isNotEqual(op.kind)) return isPath(left) ? isNothing(right) : isPath(right) && isNothing(left);
     }
     return false;
   };
 
   const refutes = (condition: ts.Expression): boolean => {
-    const node = stripParens(condition);
+    const node = unwrap(condition);
     /**
      * The bare path is NOT a refutation, and reading it as one is the bug this comment replaces.
      *
@@ -369,7 +372,7 @@ function narrowing(text: string, resolve: ModuleContext["resolve"]): Means {
     if (ts.isBinaryExpression(node)) {
       const { operatorToken: op, left, right } = node;
       if (op.kind === ts.SyntaxKind.BarBarToken) return refutes(left) || refutes(right);
-      if (isEqual(op.kind)) return isPath(left) ? isEmptiness(right) : isPath(right) && isEmptiness(left);
+      if (isEqual(op.kind)) return isPath(left) ? isNothing(right) : isPath(right) && isNothing(left);
     }
     return false;
   };
@@ -381,16 +384,6 @@ function narrowing(text: string, resolve: ModuleContext["resolve"]): Means {
 function isConstDeclaration(declaration: ts.VariableDeclaration): boolean {
   const list = declaration.parent;
   return ts.isVariableDeclarationList(list) && (list.flags & ts.NodeFlags.Const) !== 0;
-}
-
-function stripParens(node: ts.Expression): ts.Expression {
-  return ts.isParenthesizedExpression(node) ? stripParens(node.expression) : node;
-}
-
-/** `null` or `undefined`, as the other side of a comparison. */
-function isEmptiness(node: ts.Expression): boolean {
-  const bare = stripParens(node);
-  return bare.kind === ts.SyntaxKind.NullKeyword || (ts.isIdentifier(bare) && bare.text === "undefined");
 }
 
 function isEqual(kind: ts.SyntaxKind): boolean {

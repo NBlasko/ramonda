@@ -54,11 +54,17 @@ export interface ListNode {
   readonly owner: unknown;
   readonly vnodes: VNode[];
   /**
-   * Per item: true when its vnode is the very object from last render and none
-   * of the signals it read have changed. The diff may then keep the existing DOM
-   * node and skip walking into it — the subtree cannot have gone stale.
+   * Per item: true when its vnode is the very object from last render, none of
+   * the signals it read have changed, and no list inside it has a row that did.
+   * The diff may then keep the existing DOM node and skip walking into it — the
+   * subtree cannot have gone stale.
    */
   readonly clean: boolean[];
+  /**
+   * Per item: the row's scope, so the diff can say which row a list it meets
+   * inside sits in. Opaque here; see `enclosingRow` in `helpers/listEngine.ts`.
+   */
+  readonly rows?: readonly unknown[];
 }
 
 /**
@@ -84,9 +90,9 @@ export interface ListRegion {
    */
   entries: RecordEntry[];
   /**
-   * The `ListNode` that produced these nodes. The engine hands back the very
-   * same object when nothing about the list changed, so identity here is the
-   * signal that the whole region can be left alone without looking at an item.
+   * The BUILT `ListNode` these entries came from. The engine hands back this very object only when
+   * nothing in the list changed — not a row, and not a list inside one — so the same object again
+   * means the region can be kept without looking at a row.
    */
   source: ListNode;
 }

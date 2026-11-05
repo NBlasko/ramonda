@@ -97,3 +97,29 @@ describe("reorderChildren fuzz", () => {
     expect(inserts).toBe(1);
   });
 });
+
+/**
+ * A run of nodes that go in goes in first to last, as a parser puts them: a parent that answers to
+ * arrival order — a `<select>` choosing the first option put in — reads the run as the page does.
+ */
+describe("the order nodes go in", () => {
+  test("the nodes that go in arrive first to last, on both sides of one that stays", async () => {
+    const parent = document.createElement("div");
+    const label = (text: string) => {
+      const el = document.createElement("i");
+      el.textContent = text;
+      return el;
+    };
+    const kept = label("k");
+    parent.appendChild(kept);
+    const arrived: string[] = [];
+    const observer = new MutationObserver((records) => {
+      for (const record of records) for (const node of record.addedNodes) arrived.push(node.textContent ?? "");
+    });
+    observer.observe(parent, { childList: true });
+    reorderChildren(parent, [label("a"), label("b"), kept, label("c"), label("d")]);
+    await Promise.resolve();
+    observer.disconnect();
+    expect({ arrived, order: order(parent) }).toEqual({ arrived: ["a", "b", "c", "d"], order: "a,b,k,c,d" });
+  });
+});

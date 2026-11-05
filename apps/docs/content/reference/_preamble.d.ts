@@ -26,6 +26,8 @@ declare global {
     [key: string]: any;
   }
   const f: any;
+  /** A form's number field, as the reader's form hands it over — for the RMF005 example. */
+  const age: import("@ramonda/form").LeafApi<number>;
   const register: (...args: any[]) => any;
   /** The reader's own lookup, for the async-validation examples. */
   const taken: (value: string) => Promise<boolean>;

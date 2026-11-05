@@ -1,3 +1,4 @@
+import { enclosingBlock, type EnclosingBlock } from "../core/enclosingBlock";
 import type { VNode, ListNode } from "../types/vdom";
 import { IS_LIST, attach, detach } from "../helpers/constants";
 import { isListNode } from "../vdom/guards";
@@ -8,9 +9,6 @@ import { checkRowStability, isStrictRender } from "../debug/renderStability";
 import { identityOf, stampIdentity, carryIdentity } from "./itemIdentity";
 import { createId } from "./createId";
 import type { Each, ItemRender } from "../base/list";
-
-/** Listener ids must be unique across every signal, not just within one list. */
-let scopeSequence = 0;
 
 /**
  * DEV-only: builds the row a SECOND time and reports what came out different — RMD020, for the one
@@ -87,7 +85,93 @@ interface ItemScope<T> {
   vnode: VNode;
   deps: Set<State<unknown>>;
   dirty: boolean;
+  /**
+   * Something INSIDE this row changed while the row itself did not: a list in it has a row that is
+   * dirty. The callback need not run again — its vnode is still right — but the diff must open the
+   * row, because opening it is the only way to reach the list that changed. See `markRowsAbove`.
+   */
+  dirtyBelow: boolean;
+  /** The engine this row belongs to, so a list inside it can climb from row to row. */
+  engine: ListEngine<unknown>;
   addDep(state: State<unknown>): void;
+}
+
+export type RowScope = ItemScope<unknown>;
+
+/**
+ * The list row the diff is inside right now, or `undefined` outside every list and inside a component.
+ *
+ * Set by `reconcileEntries` and `hydrateLevel` while they walk a list's rows, and read by `build`: a
+ * list built there is INSIDE that row, and is told so. A component resets it, because a component's
+ * lists report to the component, which re-renders itself — nothing above it has to be opened.
+ */
+export const enclosingRow: { current: RowScope | undefined } = { current: undefined };
+
+/**
+ * Where a list reports when the level that holds it was given a host of its own — a `ChildrenRegion`'s,
+ * whose children came from a hook's props factory rather than a render.
+ *
+ * `reconcileEntries` and `hydrateLevel` take that host as a parameter, and an element's children are
+ * reconciled by a call that is not handed it: `children: <ul>{list(…)}</ul>` gave the list the
+ * owner's host, the owner re-rendered with the factory's cache still clean, and nothing reconciled the
+ * region. This carries it down through elements; a component resets it, because a component's lists
+ * report to the component.
+ */
+export const enclosingHost: { current: ListHost | undefined } = { current: undefined };
+
+/**
+ * Runs `run` with `row` and `host` as the list context, and puts what was there back after — however
+ * `run` ends. The one place that saves and restores the two, so no entry into the diff can restore
+ * one and forget the other. A walk over a list's rows moves `enclosingRow` from row to row inside
+ * `run`; that is restored here too.
+ */
+export function inListContext<T>(row: RowScope | undefined, host: ListHost | undefined, run: () => T): T {
+  const outerRow = enclosingRow.current;
+  const outerHost = enclosingHost.current;
+  enclosingRow.current = row;
+  enclosingHost.current = host;
+  try {
+    return run();
+  } finally {
+    enclosingRow.current = outerRow;
+    enclosingHost.current = outerHost;
+  }
+}
+
+/**
+ * Runs one level of a reconcile or a hydration in the list context it sets: `rows` when its children
+ * are a list's rows, `host` when they are a region's. Only such a level saves and restores the
+ * context; every other level — nearly all of them — leaves it as it found it, and runs as it is.
+ */
+export function inLevel<T>(rows: readonly unknown[] | undefined, host: ListHost | undefined, run: () => T): T {
+  if (rows === undefined && host === undefined) return run();
+  return inListContext(enclosingRow.current, host ?? enclosingHost.current, run);
+}
+
+/**
+ * Runs a reconcile or a hydration that starts a level of its own — a root, a component's own render,
+ * a hook's block — outside any row and any region's host, and in `block`: the portal block a region
+ * reconciles, and no block for every other entry. A component built inside a block's render takes
+ * the block from its parent instead (`ComponentRuntime.block`), so a ROOT started from inside one —
+ * which has no parent — belongs to nothing.
+ *
+ * Every one of these entries runs from a drain today, where both are already empty; this makes that
+ * a property of the entry rather than of the order things happen to run in. A root mounted, or a
+ * component re-rendered, synchronously inside a row walk would otherwise give its lists that row as
+ * their parent and that region's host.
+ */
+export function atTopLevel<T>(run: () => T, block?: EnclosingBlock): T {
+  // From a drain — every entry today — all three are already empty, and there is nothing to restore.
+  if (enclosingRow.current === undefined && enclosingHost.current === undefined && enclosingBlock.current === block) {
+    return run();
+  }
+  const outerBlock = enclosingBlock.current;
+  enclosingBlock.current = block;
+  try {
+    return inListContext(undefined, undefined, run);
+  } finally {
+    enclosingBlock.current = outerBlock;
+  }
 }
 
 /** What the engine needs from whoever owns the list. */
@@ -125,6 +209,13 @@ export class ListEngine<T> {
   private ids = new Map<T, string[]>();
   /** key → the scope that produced its vnode last render. */
   private scopes = new Map<string, ItemScope<T>>();
+  /**
+   * The row of an outer list this list sits in, or `undefined` when it sits in a render of its own.
+   *
+   * Taken from `enclosingRow` on every build, so it follows the list if the diff ever builds it from
+   * somewhere else.
+   */
+  parent: RowScope | undefined;
 
   /** The array and the result of the last full pass, for the whole-list skip. */
   private lastEach: readonly T[] | undefined;
@@ -179,6 +270,7 @@ export class ListEngine<T> {
   build(descriptor: ListDescriptor<T>, host: ListHost, owner: unknown): ListNode {
     const each = descriptor.each;
     const render = descriptor.builder;
+    this.parent = enclosingRow.current;
 
     /**
      * No array at all — `undefined` while data is loading, or a conditional that has gone away.
@@ -202,9 +294,10 @@ export class ListEngine<T> {
 
     // Whole-list skip. The array is replaced on every change (mutating it in
     // place is reported as RMD005), so the SAME reference plus no invalidated
-    // scope means nothing about this list can differ from last render — not one
-    // item, not the order, not the length. Handing back the identical ListNode
-    // object tells the diff the same thing, and it leaves the region untouched.
+    // scope — its own rows', or those of a list inside one (see `markRowsAbove`) —
+    // means nothing about this list can differ from last render: not one item, not
+    // the order, not the length. Handing back the identical ListNode runs no
+    // callback and rebuilds no row.
     //
     // Measured 30ms → 0.06ms on 10000 items.
     //
@@ -256,6 +349,7 @@ export class ListEngine<T> {
     const next = new Map<T, string[]>();
     const out: VNode[] = [];
     const clean: boolean[] = [];
+    const rowScopes: RowScope[] = [];
     const nextScopes = new Map<string, ItemScope<T>>();
 
     for (let i = 0; i < each.length; i++) {
@@ -320,7 +414,11 @@ export class ListEngine<T> {
         rows++;
         if (existing.vnode.attributes?.key != null) keyedRows++;
         out.push(existing.vnode);
-        clean.push(true);
+        // Clean only when nothing inside it changed either: a row whose own callback read nothing new
+        // can still hold a list that did, and claiming it unopened leaves that list as it was.
+        clean.push(!existing.dirtyBelow);
+        existing.dirtyBelow = false;
+        rowScopes.push(existing as RowScope);
         this.claimScope(nextScopes, scopeKey, existing);
         continue;
       }
@@ -390,6 +488,8 @@ export class ListEngine<T> {
 
       out.push(vnode);
       clean.push(false);
+      this.lastScope!.dirtyBelow = false;
+      rowScopes.push(this.lastScope! as RowScope);
       this.claimScope(nextScopes, scopeKey, this.lastScope!);
     }
 
@@ -405,7 +505,7 @@ export class ListEngine<T> {
     }
     this.scopes = nextScopes;
 
-    return this.wrap(owner, out, clean);
+    return this.wrap(owner, out, clean, rowScopes);
   }
 
   /**
@@ -447,12 +547,16 @@ export class ListEngine<T> {
     host: ListHost,
   ): VNode | null | undefined {
     const scope: ItemScope<T> = existing ?? {
-      listenerId: ++scopeSequence,
+      // From `createId()`, the counter every other listener draws from: a `State` keys its listeners
+      // by id, so a number of this row's own would replace whichever compute or effect held it.
+      listenerId: createId(),
       item,
       index,
       vnode: undefined as unknown as VNode,
       deps: new Set(),
       dirty: false,
+      dirtyBelow: false,
+      engine: this as ListEngine<unknown>,
       addDep(state: State<unknown>) {
         this.deps.add(state);
       },
@@ -483,6 +587,7 @@ export class ListEngine<T> {
         onChange: () => {
           scope.dirty = true;
           this.anyDirty = true;
+          this.markRowsAbove();
           host.reBuild();
         },
       });
@@ -497,10 +602,35 @@ export class ListEngine<T> {
     return vnode;
   }
 
-  private wrap(owner: unknown, vnodes: VNode[], clean: boolean[] = []): ListNode {
-    const node: ListNode = { [IS_LIST]: true, owner, vnodes, clean };
+  private wrap(owner: unknown, vnodes: VNode[], clean: boolean[] = [], rows: RowScope[] = []): ListNode {
+    const node: ListNode = { [IS_LIST]: true, owner, vnodes, clean, rows };
     this.lastNode = node;
     return node;
+  }
+
+  /**
+   * Tells every row above this list that something inside it changed.
+   *
+   * A row's own scope only hears the signals ITS callback read, and a list inside the row is built
+   * later, by the diff, under scopes of its own. So when one of those changes, the outer row is still
+   * clean by everything it knows, and the diff claims it without opening it: categories listing
+   * products priced in `this.currency`, the categories array copied once, and a change of currency
+   * left every price as it was. Marking the rows above makes the outer engine run its per-row pass and
+   * hand those rows to the diff as not clean — opened, not rebuilt.
+   *
+   * Stops at the first row already marked whose engine already knows: everything above it was marked
+   * by whoever marked it. A mark alone is not enough to stop at — a pass that threw part-way through
+   * its rows has cleared the engine's flag and left later rows' marks standing.
+   */
+  private markRowsAbove(): void {
+    for (
+      let row = this.parent;
+      row !== undefined && !(row.dirtyBelow && row.engine.anyDirty);
+      row = row.engine.parent
+    ) {
+      row.dirtyBelow = true;
+      row.engine.anyDirty = true;
+    }
   }
 
   /**
@@ -517,6 +647,8 @@ export class ListEngine<T> {
     this.scopes.clear();
     // The cached result would otherwise keep the last vnode tree alive too.
     this.lastNode = undefined;
+    // And the row above: through it, the outer engine and its whole tree.
+    this.parent = undefined;
     this.lastEach = undefined;
     this.lastBuilder = undefined;
   }

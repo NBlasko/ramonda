@@ -69,6 +69,35 @@ class App extends Component {
             A
           </option>
         </Select>
+
+        {/* ✓ A select with neither `value` nor `defaultValue` leaves its options alone: this chooses. */}
+        <Select aria-label="I">
+          <option value="a">A</option>
+          <option value="b" selected>
+            B
+          </option>
+        </Select>
+
+        {/* ✗ `defaultValue` decides the start, and sets every option from it. */}
+        <Select defaultValue={value} aria-label="J">
+          <option value="b" selected>
+            B
+          </option>
+        </Select>
+
+        {/* ✗ A spread on the select may carry `value` — `{...bind(field)}` does. */}
+        <Select {...rest} aria-label="K">
+          <option value="c" selected>
+            C
+          </option>
+        </Select>
+
+        {/* ✓ `value={null}` is no value: the option's own claim chooses. */}
+        <Select value={null} aria-label="L">
+          <option value="d" selected>
+            D
+          </option>
+        </Select>
       </div>
     );
   }

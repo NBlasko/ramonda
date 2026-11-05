@@ -1,3 +1,4 @@
+import { enclosingBlock } from "../core/enclosingBlock";
 import { COMPONENT_TYPE, CHILD_RECORD, ORIGIN_SYM, REQUEST_ATTR } from "../helpers/constants";
 import { className, displayName } from "../helpers/utils";
 import { installClientRequestScope } from "./requestContext";
@@ -19,7 +20,18 @@ import { isComponentClose, isComponentOpen, markerBlob } from "../core/component
 import { errorHandler } from "../core/errorHandler";
 import { lifecycleCleanupManagement } from "../helpers/lifecycleMenagement";
 import { isListNode, isVNode } from "../vdom/guards";
-import { buildLazyList, isLazyList, type ListEngine, type LazyListNode, type ListHost } from "../helpers/listEngine";
+import {
+  buildLazyList,
+  isLazyList,
+  enclosingRow,
+  enclosingHost,
+  atTopLevel,
+  inLevel,
+  type ListEngine,
+  type LazyListNode,
+  type ListHost,
+  type RowScope,
+} from "../helpers/listEngine";
 import { restoreComponentTree } from "./restore";
 import { queuePostCommit, flushPostCommit } from "../core/commit";
 import { addTaskToQueue } from "../core/Task";
@@ -82,7 +94,7 @@ export function hydrateRoot(vnode: ComponentChild, container: HTMLElement): void
    * is where.
    */
   const walk: HydrationWalk = { cursor: container.firstChild as EnhancedChildNode | null, count: 0 };
-  const level = hydrateLevel([vchild], undefined, container, walk);
+  const level = atTopLevel(() => hydrateLevel([vchild], undefined, container, walk));
   // This level ends here, so a tail no child claimed is nobody's — the same sweep `hydrateChildren`
   // does, and it belongs to whoever ENDS a level rather than to `hydrateLevel`, which is shared by
   // a list's recursion and must leave a tail for the outer level's next text child.
@@ -365,6 +377,8 @@ function hydrateComponentRegion(
       componentRuntime.depth = placeholderRuntime.depth + 1;
       componentRuntime.parent = placeholder;
     }
+    // As on a build — see `ComponentRuntime.block`.
+    componentRuntime.block = enclosingBlock.current ?? placeholderRuntime?.block;
 
     // Restore server state before any client lifecycle/render sees it. Note:
     // isInitialized is still falsy here, so the @state setters below don't enqueue
@@ -490,7 +504,8 @@ function hydrateComponentRegion(
     const children = generateRenderOutput(component);
 
     walk.cursor = nextOf(open);
-    const inner = hydrateLevel(children, component, parent, walk);
+    // A component's lists report to the component — see `buildComponentRegion` in `DiffAndMerge.ts`.
+    const inner = atTopLevel(() => hydrateLevel(children, component, parent, walk));
     region.entries = inner.entries;
 
     closeBlock(open as unknown as Comment, walk, component);
@@ -738,12 +753,27 @@ export function hydrateLevel(
   walk: HydrationWalk,
   /** See `reconcileEntries` — a region's items report to the region, not a render. */
   listHost?: ListHost,
+  /** See `reconcileEntries` — per child, the list row it is, when `children` are a list's rows. */
+  rows?: readonly unknown[],
+): { entries: RecordEntry[]; hasRegion: boolean } {
+  // `inLevel` decides whether this level sets a list context, so the rule is written once.
+  return inLevel(rows, listHost, () => hydrateLevelEntries(children, placeholder, parent, walk, listHost, rows));
+}
+
+function hydrateLevelEntries(
+  children: unknown[],
+  placeholder: MaybeComponent,
+  parent: Node,
+  walk: HydrationWalk,
+  listHost: ListHost | undefined,
+  rows: readonly unknown[] | undefined,
 ): { entries: RecordEntry[]; hasRegion: boolean } {
   const entries: RecordEntry[] = [];
   let hasRegion = false;
 
   for (let i = 0; i < children.length; i++) {
     const rawVchild = children[i];
+    if (rows !== undefined) enclosingRow.current = rows[i] as RowScope | undefined;
 
     if (isListNode(rawVchild)) {
       // A `list()` descriptor has no `vnodes` yet — building them is what the
@@ -759,13 +789,13 @@ export function hydrateLevel(
         const materialized = buildLazyList(
           rawVchild as unknown as LazyListNode,
           undefined,
-          listHost ?? listHostFor(placeholder),
+          enclosingHost.current ?? listHostFor(placeholder),
         );
         listNode = materialized.node as typeof rawVchild;
         engine = materialized.engine;
       }
 
-      const inner = hydrateLevel(listNode.vnodes, placeholder, parent, walk, listHost);
+      const inner = hydrateLevel(listNode.vnodes, placeholder, parent, walk, listHost, listNode.rows);
       entries.push({
         owner: listNode.owner,
         entries: inner.entries,
@@ -933,7 +963,7 @@ function resumeHydration(component: BaseComponent): void {
 
   try {
     const children = generateRenderOutput(component);
-    const inner = hydrateLevel(children, component, block.parent, walk);
+    const inner = atTopLevel(() => hydrateLevel(children, component, block.parent, walk));
     region.entries = inner.entries;
 
     closeBlock(block.open, walk, component);

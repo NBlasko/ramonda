@@ -171,6 +171,19 @@ describe("third-party versions", () => {
     expect(all.jsdom).toBe(`^${core.devDependencies.jsdom!.replace(/^[\^~]/, "")}`);
   });
 
+  /** A formatter prints differently within a minor, so a new project gets the very Biome checked here. */
+  test("Biome is the exact version this workspace runs, in the dependency and the config's schema", () => {
+    const { pkg, dir } = make("ssr", ["testing", "biome"]);
+    const root = JSON.parse(readFileSync(join(workspace, "package.json"), "utf8")) as {
+      devDependencies: Record<string, string>;
+    };
+    const config = JSON.parse(readFileSync(join(dir, "biome.json"), "utf8")) as { $schema: string };
+
+    expect(root.devDependencies["@biomejs/biome"]).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(pkg.devDependencies["@biomejs/biome"]).toBe(root.devDependencies["@biomejs/biome"]);
+    expect(config.$schema).toBe(`https://biomejs.dev/schemas/${root.devDependencies["@biomejs/biome"]}/schema.json`);
+  });
+
   test("TypeScript is the newest major the CSS compiler and the checker can read with", () => {
     /**
      * TS 7 has no JavaScript API, so both peer ranges stop below it. A project scaffolded on an

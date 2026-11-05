@@ -22,10 +22,10 @@ import { renderToString } from "../hydration/ssr";
  * `1,234` becomes `12,345` needs to know which characters are separators, which is the app's
  * knowledge. The third test pins that we leave it alone rather than moving it somewhere wrong.
  */
-class Field extends Component<{ id: string; transform: (text: string) => string; start: string }> {
+class Field extends Component<{ id: string; rewrite: (text: string) => string; start: string }> {
   @state text = this.props.start;
   onInput(event: Event) {
-    this.text = this.props.transform((event.target as HTMLInputElement).value);
+    this.text = this.props.rewrite((event.target as HTMLInputElement).value);
   }
   render() {
     return <input id={this.props.id} value={this.text} oninput={this.onInput} />;
@@ -54,7 +54,7 @@ describe("the caret in a controlled field", () => {
    * than it looks.
    */
   test("a model that echoes the input never touches the caret", async () => {
-    const app = await getDOM<Field>(<Field id="echo" start="abc" transform={(text) => text} />);
+    const app = await getDOM<Field>(<Field id="echo" start="abc" rewrite={(text) => text} />);
     await app.settle();
 
     expect(await typeInTheMiddle(app, "echo", 1, "x")).toEqual({ value: "axbc", caret: 2 });
@@ -66,7 +66,7 @@ describe("the caret in a controlled field", () => {
    * landed at the end of the word.
    */
   test("a rewrite of the same length puts the caret back", async () => {
-    const app = await getDOM<Field>(<Field id="upper" start="ABC" transform={(text) => text.toUpperCase()} />);
+    const app = await getDOM<Field>(<Field id="upper" start="ABC" rewrite={(text) => text.toUpperCase()} />);
     await app.settle();
 
     expect(await typeInTheMiddle(app, "upper", 1, "x")).toEqual({ value: "AXBC", caret: 2 });
@@ -86,7 +86,7 @@ describe("the caret in a controlled field", () => {
       <Field
         id="money"
         start="123"
-        transform={(text) => text.replace(/\D/g, "").replace(/\B(?=(\d{3})+(?!\d))/g, ",")}
+        rewrite={(text) => text.replace(/\D/g, "").replace(/\B(?=(\d{3})+(?!\d))/g, ",")}
       />,
     );
     await app.settle();

@@ -6,6 +6,7 @@ import { openingOf, tagOf } from "./element";
 import { follow, type Looking } from "./follow-value";
 import { NAMES_IT } from "./naming";
 import { enclosingElement } from "./html";
+import { formTableFor } from "./formTable";
 import type { FormControl, IdReference, LazySite, ProjectContext, Resolver, UnreadableId } from "./rule";
 
 /**
@@ -317,7 +318,7 @@ export function idTableFor(sources: readonly ts.SourceFile[], resolve: Resolver)
 
   for (const file of sources) walk(file);
 
-  return { ids, prefixes, unreadable, references, controls, lazySites };
+  return { ids, prefixes, unreadable, references, controls, lazySites, forms: formTableFor(sources, resolve) };
 }
 
 /**

@@ -57,14 +57,11 @@ import type { ElementRule, ElementContext } from "./rule";
  * rather than matched by name, and through the class chain: `@StableProps` merges along it, so a
  * base's list settles a subclass's props exactly as its own does.
  *
- * **Children, and a JSX element handed over as a prop.** Both are rebuilt every render and both
- * really do defeat comparison — measured in `ChildrenAreProps.test.tsx`: a `<Panel>text</Panel>`
- * renders four times over three renders of its parent, where a component given no children renders
- * once. It is not reported because it is not a mistake anyone made on that line: EVERY composed
- * element on the page is this, and a rule that reported them would report the whole app. The fix is
- * a decision about the component rather than about the call site — `@StableProps` names `children`
- * like any other prop, and a slot declared as a component CLASS is already stable, because a class
- * is the same reference forever.
+ * **Children, and a JSX element handed over as a prop.** Both are rebuilt every render, and core
+ * compares them by what they say (`helpers/settleMarkup.ts`), so they cost nothing when they say the
+ * same — `ChildrenAreProps.test.tsx` measures it. JSX is not a literal this rule reads at all. An
+ * object or an array HOLDING nodes — `slots={{ header: <Header /> }}` — is the app's object and is
+ * compared by reference, so it IS reported, and `@StableProps("slots")` on the child is its answer.
  *
  * The literal INSIDE either one is still reported. `header={<Row conf={{ dense: true }} />}` is
  * walked as its own element, and the `conf` on it is a choice like any other.
@@ -259,6 +256,10 @@ export const freshObjectInProps = {
       "Where the literal is the API you want, the CHILD can declare the prop a value with\n" +
       '`@StableProps("conf")`. The framework then compares it by content and hands the child back\n' +
       "the identity it already had, and this stops reporting the call site.\n\n" +
+      "A slots object or an array of nodes — `slots={{ header: <Header /> }}` — is the same case.\n" +
+      "Children and a single node as a prop are compared by content already; an object or array\n" +
+      "holding them is yours, and only the child can say it is never changed in place:\n" +
+      '`@StableProps("slots")`.\n\n' +
       "The page is correct either way, which is why this is a warning: what it costs is work, not\n" +
       "output. `<div style={{…}}>` is NOT reported — a host element hands nothing to a component,\n" +
       "so there is nothing to compare.\n\n",

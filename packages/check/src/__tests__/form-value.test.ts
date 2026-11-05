@@ -1,0 +1,56 @@
+import { describe, expect, test } from "vitest";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { analyzeProject } from "../analyze";
+import { formValueInTheWrongControl } from "../rules/form-value-in-the-wrong-control";
+
+const here = dirname(fileURLToPath(import.meta.url));
+const fixture = join(here, "fixtures", "form-value");
+const found = () => analyzeProject(join(fixture, "tsconfig.json")).findings["form-value-in-the-wrong-control"] ?? [];
+const lineOf = (label: string) =>
+  readFileSync(join(fixture, "app.tsx"), "utf8")
+    .split("\n")
+    .findIndex((line) => line.includes(`aria-label="${label}"`)) + 1;
+
+/**
+ * A number or a day a form's field shows, in a control that does not hand it back. Read off the type
+ * of the control's `value`, which the form marks.
+ */
+describe("a form value in the wrong control", () => {
+  test("each shape is reported, and named", () => {
+    expect(found().map((issue) => [issue.line, issue.kind, issue.control])).toEqual([
+      [lineOf("age as text"), "number", "<input>"],
+      [lineOf("age typed text"), "number", '<input type="text">'],
+      [lineOf("born as a number"), "day", '<input type="number">'],
+      [lineOf("age in a text area"), "number", "<TextArea>"],
+      [lineOf("age in a select") - 0, "number", "<Select>"],
+      [lineOf("age in an unread type"), "type-unread", "<input type={kind}>"],
+      [lineOf("loose"), "unreadable", "<input>"],
+      [lineOf("name on a slider"), "text", '<input type="range">'],
+      [lineOf("name as a number"), "text", '<input type="number">'],
+      [lineOf("name in an unread type"), "type-unread", "<input type={kind}>"],
+      [lineOf("name in a maybe number"), "text", '<input type="number | text">'],
+      [lineOf("name in a box"), "text", '<input type="checkbox">'],
+      [lineOf("age with the constraints"), "number", "<input>"],
+      [lineOf("agree as text"), "no-value", "<input>"],
+      [lineOf("name in a file input"), "text", '<input type="file">'],
+      [lineOf("any field"), "unreadable", "<input>"],
+    ]);
+  });
+});
+
+describe("what the report tells the author", () => {
+  const line = (control: string) =>
+    formValueInTheWrongControl.report
+      .lines({ kind: "number", control, file: "app.tsx", line: 1, column: 1 })
+      .slice(1)
+      .join("\n");
+
+  /** A choice from a list has no number input to move to: the schema takes the option's text as a number. */
+  test("a number in a Select is told to take the choice as a number, an input to take its type", () => {
+    expect(line("<Select>")).toContain("z.coerce.number()");
+    expect(line("<Select>")).not.toContain('<input type="number">');
+    expect(line("<input>")).toContain('<input type="number">');
+  });
+});

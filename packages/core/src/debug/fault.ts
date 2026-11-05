@@ -29,6 +29,10 @@
  *
  * - **RMD017**, a deferred hydration that never resumed. The server's markup is still on screen, so
  *   the page looks finished; the subtree has no listeners and answers nothing.
+ * - **RMD062**, a field that read its model while the render of its last edit was waiting for the
+ *   running commit. `field-set-by-an-event` reads the class that sends the edit, and not a library
+ *   it hands the field to, so the edit can come from code no check read; and what it costs is a
+ *   wrong value, once, with nothing on screen to say so.
  * - **RMD047**, `@memoized` with no key. Development throws, which is how it is meant to be
  *   caught — but a build that shipped without being run rebuilds the handler on every render, and
  *   everything it is passed to re-renders with it, for the life of the page.
@@ -66,7 +70,12 @@ const reported = new Set<string>();
  * safe to send is the app's decision to make in its collector, on a record that carries nothing it
  * did not already have.
  */
-export function reportFault(code: string, dedupKey: string, message: string): void {
+export function reportFault(
+  code: string,
+  dedupKey: string,
+  message: string,
+  severity: "warn" | "error" = "error",
+): void {
   const sink = globalThis.__RAMONDA_DIAGNOSTICS__;
   if (sink === undefined) return;
 
@@ -77,7 +86,7 @@ export function reportFault(code: string, dedupKey: string, message: string): vo
   sink({
     code,
     scope: "ramonda/core",
-    severity: "error",
+    severity,
     message,
     time: Date.now(),
     dedupKey: id,

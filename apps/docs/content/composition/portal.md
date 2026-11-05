@@ -97,6 +97,28 @@ There is no `disabled`/inline flag: to keep the content in place, point `target`
 element in your own render. A `target` that only becomes available after mount is placed
 then, not lost.
 
+A target that goes away takes the content off the page, which is how a modal closes:
+
+```tsx
+this.use(Portal, (self) => ({
+  children: <Dialog />,
+  target: (self.open ? document.body : undefined) as Element,
+}));
+```
+
+The same nodes come back when the target does. `Dialog` keeps its state and is not destroyed
+while it is away. A change to the children made meanwhile is applied when it comes back, so a
+component they gain is created on the page, where its `@mounted` can measure and focus.
+
+Inside the closed portal, a component still renders when its own state changes. It does so off the
+page, the same as anywhere else, so one rule holds for every component. A component that `Dialog`
+renders while closed, such as a chart that finishes loading, is mounted off the page. If it measures
+itself or takes focus, it does that when the portal opens.
+
+A portal inside a closed portal closes with it. A modal's dropdown, portalled to a layer of its
+own, leaves the page when the modal closes and comes back when it opens, whatever its own `target`
+says. One the modal gains while it is closed is built when it opens.
+
 ## `list()` works here
 
 A portal's children go through the real reconciler, so a list is a list — minted identity,
@@ -147,6 +169,11 @@ const modals = portalTarget("modals");
 
 this.use(Portal, () => ({ children: <Dialog />, target: modals }));
 ```
+
+A token kept once — a module constant, as here, or a field — finds its container once. Written
+inside the callback, `target: portalTarget("modals")` is a new token on every run and finds the
+container again, so the portal follows a container a layout mounts again; a run that finds the same
+container with the same children moves nothing.
 
 The server collects that target's content and hands it back on `page.portals`, keyed by the
 name — from `renderPage` for a per-request render and from `renderStatic` for a baked one.

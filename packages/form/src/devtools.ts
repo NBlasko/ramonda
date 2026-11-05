@@ -60,7 +60,14 @@ export interface InspectableForm {
   readonly revision: number;
 }
 
-const forms: { id: number; form: InspectableForm; key: object }[] = [];
+/** One mounted form, as the panel holds it. */
+interface Entry {
+  id: number;
+  form: InspectableForm;
+  key: object;
+}
+
+const forms: Entry[] = [];
 let nextId = 1;
 
 /**
@@ -158,7 +165,7 @@ window.addEventListener("ramonda:form-gone", (event) => {
  * of what a reader wanted — and the metadata argument is the only place the right half can come from,
  * because a hook cannot see the component that used it.
  */
-function nameOf(entry: { id: number; form: InspectableForm }): string {
+function nameOf(entry: Entry): string {
   const label = entry.form.label;
   return label === undefined ? `Form ${entry.id}` : `Form (${label})`;
 }
@@ -193,7 +200,7 @@ function formsPanel(): PanelPlugin {
     },
 
     run(rowId, actionId) {
-      const entry = forms.find((candidate) => String(candidate.id) === rowId.split("::")[0]);
+      const entry: Entry | undefined = forms.find((candidate) => String(candidate.id) === rowId.split("::")[0]);
       if (!entry) return "that form is no longer mounted";
 
       if (actionId === "reset") {
@@ -208,7 +215,7 @@ function formsPanel(): PanelPlugin {
   };
 }
 
-function rowsFor(entry: { id: number; form: InspectableForm }): PanelRow[] {
+function rowsFor(entry: Entry): PanelRow[] {
   const form = entry.form;
   const errors = form.fieldErrors();
   const { touched, changed } = form.interaction();

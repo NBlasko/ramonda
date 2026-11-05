@@ -367,7 +367,7 @@ describe("a form field read by a component that does not watch it", () => {
   test("says which member would never update, and where", () => {
     const unwatchedFields = run("unwatched-field").findings["unwatched-fields"];
     const broken = unwatchedFields.find((issue) => issue.component === "Broken");
-    expect(broken?.member).toBe("bind");
+    expect(broken?.member).toBe("inputValue");
     expect(broken?.line).toBeGreaterThan(0);
     expect(broken?.file.endsWith("app.tsx")).toBe(true);
   });

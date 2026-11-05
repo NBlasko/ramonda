@@ -368,7 +368,13 @@ describe("a row's element survives a remove with no key written", () => {
           <ul>
             {list(this.f.fields.tags.$.rows, (row) => (
               <li data-row={row.id}>
-                <input {...row.field.$.bind} />
+                <input
+                  name={row.field.$.name}
+                  value={row.field.$.inputValue}
+                  oninput={row.field.$.oninput}
+                  onblur={row.field.$.onblur}
+                  aria-invalid={row.field.$.invalid}
+                />
               </li>
             ))}
           </ul>

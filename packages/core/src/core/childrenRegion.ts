@@ -1,3 +1,4 @@
+import type { EnclosingBlock } from "./enclosingBlock";
 import { createId } from "../helpers/createId";
 import { normalizeChildren } from "../vdom/h";
 import {
@@ -12,7 +13,7 @@ import { addTaskToQueue } from "./Task";
 import { queuePostCommit } from "./commit";
 import { hydrateLevel, isSplitRemainder, type HydrationWalk } from "../hydration/hydrate";
 import { reportBlockLengthMismatch } from "../debug/hydrationMismatch";
-import type { ListHost } from "../helpers/listEngine";
+import { atTopLevel, type ListHost } from "../helpers/listEngine";
 import type { EnhancedChildNode, MaybeComponent, RecordEntry } from "../types/vdom";
 import { BLOCK_CLOSE, BLOCK_OWNER, CHILD_RECORD, HOSTS_A_BLOCK, type DONE } from "../helpers/constants";
 
@@ -144,17 +145,51 @@ export class ChildrenRegion {
   /** The last children given, so a self-refresh has something to reconcile. */
   private children: unknown;
   private refreshQueued = false;
+  /** Whether the block is parked off the page — see `park`. */
+  private waiting = false;
+  /** What stood right after a parked block, to come back in front of — see `park`. */
+  private after: WeakRef<ChildNode> | null = null;
   private disposed = false;
   private readonly listHost: ListHost;
 
   constructor(
     private readonly owner: MaybeComponent,
     name: string,
+    /** The portal this block is, for the portals inside it — see `EnclosingBlock`. */
+    private readonly holder?: EnclosingBlock,
   ) {
     this.listHost = {
       reBuild: () => this.invalidate(),
       name,
     };
+  }
+
+  /** Whether the block is somewhere — placed in a parent, or adopted from a server render. */
+  get placed(): boolean {
+    return this.close !== undefined && !this.disposed;
+  }
+
+  /** The document the block's nodes belong to — built or adopted from a server render alike. */
+  get ownerDocument(): Document | undefined {
+    return this.close?.ownerDocument;
+  }
+
+  /**
+   * Moves the block, the same nodes, into `parent` to WAIT there — a fragment off the page — until the
+   * next `reconcile` brings it back. While it waits nothing in it is rebuilt, not even a list row whose
+   * own signal moved: that row stays stale and is rebuilt by the reconcile, on the page.
+   */
+  park(parent: ChildNode): void {
+    if (!this.placed) return;
+    // What stood right after the block, so it comes back in front of it rather than at the end —
+    // another block in a shared target. Nothing is left in the target to say so: a mark among an
+    // element's own children was measured to split them around the block once they changed. Read
+    // before the move, and set after it, because `place` spends it.
+    // Held weakly: a node the region does not own, which a block closed for good must not keep alive.
+    const after = this.waiting ? this.after : this.close?.nextSibling ? new WeakRef(this.close.nextSibling) : null;
+    this.place(parent);
+    this.after = after;
+    this.waiting = true;
   }
 
   /**
@@ -196,6 +231,8 @@ export class ChildrenRegion {
    */
   hostRemoved(): void {
     if (this.disposed || this.open === undefined) return;
+    this.after = null;
+    this.waiting = false;
 
     const held = this.order;
     if (held.length > 0) unmountChildrenNodes(held as EnhancedChildNode[], false);
@@ -223,6 +260,7 @@ export class ChildrenRegion {
   /** Brings the block into line with `children`, inside `parent`. */
   reconcile(children: unknown, parent: ChildNode): void {
     if (this.disposed) return;
+    this.waiting = false;
     this.children = children;
     this.place(parent);
 
@@ -236,7 +274,10 @@ export class ChildrenRegion {
     const before = this.order;
 
     const unclaimed: (EnhancedChildNode | DONE)[] = [];
-    const result = reconcileEntries(normalized, this.record, undefined, this.owner, parent, unclaimed, this.listHost);
+    const result = atTopLevel(
+      () => reconcileEntries(normalized, this.record, undefined, this.owner, parent, unclaimed, this.listHost),
+      this.holder,
+    );
     this.record = result.entries;
     this.publish();
 
@@ -308,7 +349,10 @@ export class ChildrenRegion {
 
     const normalized = normalizeChildren(Array.isArray(children) ? children : [children], this.id);
     const walk: HydrationWalk = { cursor: open.nextSibling as EnhancedChildNode | null, count: 0 };
-    this.record = hydrateLevel(normalized, this.owner, parent, walk, this.listHost).entries;
+    this.record = atTopLevel(
+      () => hydrateLevel(normalized, this.owner, parent, walk, this.listHost),
+      this.holder,
+    ).entries;
 
     /**
      * Where the walk stopped IS the closing anchor, when the server wrote as many nodes as this
@@ -395,6 +439,7 @@ export class ChildrenRegion {
     this.publish();
     this.open?.remove();
     this.close?.remove();
+    this.after = null;
     this.open = undefined;
     this.close = undefined;
     this.parent = undefined;
@@ -420,9 +465,13 @@ export class ChildrenRegion {
     }
     if (this.parent === parent) return;
 
-    parent.appendChild(this.open!);
-    for (const node of this.order) parent.appendChild(node);
-    parent.appendChild(this.close);
+    // Back in front of what stood after it, when that is still there; anywhere else, at the end.
+    const after = this.after?.deref() ?? null;
+    this.after = null;
+    const before = after !== null && after.parentNode === (parent as unknown as ParentNode) ? after : null;
+    parent.insertBefore(this.open!, before);
+    for (const node of this.order) parent.insertBefore(node, before);
+    parent.insertBefore(this.close, before);
     this.parent = parent;
     reparentRegions(this.record, parent);
   }
@@ -472,7 +521,9 @@ export class ChildrenRegion {
    * whole-list skip and touches nothing.
    */
   private invalidate(): void {
-    if (this.disposed || this.refreshQueued) return;
+    // A parked block queues nothing: the row stays stale and is rebuilt when the block comes back,
+    // and its owner is not rendered for a change nobody can see.
+    if (this.disposed || this.waiting || this.refreshQueued) return;
     const owner = this.owner;
     if (!owner) return;
 
@@ -480,7 +531,7 @@ export class ChildrenRegion {
     addTaskToQueue(owner);
     queuePostCommit(owner, () => {
       this.refreshQueued = false;
-      if (this.disposed || this.parent === undefined) return;
+      if (this.disposed || this.waiting || this.parent === undefined) return;
       this.reconcile(this.children, this.parent);
     });
   }

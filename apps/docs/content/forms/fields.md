@@ -1,6 +1,6 @@
 ---
 title: Fields
-description: The field tree — property access instead of string paths, everything behind $, and bind for the control.
+description: The field tree — property access instead of string paths, everything behind $, and the attributes a control is written with.
 section: Forms
 order: 99.1
 ---
@@ -45,7 +45,12 @@ city.path       // "address.city"
 city.name       // the same, for the input's name attribute
 city.set(next)  // write it
 city.reset()    // back to its default
-city.bind       // the attributes for a control
+
+// and, for a field one control holds, what that control is written with:
+city.inputValue // the value as the control shows it
+city.invalid    // whether it has a message, for aria-invalid
+city.oninput    // the control's own handler, which writes the field
+city.onblur     // marks it touched
 ```
 
 ### Why one token instead of eleven names
@@ -63,36 +68,56 @@ f.settings.at("$");              // a field actually named "$"
 f.settings.at(keyFromRuntime);   // a key not known until runtime
 ```
 
-## `bind` — the attributes for the control
+## Writing a control
+
+A control is written with five attributes, each by name:
 
 ```tsx
-<input {...f.email.$.bind} />
+const email = f.email.$;
+
+<input
+  aria-label="Email"
+  name={email.name}
+  value={email.inputValue}
+  oninput={email.oninput}
+  onblur={email.onblur}
+  aria-invalid={email.invalid}
+/>;
 ```
 
-That spread supplies `name`, `value`, `oninput`, `onblur` and `aria-invalid`. The handlers are
-built once per field and reused, so spreading it on every render does not re-attach a listener.
+`oninput` and `onblur` are built once per field and reused, so writing them on every render hands the
+control the same handler each time. Every attribute is there to read where the control is, and inside a form it
+recognises — `<form onsubmit={this.form.submit}>` — `@ramonda/check` reports a control that is missing one.
 
-**The shape follows the value's type**, so `checked` and `value` cannot be swapped by accident:
+**What you write follows the value's type:**
 
-| the field holds | what `bind` gives |
+| the field holds | the control |
 |---|---|
-| `string` | `value` |
-| `number` | `value`, `type="number"` |
-| `boolean` | `checked`, `type="checkbox"` |
-| `Date` | `value` as `YYYY-MM-DD`, `type="date"` |
-| an object or a list | nothing — `bind` is `never`, and spreading it is a type error |
+| `string` | `value={x.inputValue}` — any control but the two that hand back a number, a checkbox and a file input; `type="date"` for a date written as text, which starts at `""` |
+| `number` | `type="number" value={x.inputValue}` — `""` for an emptied field; or `type="range"`, a slider |
+| `boolean` | `type="checkbox" checked={x.value === true}` — a value not set yet, or cleared by a reset, is an unticked box |
+| `Date` | `type="date" value={x.inputValue}` — the day, as `YYYY-MM-DD`; emptied, it holds nothing (`undefined`), so a date that may be empty takes it — `z.date().nullish()` |
+| an object or a list | no control holds one: its `$` has no `oninput`, and writing it is a type error |
 
-The last row is deliberate: no single control holds an object, so asking for one is a mistake
-worth catching at compile time.
+`inputValue` is what a control shows of the value (`InputValue<T>`): a date as its `YYYY-MM-DD`. An
+element's `value` takes anything, so a `Date` written there directly — `value={born.value}` — compiles,
+and the field shows nothing: write `inputValue`. A number shows as `FormNumber`, a date as
+`FormDay` and text as `FormText` — a `number` and two `string`s, marked for `ramonda-check`, which
+reads the mark below.
 
-`Bind<T>` is the type of that spread, and it resolves to one of four shapes — `TextBind`,
-`NumberBind`, `CheckboxBind` or `DateBind`, all extending `CommonBind` with the four attributes
-every control gets. You rarely write any of them: they are what makes the table above a type error
-rather than a convention.
+The `type` is what turns an edit back into the value: `type="number"` and `type="range"` hand back a
+number — whatever the field held, as an empty field could be waiting for a number or text alike — a
+checkbox true or false, `type="date"` what the next paragraph says, and any other control text. So the control has to match the field: a number field written
+without its `type` fills the form with text, and a text field in a slider fills it with a number.
+`ramonda-check` reports either before it ships, as [`form-value-in-the-wrong-control`](/reference/check),
+and [`RMF005`](/reference/diagnostics/rmf005) reports them in a running page once the field holds a value.
 
-**What `bind` cannot check** is which element you spread it onto. `<Select {...bind} />` and
-`<TextArea {...bind} />` both type-check, because the attributes are the same and a type cannot
-see the tag. Either is fine when the field holds a string.
+`type="date"` serves two kinds of field, a `Date` and a date written as text (`"2026-10-29"`, a JSON
+Schema `format: "date"`), and the value the field holds tells them apart: text gets the control's text
+back, and a `Date` or nothing gets a day. So a date written as text starts at `""` — in `defaultValues`,
+or in the row you `append` — and a `Date` emptied holds nothing rather than `""`. Where it starts is the
+author's to write: neither `ramonda-check` nor `RMF005` can tell a date written as text that starts with
+nothing from a `Date`, and it takes a day on the first pick.
 
 ### A choice lives on `<Select>`
 
@@ -121,7 +146,7 @@ A `multiple` select takes a list, and keeps every value in it:
 ```tsx
 import { Select } from "@ramonda/core";
 
-<Select multiple aria-label="Tags" value={this.picked}>
+<Select multiple aria-label="Tags" value={this.picked} onchange={this.pickMany}>
   {this.all.map((v) => (
     <option key={v} value={v}>
       {v}
@@ -133,6 +158,68 @@ import { Select } from "@ramonda/core";
 On a server-rendered page the choice arrives as `selected` on the chosen option, because that is
 where HTML keeps it and a select has no `value` attribute to carry. The reader sees the right option
 before any script runs.
+
+**`value` is the model's; `defaultValue` is where the field starts.** A field with `value` shows what
+the model holds: its own handler writes the model, and the field shows the model again in the same
+event, before the event bubbles to anything around it — so a handler that does not take an edit leaves the
+field as it was, its caret and its selection where the edit found them, and a field with no handler of its
+own cannot be changed. A word typed through an input method — Japanese, Chinese, an Android
+keyboard, an accent on a Mac — reaches the handler at every step, `isComposing` saying it is not
+finished, so a search typed on any device runs as the user types; the field is not written until the
+word ends. A handler that waits for the finished word returns while `isComposing`, and is handed the
+word once when it ends — in Chromium and in Firefox, where it is measured. A field whose text is read when the form is sent, rather than held in state, takes
+`defaultValue` instead: it shows that first and then belongs to the user, and a form's reset returns
+to it. A default that changes later — a saved draft that loads — moves the field while it shows its
+default; once the user has picked, it moves only where a reset returns. A `Select` whose picked options
+are all replaced — a city list after its country changed — shows its default again.
+
+```tsx
+<TextArea aria-label="Draft" value={this.draft} oninput={this.onInput} />;   // held by the model
+<TextArea aria-label="Notes" name="notes" defaultValue={this.saved} />;       // the user's, sent with the form
+```
+
+What a field shows is set through the model, never by sending the field an event. A value known at
+the start is the field's initial state, `@state accepted = true`; one learned on mount is written in
+`@mounted`, `this.draft = this.saved`. A field learns its model through render, and the work a
+commit runs — `@mounted`, `@updated`, `render()` — is still running when an edit sent from there
+arrives. [`field-set-by-an-event`](/reference/check) reports one before it ships, and
+[`RMD062`](/reference/diagnostics/rmd062) reports the next event of that commit that reads the
+model while the first edit's render waits.
+
+### Refusing or rewriting an edit — the handler decides
+
+A field's handler decides each edit by what it writes: the edit, to take it; something else, to
+rewrite it; nothing, to refuse it. The field shows the model in the same event, before anything
+around it reads it — so a refused keystroke is never drawn, and the caret and the selection go back
+where the edit found them.
+
+```tsx
+import { Component, state, type EventOn } from "@ramonda/core";
+
+class Phone extends Component {
+  @state phone = "";
+
+  typed(event: EventOn<HTMLInputElement, InputEvent>) {
+    if (event.isComposing) return;
+    const text = event.currentTarget.value;
+    if (/^\d*$/.test(text)) this.phone = text;
+  }
+
+  render() {
+    return <input aria-label="Phone" value={this.phone} oninput={this.typed} />;
+  }
+}
+```
+
+A handler that refuses or rewrites waits for the finished word: it returns while `isComposing`, and
+is handed the word once, when it ends. One that took the first steps of a word and refused the rest
+would keep a reading the input method had not finished — `abに` for `ab日本` — in the model.
+
+The handler is handed the edit's own `input`. Typed `EventOn<HTMLInputElement, InputEvent>`, it reads
+what the edit was — `event.inputType`: `insertText`, `deleteContentBackward`, `insertFromPaste` — and
+where the caret is, `event.currentTarget.selectionStart`, which is what a mask needs. A rewrite that
+keeps the text's length keeps the caret where it was; after one that changes the length, where the
+caret belongs is the app's to say.
 
 ### `TextArea` — a `<textarea>` keeps its value inside the element
 
@@ -154,7 +241,13 @@ runs, and it passes everything else through to the element.
 the client and a server-rendered page cannot carry it:
 
 ```tsx
-<input type="checkbox" checked={this.all} indeterminate={this.some && !this.all} />
+<input
+  type="checkbox"
+  aria-label="Select all"
+  checked={this.all}
+  indeterminate={this.some && !this.all}
+  oninput={this.toggleAll}
+/>
 ```
 
 The box arrives unchecked and becomes mixed when the page hydrates. There is no way around that; it
@@ -162,21 +255,44 @@ is what HTML offers.
 
 ### Writing your own attributes
 
-`bind` is a plain object, so anything after the spread wins:
+Everything else is written beside the five, as on any element:
 
 ```tsx
-<input {...f.email.$.bind} className="wide" placeholder="you@example.com" autocomplete="email" />
-<input {...f.age.$.bind} min={0} max={120} />
+const email = f.email.$;
+const age = f.age.$;
+
+<input
+  aria-label="Email"
+  name={email.name}
+  value={email.inputValue}
+  oninput={email.oninput}
+  onblur={email.onblur}
+  aria-invalid={email.invalid}
+  className="wide"
+  placeholder="you@example.com"
+  autocomplete="email"
+/>;
+<input
+  aria-label="Age"
+  type="number"
+  name={age.name}
+  value={age.inputValue}
+  oninput={age.oninput}
+  onblur={age.onblur}
+  aria-invalid={age.invalid}
+  min={0}
+  max={120}
+/>;
 ```
 
-To do something extra on an event, call the bound handler from a method of your own:
+To do something extra on an event, call the field's handler from a method of your own:
 
 ```tsx
 class SignupForm extends Component {
   private form = this.use(Form<typeof schema>, () => ({ schema, defaultValues, onSubmit }));
 
   onEmailInput(event: Event): void {
-    this.form.fields.email.$.bind.oninput(event);
+    this.form.fields.email.$.oninput(event);
     this.searchAsYouType(event);
   }
 
@@ -185,14 +301,24 @@ class SignupForm extends Component {
   }
 
   render() {
-    return <input {...this.form.fields.email.$.bind} oninput={this.onEmailInput} />;
+    const email = this.form.fields.email.$;
+    return (
+      <input
+        aria-label="Email"
+        name={email.name}
+        value={email.inputValue}
+        oninput={this.onEmailInput}
+        onblur={email.onblur}
+        aria-invalid={email.invalid}
+      />
+    );
   }
 }
 ```
 
-A method rather than an inline arrow, because methods are auto-bound: the identity never changes, so
-the listener is not removed and re-added on every render. An arrow here would be reported by
-[RMD020](/reference/diagnostics/rmd020).
+A method rather than an inline arrow, because methods are auto-bound: the identity never changes from
+one render to the next. An arrow here is a new function every render, which
+[RMD020](/reference/diagnostics/rmd020) reports.
 
 ### The node types — `LeafNode`, `ObjectNode` and `ArrayNode`
 
@@ -200,7 +326,7 @@ A node's shape follows the value's, and each carries a different `$`.
 
 | the value | the node | its `$` |
 |---|---|---|
-| a string, number, boolean or `Date` | `LeafNode<T>` | `LeafApi<T>` — a `FieldApi` plus `bind` |
+| a string, number, boolean or `Date` | `LeafNode<T>` | `LeafApi<T>` — a `FieldApi` plus `inputValue`, `invalid`, `oninput`, `onblur` |
 | an object | `ObjectNode<T>` | `FieldApi<T>`, with the properties beside it |
 | an array | `ArrayNode<E, T>` | `ArrayApi<E, T>` — a `FieldApi` plus `length` and `rows` |
 
@@ -212,10 +338,10 @@ that accepts a field without caring which kind — that is what
 own explanation so the compiler prints it: the error names `.$.at('$')` and the option of renaming,
 rather than saying that some property does not exist on some type.
 
-## Fields without `bind`
+## Controls that are not an `<input>`
 
-`bind` is a convenience, not a requirement. A custom control — a date picker, a rich text
-editor, a set of radio buttons — reads `value` and calls `set`:
+A custom control — a date picker, a rich text editor, a set of radio buttons — reads `value` and
+calls `set`:
 
 ```tsx
 class Editor extends Component {
@@ -245,8 +371,8 @@ would hand back the old value.
 
 ## A field in its own component
 
-A design system does not want `{...f.email.$.bind}` written at every call site — it wants a
-`<TextField>` that carries the label, the message and the class that turns red. A component that
+A design system does not want the five attributes written at every call site — it wants a
+`<TextField>` that carries them once, with the label, the message and the class that turns red. A component that
 takes a field needs one thing from the form, and `Field` is it:
 
 ```tsx
@@ -259,7 +385,13 @@ class TextField extends Component<{ of: FieldNode<string>; label: string }> {
     return (
       <label className={this.f.error ? "field field--invalid" : "field"}>
         <span className="field__label">{this.props.label}</span>
-        <input {...this.f.bind} />
+        <input
+          name={this.f.name}
+          value={this.f.inputValue}
+          oninput={this.f.oninput}
+          onblur={this.f.onblur}
+          aria-invalid={this.f.invalid}
+        />
         {this.f.error}
       </label>
     );
@@ -275,12 +407,12 @@ And the call site hands over one prop, typed by the schema:
 ```
 
 **`Field` is required, not an optimisation.** Without it such a component never re-renders: a field
-node is one cached object for the life of the form — deliberately, so `bind.oninput` keeps its
+node is one cached object for the life of the form — deliberately, so `oninput` keeps its
 identity — so the component's props never change and the diff skips it. Its message would never
 appear, and a write from anywhere else would never reach its input.
 
 `Field` answers everything a node's `$` does — `value`, `error`, `errors`, `touched`, `dirty`, `name`,
-`bind`, `set`, `reset`, and the list members for an array field — so a component written against
+`inputValue`, `invalid`, `oninput`, `onblur`, `set`, `reset`, and the list members for an array field — so a component written against
 `FieldApi<T>` needs nothing new to learn. Name the type at the `use`: `FieldNode<T>` is a conditional
 type, so `T` cannot be recovered from it by inference, and `Field<string>` is the same pin
 `Query<Todo>` takes.
@@ -338,7 +470,16 @@ class Line extends Component<{ item: Row<Contact> }> {
   f = this.use(Field<string>, () => ({ of: this.props.item.field.value }));
 
   render() {
-    return <input {...this.f.bind} />;
+    return (
+      <input
+        aria-label="Contact"
+        name={this.f.name}
+        value={this.f.inputValue}
+        oninput={this.f.oninput}
+        onblur={this.f.onblur}
+        aria-invalid={this.f.invalid}
+      />
+    );
   }
 }
 ```
@@ -468,26 +609,34 @@ dependencies, and it is rebuilt on every keystroke again.
 
 ## Labels, ids and accessibility
 
-`bind` supplies `name`, which is what a form posts under and what a `<label for>` cannot use.
-The simplest correct thing is to wrap the input:
+`name` is what a form posts under, and what a `<label for>` cannot use. The simplest correct thing is
+to wrap the input:
 
 ```tsx
+const email = f.email.$;
+
 <label>
   Email
-  <input {...f.email.$.bind} />
-</label>
+  <input
+    name={email.name}
+    value={email.inputValue}
+    oninput={email.oninput}
+    onblur={email.onblur}
+    aria-invalid={email.invalid}
+  />
+</label>;
 ```
 
 A wrapping label needs no `id` at all. If your design cannot wrap, add an `id` and a
 `htmlFor` yourself — the form does not generate them, because an id has to be unique across the
 whole page and only you know what else is on it.
 
-`aria-invalid` comes from `bind` and follows the same rule the visible message does: it is set
-only once the message is ready to be seen. To connect the message itself, add
+`aria-invalid={x.invalid}` follows the same rule the visible message does: it is `true` only once the
+message is ready to be seen. To connect the message itself, add
 `aria-describedby` pointing at your own element.
 
 ## Next
 
 - [Validation](/forms/validation) — the errors a field shows, and the moment they appear.
 - [Array fields](/forms/arrays) — the same tree where a row can be inserted or removed.
-- [Refs](/concepts/refs) — for the one thing `bind` does not do: reaching the element itself.
+- [Refs](/concepts/refs) — for reaching the element itself.
