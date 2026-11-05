@@ -127,57 +127,71 @@ export interface FieldApi<T> {
   at<K extends keyof NonNullable<T> & string>(key: K): FieldNode<NonNullable<T>[K]>;
 }
 
-/* ------------------------------------------------------------------ *
- * bind — the attributes for the control this value belongs in.
- * ------------------------------------------------------------------ */
-
-export interface CommonBind {
-  readonly name: string;
-  readonly oninput: (event: Event) => void;
-  readonly onblur: (event: Event) => void;
-  readonly "aria-invalid": boolean | undefined;
-}
-
-export interface TextBind extends CommonBind {
-  readonly value: string;
-}
-export interface NumberBind extends CommonBind {
-  readonly value: number | string;
-  readonly type: "number";
-}
-export interface CheckboxBind extends CommonBind {
-  readonly checked: boolean;
-  readonly type: "checkbox";
-}
-export interface DateBind extends CommonBind {
-  readonly value: string;
-  readonly type: "date";
-}
+/**
+ * What a control's `value` attribute takes for a field of `T`: a date as `yyyy-mm-dd`, a number as
+ * itself — `""` for either one with nothing in it yet, or emptied — and text as text. A checkbox takes `checked={field.value === true}`.
+ */
+export type InputValue<T> = InputValueOf<NonNullable<T>>;
 
 /**
- * The attributes for the value's own kind of control, so `checked` and `value` cannot be
- * mixed up: a boolean field gets `checked`, a number gets `type="number"`.
- *
- * `never` for objects and lists, because no single control holds one. Which element the
- * attributes are spread ONTO is not something a type can see — `<select {...bind} />`
- * type-checks — so that belongs to the `check` package as a lint rule rather than here.
+ * Each member of the value's union on its own: a `string | number` field shows a string or a number.
+ * A value a control's `value` cannot show — a boolean, a file, a bigint — is `never`: a box takes
+ * `checked={field.value === true}`. An element's `value` takes anything, so `never` refuses nothing
+ * there; `ramonda-check` reports the `inputValue` of such a field, as `form-value-in-the-wrong-control`.
  */
-export type Bind<T> = [NonNullable<T>] extends [boolean]
-  ? CheckboxBind
-  : [NonNullable<T>] extends [number]
-    ? NumberBind
-    : [NonNullable<T>] extends [Date]
-      ? DateBind
-      : [NonNullable<T>] extends [string]
-        ? TextBind
-        : never;
+type InputValueOf<U> = U extends Date
+  ? FormDay | ""
+  : U extends number
+    ? FormNumber | ""
+    : U extends string
+      ? FormText
+      : never;
+
+/**
+ * A number a form's field shows. A number like any other to TypeScript, and marked, so that
+ * `ramonda-check` can tell it from one an app holds itself: it belongs in `<input type="number">` or
+ * `type="range"`, the controls that hand back a number — see `form-value-in-the-wrong-control`.
+ */
+export type FormNumber = number & { readonly "@ramonda/form:number": true };
+
+/** A day a form's date field shows, `yyyy-mm-dd`: a string, marked as `FormNumber` is, for `type="date"`. */
+export type FormDay = string & { readonly "@ramonda/form:day": true };
+
+/**
+ * The text a form's text field shows: a string, marked as `FormNumber` is — for any control but the ones
+ * that hand back a number or a day, which would write one into a field of text.
+ */
+export type FormText = string & { readonly "@ramonda/form:text": true };
 
 /* ------------------------------------------------------------------ *
  * The three node kinds.
  * ------------------------------------------------------------------ */
 
+/**
+ * A field that one control holds, and what that control is written with — each attribute by name:
+ *
+ * ```tsx
+ * <input
+ *   name={email.name}
+ *   value={email.inputValue}
+ *   oninput={email.oninput}
+ *   onblur={email.onblur}
+ *   aria-invalid={email.invalid}
+ * />
+ * ```
+ *
+ * Named rather than handed over as one object to spread, so every one of them is written where the
+ * control is, and `@ramonda/check` can see that none is missing.
+ */
 export interface LeafApi<T> extends FieldApi<T> {
-  readonly bind: Bind<T>;
+  /** The value as the control shows it — see `InputValue`. */
+  readonly inputValue: InputValue<T>;
+  /** `true` while the field has a message, and no value otherwise: the control's `aria-invalid`. */
+  readonly invalid: true | undefined;
+  /** The control's own `oninput`, which writes what it produced into the form. */
+  readonly oninput: (event: Event) => void;
+  /** The control's `onblur`, which marks the field touched. */
+  readonly onblur: (event: Event) => void;
 }
 
 /** One row of an array field, carrying the identity the row keeps across a splice. */

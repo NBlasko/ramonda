@@ -23,11 +23,12 @@ import type ts from "typescript";
  * quiet for that path rather than report a maybe. A rule that fires on a suspicion ends that, and
  * the README's argument with it — a gate that cries wolf is a gate somebody switches off.
  *
- * **Ask for a type.** The program is built with `noLib` and `types` overridden, on purpose: the
- * analyzer asks the compiler only where a symbol was DECLARED, never what type anything is, and
- * skipping the whole TypeScript lib is most of what a run would otherwise cost. `resolve` below is
- * that one question and the whole of it — `browser-url` uses "resolves to nothing" to tell the
- * browser's `location` from a local of the same name, which costs no type at all.
+ * **Ask for a type — but one.** A rule asks the compiler where a symbol was DECLARED, never what
+ * type anything is: `resolve` below is that question. The exceptions are `formValue`, `typeLiterals`,
+ * `formCast` and `formReset`, the questions about a type, which is why the program carries the language's
+ * lib and the DOM's names as stand-ins — see `createProgram` in `analyze.ts`. So a platform name — `location`, `Boolean` —
+ * resolves to a lib declaration or a stand-in, and to nothing in a program a caller of
+ * `analyzeProgram` built with no lib: ask `namesThePlatform`, never "does it resolve?".
  */
 /**
  * How a rule says what it found.
@@ -452,6 +453,9 @@ export interface ProjectContext {
   /** Every id written out in full, anywhere in the project. */
   ids: ReadonlySet<string>;
 
+  /** The project's `@ramonda/form` forms, the fields inside them and the uses of components there. */
+  forms: import("./formTable").FormFacts;
+
   /** Every `lazy` on an `AsyncLoad` this pass could read — see {@link LazySite}. */
   lazySites: readonly LazySite[];
 
@@ -475,7 +479,7 @@ export interface ProjectContext {
    * nobody can see is a silence nobody can fix.
    *
    * **A SPREAD is deliberately not one of these**, and the line is worth defending because it is
-   * the one place this family accepts a residual risk. `<input {...bind} />` may carry an `id` and
+   * the one place this family accepts a residual risk. `<input {...attrs} />` may carry an `id` and
    * nothing here can say whether it does — but it is not a claim that it does, whereas `id={x}` is.
    * Counting spreads here was measured against this repository and would have silenced every rule
    * in every project in it: four to sixteen spreading elements each, against **zero** explicit
@@ -516,7 +520,66 @@ export interface Resolver {
   (id: ts.Node): ts.Symbol | undefined;
   /** The name `@ramonda/core` exports this identifier under; `undefined` when it is not core's. */
   coreName(id: ts.Node): string | undefined;
+  /**
+   * Whether this identifier is `pkg`'s own binding — imported from it, through an alias or an app's
+   * re-export, and not an app's own of the same name. See `importedFromPackage`.
+   */
+  fromPackage(id: ts.Node, pkg: string): boolean;
+  /**
+   * What a form shows in this expression, read off its TYPE: a number for `<input type="number">`, a
+   * day for `type="date"`, text for any control but those, `none` for a value no control's `value` shows
+   * (`never` — a boolean, a file), anything else, or `unread` when its type cannot be read. See
+   * `form-value-in-the-wrong-control`.
+   */
+  formValue(expression: ts.Expression): FormValue;
+  /**
+   * The strings this expression can be, read off its TYPE: `this.props.type` typed `"text" | "email"`
+   * is those two. `undefined` when its type is not a union of string literals — `string` included. A
+   * member that is `undefined` or `null` leaves the attribute off, which reads as `absentAs` where the
+   * caller says what that means — `type?: "email"` is `"email"` or `"text"` — and as unreadable
+   * otherwise. Read through `attributeLiterals` in `formTable.ts`, which asks what is written first.
+   */
+  typeLiterals(expression: ts.Expression, absentAs?: string): string[] | undefined;
+  /**
+   * The names a value of this expression's TYPE has — what a spread of it may hand — or `undefined` when
+   * its type cannot be read (`any`, `unknown`) or has an index, which may hand any name.
+   */
+  propertyNames(expression: ts.Expression): string[] | undefined;
+  /**
+   * Whether this assertion puts an `HTMLFormElement` under a type that is not a form and does not
+   * hold one — `form as unknown as Canvas` — so its `reset` cannot be followed past it. Asked of the
+   * outermost assertion. See `reset-the-model-does-not-hear`.
+   */
+  formCast(outer: ts.AsExpression | ts.TypeAssertion): boolean;
+  /**
+   * Whether this expression may hold the browser's `HTMLFormElement`, read off its TYPE: it does, its type
+   * cannot be read (`any`, `unknown`), or a form fits it (`Element`). See `field-set-by-an-event`, which
+   * reads a form's `elements`.
+   */
+  mayBeAForm(expression: ts.Expression): boolean;
+  /**
+   * Whether this expression may hold one of the DOM's objects — an element, the document — read off its
+   * TYPE: one the DOM lib (or its stand-ins) declares, or one that cannot be read. A store's own
+   * `closest()` is not the DOM's. See `field-set-by-an-event`, which reads a query by its receiver.
+   */
+  mayBeFromTheDom(expression: ts.Expression): boolean;
+  /**
+   * Whether this member access reaches the browser's form reset, read off the receiver's TYPE:
+   * `reset` — it takes `reset` from a form (`form.reset`, `form["reset"]`, `form[RESET]`,
+   * `const { reset } = form`); `maybe` — `reset` on a value whose type cannot be read, or a key that
+   * cannot be read on a form (`form[key]`); `fits` — `reset` on a type a form fits
+   * (`const r: Resettable = form`, then `r.reset()`); `undefined` for anything else.
+   */
+  formReset(
+    node: ts.PropertyAccessExpression | ts.ElementAccessExpression | ts.BindingElement,
+  ): "reset" | "maybe" | "fits" | undefined;
 }
+
+/** What a value is, as far as the browser's form goes — see `formTypeOf` in `analyze.ts`. */
+export type FormType = "form" | "unread" | "other";
+
+/** What a form shows in a control's `value` — see `Resolver.formValue`. */
+export type FormValue = "number" | "day" | "text" | "none" | "other" | "unread";
 
 /**
  * Whether a finding carries a written reason, and the recording of it.

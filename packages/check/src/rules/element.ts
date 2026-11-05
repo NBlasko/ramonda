@@ -1,8 +1,8 @@
 import ts from "typescript";
 import { BOOLEAN_ATTRIBUTES, svgElements } from "@ramonda/dom-facts";
 import { coreElementTag } from "./coreElements";
-import { follow, type Looking } from "./follow-value";
-import type { ElementContext, JsxElementLike, WrittenAttribute } from "./rule";
+import { follow, unwrap, type Looking } from "./follow-value";
+import type { ElementContext, JsxElementLike, Resolver, WrittenAttribute } from "./rule";
 
 /**
  * What every element rule reads, computed once per element rather than once per rule.
@@ -14,6 +14,56 @@ import type { ElementContext, JsxElementLike, WrittenAttribute } from "./rule";
 /** The opening half of an element, which is where the attributes are. */
 export function openingOf(element: JsxElementLike): ts.JsxOpeningLikeElement {
   return ts.isJsxElement(element) ? element.openingElement : element;
+}
+
+/**
+ * `null` or `undefined`, through parentheses and the type-only wrappers (`unwrap`). One question,
+ * asked the same way by every rule.
+ */
+export function isNothing(node: ts.Expression): boolean {
+  const written = unwrap(node);
+  return written.kind === ts.SyntaxKind.NullKeyword || (ts.isIdentifier(written) && written.text === "undefined");
+}
+
+/**
+ * `null` or `undefined`, or a `const` that holds one, however many `const`s deep: what core reads as no
+ * value. One question, asked the same way by every rule that asks it.
+ */
+export function holdsNothing(expression: ts.Expression, resolve: Resolver, depth = 0): boolean {
+  const value = unwrap(expression);
+  if (isNothing(value)) return true;
+  if (!ts.isIdentifier(value) || depth > 8) return false;
+  const declared = resolve(value)?.declarations?.[0];
+  if (declared === undefined || !ts.isVariableDeclaration(declared) || declared.initializer === undefined) return false;
+  if ((ts.getCombinedNodeFlags(declared) & ts.NodeFlags.Const) === 0) return false;
+  return holdsNothing(declared.initializer, resolve, depth + 1);
+}
+
+/**
+ * Whether `name` is written on an element and says something — not `{null}`, `{undefined}` or a `const`
+ * holding one: what core reads as the attribute being there. A bare `checked` says `true`.
+ */
+export function says(opening: ts.JsxOpeningLikeElement, name: string, resolve: Resolver): boolean {
+  return opening.attributes.properties.some(
+    (p) =>
+      ts.isJsxAttribute(p) &&
+      p.name.getText() === name &&
+      !(
+        p.initializer !== undefined &&
+        ts.isJsxExpression(p.initializer) &&
+        p.initializer.expression !== undefined &&
+        holdsNothing(p.initializer.expression, resolve)
+      ),
+  );
+}
+
+/**
+ * Whether an attribute is written as `{null}` or `{undefined}`, or a `const` holding one: there, and
+ * saying nothing. Core reads a `value` written so as no value, and a rule about `value` has to read it
+ * the same way.
+ */
+export function writtenAsNothing(attribute: WrittenAttribute, resolve: Resolver): boolean {
+  return attribute.value !== undefined && holdsNothing(attribute.value, resolve);
 }
 
 /**
@@ -365,8 +415,7 @@ const PRESENCE: Looking<boolean> = {
   leaf: (expression) => {
     if (expression.kind === ts.SyntaxKind.TrueKeyword) return true;
     if (expression.kind === ts.SyntaxKind.FalseKeyword) return false;
-    if (expression.kind === ts.SyntaxKind.NullKeyword) return false;
-    if (ts.isIdentifier(expression) && expression.text === "undefined") return false;
+    if (isNothing(expression)) return false;
     // Any string reaches the element, `""` included — which is what the runtime writes for `true`.
     if (ts.isStringLiteralLike(expression)) return true;
     if (ts.isNumericLiteral(expression)) return true;

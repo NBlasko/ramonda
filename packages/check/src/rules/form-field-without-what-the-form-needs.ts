@@ -1,0 +1,379 @@
+import ts from "typescript";
+import { unwrap } from "./follow-value";
+import { FORM_ATTRIBUTES, propRead, type ComponentSite } from "./formTable";
+import type { ProjectRule } from "./rule";
+
+export interface FormFieldWithoutWhatTheFormNeedsIssue {
+  /**
+   * `missing` — a field inside a `@ramonda/form` form is written without one of the attributes the
+   * form needs; `not-passed` — a component used inside such a form is not handed a prop a field in
+   * it is written with; `bag-overrides` — what is handed for a spread written last on a field sets
+   * one of those attributes the field writes before it to nothing; `bag-unreadable` — what is handed for it cannot be read;
+   * `bag-without-a-handler` — what is handed for it carries a `value` (`checked`) and no handler, on
+   * a field that writes none of its own;
+   * `unreadable-component` — a component used inside such a form whose render this cannot read;
+   * `form-not-attached` — a component holds a `Form` and renders no `<form onsubmit={this.X.submit}>`
+   * for it; `form-in-a-hook` — a hook holds a `Form`, which no form can be recognised through.
+   */
+  kind:
+    | "missing"
+    | "not-passed"
+    | "bag-overrides"
+    | "bag-unreadable"
+    | "bag-without-a-handler"
+    | "unreadable-component"
+    | "form-not-attached"
+    | "form-in-a-hook";
+  /** The component or tag the report is about. */
+  component: string;
+  /** The attributes, prop or field the report names. */
+  detail: string;
+  file: string;
+  line: number;
+  column: number;
+}
+
+/**
+ * What a spread must carry beside its model: `nothing` when the field writes its own handler; on a
+ * `text` field an `oninput` beside a `value`; on a `pick` (a select) either handler beside a `value`;
+ * on a `box` either handler beside a `checked` — its `value` is only what the form sends; on an
+ * `unread` input, whose `type` cannot be read, what a box wants when the spread hands `checked`, and
+ * what a text field wants otherwise.
+ */
+type Wants = "nothing" | "text" | "pick" | "box" | "unread";
+
+/** A prop a field takes, asked of the uses of the component that writes it. */
+interface Need {
+  owner: ts.ClassLikeDeclaration;
+  /** The prop's name. */
+  name: string;
+  /** A spread of it on a field — `{...this.props.attrs}` — rather than one attribute. */
+  bag: boolean;
+  /** For a spread, what it must carry beside a model — see `Wants`. */
+  wants: Wants;
+  /** For a spread, what the field writes after it, which the spread cannot override. */
+  shadowed: readonly string[];
+  /** For a spread, the form's attributes the field writes before it, which the spread can take away. */
+  overridable: readonly string[];
+  /**
+   * Whether the field it is for is inside a form already, where it is written or further down: then every
+   * use hands it, inside a form or not.
+   */
+  held: boolean;
+  /** For a spread, whether the field writes its own `onchange` — see `SpreadBag.changes`. */
+  changes: boolean;
+  /** Another prop a use may hand instead: a pick's other handler — see `AttributeSource`. */
+  or?: string;
+  /**
+   * The prop the field's model comes from, `value={this.props.value}`: a use that hands none leaves the
+   * field the user's, as a field written with no `value` is, and is asked nothing.
+   */
+  model?: string;
+}
+
+/** One attribute a field takes from a prop: no spread, nothing it wants beside it. */
+const A_PROP = { bag: false, wants: "nothing", shadowed: [], overridable: [], changes: false } as const;
+
+/**
+ * A field inside a `@ramonda/form` form, written without everything the form needs.
+ *
+ * The form is recognised by one shape: `<form onsubmit={this.X.submit}>`, where `X` is a field of the
+ * same class — its own or one it inherits — initialised `this.use(Form, …)` and `Form` is imported from
+ * `@ramonda/form`. Every controlled field inside it — written in that render, in a component rendered
+ * there (by its own render or one it inherits, and through every component it renders), or handed as
+ * children to a component that places its children inside one — is written with all five of `name`,
+ * `value` (`checked` on a box), `oninput`, `onblur` and `aria-invalid`, each by name.
+ *
+ * A component that takes them as props — a design system's `StyledInput`, writing
+ * `name={this.props.name}` — is checked where it is USED inside a form, and at every use, inside a form
+ * or not, when the field sits in a form of the component's own: each use hands each of those props by
+ * name. A spread hands none for sure — its type does not say what it copies, and a getter, as a form
+ * field's `inputValue` is, is not copied. A wrapper that hands its own props on, `<StyledInput
+ * {...this.props} />`, is checked where IT is used, as `name={this.props.name}` is. A spread of a prop
+ * written last on a field, `{...this.props.attrs}` — the usual way to let a caller overwrite a default —
+ * is checked at every use, inside a form or not: each hands it as an object written there, sets none of
+ * the form's attributes the field writes before it to nothing, and hands no `value` (`checked`) without
+ * an `oninput` or `onchange` beside it, unless the field writes its own by name. A shorthand, `{ oninput
+ * }`, is followed to the `const` it names.
+ *
+ * Reported as well, since a form this cannot recognise is a form whose fields this cannot check: a
+ * component that holds a `Form` and renders no `<form onsubmit={this.X.submit}>` for it, a hook that
+ * holds one, and a component used inside a form whose render this cannot read.
+ */
+export const formFieldWithoutWhatTheFormNeeds = {
+  id: "form-field-without-what-the-form-needs",
+
+  report: {
+    severity: "error",
+    reportedWhen:
+      "a field inside a `@ramonda/form` form is written without `name`, `value`, `oninput`, `onblur` or " +
+      "`aria-invalid`, a component used there is not handed one of them, or the form cannot be recognised",
+    heading: (found) => `${found.length} field(s) or form(s) without what @ramonda/form needs:`,
+    lines: (issue) => [
+      `  ${issue.file}:${issue.line}:${issue.column}`,
+      `    <${issue.component}> ${
+        {
+          missing: `is inside a @ramonda/form form and is written without ${issue.detail}.`,
+          "not-passed": `is not handed \`${issue.detail}\`, which a field it writes in a @ramonda/form form is written with.`,
+          "bag-overrides": `is handed \`${issue.detail}\` set to nothing, in what a field in it spreads last.`,
+          "bag-without-a-handler": `is handed \`${issue.detail}\` with a value and no handler for it beside it — \`oninput\` on a text field, either \`oninput\` or \`onchange\` on a box or a select — so the field it is spread on cannot be changed.`,
+          "bag-unreadable": `is handed \`${issue.detail}\` as something this cannot read — a field in it spreads it last, so what it sets there, or takes away, cannot be shown.`,
+          "unreadable-component":
+            "is used inside a @ramonda/form form, and its render cannot be read to check its fields.",
+          "form-not-attached": `holds a Form in \`${issue.detail}\` and renders no <form onsubmit={this.${issue.detail}.submit}>.`,
+          "form-in-a-hook": `is a hook holding a Form in \`${issue.detail}\`; a form is recognised only where a component holds it.`,
+        }[issue.kind]
+      }`,
+    ],
+    advice:
+      "A field inside a @ramonda/form form is written with each attribute the form needs, by name:\n\n" +
+      "```tsx\n" +
+      "const email = this.form.fields.email.$;\n\n" +
+      "<input\n" +
+      "  name={email.name}\n" +
+      "  value={email.inputValue}\n" +
+      "  oninput={email.oninput}\n" +
+      "  onblur={email.onblur}\n" +
+      "  aria-invalid={email.invalid}\n" +
+      "/>\n" +
+      "```\n\n" +
+      "The form is the one in `<form onsubmit={this.form.submit}>`, where `form = this.use(Form, …)`.\n" +
+      "A component that takes the attributes as props is handed every one of them wherever it is used\n" +
+      "inside a form.\n\n",
+  },
+
+  read(project) {
+    const { fields, bags, sites, holders, holdsNothing } = project.forms;
+    const found: FormFieldWithoutWhatTheFormNeedsIssue[] = [];
+
+    for (const holder of holders) {
+      // Named by the field that holds it, which the report's advice writes as `this.<field>.submit`.
+      if (holder.isHook) {
+        const detail = holder.fields[0] ?? "form";
+        found.push({ kind: "form-in-a-hook", component: holder.component, detail, ...where(holder) });
+        continue;
+      }
+      for (const field of holder.unattached)
+        found.push({ kind: "form-not-attached", component: holder.component, detail: field, ...where(holder) });
+    }
+
+    // Every class rendered inside a form, through every component it renders in turn.
+    const inForm = new Set<ts.ClassLikeDeclaration>();
+    const inContext = (owner: ts.ClassLikeDeclaration | undefined, local: boolean) =>
+      local || (owner !== undefined && inForm.has(owner));
+    for (let grew = true; grew; ) {
+      grew = false;
+      for (const site of sites) {
+        if (site.target !== undefined && !inForm.has(site.target) && inContext(site.owner, site.inForm)) {
+          inForm.add(site.target);
+          grew = true;
+        }
+      }
+    }
+    for (const site of sites) {
+      if (site.target === undefined && inContext(site.owner, site.inForm)) {
+        found.push({ kind: "unreadable-component", component: site.tag, detail: site.tag, ...where(site) });
+      }
+    }
+
+    // What the fields inside a form need from the components that write them — see `Need`.
+    const queue: Need[] = [];
+    // A prop handed bare — `<X value />` — is `true`; one written as nothing is nothing.
+    const holdsNothingHanded = (value: ts.Expression | undefined) => value !== undefined && holdsNothing(value);
+    const seen = new Set<string>();
+    const ids = new Map<ts.ClassLikeDeclaration, number>();
+    const need = (asked: Omit<Need, "owner"> & { owner: ts.ClassLikeDeclaration | undefined }) => {
+      const { owner } = asked;
+      if (owner === undefined) return;
+      if (!ids.has(owner)) ids.set(owner, ids.size);
+      const { name, bag, wants, shadowed, overridable, held, changes, or, model } = asked;
+      const key = `${ids.get(owner)}|${name}|${bag}|${wants}|${shadowed.join(",")}|${overridable.join(",")}|${held}|${changes}|${or}|${model}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      queue.push({ ...asked, owner });
+    };
+
+    for (const field of fields) {
+      if (!inContext(field.owner, field.inForm)) continue;
+      const missing = FORM_ATTRIBUTES.filter((name) => field.attributes[name].kind === "missing");
+      if (missing.length > 0) {
+        found.push({
+          kind: "missing",
+          component: field.tag,
+          detail: missing.map((name) => `\`${name}\``).join(", "),
+          ...where(field),
+        });
+      }
+      const value = field.attributes.value;
+      const model = value.kind === "prop" ? value.prop : undefined;
+      for (const name of FORM_ATTRIBUTES) {
+        const source = field.attributes[name];
+        if (source.kind === "prop") {
+          need({ ...A_PROP, owner: field.owner, name: source.prop, or: source.or, model, held: field.inForm });
+        }
+      }
+    }
+    // A spread of props on a field, anywhere: what each use hands for it is read there.
+    for (const bag of bags) {
+      const wants: Wants = bag.handled
+        ? "nothing"
+        : bag.box
+          ? "box"
+          : bag.unread
+            ? "unread"
+            : bag.pick
+              ? "pick"
+              : "text";
+      need({
+        owner: bag.owner,
+        name: bag.prop,
+        bag: true,
+        wants,
+        shadowed: bag.shadowed,
+        overridable: bag.overridable,
+        held: false,
+        changes: bag.changes,
+      });
+    }
+
+    // Each use by the component it renders: an item is asked of its own uses, not of every use there is.
+    const usesOf = new Map<unknown, typeof sites>();
+    for (const site of sites) {
+      const uses = usesOf.get(site.target);
+      if (uses === undefined) usesOf.set(site.target, [site]);
+      else uses.push(site);
+    }
+    // Walked by its index, as `need` adds to it: no array shifted under every item.
+    for (let at = 0; at < queue.length; at++) {
+      const asked = queue[at];
+      const { owner, name, bag, held } = asked;
+      // A spread nothing it hands can make wrong — written first, on a field with its own handler — is
+      // not asked about at all.
+      if (bag && asked.wants === "nothing" && asked.overridable.length === 0) continue;
+      for (const site of usesOf.get(owner) ?? []) {
+        // What a field needs from a form is asked inside one — where it is written, or where the use is;
+        // what a spread on it carries, everywhere.
+        if (!bag && !held && !inContext(site.owner, site.inForm)) continue;
+        // A use that hands the field no model — not by name, and through no spread that may carry it —
+        // leaves it the user's: nothing is asked of it.
+        const hands = (prop: string) =>
+          (site.props.has(prop) && !holdsNothingHanded(site.props.get(prop))) ||
+          site.spreadsOwnProps ||
+          site.spreadMayHand === undefined ||
+          site.spreadMayHand.has(prop);
+        if (!bag && asked.model !== undefined && !hands(asked.model)) continue;
+        // What a prop the use hands is, one level up: `onchange={this.props.change}` is `change` there.
+        const through = (prop: string | undefined) => {
+          const value = prop === undefined ? undefined : site.props.get(prop);
+          return value === undefined ? undefined : propRead(value);
+        };
+        // A pick's handler, by either of its names.
+        const handedAs =
+          !bag && asked.or !== undefined && !site.props.has(name) && site.props.has(asked.or) ? asked.or : name;
+        const next = { model: through(asked.model), or: handedAs === name ? through(asked.or) : undefined };
+        const named = asked.or === undefined ? name : `${name}\` or \`${asked.or}`;
+        const handed = site.props.get(handedAs);
+        if (!site.props.has(handedAs)) {
+          // A bag that may come through a spread is not written here, and cannot be read.
+          if (bag && (site.spreadMayHand === undefined || site.spreadMayHand.has(name)))
+            found.push({ kind: "bag-unreadable", component: site.tag, detail: name, ...where(site) });
+          // Handed through the owner's own props, `{...this.props}`: asked of the owner's uses.
+          else if (site.spreadsOwnProps) need({ ...asked, owner: site.owner, held: held || site.inForm });
+          // Not handed by name: a spread may carry it or not — its type does not say what it copies.
+          else if (!bag) found.push({ kind: "not-passed", component: site.tag, detail: named, ...where(site) });
+          continue;
+        }
+        if (handed === undefined) continue;
+        const prop = propRead(handed);
+        if (prop !== undefined) {
+          need({ ...asked, ...next, owner: site.owner, name: prop, held: held || site.inForm });
+          continue;
+        }
+        if (!bag) {
+          if (holdsNothing(handed))
+            found.push({ kind: "not-passed", component: site.tag, detail: named, ...where(site) });
+          continue;
+        }
+        // A bag handed as nothing — `attrs={undefined}` — spreads nothing, as one left off does.
+        if (!holdsNothing(handed)) readBag(handed, site, asked, holdsNothing, found);
+      }
+    }
+
+    // One prop spread on more than one field is asked once for each — what it wants differs — and its
+    // bag is read at each use as many times: one report says it.
+    const said = new Set<string>();
+    return found.filter((issue) => {
+      const key = `${issue.kind}|${issue.detail}|${issue.file}|${issue.line}|${issue.column}`;
+      if (said.has(key)) return false;
+      said.add(key);
+      return true;
+    });
+  },
+} as const satisfies ProjectRule<FormFieldWithoutWhatTheFormNeedsIssue>;
+
+/** What a site hands for a spread written last on a field: an object written there, setting nothing to nothing. */
+function readBag(
+  handed: ts.Expression,
+  site: ComponentSite,
+  { name, wants, shadowed, overridable, changes }: Need,
+  holdsNothing: (expression: ts.Expression) => boolean,
+  found: FormFieldWithoutWhatTheFormNeedsIssue[],
+): void {
+  // What it hands cannot be read: one report, and nothing more is asked of it.
+  const unreadable = () => found.push({ kind: "bag-unreadable", component: site.tag, detail: name, ...where(site) });
+  const written = unwrap(handed);
+  // An object with a spread in it — `{ oninput: undefined, ...handlers }` — may set any key again,
+  // wherever the spread stands: it cannot be read, and no key of it is asked about alone.
+  if (!ts.isObjectLiteralExpression(written) || written.properties.some(ts.isSpreadAssignment)) {
+    unreadable();
+    return;
+  }
+  // The keys the bag sets to something: a key that holds nothing — `{ oninput: undefined }` — carries
+  // no handler and sets no model, as core reads it.
+  const keys = new Set<string>();
+  for (const property of written.properties) {
+    // A method written in the bag — `oninput(event) { … }` — is a handler written there, as an arrow is.
+    if (ts.isMethodDeclaration(property) && (ts.isIdentifier(property.name) || ts.isStringLiteral(property.name))) {
+      keys.add(property.name.text);
+      continue;
+    }
+    if (!ts.isPropertyAssignment(property) && !ts.isShorthandPropertyAssignment(property)) {
+      unreadable();
+      return;
+    }
+    const key = ts.isIdentifier(property.name) || ts.isStringLiteral(property.name) ? property.name.text : undefined;
+    if (key === undefined) {
+      unreadable();
+      return;
+    }
+    // `{ oninput }` is `{ oninput: oninput }`, and the name is followed to what it holds.
+    const held = ts.isPropertyAssignment(property) ? property.initializer : property.name;
+    if (!holdsNothing(held)) keys.add(key);
+    // Only what the field writes before the spread is taken away: a key it never writes is no override.
+    else if (overridable.includes(key)) {
+      found.push({ kind: "bag-overrides", component: site.tag, detail: `${name}.${key}`, ...where(site) });
+    }
+  }
+  // `on:input` is the field's own handler as `oninput` is, however it reaches the field.
+  // A handler the field writes after the spread — even as nothing, `oninput={undefined}` — wins over the bag's.
+  const handles = (key: string) => keys.has(key) && !shadowed.includes(key);
+  // A box — or an input whose `type` cannot be read, handed `checked` — takes either handler.
+  const box = wants === "box" || (wants === "unread" && handles("checked"));
+  // A box's own `onchange`, written on the field, is a handler too.
+  const carries =
+    handles("oninput") ||
+    handles("on:input") ||
+    ((wants === "pick" || box) && (handles("onchange") || handles("on:change") || changes));
+  // A value the field writes after the spread is the field's, whatever the spread says.
+  // The model key the spread may set: `checked` on a box, `value` on anything else — and only when the
+  // field does not write it after the spread.
+  const model = box ? "checked" : "value";
+  const value = keys.has(model) && !shadowed.includes(model);
+  if (wants !== "nothing" && value && !carries) {
+    found.push({ kind: "bag-without-a-handler", component: site.tag, detail: name, ...where(site) });
+  }
+}
+
+function where(at: { file: string; line: number; column: number }) {
+  return { file: at.file, line: at.line, column: at.column };
+}

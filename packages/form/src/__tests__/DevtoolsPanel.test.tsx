@@ -60,10 +60,10 @@ const summary = (): PanelRow => rows()[0]!;
 const text = (row: PanelRow): string =>
   (row.fields ?? []).map((field) => ("text" in field ? field.text : "")).join(" · ");
 
-/** Drives a field the way a control does: through the handler `bind` puts on the element. */
+/** Drives a field the way a control does: through the field's own `oninput`. */
 function type(form: Form<typeof schema>, field: "name" | "email", value: string): void {
-  const bind = form.fields[field].$.bind as { oninput: (event: Event) => void };
-  bind.oninput({ target: { value, type: "text" } } as unknown as Event);
+  const leaf = form.fields[field].$ as { oninput: (event: Event) => void };
+  leaf.oninput({ target: { value, type: "text" } } as unknown as Event);
 }
 
 afterEach(() => {

@@ -214,3 +214,16 @@ export function propertyOnlyNames(tag: string): ReadonlySet<string> | undefined 
 export function keptInAProperty(tag: string, attribute: string): boolean {
   return propertyOnlyNames(tag)?.has(attribute) === true;
 }
+
+/**
+ * `<input>` types whose `value` no one edits: a file list, a button's label, a hidden value. Such a
+ * field holds no model — core answers none of its edits, and the check asks none of them for a handler.
+ */
+export const UNEDITED_INPUT_TYPES: ReadonlySet<string> = new Set([
+  "button",
+  "file",
+  "hidden",
+  "image",
+  "reset",
+  "submit",
+]);

@@ -46,6 +46,8 @@ import { mediaWithNoCaptions } from "./media-with-no-captions";
 import { fragmentLinkToNowhere } from "./fragment-link-to-nowhere";
 import { referenceToAnIdThatIsNotThere } from "./reference-to-an-id-that-is-not-there";
 import { controlWithNoLabel } from "./control-with-no-label";
+import { formFieldWithoutWhatTheFormNeeds } from "./form-field-without-what-the-form-needs";
+import { resetTheModelDoesNotHear } from "./reset-the-model-does-not-hear";
 import { namedOnlyByAPlaceholder } from "./named-only-by-a-placeholder";
 import { ariaHiddenOnFocusable } from "./aria-hidden-on-focusable";
 import { presentationRoleOnFocusable } from "./presentation-role-on-focusable";
@@ -63,6 +65,8 @@ import { misspelledElementProperty } from "./misspelled-element-property";
 import { halfBuiltKeyboardPath } from "./half-built-keyboard-path";
 import { elementHtmlRemoved } from "./element-html-removed";
 import { optionThatCannotChoose } from "./option-that-cannot-choose";
+import { formValueInTheWrongControl } from "./form-value-in-the-wrong-control";
+import { fieldTheUserCannotChange } from "./field-the-user-cannot-change";
 import { parentWithAForeignChild } from "./parent-with-a-foreign-child";
 import { ariaThatContradictsTheTag } from "./aria-that-contradicts-the-tag";
 import { roleThatFightsTheTag } from "./role-that-fights-the-tag";
@@ -81,6 +85,7 @@ import { cachedReadOfAPlainField } from "./cached-read-of-a-plain-field";
 import { watchOfAPropThatIsNotThere } from "./watch-of-a-prop-that-is-not-there";
 import { browserUrl } from "./browser-url";
 import { domWrites } from "./dom-writes";
+import { fieldSetByAnEvent } from "./field-set-by-an-event";
 import { duplicateDecorators } from "./duplicate-decorators";
 import { unsplittableImport } from "./unsplittable-import";
 import { unwatchedFields } from "./unwatched-fields";
@@ -184,6 +189,11 @@ export {
   type ReferenceToAnIdThatIsNotThereIssue,
 } from "./reference-to-an-id-that-is-not-there";
 export { controlWithNoLabel, type ControlWithNoLabelIssue } from "./control-with-no-label";
+export {
+  formFieldWithoutWhatTheFormNeeds,
+  type FormFieldWithoutWhatTheFormNeedsIssue,
+} from "./form-field-without-what-the-form-needs";
+export { resetTheModelDoesNotHear, type ResetTheModelDoesNotHearIssue } from "./reset-the-model-does-not-hear";
 export { namedOnlyByAPlaceholder, type NamedOnlyByAPlaceholderIssue } from "./named-only-by-a-placeholder";
 export { couldExist, idTableFor, NAMES_AN_ID } from "./idTable";
 export { ariaHiddenOnFocusable, type AriaHiddenOnFocusableIssue } from "./aria-hidden-on-focusable";
@@ -217,6 +227,11 @@ export { misspelledElementProperty, type MisspelledElementPropertyIssue } from "
 export { halfBuiltKeyboardPath, type HalfBuiltKeyboardPathIssue } from "./half-built-keyboard-path";
 export { elementHtmlRemoved, type ElementHtmlRemovedIssue } from "./element-html-removed";
 export { optionThatCannotChoose, type OptionThatCannotChooseIssue } from "./option-that-cannot-choose";
+export {
+  formValueInTheWrongControl,
+  type FormValueInTheWrongControlIssue,
+} from "./form-value-in-the-wrong-control";
+export { fieldTheUserCannotChange, type FieldTheUserCannotChangeIssue } from "./field-the-user-cannot-change";
 export { parentWithAForeignChild, type ParentWithAForeignChildIssue } from "./parent-with-a-foreign-child";
 export {
   ariaThatContradictsTheTag,
@@ -244,6 +259,7 @@ export { devGuardAsAnExpression, type DevGuardAsAnExpressionIssue } from "./dev-
 export { unkeyableMemoizedArgument, type UnkeyableMemoizedArgumentIssue } from "./unkeyable-memoized-argument";
 export { browserUrl, type BrowserUrlIssue } from "./browser-url";
 export { domWrites, type DomWriteIssue } from "./dom-writes";
+export { fieldSetByAnEvent, type FieldSetByAnEventIssue } from "./field-set-by-an-event";
 export { duplicateDecorators, type DuplicateDecoratorIssue } from "./duplicate-decorators";
 export { unsplittableImport, type UnsplittableImportIssue } from "./unsplittable-import";
 export { unwatchedFields, type UnwatchedFieldIssue } from "./unwatched-fields";
@@ -293,6 +309,7 @@ export const CLASS_RULES = [
   arrowFields,
   browserUrl,
   domWrites,
+  fieldSetByAnEvent,
   duplicateDecorators,
   unwatchedFields,
   watchOfAPropThatIsNotThere,
@@ -314,6 +331,7 @@ export const CLASS_RULES = [
 /** Every rule that reads a FILE. Same arrangement, different subject. */
 export const MODULE_RULES = [
   unsplittableImport,
+  resetTheModelDoesNotHear,
   unexposedEnvRead,
   rowReadsAPlainField,
   devGuardAsAnExpression,
@@ -345,6 +363,8 @@ export const ELEMENT_RULES = [
   halfBuiltKeyboardPath,
   elementHtmlRemoved,
   optionThatCannotChoose,
+  formValueInTheWrongControl,
+  fieldTheUserCannotChange,
   ariaValue,
   ariaWithNoSubject,
   emptyHeadingOrLink,
@@ -396,6 +416,7 @@ export const PROJECT_RULES = [
   referenceToAnIdThatIsNotThere,
   controlWithNoLabel,
   namedOnlyByAPlaceholder,
+  formFieldWithoutWhatTheFormNeeds,
 ] as const;
 
 export const RULES = [...CLASS_RULES, ...MODULE_RULES, ...ELEMENT_RULES, ...TREE_RULES, ...PROJECT_RULES] as const;

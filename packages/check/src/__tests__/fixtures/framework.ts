@@ -44,11 +44,16 @@ export declare function bootstrap(vnode: unknown, el: unknown): void;
  */
 export declare const Select: (props: {
   [attribute: Lowercase<string>]: unknown;
-  value: string | number | readonly (string | number)[];
+  value?: string | number | readonly (string | number)[];
+  defaultValue?: string | number | readonly (string | number)[];
   children?: unknown;
 }) => unknown;
 
-export declare const TextArea: (props: { [attribute: Lowercase<string>]: unknown; value: string | number }) => unknown;
+export declare const TextArea: (props: {
+  [attribute: Lowercase<string>]: unknown;
+  value?: string | number;
+  defaultValue?: string | number;
+}) => unknown;
 /** The server's entries. A tree starts here as much as it does at `bootstrap`. */
 export declare function renderToString(vnode: unknown): Promise<string>;
 export declare function renderPage(vnode: unknown): Promise<{ body: string }>;

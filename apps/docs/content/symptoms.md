@@ -161,7 +161,9 @@ not change.
   [`misspelled-element-property`](/rules/misspelled-element-property).
 - **A capital that should not.** Six names arrive at the DOM as themselves and are read by no
   browser: `httpEquiv`, `acceptCharset`, `defaultValue`, `defaultChecked`, `innerHTML` and
-  `textContent`. Each has a real spelling, and the rule names it. See
+  `textContent`. Each has a real spelling, and the rule names it. `defaultValue` is
+  real on an `<input>`, a `Select` and a `TextArea`, and `defaultChecked` on an `<input>`: where an
+  uncontrolled field starts. See
   [`attribute-that-does-nothing`](/rules/attribute-that-does-nothing).
 - **`false` on a boolean attribute.** `disabled="false"` disables the control. HTML reads the
   attribute's *presence* and never its value, so the string turns it on. `disabled={false}` is what

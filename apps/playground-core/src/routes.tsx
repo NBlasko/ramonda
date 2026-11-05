@@ -5,6 +5,8 @@ import { CssPage } from "./pages/CssPage";
 import { TablePage } from "./pages/TablePage";
 import { SlotsPage } from "./pages/SlotsPage";
 import { CaretPage } from "./pages/CaretPage";
+import { FieldsPage } from "./pages/FieldsPage";
+import { SelectCasesPage } from "./pages/SelectCasesPage";
 import { ExitPage } from "./pages/ExitPage";
 import { AsyncPage } from "./pages/AsyncPage";
 import { QueryPage } from "./pages/QueryPage";
@@ -22,6 +24,8 @@ export const routes = createRoutes({
   "/table": <TablePage />,
   "/slots": <SlotsPage />,
   "/caret": <CaretPage />,
+  "/fields": <FieldsPage />,
+  "/select-cases": <SelectCasesPage />,
   "/exit": <ExitPage />,
   "/async": <AsyncPage />,
   "/query": <QueryPage />,

@@ -42,6 +42,12 @@ describe("what the server sends for a textarea", () => {
     expect(served(html).value).toBe("hello");
   });
 
+  test("a defaultValue is inside the element the same way", async () => {
+    const html = (await renderToString(<TextArea id="t" defaultValue="start" />)).replace(/<!--[^>]*-->/g, "");
+    expect(html).toBe('<textarea id="t">start</textarea>');
+    expect(served(html).value).toBe("start");
+  });
+
   /**
    * The value is content now, so it is escaped like content. Written as an attribute it was escaped
    * for a different context entirely, and a value carrying markup is the shape that turns a rendered
@@ -331,5 +337,807 @@ describe("a caller's own ref on a textarea", () => {
     // The parent rendered once more; the ref was identical, so it added nothing.
     expect(renders).toBe(before + 1);
     expect(app.instance.mine.current).toBe(app.container.querySelector("#t"));
+  });
+});
+
+/**
+ * The model has the last word: after an event the app handles, the field shows what the model holds.
+ * Only after THAT event — a textarea saved on blur keeps every keystroke until `change` — and only
+ * after the whole event, so a listener on an ancestor reads what the user typed.
+ */
+describe("a controlled textarea follows the model after the event the app handles", () => {
+  const typed = async (field: HTMLTextAreaElement, text: string, events: string[]) => {
+    field.value = text;
+    for (const type of events) field.dispatchEvent(new Event(type, { bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  };
+
+  test.each([
+    ["refuses", "a", "a"],
+    ["takes it", "typed", "typed"],
+  ])("an oninput that %s", async (_how, model, expected) => {
+    class Typed extends Component {
+      @state text = "a";
+      answer() {
+        this.text = model;
+      }
+      render() {
+        return <TextArea id="t" value={this.text} oninput={this.answer} />;
+      }
+    }
+    const app = await getDOM<Typed>(<Typed />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+    await typed(field, "typed", ["input"]);
+    await app.settle();
+
+    expect(field.value).toBe(expected);
+  });
+
+  /**
+   * A field whose text is only where it starts takes `defaultValue`: every keystroke stays, the app's
+   * handlers run as plain listeners, and a later `defaultValue` does not reach a field the user typed in.
+   */
+  test("a defaultValue field keeps what the user types", async () => {
+    let committed = "";
+    class Draft extends Component {
+      @state start = "a";
+      commit(event: Event) {
+        committed = (event.target as HTMLTextAreaElement).value;
+      }
+      render() {
+        return <TextArea id="t" defaultValue={this.start} onchange={this.commit} />;
+      }
+    }
+    const app = await getDOM<Draft>(<Draft />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+    expect(field.value).toBe("a");
+
+    await typed(field, "typed", ["input", "change"]);
+    await app.settle();
+    expect(committed).toBe("typed");
+    expect(field.value).toBe("typed");
+
+    app.instance.start = "b";
+    await app.settle();
+    expect(field.value).toBe("typed");
+  });
+
+  /** A `defaultValue` that arrives after the first render — from a load — reaches a field nobody typed in. */
+  test("a defaultValue that arrives later fills an untouched field", async () => {
+    class Loading extends Component {
+      @state saved: string | undefined = undefined;
+      render() {
+        return <TextArea id="t" defaultValue={this.saved} />;
+      }
+    }
+    const app = await getDOM<Loading>(<Loading />);
+    await app.settle();
+    app.instance.saved = "loaded";
+    await app.settle();
+
+    expect((app.container.querySelector("#t") as HTMLTextAreaElement).value).toBe("loaded");
+  });
+
+  /** A `value` with only `onchange`: the model does not move while typing, so each keystroke is undone. */
+  test("a value with only onchange is held between keystrokes", async () => {
+    class Held extends Component {
+      @state text = "a";
+      commit() {}
+      render() {
+        return <TextArea id="t" value={this.text} onchange={this.commit} />;
+      }
+    }
+    const app = await getDOM<Held>(<Held />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+    await typed(field, "typed", ["input"]);
+    await app.settle();
+
+    expect(field.value).toBe("a");
+  });
+
+  /**
+   * A composition as each browser delivers it, measured. Both end with `compositionend` after the last
+   * composing `input`; only Firefox then sends an ordinary `input` with the word.
+   */
+  function compose(field: HTMLTextAreaElement, from: string, word: string, browser: "chromium" | "firefox") {
+    field.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+    field.value = from + word;
+    field.dispatchEvent(new InputEvent("input", { bubbles: true, isComposing: true, data: word }));
+    field.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: word }));
+    if (browser === "firefox") {
+      field.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertCompositionText", data: word }));
+    }
+  }
+
+  /** Until every settle set so far has run — the one a composition's end sets takes two turns. */
+  async function drain(app: { settle(): Promise<void> }) {
+    for (let turn = 0; turn < 3; turn++) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await app.settle();
+    }
+  }
+
+  /**
+   * The usual handler skips composing input and takes the word from the ordinary `input` after it.
+   * Chromium sends none, so core sends it; Firefox sends its own, so core sends nothing — the handler
+   * takes the word once, in both.
+   */
+  for (const browser of ["chromium", "firefox"] as const) {
+    test(`a word typed through an input method is taken, once (${browser})`, async () => {
+      const taken: string[] = [];
+      class Composed extends Component {
+        @state text = "a";
+        take(event: InputEvent) {
+          if (event.isComposing) return;
+          this.text = (event.target as HTMLTextAreaElement).value;
+          taken.push(this.text);
+        }
+        render() {
+          return <TextArea id="t" value={this.text} oninput={this.take} />;
+        }
+      }
+      const app = await getDOM<Composed>(<Composed />);
+      await app.settle();
+      const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+
+      compose(field, "a", "か", browser);
+      await drain(app);
+
+      expect({ field: field.value, model: app.instance.text, taken }).toEqual({
+        field: "aか",
+        model: "aか",
+        taken: ["aか"],
+      });
+    });
+  }
+
+  /**
+   * A handler that takes every input, composing or not, already has the word from the last composing
+   * `input`: nothing is sent after the composition, and it runs once with the word.
+   */
+  test("a handler that took the word during the composition is not called again", async () => {
+    const taken: string[] = [];
+    class Composed extends Component {
+      @state text = "a";
+      take(event: InputEvent) {
+        this.text = (event.target as HTMLTextAreaElement).value;
+        taken.push(this.text);
+      }
+      render() {
+        return <TextArea id="t" value={this.text} oninput={this.take} />;
+      }
+    }
+    const app = await getDOM<Composed>(<Composed />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+
+    compose(field, "a", "か", "chromium");
+    await drain(app);
+
+    expect({ field: field.value, taken }).toEqual({ field: "aか", taken: ["aか"] });
+  });
+
+  /**
+   * A handler that changes what was typed — upper case, a length limit — shows the change with its
+   * own render, in the same task as the keystroke: a browser may paint between tasks, and the field
+   * must not show the raw keystroke for a frame.
+   */
+  test("a handler that changes the input shows it with its render, not a task later", async () => {
+    class Upper extends Component {
+      @state text = "";
+      take(event: InputEvent) {
+        this.text = (event.target as HTMLTextAreaElement).value.toUpperCase();
+      }
+      render() {
+        return <TextArea id="t" value={this.text} oninput={this.take} />;
+      }
+    }
+    const app = await getDOM<Upper>(<Upper />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+
+    field.value = "a";
+    field.dispatchEvent(new InputEvent("input", { bubbles: true }));
+    await app.settle();
+
+    expect(field.value).toBe("A");
+  });
+
+  /**
+   * A handler that rewrites in place — upper case — keeps the caret where the user put it, as an
+   * `<input>` does: a rewrite of the same length leaves every offset meaning what it meant.
+   */
+  test("an upper-casing handler leaves the caret where the user typed", async () => {
+    class Upper extends Component {
+      @state text = "ABC";
+      take(event: InputEvent) {
+        this.text = (event.target as HTMLTextAreaElement).value.toUpperCase();
+      }
+      render() {
+        return <TextArea id="t" value={this.text} oninput={this.take} />;
+      }
+    }
+    const app = await getDOM<Upper>(<Upper />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+    field.focus();
+
+    field.value = "AxBC";
+    field.setSelectionRange(2, 2);
+    field.dispatchEvent(new InputEvent("input", { bubbles: true }));
+    await drain(app);
+
+    expect({ value: field.value, caret: field.selectionStart }).toEqual({ value: "AXBC", caret: 2 });
+  });
+
+  /** A render that leaves the value as it is — an unrelated prop changed — leaves the user's selection too. */
+  test("a render with the same value keeps the user's selection", async () => {
+    class Marked extends Component {
+      @state text = "hello world";
+      @state invalid = false;
+      render() {
+        return <TextArea id="t" value={this.text} oninput={() => {}} aria-invalid={String(this.invalid)} />;
+      }
+    }
+    const app = await getDOM<Marked>(<Marked />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+    field.focus();
+    field.setSelectionRange(6, 11);
+    app.instance.invalid = true;
+    await app.settle();
+
+    expect([field.selectionStart, field.selectionEnd]).toEqual([6, 11]);
+  });
+
+  /**
+   * A render in the middle of a composition — an autosave flipping `disabled`, a class from the
+   * parent — does not write the model into the field: that would cancel the word being typed.
+   */
+  test("a render during a composition leaves the word being typed", async () => {
+    class Saving extends Component {
+      @state text = "a";
+      @state saving = false;
+      take(event: InputEvent) {
+        if (event.isComposing) return;
+        this.text = (event.target as HTMLTextAreaElement).value;
+      }
+      render() {
+        return <TextArea id="t" value={this.text} oninput={this.take} disabled={this.saving} />;
+      }
+    }
+    const app = await getDOM<Saving>(<Saving />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+    field.focus();
+
+    field.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+    field.value = "aか";
+    field.dispatchEvent(new InputEvent("input", { bubbles: true, isComposing: true }));
+    app.instance.saving = true;
+    await app.settle();
+    expect(field.value).toBe("aか");
+
+    field.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "か" }));
+    await drain(app);
+    expect({ field: field.value, model: app.instance.text }).toEqual({ field: "aか", model: "aか" });
+  });
+
+  /**
+   * A composition that loses its field — a blur, and no `compositionend` after it — holds the field as
+   * it is: nothing writes it in case the word is still being committed. The next ordinary edit ends the
+   * composition, and the field follows the model as any field does.
+   */
+  test("a composition lost to a blur holds the field until the next edit, which follows the model", async () => {
+    class Lost extends Component {
+      @state text = "a";
+      keep(event: InputEvent) {
+        if (event.isComposing) return;
+        this.text = "a";
+      }
+      render() {
+        return <TextArea id="t" value={this.text} oninput={this.keep} />;
+      }
+    }
+    const app = await getDOM<Lost>(<Lost />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+    field.focus();
+
+    field.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+    field.value = "aか";
+    field.dispatchEvent(new InputEvent("input", { bubbles: true, isComposing: true }));
+    field.blur();
+    await drain(app);
+    const afterBlur = field.value;
+
+    field.focus();
+    field.value = "ax";
+    field.dispatchEvent(new InputEvent("input", { bubbles: true }));
+    await drain(app);
+
+    expect({ afterBlur, afterTyping: field.value }).toEqual({ afterBlur: "aか", afterTyping: "a" });
+  });
+
+  /**
+   * A browser may commit the word on a blur, sending `blur` before `compositionend`: a render in
+   * between — an `onblur` that moves the model, a placeholder for an empty field — must not write the
+   * model over the word being committed.
+   */
+  test("a blur before compositionend does not lose the word being committed", async () => {
+    class Committed extends Component {
+      @state text = "";
+      @state touched = false;
+      take(event: Event) {
+        if ((event as InputEvent).isComposing) return;
+        this.text = (event.target as HTMLTextAreaElement).value;
+      }
+      render() {
+        return (
+          <TextArea
+            id="t"
+            value={this.text}
+            oninput={this.take}
+            oncompositionend={this.take}
+            onblur={() => {
+              this.touched = true;
+              if (this.text === "") this.text = "-";
+            }}
+          />
+        );
+      }
+    }
+    const app = await getDOM<Committed>(<Committed />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+    field.focus();
+
+    field.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+    field.value = "日本";
+    field.dispatchEvent(new InputEvent("input", { bubbles: true, isComposing: true }));
+    field.blur();
+    await app.settle();
+    field.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "日本" }));
+    await drain(app);
+
+    expect({ field: field.value, model: app.instance.text }).toEqual({ field: "日本", model: "日本" });
+  });
+
+  /**
+   * A handler that takes composing input and CHANGES it — full-width digits to half-width, a trim —
+   * leaves the model unlike the field, and still took the word: it is not called again.
+   */
+  test("a handler that took the word and changed it is not called again", async () => {
+    const taken: string[] = [];
+    class Postcode extends Component {
+      @state text = "";
+      take(event: InputEvent) {
+        this.text = (event.target as HTMLTextAreaElement).value.replace(/[０-９]/g, (d) =>
+          String.fromCharCode(d.charCodeAt(0) - 0xfee0),
+        );
+        taken.push(this.text);
+      }
+      render() {
+        return <TextArea id="t" value={this.text} oninput={this.take} />;
+      }
+    }
+    const app = await getDOM<Postcode>(<Postcode />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+
+    compose(field, "", "１２３", "chromium");
+    await drain(app);
+
+    expect({ field: field.value, taken }).toEqual({ field: "123", taken: ["123"] });
+  });
+
+  /**
+   * As a browser does it: the app renders between the composing input and the composition's end. A
+   * handler that took the word and changed it moved the model, and is not called again; one that
+   * cleared the model mid-word is not handed the word back.
+   */
+  test("a handler that changed the word is not called again, with a render in between", async () => {
+    const taken: string[] = [];
+    class Postcode extends Component {
+      @state text = "";
+      take(event: InputEvent) {
+        this.text = (event.target as HTMLTextAreaElement).value.replace(/[０-９]/g, (d) =>
+          String.fromCharCode(d.charCodeAt(0) - 0xfee0),
+        );
+        taken.push(this.text);
+      }
+      render() {
+        return <TextArea id="t" value={this.text} oninput={this.take} />;
+      }
+    }
+    const app = await getDOM<Postcode>(<Postcode />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+
+    field.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+    field.value = "１２３";
+    field.dispatchEvent(new InputEvent("input", { bubbles: true, isComposing: true }));
+    await app.settle();
+    field.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "１２３" }));
+    await drain(app);
+
+    expect({ field: field.value, taken }).toEqual({ field: "123", taken: ["123"] });
+  });
+
+  /**
+   * A handler that takes every input hears every step of the word, and nothing more at its end — even
+   * a word typed again over itself, which leaves the model as it began.
+   */
+  test("a handler that takes every input hears each step, and nothing more at the end", async () => {
+    const taken: string[] = [];
+    class Again extends Component {
+      @state text = "日本";
+      take(event: InputEvent) {
+        this.text = (event.target as HTMLTextAreaElement).value;
+        taken.push(this.text);
+      }
+      render() {
+        return <TextArea id="t" value={this.text} oninput={this.take} />;
+      }
+    }
+    const app = await getDOM<Again>(<Again />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+
+    field.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+    for (const step of ["n", "日本"]) {
+      field.value = step;
+      field.dispatchEvent(new InputEvent("input", { bubbles: true, isComposing: true }));
+      await app.settle();
+    }
+    field.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "日本" }));
+    await drain(app);
+
+    expect(taken).toEqual(["n", "日本"]);
+  });
+
+  test("a model cleared in the middle of a word is not handed the word back", async () => {
+    class Clearing extends Component {
+      @state text = "a";
+      take(event: InputEvent) {
+        if (event.isComposing) return;
+        this.text = (event.target as HTMLTextAreaElement).value;
+      }
+      render() {
+        return <TextArea id="t" value={this.text} oninput={this.take} />;
+      }
+    }
+    const app = await getDOM<Clearing>(<Clearing />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+
+    field.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+    field.value = "aか";
+    field.dispatchEvent(new InputEvent("input", { bubbles: true, isComposing: true }));
+    app.instance.text = "";
+    await app.settle();
+    field.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "か" }));
+    await drain(app);
+
+    expect({ field: field.value, model: app.instance.text }).toEqual({ field: "", model: "" });
+  });
+
+  /**
+   * A field taken OFF the page but kept — a portal parked while its dialog is closed — still hands
+   * the word over: the component is alive, and opening the dialog again shows what was typed.
+   */
+  test("a field moved off the page as its composition ends still takes the word", async () => {
+    class Editor extends Component {
+      @state text = "";
+      take(event: InputEvent) {
+        if (event.isComposing) return;
+        this.text = (event.target as HTMLTextAreaElement).value;
+      }
+      render() {
+        return <TextArea id="t" value={this.text} oninput={this.take} />;
+      }
+    }
+    const app = await getDOM<Editor>(<Editor />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+    const parked = document.createDocumentFragment();
+
+    compose(field, "", "日本", "chromium");
+    parked.appendChild(field);
+    await drain(app);
+
+    expect({ field: field.value, model: app.instance.text }).toEqual({ field: "日本", model: "日本" });
+  });
+
+  /**
+   * A field its composition's end destroys — Enter closes the dialog — is handed the word first: the
+   * word reaches `oninput` before `oncompositionend`, as a handler that took every step had it already.
+   */
+  test("a field destroyed as its composition ends is handed the word before it goes", async () => {
+    const taken: string[] = [];
+    class Dialog extends Component {
+      @state text = "";
+      @state open = true;
+      take(event: InputEvent) {
+        if (event.isComposing) return;
+        taken.push((event.target as HTMLTextAreaElement).value);
+      }
+      close() {
+        this.open = false;
+      }
+      render() {
+        return (
+          <div>
+            {this.open ? <TextArea id="t" value={this.text} oninput={this.take} oncompositionend={this.close} /> : null}
+          </div>
+        );
+      }
+    }
+    const app = await getDOM<Dialog>(<Dialog />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+
+    compose(field, "", "日本", "chromium");
+    await drain(app);
+
+    expect({ onPage: field.isConnected, taken }).toEqual({ onPage: false, taken: ["日本"] });
+  });
+
+  /**
+   * An input method builds a character over several `input` events; putting the old value back
+   * between them cancels it. When the composition ends the field shows the model again: a handler
+   * that refuses the word has it put back then.
+   */
+  test("a composition is left alone, and settled when it ends", async () => {
+    class Composed extends Component {
+      @state text = "a";
+      keep(event: InputEvent) {
+        if (event.isComposing) return;
+        this.text = "a";
+      }
+      render() {
+        return <TextArea id="t" value={this.text} oninput={this.keep} />;
+      }
+    }
+    const app = await getDOM<Composed>(<Composed />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+
+    field.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+    field.value = "ka";
+    field.dispatchEvent(new InputEvent("input", { bubbles: true, isComposing: true }));
+    await drain(app);
+    expect(field.value).toBe("ka");
+
+    field.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "か" }));
+    await drain(app);
+    expect(field.value).toBe("a");
+  });
+
+  /**
+   * A composition the field stopped being controlled in the middle of — its end goes to the app, not
+   * to core — does not leave the field waiting for an end it will never hear.
+   */
+  test("a field that lets go during a composition is settled again once it holds a value", async () => {
+    class Reloaded extends Component {
+      @state text: string | null = "a";
+      keep() {
+        if (this.text !== null) this.text = "a";
+      }
+      render() {
+        return <TextArea id="t" value={this.text as never} oninput={this.keep} />;
+      }
+    }
+    const app = await getDOM<Reloaded>(<Reloaded />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+
+    field.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+    app.instance.text = null;
+    await app.settle();
+    field.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "か" }));
+    app.instance.text = "a";
+    await app.settle();
+
+    field.value = "ax";
+    field.dispatchEvent(new InputEvent("input", { bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await app.settle();
+
+    expect(field.value).toBe("a");
+  });
+
+  /** A settle set by a keystroke just before a composition began does not land in the middle of it. */
+  test("a settle that comes due mid-composition waits", async () => {
+    class Composed extends Component {
+      @state text = "a";
+      keep(event: InputEvent) {
+        if (event.isComposing) return;
+        this.text = "a";
+      }
+      render() {
+        return <TextArea id="t" value={this.text} oninput={this.keep} />;
+      }
+    }
+    const app = await getDOM<Composed>(<Composed />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+    // A composition happens in the focused field.
+    field.focus();
+
+    field.value = "ax";
+    field.dispatchEvent(new InputEvent("input", { bubbles: true }));
+    field.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+    field.value = "axk";
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await app.settle();
+
+    expect(field.value).toBe("axk");
+  });
+
+  /**
+   * The word taken on `oncompositionend` — where a handler that skips composing input takes it — is
+   * kept, and a blur straight after does not undo it: `change` is not answered.
+   */
+  test("a word taken on compositionend is kept through a blur", async () => {
+    class Composed extends Component {
+      @state text = "a";
+      take(event: Event) {
+        if ((event as InputEvent).isComposing) return;
+        this.text = (event.target as HTMLTextAreaElement).value;
+      }
+      render() {
+        return <TextArea id="t" value={this.text} oninput={this.take} oncompositionend={this.take} />;
+      }
+    }
+    const app = await getDOM<Composed>(<Composed />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+
+    field.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+    field.value = "aか";
+    field.dispatchEvent(new InputEvent("input", { bubbles: true, isComposing: true }));
+    field.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "か" }));
+    field.dispatchEvent(new Event("change", { bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await app.settle();
+
+    expect({ field: field.value, model: app.instance.text }).toEqual({ field: "aか", model: "aか" });
+  });
+
+  /** A value that is still `null` is no value: the field is not held, and shows nothing until it has one. */
+  test("a null value is no value", async () => {
+    class Loading extends Component {
+      @state text: string | null = null;
+      render() {
+        return <TextArea id="t" value={this.text as never} />;
+      }
+    }
+    const app = await getDOM<Loading>(<Loading />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+    expect(field.value).toBe("");
+
+    await typed(field, "typed", ["input"]);
+    await app.settle();
+    expect(field.value).toBe("typed");
+  });
+
+  /** A handler that removes the field leaves nothing to settle, and nothing is reported. */
+  test("a field its handler removes is left alone", async () => {
+    const codes: string[] = [];
+    globalThis.__RAMONDA_DIAGNOSTICS__ = (record) => codes.push(record.code);
+    class Inline extends Component {
+      @state editing = true;
+      @state text = "a";
+      done(event: Event) {
+        this.text = (event.target as HTMLTextAreaElement).value;
+        this.editing = false;
+      }
+      render() {
+        return this.editing ? <TextArea id="t" value={this.text} oninput={this.done} /> : <p>{this.text}</p>;
+      }
+    }
+    try {
+      const app = await getDOM<Inline>(<Inline />);
+      await app.settle();
+      await typed(app.container.querySelector("#t") as HTMLTextAreaElement, "typed", ["input"]);
+      await app.settle();
+
+      expect(app.container.textContent).toBe("typed");
+      expect(codes).toEqual([]);
+    } finally {
+      globalThis.__RAMONDA_DIAGNOSTICS__ = undefined;
+    }
+  });
+
+  /** The field's own handler has answered before a listener around it runs: that listener reads what the field keeps. */
+  test("a listener on an ancestor reads what the field keeps", async () => {
+    let seen = "";
+    class Wrapped extends Component {
+      @state text = "a";
+      keep() {
+        this.text = "a";
+      }
+      sync(event: Event) {
+        seen = (event.target as HTMLTextAreaElement).value;
+      }
+      render() {
+        return (
+          <form oninput={this.sync}>
+            <TextArea id="t" value={this.text} oninput={this.keep} />
+          </form>
+        );
+      }
+    }
+    const app = await getDOM<Wrapped>(<Wrapped />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+    await typed(field, "typed", ["input"]);
+    await app.settle();
+
+    expect(seen).toBe("a");
+    expect(field.value).toBe("a");
+  });
+
+  /**
+   * A field with no handler of its own shows its model, whatever a handler around it does: the field is
+   * answered first, so the form reads the model's value back, and the field cannot be typed in — as in
+   * React, which warns about the same markup.
+   */
+  test("a field with no handler of its own shows its model, though a form around it writes it", async () => {
+    class Form extends Component {
+      @state text = "a";
+      sync(event: Event) {
+        this.text = (event.target as HTMLTextAreaElement).value;
+      }
+      render() {
+        return (
+          <form oninput={this.sync}>
+            <TextArea id="t" value={this.text} />
+          </form>
+        );
+      }
+    }
+    const app = await getDOM<Form>(<Form />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+    await typed(field, "typed", ["input"]);
+    await app.settle();
+
+    expect({ field: field.value, model: app.instance.text }).toEqual({ field: "a", model: "a" });
+  });
+
+  test("a handler that throws still has the model's value put back", async () => {
+    const errors: unknown[] = [];
+    const onError = (event: ErrorEvent) => {
+      errors.push(event.error);
+      event.preventDefault();
+    };
+    window.addEventListener("error", onError);
+    class Strict extends Component {
+      @state text = "a";
+      check() {
+        throw new Error("refused");
+      }
+      render() {
+        return <TextArea id="t" value={this.text} oninput={this.check} />;
+      }
+    }
+    try {
+      const app = await getDOM<Strict>(<Strict />);
+      await app.settle();
+      const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+      await typed(field, "typed", ["input"]);
+      await app.settle();
+
+      expect(field.value).toBe("a");
+      expect(errors).toHaveLength(1);
+    } finally {
+      window.removeEventListener("error", onError);
+    }
   });
 });

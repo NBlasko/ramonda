@@ -1,6 +1,6 @@
 import { indexUnder, keyPrefix, type Path, type PathSegment, pathKey, pathToString } from "./path";
 import type { FieldNode, Row } from "./types";
-import { REFUSAL, refuse } from "./diagnostics";
+import { REFUSAL, refuse, report } from "./diagnostics";
 
 /**
  * What a field needs from the form. Declared as an interface so the tree can be built and
@@ -85,9 +85,9 @@ const NOT_A_CHILD = new Set(["then", "catch", "finally", "constructor", "prototy
  *
  * **A node is created once and handed back forever after**, and that is not an
  * optimisation — it is what keeps the framework quiet. A fresh node per access means a
- * fresh `bind.oninput` per access, and RMD020 compares a vnode's attributes key by key
- * (`core/src/debug/renderStability.ts`): a handler whose identity changed is reported, and
- * really is removed and re-added on the element every render. With the cache, `oninput` is
+ * fresh `oninput` per access, and RMD020 compares a vnode's attributes key by key
+ * (`core/src/debug/renderStability.ts`): a handler whose identity changed is reported on every
+ * render. With the cache, `oninput` is
  * one bound method per field for the life of the form.
  *
  * The same cache is what makes a node safe to compare. `list({ each: rows })` puts nodes
@@ -140,7 +140,7 @@ export class FieldTree {
   /**
    * Drops what an array no longer has: the cached node and handle for every row at or past `from`.
    *
-   * A node is created once and kept forever, which is what keeps `bind.oninput` one function per field
+   * A node is created once and kept forever, which is what keeps `oninput` one function per field
    * (see above) — but "forever" was also true of a row that had been removed. Measured on a form grown
    * to 5000 rows of two fields and then shrunk: **15002 nodes and 10001 handles** still held, one per
    * index the array had ever reached, and each handle carries two bound closures and a row cache.
@@ -192,8 +192,14 @@ export class FieldHandle {
   /** The `name` attribute. The same string as `path`, named for how it reads at a call site. */
   readonly name: string;
 
-  private readonly onInputBound: (event: Event) => void;
-  private readonly onBlurBound: (event: Event) => void;
+  /**
+   * The control's `oninput`: what it produced, written into the form — read by the element's own
+   * `type`, see `fromControl`. One bound function for the life of the field, so RMD020 has nothing to
+   * report and the element keeps one listener.
+   */
+  readonly oninput: (event: Event) => void;
+  /** The control's `onblur`: the field is touched, which is what decides whether its message shows. */
+  readonly onblur: (event: Event) => void;
 
   constructor(
     private readonly host: FieldHost,
@@ -202,9 +208,65 @@ export class FieldHandle {
   ) {
     this.path = pathToString(at_);
     this.name = this.path;
-    this.onInputBound = (event: Event) =>
-      this.host.write(this.at_, fromControl(event.target, this.host.read(this.at_)));
-    this.onBlurBound = () => this.host.touch(this.at_);
+    this.oninput = (event: Event) => {
+      const current = this.host.read(this.at_);
+      if (__DEV__) this.checkTheControl(event.target, current);
+      this.host.write(this.at_, fromControl(event.target, current));
+    };
+    this.onblur = () => this.host.touch(this.at_);
+  }
+
+  /**
+   * A field edited through a control that hands back another kind: a number or a day through one that
+   * hands back text (`type` left off), or text through one that hands back a number. Read on the value
+   * the field holds, so a field still empty says nothing; `ramonda-check` reads the markup before any of
+   * it runs, as `form-value-in-the-wrong-control`.
+   */
+  private checkTheControl(target: EventTarget | null, current: unknown): void {
+    const type = (target as { type?: string } | null)?.type;
+    if (type === undefined) return;
+    // True or false, through a control that hands back text: a box is written `checked`, not `value`.
+    if (typeof current === "boolean" && type !== "checkbox" && type !== "radio" && !type.startsWith("select")) {
+      report(
+        "RMF005",
+        `\`${this.path}\` holds true or false, and its control (\`type="${type}"\`) hands back text: it belongs in \`<input type="checkbox" checked={…}>\`.`,
+        { path: this.path, type, wants: "checkbox" },
+      );
+      return;
+    }
+    // Text, through a control that hands back something else: a number, or true or false.
+    const notText =
+      type === "number" || type === "range" ? "a number" : type === "checkbox" ? "true or false" : undefined;
+    if (typeof current === "string" && current !== "" && notText !== undefined) {
+      report(
+        "RMF005",
+        `\`${this.path}\` holds text, and its control (\`type="${type}"\`) hands back ${notText}: it belongs in a control that hands back text.`,
+        { path: this.path, type, wants: "text" },
+      );
+      return;
+    }
+    const wants = typeof current === "number" ? "number" : current instanceof Date ? "date" : undefined;
+    if (wants === undefined || type === wants) return;
+    if (wants === "number" && type === "range") return;
+    const handsBack =
+      type === "checkbox"
+        ? "true or false"
+        : type === "number" || type === "range"
+          ? "a number"
+          : type === "date"
+            ? "a day"
+            : "text";
+    // A select hands back the chosen option's `value`, and a radio its own `value`, and no `type` changes
+    // that: a choice of numbers is a number once the schema takes it as one.
+    const fix =
+      type.startsWith("select") || type === "radio"
+        ? `a choice of ${wants === "number" ? "numbers" : "days"} is taken as one by the schema — \`z.coerce.${wants === "number" ? "number" : "date"}()\` in Zod`
+        : `it belongs in \`<input type="${wants}">\``;
+    report(
+      "RMF005",
+      `\`${this.path}\` holds a ${wants === "number" ? "number" : "day"}, and its control (\`type="${type}"\`) hands back ${handsBack}: ${fix}.`,
+      { path: this.path, type, wants },
+    );
   }
 
   get value(): unknown {
@@ -240,64 +302,25 @@ export class FieldHandle {
   }
 
   /**
-   * The attributes for this value's kind of control.
-   *
-   * A fresh object each read, and that is fine: JSX flattens a spread into the vnode's
-   * attributes, and RMD020 compares those key by key. `name` is a string, `value` is a
-   * string or number, and the two handlers are the same bound methods every time — so
-   * nothing in here ever differs between two renders of unchanged state.
+   * The value as the control shows it, for its `value` attribute: a date as `yyyy-mm-dd`, a number as
+   * itself, and anything absent as `""` — so `value={field.inputValue}` is the same line for every
+   * kind of text, number and date field. A checkbox takes `checked={field.value === true}`.
    */
-  get bind(): Record<string, unknown> {
+  get inputValue(): string | number {
     const value = this.host.read(this.at_);
-    const invalid = this.host.errorsAt(this.at_).length > 0 ? true : undefined;
-
-    const common = {
-      name: this.name,
-      oninput: this.onInputBound,
-      onblur: this.onBlurBound,
-      "aria-invalid": invalid,
-    };
-
-    switch (this.controlFor(value)) {
-      case "checkbox":
-        return { ...common, type: "checkbox", checked: value === true };
-      case "number":
-        // `""` for an emptied field, which is what `fromControl` wrote and what the schema reports on.
-        return { ...common, type: "number", value: typeof value === "number" ? value : "" };
-      case "date":
-        return { ...common, type: "date", value: value instanceof Date ? toDateInput(value) : "" };
-      default:
-        return { ...common, value: value === null || value === undefined ? "" : String(value) };
-    }
+    if (value instanceof Date) return toDateInput(value);
+    if (typeof value === "number") return value;
+    return value === null || value === undefined ? "" : String(value);
   }
 
   /**
-   * Which control this value belongs in — remembered, because an EMPTY value does not say.
-   *
-   * `fromControl` writes `""` for an emptied number field on purpose, so a schema can report
-   * "expected a number" instead of `NaN` poisoning arithmetic. But `""` is a string, so reading the
-   * kind off the runtime type alone lost the control the moment the reader pressed backspace:
-   * `type: "number"` vanished from the attributes, the element reverted to text, and from then on
-   * `fromControl` saw a text input and wrote strings. The field never became numeric again — the
-   * spinner gone, and on a phone the numeric keyboard gone mid-entry.
-   *
-   * So a present value decides AND is remembered, and an absent one reuses what the field already
-   * was. The handle is one object per path for the life of the form, which is what makes that memory
-   * the field's rather than a render's. It is derived from values on both sides of a hydration, so
-   * the server and the client reach the same answer.
-   *
-   * An ordinary string still answers `text` — the memory only fills a gap, it never invents a kind
-   * a value never had.
+   * `true` while the field has a message, and no value otherwise: the control's `aria-invalid`. A valid
+   * field carries no `aria-invalid` at all, as one written before any form library did — `false` would
+   * be written as `aria-invalid="false"`, which a stylesheet reads as a verdict on a field not yet used.
    */
-  private controlFor(value: unknown): Control {
-    if (value === "" || value === null || value === undefined) return this.control ?? "text";
-
-    const kind = controlOf(value);
-    this.control = kind;
-    return kind;
+  get invalid(): true | undefined {
+    return this.host.errorsAt(this.at_).length > 0 ? true : undefined;
   }
-
-  private control: Control | undefined;
 
   /* ---- array members. The types keep these off a leaf; these throw if reached anyway. ---- */
 
@@ -404,24 +427,22 @@ function sameIds(a: readonly string[] | undefined, b: readonly string[]): boolea
   return a.every((id, index) => id === b[index]);
 }
 
-/** The kinds of control `bind` knows how to describe. `text` is the one that needs no `type`. */
-type Control = "checkbox" | "number" | "date" | "text";
-
-/** The control a PRESENT value belongs in. An absent one says nothing — see `controlFor`. */
-function controlOf(value: unknown): Control {
-  if (typeof value === "boolean") return "checkbox";
-  if (typeof value === "number") return "number";
-  if (value instanceof Date) return "date";
-  return "text";
-}
-
 /**
  * What the control produced.
  *
- * Read from the element's `type` rather than guessed from the text, because `bind` is what
- * set that `type` in the first place — so the two cannot disagree. A number input hands
- * back a number, and an empty one hands back `""` rather than `NaN`, which is a value a
- * schema can report on ("expected a number") instead of one that quietly poisons arithmetic.
+ * Read from the element's own `type`: the control decides, as an empty field could be waiting for a
+ * number or text alike. A number input and a slider hand back a number, and an emptied number input
+ * `""` rather than `NaN`, which is a value a schema can report on ("expected a number") instead of one
+ * that quietly poisons arithmetic. Any other control hands back its text. Which control a field may sit
+ * in is `ramonda-check`'s to say, from the field's type: `form-value-in-the-wrong-control`.
+ *
+ * A date input serves two kinds of field — a `Date`, and a date written as text (`"2026-10-29"`, a JSON
+ * Schema `format: "date"`) — and the value the field holds tells them apart: text, `""` included, is a
+ * date written as text, and gets the control's text back; a `Date` or nothing gets a day, at local
+ * midnight for a field that held none. So a `Date` field emptied holds nothing — `undefined`, whatever
+ * the schema calls nothing, which a schema that takes no date accepts (`z.date().nullish()`) — rather
+ * than `""`, and a date written as text starts at `""`, which is what keeps the two apart while either
+ * is empty.
  */
 function fromControl(target: EventTarget | null, current: unknown): unknown {
   const element = target as (HTMLInputElement & { type?: string }) | null;
@@ -429,8 +450,13 @@ function fromControl(target: EventTarget | null, current: unknown): unknown {
 
   if (element.type === "checkbox") return element.checked;
   if (element.type === "number") return element.value === "" ? "" : Number(element.value);
-  if (element.type === "date" && current instanceof Date) {
-    return fromDateInput(element.value, current) ?? element.value;
+  // A slider has no empty position, so it never hands back `""`.
+  if (element.type === "range") return Number(element.value);
+  if (element.type === "date") {
+    if (typeof current === "string") return element.value;
+    // The time of day a held date carries is kept; a field that held none starts the day at midnight.
+    // Emptied, or half-typed, it holds nothing.
+    return fromDateInput(element.value, current instanceof Date ? current : new Date(Number.NaN));
   }
 
   return element.value;
@@ -446,10 +472,13 @@ function fromControl(target: EventTarget | null, current: unknown): unknown {
  * the calendar day a local `Date` means is its local one.
  */
 function toDateInput(value: Date): string {
-  if (Number.isNaN(value.getTime())) return "";
+  // A day before year 1 is none a date input shows: `00-5-01-01` would be no day to it either.
+  if (Number.isNaN(value.getTime()) || value.getFullYear() < 1) return "";
 
-  const pad = (part: number) => String(part).padStart(2, "0");
-  return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`;
+  const pad = (part: number, width = 2) => String(part).padStart(width, "0");
+  // The year in four digits, as a date input reads it: `2-05-10` is not a day to it, and it would empty
+  // the field while the reader types the year through `0002`.
+  return `${pad(value.getFullYear(), 4)}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`;
 }
 
 /**
@@ -462,16 +491,25 @@ function toDateInput(value: Date): string {
  * silently move to midnight, and an appointment would lose its hour to a change of day. `setFullYear`
  * takes all three parts at once, so there is no intermediate date to overflow through.
  *
- * `undefined` for anything that is not a day — an empty control, or a half-typed one — and the caller
- * keeps the raw text, which is a value a schema can report on.
+ * `undefined` for anything that is not a day — an empty control, or a half-typed one — which the field
+ * then holds: nothing, which a required `Date` reports on.
  */
 function fromDateInput(text: string, current: Date): Date | undefined {
-  const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
+  // Four digits of year to six, as a date input takes them and a `Date` holds them (to 275760).
+  const parts = /^(\d{4,6})-(\d{2})-(\d{2})$/.exec(text);
   if (parts === null) return undefined;
 
   const [year, month, day] = [Number(parts[1]), Number(parts[2]) - 1, Number(parts[3])];
-  // An invalid held value has no time worth carrying, so the picked day starts at local midnight.
-  if (Number.isNaN(current.getTime())) return new Date(year, month, day);
+  // An invalid held value has no time worth carrying, so the picked day starts at local midnight — set
+  // with `setFullYear`, as `new Date(2, …)` reads a year below 100 as 1902: the year a reader types one
+  // digit at a time passes through `0002`.
+  if (Number.isNaN(current.getTime())) {
+    const midnight = new Date(0);
+    midnight.setFullYear(year, month, day);
+    midnight.setHours(0, 0, 0, 0);
+    // A year past what a `Date` holds (275760) is no day.
+    return Number.isNaN(midnight.getTime()) ? undefined : midnight;
+  }
 
   const next = new Date(current.getTime());
   next.setFullYear(year, month, day);

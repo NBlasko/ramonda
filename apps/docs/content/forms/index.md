@@ -36,20 +36,34 @@ class SignupForm extends Component {
   }
 
   render() {
-    const f = this.form.fields;
+    const email = this.form.fields.email.$;
+    const password = this.form.fields.password.$;
 
     return (
       <form onsubmit={this.form.submit}>
         <label>
           Email
-          <input {...f.email.$.bind} />
-          {f.email.$.error ? <em>{f.email.$.error}</em> : null}
+          <input
+            name={email.name}
+            value={email.inputValue}
+            oninput={email.oninput}
+            onblur={email.onblur}
+            aria-invalid={email.invalid}
+          />
+          {email.error ? <em>{email.error}</em> : null}
         </label>
 
         <label>
           Password
-          <input type="password" {...f.password.$.bind} />
-          {f.password.$.error ? <em>{f.password.$.error}</em> : null}
+          <input
+            type="password"
+            name={password.name}
+            value={password.inputValue}
+            oninput={password.oninput}
+            onblur={password.onblur}
+            aria-invalid={password.invalid}
+          />
+          {password.error ? <em>{password.error}</em> : null}
         </label>
 
         <button type="submit" disabled={this.form.isSubmitting}>
@@ -75,8 +89,11 @@ second place to describe the shape and no generic to write by hand.
 typo is a compile error and renaming a schema field breaks the render rather than silently
 producing `undefined`. See [Fields](/forms/fields).
 
-**`bind` is everything the input needs.** `name`, `value`, `oninput`, `onblur`, and the right
-`type` for what the field holds. Spread it and stop thinking about it.
+**A control is written with five attributes, each by name** — `name`, `value`, `oninput`, `onblur`
+and `aria-invalid` — all read off the field's `$`; a box writes `checked` in place of `value`, and a
+number or a day writes its `type` too, since the control's `type` is what the field reads back. Every
+one is there to see where the control is, and `@ramonda/check` reports a field in the form that is
+missing one.
 
 ## Try it
 
@@ -208,7 +225,7 @@ That comparison is the whole cost of defaults that did not move: around 2 µs on
 ## Next
 
 - [Fields](/forms/fields) — the field tree in full: property access instead of string paths, and
-  what `bind` hands a control.
+  what a control is written with.
 - [Validation](/forms/validation) — a schema from any Standard Schema library, and when a message
   is ready to be seen.
 - [Array fields](/forms/arrays) — rows that survive a splice

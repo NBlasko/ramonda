@@ -48,10 +48,6 @@ export class RefusedNames extends Component {
         <meta httpEquiv="refresh" content="5" />
         {/* @ts-expect-error — the attribute is `accept-charset` */}
         <form acceptCharset="utf-8" />
-        {/* @ts-expect-error — the attribute IS the initial value */}
-        <input defaultValue="v" />
-        {/* @ts-expect-error — the attribute IS the initial state */}
-        <input defaultChecked />
         {/* @ts-expect-error — Ramonda renders children */}
         <div innerHTML="<p>x</p>" />
         {/* @ts-expect-error — put the text in the children */}
@@ -229,6 +225,14 @@ export class EventNames extends Component {
         {/* `on:` takes the rest of the name exactly as written, for an event `on…` cannot spell. */}
         <div on:my-event={(event) => event.type} />
         <div on:DOMSomething={(event) => event.type} />
+        {/* @ts-expect-error — a standard event has one spelling: `oninput` */}
+        <input aria-label="colon" on:input={(event) => event.type} />
+        {/* @ts-expect-error — and so does a click, on any element */}
+        <div on:click={(event) => event.type} />
+        {/* @ts-expect-error — on a core field too, which spells out its own props */}
+        <TextArea aria-label="colon area" value="" on:input={() => {}} />
+        {/* @ts-expect-error — and on a select */}
+        <Select aria-label="colon select" value="" on:change={() => {}} />
       </div>
     );
   }
@@ -445,4 +449,15 @@ export const targetIsNotNarrowed = (
     // @ts-expect-error — `target` is not narrowed, and that is the claim rather than a gap.
     onchange={(e: EventOn<HTMLInputElement>) => e.target?.value}
   />
+);
+
+/** An uncontrolled `<input>` says where it starts with `defaultValue` or `defaultChecked`. */
+export const inputDefaults = (
+  <div>
+    <input name="email" defaultValue="ana@example.com" />
+    <input type="checkbox" name="news" defaultChecked />
+    <svg>
+      <g transform="translate(10, 0)" />
+    </svg>
+  </div>
 );

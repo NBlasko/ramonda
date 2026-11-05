@@ -80,8 +80,10 @@ describe("replaceEqualDeep", () => {
     const b: Record<string, unknown> = { name: "a" };
     b.self = b;
 
-    // The node budget is what makes this safe: when it runs out the new value is returned, so
-    // the worst case is a render that was not needed.
+    // The DEPTH bound is what makes this safe, not the node budget — `merge`'s own doc says so and
+    // the measurement agrees: `walk` returns at `Object.is` before spending any budget, so a
+    // self-cycle burns one frame of depth per visit and would blow the stack long before 20 000
+    // nodes. Depth cuts it at 50. `core`'s `MergeBounds.test.ts` pins both bounds separately.
     expect(() => replaceEqualDeep(a, b)).not.toThrow();
   });
 });

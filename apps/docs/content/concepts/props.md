@@ -122,22 +122,25 @@ rendering when it should. The worst a wrong name here can do is fail to type-che
 comparison that is safe to make, so a listed function prop is left exactly as it came. Pass a bound
 method — `onPick={this.pick}` — or `@memoized` when it has to be built per row.
 
-**Children are a prop, and they can be declared too.** A rendered node is built during the render,
-so anything a parent writes between the tags is a fresh value every time — a component given
-children re-renders whenever its parent does, even when the children are a piece of static text.
-The same goes for a node handed over as a prop, `header={<Header />}`. Both are named like any
-other prop:
+**Markup handed down is compared by what it says.** Children — anything between the tags — and a
+single node handed over as a prop, `header={<Header />}`, are built afresh by every render of the
+parent. The framework compares them by content, so a child whose markup says the same as last time
+is not rendered again, and none of it needs declaring. It holds through nesting and for a `list()`
+among the children or handed down as a prop of its own, as long as the list's callback is a method
+or a module-level function — one written inline is a new function every render, and its rows are
+built again.
 
-```tsx
-@StableProps("children", "header")
-export class Panel extends Component<{ header?: unknown; children?: unknown }> {}
-```
+Everything the app builds is compared by reference: a row, a `filter` object, an array of records,
+and also an object or an array that holds nodes, `slots={{ header: <Header /> }}`. The app may change
+any of those in place, and an object changed in place compares equal to the copy made from it, so the
+change would never be shown. A slots object or array that should compare by content is declared on
+the child — `@StableProps("slots")` — which is the child saying it is never changed in place.
 
-A slot that takes the component CLASS rather than a rendered node — `view={Header}` — costs nothing
-to begin with, because a class is the same reference for the life of the module.
+A slot that takes the component CLASS rather than a rendered node — `view={Header}` — is the same
+reference for the life of the module, and there is nothing to compare.
 
-**Contents are compared to a bounded depth**, so a deeply nested literal gets a fresh reference
-rather than a wrong one, which is the safe direction: it re-renders, exactly as it does today.
+**Both comparisons are bounded**, so very large markup or a deeply nested literal is called
+different rather than compared to the end — the safe direction: the child renders.
 
 ## Reacting to a specific prop changing
 

@@ -1,3 +1,5 @@
+import { isNothing } from "./element";
+import { unwrap } from "./follow-value";
 import ts from "typescript";
 import { positionOf } from "../syntax";
 import { guardsDev } from "./dev-guard";
@@ -45,16 +47,12 @@ export interface DevGuardAsAnExpressionIssue {
  * while `dev-guard.ts` recognised both. Two answers about one flag.
  */
 function guardedByADevChain(written: ts.Expression): ts.Expression | undefined {
-  const bare = ts.isParenthesizedExpression(written) ? bareOf(written) : written;
+  // Parentheses around a statement's expression say nothing about what it does.
+  const bare = unwrap(written);
   if (!ts.isBinaryExpression(bare) || bare.operatorToken.kind !== ts.SyntaxKind.AmpersandAmpersandToken) {
     return undefined;
   }
   return guardsDev(bare.left) ? bare.right : undefined;
-}
-
-/** Parentheses around a statement's expression say nothing about what it does. */
-function bareOf(written: ts.Expression): ts.Expression {
-  return ts.isParenthesizedExpression(written) ? bareOf(written.expression) : written;
 }
 
 /**
@@ -65,9 +63,7 @@ function bareOf(written: ts.Expression): ts.Expression {
  * whose own boundary is that the advice has to fit every site it fires on.
  */
 function armIsNothing(written: ts.Expression): boolean {
-  if (written.kind === ts.SyntaxKind.NullKeyword) return true;
-  if (ts.isIdentifier(written) && written.text === "undefined") return true;
-  return ts.isVoidExpression(written);
+  return isNothing(written) || ts.isVoidExpression(unwrap(written));
 }
 
 /** What a guard runs, shortened, so a report quotes the line without printing a screenful. */
@@ -124,7 +120,7 @@ export const devGuardAsAnExpression = {
           });
         }
 
-        const bare = bareOf(written);
+        const bare = unwrap(written);
         // A ternary with a real other arm is an `if`/`else`, and the advice here is not that.
         if (ts.isConditionalExpression(bare) && guardsDev(bare.condition) && armIsNothing(bare.whenFalse)) {
           found.push({

@@ -1,3 +1,4 @@
+import type { EnclosingBlock } from "./enclosingBlock";
 import type { Context } from "../types/commonTypes";
 import type { Effect } from "../reactivity/effect";
 import type { BaseComponent, ComponentRegion, LifecycleEntry, WatchPropEntry } from "../types/vdom";
@@ -109,6 +110,12 @@ export interface ComponentRuntime {
    * end of the life cycle, not the same state.
    */
   isDestroyed?: boolean;
+  /**
+   * The portal whose block this component renders in, if any — so a portal it owns closes and opens
+   * with that one. Set from the region being reconciled when the component is built there, and
+   * otherwise taken from the parent, like `env`.
+   */
+  block?: EnclosingBlock;
   /**
    * This component's entry in its parent's child record: the nodes it owns, in order, and the parent
    * they sit in.

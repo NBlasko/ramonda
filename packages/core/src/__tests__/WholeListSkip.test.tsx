@@ -1,14 +1,18 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { getDOM } from "../test/setup";
 import { Component, list, state } from "../index";
+import { CHILD_RECORD } from "../helpers/constants";
+import type { ListRegion } from "../types/vdom";
 
 /**
  * The whole-list skip: when `each` is the same array reference and no item's
- * scope was invalidated, the engine hands back the IDENTICAL `ListNode` and the
- * diff leaves the region alone — it does not look at a single item.
+ * scope was invalidated — its own rows', or those of a list inside one — the
+ * engine hands back the IDENTICAL `ListNode`: no callback runs and no row is
+ * rebuilt. The diff then keeps the whole region without reading a row; the last
+ * test counts the rows it reads, and it is none of a thousand.
  *
- * Measured on 10000 items, a re-render triggered by unrelated state went 30ms ->
- * 1.5ms, with zero iterations of the item loop.
+ * Measured in a production build in Chromium, 100 lists of 100 cards under a
+ * re-render triggered by unrelated state: 0.1 ms per change.
  *
  * The assertion is the mapper call count plus DOM node identity, not the
  * ListNode's. `For` exposed a `.nodes` getter so the object could be compared
@@ -104,5 +108,160 @@ describe("whole-list skip", () => {
     expect(app.container.querySelector("li")).toBe(firstLi);
     expect(dump(app.container)).toBe("a,b,c");
     expect(app.container.querySelector("ul")!.getAttribute("data-tick")).toBe("5");
+  });
+
+  /**
+   * And the diff does not walk the rows either: the region is kept whole when the engine hands back
+   * last pass's node. Counted rather than timed — every read of a row from that node is one row the
+   * diff looked at.
+   */
+  test("an unrelated re-render does not look at a single row", async () => {
+    const app = await getDOM<App>(<App />);
+    await app.settle();
+    app.instance.rows = Array.from({ length: 1000 }, (_, i) => ({ t: String(i) }));
+    await app.settle();
+
+    const ul = app.container.querySelector("ul") as unknown as { [CHILD_RECORD]: ListRegion[] };
+    const source = ul[CHILD_RECORD][0].source as { vnodes: unknown[] };
+    let rowsRead = 0;
+    source.vnodes = new Proxy(source.vnodes, {
+      get(target, property, receiver) {
+        if (typeof property === "string" && /^\d+$/.test(property)) rowsRead++;
+        return Reflect.get(target, property, receiver);
+      },
+    });
+
+    app.instance.tick = 1;
+    await app.settle();
+
+    expect(app.container.querySelectorAll("li")).toHaveLength(1000);
+    expect(app.container.querySelector("ul")!.getAttribute("data-tick")).toBe("1");
+    expect(rowsRead).toBe(0);
+  });
+
+  /**
+   * The skip trusts a node only from the engine that built it. A `list()` and the group that replaces
+   * it in the same slot share an owner, and a group that took the list's engine had its node — the
+   * same object every time it came back through `{this.props.children}` — taken for unchanged.
+   */
+  test("a group that replaces a list in its slot is never skipped for it", async () => {
+    class Panel extends Component<{ children?: unknown }> {
+      render() {
+        return <ul>{this.props.children as never}</ul>;
+      }
+    }
+    const first = ["x"];
+    const prices = ["p"];
+    class Page extends Component {
+      @state open = true;
+      @state currency = "RSD";
+      rowA(r: string) {
+        return <li>{r}</li>;
+      }
+      price(p: string) {
+        return <li class="price">{`${p} ${this.currency}`}</li>;
+      }
+      render() {
+        return (
+          <div>
+            <Panel>{this.open ? list(first, this.rowA) : [<li>head</li>, list(prices, this.price)]}</Panel>
+          </div>
+        );
+      }
+    }
+    const app = await getDOM<Page>(<Page />);
+    await app.settle();
+    app.instance.open = false;
+    await app.settle();
+
+    app.instance.currency = "EUR";
+    await app.settle();
+
+    expect(app.container.querySelector(".price")?.textContent).toBe("p EUR");
+  });
+});
+
+/**
+ * A group kept whole must hold no list at ANY depth. `[<div>{list(…)}</div>]` handed down settled is
+ * the same object every render while a row inside the list has changed: skipping the group would
+ * skip the `<div>`, and the list in it would never be reconciled.
+ */
+describe("a group with a list deep inside it", () => {
+  test("still updates the list when only a row read the change", async () => {
+    class Panel extends Component<{ children?: unknown }> {
+      @state n = 0;
+      render() {
+        return <section>{this.props.children as never}</section>;
+      }
+    }
+    class Owner extends Component {
+      @state currency = "EUR";
+      rows = [{ id: 1 }, { id: 2 }];
+      price = (row: { id: number }) => (
+        <i key={row.id}>
+          {row.id} {this.currency}
+        </i>
+      );
+      render() {
+        return <Panel>{[<div key="d">{list(this.rows, this.price)}</div>, <b key="b">x</b>]}</Panel>;
+      }
+    }
+    const app = await getDOM<Owner>(<Owner />);
+    app.instance.currency = "USD";
+    await app.settle();
+
+    expect(Array.from(app.container.querySelectorAll("i"), (i) => i.textContent)).toEqual(["1 USD", "2 USD"]);
+  });
+});
+
+/** A component row in a group kept whole still renders on its own, and a list inside it still updates. */
+describe("a group of component rows kept whole", () => {
+  test("a row's own state and a list it renders still update", async () => {
+    let first: Row | undefined;
+    class Row extends Component<{ id: number; currency: () => string }> {
+      @state picked = false;
+      constructor(...args: ConstructorParameters<typeof Component<{ id: number; currency: () => string }>>) {
+        super(...args);
+        if (first === undefined) first = this;
+      }
+      render() {
+        return (
+          <li>
+            {this.picked ? "picked" : "open"}{" "}
+            {list([1], () => (
+              <i>{this.props.currency()}</i>
+            ))}
+          </li>
+        );
+      }
+    }
+    class Panel extends Component<{ children?: unknown }> {
+      @state n = 0;
+      render() {
+        return <ul>{this.props.children as never}</ul>;
+      }
+    }
+    class Owner extends Component {
+      @state currency = "EUR";
+      read = () => this.currency;
+      render() {
+        return (
+          <Panel>
+            {[1, 2].map((id) => (
+              <Row key={id} id={id} currency={this.read} />
+            ))}
+          </Panel>
+        );
+      }
+    }
+    const app = await getDOM<Owner>(<Owner />);
+    first!.picked = true;
+    app.instance.currency = "USD";
+    await app.settle();
+
+    expect(Array.from(app.container.querySelectorAll("li"), (li) => li.textContent)).toEqual([
+      "picked USD",
+      "open USD",
+    ]);
   });
 });

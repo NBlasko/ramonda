@@ -41,7 +41,16 @@ class Line extends Component<{ item: Row<{ v: string }> }> {
   f = this.use(Field<string>, () => ({ of: (this.props.item.field as FieldNode<{ v: string }>).v }));
 
   render(): RamondaNode {
-    return <input className="row" {...this.f.bind} />;
+    return (
+      <input
+        className="row"
+        name={this.f.name}
+        value={this.f.inputValue}
+        oninput={this.f.oninput}
+        onblur={this.f.onblur}
+        aria-invalid={this.f.invalid}
+      />
+    );
   }
 }
 
@@ -49,7 +58,17 @@ class EmailField extends Component<{ of: FieldNode<string> }> {
   f = this.use(Field<string>, () => ({ of: this.props.of }));
 
   render(): RamondaNode {
-    return [<input id="email" {...this.f.bind} />, <span id="email-error">{this.f.error ?? ""}</span>];
+    return [
+      <input
+        id="email"
+        name={this.f.name}
+        value={this.f.inputValue}
+        oninput={this.f.oninput}
+        onblur={this.f.onblur}
+        aria-invalid={this.f.invalid}
+      />,
+      <span id="email-error">{this.f.error ?? ""}</span>,
+    ];
   }
 }
 
@@ -189,7 +208,14 @@ describe("through hydration", () => {
       render(): RamondaNode {
         return (
           <form>
-            <input id="email" {...this.f.fields.email.$.bind} />
+            <input
+              id="email"
+              name={this.f.fields.email.$.name}
+              value={this.f.fields.email.$.inputValue}
+              oninput={this.f.fields.email.$.oninput}
+              onblur={this.f.fields.email.$.onblur}
+              aria-invalid={this.f.fields.email.$.invalid}
+            />
             <SaveButton />
           </form>
         );

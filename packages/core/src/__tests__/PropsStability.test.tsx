@@ -566,6 +566,53 @@ describe("RMD022 counts runs before it speaks", () => {
   });
 });
 
+/**
+ * Markup the runtime settles by itself is not churn. A hook's `children: <div>…</div>` is built every
+ * run, but `helpers/settleMarkup.ts` hands the hook back the old node while it says the same — so
+ * advice to lift it or declare it would be asking the app to do what the framework already does.
+ * Markup holding a handler built in place is not settled, and is still reported.
+ */
+describe("RMD022 and markup the runtime settles", () => {
+  class Slot extends Hook<{ children?: unknown; count?: number }> {}
+
+  test("a node rebuilt with the same content is not reported", async () => {
+    class Panel extends Component {
+      @state tick = 0;
+      slot = this.use(Slot, (self: Panel) => ({ children: <div class="x">same</div>, count: self.tick }));
+      render() {
+        return <p>{this.tick}</p>;
+      }
+    }
+    const app = await getDOM<Panel>(<Panel />);
+    await churn(app);
+    await churn(app);
+
+    expect(reported()).not.toContain("RMD022");
+  });
+
+  test("a node holding a handler built in place still is", async () => {
+    class Panel extends Component {
+      @state tick = 0;
+      slot = this.use(Slot, (self: Panel) => ({
+        children: (
+          <button type="button" onclick={() => self.tick}>
+            go
+          </button>
+        ),
+        count: self.tick,
+      }));
+      render() {
+        return <p>{this.tick}</p>;
+      }
+    }
+    const app = await getDOM<Panel>(<Panel />);
+    await churn(app);
+    await churn(app);
+
+    expect(reported()).toContain("RMD022");
+  });
+});
+
 describe("static StableProps — the hook declares it, the call site does not", () => {
   /**
    * The DX question this answers: a query key is a value, and the hook AUTHOR knows that.

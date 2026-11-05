@@ -1,4 +1,4 @@
-import { COMPONENT_TYPE, TEXT_TYPE, ORIGIN_SYM } from "../helpers/constants";
+import { COMPONENT_TYPE, TEXT_TYPE, ORIGIN_SYM, OWN_CHILDREN } from "../helpers/constants";
 import { currentOrigin } from "../core/origin";
 import { diagnose } from "../debug/diagnostics";
 import { renderingOwner } from "../debug/renderPhase";
@@ -81,6 +81,11 @@ export function createRamonda(
 
     return stringNode;
   }
+
+  // The children array is `h`'s own, built for this call. `normalizeChildren` brands it in DEV only;
+  // a component's is branded here in every build too, so the markup comparison can tell it from an
+  // array the app hands over as `children` itself (`helpers/settleMarkup.ts`).
+  if (children.length) (children as { [OWN_CHILDREN]?: boolean })[OWN_CHILDREN] = true;
 
   // A COPY, not a mutation. Writing `children` onto the caller's object meant a
   // props object used for two elements ended up with only the last one's

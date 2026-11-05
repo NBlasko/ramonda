@@ -109,6 +109,19 @@ type RefusedEventCasing = {
 };
 
 /**
+ * `on:` before a STANDARD event, refused with the one spelling it has.
+ *
+ * `on:` exists for the event `on…` cannot spell — a custom one with a dash. Written before `input` or
+ * `click` it reaches the same listener as `oninput`, and a second way to write one thing is a second
+ * thing to read, to check and to get wrong. Generated from the same maps as `EventHandlers`, so it
+ * cannot fall out of step.
+ */
+export type RefusedVerbatimStandard = {
+  [K in keyof (HTMLElementEventMap &
+    HTMLMediaElementEventMap) as `on:${K}`]: `write \`on${K}\` — \`on:\` is for an event \`on…\` cannot spell`;
+};
+
+/**
  * Names that typecheck and do nothing, refused here with the reason in the error.
  *
  * `DomProperties<T>` maps every property of the DOM interface, so a PROPERTY that is not an
@@ -156,21 +169,10 @@ export interface RefusedOnForm {
 }
 
 /**
- * The `defaultValue` / `defaultChecked` pair, which this framework does not have.
- *
- * There is no controlled/uncontrolled distinction here for them to mark: the `value` and `checked`
- * attributes ARE the initial state, and a render decides them like any other attribute.
- */
-export interface RefusedOnFields {
-  defaultValue: "write `value` — the attribute IS the initial value";
-  defaultChecked: "write `checked` — the attribute IS the initial state";
-}
-
-/**
- * `selected` on an `<option>`, which `Select` overwrites on every render.
+ * `selected` on an `<option>`, which `Select` writes from its `value` or its `defaultValue`.
  *
  * The choice belongs to the select, not to the option, and `Select` applies it by walking EVERY
- * option and setting each one from its `value` — on and off, for all of them. So an option that
+ * option and setting each one from its `value` or `defaultValue` — on and off, for all of them. So an option that
  * asked to be chosen is turned off again a moment later. The attribute is not competing with
  * `value` and losing sometimes; it does nothing, while being the one line on the page that looks
  * like it chooses.
@@ -181,7 +183,7 @@ export interface RefusedOnFields {
  * widened somewhere, a JavaScript file.
  */
 export interface RefusedOnOption {
-  selected: "the choice belongs to the select — write <Select value={x}>, which sets this on every option";
+  selected: "the choice belongs to the select — write <Select value={x}>, or <Select defaultValue={x}> for where it starts";
 }
 
 /**
@@ -292,7 +294,8 @@ export type RamondaArgs<T extends BaseElements> = Partial<
     }
 > &
   Partial<RefusedNames> &
-  Partial<RefusedEventCasing>;
+  Partial<RefusedEventCasing> &
+  Partial<RefusedVerbatimStandard>;
 
 export interface SVGArguments extends SVGGraphicsElement {
   width: string | number;
@@ -412,7 +415,8 @@ export type SVGArgs<T extends SVGElement> = Partial<
   } & Omit<DomProperties<T>, keyof SVGCamelCaseAttributes | Lowercase<string>> &
     EventHandlers &
     VerbatimEvents
->;
+> &
+  Partial<RefusedVerbatimStandard>;
 
 /**
  * An event, told which element the handler is ON — for the one line the DOM's own types cannot type.

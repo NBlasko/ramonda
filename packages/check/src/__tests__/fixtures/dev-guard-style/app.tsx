@@ -53,6 +53,12 @@ class Guards extends Component {
       </div>
     );
   }
+
+  stop() {
+    // ✗ The ternary spelling, its empty arm in parentheses.
+    // biome-ignore format: the parentheses are the case
+    __DEV__ ? publish("stopped") : (null);
+  }
 }
 
 bootstrap(<Guards />, null);

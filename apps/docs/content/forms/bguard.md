@@ -37,13 +37,20 @@ class SignupForm extends Component {
   private form = this.use(Form<typeof signupSchema>, () => ({ schema: signupSchema, defaultValues, onSubmit }));
 
   render() {
-    const f = this.form.fields;
+    const nick = this.form.fields.nick.$;
 
     return (
       <form noValidate onsubmit={this.form.submit}>
         <label>
           Nickname
-          <input {...f.nick.$.bind} {...html("nick")} />
+          <input
+            {...html("nick")}
+            name={nick.name}
+            value={nick.inputValue}
+            oninput={nick.oninput}
+            onblur={nick.onblur}
+            aria-invalid={nick.invalid}
+          />
         </label>
       </form>
     );
@@ -83,8 +90,19 @@ approximating it with a `pattern` would be inventing a rule the schema did not w
 Paths are the form's own, so a field's `path` goes straight in:
 
 ```tsx
-<input {...f.address.city.$.bind} {...html("address.city")} />
-<input {...row.field.$.bind} {...html(row.field.$.path)} />
+import { htmlConstraints } from "@ramonda/form/bguard";
+
+const html = htmlConstraints(signupSchema);
+const city = f.address.city.$;
+
+<input
+  {...html(city.path)}
+  name={city.name}
+  value={city.inputValue}
+  oninput={city.oninput}
+  onblur={city.onblur}
+  aria-invalid={city.invalid}
+/>;
 ```
 
 An array index resolves to the item schema, so every row of a list gets the same constraints — and
@@ -111,8 +129,10 @@ which validation the reader sees:
 - **Without it**, the browser answers first. Reasonable if you want native behaviour and treat the
   schema as the server-side truth.
 
-Spread `bind` first and these second, so a `type` derived from the schema wins over the one `bind`
-inferred from the value.
+The constraints carry a `type` when the schema's `format` names one, and nothing else a field is
+written with — no `name`, `value`, handler or `aria-invalid`. The spread goes first, beside the field's
+own five attributes: a `type` the field writes after it is the one it gets. `@ramonda/check` knows what it holds:
+it reads where `html` came from, `htmlConstraints` from `@ramonda/form/bguard`.
 
 ## Cross-field rules that point at nothing — `unknownRefPaths`
 

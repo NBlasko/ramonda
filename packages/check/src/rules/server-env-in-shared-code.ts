@@ -46,9 +46,9 @@ export interface ServerEnvInSharedCodeIssue {
 /**
  * `process.env` — Node's, not a local of the same name.
  *
- * The distinction is `browser-url`'s, and the same trick answers it: the analyzer builds its program with
- * `noLib` and no `@types/node`, so **Node's `process` resolves to nothing** while a `const process = …` or
- * a `declare const process` in the source resolves to its declaration. A file that shims `process` for
+ * The distinction is `browser-url`'s, and a simpler question answers it: the analyzer never loads
+ * `@types/node`, with a lib or without one, so **Node's `process` resolves to nothing** while a
+ * `const process = …` or a `declare const process` in the source resolves to its declaration. A file that shims `process` for
  * browser code is therefore left alone, which it must be — the shim is the fix, and reporting it would be
  * reporting the reader's own answer.
  */

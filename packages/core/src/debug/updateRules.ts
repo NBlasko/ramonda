@@ -54,6 +54,10 @@ export function reportOrphanedUpdate(component: BaseComponent): void {
   const region = componentRuntime.region;
   if (!region) return;
 
+  // In a CLOSED portal, off the page on purpose: its block waits in a fragment, and what is in it
+  // goes on rendering on its own state — see `Portal`.
+  if (componentRuntime.block?.away) return;
+
   /**
    * Its own first node, DERIVED from the record, and the parent when it owns none.
    *

@@ -8,7 +8,7 @@ import type { Rule } from "./rule";
  *
  * Such a component never re-renders. Two things have to be true at once for that, and both are
  * deliberate: a field node is ONE cached object for the life of the form — a fresh one per access
- * means a fresh `bind.oninput` per access, which RMD020 reports — so the component's props never
+ * means a fresh `oninput` per access, which RMD020 reports — so the component's props never
  * change and the props diff skips it; and a hook's `@state` belongs to the component that used the
  * hook, so the form's counter wakes the form's OWNER and nobody else. The fix is `Field`, the hook
  * that subscribes the component to that one path.
@@ -26,7 +26,7 @@ import type { Rule } from "./rule";
 export interface UnwatchedFieldIssue {
   /** The component doing the reading. */
   component: string;
-  /** The member it read — `value`, `error`, `bind`, … — which is what would never update. */
+  /** The member it read — `value`, `error`, `inputValue`, … — which is what would never update. */
   member: string;
   file: string;
   line: number;
@@ -41,7 +41,18 @@ export interface UnwatchedFieldIssue {
  * `path` and `name` are absent because they are fixed for the life of the field — a component reading
  * only the `name` to label something has nothing to hear about.
  */
-const FIELD_READS = new Set(["value", "error", "errors", "touched", "dirty", "bind", "rows", "length"]);
+// `oninput` and `onblur` are not reads: like `name` and `path`, they are fixed for the life of the field.
+const FIELD_READS = new Set([
+  "value",
+  "error",
+  "errors",
+  "touched",
+  "dirty",
+  "inputValue",
+  "invalid",
+  "rows",
+  "length",
+]);
 
 /** The hook that watches one field. Named rather than resolved — see the rule's note below. */
 const WATCH_HOOK = "Field";
@@ -110,7 +121,7 @@ export const unwatchedFields = {
       "used the hook, so the form's counter wakes the form's owner and nobody else.\n\n" +
       "Watch the field, and the component wakes when that one field changes:\n\n" +
       "    f = this.use(Field<string>, () => ({ of: this.props.of }));\n" +
-      "    render() { return <input {...this.f.bind} />; }\n\n" +
+      "    render() { return <input name={this.f.name} value={this.f.inputValue} oninput={this.f.oninput} … />; }\n\n" +
       "A component that only WRITES through a field is correct as written and is not reported.",
   },
 
@@ -164,7 +175,7 @@ export const unwatchedFields = {
     if (watches) return [];
 
     // One report per component: every read has the same cause and the same fix, and a component showing
-    // a field reads three or four of them — `value`, `error`, `bind`. A list of them would say one thing
+    // a field reads three or four of them — `inputValue`, `error`, `invalid`. A list of them would say one thing
     // four times and bury the next component.
     const found: UnwatchedFieldIssue[] = [];
 

@@ -2,6 +2,7 @@ import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { getDOM, instanceOf } from "../test/setup";
 import { created, mounted, persist, state } from "../base/decorators";
 import { Component } from "../base/Component";
+import { Select } from "../base/Select";
 import { resetDiagnostics } from "../debug/diagnostics";
 import { serializeComponentToJSON } from "../hydration/serialize";
 import { markComponents } from "../hydration/ssr";
@@ -112,6 +113,25 @@ describe("the codes that no test reached", () => {
 
     expect(codes()).toContain("RMD034");
     expect(of("RMD034")?.data).toMatchObject({ component: "Leaky", key: "plain" });
+  });
+
+  /** The framework's own `Select` keeps nothing on the server a client must restore: no RMD034 for it. */
+  test("RMD034 says nothing of a controlled Select rendered on the server", async () => {
+    class Sized extends Component {
+      render() {
+        return (
+          <Select aria-label="Size" value="b">
+            <option value="a">a</option>
+            <option value="b">b</option>
+          </Select>
+        );
+      }
+    }
+
+    await renderToString(<Sized />);
+    await Promise.resolve();
+
+    expect(codes()).not.toContain("RMD034");
   });
 
   /**

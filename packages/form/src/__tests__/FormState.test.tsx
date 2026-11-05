@@ -61,7 +61,16 @@ class TextField extends Component<{ of: FieldNode<string>; id: string }> {
 
   render(): RamondaNode {
     count(this.props.id);
-    return <input id={this.props.id} {...this.f.bind} />;
+    return (
+      <input
+        id={this.props.id}
+        name={this.f.name}
+        value={this.f.inputValue}
+        oninput={this.f.oninput}
+        onblur={this.f.onblur}
+        aria-invalid={this.f.invalid}
+      />
+    );
   }
 }
 

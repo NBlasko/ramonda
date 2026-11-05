@@ -38,7 +38,7 @@ declare global {
   const BLANK: Signup;
 
   /**
-   * The field tree a `Form` hands back — `f.email.$.bind`, `f.tags.$.rows`.
+   * The field tree a `Form` hands back — `f.email.$.inputValue`, `f.tags.$.rows`.
    *
    * Shaped rather than `any`, and the reason is `list()`: with `each: any` it infers its item type
    * as `unknown`, so every `render: (row) => row.field` in these pages reported `row` as unknown —
@@ -55,7 +55,12 @@ declare global {
      *  chasing every member here would make the preamble a second copy of the real type. */
     [key: string]: any;
     rows: DocRow[];
-    bind: Record<string, any>;
+    name: string;
+    path: string;
+    inputValue: string | number;
+    invalid: boolean;
+    oninput(event: Event): void;
+    onblur(event: Event): void;
     error?: string;
     errors: string[];
     value: any;

@@ -26,7 +26,13 @@ import { report } from "./diagnostics";
  *     const email = this.form.fields.email.$;
  *     return (
  *       <form onsubmit={this.form.submit}>
- *         <input {...email.bind} />
+ *         <input
+ *           name={email.name}
+ *           value={email.inputValue}
+ *           oninput={email.oninput}
+ *           onblur={email.onblur}
+ *           aria-invalid={email.invalid}
+ *         />
  *         {email.error && <span>{email.error}</span>}
  *         <button disabled={this.form.isSubmitting}>Sign up</button>
  *       </form>
@@ -136,7 +142,7 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
    *
    * Built here rather than on demand because a `FieldHandle` must be one object per path for the
    * life of the form: its two event handlers are bound once, and RMD020 reports a handler whose
-   * identity changed between renders (it really is removed and re-added on the element).
+   * identity changed between renders.
    */
   private readonly quietTree = new FieldTree(this.quietHost());
 
@@ -627,7 +633,7 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
     // validation, addressed to whatever now sits at those indexes.
     this.forgetUnder(path, { keepSelf: true });
     // And the field nodes for rows the array no longer has. A node is kept for the life of the form on
-    // purpose — it is what keeps `bind.oninput` one function per field — but that was also true of a row
+    // purpose — it is what keeps `oninput` one function per field — but that was also true of a row
     // that had been removed, so a form that once showed ten thousand rows held a node and a handle for
     // every one of them afterwards. Both trees, since a watched field reads through the quiet one.
     if (items.length < was) {
@@ -961,7 +967,7 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
   /**
    * Registers `watcher` for changes at `path`, and hands back the handle it should read through.
    *
-   * The handle comes from a QUIET tree: same class, same `bind`, same stable handler identities, but
+   * The handle comes from a QUIET tree: same class, same stable handler identities, but
    * its reads do not touch `version` — see `read`. A watcher that read through the ordinary tree
    * would subscribe its component to the whole form on the first read and undo the point of being
    * here.

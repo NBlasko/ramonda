@@ -1,4 +1,5 @@
-import { resolveStable } from "../helpers/common";
+import { enclosingBlock } from "./enclosingBlock";
+import { settleProps } from "../helpers/common";
 import { applyChangesOnAttributes } from "./Attribute";
 import type {
   BaseComponent,
@@ -49,11 +50,23 @@ import { COMPONENT_RUNTIME, GLOBAL_RUNTIME } from "./runtime";
 import { runComponentEffects } from "../reactivity/effect";
 import { getRenderEnv } from "./renderEnv";
 import { getServerWorkCollector } from "./serverWork";
-import { ListEngine, isLazyList, buildLazyList, type LazyListNode, type ListHost } from "../helpers/listEngine";
+import {
+  ListEngine,
+  isLazyList,
+  buildLazyList,
+  enclosingRow,
+  enclosingHost,
+  atTopLevel,
+  inLevel,
+  type LazyListNode,
+  type ListHost,
+  type RowScope,
+} from "../helpers/listEngine";
 import { snapshotOwnProps, lintUnpersistedState } from "../hydration/lint";
 import { lintChildKeys } from "../debug/lintChildren";
 import { timerOwner } from "../debug/timerGuard";
 import type { Runtime } from "./runtime";
+import { inputRemoved } from "./field";
 
 type PropsGate = (self: unknown, previous: unknown, next: unknown) => boolean;
 
@@ -101,7 +114,7 @@ export function diffAndMerge(
  */
 export function mountRoot(vnode: ComponentChild, container: ChildNode): void {
   const unclaimed: (EnhancedChildNode | DONE)[] = [];
-  const result = reconcileEntries([vnode], [], undefined, undefined, container, unclaimed);
+  const result = atTopLevel(() => reconcileEntries([vnode], [], undefined, undefined, container, unclaimed));
   (container as EnhancedChildNode)[CHILD_RECORD] = result.entries;
 
   /**
@@ -243,7 +256,7 @@ export function rerenderRoot(vnode: ComponentChild, container: ChildNode): void 
   const node = container as EnhancedChildNode;
   const previous = node[CHILD_RECORD] ?? [];
   const unclaimed: (EnhancedChildNode | DONE)[] = [];
-  const result = reconcileEntries([vnode], previous, undefined, undefined, container, unclaimed);
+  const result = atTopLevel(() => reconcileEntries([vnode], previous, undefined, undefined, container, unclaimed));
   node[CHILD_RECORD] = result.entries;
 
   unmountChildrenNodes(unclaimed, false);
@@ -290,7 +303,7 @@ export function refreshComponentRegion(component: BaseComponent): void {
 
   const children = generateRenderOutput(component);
   const unclaimed: (EnhancedChildNode | DONE)[] = [];
-  const result = reconcileEntries(children, region.entries, undefined, component, parent, unclaimed);
+  const result = atTopLevel(() => reconcileEntries(children, region.entries, undefined, component, parent, unclaimed));
   region.entries = result.entries;
 
   // Before the reorder, for the reason the element path has: stale nodes still in the DOM make
@@ -915,16 +928,38 @@ function applyDiffWithRegions(
   return { cloneChildren: unclaimed, orderedNodes };
 }
 
+/** What `holdsARegion` found for a children array, which settled markup hands back unchanged. */
+const regionsBelow = new WeakMap<readonly unknown[], boolean>();
+
 /**
- * Reconciles one level of children against the entries that level held last
- * render, and **recurses for a list**, so a list inside a list inside a slot is
- * reconciled the same way at every depth.
+ * Whether markup holds a `list()` ANYWHERE inside it — the one thing that changes on its own, without
+ * the markup around it changing, and is reconciled by whoever holds the markup. A component changes
+ * on its own too, but renders itself: a group of component rows is kept whole like any other.
  *
- * Plain children share one pool and one key index; each list gets its own,
- * scoped to itself. That scoping is what keeps two lists that both mint `f0`
- * from seeing each other, and what keeps a component's chrome out of reach of
- * content passed into it.
+ * A plain GROUP, a nested array, is not one: it is markup like the rest and is looked into. That is
+ * why this cannot lean on `HAS_REGION`, which `h` sets for a group as much as for a list. Once per
+ * array: settled markup hands the same arrays back.
  */
+function holdsARegion(children: readonly unknown[]): boolean {
+  const known = regionsBelow.get(children);
+  if (known !== undefined) return known;
+  let found = false;
+  for (let i = 0; !found && i < children.length; i++) {
+    const child = children[i];
+    if (isListNode(child)) {
+      const group = (child as { vnodes?: unknown }).vnodes;
+      found = isLazyList(child) || !Array.isArray(group) || holdsARegion(group);
+    } else if (isVNode(child) && child.type !== COMPONENT_TYPE) {
+      // A component is not one: the same vnode object carries the same props, and what changes in it
+      // on its own — its state, a list it renders — reports to the component, which renders itself.
+      const inner = (child as { children?: unknown }).children;
+      if (Array.isArray(inner)) found = holdsARegion(inner);
+    }
+  }
+  regionsBelow.set(children, found);
+  return found;
+}
+
 /**
  * What a `list()` region reports to when an item's signal changes.
  *
@@ -945,6 +980,16 @@ export function listHostFor(owner: MaybeComponent): ListHost {
   };
 }
 
+/**
+ * Reconciles one level of children against the entries that level held last
+ * render, and **recurses for a list**, so a list inside a list inside a slot is
+ * reconciled the same way at every depth.
+ *
+ * Plain children share one pool and one key index; each list gets its own,
+ * scoped to itself. That scoping is what keeps two lists that both mint `f0`
+ * from seeing each other, and what keeps a component's chrome out of reach of
+ * content passed into it.
+ */
 export function reconcileEntries(
   children: unknown[],
   previous: RecordEntry[],
@@ -964,6 +1009,11 @@ export function reconcileEntries(
    * supplies a host that refreshes the region itself.
    */
   listHost?: ListHost,
+  /**
+   * Per child, the list row it is — present when `children` are a list's rows. While a row is being
+   * reconciled it is `enclosingRow.current`, so a list met anywhere inside it knows which row it is in.
+   */
+  rows?: readonly unknown[],
 ): { entries: RecordEntry[]; changed: boolean; born?: (ListRegion | ComponentRegion)[] } {
   const cloneChildren: (EnhancedChildNode | DONE)[] = [];
   // Looked up by owner, never by position: a region keeps its nodes even when it
@@ -985,6 +1035,8 @@ export function reconcileEntries(
    * This is the same outcome for a region: retired with the ones this render no longer asks for.
    */
   let displacedRegions: (ListRegion | ComponentRegion)[] | undefined;
+  /** The engines of lists that became groups in their slot this pass — released with `retire`, below. */
+  let retiredEngines: NonNullable<ListRegion["engine"]>[] | undefined;
 
   /**
    * Components this pass BUILT, so a throw can take them back down.
@@ -1028,7 +1080,7 @@ export function reconcileEntries(
   let plainIndex = 0;
 
   try {
-    reconcileChildren();
+    inLevel(rows, listHost, reconcileChildren);
   } catch (e) {
     /**
      * The pass is over and its entries are going nowhere, so what it BUILT has to come back down
@@ -1047,6 +1099,7 @@ export function reconcileEntries(
   function reconcileChildren(): void {
     for (let i = 0; i < children.length; i++) {
       const rawVchild = children[i];
+      if (rows !== undefined) enclosingRow.current = rows[i] as RowScope | undefined;
 
       if (isListNode(rawVchild)) {
         const found = previousRegions.get(rawVchild.owner);
@@ -1055,29 +1108,56 @@ export function reconcileEntries(
         // narrowing never actually discards a region — it is what tells the two kinds apart in types.
         const before = found !== undefined && !isComponentRegion(found) ? found : undefined;
 
-        // The engine hands back the identical ListNode when nothing about the
-        // list changed. Same object -> same items, same order, same length: the
-        // region is left exactly as it is, without touching one of its nodes.
-        if (before !== undefined && before.source === rawVchild) {
-          entries.push(before);
-          if (previous[entries.length - 1] !== before) changed = true;
-          continue;
-        }
-
         // A `list()` descriptor has not run its mapper yet. This is the moment to:
         // the previous region is in hand, and with it the engine holding the
         // minted ids, the per-item scopes and the whole-list skip.
         let listNode = rawVchild;
-        let engine = before?.engine;
+        /**
+         * Only a `list()` has an engine. A GROUP — an array among the children — has none, and must
+         * not take the one a `list()` left in this slot: the two share an owner, so a list that became
+         * a group found the list's region, and with its engine the skip below trusted a node the engine
+         * never built. Measured: `<Panel>{open ? list(a, …) : [<b />, list(prices, …)]}</Panel>`, and
+         * the prices stayed old. The list's engine is let go of once the group is in its place —
+         * below — or it stays subscribed to whatever its rows read.
+         */
+        let engine: ListRegion["engine"];
 
         if (isLazyList(rawVchild)) {
+          engine = before?.engine;
           const materialized = buildLazyList(
             rawVchild as unknown as LazyListNode,
             engine as ListEngine<unknown> | undefined,
-            listHost ?? listHostFor(placeholderComponent),
+            enclosingHost.current ?? listHostFor(placeholderComponent),
           );
           listNode = materialized.node as typeof rawVchild;
           engine = materialized.engine;
+        }
+
+        /**
+         * The engine handed back last pass's node: nothing in this list changed, so the region is kept
+         * whole, without looking at a row. Unrelated state over 10 000 rows walks none of them.
+         *
+         * Safe because "nothing changed" includes what is INSIDE the rows. A list in a row marks every
+         * row above it when one of its own rows is invalidated, and that makes the outer engine build
+         * a new node instead of handing this one back — see `markRowsAbove` in `helpers/listEngine.ts`.
+         * Without it this skip left a list inside a row stale; `AListInsideARow.test.tsx` and
+         * `ListCallbackIdentity.test.tsx` ("BOTH stable") are the cases.
+         *
+         * For a node an ENGINE built, or a GROUP — an array of children — that holds no `list()`
+         * anywhere inside it (`holdsARegion`; a component row does not count, it renders itself). A group is built once by `h` and kept in the vnode around it,
+         * so a row reused from last pass hands back the same group while a list inside it has changed:
+         * `<li>{[<b />, list(…)]}</li>` kept its old prices, and so would `[<div>{list(…)}</div>]`.
+         * One with nothing below it that changes on its own is the same markup when it is the same
+         * object, and is kept whole: `<ul>{this.props.children}</ul>` over 1000 rows diffs none of them.
+         */
+        if (
+          before !== undefined &&
+          before.source === listNode &&
+          (engine !== undefined || !holdsARegion(listNode.vnodes))
+        ) {
+          entries.push(before);
+          if (previous[entries.length - 1] !== before) changed = true;
+          continue;
         }
 
         const inner = reconcileEntries(
@@ -1088,6 +1168,7 @@ export function reconcileEntries(
           parent,
           unclaimed,
           listHost,
+          listNode.rows,
         );
 
         /**
@@ -1105,14 +1186,15 @@ export function reconcileEntries(
          * not: it is still in the caller's record, and the rows it built come through `inner.born`.
          */
 
+        // Released with everything else this level retires, at its end: a pass that throws before
+        // then leaves the list in the record it came from, and its rows must still hear their signals.
+        if (engine === undefined && before?.engine !== undefined) (retiredEngines ??= []).push(before.engine);
+
         if (inner.born !== undefined) (born ??= []).push(...inner.born);
 
         const region: ListRegion = {
           owner: listNode.owner,
           entries: inner.entries,
-          // The BUILT node, not the descriptor: the whole-list skip below compares
-          // this by identity, and the engine hands back the very same object when
-          // nothing about the list changed.
           source: listNode,
           engine,
         };
@@ -1120,7 +1202,10 @@ export function reconcileEntries(
         if (before === undefined) (born ??= []).push(region);
 
         entries.push(region);
-        changed = true;
+        // Changed only when something in it is: a new region, a different one in this slot, or rows
+        // inside that moved, came or went. A group reused whole — markup settled to last pass's object
+        // — moved nothing, and the parent need not be flattened and reordered for it.
+        if (before === undefined || inner.changed || previous[entries.length - 1] !== before) changed = true;
         continue;
       }
 
@@ -1214,6 +1299,7 @@ export function reconcileEntries(
   };
   for (const region of previousRegions.values()) retire(region);
   if (displacedRegions !== undefined) for (const region of displacedRegions) retire(region);
+  if (retiredEngines !== undefined) for (const engine of retiredEngines) engine.dispose();
   for (const leftover of cloneChildren) {
     if (leftover !== DONE) unclaimed.push(leftover);
   }
@@ -1388,7 +1474,6 @@ export function reorderChildren(
   }
 
   const keep = keptInOrder(current, fresh);
-  let keepIndex = keep.length - 1;
   /**
    * Where an insertion lands when nothing of this run follows it.
    *
@@ -1403,7 +1488,7 @@ export function reorderChildren(
    * node the host's claim pool skips to, which is what keeps the two passes agreeing about which
    * nodes are whose.
    */
-  let reference: ChildNode | null = anchor ?? firstHostedBlock(parent);
+  const reference: ChildNode | null = anchor ?? firstHostedBlock(parent);
 
   /**
    * Whoever the reader was typing in, if this parent holds them.
@@ -1428,15 +1513,21 @@ export function reorderChildren(
   const focused = document.activeElement;
   const keepFocus = focused !== null && focused !== document.body;
 
-  for (let n = length - 1; n >= 0; n--) {
-    const node = orderedNodes[n];
-    if (keepIndex >= 0 && keep[keepIndex] === n) {
-      // Already in relative order: leave it, and let it anchor the ones before.
-      keepIndex--;
+  /**
+   * Walked FIRST to LAST, each node that goes in placed before the next one that stays: the nodes
+   * arrive in the order a parser puts them. A parent that answers to arrival order reads them as the
+   * page does — a `<select>` chooses the first option put in while none is chosen, and two radios of
+   * one group carrying `checked` leave the later one checked. Walked last-first, a select whose options arrived showed its LAST one (measured in
+   * Chromium), where the served page shows the first. One insertion per node either way.
+   */
+  let next = 0;
+  for (let n = 0; n < length; n++) {
+    if (next < keep.length && keep[next] === n) {
+      // Already in relative order: leave it, and let it anchor the ones before it.
+      next++;
     } else {
-      parent.insertBefore(node, reference);
+      parent.insertBefore(orderedNodes[n], next < keep.length ? orderedNodes[keep[next]] : reference);
     }
-    reference = node;
   }
 
   /**
@@ -1594,7 +1685,10 @@ function updateComponentRegion(region: ComponentRegion, vnode: VNodeComponent): 
    */
   const componentRuntime = component[COMPONENT_RUNTIME];
   const declaredStable = (component.constructor as { [STABLE_PROPS]?: readonly string[] })[STABLE_PROPS];
-  const nextProps = resolveStable(vnode.attributes ?? {}, componentRuntime.rawProps, declaredStable);
+  // Then markup — `children`, a slot, a node handed down — that says the same as last time keeps last
+  // time's object, so a parent's render does not re-render a child whose markup did not change. See
+  // `helpers/settleMarkup.ts`.
+  const nextProps = settleProps(vnode.attributes ?? {}, componentRuntime.rawProps, declaredStable);
 
   // Read off the CLASS, so a subclass inherits its base's rule through the static
   // chain and shadows it by declaring its own. See @ShouldUpdateOnPropsChange.
@@ -1835,6 +1929,7 @@ export function unmountNodeInPlace(node: EnhancedChildNode): void {
 
   releaseRef(node);
   releaseChildRecord(node);
+  releaseField(node);
 }
 
 function loopThroughSoonToBeRemovedNodes(childNodes: NodeListOf<EnhancedChildNode>) {
@@ -1845,7 +1940,13 @@ function loopThroughSoonToBeRemovedNodes(childNodes: NodeListOf<EnhancedChildNod
 
     releaseRef(child);
     releaseChildRecord(child);
+    releaseField(child);
   }
+}
+
+/** An `<input>` the tree takes away answers no more of its own edits — see `inputRemoved`. */
+function releaseField(node: EnhancedChildNode): void {
+  if (node.nodeName === "INPUT") inputRemoved(node as unknown as HTMLInputElement);
 }
 
 /**
@@ -1940,6 +2041,10 @@ export function buildComponentRegion(
     ? placeholderComponentRuntime.serverWork
     : getServerWorkCollector();
 
+  // The portal block this is built in: the region being reconciled, or else the parent's — a
+  // component a re-render inside the block builds is in that block too.
+  componentRuntime.block = enclosingBlock.current ?? placeholderComponentRuntime?.block;
+
   // Client render skips server-only lifecycle; server render skips client-only.
   const onServer = env === "server";
   const skipEnv = onServer ? "client" : "server";
@@ -2018,7 +2123,10 @@ function buildComponent(
    */
   const children = generateRenderOutput(component);
   const unclaimed: (EnhancedChildNode | DONE)[] = [];
-  const inner = reconcileEntries(children, [], undefined, component, parent, unclaimed);
+  // A component's lists report to the component, which re-renders itself: no row above it, and no
+  // region's host, is theirs. Only here, where the component is BUILT and its render reconciled on
+  // the spot — taking new props only queues a render, which runs from a drain.
+  const inner = atTopLevel(() => reconcileEntries(children, [], undefined, component, parent, unclaimed));
 
   const region: ComponentRegion = {
     owner,

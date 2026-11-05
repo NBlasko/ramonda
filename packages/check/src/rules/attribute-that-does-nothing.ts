@@ -1,4 +1,5 @@
 import ts from "typescript";
+import { tagOf } from "./element";
 import { positionOf } from "../syntax";
 import type { ElementRule, TextEdit } from "./rule";
 
@@ -14,8 +15,9 @@ import type { ElementRule, TextEdit } from "./rule";
  * Measured, one render of every camelCase name a JSX author might reach for, reading back what
  * landed in the document: `httpEquiv` arrives as `httpequiv` while the attribute is `http-equiv`;
  * `acceptCharset` as `acceptcharset` against `accept-charset`; `defaultValue` and `defaultChecked`
- * mark a controlled/uncontrolled distinction this framework does not have, and have no attributes
- * at all; `innerHTML` and `textContent` are
+ * mean something only spelled so, on an `<input>` — where an uncontrolled field starts, which core
+ * writes as the `value` and `checked` attributes — and `defaultValue` on a `Select` or a `TextArea`;
+ * anywhere else, or in lowercase, they arrive as names no browser reads; `innerHTML` and `textContent` are
  * properties rather than attributes. All six render, none does anything, and none is visible on the
  * page as being wrong.
  *
@@ -107,11 +109,15 @@ const DEAD: ReadonlyMap<string, { instead: string; rename?: string }> = new Map(
   [
     "defaultvalue",
     {
-      instead: "write `value` — the attribute IS the initial value, and there is no controlled/uncontrolled pair here",
-      rename: "value",
+      instead:
+        "write `defaultValue`, spelled so, on an `<input>`, a `Select` or a `TextArea` — where an uncontrolled field starts",
+      rename: "defaultValue",
     },
   ],
-  ["defaultchecked", { instead: "write `checked` — the attribute IS the initial state", rename: "checked" }],
+  [
+    "defaultchecked",
+    { instead: "write `defaultChecked`, spelled so, on a checkbox or radio `<input>`", rename: "defaultChecked" },
+  ],
   ["innerhtml", { instead: "put the markup in the element's children, which is what Ramonda renders" }],
   ["textcontent", { instead: "put the text in the element's children" }],
 ]);
@@ -123,7 +129,9 @@ export const attributeThatDoesNothing = {
     severity: "error",
     reportedWhen:
       "one of six camelCase names — `httpEquiv`, `acceptCharset`, `defaultValue`, `defaultChecked`, " +
-      "`innerHTML`, `textContent` — reaches the DOM as itself, where no browser reads it",
+      "`innerHTML`, `textContent` — reaches the DOM as itself, where no browser reads it; `defaultValue` " +
+      "is where an `<input>`, a `Select` or a `TextArea` starts and `defaultChecked` where an `<input>` does, " +
+      "and reported elsewhere",
     heading: (found) => `${found.length} attribute(s) that reach the DOM and do nothing:`,
     lines: (issue) => [
       `  ${issue.file}:${issue.line}:${issue.column}`,
@@ -150,9 +158,13 @@ export const attributeThatDoesNothing = {
    */
   evenWhenSpreading: true,
 
-  read(_element, { tag, attributes }) {
+  read(element, { tag, attributes }) {
     // A component tag decides its own props, so what it does with them is not settled here.
     if (tag === undefined) return [];
+    // Core's `Select` and `TextArea` stand for their tags, and `defaultValue` is THEIR prop: where the
+    // field starts, after which it is the user's. Only the tag written as itself drops it — `tagOf`
+    // names a component however it is written, `ui.Select` as much as `Select`.
+    const component = tagOf(element) === undefined;
 
     const found: AttributeThatDoesNothingIssue[] = [];
 
@@ -160,6 +172,9 @@ export const attributeThatDoesNothing = {
       const written = attribute.name;
       const dead = DEAD.get(written.toLowerCase());
       if (dead === undefined) continue;
+      if (component && written === "defaultValue" && (tag === "select" || tag === "textarea")) continue;
+      // An `<input>`'s defaults, spelled so: where an uncontrolled field starts.
+      if (!component && tag === "input" && (written === "defaultValue" || written === "defaultChecked")) continue;
 
       /**
        * Four of the six have a name to write instead, and those are carried.
@@ -169,8 +184,18 @@ export const attributeThatDoesNothing = {
        * children would be writing JSX out of a string it never read.
        */
       const name = ts.isJsxAttribute(attribute.at) ? attribute.at.name : undefined;
+      // A rename only where it does something: a different spelling, on an element that takes the
+      // name — `defaultValue` on an `<input>`, a `Select` or a `TextArea` (not the tags written as
+      // themselves, which drop it), `defaultChecked` on an `<input>`. Offered anywhere else it would
+      // change nothing, and the next run would offer it again.
+      const takes =
+        dead.rename === "defaultValue"
+          ? tag === "input" || (component && (tag === "select" || tag === "textarea"))
+          : dead.rename === "defaultChecked"
+            ? tag === "input"
+            : true;
       const edit =
-        dead.rename === undefined || name === undefined
+        dead.rename === undefined || name === undefined || written === dead.rename || !takes
           ? undefined
           : {
               from: name.getStart(),

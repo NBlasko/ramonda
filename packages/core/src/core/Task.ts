@@ -11,6 +11,7 @@ import {
   flushUpdated,
   hasPendingPostCommit,
   hasPendingUpdated,
+  inACommit,
   queuePostCommit,
   queueUpdated,
 } from "./commit";
@@ -89,7 +90,11 @@ export async function flushTaskQueue(maxTicks = 50): Promise<void> {
  */
 export function drainSync(maxRounds = 50): void {
   for (let round = 0; round < maxRounds; round++) {
-    if (taskQueue.length === 0 && !hasPendingPostCommit() && !hasPendingUpdated()) return;
+    if (taskQueue.length === 0 && !hasPendingPostCommit() && !hasPendingUpdated()) {
+      // Settled: what waited for a drain — one that had nothing to render — runs now.
+      if (!processing) runAfterTheDrain();
+      return;
+    }
     processTask();
   }
 
@@ -261,12 +266,44 @@ function resumeIfWorkRemains(): void {
   queueMicrotask(processTask);
 }
 
-function processTask() {
-  if (__DEV__) startDrain();
-  // One drain is one commit: what the app actually waited for. Timing builds alone would leave out
-  // the diff, the DOM and the post-commit flush, which is the part that hurts.
-  if (__DEV__) beginCommit();
+/** A drain is running: its builds, its post-commit work, or something they called. */
+let processing = false;
 
+/** What waits for the drain running now to return — see `afterTheDrain`. */
+const afterDrain: (() => void)[] = [];
+
+/**
+ * Runs `callback` once a synchronous drain — `drainSync`, a `flushSync` — has nothing left to render:
+ * a field whose answer waited for the renders is settled there, before the caller's next line, not a
+ * microtask later. Its caller keeps a microtask of its own for a drain that never comes.
+ *
+ * Nothing waits here past its field's settle. When the microtask settles first, it settles through
+ * `runRenders` — a `drainSync` — which finds nothing left and runs this list; the field's own callback
+ * finds it is no longer the field's and returns. Measured on the paths that queue one — a field edited
+ * from `@mounted` in a microtask drain and from a bootstrap, its handler taking the edit and refusing
+ * it: the list is empty once the microtask has run.
+ */
+export function afterTheDrain(callback: () => void): void {
+  afterDrain.push(callback);
+}
+
+function runAfterTheDrain(): void {
+  if (afterDrain.length > 0) for (const callback of afterDrain.splice(0)) callback();
+}
+
+/**
+ * Whether rendering work is running now: a drain, or a commit's own work flushed without one —
+ * `bootstrap` and a hydration run their `@mounted`s directly. A field answering an event fired from
+ * inside it — a blur from a `focus()` in `@mounted`, a field a reconcile removes — must not drain
+ * again: that one runs what the event scheduled before it returns, and a second one nested in it
+ * would find the commit mid-flush and spin.
+ */
+export function drainingNow(): boolean {
+  return processing || inACommit();
+}
+
+function processTask() {
+  const outer = !processing;
   let builds = 0;
   // One drain covers builds AND the post-commit work they queue, alternating
   // until neither has anything left.
@@ -280,6 +317,13 @@ function processTask() {
   // which is exactly what happened when effects first moved to the queue — the
   // RMD009 test was the only thing that noticed.
   try {
+    // Inside the `try`, so the `finally` that clears it runs whatever throws — a DEV hook included —
+    // and a drain that failed to start does not leave every field believing one is running.
+    processing = true;
+    if (__DEV__) startDrain();
+    // One drain is one commit: what the app actually waited for. Timing builds alone would leave out
+    // the diff, the DOM and the post-commit flush, which is the part that hurts.
+    if (__DEV__) beginCommit();
     do {
       drainBuilds();
       flushPostCommit();
@@ -293,7 +337,9 @@ function processTask() {
     // `ErrorBoundary` above it rethrows out of `errorHandler`, straight through
     // this function. See `resumeIfWorkRemains` for what that used to cost, and
     // `endCommit` because a profiler left mid-commit reports nonsense forever
-    // after.
+    // after. `processing` first: a DEV hook that throws below must not leave every
+    // field believing a drain is running.
+    if (outer) processing = false;
     if (__DEV__) {
       endCommit();
       // Cheap, gated ping — no-op unless the devtools is actively watching.

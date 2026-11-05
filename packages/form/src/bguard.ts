@@ -73,8 +73,15 @@ const INPUT_TYPES: Record<string, HtmlConstraints["type"]> = {
  * ```tsx
  * const html = htmlConstraints(signupSchema);   // once, outside render
  *
- * <input {...f.nick.$.bind} {...html("nick")} />
- * <input {...row.field.$.bind} {...html(row.field.$.path)} />
+ * const nick = f.nick.$;
+ * <input
+ *   {...html("nick")}
+ *   name={nick.name}
+ *   value={nick.inputValue}
+ *   oninput={nick.oninput}
+ *   onblur={nick.onblur}
+ *   aria-invalid={nick.invalid}
+ * />
  * ```
  *
  * **Answers are cached by path**, so the same path yields the same object every render. That is not
@@ -98,8 +105,9 @@ const INPUT_TYPES: Record<string, HtmlConstraints["type"]> = {
  * - **Without `noValidate`**, the browser answers first. Reasonable if you want native behaviour and
  *   the schema only as the server-side truth.
  *
- * Spread `bind` first and these second, so a `type` derived from the schema wins over the one `bind`
- * inferred from the value.
+ * The constraints carry a `type` when the schema's `format` names one, and nothing else a field is
+ * written with — no `name`, `value`, handler or `aria-invalid`. Spread them first: a `type` the field
+ * writes after them is the one it gets.
  */
 export function htmlConstraints<S extends StandardSchemaV1>(schema: S): (path: string | Path) => HtmlConstraints {
   // Rendered once. `dialect: null` because nothing here reads `$schema`, and it would be the only

@@ -1,5 +1,5 @@
 import { Component, list, memoized, state, TextArea } from "@ramonda/core";
-import { Form, type StandardResult, type StandardSchemaV1 } from "@ramonda/form";
+import { Form, type Row, type StandardResult, type StandardSchemaV1 } from "@ramonda/form";
 
 /**
  * Two forms on one page, so the devtools FORMS tab has something with shape to it.
@@ -60,13 +60,27 @@ class SignInForm extends Component {
         <form onsubmit={this.form.submit}>
           <label>
             email
-            <input {...f.email.$.bind} type="email" />
+            <input
+              name={f.email.$.name}
+              value={f.email.$.inputValue}
+              oninput={f.email.$.oninput}
+              onblur={f.email.$.onblur}
+              aria-invalid={f.email.$.invalid}
+              type="email"
+            />
           </label>
           {f.email.$.error ? <p className="error small">{f.email.$.error}</p> : null}
 
           <label>
             password
-            <input {...f.password.$.bind} type="password" />
+            <input
+              name={f.password.$.name}
+              value={f.password.$.inputValue}
+              oninput={f.password.$.oninput}
+              onblur={f.password.$.onblur}
+              aria-invalid={f.password.$.invalid}
+              type="password"
+            />
           </label>
           {f.password.$.error ? <p className="error small">{f.password.$.error}</p> : null}
 
@@ -121,10 +135,17 @@ class ProfileForm extends Component {
    * and rebuilds every row. A method cannot capture a render's locals, so its rows are reused — and it
    * reads everything it needs INSIDE itself, where reads are tracked. See `list()`'s own doc.
    */
-  private tagRow(row: { field: { $: { bind: unknown } }; index: number }) {
+  private tagRow(row: Row<string>) {
     return (
       <div className="row">
-        <input {...(row.field.$.bind as Record<string, unknown>)} />
+        <input
+          aria-label={`Tag ${row.index + 1}`}
+          name={row.field.$.name}
+          value={row.field.$.inputValue}
+          oninput={row.field.$.oninput}
+          onblur={row.field.$.onblur}
+          aria-invalid={row.field.$.invalid}
+        />
         <button type="button" onclick={this.removeTag(row.index)}>
           ×
         </button>
@@ -182,13 +203,26 @@ class ProfileForm extends Component {
         <form onsubmit={this.form.submit}>
           <label>
             name
-            <input {...f.name.$.bind} />
+            <input
+              name={f.name.$.name}
+              value={f.name.$.inputValue}
+              oninput={f.name.$.oninput}
+              onblur={f.name.$.onblur}
+              aria-invalid={f.name.$.invalid}
+            />
           </label>
           {f.name.$.error ? <p className="error small">{f.name.$.error}</p> : null}
 
           <label>
             bio
-            <TextArea {...f.bio.$.bind} rows={2} />
+            <TextArea
+              name={f.bio.$.name}
+              value={f.bio.$.inputValue}
+              oninput={f.bio.$.oninput}
+              onblur={f.bio.$.onblur}
+              aria-invalid={f.bio.$.invalid}
+              rows={2}
+            />
           </label>
           {f.bio.$.error ? <p className="error small">{f.bio.$.error}</p> : null}
 

@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { analyzeProject } from "../analyze";
+import { freshObjectInProps } from "../rules/fresh-object-in-props";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const run = () => analyzeProject(join(here, "fixtures", "fresh-props", "tsconfig.json"));
@@ -28,7 +29,7 @@ describe("a prop rebuilt on every render", () => {
 
     // A tally rather than a list: every entry names the same component and prop, so a list of them
     // would say nothing that the ledger below does not say better.
-    expect(found.filter((issue) => issue.kind === "array").map((issue) => issue.prop)).toEqual(["tags"]);
+    expect(found.filter((issue) => issue.kind === "array").map((issue) => issue.prop)).toEqual(["tags", "tags"]);
     expect(found.every((issue) => issue.component === "Row")).toBe(true);
   });
 
@@ -70,6 +71,8 @@ describe("a prop rebuilt on every render", () => {
       "perRow @ `perRow`",
       "{ dense: true }",
       "{ dense: true }",
+      "{ header: <b>h</b>, size: 1 }",
+      '[<b>a</b>, "b"]',
       '["new", "hot"]',
       "this.dense ? { dense: true } …",
       "this.dense ? { dense: true } …",
@@ -206,13 +209,27 @@ describe("a prop rebuilt on every render", () => {
   });
 
   /**
+   * Children and a single node as a prop are compared by content at runtime; an object or an array
+   * holding nodes is the app's, which it may change in place, so it is compared by reference and
+   * reported like any literal — with `@StableProps` on the child as the way to declare it.
+   */
+  test("a slots object and an array of nodes are reported, and the advice names `@StableProps`", () => {
+    const found = run().findings["fresh-object-in-props"];
+    const on = (label: string) => found.filter((issue) => issue.line === lineOf(label));
+
+    expect(on('label="slots-object"').map((issue) => issue.prop)).toEqual(["conf"]);
+    expect(on('label="slots-array"').map((issue) => issue.prop)).toEqual(["tags"]);
+    expect(freshObjectInProps.report.advice).toContain('`@StableProps("slots")`');
+  });
+
+  /**
    * A `@compute` reached through a CALL.
    *
    * Planted when main made both forms readable: a `@compute` method now installs a function that
    * returns the cached value, so `conf={this.settings()}` is a supported way to write it — and a
    * walk that followed the call would find the literal inside the getter and report the cache
-   * itself. Proved by removing the decorator, which takes the fixture from seventeen findings to
-   * eighteen: the guard is what does the work here, not a resolve that quietly failed.
+   * itself. Proved by removing the decorator, which takes the fixture from nineteen findings to
+   * twenty: the guard is what does the work here, not a resolve that quietly failed.
    */
   test("a @compute method called in a prop is silent", () => {
     const written = run().findings["fresh-object-in-props"].map((issue) => issue.written);
@@ -259,7 +276,7 @@ describe("a prop rebuilt on every render", () => {
 
   test("a stable object, a @compute and a spread are all silent", () => {
     const found = run().findings["fresh-object-in-props"];
-    // Thirty-three elements in the fixture and seventeen reported, so a leak shows as a count.
-    expect(found).toHaveLength(17);
+    // Thirty-five elements in the fixture and nineteen reported, so a leak shows as a count.
+    expect(found).toHaveLength(19);
   });
 });

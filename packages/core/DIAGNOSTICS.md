@@ -90,6 +90,7 @@ so a component that misuses the same property on every render reports once.
 | `RMD059` | warning | An async lifecycle rejected |
 | `RMD060` | error | render() is async |
 | `RMD061` | warning | A ref was built while a value was being derived |
+| `RMD062` | warning | A field read its model while a commit ran |
 
 ### RMD052 — A component among JSX children, where an element was meant
 

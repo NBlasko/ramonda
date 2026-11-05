@@ -123,6 +123,9 @@ class Table extends Component {
           <Row conf={STABLE} label="kids">
             <Row conf={{ dense: true }} label="nested" />
           </Row>
+          {/* REPORTED — a slots object and an array of nodes are the app's, compared by reference. */}
+          <Row conf={{ header: <b>h</b>, size: 1 }} label="slots-object" />
+          <Row tags={[<b>a</b>, "b"]} label="slots-array" />
           {/* REPORTED — an array is the same fault. */}
           <Row tags={["new", "hot"]} label="b" />
 
