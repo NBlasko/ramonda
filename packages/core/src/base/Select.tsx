@@ -80,6 +80,9 @@ export class Select extends Component<SelectProps> {
    */
   private d = false;
 
+  /** `o` — the options `settle` saw last: a choice read among others is the browser's, not a pick. */
+  private o = new SeenOptions();
+
   /**
    * `k` — the options the user's last pick chose, and how many: the default shown again, and not those, is
    * a reset. Held weakly, so options a render replaces are not kept alive by a pick that chose them.
@@ -121,7 +124,17 @@ export class Select extends Component<SelectProps> {
   settle(env: RenderEnv = "client"): void {
     const select = this.e.current;
     if (!select) return;
+    try {
+      this.decide(select, env);
+    } finally {
+      // The server renders once: there is no next look, and a field written there is state a client
+      // never receives.
+      if (env !== "server") this.o.note(select);
+    }
+  }
 
+  /** What `settle` writes, on the select in hand. */
+  private decide(select: HTMLSelectElement, env: RenderEnv): void {
     // A caller may hand over a DIFFERENT ref between renders, and the element's own ref did not
     // change, so nothing else would notice. This is the one moment that can.
     if (this.h !== this.props.ref) this.g(select);
@@ -138,9 +151,11 @@ export class Select extends Component<SelectProps> {
         // with no event, and the default is applied when its option comes.
         // A pick, by an event or without one, is noted as the options it chose; once none of them is
         // left — a city list after its country changed — the pick is gone with them.
+        // Read off what it shows only among the options it showed last time: where they changed, the
+        // browser chose — an option a render removed takes a script's unseen pick with it.
         const asItStarts = showsItsDefault(select);
         if (!this.d) {
-          this.d = !asItStarts && Array.from(select.options).some(isADefault);
+          this.d = !this.o.changed(select) && !asItStarts && Array.from(select.options).some(isADefault);
           if (this.d) this.k = pickOf(select);
         } else if ((asItStarts && !choosing(select, this.k)) || pickGone(select, this.k)) {
           this.d = false;
@@ -255,6 +270,26 @@ function wantedOf(chosen: string | number | readonly (string | number)[]): Set<s
 /** Whether every option is chosen exactly when its default says — as a select starts, and a reset leaves it. */
 function showsItsDefault(select: HTMLSelectElement): boolean {
   return Array.from(select.options).every((option) => option.selected === option.defaultSelected);
+}
+
+/** The options a select held when last looked at, held weakly — and whether it holds others now. */
+class SeenOptions {
+  private seen: WeakSet<HTMLOptionElement> | undefined;
+  private count = 0;
+
+  /** Never on the first look: a served page's options are the ones it was parsed with. */
+  changed(select: HTMLSelectElement): boolean {
+    const seen = this.seen;
+    if (seen === undefined) return false;
+    const options = Array.from(select.options);
+    return options.length !== this.count || options.some((option) => !seen.has(option));
+  }
+
+  note(select: HTMLSelectElement): void {
+    const options = Array.from(select.options);
+    this.seen = new WeakSet(options);
+    this.count = options.length;
+  }
 }
 
 interface Pick {

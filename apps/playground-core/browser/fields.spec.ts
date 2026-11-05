@@ -137,6 +137,15 @@ test.describe("fields only a browser settles", () => {
     await expect(city).toHaveValue("Zagreb");
   });
 
+  test("every case of a default select ends where the rule says, in this browser", async ({ page }) => {
+    await page.goto("/select-cases");
+    await page.locator("#run").click();
+    const cases = page.locator("#select-cases");
+    await expect(cases).not.toHaveText("not run", { timeout: 30_000 });
+    await expect(cases).toHaveAttribute("data-cases", "147");
+    expect(JSON.parse((await cases.textContent()) ?? "null")).toEqual([]);
+  });
+
   test("a picked select is back on its default when every option it chose is replaced", async ({ page }) => {
     const city = page.locator("#city-chosen");
     await expect(city).toHaveValue("");
