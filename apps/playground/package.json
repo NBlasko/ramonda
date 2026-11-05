@@ -21,6 +21,6 @@
     "@ramonda/build": "workspace:^",
     "@ramonda/devtools": "workspace:^",
     "@types/node": "^26.6.5",
-    "vite": "^8.3.4"
+    "vite": "^8.3.6"
   }
 }
