@@ -1364,29 +1364,43 @@ function sameMessages(a: readonly string[], b: readonly string[]): boolean {
 /**
  * Whether two fields' issues say the same thing, field by field of each issue.
  *
- * A value is compared as itself, and an object one (bguard's `expected`, a nested detail) by its
- * JSON, because a validation builds every issue fresh. One that cannot be written as JSON counts as
- * changed: waking a field once too often is harmless, and missing a change is the fault.
+ * Every key of EITHER issue: a key one has and the other lacks is a change, even where the first's
+ * value is `undefined`. A value is compared as itself; a plain object or array (bguard's `expected`, a
+ * nested detail) by its JSON, because a validation builds every issue fresh. Anything else — a
+ * `RegExp`, a `Set`, a `Map`, a `Date` — counts as changed unless it is the same object: JSON writes
+ * them all as `{}`, so two different patterns compared equal. Waking a field once too often is
+ * harmless; missing a change is the fault. Both holes found by a second review.
  */
 function sameIssues(a: readonly FieldIssue[], b: readonly FieldIssue[]): boolean {
   if (a.length !== b.length) return false;
   return a.every((issue, index) => {
-    const other = b[index]! as Record<string, unknown>;
     const own = issue as Record<string, unknown>;
-    const keys = Object.keys(own);
-    if (keys.length !== Object.keys(other).length) return false;
-    return keys.every((key) => {
-      const x = own[key];
-      const y = other[key];
-      if (Object.is(x, y)) return true;
-      if (typeof x !== "object" || typeof y !== "object" || x === null || y === null) return false;
-      try {
-        return JSON.stringify(x) === JSON.stringify(y);
-      } catch {
-        return false;
-      }
-    });
+    const other = b[index]! as Record<string, unknown>;
+    const keys = new Set([...Object.keys(own), ...Object.keys(other)]);
+    for (const key of keys) {
+      if (!Object.hasOwn(own, key) || !Object.hasOwn(other, key)) return false;
+      if (!sameValue(own[key], other[key])) return false;
+    }
+    return true;
   });
+}
+
+function sameValue(x: unknown, y: unknown): boolean {
+  if (Object.is(x, y)) return true;
+  if (!isPlainData(x) || !isPlainData(y)) return false;
+  try {
+    return JSON.stringify(x) === JSON.stringify(y);
+  } catch {
+    return false;
+  }
+}
+
+/** An array or an object literal — what JSON writes faithfully. */
+function isPlainData(value: unknown): boolean {
+  if (typeof value !== "object" || value === null) return false;
+  if (Array.isArray(value)) return true;
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
 }
 
 function isPromise<T>(value: T | Promise<T>): value is Promise<T> {

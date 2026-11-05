@@ -11,7 +11,7 @@ import {
 } from "@ramonda/core";
 import type { RamondaNode } from "@ramonda/core";
 import { createNavigator, detachedNavigator, type RouterNavigator } from "./store";
-import { hashParamsFor, keepUnchanged, ownedBy, parseUrl } from "./urlUtils";
+import { hashParamsFor, keepUnchanged, ownedBy, parseUrl, samePairs } from "./urlUtils";
 import { assertPattern, matchCompiled, type ParamsOf, type RouteConfig, type RouteParams } from "./match";
 import type { HashParamsUpdater, PartialNavigateOptions, RouterState, SearchParamsUpdater } from "./types";
 
@@ -33,11 +33,7 @@ interface RouteContextValue {
   nav: RouterNavigator;
 }
 
-/**
- * What is published when the route state has no `hashScopes` — one restored from a page the previous
- * router version rendered. One object, so the provider's callback does not hand out a fresh `{}` on
- * every run.
- */
+/** The owners with no Router above — the context's default. */
 const NO_SCOPES: Record<string, Record<string, string>> = Object.freeze(Object.create(null));
 
 /** Published by <RouteOutlet>, because that is what does the matching. */
@@ -269,7 +265,7 @@ export class Router extends Hook {
     state: this.routeState,
     baseUrl: this.routeState.baseUrl,
     queryParams: this.routeState.queryParams,
-    hashScopes: this.routeState.hashScopes ?? NO_SCOPES,
+    hashScopes: this.routeState.hashScopes,
     nav: this.nav,
   }));
 }
@@ -400,22 +396,26 @@ export class Navigator extends Hook {
 }
 
 /**
- * One reader's view of the hash, handed back as the SAME object until the owners change.
+ * One reader's view of the hash, handed back as the SAME object until its own line changes.
  *
  * Worked out per reader, so a fresh object per read would make a component that passes `hashParams` to
- * a child rebuild that child every render — what RMD020 reports. A plain cache, not `@compute`: the
- * input is already one signal, `hashScopes`, and its identity says whether anything moved.
+ * a child rebuild that child every render — what RMD020 reports. Recomputed when the owners change,
+ * and kept when the line it reads did not: a sibling's write moves the owners and nothing on this
+ * line, which a second review found handing every reader a fresh, equal object.
  */
 class HashReading {
   private scopes: Record<string, Record<string, string>> | undefined;
   private owner: string | undefined;
   private value: Record<string, string> | undefined;
 
-  read(scopes: Record<string, Record<string, string>> | undefined, owner: string): Record<string, string> {
+  read(scopes: Record<string, Record<string, string>>, owner: string): Record<string, string> {
     if (this.value === undefined || scopes !== this.scopes || owner !== this.owner) {
+      const next = hashParamsFor(scopes, owner);
+      const same = this.value !== undefined && owner === this.owner && samePairs(this.value, next);
       this.scopes = scopes;
       this.owner = owner;
-      this.value = hashParamsFor(scopes, owner);
+      if (!same) this.value = next;
+      return same ? this.value! : next;
     }
     return this.value;
   }

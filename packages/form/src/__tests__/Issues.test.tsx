@@ -160,3 +160,75 @@ describe("a field reading its issues", () => {
     }
   });
 });
+
+/**
+ * What `sameIssues` compares, from a second review: every key of EITHER issue, not only the first's —
+ * `{ code: undefined }` against `{ params: … }` has two keys each and read as the same — and an object
+ * JSON cannot write, a `RegExp` or a `Set`, as changed, since both write as `{}`.
+ */
+describe("an issue that changes in what JSON or one side's keys cannot see", () => {
+  interface Mode {
+    name: string;
+    mode: string;
+  }
+  const EXTRAS: Record<string, Record<string, unknown>> = {
+    a: { code: undefined },
+    b: { params: { min: 3 } },
+    c: { expected: /^[a-z]+$/ },
+    d: { expected: /^\d+$/ },
+    e: { expected: new Set([1]) },
+    f: { expected: new Set([2]) },
+  };
+  const bySide: StandardSchemaV1<Mode, Mode> = {
+    "~standard": {
+      version: 1,
+      vendor: "test",
+      validate: (value: unknown) => ({
+        issues: [{ message: "Invalid", path: ["name"], ...EXTRAS[(value as Mode).mode] } as never],
+      }),
+    },
+  };
+
+  test.each([
+    ["a key only the new issue has", "a", "b", "params"],
+    ["a different RegExp", "c", "d", "expected"],
+    ["a Set with other contents", "e", "f", "expected"],
+  ])("re-renders on %s", async (_what, from, to, key) => {
+    class Shows extends Component<{ of: FieldNode<string> }> {
+      f = this.use(Field<string>, () => ({ of: this.props.of }));
+      render(): RamondaNode {
+        const issue = this.f.issues[0] as Record<string, unknown> | undefined;
+        const value = issue?.[key];
+        return (
+          <p id="shows">
+            {value instanceof Set
+              ? [...value].join(",")
+              : String(value instanceof RegExp ? value.source : JSON.stringify(value))}
+          </p>
+        );
+      }
+    }
+    let form!: Form<typeof bySide>;
+    class Page extends Component {
+      private f = this.use(Form<typeof bySide>, () => ({
+        schema: bySide,
+        defaultValues: { name: "x", mode: from },
+        onSubmit: () => {},
+      }));
+      render(): RamondaNode {
+        form = this.f;
+        return <Shows of={this.f.fields.name} />;
+      }
+    }
+    const { container, unmount } = render((<Page />) as never);
+    try {
+      await act(async () => form.submit());
+      const before = container.querySelector("#shows")!.textContent;
+      await act(async () => form.fields.mode.$.set(to));
+      expect(form.fields.name.$.errors).toEqual(["Invalid"]);
+      expect(container.querySelector("#shows")!.textContent).not.toBe(before);
+    } finally {
+      unmount();
+    }
+  });
+});

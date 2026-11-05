@@ -33,7 +33,16 @@
  */
 import { execFileSync, spawn as spawnChild } from "node:child_process";
 import { createServer as createNetServer } from "node:net";
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync, rmSync, existsSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  writeFileSync,
+  rmSync,
+  existsSync,
+  symlinkSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -352,6 +361,14 @@ async function serves(port, attempt = 0) {
       if (robots.status !== 200 || robots.body !== ROBOTS || !robots.type.startsWith("text/plain")) {
         fail(`/robots.txt from public/ was served as ${robots.status} ${robots.type}`, robots.body.slice(0, 200));
       }
+      const linked = await get("/linked.txt");
+      if (linked === "retry") return "retry";
+      if (linked.status !== 200 || linked.body !== ROBOTS) {
+        fail(
+          `/linked.txt, a symlink in public/, was served as ${linked.status} ${linked.type}`,
+          linked.body.slice(0, 200),
+        );
+      }
       // Two levels up is the project root, where `server.mjs` and `package.json` are. Encoded, because
       // `fetch` takes a plain `..` out of the URL before it is sent.
       for (const escape of [
@@ -581,6 +598,9 @@ try {
   // `npm run build && npm start` — found by an agent publishing a JSON file with its site.
   mkdirSync(join(app, "public"), { recursive: true });
   writeFileSync(join(app, "public", "robots.txt"), ROBOTS);
+  // And a symlink, which `cpSync` copies as a link: the server read the list of files once and kept
+  // only regular ones, so a linked favicon became a rendered 404. Found by a second review.
+  symlinkSync("robots.txt", join(app, "public", "linked.txt"));
 
   // A block in a `.ts` file with no markup, which the docs say works like one in a `.tsx`. Dev, the
   // tests and the type check took it; the SSR production build did not — its plugin filter named only

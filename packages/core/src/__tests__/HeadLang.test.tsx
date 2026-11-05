@@ -122,11 +122,13 @@ describe("on the client", () => {
 
 describe("when the registry is reset", () => {
   /**
-   * The reset at a request's end gives `<html>` back by the same rule a page going away does: only
-   * while it still holds what a `Head` wrote. It restored unconditionally, so a value the app wrote
-   * itself since was overwritten. Found by a review: two rules for one slot.
+   * The reset is a REQUEST boundary — a server rendering request after request into one document, and
+   * tests — never a page in a browser. So it hands `<html>` back whatever wrote it since: a value left
+   * there is the next request's language. A first review asked for the page-going-away rule here
+   * (restore only while still ours); a second measured what that does on a server — one request's
+   * `de` served to the next, which said nothing — and it was taken out again.
    */
-  test("hands back what <html> had, unless something else wrote it since", async () => {
+  test("hands back what <html> had, whatever wrote it since — the next request must not inherit it", async () => {
     html().setAttribute("lang", "en");
     class Page extends Component {
       head = this.use(Head, () => ({ lang: "fr" }));
@@ -138,7 +140,7 @@ describe("when the registry is reset", () => {
     expect(html().getAttribute("lang")).toBe("fr");
     html().setAttribute("lang", "de");
     resetHeadRegistry();
-    expect(html().getAttribute("lang")).toBe("de");
+    expect(html().getAttribute("lang")).toBe("en");
   });
 
   test("and does hand it back while it is still the Head's", async () => {

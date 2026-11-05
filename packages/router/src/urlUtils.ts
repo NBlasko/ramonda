@@ -4,18 +4,35 @@ import type { RouterState } from "./types";
 // `URL` / `URLSearchParams` / `window.location` browser APIs.
 
 /**
- * A record with no prototype. Keys come from the URL, and in a plain object `__proto__` is not a key:
- * writing it replaces the object's prototype. Here it is a name like any other.
+ * The owners, in a container with no prototype. An owner's name comes from the URL, and in a plain
+ * object `__proto__` is not a key — writing it replaces the prototype — while `constructor` reads as
+ * the `Object` function. Internal: an app is never handed this container, only records from it.
  */
-function record<T>(): Record<string, T> {
-  return Object.create(null) as Record<string, T>;
+function owners(): Record<string, Record<string, string>> {
+  return Object.create(null) as Record<string, Record<string, string>>;
+}
+
+/**
+ * Writes `key` as an OWN property, which a plain object can hold whatever the name: `__proto__`
+ * becomes a key, not a new prototype. What an app is handed — `searchParams`, `hashParams` — stays an
+ * ordinary object, so `hasOwnProperty` works on it; the first fix gave those no prototype at all, and
+ * a second review found that broke app code no changeset warned about.
+ */
+function put(out: Record<string, string>, key: string, value: string): void {
+  Object.defineProperty(out, key, { value, enumerable: true, writable: true, configurable: true });
+}
+
+/** `Object.assign`, but through `put` — assignment would run the `__proto__` setter. */
+function copyInto(out: Record<string, string>, from: Record<string, string> | undefined): Record<string, string> {
+  if (from !== undefined) for (const key of Object.keys(from)) put(out, key, from[key]!);
+  return out;
 }
 
 function parseQueryParams(search: string): Record<string, string> {
-  const out = record<string>();
+  const out: Record<string, string> = {};
   const sp = new URLSearchParams(search);
   sp.forEach((value, key) => {
-    out[key] = value;
+    put(out, key, value);
   });
   return out;
 }
@@ -33,7 +50,7 @@ function parseQueryParams(search: string): Record<string, string> {
  */
 function parseHash(hash: string): Record<string, Record<string, string>> {
   const body = hash.startsWith("#") ? hash.slice(1) : hash;
-  const scopes = record<Record<string, string>>();
+  const scopes = owners();
   if (body === "") return scopes;
   const [top = "", ...rest] = body.split("#");
   scopes[""] = parseQueryParams(top);
@@ -41,7 +58,7 @@ function parseHash(hash: string): Record<string, Record<string, string>> {
     const colon = segment.indexOf(":");
     const owner = colon === -1 ? "" : segment.slice(0, colon);
     const pairs = parseQueryParams(colon === -1 ? segment : segment.slice(colon + 1));
-    scopes[owner] = Object.assign(record<string>(), scopes[owner], pairs);
+    scopes[owner] = copyInto(copyInto({}, scopes[owner]), pairs);
   }
   return scopes;
 }
@@ -66,22 +83,14 @@ export function ownedBy(owner: string, key: string): string {
  * Its line and nothing else. One record of every owner's keys let a child's key shadow its parent's —
  * a page writing its own `nav` made the parent read it, and unmount the page — and let two siblings
  * that use one name read whichever wrote last. Found by a review of this branch.
- *
- * `scopes` may be missing: a state restored from a page the previous router version rendered has no
- * `hashScopes`, and reads as an empty hash until the URL is read again on mount.
  */
-export function hashParamsFor(
-  scopes: Record<string, Record<string, string>> | undefined,
-  owner: string,
-): Record<string, string> {
-  const out = record<string>();
-  if (scopes === undefined) return out;
-  Object.assign(out, scopes[""]);
+export function hashParamsFor(scopes: Record<string, Record<string, string>>, owner: string): Record<string, string> {
+  const out = copyInto({}, scopes[""]);
   if (owner === "") return out;
   let line = "";
   for (const key of owner.split(".")) {
     line = line === "" ? key : `${line}.${key}`;
-    Object.assign(out, scopes[line]);
+    copyInto(out, scopes[line]);
   }
   return out;
 }
@@ -114,7 +123,7 @@ export function writeHashScope(
   const cleared = [...changed].map((key) => ownedBy(owner, key));
   const isCleared = (o: string) => cleared.some((c) => o === c || o.startsWith(`${c}.`));
 
-  const out = record<Record<string, string>>();
+  const out = owners();
   for (const [o, pairs] of Object.entries(scopes)) if (o !== owner && !isCleared(o)) out[o] = pairs;
   out[owner] = next;
   return out;
@@ -208,9 +217,31 @@ export function buildUrl(state: RouterState): string {
 }
 
 /** Whether two flat records hold the same pairs. */
-function samePairs(a: Record<string, string>, b: Record<string, string>): boolean {
+export function samePairs(a: Record<string, string>, b: Record<string, string>): boolean {
   const keys = Object.keys(a);
   return keys.length === Object.keys(b).length && keys.every((key) => Object.hasOwn(b, key) && a[key] === b[key]);
+}
+
+/**
+ * A route state made well-formed, ONCE, where it enters — `keepUnchanged`, which `Router.init` runs the
+ * restored state through before anything reads it.
+ *
+ * What a page restores is JSON: its owners are a plain object, so `constructor` reads as the `Object`
+ * function. One the PREVIOUS router version rendered has no `hashScopes` at all, a `hashTags` instead —
+ * measured, the client threw and the app did not hydrate until the cache was purged. A second review
+ * found that tolerance patched at three readers and missing at three more; here it is one place, and
+ * the type is true everywhere after it. A state that is already well-formed comes back as itself, so
+ * its owners keep their identity.
+ */
+function wellFormed(state: RouterState): RouterState {
+  const given = state as Partial<RouterState>;
+  const scopes = given.hashScopes;
+  if (given.queryParams !== undefined && scopes !== undefined && Object.getPrototypeOf(scopes) === null) return state;
+  const fixed = owners();
+  if (scopes !== undefined && scopes !== null && typeof scopes === "object") {
+    for (const owner of Object.keys(scopes)) fixed[owner] = scopes[owner]!;
+  }
+  return { ...state, baseUrl: given.baseUrl ?? "/", queryParams: given.queryParams ?? {}, hashScopes: fixed };
 }
 
 /**
@@ -222,18 +253,13 @@ function samePairs(a: Record<string, string>, b: Record<string, string>): boolea
  * keeps "a component re-renders for the part it reads" true — for a push, an in-place update and
  * back/forward alike.
  */
-export function keepUnchanged(prev: RouterState, next: RouterState): RouterState {
-  // `prev` can be a state restored from a page the PREVIOUS router version rendered: no `hashScopes`,
-  // a `hashTags` instead. Measured: the client threw here and the app did not hydrate until the cache
-  // was purged. Read as empty, it is simply replaced by what the URL says.
-  const prevQuery = prev.queryParams ?? {};
-  const prevScopes = prev.hashScopes ?? {};
-  const queryParams = samePairs(prevQuery, next.queryParams) ? prevQuery : next.queryParams;
-  const prevOwners = Object.keys(prevScopes);
+export function keepUnchanged(given: RouterState, next: RouterState): RouterState {
+  const prev = wellFormed(given);
+  const queryParams = samePairs(prev.queryParams, next.queryParams) ? prev.queryParams : next.queryParams;
+  const prevOwners = Object.keys(prev.hashScopes);
   const hashScopes =
-    prev.hashScopes !== undefined &&
     prevOwners.length === Object.keys(next.hashScopes).length &&
-    prevOwners.every((o) => Object.hasOwn(next.hashScopes, o) && samePairs(prevScopes[o]!, next.hashScopes[o]!))
+    prevOwners.every((o) => Object.hasOwn(next.hashScopes, o) && samePairs(prev.hashScopes[o]!, next.hashScopes[o]!))
       ? prev.hashScopes
       : next.hashScopes;
   if (queryParams === next.queryParams && hashScopes === next.hashScopes) return next;

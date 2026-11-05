@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { createIsrCache, fileStore } from "@ramonda/router/server";
@@ -148,7 +148,10 @@ function listClientFiles() {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       const file = join(dir, entry.name);
       if (entry.isDirectory()) walk(file);
-      else if (entry.isFile()) files.set(`/${relative(CLIENT, file).split(sep).join("/")}`, file);
+      // A symlink is followed, as a file read is: `cpSync` keeps a link from `public/` as a link, and
+      // a linked favicon is still the site's favicon.
+      else if (entry.isFile() || (entry.isSymbolicLink() && statSync(file, { throwIfNoEntry: false })?.isFile()))
+        files.set(`/${relative(CLIENT, file).split(sep).join("/")}`, file);
     }
   };
   walk(CLIENT);

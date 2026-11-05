@@ -1,5 +1,6 @@
 import { describe, test, expect } from "vitest";
 import {
+  keepUnchanged,
   parseUrl,
   parseUrlString,
   buildUrl,
@@ -140,5 +141,26 @@ describe("urlUtils", () => {
   test("parseUrl normalizes the current location's trailing slash", () => {
     window.history.pushState(null, "", "/concepts/state/");
     expect(parseUrl().baseUrl).toBe("/concepts/state");
+  });
+});
+
+/**
+ * A state restored from a page is plain JSON, and one from the previous router version has no
+ * `hashScopes` at all. It is made well-formed ONCE, where it enters — `keepUnchanged`, which `init`
+ * runs it through — rather than guarded at every place that reads it: a second review found three
+ * that were and three that were not. After it, the owners have no prototype, so a `<HashLevel
+ * of="constructor">` finds no owner rather than the `Object` function.
+ */
+describe("a restored state", () => {
+  test("is made well-formed where it enters: owners with no prototype, old shape read as empty", () => {
+    const fromJson = JSON.parse('{"baseUrl":"/","queryParams":{},"hashScopes":{"":{"a":"1"}}}');
+    const kept = keepUnchanged(fromJson, parseUrlString("/#a=1"));
+    expect(Object.getPrototypeOf(kept.hashScopes)).toBeNull();
+    expect(kept.hashScopes["constructor"]).toBeUndefined();
+
+    const old = JSON.parse('{"baseUrl":"/","queryParams":{},"hashTags":[]}');
+    const replaced = keepUnchanged(old, parseUrlString("/#b=2"));
+    expect(Object.getPrototypeOf(replaced.hashScopes)).toBeNull();
+    expect(buildUrl(replaced)).toBe("/#b=2");
   });
 });

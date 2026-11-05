@@ -129,8 +129,8 @@ export function createNavigator(store: RouteStateAccess, onServerRedirect?: (url
     updateHashParams(next, opts = {}, owner = "") {
       updateState(
         (prev) => {
-          const scopes = prev.hashScopes ?? {};
-          const own = (Object.hasOwn(scopes, owner) ? scopes[owner] : undefined) ?? {};
+          const scopes = prev.hashScopes;
+          const own = scopes[owner] ?? {};
           return {
             ...prev,
             hashScopes: writeHashScope(scopes, owner, typeof next === "function" ? next(own) : next),

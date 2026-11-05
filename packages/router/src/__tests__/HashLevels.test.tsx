@@ -233,6 +233,22 @@ describe("a change to a key", () => {
  * name read whichever wrote last. Found by a review of this branch.
  */
 describe("what a component reads", () => {
+  /**
+   * The SAME object while its own line holds the same keys — not only while nothing anywhere moved. A
+   * sibling's write gave every reader a fresh, equal object, and a child handed it re-rendered.
+   */
+  test("does not change when only a sibling's keys move", async () => {
+    const App = app(Shell);
+    render(<App />);
+    await write("shell", { nav: "video", panel: "open" });
+    await write("video", { tab: "comments" });
+    const before = navs.video!.hashParams;
+    await write("filters", { filter: "new" });
+    expect(navs.video!.hashParams).toBe(before);
+    await write("video", { tab: "suggestions" });
+    expect(navs.video!.hashParams).not.toBe(before);
+  });
+
   test("a page's own key does not change what its parent reads", async () => {
     const App = app(Shell);
     render(<App />);
@@ -322,6 +338,25 @@ describe("a name from the URL is only a name", () => {
     const App = app(Video);
     render(<App />);
     expect(Object.keys(navs.video!.searchParams)).toEqual(["__proto__"]);
+  });
+
+  /**
+   * What an app is handed stays an ordinary object. The first fix gave it no prototype at all, so
+   * `searchParams.hasOwnProperty("q")` threw — a change no changeset said. The key is written as an
+   * own property instead, which a plain object can hold without its prototype moving.
+   */
+  test("and what the app is handed is an ordinary object", () => {
+    window.history.pushState(null, "", "/?__proto__=x&q=1#__proto__=y");
+    const App = app(Video);
+    render(<App />);
+    const query = navs.video!.searchParams;
+    const hash = navs.video!.hashParams;
+    expect(Object.getPrototypeOf(query)).toBe(Object.prototype);
+    expect(Object.getPrototypeOf(hash)).toBe(Object.prototype);
+    expect(query.hasOwnProperty("q")).toBe(true);
+    expect(Object.hasOwn(query, "__proto__")).toBe(true);
+    expect(Object.hasOwn(hash, "__proto__")).toBe(true);
+    expect(hash.__proto__).toBe("y");
   });
 });
 
