@@ -31,7 +31,10 @@ const WITHOUT_PICK = ["b", "c"];
 const KEEPING_DEFAULT = ["d", "b", "e"];
 const ALL_NEW = ["d", "e", "f"];
 
-/** Each harness made, in order: the last one is the one a hydration just built. */
+/**
+ * Each harness this case made, in order: the last one is the one a hydration just built. Emptied as
+ * each case starts, so the page keeps no case after it ends.
+ */
 const made: Harness[] = [];
 
 function register(harness: Harness): true {
@@ -116,6 +119,7 @@ function expected(pick: Pick, then: Then): string[] {
 }
 
 async function run(origin: Origin, kind: Kind, pick: Pick, then: Then): Promise<string[]> {
+  made.length = 0;
   const container = document.createElement("div");
   document.body.appendChild(container);
   if (origin === "built") {

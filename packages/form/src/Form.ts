@@ -142,7 +142,7 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
    *
    * Built here rather than on demand because a `FieldHandle` must be one object per path for the
    * life of the form: its two event handlers are bound once, and RMD020 reports a handler whose
-   * identity changed between renders (it really is removed and re-added on the element).
+   * identity changed between renders.
    */
   private readonly quietTree = new FieldTree(this.quietHost());
 

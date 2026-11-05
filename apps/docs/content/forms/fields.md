@@ -85,8 +85,8 @@ const email = f.email.$;
 />;
 ```
 
-`oninput` and `onblur` are built once per field and reused, so writing them on every render does not
-re-attach a listener. Every attribute is there to read where the control is, and inside a form it
+`oninput` and `onblur` are built once per field and reused, so writing them on every render hands the
+control the same handler each time. Every attribute is there to read where the control is, and inside a form it
 recognises — `<form onsubmit={this.form.submit}>` — `@ramonda/check` reports a control that is missing one.
 
 **What you write follows the value's type:**
@@ -316,9 +316,9 @@ class SignupForm extends Component {
 }
 ```
 
-A method rather than an inline arrow, because methods are auto-bound: the identity never changes, so
-the listener is not removed and re-added on every render. An arrow here would be reported by
-[RMD020](/reference/diagnostics/rmd020).
+A method rather than an inline arrow, because methods are auto-bound: the identity never changes from
+one render to the next. An arrow here is a new function every render, which
+[RMD020](/reference/diagnostics/rmd020) reports.
 
 ### The node types — `LeafNode`, `ObjectNode` and `ArrayNode`
 

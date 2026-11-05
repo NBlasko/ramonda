@@ -63,7 +63,7 @@ interface Watchable {
  *   form's owner and nobody else. A child reading through the field tree is subscribed to nothing.
  * - And the child's props never change: a field node is ONE cached object for the life of the form,
  *   deliberately — a fresh one per access means a fresh `oninput` per access, which RMD020
- *   reports and which really does re-attach the listener on every render. So the props diff has
+ *   reports on every render. So the props diff has
  *   nothing to notice, and the child is skipped entirely.
  *
  * Measured: put a field in its own component, submit an invalid form, and the child shows no message

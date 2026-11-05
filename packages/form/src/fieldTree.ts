@@ -86,8 +86,8 @@ const NOT_A_CHILD = new Set(["then", "catch", "finally", "constructor", "prototy
  * **A node is created once and handed back forever after**, and that is not an
  * optimisation — it is what keeps the framework quiet. A fresh node per access means a
  * fresh `oninput` per access, and RMD020 compares a vnode's attributes key by key
- * (`core/src/debug/renderStability.ts`): a handler whose identity changed is reported, and
- * really is removed and re-added on the element every render. With the cache, `oninput` is
+ * (`core/src/debug/renderStability.ts`): a handler whose identity changed is reported on every
+ * render. With the cache, `oninput` is
  * one bound method per field for the life of the form.
  *
  * The same cache is what makes a node safe to compare. `list({ each: rows })` puts nodes
