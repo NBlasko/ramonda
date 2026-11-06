@@ -1,5 +1,70 @@
 # @ramonda/form
 
+## 0.10.0
+
+### Minor Changes
+
+- 814447a: A field has `issues` beside `errors`: each failure as the schema handed it over, with the `message` and whatever else the validator put on it — a key such as bguard's `code`, what it expected. An app translates by the key and renders its own sentence; `FieldIssue` is the type. An error set with `setError` is an issue with a message and nothing else.
+- 83b5c81: A field's `$` gives a control each attribute by name — `inputValue`, `invalid`, `oninput` and `onblur`, beside `name` and `value` — and `bind` is gone
+  
+  A control is written with five attributes, every one where the control is:
+  
+  ```tsx
+  const email = this.form.fields.email.$;
+  
+  <input
+    name={email.name}
+    value={email.inputValue}
+    oninput={email.oninput}
+    onblur={email.onblur}
+    aria-invalid={email.invalid}
+  />
+  ```
+  
+  `inputValue` is the value as the control shows it: a `Date` as `yyyy-mm-dd`, a number as itself (`""`
+  for an emptied one), text as text; a checkbox takes `checked={field.value === true}` — a value not set
+  yet, or cleared by a reset, is an unticked box core still holds, as `bind` wrote it — and `type` is written on
+  the element. `oninput` and `onblur` are one bound function each for the life of the field. `Field`
+  answers the same four. The `Bind`, `CommonBind`, `TextBind`, `NumberBind`, `CheckboxBind` and
+  `DateBind` types are gone; `InputValue<T>` types `inputValue`. What an edit writes is read off the
+  control as written: `type="number"` writes a number, so a number field is written `type="number"`, as a
+  box is written `type="checkbox"` — the `type` `bind` used to write; `form-value-in-the-wrong-control`
+  says what each control hands back.
+  `invalid` is `true` while the field has a message and no value otherwise, as `bind` gave it: a valid
+  control carries no `aria-invalid`.
+  `inputValue` is typed per member of the value's union, and `never` for a value a control's `value`
+  cannot show — a boolean (a box takes `checked`), a file, a bigint.
+- 1daf9bd: `form-value-in-the-wrong-control` and `RMF005`: a form's value in a control that hands back another kind
+  
+  A field turns what its control produced back into its value by the control's own `type`:
+  `type="number"` and `type="range"` hand back a number whatever the field held — a slider now writes a
+  number, as an empty field cannot say what it is waiting for — `type="checkbox"` true or false, and
+  every other control its text.
+  `type="date"` serves a `Date` and a date written as text, told apart by the value the field holds: text
+  (a date written as text starts at `""`) gets text back, and a `Date` or nothing gets a day — so a `Date`
+  field that held none now takes a day rather than text, and one emptied holds nothing (`undefined`) rather than `""`. A number field written
+  without `type="number"` fills the form with text, a text field in a slider fills it with a number, and
+  the schema reports a value the reader never typed wrong.
+  
+  ```tsx
+  <input type="number" name={age.name} value={age.inputValue} oninput={age.oninput} />
+  ```
+  
+  `inputValue` is typed `FormNumber | ""` for a number, `FormDay | ""` for a date and `FormText` for text —
+  a number and two strings to TypeScript, marked so the check can tell them from any other; all three are
+  exported. `ramonda-check` reports each in a control that hands back another kind, in an `<input>` whose
+  `type` it cannot read, and an `inputValue` whose type it cannot read.
+  For it, `ramonda-check` now reads every project with the language's own lib and, in place of the DOM
+  lib, a stand-in for each name it declares, read from the DOM lib of the TypeScript the check runs —
+  about 0.2 s more per run, whatever the app's size (measured on a Linux laptop, Ryzen 5 2500U). A
+  rule that told the platform's names from a project's own by whether they resolved asks which file
+  declares them now. `RMF005` reports the same in a running page once the field holds a value: a number
+  or a day through a control that hands back text, and text through one that hands back a number.
+
+### Patch Changes
+
+- 72719de: What a review of this release's changes found. A field's issue keeps its `message` when the validator's issues are class instances with `message` on the prototype. A field reading `issues` re-renders when an issue changes while its message does not — a `code` moving from `s:minLength` to `s:pattern`, which is what a translation reads. `fillDocument` reads the shell's `<html>` attributes instead of searching their text, so `class="x lang=fr"` is left alone and a valueless `<html lang>` is replaced rather than given a second `lang`. The SSR template empties `dist/client` before each build, so a file deleted from `public/` is not served from the last one, and it lists the files under `dist/client` once at startup, instead of asking the disk whether one exists on every request — each file is still read when it is served — and the build copies `public/` with every link resolved — a linked file or folder lands as what it points at, and a link that loops or points nowhere stops the build naming it — so the server serves only real files and follows no link; a file it listed and that has gone since, as a rebuild in place leaves it, is a 404 rather than a crash, which would have served whatever one pointed at, `.env` included. `fillDocument` writes `lang` and `dir` on the shell before the page goes in, so a shell with no `<html>` leaves a `<html` inside the rendered page alone. The router copies the hash records it takes and hands out, so an updater that edits `prev` and returns it is still a change and a record the app keeps is not the router's, and an owner spelled unencoded in a hand-written link is the same owner.
+
 ## 0.9.2
 
 ### Patch Changes

@@ -1,5 +1,17 @@
 # @ramonda/server
 
+## 0.3.0
+
+### Minor Changes
+
+- e771b37: `Head` sets `<html lang>` and `<html dir>`: `this.use(Head, (self: App) => ({ lang: self.locale }))`. The deeper `Head` wins, a page that goes away hands back what `<html>` had unless something else changed it since, and the server writes it too — `renderPage` and `renderStatic` return `lang` and `dir`, `fillDocument` writes them over the shell's `<html>`, and `renderDocument` prefers them to its `lang` option. A bilingual app had no declarative way to say its language, and the imperative write the docs offered was refused by the checker.
+  
+  A server that fills its shell by hand passes `lang` and `dir` on, as it passes `title`; the scaffolded `server.mjs`, `prerender.mjs` and `entry-server.tsx` do. Left out, the server sends the shell's language and the client corrects it after hydration.
+
+### Patch Changes
+
+- 72719de: What a review of this release's changes found. A field's issue keeps its `message` when the validator's issues are class instances with `message` on the prototype. A field reading `issues` re-renders when an issue changes while its message does not — a `code` moving from `s:minLength` to `s:pattern`, which is what a translation reads. `fillDocument` reads the shell's `<html>` attributes instead of searching their text, so `class="x lang=fr"` is left alone and a valueless `<html lang>` is replaced rather than given a second `lang`. The SSR template empties `dist/client` before each build, so a file deleted from `public/` is not served from the last one, and it lists the files under `dist/client` once at startup, instead of asking the disk whether one exists on every request — each file is still read when it is served — and the build copies `public/` with every link resolved — a linked file or folder lands as what it points at, and a link that loops or points nowhere stops the build naming it — so the server serves only real files and follows no link; a file it listed and that has gone since, as a rebuild in place leaves it, is a 404 rather than a crash, which would have served whatever one pointed at, `.env` included. `fillDocument` writes `lang` and `dir` on the shell before the page goes in, so a shell with no `<html>` leaves a `<html` inside the rendered page alone. The router copies the hash records it takes and hands out, so an updater that edits `prev` and returns it is still a change and a record the app keeps is not the router's, and an owner spelled unencoded in a hand-written link is the same owner.
+
 ## 0.2.2
 
 ### Patch Changes
