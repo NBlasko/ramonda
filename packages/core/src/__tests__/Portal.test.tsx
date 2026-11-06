@@ -1072,6 +1072,45 @@ describe("two portals in one element the render takes away", () => {
   });
 });
 
+/**
+ * A portal aimed at an element its owner is building, placed while that element's children are still
+ * being built: the block goes in first, and the element's own children must still come before it.
+ */
+describe("a portal placed into an element while its children are built", () => {
+  test("leaves the element's own children first", async () => {
+    class Guest extends Component<{ target: { current: Element | null } }> {
+      portal = this.use(Portal, (self: Guest) => ({
+        children: <i>guest</i>,
+        target: self.props.target.current as Element,
+      }));
+      render() {
+        return <b>own</b>;
+      }
+    }
+    class Page extends Component {
+      @state shown = false;
+      readonly box = createRef<HTMLElement>();
+      render() {
+        return this.shown ? (
+          <section ref={this.box}>
+            <div>
+              <Guest target={this.box} />
+            </div>
+          </section>
+        ) : (
+          <p>off</p>
+        );
+      }
+    }
+    const { instance, settle, container } = await getDOM<Page>(<Page />);
+    await settle();
+    instance.shown = true;
+    await settle();
+    const section = container.querySelector("section") as HTMLElement;
+    expect(Array.from(section.childNodes, (node) => node.nodeName)).toEqual(["DIV", "#comment", "I", "#comment"]);
+  });
+});
+
 describe("Portal reconciles keyed children by identity", () => {
   test("reordering keyed children moves the same nodes, not their contents", async () => {
     const target = document.createElement("ul");

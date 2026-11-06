@@ -247,3 +247,42 @@ describe("what a removed row is walked through", () => {
     });
   });
 });
+
+/**
+ * A node that takes itself out while the teardown walks past it — a ref's callback tearing down the widget
+ * it held, and the widget's host with it — leaves the walk no next sibling to read. The siblings after it
+ * are still let go.
+ */
+describe("a node that takes itself out while it is let go", () => {
+  test("the siblings after it are let go too", async () => {
+    class Widgets extends Component {
+      @state shown = true;
+      readonly first = createRef<HTMLElement>(this.torn);
+      readonly second = createRef<HTMLElement>();
+      torn(element: HTMLElement | null) {
+        if (element === null) document.getElementById("first")?.remove();
+      }
+      render() {
+        return (
+          <div>
+            {this.shown ? (
+              <section>
+                <p id="first" ref={this.first}>
+                  1
+                </p>
+                <p id="second" ref={this.second}>
+                  2
+                </p>
+              </section>
+            ) : null}
+          </div>
+        );
+      }
+    }
+    const app = await getDOM<Widgets>(<Widgets />);
+    await app.settle();
+    app.instance.shown = false;
+    await app.settle();
+    expect(app.instance.second.current).toBe(null);
+  });
+});

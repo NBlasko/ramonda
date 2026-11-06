@@ -559,6 +559,11 @@ function getPreviousFromenhancedNode(enhancedNode: EnhancedHTMLNode, name: strin
   // A ref is applied on every pass, whatever was written last: when two elements share one and the
   // second goes away, the first takes it back on that same pass by re-asserting it.
   if (name === "ref") return undefined;
+  // State kept only in a property is compared with the property, not with what was written: the browser
+  // changes it — a click clears a checkbox's `indeterminate` — and the model is what the element shows.
+  if (keptInAProperty(enhancedNode.nodeName, name) && name in enhancedNode) {
+    return (enhancedNode as unknown as Record<string, unknown>)[name];
+  }
   return value;
 }
 
@@ -667,6 +672,13 @@ function removePreviousFromenhancedNode(
         enhancedNode.removeEventListener(type, previousAttributes[name]);
       }
       delete listeners[name];
+    } else if (enhancedNode.nodeName === "INPUT" && (name === "defaultValue" || name === "defaultChecked")) {
+      // Written as `value` / `checked` (see `writeDefaults`), so that is what goes when the render stops
+      // naming the default — unless the render names that attribute itself, as a model's value.
+      const written = name === "defaultValue" ? "value" : "checked";
+      if (isInvisibleOnScreen(nextAttributes[written], written)) {
+        removeByQualifiedName(enhancedNode, written);
+      }
     } else if (!heldAsADefault(enhancedNode, name, nextAttributes)) {
       removeByQualifiedName(enhancedNode, name);
     }

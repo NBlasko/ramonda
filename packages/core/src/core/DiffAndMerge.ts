@@ -523,7 +523,11 @@ function appendBuiltChildren(vnodeChildren: unknown[], placeholderComponent: May
     const node = buildDetachedNode(vchild, placeholderComponent, parent);
     if (node === undefined) continue;
     stampBuilt(node, vchild, slot);
-    parent.appendChild(node);
+    // Before a block hosted here, as `reorderChildren` places a child: a portal aimed at this element can
+    // put its block in while a child is being built, and the element's own children come first.
+    const block = firstHostedBlock(parent);
+    if (block === null) parent.appendChild(node);
+    else parent.insertBefore(node, block);
     if (first === undefined) first = node;
     else if (placed === undefined) placed = [first, node];
     else placed.push(node);
@@ -537,9 +541,8 @@ function appendBuiltChildren(vnodeChildren: unknown[], placeholderComponent: May
  * written on it (`WRITTEN` in Attribute.ts). A region keeps its own record instead (`CHILD_RECORD`).
  *
  * A child someone else ADDED is no child the diff placed, so it stays where they put it. A child
- * someone else TOOK OUT is not in the element any more: then the record is not trusted for this pass,
- * the page is read, and the child is put back — as before the record existed. One `parentNode` read per
- * child, against a NodeList read per child.
+ * someone else TOOK OUT is not in the element any more, so it is left out of the pool and the pass builds
+ * it again. One `parentNode` read per child, against a NodeList read per child.
  */
 const PLACED = Symbol("placed");
 
@@ -549,14 +552,21 @@ const NO_CHILDREN: readonly ChildNode[] = Object.freeze([]);
 /** One child on its own — the commonest element holds one, a text or a link — and an array past that. */
 type Placed = { [PLACED]?: ChildNode | readonly ChildNode[] };
 
-/** The record as children in order, when every one of them is still in `parent`. */
-function placedChildren(parent: Node): EnhancedChildNode[] | undefined {
+/**
+ * The record's children still in `parent`, in order: the record itself while all of them are, and a copy
+ * without the ones someone took out otherwise. `undefined` for an element with no record.
+ */
+function stillPlaced(parent: Node): ChildNode | readonly ChildNode[] | undefined {
   const placed = (parent as Placed)[PLACED];
   if (placed === undefined) return undefined;
-  if (!Array.isArray(placed))
-    return (placed as ChildNode).parentNode === parent ? [placed as EnhancedChildNode] : undefined;
-  for (let i = 0; i < placed.length; i++) if (placed[i].parentNode !== parent) return undefined;
-  return placed as EnhancedChildNode[];
+  if (!Array.isArray(placed)) return (placed as ChildNode).parentNode === parent ? placed : NO_CHILDREN;
+  for (let i = 0; i < placed.length; i++) {
+    if (placed[i].parentNode === parent) continue;
+    const kept: ChildNode[] = placed.slice(0, i);
+    for (let j = i + 1; j < placed.length; j++) if (placed[j].parentNode === parent) kept.push(placed[j]);
+    return kept;
+  }
+  return placed;
 }
 
 /**
@@ -602,7 +612,12 @@ function executeChangesOnStringNode(
   // correctly-placed nodes look misplaced and cause pointless moves.
   unmountChildrenNodes(cloneChildren, false);
   if (orderedNodes !== null) {
-    reorderChildren(enhancedNode, orderedNodes, null, previousOrder);
+    if (previousOrder === undefined || Array.isArray(previousOrder)) {
+      reorderChildren(enhancedNode, orderedNodes, null, previousOrder as readonly ChildNode[] | undefined);
+    } else if (orderedNodes.length !== 1 || orderedNodes[0] !== previousOrder) {
+      // A lone child placed again where it was is the commonest pass, and it moves nothing.
+      reorderChildren(enhancedNode, orderedNodes, null, [previousOrder as ChildNode]);
+    }
     // Written after every pass that placed anything, the region's too: an element whose children leave a
     // region places them on that pass, so the next plain one claims from what is there.
     (enhancedNode as Placed)[PLACED] = orderedNodes.length === 1 ? orderedNodes[0] : orderedNodes;
@@ -661,7 +676,19 @@ export function filterVirtualChild(rawChild: unknown): ComponentChild | undefine
   return rawChild as ComponentChild;
 }
 
-function applyDiffOnChildren(vnodeChildren: unknown[], placeholderComponent: MaybeComponent, enhancedNode: ChildNode) {
+/** What a children pass hands the reorder: the pool's leftovers, the order wanted, and what it claimed from. */
+interface ChildrenPass {
+  cloneChildren: (EnhancedChildNode | DONE)[];
+  orderedNodes: ChildNode[] | null;
+  /** The plain path's record, when the element had one: a lone child on its own, or several in order. */
+  previousOrder?: ChildNode | readonly ChildNode[];
+}
+
+function applyDiffOnChildren(
+  vnodeChildren: unknown[],
+  placeholderComponent: MaybeComponent,
+  enhancedNode: ChildNode,
+): ChildrenPass {
   if (__DEV__) {
     lintChildKeys(vnodeChildren, placeholderComponent);
   }
@@ -672,10 +699,7 @@ function applyDiffOnChildren(vnodeChildren: unknown[], placeholderComponent: May
   const hasRegion = (vnodeChildren as { [HAS_REGION]?: boolean })[HAS_REGION] === true;
 
   if (hasRegion || owner[CHILD_RECORD] !== undefined) {
-    return {
-      ...applyDiffWithRegions(vnodeChildren, placeholderComponent, owner, hasRegion),
-      previousOrder: undefined,
-    };
+    return applyDiffWithRegions(vnodeChildren, placeholderComponent, owner, hasRegion);
   }
 
   /**
@@ -697,9 +721,13 @@ function applyDiffOnChildren(vnodeChildren: unknown[], placeholderComponent: May
    * is skippable in one pass. A comment is left out either way: nothing in a vnode list can claim
    * one, and removing one is never this element's business.
    */
-  const placed = placedChildren(owner);
+  const previousOrder = stillPlaced(owner);
   const cloneChildren: (EnhancedChildNode | DONE)[] =
-    placed !== undefined ? placed.slice() : ownChildNodes(enhancedNode);
+    previousOrder === undefined
+      ? ownChildNodes(enhancedNode)
+      : Array.isArray(previousOrder)
+        ? (previousOrder as EnhancedChildNode[]).slice()
+        : [previousOrder as EnhancedChildNode];
   const keyIndex: KeyIndex = { map: null, source: cloneChildren, firstFree: 0 };
 
   // The nodes the vnode list wants, in its order. Feeds the reorder pass.
@@ -723,7 +751,7 @@ function applyDiffOnChildren(vnodeChildren: unknown[], placeholderComponent: May
     if (node) orderedNodes.push(node);
   }
 
-  return { cloneChildren, orderedNodes, previousOrder: placed };
+  return { cloneChildren, orderedNodes, previousOrder };
 }
 
 /**
@@ -1536,7 +1564,9 @@ export function reorderChildren(
   const positions = new Map<ChildNode, number>();
   let index = 0;
   if (previousOrder !== undefined) {
-    for (const node of previousOrder) positions.set(node, index++);
+    // A node taken out of the parent during this pass — by a `@destroyed` that ran in it — has no
+    // position: it goes back in like a fresh one, rather than anchoring an insertion it is not there for.
+    for (const node of previousOrder) if (node.parentNode === (parent as Node)) positions.set(node, index++);
   } else {
     for (let node = parent.firstChild; node !== null; node = node.nextSibling) {
       positions.set(node, index++);
@@ -2030,11 +2060,14 @@ export function unmountNodeInPlace(node: EnhancedChildNode): void {
 function releaseWithin(parent: Node): void {
   let child = parent.firstChild as EnhancedChildNode | null;
   while (child !== null) {
+    const next = child.nextSibling;
     if (child.firstChild !== null) releaseWithin(child);
     releaseRef(child);
     releaseChildRecord(child);
     releaseField(child);
-    child = child.nextSibling as EnhancedChildNode | null;
+    // A node that took itself out — a ref's callback tearing down the widget it held — has no next
+    // sibling any more, and the walk goes on from the one it had.
+    child = (child.parentNode === parent ? child.nextSibling : next) as EnhancedChildNode | null;
   }
 }
 

@@ -1,7 +1,7 @@
 import { describe, test, expect } from "vitest";
 import { getDOM } from "../test/setup";
-import { state } from "../base/decorators";
-import { Component, list } from "../index";
+import { state, destroyed } from "../base/decorators";
+import { Component, list, type EventOn } from "../index";
 import { renderToString } from "../hydration/ssr";
 import { hydrateRoot } from "../hydration/hydrate";
 import { componentAt } from "../core/DiffAndMerge";
@@ -293,6 +293,139 @@ describe("an element's own children on an update", () => {
     app.instance.picked = 3;
     await app.settle();
     expect(Array.from(app.container.querySelectorAll("li"), (li) => li.id)).toEqual(["i1", "i2", "i3", "theirs"]);
+  });
+
+  test("children someone else moved keep the order they were moved to", async () => {
+    const app = await getDOM<Rows>(<Rows />);
+    await app.settle();
+    const ul = app.container.querySelector("ul") as HTMLElement;
+    ul.prepend(ul.querySelector("#i3") as HTMLElement);
+    app.instance.picked = 1;
+    await app.settle();
+    expect(Array.from(ul.children, (li) => li.id)).toEqual(["i3", "i1", "i2"]);
+  });
+
+  test("a child someone else added stays while another is taken out and put back", async () => {
+    const app = await getDOM<Rows>(<Rows />);
+    await app.settle();
+    const ul = app.container.querySelector("ul") as HTMLElement;
+    const theirs = document.createElement("li");
+    theirs.id = "theirs";
+    ul.prepend(theirs);
+    (ul.querySelector("#i2") as HTMLElement).remove();
+    app.instance.picked = 3;
+    await app.settle();
+    expect(Array.from(ul.children, (li) => li.id)).toEqual(["theirs", "i1", "i2", "i3"]);
+  });
+
+  test("a child a @destroyed takes out on the pass that keeps it goes back in", async () => {
+    let victim: Element | null = null;
+    class Widget extends Component {
+      @destroyed
+      gone() {
+        victim?.remove();
+      }
+      render() {
+        return <em>w</em>;
+      }
+    }
+    class Shifting extends Component {
+      @state phase = 0;
+      render() {
+        return (
+          <div>
+            {this.phase === 1 ? <b id="new">new</b> : null}
+            <p id="kept">kept</p>
+            {this.phase === 0 ? (
+              <span>
+                <Widget />
+              </span>
+            ) : null}
+          </div>
+        );
+      }
+    }
+    const app = await getDOM<Shifting>(<Shifting />);
+    await app.settle();
+    victim = app.container.querySelector("#kept");
+    app.instance.phase = 1;
+    await app.settle();
+    const div = app.container.querySelector("div") as HTMLElement;
+    expect(Array.from(div.children, (child) => child.id)).toEqual(["new", "kept"]);
+  });
+});
+
+/**
+ * What the record of written attributes cannot answer alone: a default written under another name, and
+ * state an element keeps only in a property, which the browser changes behind the record.
+ */
+describe("what an element's attribute record does not hold", () => {
+  class Field extends Component {
+    @state step = 0;
+    render() {
+      return (
+        <div>
+          {this.step === 0 ? <input defaultValue="old" /> : <input placeholder="new" />}
+          {this.step === 0 ? <input type="checkbox" defaultChecked /> : <input type="checkbox" />}
+        </div>
+      );
+    }
+  }
+
+  test("a default the render stops naming is taken away", async () => {
+    const app = await getDOM<Field>(<Field />);
+    await app.settle();
+    app.instance.step = 1;
+    await app.settle();
+    const [text, box] = Array.from(app.container.querySelectorAll("input"));
+    expect({ value: text.getAttribute("value"), checked: box.hasAttribute("checked"), ticked: box.checked }).toEqual({
+      value: null,
+      checked: false,
+      ticked: false,
+    });
+  });
+
+  test("a default dropped beside the model's value leaves the model's attribute", async () => {
+    class Held extends Component {
+      @state step = 0;
+      @state text = "model";
+      typed(event: EventOn<HTMLInputElement>) {
+        this.text = event.currentTarget.value;
+      }
+      render() {
+        return this.step === 0 ? (
+          <input value={this.text} defaultValue="old" oninput={this.typed} />
+        ) : (
+          <input value={this.text} oninput={this.typed} />
+        );
+      }
+    }
+    const app = await getDOM<Held>(<Held />);
+    await app.settle();
+    app.instance.step = 1;
+    await app.settle();
+    expect((app.container.querySelector("input") as HTMLInputElement).getAttribute("value")).toBe("model");
+  });
+
+  test("a checkbox the reader clicked out of mixed is mixed again on the next render", async () => {
+    class Mixed extends Component {
+      @state renders = 0;
+      render() {
+        return (
+          <div data-renders={this.renders}>
+            <input type="checkbox" aria-label="Some" indeterminate={true} />
+          </div>
+        );
+      }
+    }
+    const app = await getDOM<Mixed>(<Mixed />);
+    await app.settle();
+    const box = app.container.querySelector("input") as HTMLInputElement;
+    box.click();
+    const cleared = box.indeterminate;
+    app.instance.renders++;
+    await app.settle();
+    expect({ cleared, mixed: box.indeterminate }).toEqual({ cleared: false, mixed: true });
   });
 });
 
