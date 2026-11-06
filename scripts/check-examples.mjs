@@ -762,6 +762,13 @@ const options = {
     "@ramonda/css/compiler": [`${repo}/packages/css/src/compiler/index.ts`],
     "@ramonda/css": [`${repo}/packages/css/src/index.ts`],
     "@ramonda/devtools": [`${repo}/packages/devtools/src/index.ts`],
+    // The two opt-outs before the package itself, as with `@ramonda/css` above.
+    "@ramonda/testing-library/dont-cleanup-after-each": [
+      `${repo}/packages/testing-library/src/dont-cleanup-after-each.ts`,
+    ],
+    "@ramonda/testing-library/dont-fail-on-diagnostics": [
+      `${repo}/packages/testing-library/src/dont-fail-on-diagnostics.ts`,
+    ],
     "@ramonda/testing-library": [`${repo}/packages/testing-library/src/index.ts`],
     // A real dependency of `@ramonda/form`, and the form examples build their schema with it. Left
     // unresolved, `object(…)` fell back to a placeholder returning `any`, so `Form<typeof schema>`

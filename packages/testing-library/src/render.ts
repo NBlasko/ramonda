@@ -9,6 +9,7 @@ import {
 } from "@testing-library/dom";
 import { act } from "./act";
 import { trackMountedTree, unmountTracked } from "./cleanup";
+import { requireHarness } from "./harness";
 
 /**
  * A component class usable as a wrapper: it renders whatever it is given.
@@ -108,6 +109,7 @@ export interface RenderResult<T = unknown> extends BoundFunctions<typeof default
  * Library convention, so anything rendered outside the container is still found.
  */
 export function render<T = unknown>(ui: VNode, options: RenderOptions = {}): RenderResult<T> {
+  requireHarness();
   const baseElement = options.baseElement ?? document.body;
   const containerIsOurs = options.container === undefined;
 

@@ -26,9 +26,11 @@
       "import": "./dist/index.js"
     },
     "./dont-cleanup-after-each": {
+      "types": "./dist/dont-cleanup-after-each.d.ts",
       "import": "./dist/dont-cleanup-after-each.js"
     },
     "./dont-fail-on-diagnostics": {
+      "types": "./dist/dont-fail-on-diagnostics.d.ts",
       "import": "./dist/dont-fail-on-diagnostics.js"
     }
   },

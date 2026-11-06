@@ -74,6 +74,13 @@ export function registerAutoCleanup(): void {
   if (typeof hook !== "function") return;
 
   hook(cleanup);
+  hooked = true;
+}
+
+/** Whether the cleanup after each test is in place — what `render` asks before it mounts anything. */
+let hooked = false;
+export function cleanupHooked(): boolean {
+  return hooked;
 }
 
 function readEnvFlag(name: string): boolean {
