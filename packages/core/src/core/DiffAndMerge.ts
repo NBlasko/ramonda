@@ -566,7 +566,7 @@ function reorderPlaced(
   record: Placed[typeof PLACED],
   pool: readonly (EnhancedChildNode | DONE)[],
 ): void {
-  if (record === undefined || !keptStillPlaced(record, pool, parent)) return reorderChildren(parent, orderedNodes);
+  if (record === undefined || !stillPlaced(record, parent, pool)) return reorderChildren(parent, orderedNodes);
   if (Array.isArray(record)) return reorderChildren(parent, orderedNodes, null, record);
   // A lone child placed again where it was is the commonest pass, and it moves nothing.
   if (orderedNodes.length === 1 && orderedNodes[0] === record) return;
@@ -574,23 +574,22 @@ function reorderPlaced(
 }
 
 /**
- * Whether every child the pass KEPT from the record is still in `parent`. The pool is the record, index
- * for index, with each child the pass claimed marked `DONE`; the rest it dropped and has just taken out.
+ * Whether every child the record names is still in `parent` — or, given the pass's `pool`, every child the
+ * pass KEPT: the pool is the record, index for index, with each child the pass claimed marked `DONE`, and
+ * the rest it dropped and has just taken out.
  */
-function keptStillPlaced(
+function stillPlaced(
   record: ChildNode | readonly ChildNode[],
-  pool: readonly (EnhancedChildNode | DONE)[],
   parent: Node,
+  pool?: readonly (EnhancedChildNode | DONE)[],
 ): boolean {
-  if (!Array.isArray(record)) return pool[0] !== DONE || (record as ChildNode).parentNode === parent;
-  for (let i = 0; i < record.length; i++) if (pool[i] === DONE && record[i].parentNode !== parent) return false;
-  return true;
-}
-
-/** Whether every child the record names is still in `parent`. */
-function stillPlaced(record: ChildNode | readonly ChildNode[], parent: Node): boolean {
-  if (!Array.isArray(record)) return (record as ChildNode).parentNode === parent;
-  for (let i = 0; i < record.length; i++) if (record[i].parentNode !== parent) return false;
+  if (!Array.isArray(record)) {
+    return (pool !== undefined && pool[0] !== DONE) || (record as ChildNode).parentNode === parent;
+  }
+  for (let i = 0; i < record.length; i++) {
+    if (pool !== undefined && pool[i] !== DONE) continue;
+    if (record[i].parentNode !== parent) return false;
+  }
   return true;
 }
 

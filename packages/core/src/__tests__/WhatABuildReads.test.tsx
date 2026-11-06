@@ -611,6 +611,48 @@ describe("what an element's attribute record does not hold", () => {
     });
   });
 
+  test("a default dropped for a model's `checked={false}` takes the attribute it wrote away", async () => {
+    class Box extends Component {
+      @state step = 0;
+      toggled() {
+        this.step = 2;
+      }
+      render() {
+        return this.step === 0 ? (
+          <input type="checkbox" defaultChecked />
+        ) : (
+          <input type="checkbox" checked={false} onchange={this.toggled} />
+        );
+      }
+    }
+    const app = await getDOM<Box>(<Box />);
+    await app.settle();
+    app.instance.step = 1;
+    await app.settle();
+    const box = app.container.querySelector("input") as HTMLInputElement;
+    expect({ attribute: box.hasAttribute("checked"), ticked: box.checked }).toEqual({
+      attribute: false,
+      ticked: false,
+    });
+  });
+
+  test("a default dropped beside a `checked` the render writes leaves that attribute", async () => {
+    class Spread extends Component {
+      @state step = 0;
+      render() {
+        // A `checked=""` as a spread hands it — written as the attribute, as any visible value is.
+        const attributes =
+          this.step === 0 ? { type: "checkbox", defaultChecked: true, checked: "" } : { type: "checkbox", checked: "" };
+        return <div>{__h("input", attributes as never)}</div>;
+      }
+    }
+    const app = await getDOM<Spread>(<Spread />);
+    await app.settle();
+    app.instance.step = 1;
+    await app.settle();
+    expect((app.container.querySelector("input") as HTMLInputElement).hasAttribute("checked")).toBe(true);
+  });
+
   test("a volume the reader moved and a video's place stay on a render that does not change them", async () => {
     class Player extends Component {
       @state renders = 0;

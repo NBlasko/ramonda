@@ -60,11 +60,15 @@ export function applyChangesOnAttributes(
     ? NONE
     : ((enhancedNode as Written)[WRITTEN] ?? getAllFromNode(enhancedNode as EnhancedHTMLNode));
   const nextAttributes = formatAttributes(rawNextAttributes);
-  // Dropped while the pass writes, and kept only once it has: a pass that throws halfway — a name the
-  // DOM refuses — leaves no record, and the next one reads the page it left.
-  (enhancedNode as Written)[WRITTEN] = undefined;
-  removePreviousFromenhancedNode(enhancedNode as EnhancedHTMLNode, previousAttributes, nextAttributes);
-  attachNextOnenhancedNode(enhancedNode as EnhancedHTMLNode, previousAttributes, nextAttributes, onServer);
+  try {
+    removePreviousFromenhancedNode(enhancedNode as EnhancedHTMLNode, previousAttributes, nextAttributes);
+    attachNextOnenhancedNode(enhancedNode as EnhancedHTMLNode, previousAttributes, nextAttributes, onServer);
+  } catch (error) {
+    // A pass that throws halfway — a name the DOM refuses — leaves no record, and the next one reads the
+    // page it left.
+    (enhancedNode as Written)[WRITTEN] = undefined;
+    throw error;
+  }
   (enhancedNode as Written)[WRITTEN] = nextAttributes;
   releaseDroppedRef(enhancedNode as EnhancedHTMLNode, nextAttributes.ref);
   /**
@@ -306,6 +310,7 @@ export function writeValue(enhancedNode: EnhancedHTMLNode, value: unknown, onSer
  * still ticked, a video still audible, a checkbox still mixed.
  */
 const PROPERTY_TRUTH = new Set(["checked", "muted", "indeterminate"]);
+// `formPropertyDiverged` names the same three, as comparisons: it is asked of every equal attribute.
 
 function attachNextOnenhancedNode(
   enhancedNode: EnhancedHTMLNode,
@@ -592,7 +597,7 @@ function getPreviousFromenhancedNode(enhancedNode: EnhancedHTMLNode, name: strin
  * render would be its own bug.
  */
 function formPropertyDiverged(enhancedNode: EnhancedHTMLNode, name: string, next: unknown): boolean {
-  // The names, not `PROPERTY_TRUTH.has`: this is asked of every attribute that compares equal.
+  // `value` and the names in `PROPERTY_TRUTH`, as comparisons: this is asked of every equal attribute.
   if (name !== "value" && name !== "checked" && name !== "muted" && name !== "indeterminate") return false;
   if (!(name in enhancedNode)) return false;
 
@@ -683,10 +688,10 @@ function removePreviousFromenhancedNode(
       delete listeners[name];
     } else if (enhancedNode.nodeName === "INPUT" && (name === "defaultValue" || name === "defaultChecked")) {
       // Written as `value` / `checked` (see `writeDefaults`), so that is what goes when the render stops
-      // naming the default — unless a model holds that attribute, by the rule `writeDefaults` keeps.
-      const modelHolds =
-        name === "defaultValue" ? nextAttributes.value != null : typeof nextAttributes.checked === "boolean";
-      if (!modelHolds) removeByQualifiedName(enhancedNode, name === "defaultValue" ? "value" : "checked");
+      // naming the default — unless this pass writes that attribute itself. Not `writeDefaults`' question
+      // (does a model hold the field): `checked={false}` holds it and writes no attribute.
+      const written = name === "defaultValue" ? "value" : "checked";
+      if (isInvisibleOnScreen(nextAttributes[written], written)) removeByQualifiedName(enhancedNode, written);
     } else if (!heldAsADefault(enhancedNode, name, nextAttributes)) {
       removeByQualifiedName(enhancedNode, name);
     }
