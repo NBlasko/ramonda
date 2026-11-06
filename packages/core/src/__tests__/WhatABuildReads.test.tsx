@@ -209,3 +209,130 @@ describe("an element the diff updates", () => {
     expect(left).toBe(false);
   });
 });
+
+/**
+ * An element's own children are kept as the diff placed them, the way its attributes are: the next pass
+ * claims from that record, not from the page's `childNodes`. A child someone else took out is not in
+ * the element any more, so the record is not trusted for that pass — the page is read and the child is
+ * put back. A child someone else added is no child the diff placed, so it stays.
+ */
+describe("an element's own children on an update", () => {
+  class Rows extends Component {
+    @state renders = 0;
+    @state picked = 0;
+    render() {
+      // Written out, not mapped: an array of keyed rows is a region, whose record is its own.
+      return (
+        <ul data-renders={this.renders}>
+          <li id="i1" className={this.picked === 1 ? "on" : ""}>
+            <b>1</b>
+            <i>row</i>
+          </li>
+          <li id="i2" className={this.picked === 2 ? "on" : ""}>
+            <b>2</b>
+            <i>row</i>
+          </li>
+          <li id="i3" className={this.picked === 3 ? "on" : ""}>
+            <b>3</b>
+            <i>row</i>
+          </li>
+        </ul>
+      );
+    }
+  }
+
+  test("are not read back from the page", async () => {
+    const app = await getDOM<Rows>(<Rows />);
+    await app.settle();
+    // `childNodes` for the pool, `firstChild` / `nextSibling` for the order the reorder pass walks.
+    const names = ["childNodes", "firstChild", "nextSibling"] as const;
+    const descriptors = names.map(
+      (name) => Object.getOwnPropertyDescriptor(Node.prototype, name) as PropertyDescriptor,
+    );
+    let reads = 0;
+    names.forEach((name, i) => {
+      Object.defineProperty(Node.prototype, name, {
+        ...descriptors[i],
+        get(this: Node) {
+          // The list's own `nextSibling` is the component's boundary, read by the component — not the children.
+          if (name === "nextSibling" && this.nodeName === "UL") return descriptors[i].get?.call(this);
+          if ((this.nodeType === Node.ELEMENT_NODE ? (this as Element) : this.parentElement)?.closest("ul")) reads++;
+          return descriptors[i].get?.call(this);
+        },
+      });
+    });
+    try {
+      app.instance.picked = 2;
+      app.instance.renders++;
+      await app.settle();
+    } finally {
+      names.forEach((name, i) => Object.defineProperty(Node.prototype, name, descriptors[i]));
+    }
+    expect({ reads, on: (app.container.querySelector("#i2") as HTMLElement).className }).toEqual({
+      reads: 0,
+      on: "on",
+    });
+  });
+
+  test("a child someone else took out is put back on the next render", async () => {
+    const app = await getDOM<Rows>(<Rows />);
+    await app.settle();
+    (app.container.querySelector("#i2") as HTMLElement).remove();
+    // A change among the children, so the diff walks them; unchanged children are skipped whole.
+    app.instance.picked = 3;
+    await app.settle();
+    expect(Array.from(app.container.querySelectorAll("li"), (li) => li.id)).toEqual(["i1", "i2", "i3"]);
+  });
+
+  test("a child someone else added stays", async () => {
+    const app = await getDOM<Rows>(<Rows />);
+    await app.settle();
+    const theirs = document.createElement("li");
+    theirs.id = "theirs";
+    (app.container.querySelector("ul") as HTMLElement).append(theirs);
+    app.instance.picked = 3;
+    await app.settle();
+    expect(Array.from(app.container.querySelectorAll("li"), (li) => li.id)).toEqual(["i1", "i2", "i3", "theirs"]);
+  });
+});
+
+/**
+ * An element whose children are plain, then hold a region, then are plain again. The region keeps its
+ * own record while it is there, and the plain one is dropped then: kept, it would still name the children
+ * of before the region, and the next plain pass would claim from it — a child built while the region was
+ * there would be left out of the pool, and built a second time.
+ */
+describe("an element whose children hold a region for a while", () => {
+  class Shifting extends Component {
+    @state phase: "plain" | "list" | "after" = "plain";
+    @state renders = 0;
+    readonly rows = [1, 2];
+    row(id: number) {
+      return <li className="row">{id}</li>;
+    }
+    render() {
+      return (
+        <ul data-renders={this.renders}>
+          <li id="a">a</li>
+          {this.phase === "list" ? list(this.rows, this.row) : null}
+          {this.phase === "after" ? <li id="c">c</li> : null}
+        </ul>
+      );
+    }
+  }
+
+  test("ends with each child once", async () => {
+    const app = await getDOM<Shifting>(<Shifting />);
+    await app.settle();
+    for (const phase of ["list", "after"] as const) {
+      app.instance.phase = phase;
+      await app.settle();
+    }
+    for (let i = 0; i < 2; i++) {
+      app.instance.renders++;
+      await app.settle();
+    }
+    const ul = app.container.querySelector("ul") as HTMLElement;
+    expect(Array.from(ul.children, (li) => li.id || li.className)).toEqual(["a", "c"]);
+  });
+});

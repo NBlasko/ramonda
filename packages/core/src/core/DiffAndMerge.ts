@@ -509,6 +509,7 @@ function buildDetachedNode(
  */
 function appendBuiltChildren(vnodeChildren: unknown[], placeholderComponent: MaybeComponent, parent: ChildNode): void {
   if (__DEV__) lintChildKeys(vnodeChildren, placeholderComponent);
+  const placed: ChildNode[] = [];
   for (let slot = 0; slot < vnodeChildren.length; slot++) {
     const vchild = filterVirtualChild(vnodeChildren[slot]);
     if (vchild === undefined) continue;
@@ -516,7 +517,30 @@ function appendBuiltChildren(vnodeChildren: unknown[], placeholderComponent: May
     if (node === undefined) continue;
     stampBuilt(node, vchild, slot);
     parent.appendChild(node);
+    placed.push(node);
   }
+  (parent as Placed)[PLACED] = placed;
+}
+
+/**
+ * The children the diff placed in an element last pass, in order — what the next pass claims from,
+ * rather than the page's `childNodes`, the way an element's attributes are compared with what was
+ * written on it (`WRITTEN` in Attribute.ts). A region keeps its own record instead (`CHILD_RECORD`).
+ *
+ * A child someone else ADDED is no child the diff placed, so it stays where they put it. A child
+ * someone else TOOK OUT is not in the element any more: then the record is not trusted for this pass,
+ * the page is read, and the child is put back — as before the record existed. One `parentNode` read per
+ * child, against a NodeList read per child.
+ */
+const PLACED = Symbol("placed");
+
+type Placed = { [PLACED]?: ChildNode[] };
+
+function placedChildren(parent: Node): EnhancedChildNode[] | undefined {
+  const placed = (parent as Placed)[PLACED];
+  if (placed === undefined) return undefined;
+  for (let i = 0; i < placed.length; i++) if (placed[i].parentNode !== parent) return undefined;
+  return placed as EnhancedChildNode[];
 }
 
 /**
@@ -552,12 +576,21 @@ function executeChangesOnStringNode(
     return enhancedNode;
   }
 
-  const { cloneChildren, orderedNodes } = applyDiffOnChildren(vnodeChildren, placeholderComponent, enhancedNode);
+  const { cloneChildren, orderedNodes, previousOrder } = applyDiffOnChildren(
+    vnodeChildren,
+    placeholderComponent,
+    enhancedNode,
+  );
 
   // Unmount before reordering: stale nodes still in the DOM would make
   // correctly-placed nodes look misplaced and cause pointless moves.
   unmountChildrenNodes(cloneChildren, false);
-  if (orderedNodes !== null) reorderChildren(enhancedNode, orderedNodes);
+  if (orderedNodes !== null) {
+    reorderChildren(enhancedNode, orderedNodes, null, previousOrder);
+    // Written after every pass that placed anything, the region's too: an element whose children leave a
+    // region places them on that pass, so the next plain one claims from what is there.
+    (enhancedNode as Placed)[PLACED] = orderedNodes;
+  }
 
   return enhancedNode;
 }
@@ -623,7 +656,10 @@ function applyDiffOnChildren(vnodeChildren: unknown[], placeholderComponent: May
   const hasRegion = (vnodeChildren as { [HAS_REGION]?: boolean })[HAS_REGION] === true;
 
   if (hasRegion || owner[CHILD_RECORD] !== undefined) {
-    return applyDiffWithRegions(vnodeChildren, placeholderComponent, owner, hasRegion);
+    return {
+      ...applyDiffWithRegions(vnodeChildren, placeholderComponent, owner, hasRegion),
+      previousOrder: undefined,
+    };
   }
 
   /**
@@ -645,7 +681,9 @@ function applyDiffOnChildren(vnodeChildren: unknown[], placeholderComponent: May
    * is skippable in one pass. A comment is left out either way: nothing in a vnode list can claim
    * one, and removing one is never this element's business.
    */
-  const cloneChildren: (EnhancedChildNode | DONE)[] = ownChildNodes(enhancedNode);
+  const placed = placedChildren(owner);
+  const cloneChildren: (EnhancedChildNode | DONE)[] =
+    placed !== undefined ? placed.slice() : ownChildNodes(enhancedNode);
   const keyIndex: KeyIndex = { map: null, source: cloneChildren, firstFree: 0 };
 
   // The nodes the vnode list wants, in its order. Feeds the reorder pass.
@@ -665,11 +703,11 @@ function applyDiffOnChildren(vnodeChildren: unknown[], placeholderComponent: May
     const vchild = filterVirtualChild(vnodeChildren[i]);
     if (vchild === undefined) continue;
 
-    const placed = claimOrMount(vchild, position++, i, placeholderComponent, enhancedNode, cloneChildren, keyIndex);
-    if (placed) orderedNodes.push(placed);
+    const node = claimOrMount(vchild, position++, i, placeholderComponent, enhancedNode, cloneChildren, keyIndex);
+    if (node) orderedNodes.push(node);
   }
 
-  return { cloneChildren, orderedNodes };
+  return { cloneChildren, orderedNodes, previousOrder: placed };
 }
 
 /**
