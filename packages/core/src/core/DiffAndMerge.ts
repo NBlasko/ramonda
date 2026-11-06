@@ -560,12 +560,31 @@ type Placed = { [PLACED]?: ChildNode | readonly ChildNode[] };
  * whether it still holds: a `@destroyed` or a ref's callback that ran during the pass can take a child
  * out, and then the page is where the order is read.
  */
-function reorderPlaced(parent: ChildNode, orderedNodes: ChildNode[], record: Placed[typeof PLACED]): void {
-  if (record === undefined || !stillPlaced(record, parent)) return reorderChildren(parent, orderedNodes);
+function reorderPlaced(
+  parent: ChildNode,
+  orderedNodes: ChildNode[],
+  record: Placed[typeof PLACED],
+  pool: readonly (EnhancedChildNode | DONE)[],
+): void {
+  if (record === undefined || !keptStillPlaced(record, pool, parent)) return reorderChildren(parent, orderedNodes);
   if (Array.isArray(record)) return reorderChildren(parent, orderedNodes, null, record);
   // A lone child placed again where it was is the commonest pass, and it moves nothing.
   if (orderedNodes.length === 1 && orderedNodes[0] === record) return;
   reorderChildren(parent, orderedNodes, null, [record as ChildNode]);
+}
+
+/**
+ * Whether every child the pass KEPT from the record is still in `parent`. The pool is the record, index
+ * for index, with each child the pass claimed marked `DONE`; the rest it dropped and has just taken out.
+ */
+function keptStillPlaced(
+  record: ChildNode | readonly ChildNode[],
+  pool: readonly (EnhancedChildNode | DONE)[],
+  parent: Node,
+): boolean {
+  if (!Array.isArray(record)) return pool[0] !== DONE || (record as ChildNode).parentNode === parent;
+  for (let i = 0; i < record.length; i++) if (pool[i] === DONE && record[i].parentNode !== parent) return false;
+  return true;
 }
 
 /** Whether every child the record names is still in `parent`. */
@@ -618,7 +637,7 @@ function executeChangesOnStringNode(
   // correctly-placed nodes look misplaced and cause pointless moves.
   unmountChildrenNodes(cloneChildren, false);
   if (orderedNodes !== null) {
-    reorderPlaced(enhancedNode, orderedNodes, previousOrder);
+    reorderPlaced(enhancedNode, orderedNodes, previousOrder, cloneChildren);
     // Kept while the children are plain; a region keeps its own record, and this one would only hold the
     // nodes of before it. The pass that leaves the region writes it again from what it placed.
     (enhancedNode as Placed)[PLACED] =
@@ -2072,9 +2091,13 @@ function releaseWithin(parent: Node): void {
     releaseField(child);
     // The sibling it had, while that is still here: a node that took itself out or moved itself — a ref's
     // callback tearing down the widget it held — leaves the walk where it was. Gone with a block's nodes,
-    // the next one is past them.
+    // the next one is past them. Both gone, the walk starts over: letting a node go twice does nothing.
     child = (
-      next !== null && next.parentNode === parent ? next : child.parentNode === parent ? child.nextSibling : null
+      next !== null && next.parentNode === parent
+        ? next
+        : child.parentNode === parent
+          ? child.nextSibling
+          : parent.firstChild
     ) as EnhancedChildNode | null;
   }
 }

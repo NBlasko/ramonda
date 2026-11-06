@@ -16,5 +16,5 @@ the server sent is still taken away. A `ref` is applied on every render, as befo
 `checked` and `indeterminate` and a media element's `muted` are compared with the element itself, as
 before, so the next render restores what a click changed. Other state an element keeps only in a property, such as a media element's `volume` or
 `currentTime`, is compared with what Ramonda wrote: a volume the reader moved stays, and a playing video
-keeps its place on an unrelated render. An attributes object handed to `__h` again and
-changed in place is compared with the page, since its old values are gone.
+keeps its place on an unrelated render. `__h` copies the attributes object it is handed, so
+one an app hands it on every render, changed in place, is written as it is now.

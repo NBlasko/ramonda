@@ -1,4 +1,4 @@
-import { __h } from "./vdom/h";
+import { createVNode } from "./vdom/h";
 import type { ComponentChild, VNode } from "./types/vdom";
 import { reportFunctionTag } from "./debug/jsxRules";
 
@@ -60,15 +60,15 @@ export function jsx(type: unknown, props: Props | null, key?: string | number): 
   // `in` rather than `!== undefined`: `<p>{undefined}</p>` HAS a child, and it holds a slot the
   // diff matches siblings by. `<p/>` has none.
   return props !== null && props !== undefined && "children" in props
-    ? __h(type as never, attributes as never, props.children as ComponentChild)
-    : __h(type as never, attributes as never);
+    ? createVNode(type as never, attributes as never, props.children as ComponentChild)
+    : createVNode(type as never, attributes as never);
 }
 
 /** Children the compiler wrote itself: spread, so each one keeps its own index. */
 export function jsxs(type: unknown, props: Props | null, key?: string | number): VNode {
   const attributes = attributesOf(props, key);
   const children = (props?.children ?? []) as ComponentChild[];
-  return __h(type as never, attributes as never, ...children);
+  return createVNode(type as never, attributes as never, ...children);
 }
 
 /**
@@ -85,7 +85,7 @@ export function jsxs(type: unknown, props: Props | null, key?: string | number):
  * **And this is the only defence.** The compiler does not typecheck a fragment's parameter —
  * measured, by giving this one a required argument and watching `<><span /></>` compile anyway — so
  * unlike a named function in tag position, `<>…</>` reaches the runtime from fully typed code. It
- * arrives at `__h` as a function tag, is reported as RMD011, throws here, and renders the inert
+ * arrives at `createVNode` as a function tag, is reported as RMD011, throws here, and renders the inert
  * fallback in production.
  */
 export function Fragment(): never {

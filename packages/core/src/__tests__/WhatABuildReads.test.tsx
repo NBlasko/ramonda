@@ -356,6 +356,45 @@ describe("an element's own children on an update", () => {
     expect(Array.from(div.children, (child) => child.id)).toEqual(["kept", "s"]);
   });
 
+  test("a pass that drops a child places the rest from the record, not from the page", async () => {
+    class Optional extends Component {
+      @state middle = true;
+      render() {
+        return (
+          <ul>
+            <li id="a">a</li>
+            {this.middle ? <li id="b">b</li> : null}
+            <li id="c">c</li>
+          </ul>
+        );
+      }
+    }
+    const app = await getDOM<Optional>(<Optional />);
+    await app.settle();
+    const ul = app.container.querySelector("ul") as HTMLElement;
+    const names = ["childNodes", "firstChild"] as const;
+    const descriptors = names.map(
+      (name) => Object.getOwnPropertyDescriptor(Node.prototype, name) as PropertyDescriptor,
+    );
+    let reads = 0;
+    names.forEach((name, i) => {
+      Object.defineProperty(Node.prototype, name, {
+        ...descriptors[i],
+        get(this: Node) {
+          if (this === ul) reads++;
+          return descriptors[i].get?.call(this);
+        },
+      });
+    });
+    try {
+      app.instance.middle = false;
+      await app.settle();
+    } finally {
+      names.forEach((name, i) => Object.defineProperty(Node.prototype, name, descriptors[i]));
+    }
+    expect({ reads, ids: Array.from(ul.children, (li) => li.id) }).toEqual({ reads: 0, ids: ["a", "c"] });
+  });
+
   test("a child a @destroyed takes out on the pass that keeps it goes back in", async () => {
     let victim: Element | null = null;
     class Widget extends Component {
@@ -390,6 +429,54 @@ describe("an element's own children on an update", () => {
     await app.settle();
     const div = app.container.querySelector("div") as HTMLElement;
     expect(Array.from(div.children, (child) => child.id)).toEqual(["new", "kept"]);
+  });
+});
+
+/**
+ * A row of a list, handed back as the same vnode when only a list inside it changed. Its attributes are
+ * compared with what was written on it, as any element's are: a class a library added stays.
+ */
+describe("a list row reopened for a list inside it", () => {
+  interface Cat {
+    readonly id: number;
+    readonly name: string;
+  }
+
+  class Catalogue extends Component {
+    @state currency = "EUR";
+    readonly cats: Cat[] = [{ id: 1, name: "Books" }];
+    readonly prices = [1, 2];
+    price(amount: number) {
+      return (
+        <li key={amount}>
+          {amount} {this.currency}
+        </li>
+      );
+    }
+    cat(cat: Cat) {
+      return (
+        <li key={cat.id} id={`cat-${cat.id}`} className="cat">
+          {cat.name}
+          <ul>{list(this.prices, this.price)}</ul>
+        </li>
+      );
+    }
+    render() {
+      return <ul>{list(this.cats, this.cat)}</ul>;
+    }
+  }
+
+  test("keeps a class a library added to it", async () => {
+    const app = await getDOM<Catalogue>(<Catalogue />);
+    await app.settle();
+    const row = app.container.querySelector("#cat-1") as HTMLElement;
+    row.classList.add("open-by-library");
+    app.instance.currency = "RSD";
+    await app.settle();
+    expect({ className: row.className, text: row.textContent }).toEqual({
+      className: "cat open-by-library",
+      text: "Books1 RSD2 RSD",
+    });
   });
 });
 
@@ -602,8 +689,9 @@ describe("an element whose children hold a region for a while", () => {
 });
 
 /**
- * One attributes object handed to `__h` on every render and changed in between. The record is that object,
- * so its old values are gone by the next pass, and the page is what that pass compares with.
+ * One attributes object handed to `__h` on every render and changed in between. The diff keeps an element's
+ * attributes object as its record, so `__h` copies the one an app hands it: the record keeps what was
+ * written, and the object stays the app's to change.
  */
 describe("an attributes object reused across renders", () => {
   test("is written as it is now, with what it no longer holds taken away", async () => {

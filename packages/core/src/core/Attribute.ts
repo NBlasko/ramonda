@@ -54,18 +54,11 @@ export function applyChangesOnAttributes(
 ) {
   if (!("tagName" in enhancedNode)) return;
 
-  /**
-   * The record is the attributes object the last pass was handed, kept as it is rather than copied. Handed
-   * the SAME object again — `__h` is public, and reusing one props object is a reasonable thing to write —
-   * its old values are gone, written over by the new ones, so the page is read instead, as for an element
-   * with no record.
-   */
-  const written = (enhancedNode as Written)[WRITTEN];
+  // The record is the attributes object the last pass was handed, not a copy: nobody changes one after
+  // handing it over — the compiler builds a fresh one per element, and `__h` copies what an app hands it.
   const previousAttributes = built
     ? NONE
-    : written !== undefined && written !== rawNextAttributes
-      ? written
-      : getAllFromNode(enhancedNode as EnhancedHTMLNode);
+    : ((enhancedNode as Written)[WRITTEN] ?? getAllFromNode(enhancedNode as EnhancedHTMLNode));
   const nextAttributes = formatAttributes(rawNextAttributes);
   removePreviousFromenhancedNode(enhancedNode as EnhancedHTMLNode, previousAttributes, nextAttributes);
   attachNextOnenhancedNode(enhancedNode as EnhancedHTMLNode, previousAttributes, nextAttributes, onServer);

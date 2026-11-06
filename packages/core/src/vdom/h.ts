@@ -276,6 +276,21 @@ export function __h(
   rawAttributes: Record<string, any> | null,
   ...children: ComponentChild[]
 ): VNode {
+  /**
+   * A copy of the attributes, because the diff keeps an element's attributes object as its record of what
+   * it wrote, and a hand-built vnode may be handed the same object on every render, changed in place —
+   * its old values would then be gone before the next pass compares with them. Compiled JSX goes through
+   * `createVNode`, and the compiler builds a fresh object for every element.
+   */
+  return createVNode(name, rawAttributes === null ? null : { ...rawAttributes }, ...children);
+}
+
+/** `__h` for the JSX runtime, which hands over an attributes object of its own — see `__h`. */
+export function createVNode(
+  name: ComponentKind | UnsupportedTagFn,
+  rawAttributes: Record<string, any> | null,
+  ...children: ComponentChild[]
+): VNode {
   const parsedChildren = normalizeChildren(children, currentOrigin.id);
 
   const attributes: Record<string, any> = rawAttributes ?? {};

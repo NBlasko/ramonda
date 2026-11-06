@@ -286,6 +286,55 @@ describe("a node that takes itself out while it is let go", () => {
     expect(app.instance.second.current).toBe(null);
   });
 
+  test("the siblings after two that a @destroyed took out together are let go too", async () => {
+    const destroyedNames: string[] = [];
+    class Widget extends Component {
+      @destroyed
+      gone() {
+        // A widget taking its host and the overlay it put after it out of the page.
+        document.getElementById("host")?.remove();
+        document.getElementById("overlay")?.remove();
+      }
+      render() {
+        return <em>w</em>;
+      }
+    }
+    class Later extends Component {
+      @destroyed
+      gone() {
+        destroyedNames.push("later");
+      }
+      render() {
+        return <i>later</i>;
+      }
+    }
+    class Page extends Component {
+      @state shown = true;
+      render() {
+        return (
+          <main>
+            {this.shown ? (
+              <section>
+                <div id="host">
+                  <Widget />
+                </div>
+                <div id="overlay" />
+                <div>
+                  <Later />
+                </div>
+              </section>
+            ) : null}
+          </main>
+        );
+      }
+    }
+    const app = await getDOM<Page>(<Page />);
+    await app.settle();
+    app.instance.shown = false;
+    await app.settle();
+    expect(destroyedNames).toEqual(["later"]);
+  });
+
   test("the siblings after one that moved itself to the end are let go too", async () => {
     class Moving extends Component {
       @state shown = true;
