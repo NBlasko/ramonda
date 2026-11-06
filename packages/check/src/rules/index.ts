@@ -33,6 +33,7 @@ import { positiveTabIndex } from "./positive-tabindex";
 import { linkWithoutADestination } from "./link-without-a-destination";
 import { freshObjectInHookProps } from "./fresh-object-in-hook-props";
 import { unknownHookOption } from "./unknown-hook-option";
+import { functionBuiltInHookProps } from "./function-built-in-hook-props";
 import { freshValueFromAWatchSelector } from "./fresh-value-from-a-watch-selector";
 import { freshObjectInProps } from "./fresh-object-in-props";
 import { functionUsedAsATag } from "./function-used-as-a-tag";
@@ -159,6 +160,7 @@ export { positiveTabIndex, type PositiveTabIndexIssue } from "./positive-tabinde
 export { linkWithoutADestination, type LinkWithoutADestinationIssue } from "./link-without-a-destination";
 export { freshObjectInHookProps, type FreshObjectInHookPropsIssue } from "./fresh-object-in-hook-props";
 export { unknownHookOption, type UnknownHookOptionIssue } from "./unknown-hook-option";
+export { functionBuiltInHookProps, type FunctionBuiltInHookPropsIssue } from "./function-built-in-hook-props";
 export {
   freshValueFromAWatchSelector,
   type FreshValueFromAWatchSelectorIssue,
@@ -327,6 +329,7 @@ export const CLASS_RULES = [
   oneProviderPerComponent,
   serverEnvInSharedCode,
   freshObjectInHookProps,
+  functionBuiltInHookProps,
   freshValueFromAWatchSelector,
   unknownHookOption,
 ] as const;

@@ -89,6 +89,10 @@ class Untimed extends Component {
         <div>
           {/* REPORTED — written in the body. */}
           <span>{Math.random()}</span>
+          {/* REPORTED — the platform's own random id, and its random bytes: the runtime's RMD021
+              names both, and the rule knew only `Math.random()`. */}
+          <span>{crypto.randomUUID()}</span>
+          <span>{crypto.getRandomValues(new Uint8Array(1))[0]}</span>
           {/* REPORTED — the argument-less form asks what time it is. */}
           <span>{new Date().toISOString()}</span>
           {/* NOT reported — parsing a timestamp is deterministic. */}

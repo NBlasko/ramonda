@@ -74,6 +74,7 @@ const EXPECTED_TYPES = [
   "FreshObjectInHookPropsIssue",
   "FreshValueFromAWatchSelectorIssue",
   "UnknownHookOptionIssue",
+  "FunctionBuiltInHookPropsIssue",
   "FreshObjectInPropsIssue",
   "FunctionUsedAsATagIssue",
   "ObjectAmongTheChildrenIssue",

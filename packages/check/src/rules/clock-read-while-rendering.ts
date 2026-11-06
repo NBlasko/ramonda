@@ -23,7 +23,7 @@ import type { Rule } from "./rule";
 export interface ClockReadWhileRenderingIssue {
   /** The component or hook. */
   component: string;
-  /** What was read — `Date.now()`, `new Date()`, `Math.random()`, `performance.now()`. */
+  /** What was read — `Date.now()`, `new Date()`, `Math.random()`, `performance.now()`, `crypto.randomUUID()`. */
   read: string;
   /** How the render got there. */
   through: readonly string[];
@@ -35,7 +35,7 @@ export interface ClockReadWhileRenderingIssue {
 /**
  * The reads that are not a function of state and props.
  *
- * Deliberately short. `Date` and `Math` and `performance` are the three the language offers, and a
+ * Deliberately short. `Date`, `Math`, `performance` and `crypto` are what the platform offers, and a
  * rule that also guessed at `uuid()` or `nanoid()` would be guessing at names — which is how a
  * checker starts reporting a helper called `randomHexColour` that returns a constant.
  */
@@ -55,6 +55,8 @@ function nonDeterministic(node: ts.Node): string | undefined {
   if (owner === "Date" && member === "now") return "Date.now()";
   if (owner === "Math" && member === "random") return "Math.random()";
   if (owner === "performance" && member === "now") return "performance.now()";
+  // The platform's random id and random bytes — named by the runtime's RMD021 beside `Math.random()`.
+  if (owner === "crypto" && (member === "randomUUID" || member === "getRandomValues")) return `crypto.${member}()`;
   return undefined;
 }
 

@@ -78,6 +78,8 @@ describe("a clock or a random number reached from a render", () => {
     const found = run().findings["clock-read-while-rendering"];
     expect(found.map((issue) => `${issue.read} via ${issue.through.join(" → ")}`)).toEqual([
       "Math.random() via render",
+      "crypto.randomUUID() via render",
+      "crypto.getRandomValues() via render",
       "new Date() via render",
       "Date.now() via render → decorate → stampedLabel",
       "Date.now() via render → viaArrowField",
@@ -128,7 +130,7 @@ describe("a clock or a random number reached from a render", () => {
    * DOES rather than where it came from.
    */
   test("parsing a timestamp and a deterministic import are not reported", () => {
-    expect(run().findings["clock-read-while-rendering"]).toHaveLength(7);
+    expect(run().findings["clock-read-while-rendering"]).toHaveLength(9);
   });
 });
 

@@ -81,3 +81,64 @@ export function isThisUse(call: ts.CallExpression): boolean {
 export function hookNamed(arg: ts.Expression): ts.Expression {
   return ts.isExpressionWithTypeArguments(arg) ? arg.expression : arg;
 }
+
+/**
+ * How a hook's props callback names the component it belongs to: `this`, the parameter the docs
+ * write it with — `(self: App) => self.tick` — or that parameter destructured, `({ tick }) => tick`.
+ *
+ * One answer for every rule that reads a props callback. Two of them recognised only `this.`, so each
+ * was silent on the shape every page teaches; found by measuring the runtime's RMD022 against the
+ * checker, one shape at a time.
+ */
+export interface CallbackOwner {
+  /** Whether this expression IS the owner — `this`, or the parameter. */
+  is(expression: ts.Expression): boolean;
+  /** A destructured parameter's locals, each with the member it reads: `{ tick: t }` is `t` → `tick`. */
+  destructured: ReadonlyMap<string, string>;
+}
+
+export function callbackOwner(callback: ts.Node): CallbackOwner {
+  const parameter =
+    ts.isArrowFunction(callback) || ts.isFunctionExpression(callback) ? callback.parameters[0]?.name : undefined;
+  const self = parameter !== undefined && ts.isIdentifier(parameter) ? parameter.text : undefined;
+  const destructured = new Map<string, string>();
+  if (parameter !== undefined && ts.isObjectBindingPattern(parameter)) {
+    for (const element of parameter.elements) {
+      if (!ts.isIdentifier(element.name)) continue;
+      const member = element.propertyName ?? element.name;
+      if (ts.isIdentifier(member)) destructured.set(element.name.text, member.text);
+    }
+  }
+  return {
+    is: (expression) =>
+      expression.kind === ts.SyntaxKind.ThisKeyword ||
+      (self !== undefined && ts.isIdentifier(expression) && expression.text === self),
+    destructured,
+  };
+}
+
+/** Whether an identifier is a READ of a local, rather than where it is declared or a property name. */
+export function isLocalRead(node: ts.Identifier): boolean {
+  const parent = node.parent;
+  if (ts.isBindingElement(parent) || ts.isParameter(parent) || ts.isVariableDeclaration(parent))
+    return parent.name !== node;
+  if (ts.isPropertyAccessExpression(parent)) return parent.expression === node;
+  if (ts.isPropertyAssignment(parent)) return parent.initializer === node;
+  return true;
+}
+
+/**
+ * Whether a function is HANDED OVER as a value in an object literal — `run: () => …`, `fetch() {}` —
+ * rather than called where it is written.
+ *
+ * A read inside one is not a read by the code around it: a props callback that returns
+ * `{ run: () => this.tick }` never evaluates `this.tick`, so nothing it read can run it again —
+ * measured, the runtime reports nothing for it. A function passed to a CALL is different:
+ * `self.items.map((n) => n * self.rate)` runs right there, and its reads are the caller's.
+ */
+export function isHandedOver(node: ts.Node): boolean {
+  if (ts.isMethodDeclaration(node)) return ts.isObjectLiteralExpression(node.parent);
+  if (!ts.isArrowFunction(node) && !ts.isFunctionExpression(node)) return false;
+  const parent = node.parent;
+  return (ts.isPropertyAssignment(parent) && parent.initializer === node) || ts.isShorthandPropertyAssignment(parent);
+}

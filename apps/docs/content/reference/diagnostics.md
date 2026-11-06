@@ -385,7 +385,7 @@ not a rebuild at all, so that is reported as the last case instead.
 consequence is the same as a plain object's, and so is the fix: construct it once and keep it in a field,
 a `@compute`, or a module constant.
 
-```tsx expect-report:clock-read-while-rendering
+```tsx expect-report:clock-read-while-rendering+fresh-object-in-props
 <Row at={new Date()} />     // ✗ a new Date every render
 readonly at = new Date();   // ✓ constructed once, with the component
 <Row at={this.at} />
@@ -644,7 +644,7 @@ A hook's props callback is cached on the signals it reads, so a render where non
 does not call it again. This prop came out different anyway — which means the value reaching it
 never passes through a signal, so nothing marked the cache stale.
 
-```tsx
+```tsx expect-report:cached-read-of-a-plain-field
 class Panel extends Component {
   items: string[] = [];                    // ✗ not @state
   add(x: string) {

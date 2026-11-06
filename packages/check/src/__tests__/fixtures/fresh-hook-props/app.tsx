@@ -79,6 +79,37 @@ class Reporting extends Component<{ id: string }> {
   // Not reported: the context declared the key where it was created, and the rule reads that too.
   l = this.use(SettledAtCreation, () => ({ conf: { dense: true }, n: this.tick }));
 
+  /*
+   * The callback as the docs write it: the owner arrives as its parameter, `self`. A rule that
+   * recognised only `this.` was silent on every one of these — found by measuring the runtime's
+   * RMD022 against the checker, shape by shape.
+   */
+
+  // REPORTED — `@state` read through the parameter.
+  m = this.use(Plain, (self: Reporting) => ({ conf: { dense: true }, n: self.tick }));
+
+  // REPORTED — a prop read through the parameter.
+  n2 = this.use(Plain, (self: Reporting) => ({ conf: { dense: true }, n: self.props.id.length }));
+
+  // REPORTED — a function expression, and a block body.
+  p = this.use(Plain, function (self: Reporting) {
+    return { conf: { dense: true }, n: self.tick };
+  });
+
+  // REPORTED — the parameter destructured: `tick` is still `@state`.
+  q = this.use(Plain, ({ tick }: Reporting) => ({ conf: { dense: true }, n: tick }));
+
+  // Not reported: the array is MADE of what reruns the callback, so it differs whenever it is
+  // rebuilt — a query key, written the way the docs write one.
+  r = this.use(Plain, (self: Reporting) => ({ conf: ["todo", self.props.id], n: 0 }));
+
+  // Not reported: the only read is inside a function handed over in the bag, which the callback
+  // never runs — so nothing can run it again. Measured: the runtime reports nothing here.
+  s2 = this.use(Plain, () => ({ conf: { dense: true }, n: 0, run: () => this.tick }));
+
+  // Not reported: a plain field through the parameter is still not a signal.
+  o = this.use(Plain, (self: Reporting) => ({ conf: { dense: true }, n: self.plain }));
+
   render() {
     return <li>{this.tick}</li>;
   }

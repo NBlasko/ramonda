@@ -59,6 +59,11 @@ class Cart extends Component {
      often a plain field standing in for state". */
   form = this.use(Clock, () => ({ rate: this.rate }));
 
+  /* REPORTED — the same read as the docs write the callback, through its parameter, and with the
+     parameter destructured. Both were silent while the rule recognised only `this.`. */
+  formSelf = this.use(Clock, (self: Cart) => ({ rate: self.rate }));
+  formDestructured = this.use(Clock, ({ rate }: Cart) => ({ rate }));
+
   /* Not reported: the factory is a value this cannot follow without dataflow. */
   other = this.use(Clock, makeProps);
 
