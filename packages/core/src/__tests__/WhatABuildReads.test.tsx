@@ -297,6 +297,57 @@ describe("an element's own children on an update", () => {
 });
 
 /**
+ * An element with one child — a cell's text, a link's label, the commonest shape on a page — keeps that
+ * child on its own as its record, not in an array of one. It is held to the same rule as a longer record.
+ */
+describe("an element with one child on an update", () => {
+  class Label extends Component {
+    @state text = "a";
+    render() {
+      return (
+        <p id="label">
+          <b>{this.text}</b>
+        </p>
+      );
+    }
+  }
+
+  test("is not read back from the page", async () => {
+    const app = await getDOM<Label>(<Label />);
+    await app.settle();
+    const descriptor = Object.getOwnPropertyDescriptor(Node.prototype, "childNodes") as PropertyDescriptor;
+    let reads = 0;
+    Object.defineProperty(Node.prototype, "childNodes", {
+      ...descriptor,
+      get(this: Node) {
+        if ((this as Element).id === "label") reads++;
+        return descriptor.get?.call(this);
+      },
+    });
+    try {
+      app.instance.text = "b";
+      await app.settle();
+    } finally {
+      Object.defineProperty(Node.prototype, "childNodes", descriptor);
+    }
+    expect({ reads, text: (app.container.querySelector("#label") as HTMLElement).textContent }).toEqual({
+      reads: 0,
+      text: "b",
+    });
+  });
+
+  test("a child someone else took out is put back on the next render", async () => {
+    const app = await getDOM<Label>(<Label />);
+    await app.settle();
+    const label = app.container.querySelector("#label") as HTMLElement;
+    (label.firstElementChild as HTMLElement).remove();
+    app.instance.text = "b";
+    await app.settle();
+    expect(label.innerHTML).toBe("<b>b</b>");
+  });
+});
+
+/**
  * An element whose children are plain, then hold a region, then are plain again. The region keeps its
  * own record while it is there, and the plain one is dropped then: kept, it would still name the children
  * of before the region, and the next plain pass would claim from it — a child built while the region was

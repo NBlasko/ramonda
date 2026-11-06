@@ -514,7 +514,9 @@ function appendBuiltChildren(vnodeChildren: unknown[], placeholderComponent: May
     (parent as Placed)[PLACED] = NO_CHILDREN;
     return;
   }
-  const placed: ChildNode[] = [];
+  // The first child is kept on its own, and an array is built only when a second one comes.
+  let first: ChildNode | undefined;
+  let placed: ChildNode[] | undefined;
   for (let slot = 0; slot < vnodeChildren.length; slot++) {
     const vchild = filterVirtualChild(vnodeChildren[slot]);
     if (vchild === undefined) continue;
@@ -522,9 +524,11 @@ function appendBuiltChildren(vnodeChildren: unknown[], placeholderComponent: May
     if (node === undefined) continue;
     stampBuilt(node, vchild, slot);
     parent.appendChild(node);
-    placed.push(node);
+    if (first === undefined) first = node;
+    else if (placed === undefined) placed = [first, node];
+    else placed.push(node);
   }
-  (parent as Placed)[PLACED] = placed;
+  (parent as Placed)[PLACED] = placed ?? first ?? NO_CHILDREN;
 }
 
 /**
@@ -542,11 +546,15 @@ const PLACED = Symbol("placed");
 /** The record of an element built with no children. Read, sliced, never written. */
 const NO_CHILDREN: readonly ChildNode[] = Object.freeze([]);
 
-type Placed = { [PLACED]?: readonly ChildNode[] };
+/** One child on its own — the commonest element holds one, a text or a link — and an array past that. */
+type Placed = { [PLACED]?: ChildNode | readonly ChildNode[] };
 
+/** The record as children in order, when every one of them is still in `parent`. */
 function placedChildren(parent: Node): EnhancedChildNode[] | undefined {
   const placed = (parent as Placed)[PLACED];
   if (placed === undefined) return undefined;
+  if (!Array.isArray(placed))
+    return (placed as ChildNode).parentNode === parent ? [placed as EnhancedChildNode] : undefined;
   for (let i = 0; i < placed.length; i++) if (placed[i].parentNode !== parent) return undefined;
   return placed as EnhancedChildNode[];
 }
@@ -597,7 +605,7 @@ function executeChangesOnStringNode(
     reorderChildren(enhancedNode, orderedNodes, null, previousOrder);
     // Written after every pass that placed anything, the region's too: an element whose children leave a
     // region places them on that pass, so the next plain one claims from what is there.
-    (enhancedNode as Placed)[PLACED] = orderedNodes;
+    (enhancedNode as Placed)[PLACED] = orderedNodes.length === 1 ? orderedNodes[0] : orderedNodes;
   }
 
   return enhancedNode;
