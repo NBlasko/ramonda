@@ -228,6 +228,26 @@ have rather than that you are wrong.
 Between components there is nothing to think about: an ancestor is always constructed before its
 descendants.
 
+**The same order holds for any field a props callback reads.** `this.use` calls the callback at once,
+while the fields are being set from the top down, so one declared below the `use` is not there yet:
+
+```tsx expect-report:field-read-before-it-is-declared
+class Connection extends Hook<undefined> {
+  online = true;
+}
+class Poll extends Hook<{ enabled: boolean }> {}
+
+class Feed extends Component {
+  poll = this.use(Poll, (self: Feed) => ({ enabled: self.connection.online }));
+  connection = this.use(Connection); // ✗ declared below the callback that reads it
+}
+```
+
+A hook there is a `TypeError` at mount, naming neither field. A plain field reads `undefined`, and
+keeps it — it is not a signal, so the callback is not asked again. `ramonda-check` reports both, as
+[`field-read-before-it-is-declared`](/rules/field-read-before-it-is-declared). Declare a field above the
+`use` that reads it.
+
 ## Two of one context: a scope per subtree
 
 One component publishes a context **once**. A second Provider of the same context on the same

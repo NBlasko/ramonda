@@ -40,6 +40,7 @@ export type {
   FreshValueFromAWatchSelectorIssue,
   UnknownHookOptionIssue,
   FunctionBuiltInHookPropsIssue,
+  FieldReadBeforeItIsDeclaredIssue,
   FreshObjectInPropsIssue,
   FunctionUsedAsATagIssue,
   ObjectAmongTheChildrenIssue,
