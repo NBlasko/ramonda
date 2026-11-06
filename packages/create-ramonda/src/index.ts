@@ -32,6 +32,7 @@ import {
   SAY,
   unanswered,
 } from "./args";
+import { agentsFile, CLAUDE_FILE, checkSteps } from "./agents";
 
 // What the docs' GIF of the scaffolder is drawn from — see `apps/docs/scripts/build-cli-gif.mjs`.
 export { ADD_ON_INFO, addOnOptions, DEFAULT_ADD_ONS, MODE_OPTIONS, nextSteps, SAY } from "./args";
@@ -336,15 +337,16 @@ function firstUsefulLine(output: string): string | undefined {
  * - so is a folder where it writes a file, and a file where it needs a folder.
  *
  * And while writing: an existing `.gitignore` is kept and gains only the lines it lacks — one
- * replaced without a word lost `secret.env` once — an existing `README.md` stays, with the project's
- * beside it as `README.ramonda.md`, and every other file it replaced is returned, to be named.
+ * replaced without a word lost `secret.env` once — an existing `README.md`, `AGENTS.md` or `CLAUDE.md`
+ * stays, with the project's beside it as `README.ramonda.md` and so on, and every other file it
+ * replaced is returned, to be named.
  */
 export function scaffold(options: ScaffoldOptions): { replaced: string[]; kept: string[] } {
   const stage = stageFor(options.targetDir);
   try {
     writeProject({ ...options, targetDir: stage });
     const files = filesUnder(stage);
-    const blocked = inTheWay(options.targetDir, files, readFileSync(join(stage, "README.md")));
+    const blocked = inTheWay(options.targetDir, files, stage);
     if (blocked.length > 0) {
       throw new Error(
         `In the way in ${options.targetDir}: ${blocked.join(", ")}. A link, a folder where a file goes, or a ` +
@@ -389,15 +391,27 @@ const stat = (path: string) => {
   }
 };
 
-/** The project paths something in `target` stands in the way of. Reads their metadata, and the reader's README only when it is the same size as the project's. */
-function inTheWay(target: string, files: readonly string[], readme: Buffer): string[] {
+/**
+ * The files a reader's own copy of is KEPT, and the name the project's is written under beside it.
+ * Each is the reader's words, not configuration: their README, their instructions for an agent.
+ */
+const KEPT_BESIDE: Readonly<Record<string, string>> = {
+  "README.md": "README.ramonda.md",
+  "AGENTS.md": "AGENTS.ramonda.md",
+  "CLAUDE.md": "CLAUDE.ramonda.md",
+};
+
+/** The project paths something in `target` stands in the way of. Reads their metadata, and a kept file of the reader's only when it is the same size as the project's. */
+function inTheWay(target: string, files: readonly string[], stage: string): string[] {
   const blocked = new Set<string>();
   const wants = [...files];
-  // Written only beside a README of the reader's own — not beside one identical to the project's.
-  const theirs = join(target, "README.md");
-  const found = stat(theirs);
-  if (found?.isFile() && (found.size !== readme.length || !readFileSync(theirs).equals(readme))) {
-    wants.push("README.ramonda.md");
+  // Written only beside a file of the reader's own — not beside one identical to the project's.
+  for (const [file, beside] of Object.entries(KEPT_BESIDE)) {
+    if (!files.includes(file)) continue;
+    const ours = readFileSync(join(stage, file));
+    const theirs = join(target, file);
+    const found = stat(theirs);
+    if (found?.isFile() && (found.size !== ours.length || !readFileSync(theirs).equals(ours))) wants.push(beside);
   }
   for (const file of wants) {
     const parts = file.split("/");
@@ -434,11 +448,12 @@ function place(stage: string, target: string, files: readonly string[]): { repla
         writeFileSync(to, merged);
         kept.push(file);
       }
-    } else if (theirs !== undefined && file === "README.md" && theirs.equals(content)) {
-      // The project's own README, from an earlier run: nothing to keep apart.
-    } else if (theirs !== undefined && file === "README.md") {
-      const beside = join(target, "README.ramonda.md");
-      if (stat(beside)?.isFile() && !readFileSync(beside).equals(content)) replaced.push("README.ramonda.md");
+    } else if (theirs !== undefined && file in KEPT_BESIDE && theirs.equals(content)) {
+      // The project's own copy, from an earlier run: nothing to keep apart.
+    } else if (theirs !== undefined && file in KEPT_BESIDE) {
+      const name = KEPT_BESIDE[file] as string;
+      const beside = join(target, name);
+      if (stat(beside)?.isFile() && !readFileSync(beside).equals(content)) replaced.push(name);
       writeFileSync(beside, content);
       kept.push(file);
     } else {
@@ -588,17 +603,15 @@ function writeProject({ targetDir, name, mode, addons }: ScaffoldOptions): void 
   if (addons.includes("css")) extraScripts.typecheck = "ramonda-css";
   // One command for "is this project fine", which is what to run before a commit. `build` already
   // runs `ramonda-check` and the type check, so it is the last step and the only one always there.
-  extraScripts.check = [
-    addons.includes("biome") ? "npm run lint" : "",
-    addons.includes("biome") ? "npm run format:check" : "",
-    addons.includes("testing") ? "npm test" : "",
-    "npm run build",
-  ]
-    .filter(Boolean)
+  // The same list `AGENTS.md` describes the command from, so the two cannot disagree.
+  extraScripts.check = checkSteps(addons)
+    .map((step) => step.run)
     .join(" && ");
   pkg.scripts = { ...(pkg.scripts as object), ...extraScripts };
   writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
   writeReadme(targetDir, addons);
+  writeFileSync(join(targetDir, "AGENTS.md"), agentsFile(mode, addons));
+  writeFileSync(join(targetDir, "CLAUDE.md"), CLAUDE_FILE);
 }
 
 /**
