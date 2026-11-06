@@ -20,6 +20,9 @@ const MIME = {
   ".css": "text/css",
   ".svg": "image/svg+xml",
   ".json": "application/json",
+  // The pages as text, for a coding agent — see `page-text.mjs`.
+  ".md": "text/markdown; charset=utf-8",
+  ".txt": "text/plain; charset=utf-8",
 };
 
 /**

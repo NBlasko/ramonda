@@ -101,7 +101,7 @@ export function agentsFile(mode: Mode, addons: readonly AddOn[]): string {
     "",
     "## The docs",
     "",
-    `${DOCS} describes the latest release. ${DOCS}/reference lists every page, so start a new subject there.`,
+    `${DOCS} describes the latest release. Read it as text rather than HTML: ${DOCS}/llms.txt lists every page, every page is also Markdown with \`.md\` added to its path (${DOCS}/concepts/state.md), and ${DOCS}/llms-full.txt is the whole site in one file.`,
     "",
   ].join("\n");
 }

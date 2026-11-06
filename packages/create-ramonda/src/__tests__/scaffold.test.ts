@@ -922,9 +922,20 @@ describe("the generated AGENTS.md", () => {
   test("every page it links is one the docs have", () => {
     for (const [mode, addons] of combos) {
       const text = make(mode, [...addons]).read("AGENTS.md");
-      const links = [...text.matchAll(/https:\/\/ramonda\.dev(\/[a-z0-9/-]*)?/g)].map((m) => m[1] ?? "/");
+      const links = [...text.matchAll(/https:\/\/ramonda\.dev(\/[a-z0-9/.-]*)?/g)].map((m) =>
+        (m[1] ?? "/").replace(/\.$/, ""),
+      );
       expect(links.length).toBeGreaterThan(3);
+      // The text the docs build writes beside the pages — `apps/docs/scripts/page-text.mjs`.
+      const built = readFileSync(join(workspace, "apps", "docs", "scripts", "build-content.mjs"), "utf8");
+      for (const file of ["llms.txt", "llms-full.txt"]) expect(built).toContain(`"${file}"`);
       for (const link of links) {
+        if (link === "/llms.txt" || link === "/llms-full.txt") continue;
+        if (link.endsWith(".md")) {
+          const page = link.slice(0, -3);
+          expect(existsSync(join(docs, `${page}.md`)) || existsSync(join(docs, page, "index.md")), link).toBe(true);
+          continue;
+        }
         const code = /^\/reference\/diagnostics\/(rm[a-z]\d+)$/.exec(link);
         if (code) {
           expect(diagnostics, link).toMatch(new RegExp(`^## ${code[1].toUpperCase()} — `, "m"));
