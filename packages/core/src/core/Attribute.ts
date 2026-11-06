@@ -17,6 +17,22 @@ type NodeAttributes = Record<string, any>;
 const NONE: NodeAttributes = Object.freeze({});
 
 /**
+ * What the diff wrote on an element last pass — the attributes it is compared with on the next.
+ *
+ * Kept rather than read back from the page: reading every attribute back on every pass was the largest
+ * single cost in every profile of js-framework-benchmark, and it made the page the record of what
+ * Ramonda meant, so an attribute anyone else changed — the browser closing a `<details>`, a library's
+ * class — was written back on the next render that touched the element for any reason. What Ramonda
+ * wrote is the record, as in React: such a change stays until Ramonda itself changes that value.
+ *
+ * An element with no record — one a hydration adopted, which no pass wrote — is read from the page
+ * once, so what only the server wrote is still taken away.
+ */
+const WRITTEN = Symbol("written");
+
+type Written = { [WRITTEN]?: NodeAttributes };
+
+/**
  * `onServer` skips attaching event listeners, which a server render has no use for.
  *
  * Read from the OWNING COMPONENT's runtime by the caller, not from `getRenderEnv()`. That module-level
@@ -38,10 +54,13 @@ export function applyChangesOnAttributes(
 ) {
   if (!("tagName" in enhancedNode)) return;
 
-  const previousAttributes = built ? NONE : getAllFromNode(enhancedNode as EnhancedHTMLNode);
+  const previousAttributes = built
+    ? NONE
+    : ((enhancedNode as Written)[WRITTEN] ?? getAllFromNode(enhancedNode as EnhancedHTMLNode));
   const nextAttributes = formatAttributes(rawNextAttributes);
   removePreviousFromenhancedNode(enhancedNode as EnhancedHTMLNode, previousAttributes, nextAttributes);
   attachNextOnenhancedNode(enhancedNode as EnhancedHTMLNode, previousAttributes, nextAttributes, onServer);
+  (enhancedNode as Written)[WRITTEN] = nextAttributes;
   releaseDroppedRef(enhancedNode as EnhancedHTMLNode, nextAttributes.ref);
   /**
    * An `<input>` is told, on every pass, whether it is controlled — a pass that no longer has a
@@ -537,6 +556,9 @@ function getPreviousFromenhancedNode(enhancedNode: EnhancedHTMLNode, name: strin
   // `?? ""`: an element that never had a style must compare equal to an empty
   // one, or the first render writes `style=""` onto every host.
   if (name === "style") return enhancedNode[STYLE_SYM] ?? "";
+  // A ref is applied on every pass, whatever was written last: when two elements share one and the
+  // second goes away, the first takes it back on that same pass by re-asserting it.
+  if (name === "ref") return undefined;
   return value;
 }
 
@@ -632,6 +654,9 @@ function removePreviousFromenhancedNode(
     const nextAttribute = nextAttributes[name];
 
     if (!isInvisibleOnScreen(nextAttribute, name)) continue;
+    // Nothing was written for it last pass either — a record keeps a name it held as `undefined` or
+    // `false`, which the page never had — so there is nothing to take away.
+    if (isInvisibleOnScreen(previousAttributes[name], name)) continue;
 
     if (name.startsWith("on")) {
       const listeners = enhancedNode._listeners ?? {};

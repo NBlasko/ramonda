@@ -2,6 +2,10 @@ import { describe, test, expect } from "vitest";
 import { getDOM } from "../test/setup";
 import { state } from "../base/decorators";
 import { Component, list } from "../index";
+import { renderToString } from "../hydration/ssr";
+import { hydrateRoot } from "../hydration/hydrate";
+import { componentAt } from "../core/DiffAndMerge";
+import { flushSync } from "../testing";
 
 /**
  * What the diff reads back from an element it has just built.
@@ -73,5 +77,135 @@ describe("an element the diff builds", () => {
       first:
         '<tr class="row"><td class="id">1</td><td><a title="row 1">row 1</a></td><td><span aria-hidden="true">x</span></td></tr>',
     });
+  });
+});
+
+/**
+ * An element the diff UPDATES is compared with what the diff wrote on it last time, not read back from
+ * the page. Reading every attribute back on every pass was the largest single cost in every profile of
+ * js-framework-benchmark, and it made the page the record of what Ramonda meant: an attribute anyone
+ * else changed — the browser closing a `<details>`, a library's class — was written back on the next
+ * render that touched the element for any reason at all. What Ramonda wrote is the record now, as in
+ * React: such a change stays until Ramonda itself changes that value. An element it never wrote — one a
+ * hydration adopted — is read from the page once.
+ */
+describe("an element the diff updates", () => {
+  class Panel extends Component {
+    @state renders = 0;
+    @state tone = "a";
+    render() {
+      return (
+        <section data-renders={this.renders}>
+          <details id="more" open>
+            <summary>More</summary>
+          </details>
+          <p id="tone" className={this.tone}>
+            tone
+          </p>
+        </section>
+      );
+    }
+  }
+
+  test("is not read back from the page", async () => {
+    const app = await getDOM<Panel>(<Panel />);
+    await app.settle();
+    const descriptor = Object.getOwnPropertyDescriptor(Element.prototype, "attributes") as PropertyDescriptor;
+    let reads = 0;
+    Object.defineProperty(Element.prototype, "attributes", {
+      ...descriptor,
+      get(this: Element) {
+        reads++;
+        return descriptor.get?.call(this);
+      },
+    });
+    try {
+      app.instance.tone = "b";
+      app.instance.renders++;
+      await app.settle();
+    } finally {
+      Object.defineProperty(Element.prototype, "attributes", descriptor);
+    }
+    expect({ reads, tone: (app.container.querySelector("#tone") as HTMLElement).className }).toEqual({
+      reads: 0,
+      tone: "b",
+    });
+  });
+
+  test("takes nothing away that it did not write — an attribute held as nothing costs no call", async () => {
+    class Quiet extends Component {
+      @state renders = 0;
+      render() {
+        return (
+          <p id="quiet" data-renders={this.renders} title={undefined} hidden={false}>
+            quiet
+          </p>
+        );
+      }
+    }
+    const app = await getDOM<Quiet>(<Quiet />);
+    await app.settle();
+    const remove = Element.prototype.removeAttribute;
+    let removed = 0;
+    Element.prototype.removeAttribute = function (this: Element, name: string) {
+      removed++;
+      return remove.call(this, name);
+    };
+    try {
+      for (let i = 0; i < 3; i++) {
+        app.instance.renders++;
+        await app.settle();
+      }
+    } finally {
+      Element.prototype.removeAttribute = remove;
+    }
+    expect(removed).toBe(0);
+  });
+
+  test("keeps what the browser changed — a <details> the reader closed stays closed", async () => {
+    const app = await getDOM<Panel>(<Panel />);
+    await app.settle();
+    const details = app.container.querySelector("#more") as HTMLDetailsElement;
+    details.open = false;
+    app.instance.renders++;
+    await app.settle();
+    expect(details.open).toBe(false);
+  });
+
+  test("keeps a class someone else set, until Ramonda writes its own again", async () => {
+    const app = await getDOM<Panel>(<Panel />);
+    await app.settle();
+    const tone = app.container.querySelector("#tone") as HTMLElement;
+    tone.className = "theirs";
+    app.instance.renders++;
+    await app.settle();
+    const kept = tone.className;
+    app.instance.tone = "c";
+    await app.settle();
+    expect({ kept, written: tone.className }).toEqual({ kept: "theirs", written: "c" });
+  });
+
+  test("an element a hydration adopted is read from the page: what only the server wrote goes", async () => {
+    class Served extends Component<{ server?: boolean }> {
+      @state renders = 0;
+      render() {
+        return (
+          <div id="served" data-renders={this.renders} {...(this.props.server ? { "data-server": "1" } : {})}>
+            x
+          </div>
+        );
+      }
+    }
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    container.innerHTML = await renderToString(<Served server />);
+    hydrateRoot(<Served />, container);
+    await Promise.resolve();
+    await Promise.resolve();
+    (componentAt(container.querySelector("#served") as Element) as Served).renders++;
+    flushSync();
+    const left = (container.querySelector("#served") as HTMLElement).hasAttribute("data-server");
+    container.remove();
+    expect(left).toBe(false);
   });
 });
