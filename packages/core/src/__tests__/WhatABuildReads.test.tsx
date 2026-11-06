@@ -1,7 +1,7 @@
 import { describe, test, expect } from "vitest";
 import { getDOM } from "../test/setup";
 import { state, destroyed } from "../base/decorators";
-import { Component, list, type EventOn } from "../index";
+import { Component, __h, list, type EventOn } from "../index";
 import { renderToString } from "../hydration/ssr";
 import { hydrateRoot } from "../hydration/hydrate";
 import { componentAt } from "../core/DiffAndMerge";
@@ -467,6 +467,26 @@ describe("what an element's attribute record does not hold", () => {
     expect({ written, volume: video.volume, at: video.currentTime }).toEqual({ written: 0.5, volume: 0.8, at: 12 });
   });
 
+  test("a video the reader unmuted is muted again on the next render", async () => {
+    class Quiet extends Component {
+      @state renders = 0;
+      render() {
+        return (
+          <div data-renders={this.renders}>
+            <video muted />
+          </div>
+        );
+      }
+    }
+    const app = await getDOM<Quiet>(<Quiet />);
+    await app.settle();
+    const video = app.container.querySelector("video") as HTMLVideoElement;
+    video.muted = false;
+    app.instance.renders++;
+    await app.settle();
+    expect(video.muted).toBe(true);
+  });
+
   test("a checkbox the reader clicked out of mixed is mixed again on the next render", async () => {
     class Mixed extends Component {
       @state renders = 0;
@@ -578,5 +598,29 @@ describe("an element whose children hold a region for a while", () => {
     }
     const ul = app.container.querySelector("ul") as HTMLElement;
     expect(Array.from(ul.children, (li) => li.id || li.className)).toEqual(["a", "c"]);
+  });
+});
+
+/**
+ * One attributes object handed to `__h` on every render and changed in between. The record is that object,
+ * so its old values are gone by the next pass, and the page is what that pass compares with.
+ */
+describe("an attributes object reused across renders", () => {
+  test("is written as it is now, with what it no longer holds taken away", async () => {
+    class Reused extends Component {
+      @state step = 0;
+      readonly attributes: Record<string, unknown> = { id: "a", title: "t" };
+      render() {
+        this.attributes.id = this.step === 0 ? "a" : "b";
+        if (this.step > 0) delete this.attributes.title;
+        return <div>{__h("span", this.attributes as never, "x")}</div>;
+      }
+    }
+    const app = await getDOM<Reused>(<Reused />);
+    await app.settle();
+    app.instance.step = 1;
+    await app.settle();
+    const span = app.container.querySelector("span") as HTMLElement;
+    expect({ id: span.id, title: span.getAttribute("title") }).toEqual({ id: "b", title: null });
   });
 });

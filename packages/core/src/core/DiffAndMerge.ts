@@ -517,7 +517,6 @@ function appendBuiltChildren(vnodeChildren: unknown[], placeholderComponent: May
   // The first child is kept on its own, and an array is built only when a second one comes.
   let first: ChildNode | undefined;
   let placed: ChildNode[] | undefined;
-  let block: ChildNode | null = null;
   for (let slot = 0; slot < vnodeChildren.length; slot++) {
     const vchild = filterVirtualChild(vnodeChildren[slot]);
     if (vchild === undefined) continue;
@@ -525,9 +524,9 @@ function appendBuiltChildren(vnodeChildren: unknown[], placeholderComponent: May
     if (node === undefined) continue;
     stampBuilt(node, vchild, slot);
     // Before a block hosted here, as `reorderChildren` places a child: a portal aimed at this element can
-    // put its block in while a child is being built, and the element's own children come first.
-    // Once one is there it stays the first, so it is looked for only until it is found.
-    if (block === null) block = firstHostedBlock(parent);
+    // put its block in while a child is being built, and the element's own children come first. Asked for
+    // each child, because building the next one can move or take away the block.
+    const block = firstHostedBlock(parent);
     if (block === null) parent.appendChild(node);
     else parent.insertBefore(node, block);
     if (first === undefined) first = node;
@@ -555,6 +554,19 @@ const NO_CHILDREN: readonly ChildNode[] = Object.freeze([]);
 
 /** One child on its own — the commonest element holds one, a text or a link — and an array past that. */
 type Placed = { [PLACED]?: ChildNode | readonly ChildNode[] };
+
+/**
+ * The reorder for an element's own children, from the record the pass claimed from. Asked again here
+ * whether it still holds: a `@destroyed` or a ref's callback that ran during the pass can take a child
+ * out, and then the page is where the order is read.
+ */
+function reorderPlaced(parent: ChildNode, orderedNodes: ChildNode[], record: Placed[typeof PLACED]): void {
+  if (record === undefined || !stillPlaced(record, parent)) return reorderChildren(parent, orderedNodes);
+  if (Array.isArray(record)) return reorderChildren(parent, orderedNodes, null, record);
+  // A lone child placed again where it was is the commonest pass, and it moves nothing.
+  if (orderedNodes.length === 1 && orderedNodes[0] === record) return;
+  reorderChildren(parent, orderedNodes, null, [record as ChildNode]);
+}
 
 /** Whether every child the record names is still in `parent`. */
 function stillPlaced(record: ChildNode | readonly ChildNode[], parent: Node): boolean {
@@ -606,19 +618,15 @@ function executeChangesOnStringNode(
   // correctly-placed nodes look misplaced and cause pointless moves.
   unmountChildrenNodes(cloneChildren, false);
   if (orderedNodes !== null) {
-    // Asked again now: a `@destroyed` or a ref's callback that ran during this pass can take a child out,
-    // and then the page is where its order is read.
-    const previous =
-      previousOrder !== undefined && stillPlaced(previousOrder, enhancedNode) ? previousOrder : undefined;
-    if (previous === undefined || Array.isArray(previous)) {
-      reorderChildren(enhancedNode, orderedNodes, null, previous as readonly ChildNode[] | undefined);
-    } else if (orderedNodes.length !== 1 || orderedNodes[0] !== previous) {
-      // A lone child placed again where it was is the commonest pass, and it moves nothing.
-      reorderChildren(enhancedNode, orderedNodes, null, [previous as ChildNode]);
-    }
-    // Written after every pass that placed anything, the region's too: an element whose children leave a
-    // region places them on that pass, so the next plain one claims from what is there.
-    (enhancedNode as Placed)[PLACED] = orderedNodes.length === 1 ? orderedNodes[0] : orderedNodes;
+    reorderPlaced(enhancedNode, orderedNodes, previousOrder);
+    // Kept while the children are plain; a region keeps its own record, and this one would only hold the
+    // nodes of before it. The pass that leaves the region writes it again from what it placed.
+    (enhancedNode as Placed)[PLACED] =
+      (enhancedNode as EnhancedChildNode)[CHILD_RECORD] !== undefined
+        ? undefined
+        : orderedNodes.length === 1
+          ? orderedNodes[0]
+          : orderedNodes;
   }
 
   return enhancedNode;

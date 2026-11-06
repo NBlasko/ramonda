@@ -13,7 +13,8 @@ An element now remembers what the diff wrote on it, and the next render is compa
 made by the browser or by another script stays until Ramonda itself changes that value — as in React.
 An element no render wrote, one a hydration adopted, is read from the page once, so an attribute only
 the server sent is still taken away. A `ref` is applied on every render, as before. A checkbox's
-`indeterminate` is compared with the checkbox, as its `checked` is, so the next render restores what a
-click cleared. Other state an element keeps only in a property, such as a media element's `volume` or
+`checked` and `indeterminate` and a media element's `muted` are compared with the element itself, as
+before, so the next render restores what a click changed. Other state an element keeps only in a property, such as a media element's `volume` or
 `currentTime`, is compared with what Ramonda wrote: a volume the reader moved stays, and a playing video
-keeps its place on an unrelated render.
+keeps its place on an unrelated render. An attributes object handed to `__h` again and
+changed in place is compared with the page, since its old values are gone.

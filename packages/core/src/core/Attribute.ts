@@ -54,9 +54,18 @@ export function applyChangesOnAttributes(
 ) {
   if (!("tagName" in enhancedNode)) return;
 
+  /**
+   * The record is the attributes object the last pass was handed, kept as it is rather than copied. Handed
+   * the SAME object again — `__h` is public, and reusing one props object is a reasonable thing to write —
+   * its old values are gone, written over by the new ones, so the page is read instead, as for an element
+   * with no record.
+   */
+  const written = (enhancedNode as Written)[WRITTEN];
   const previousAttributes = built
     ? NONE
-    : ((enhancedNode as Written)[WRITTEN] ?? getAllFromNode(enhancedNode as EnhancedHTMLNode));
+    : written !== undefined && written !== rawNextAttributes
+      ? written
+      : getAllFromNode(enhancedNode as EnhancedHTMLNode);
   const nextAttributes = formatAttributes(rawNextAttributes);
   removePreviousFromenhancedNode(enhancedNode as EnhancedHTMLNode, previousAttributes, nextAttributes);
   attachNextOnenhancedNode(enhancedNode as EnhancedHTMLNode, previousAttributes, nextAttributes, onServer);
@@ -573,8 +582,8 @@ function getPreviousFromenhancedNode(enhancedNode: EnhancedHTMLNode, name: strin
  * agrees, and writes nothing — while the control keeps showing whatever the user
  * left there. The model silently stops being what is on screen.
  *
- * A checkbox's `indeterminate` is asked the same way: a click clears it, and with no attribute of its
- * name the record of what was written is all an attribute diff would see.
+ * Every name in `PROPERTY_TRUTH` is asked the same way: a media element's `muted`, whose attribute is
+ * only its default, and a checkbox's `indeterminate`, which has no attribute at all.
  *
  * Asked IN ADDITION to the attribute comparison, never instead of it: the
  * attribute is what the element serializes, so it has to stay right for a server
@@ -586,14 +595,14 @@ function getPreviousFromenhancedNode(enhancedNode: EnhancedHTMLNode, name: strin
  * render would be its own bug.
  */
 function formPropertyDiverged(enhancedNode: EnhancedHTMLNode, name: string, next: unknown): boolean {
-  if (name !== "value" && name !== "checked" && name !== "indeterminate") return false;
+  if (name !== "value" && !PROPERTY_TRUTH.has(name)) return false;
   if (!(name in enhancedNode)) return false;
 
   const live = (enhancedNode as unknown as Record<string, unknown>)[name];
   // A boolean attribute is on when it is PRESENT, so any visible value means a
   // ticked box — `checked=""` and the mistaken `checked="false"` (RMD029) both.
-  // `indeterminate` the same way: a click clears it, and it has no attribute to fall back on.
-  if (name === "checked" || name === "indeterminate") return live !== true;
+  // `muted` and `indeterminate` the same way — see `PROPERTY_TRUTH`.
+  if (name !== "value") return live !== true;
   // A number field's `1.50` already shows the model's 1.5 — see `showsTheModel`.
   if (enhancedNode.nodeName === "INPUT") return !showsTheModel(enhancedNode as unknown as HTMLInputElement, next);
   return !attributesEqual(next, live);
