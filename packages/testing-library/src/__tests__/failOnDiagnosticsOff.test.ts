@@ -11,9 +11,15 @@ afterEach(() => {
 });
 
 test("with the check turned off, the library collects no diagnostics", async () => {
-  const before = globalThis.__RAMONDA_DIAGNOSTICS__;
   process.env.RAMONDA_TL_ALLOW_DIAGNOSTICS = "1";
   vi.resetModules();
   await import("../index");
-  expect(globalThis.__RAMONDA_DIAGNOSTICS__).toBe(before);
+  // The same fresh module the index just loaded, so this reads what THAT one collected.
+  const { diagnosticsFailure } = await import("../diagnostics");
+
+  // What it collects, not whether the global moved: `@ramonda/devtools` installs a sink of its own
+  // when it loads, and whether it loads during this import depends on the order of the run — measured,
+  // the first version of this test asserted the global was untouched and failed in CI, not locally.
+  globalThis.__RAMONDA_DIAGNOSTICS__?.({ code: "RMD997", scope: "ramonda/core", severity: "warn", time: 0 } as never);
+  expect(diagnosticsFailure()).toBeUndefined();
 });
