@@ -1,5 +1,34 @@
 # create-ramonda
 
+## 0.16.0
+
+### Minor Changes
+
+- 6439ddd: A new project gets Biome at exactly the version the framework is checked with
+  
+  A caret handed every new project the newest Biome, and a formatter prints differently within a minor:
+  on the day Biome 2.6 came out, a project made with the Biome add-on failed its own first
+  `biome format .` on the template's README. The dependency and the `biome.json` schema now name the
+  one version this repository runs.
+- 8d6d363: Writing into a folder that already has files keeps what is yours: an existing `.gitignore` is kept and gains only the lines the project needs, an existing `README.md` stays and the project's is written beside it as `README.ramonda.md`, and every other file the template replaced is named. A `.gitignore` used to be replaced without a word. Only the paths the project writes are looked at — never the rest of the folder — and a link, a folder where a file goes, or a file where a folder goes stops it before anything is written; a link is never followed out of the folder. A `.gitignore` line the folder negates (`!dist`) is not added back, and its own line endings are kept. A `.gitignore` or `README.md` that already matches the project is left as it is and not mentioned, and a sandbox whose temporary folder cannot be used stages the project beside the target instead.
+  
+  An SSR project's dev server shares its port with hot reload, so two apps side by side each reload; a port already in use is a sentence naming `PORT=…`, not a stack trace; and its README says how to pick the port.
+- 8044df9: What a first real use of each add-on met, fixed in the template:
+  
+  - With Biome, `check` runs `format:check` — the formatter without writing — so unformatted code fails it rather than passing.
+  - `--add form` installs `bguard`, which every example on the Forms pages imports.
+  - `vitest.config.ts` sets `globals: true`, which lets the testing library unmount each test's tree; the second test to mount the app found the first one's Router still live.
+  - The SSR production build compiles a style block in a `.ts` file, as development and the tests already did — its filter named only `.tsx`.
+  - `biome.json` counts `<Select>` and `<TextArea>` as the controls a `<label>` names.
+
+### Patch Changes
+
+- e771b37: `Head` sets `<html lang>` and `<html dir>`: `this.use(Head, (self: App) => ({ lang: self.locale }))`. The deeper `Head` wins, a page that goes away hands back what `<html>` had unless something else changed it since, and the server writes it too — `renderPage` and `renderStatic` return `lang` and `dir`, `fillDocument` writes them over the shell's `<html>`, and `renderDocument` prefers them to its `lang` option. A bilingual app had no declarative way to say its language, and the imperative write the docs offered was refused by the checker.
+  
+  A server that fills its shell by hand passes `lang` and `dir` on, as it passes `title`; the scaffolded `server.mjs`, `prerender.mjs` and `entry-server.tsx` do. Left out, the server sends the shell's language and the client corrects it after hydration.
+- 72719de: What a review of this release's changes found. A field's issue keeps its `message` when the validator's issues are class instances with `message` on the prototype. A field reading `issues` re-renders when an issue changes while its message does not — a `code` moving from `s:minLength` to `s:pattern`, which is what a translation reads. `fillDocument` reads the shell's `<html>` attributes instead of searching their text, so `class="x lang=fr"` is left alone and a valueless `<html lang>` is replaced rather than given a second `lang`. The SSR template empties `dist/client` before each build, so a file deleted from `public/` is not served from the last one, and it lists the files under `dist/client` once at startup, instead of asking the disk whether one exists on every request — each file is still read when it is served — and the build copies `public/` with every link resolved — a linked file or folder lands as what it points at, and a link that loops or points nowhere stops the build naming it — so the server serves only real files and follows no link; a file it listed and that has gone since, as a rebuild in place leaves it, is a 404 rather than a crash, which would have served whatever one pointed at, `.env` included. `fillDocument` writes `lang` and `dir` on the shell before the page goes in, so a shell with no `<html>` leaves a `<html` inside the rendered page alone. The router copies the hash records it takes and hands out, so an updater that edits `prev` and returns it is still a change and a record the app keeps is not the router's, and an owner spelled unencoded in a hand-written link is the same owner.
+- 6059d20: The SSR template serves `public/` in production. Vite serves it under the dev server, but the production build never copied it and `server.mjs` answered only `/assets/*`, so `public/robots.txt` worked under `npm run dev` and was a 404 after `npm run build && npm start`. `scripts/build.mjs` now copies the folder into `dist/client`, and the server answers any file there — never one outside it, and never the raw `index.html` shell.
+
 ## 0.15.0
 
 ### Minor Changes

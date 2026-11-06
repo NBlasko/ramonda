@@ -1,5 +1,285 @@
 # @ramonda/core
 
+## 0.27.0
+
+### Minor Changes
+
+- 813cd66: A number field keeps a number typed on its way: `-` before `-3`, `1e` before `1e5`
+  
+  The browser reports `""` for text it cannot read as a number yet, so a model that follows the field holds
+  `""` — what the field already says. The render that followed wrote `""` back and took the `-` away, so
+  typing `-3` gave `3`. An `<input>` that already shows its model is not written now, as `TextArea` and a
+  settling field already were not.
+- a88f928: A portal whose target goes away takes its content off the page
+  
+  `this.use(Portal, (s) => ({ children: <Dialog />, target: (s.open ? document.body : undefined) as Element }))`
+  is how a modal closes, and closing it left the dialog on the page: a missing target made the portal do
+  nothing, so its nodes stayed where they were. The block now leaves with the target. Its nodes move
+  into a fragment off the page, in the document they belong to, and come back when a target returns. The component in it keeps its
+  state and is not destroyed while it is away, and a list row that changes in it renders nothing until
+  the portal opens. A change to the children made meanwhile is applied when
+  the target returns, so a component the children gain is created on the page, never off it — and so
+  is one a list row inside gains when its own signal moves while the block is away. `target` is typed
+  `Element | PortalTarget`, so a target that may be missing is cast, as one that arrives after mount is.
+  
+  A portal inside the block closes with it: a modal's dropdown, portalled to a layer of its own, leaves
+  the page with the modal and comes back with it, on a client build and after hydration alike.
+  
+  A target that is absent from the start builds nothing until it arrives, as before. A block that
+  comes back takes the place it left in its target, so two portals sharing one keep their order across
+  a close and an open.
+  `Portal.test.tsx` covers both.
+- e6b96cd: A field with a `value` shows the model, in the event that changed it; `defaultValue` and `defaultChecked` start a field the user owns
+  
+  `Select`, `TextArea` and `<input>` are controlled the same way: a field with a `value` — `checked` on a
+  checkbox or a radio — shows what the model holds, and the handler written on the field is what writes
+  the model. Core answers every edit in the field's own listener, before the event bubbles to anything
+  around the field and before the browser draws: the field's handler runs, the renders it caused run
+  at once, and the field shows the model. The handler decides the edit by what it writes — the edit to
+  take it, something else to rewrite it, nothing to refuse it. A handler that takes the edit leaves
+  the field as the user made it; one that refuses it, or no handler at all, leaves the model showing —
+  in the same event, so a refused keystroke or pick is never drawn, and a form around the field reads
+  the value the field keeps. A refused edit puts the caret and the selection back where the edit found
+  them: a paste over `hello` selected leaves `hello` selected again — on the field that has the focus.
+  A number field whose model is a number is shown by every text of that number, so `1.50` stays while
+  the user types toward `1.505`; one whose model is text is shown only by that text.
+  
+  ```tsx
+  typed(event: EventOn<HTMLInputElement>) {
+    this.email = event.currentTarget.value;
+  }
+  
+  <input aria-label="Email" value={this.email} oninput={this.typed} />
+  ```
+  
+  A select, a checkbox and a radio pick in one move: both of the field's own `oninput` and `onchange`
+  run on the `input`, and the `change` after it finds nothing left to do. A radio the handler refuses is
+  put back with its whole group.
+  
+  A word typed through an input method reaches the field's `oninput` at every step, as the browser
+  sends it, `isComposing` saying it is not finished — so a search or a count follows the user on an
+  Android keyboard, which composes every word. The field is not written while the word is composed.
+  A handler that waits for the finished word returns while `isComposing`, and is handed the word once,
+  at `compositionend` and before `oncompositionend` — Chromium's last `input` of a word still says
+  `isComposing`, and nothing follows its end; Firefox's own `input` after the end is recognised and
+  not handed over again. A handler that refuses or rewrites waits for the finished word, so it never
+  keeps half of one. A model the app moves in the middle of a word wins over it, and a blur keeps
+  the composition going until its `compositionend` or the next ordinary edit.
+  
+  `defaultValue` (and `defaultChecked`) starts a field the user owns — for a form whose fields are read
+  when it is sent. It is written as the field's default — the `value` attribute, the `checked`
+  attribute, the option's `selected` — so a served page shows it before any script runs, and a form's
+  reset returns to it. A default that changes later moves the field while it shows its default, and
+  otherwise only where a reset returns: the user's pick stays, and a `Select` whose picked options are all
+  replaced shows its default again. A `Select` with neither starts on its first
+  option a reader can choose, on the client as on a served page, and so does one whose options all arrive
+  later or are all replaced: the children a render adds go in first to last, as a parser puts them. A `value` of `null` or `undefined` is no value. The field's handler is called as a
+  listener is, with the element as `this`, and may be a function or a listener object; one written
+  `on:input` — a type error now, see below — reaching the field anyway is its own as much as `oninput`.
+  
+  `on:` before a standard event is a type error that names the spelling: `on:input` is written
+  `oninput`, on every element and on `Select` and `TextArea`. `on:` is for an event `on…` cannot
+  spell, a custom one with a dash.
+  
+  Each handler is handed the event it is promised: `oninput` an `input` — the word an input method
+  finishes is handed over as one, `insertCompositionText` — and a pick's `onchange` a `change`, whose
+  `stopPropagation()` stops the browser's own `change`.
+  A `file`, `hidden`, `submit`, `reset`, `button` or `image` input holds no model, whatever its `value`;
+  and when a field's handler throws, its error is the one thrown, and the error of the render of what it
+  half wrote is reported as an uncaught one; a handler that throws before it writes leaves the field
+  showing the model.
+  A `change` ends the edits before it — on blur, or right after a date's, a color's or a range's
+  `input` — or is an edit of its own. When the field shows its model, the `change` brings nothing new:
+  it runs `onchange` when an edit since the last `change` reached the handler and the text is not back
+  to what it was, hands `oninput` nothing again, and reaches no handler when every edit was refused, the edits put the text back — a browser sends no `change` for those — or there
+  was none. When the field shows something else — an
+  autofill, or a change dispatched alone, on any field, a `TextArea` included — it is an edit, handed
+  to `oninput` as an `insertReplacementText` input, then to `onchange` as the change. An event sent
+  while a commit is running is answered against what the field showed after the last event in it,
+  since the render that writes the model has not run yet — so whether the handler refused that event
+  is not known, and RMD062 reports it.
+- f14650c: `field-set-by-an-event` and `RMD062`: a field sent an edit while a commit runs
+  
+  A field learns its model through render, and the render an edit's handler causes runs once the commit
+  is over. `field-set-by-an-event` reports an edit sent from the work a commit runs — `render()`, the
+  constructor, `@created`, `@mounted`, `@updated`, `@destroyed`, `@watchProp`, `@catchError`, a ref's
+  callback (`createRef(this.attached)`), and every method and accessor of the class they use:
+  dispatching `input`, `change`, `beforeinput` or a composition event — or one whose type cannot be
+  read — at a field the class renders, an element a query finds or one a form's `elements` hands; a
+  `click` on a checkbox, a radio or a `<label>` of one the class renders; writing `.value` or
+  `.checked` on a field it renders with that model; `document.execCommand`. What is handed to run after
+  the commit — a microtask, a timer, a promise's `then` — an event handler, and an event dispatched at
+  the document or a store are not reported: a row whose `onclick` clicks its checkbox does what a
+  `<label>` does. An `async` hook is read whole: whether a statement runs before an `await` or after it
+  depends on values, so an edit past one is handed to `queueMicrotask` to say it is meant for later.
+  
+  ```tsx
+  @state accepted = true;                    // not this.box.current?.click() in @mounted
+  ```
+  
+  `RMD062` reports the same at runtime, when a field reads its model while the render of its last edit
+  waits for the running commit — a second event in the same commit, which cannot know whether the
+  handler took the first edit or refused it. In a development build it says what to write instead; a
+  production build records it for the app's collector. The edit is answered either way.
+- b7ec8f4: A field's own handler that stops the event stops the field's other handlers for it
+  
+  An `<input>`, a `TextArea` and a `Select` call their own handlers themselves — in the order they are
+  written, as an element calls its listeners, and one function written under both names once — so the
+  field knows when they have returned. One that called `stopImmediatePropagation()`
+  did not stop the next, as it would stop the next listener on the element. It does now, for the event and
+  for the `input` a finished word is handed over as. And one an earlier one takes away — a render it settled
+  dropped it — is not called, as a listener removed mid-dispatch is not.
+- e771b37: `Head` sets `<html lang>` and `<html dir>`: `this.use(Head, (self: App) => ({ lang: self.locale }))`. The deeper `Head` wins, a page that goes away hands back what `<html>` had unless something else changed it since, and the server writes it too — `renderPage` and `renderStatic` return `lang` and `dir`, `fillDocument` writes them over the shell's `<html>`, and `renderDocument` prefers them to its `lang` option. A bilingual app had no declarative way to say its language, and the imperative write the docs offered was refused by the checker.
+  
+  A server that fills its shell by hand passes `lang` and `dir` on, as it passes `title`; the scaffolded `server.mjs`, `prerender.mjs` and `entry-server.tsx` do. Left out, the server sends the shell's language and the client corrects it after hydration.
+- bd8a783: Markup handed down as a prop is compared by what it says, so a parent's render no longer re-renders a child whose markup is unchanged
+  
+  JSX is built afresh by every render, so `<Panel><Big n={1} /></Panel>` handed `Panel` new `children`
+  each time and `Panel` rendered whenever its parent did. Children, a single node as a prop
+  (`header={<Header />}`), and a `list()` with a method or module-level callback — among the children
+  or as a prop of its own — are now compared by content for every component and every hook, with no declaration. Measured in a
+  production build, 20 panels of 500 elements under a parent whose state changed for an unrelated
+  reason: 25.1 ms and 20 panel renders per change before, 0.2 ms and none after; when the markup
+  really changes, 25.4 ms before and 25.5 ms after.
+  
+  Only what the framework built is opened — a vnode, the children array JSX makes, a list. Everything
+  the app builds is compared by reference, including an object or an array that holds nodes
+  (`slots={{ header: <Header /> }}`): the app may change it in place, and a copy of something changed in
+  place compares equal to the original, so the change would never be shown. Such a slots prop is
+  declared on the child with `@StableProps("slots")`. Markup built by a different component, a `list()`
+  whose callback changed, and markup past a budget of 500 values for its key are all called
+  different — the child renders, as it did before. Markup holding a form field settles like any other:
+  a field answers its own edits in its own listener, so the render around it adds nothing.
+  
+  `Portal` now watches its `target` together with its `children`, and reconciles once when both
+  change. It used to notice a new target through `children`, which a props factory rebuilt on every
+  run; with markup settled, a target change with the same children would otherwise not move the block.
+  
+  A `@watchProp` on `children`, or a `@compute` reading it, now runs only when the children say
+  something different. A hook that noticed some other prop through `children` being new on every run —
+  as `Portal` did with its target — should watch that prop itself.
+  
+  `RMD022` no longer reports a hook's markup that the runtime settles; markup holding a handler built
+  in place is still reported.
+  
+  `@ramonda/check`: `fresh-object-in-props` names `@StableProps("slots")` as the answer for a slots
+  object or an array of nodes.
+
+### Patch Changes
+
+- 2989dd8: A list inside an element in a hook's children updates when only its rows read the change
+  
+  `this.use(Portal, () => ({ children: <ul>{list(rows, row)}</ul>, target }))` — a list one element
+  down in the children a hook consumes. A `ChildrenRegion` hands its own host to the lists it
+  reconciles, so that a row's change refreshes the region: the children came from the hook's props
+  factory, whose cache is clean when only a row read the signal. The host reached a list placed
+  directly in the children and not one inside an element, which reported to the owner instead; the
+  owner re-rendered, the factory cache stayed clean, nothing reconciled the region, and the row kept
+  its old text. On the client build path and after hydration alike.
+  
+  The host is now carried down through elements, and reset at a component: a component inside the
+  portal keeps its own lists reporting to itself. `ListInPortal.test.tsx` (one and two elements down,
+  a component inside) and `PortalTargetSsr.test.tsx` (an adopted block) cover it; the carry on either
+  path and the reset at a component, each taken out on its own, fail them.
+- 333933e: A list inside a list's row updates when only its own rows read the change
+  
+  Categories, each listing products priced in `this.currency`: the category callback never reads the
+  currency, the product callback does. Once a pass had reused the category rows — a sort, a refetch of
+  the same objects, an append, or a plain `[...categories]` — every category row was marked clean, the
+  diff claimed each one without opening it, and a change of currency left every price as it was. Keyed
+  and unkeyed rows alike, because a row without a key is given one.
+  
+  A row now knows when something INSIDE it changed. A list the diff builds inside a row is told which
+  row it is in, and when one of its own rows is invalidated it marks every row above it, up to the
+  first already marked. A marked row is not clean: the diff opens it to reach the list that changed, and
+  its callback does not run again. Hydration tells its lists the same thing. A component resets it — a
+  component's lists report to the component, which re-renders itself.
+  
+  `AListInsideARow.test.tsx` covers a list directly in a row, beside other children, two levels down,
+  and after hydration; each piece of the change, taken out on its own, fails it.
+- 3416af0: A list whose rows are not objects is tested
+  
+  `ListIdentityAudit.test.tsx` covers twenty-six arrangements of `list()` across a refetch and every
+  row in all of them is an object. `helpers/itemIdentity.ts` has a branch for the other case at every
+  step it takes — `item === null || typeof item !== "object"` appears four times, and `signature` has
+  a `p` prefix for a primitive — and none was exercised. `list(["a", "b", "c"], …)` is the first list
+  anybody writes.
+  
+  Measured before asserted, and two answers were not the expected ones. A reversed list of strings
+  keeps every component and the same DOM node, so a value pairs by being itself. Three copies of one
+  string rebuild all three, because equal strings cannot be told apart and pairing them by position
+  would put one row's state on another. Both follow from the same rule.
+  
+  Also pinned: an append builds exactly one row, dropping one of several equal items destroys exactly
+  one, `null` and a change of value type are a change rather than a crash, a primitive beside an
+  object upsets neither, and no primitive row is ever reported as unidentifiable — that diagnostic is
+  for a bag of fields every sibling shares, and a list of strings must not be nagged about keys.
+- 3fe3d63: An unchanged list is skipped whole, without looking at a row
+  
+  When a list's array and row callback are the same as last render and nothing its rows read has
+  changed, the engine hands back the same built node, and the diff now keeps the whole region on that
+  alone. A re-render for unrelated state over 1000 rows reads none of them; before, it claimed every
+  row one by one. `WholeListSkip.test.tsx` counts the rows read.
+  
+  The diff had this skip already, and it never fired: it compared last pass's built node with this
+  pass's `list()` descriptor, a fresh object on every render. It compares the built node now — which is
+  safe only because a list inside a row now marks the rows above it when it changes, so "the same node"
+  includes everything inside the rows (see the changeset for a list inside a row).
+  
+  Only a node an engine built is skipped, and only by the engine that built it. An array of children is
+  a list as well, built once and kept in the vnode around it, so a reused row hands back the same array
+  node while a list inside the array has changed; and a group that replaces a `list()` in the same slot
+  shares its owner, so it does not take the list's engine — the list's engine is released instead.
+  
+  A group — an array among the children, `<ul>{this.props.children}</ul>` — is kept whole too when it is
+  the same object as last pass and holds no `list()` anywhere inside it: such a group is the same
+  markup. A component row does not stop it — the same vnode carries the same props, and a row that
+  changes on its own renders itself — so 1000 `<Row />` are not looked at either. Counted in
+  `RenderCost.test.tsx`: a panel over 1000 rows, re-rendering on its own state, diffs none of them and
+  walks none of them. A group that does hold one, at any depth
+  (`[<div>{list(…)}</div>]`), is opened every pass, because something inside it changes on its own.
+- 0f93e5b: A development diagnostic fails the test it happened in. Diagnostics are printed, not thrown, and a test runner hides a passing test's console, so a test could cause RMD020 on every run and say nothing — found by an agent whose tests passed over three of them, one a real bug. After each test, once its tree is unmounted, a Ramonda diagnostic at `warn` or `error` fails it, naming the code. `allowDiagnostics("RMD003")` lets one test show one on purpose; `@ramonda/testing-library/dont-fail-on-diagnostics` or `RAMONDA_TL_ALLOW_DIAGNOSTICS` turns it off for a run. Each test starts with every diagnostic able to be reported again: a package that says each one once per process adds its reset to `globalThis.__RAMONDA_DIAGNOSTICS_RESET__` in development — core and `@ramonda/query` do — and the harness calls them all, depending on no package but core.
+  
+  Hydration no longer reports RMD007 for an empty string child. The server has nothing to serialise for `""`, so finding no text node there is the match: `<span>{error ?? ""}</span>` was reported on correct markup.
+  
+  A diagnostic that is also thrown — a write to a field node, a `@memoized` argument it cannot key on — is marked `thrown` on its record, and does not fail the test: the test already met the throw, and one expecting it with `toThrow` is right. A test that installs a collector of its own and clears it no longer switches the check off for the rest of its file.
+- 236c826: A list row no longer takes another listener's place on a signal
+  
+  A `State` keeps its listeners in a map keyed by id. Every listener drew its id from `createId()`
+  except a list row, which counted from 1 on a sequence of its own — so a row could draw the number a
+  `@compute`, an effect or a component runtime already held, and replace it. Whichever attached second
+  won. A compute that lost served its first value for ever: `list(rows, (r) => <i>{this.price}</i>)`
+  with `@compute price` showed the old price in every row after its source changed. A row that lost
+  kept its old text while every row around it changed. Which number collided depended on how many ids
+  and rows the page had made, so in an app it came and went.
+  
+  Rows now draw from `createId()` like everything else. `RowListenerIds.test.tsx` forces the collision
+  by rendering more rows than ids handed out; with the old sequence back, the compute test fails on all
+  101 rows and the effect test on exactly one.
+  
+  `ScopeCleanup.test.tsx` had counted 4 listeners on a provider's signal where there are 5: row "b"
+  had drawn the provider owner's number and replaced it. Its counts are corrected, and with an engine
+  that is never disposed it still fails.
+- 21ee695: The advice for a value built per item no longer goes in a circle. RMD020 said a `@compute` cannot help per item and sent the reader to `@memoized`; called with the item, `@memoized` was then refused by RMD047, because an object is no cache key. RMD020 now says to call `@memoized` with the item's id and read the item inside, or to build every item's value in one `@compute` keyed by id — and RMD047 and `unkeyable-memoized-argument` name the same `@compute`, so neither is a dead end.
+- d247ca3: `merge`'s bounds are tested, and two comments that disagreed about them no longer do
+  
+  `base/merge.ts` declares two limits — `MAX_DEPTH` 50 and a `BUDGET` of 20 000 — and `Merge.test.tsx`
+  reaches neither. It covers what merge SHARES: equal values, a changed row among unchanged ones,
+  reorders, identity, duplicates, the positional fallback. The limits are the half that fails
+  silently: a bound that stops working costs a stack overflow or a hang, not a wrong value.
+  
+  Two comments in the repository disagreed about which bound makes a cycle safe. `merge.ts` says depth
+  ("a budget alone is not enough, and a test proved it"); `@ramonda/query`'s cycle test said "the node
+  budget is what makes this safe". Measured: a 60-deep pair of equal chains comes back unshared and a
+  40-deep pair comes back shared, so depth is what cuts a self-cycle at 50 frames. The budget cannot
+  be — `walk` returns at `Object.is(previous, next)` before spending anything, so equal leaves cost
+  nothing and 30 000 equal keys are still shared. The query comment is corrected.
+  
+  Also pinned: a null-prototype object IS traversed (the plain-object test names it), a `Date` is not,
+  and a key set that grew, shrank or was renamed comes back as the object handed in — asserted by
+  identity rather than contents, because a rebuilt object with the same contents passes `toEqual` with
+  the guard removed.
+
 ## 0.26.1
 
 ### Patch Changes
