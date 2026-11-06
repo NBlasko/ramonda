@@ -305,17 +305,55 @@ describe("an element's own children on an update", () => {
     expect(Array.from(ul.children, (li) => li.id)).toEqual(["i3", "i1", "i2"]);
   });
 
-  test("a child someone else added stays while another is taken out and put back", async () => {
-    const app = await getDOM<Rows>(<Rows />);
+  test("a child someone else replaced is claimed, not built a second time beside it", async () => {
+    class Copy extends Component {
+      @state renders = 0;
+      render() {
+        return (
+          <div data-renders={this.renders}>
+            <button type="button">Copy</button>
+          </div>
+        );
+      }
+    }
+    const app = await getDOM<Copy>(<Copy />);
     await app.settle();
-    const ul = app.container.querySelector("ul") as HTMLElement;
-    const theirs = document.createElement("li");
-    theirs.id = "theirs";
-    ul.prepend(theirs);
-    (ul.querySelector("#i2") as HTMLElement).remove();
-    app.instance.picked = 3;
+    const button = app.container.querySelector("button") as HTMLButtonElement;
+    button.textContent = "Copied!";
+    app.instance.renders++;
     await app.settle();
-    expect(Array.from(ul.children, (li) => li.id)).toEqual(["theirs", "i1", "i2", "i3"]);
+    expect({ text: button.textContent, nodes: button.childNodes.length }).toEqual({ text: "Copy", nodes: 1 });
+  });
+
+  test("a child a @destroyed takes out while the order stays is put back", async () => {
+    let victim: Element | null = null;
+    class Widget extends Component {
+      @destroyed
+      gone() {
+        victim?.remove();
+      }
+      render() {
+        return <em>w</em>;
+      }
+    }
+    class Holder extends Component {
+      @state shown = true;
+      render() {
+        return (
+          <div>
+            <p id="kept">kept</p>
+            <span id="s">{this.shown ? <Widget /> : null}</span>
+          </div>
+        );
+      }
+    }
+    const app = await getDOM<Holder>(<Holder />);
+    await app.settle();
+    victim = app.container.querySelector("#kept");
+    app.instance.shown = false;
+    await app.settle();
+    const div = app.container.querySelector("div") as HTMLElement;
+    expect(Array.from(div.children, (child) => child.id)).toEqual(["kept", "s"]);
   });
 
   test("a child a @destroyed takes out on the pass that keeps it goes back in", async () => {
@@ -405,6 +443,28 @@ describe("what an element's attribute record does not hold", () => {
     app.instance.step = 1;
     await app.settle();
     expect((app.container.querySelector("input") as HTMLInputElement).getAttribute("value")).toBe("model");
+  });
+
+  test("a volume the reader moved and a video's place stay on a render that does not change them", async () => {
+    class Player extends Component {
+      @state renders = 0;
+      render() {
+        return (
+          <div data-renders={this.renders}>
+            <video volume={0.5} currentTime={0} />
+          </div>
+        );
+      }
+    }
+    const app = await getDOM<Player>(<Player />);
+    await app.settle();
+    const video = app.container.querySelector("video") as HTMLVideoElement;
+    const written = video.volume;
+    video.volume = 0.8;
+    video.currentTime = 12;
+    app.instance.renders++;
+    await app.settle();
+    expect({ written, volume: video.volume, at: video.currentTime }).toEqual({ written: 0.5, volume: 0.8, at: 12 });
   });
 
   test("a checkbox the reader clicked out of mixed is mixed again on the next render", async () => {

@@ -12,6 +12,8 @@ element for any reason: a `<details>` the reader closed opened again, a class a 
 An element now remembers what the diff wrote on it, and the next render is compared with that. A change
 made by the browser or by another script stays until Ramonda itself changes that value — as in React.
 An element no render wrote, one a hydration adopted, is read from the page once, so an attribute only
-the server sent is still taken away. A `ref` is applied on every render, as before. State an element
-keeps only in a property, such as a checkbox's `indeterminate` or a media element's `volume`, is compared
-with the element itself, so the next render restores what a click cleared, as before.
+the server sent is still taken away. A `ref` is applied on every render, as before. A checkbox's
+`indeterminate` is compared with the checkbox, as its `checked` is, so the next render restores what a
+click cleared. Other state an element keeps only in a property, such as a media element's `volume` or
+`currentTime`, is compared with what Ramonda wrote: a volume the reader moved stays, and a playing video
+keeps its place on an unrelated render.

@@ -559,11 +559,6 @@ function getPreviousFromenhancedNode(enhancedNode: EnhancedHTMLNode, name: strin
   // A ref is applied on every pass, whatever was written last: when two elements share one and the
   // second goes away, the first takes it back on that same pass by re-asserting it.
   if (name === "ref") return undefined;
-  // State kept only in a property is compared with the property, not with what was written: the browser
-  // changes it — a click clears a checkbox's `indeterminate` — and the model is what the element shows.
-  if (keptInAProperty(enhancedNode.nodeName, name) && name in enhancedNode) {
-    return (enhancedNode as unknown as Record<string, unknown>)[name];
-  }
   return value;
 }
 
@@ -578,6 +573,9 @@ function getPreviousFromenhancedNode(enhancedNode: EnhancedHTMLNode, name: strin
  * agrees, and writes nothing — while the control keeps showing whatever the user
  * left there. The model silently stops being what is on screen.
  *
+ * A checkbox's `indeterminate` is asked the same way: a click clears it, and with no attribute of its
+ * name the record of what was written is all an attribute diff would see.
+ *
  * Asked IN ADDITION to the attribute comparison, never instead of it: the
  * attribute is what the element serializes, so it has to stay right for a server
  * render and for anything that reads the markup back.
@@ -588,13 +586,14 @@ function getPreviousFromenhancedNode(enhancedNode: EnhancedHTMLNode, name: strin
  * render would be its own bug.
  */
 function formPropertyDiverged(enhancedNode: EnhancedHTMLNode, name: string, next: unknown): boolean {
-  if (name !== "value" && name !== "checked") return false;
+  if (name !== "value" && name !== "checked" && name !== "indeterminate") return false;
   if (!(name in enhancedNode)) return false;
 
   const live = (enhancedNode as unknown as Record<string, unknown>)[name];
   // A boolean attribute is on when it is PRESENT, so any visible value means a
   // ticked box — `checked=""` and the mistaken `checked="false"` (RMD029) both.
-  if (name === "checked") return live !== true;
+  // `indeterminate` the same way: a click clears it, and it has no attribute to fall back on.
+  if (name === "checked" || name === "indeterminate") return live !== true;
   // A number field's `1.50` already shows the model's 1.5 — see `showsTheModel`.
   if (enhancedNode.nodeName === "INPUT") return !showsTheModel(enhancedNode as unknown as HTMLInputElement, next);
   return !attributesEqual(next, live);

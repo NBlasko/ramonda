@@ -285,4 +285,37 @@ describe("a node that takes itself out while it is let go", () => {
     await app.settle();
     expect(app.instance.second.current).toBe(null);
   });
+
+  test("the siblings after one that moved itself to the end are let go too", async () => {
+    class Moving extends Component {
+      @state shown = true;
+      readonly first = createRef<HTMLElement>(this.moved);
+      readonly second = createRef<HTMLElement>();
+      moved(element: HTMLElement | null) {
+        const first = document.getElementById("first");
+        if (element === null && first !== null) first.parentNode?.appendChild(first);
+      }
+      render() {
+        return (
+          <div>
+            {this.shown ? (
+              <section>
+                <p id="first" ref={this.first}>
+                  1
+                </p>
+                <p id="second" ref={this.second}>
+                  2
+                </p>
+              </section>
+            ) : null}
+          </div>
+        );
+      }
+    }
+    const app = await getDOM<Moving>(<Moving />);
+    await app.settle();
+    app.instance.shown = false;
+    await app.settle();
+    expect(app.instance.second.current).toBe(null);
+  });
 });
