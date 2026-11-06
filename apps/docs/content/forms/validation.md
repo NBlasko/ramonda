@@ -162,7 +162,7 @@ so narrowing would trade a correct message for microseconds.
 A field's `errors` are the messages, one sentence each in the validator's language. Its `issues`
 are the same failures with everything the schema put on them — the `message`, and anything beside
 it: a validator's key for the failure, what it expected. A translation maps the key, and the app
-renders its own sentence:
+renders its own sentence — from the dictionary [Translations](/translations) builds:
 
 ```tsx
 import type { FieldIssue } from "@ramonda/form";
