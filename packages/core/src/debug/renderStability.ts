@@ -7,6 +7,7 @@ import type { BaseComponent } from "../types/vdom";
 import { announceCachedRenderOnce, hasCachedRender } from "./cachedRender";
 import { ramondaLog } from "./logger";
 import { diagnose } from "./diagnostics";
+import { type Source, sourceOf, written } from "./source";
 
 /**
  * DEV-only: renders twice and reports anything that came out different.
@@ -189,6 +190,8 @@ const FIX: Record<Kind, string> = {
 interface Walk {
   owner: string;
   budget: number;
+  /** Where the nearest element being compared was written, when the compiler said — `debug/source.ts`. */
+  at?: Source;
 }
 
 /**
@@ -351,6 +354,9 @@ function compareNode(a: unknown, b: unknown, path: string, depth: number, walk: 
       // nothing, so none was kept. See `helpers/utils.ts`.
       typeof aNode.name === "string" ? aNode.name.toLowerCase() : (aNode.name as { name?: string })?.name || "?";
     const here = path ? `${path} > ${tag}` : tag;
+    // The innermost tag that says where it was written is the line the reader goes to.
+    const outer = walk.at;
+    walk.at = sourceOf(aNode) ?? outer;
 
     if (aNode.attributes && bNode.attributes) {
       /**
@@ -377,12 +383,13 @@ function compareNode(a: unknown, b: unknown, path: string, depth: number, walk: 
     if (Array.isArray(aChildren) && Array.isArray(bChildren)) {
       compareNode(aChildren, bChildren, here, depth + 1, walk);
     }
+    walk.at = outer;
     return;
   }
 
   // Two leaves — a text child, most often.
   const kind = classify(a, b);
-  if (kind) report(kind, walk.owner, path || "the render output", a, b);
+  if (kind) report(kind, walk, path || "the render output", a, b);
 }
 
 /**
@@ -452,7 +459,7 @@ function compareValue(a: unknown, b: unknown, path: string, depth: number, walk:
     if (isPlainObject(a) && isPlainObject(b)) {
       const aKeys = Object.keys(a);
       if (aKeys.length !== Object.keys(b).length || aKeys.some((k) => !Object.hasOwn(b, k))) {
-        report("nondeterministic", walk.owner, path, a, b);
+        report("nondeterministic", walk, path, a, b);
         return;
       }
       // `skipFunctions` is not passed on: it exempts a `list()`'s inline BUILDER, one level up.
@@ -463,7 +470,7 @@ function compareValue(a: unknown, b: unknown, path: string, depth: number, walk:
 
     if (Array.isArray(a) && Array.isArray(b)) {
       if (a.length !== b.length) {
-        report("nondeterministic", walk.owner, path, a, b);
+        report("nondeterministic", walk, path, a, b);
         return;
       }
       for (let i = 0; i < a.length; i++) {
@@ -477,12 +484,16 @@ function compareValue(a: unknown, b: unknown, path: string, depth: number, walk:
   }
 
   const kind = classify(a, b);
-  if (kind) report(kind, walk.owner, path, a, b);
+  if (kind) report(kind, walk, path, a, b);
 }
 
-function report(kind: Kind, owner: string, path: string, a: unknown, b: unknown): void {
-  diagnose("RMD020", `${owner}:${path}:${kind}`, `${DETAIL[kind](owner, path)}\n\n${FIX[kind]}`, {
+function report(kind: Kind, walk: Walk, path: string, a: unknown, b: unknown): void {
+  const owner = walk.owner;
+  const at = walk.at;
+  const where = at === undefined ? "" : `\nWritten at ${written(at)}.`;
+  diagnose("RMD020", `${owner}:${path}:${kind}`, `${DETAIL[kind](owner, path)}${where}\n\n${FIX[kind]}`, {
     first: a,
     second: b,
+    ...(at === undefined ? {} : { file: at.fileName, line: at.lineNumber, column: at.columnNumber }),
   });
 }

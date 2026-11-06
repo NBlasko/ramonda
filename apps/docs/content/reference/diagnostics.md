@@ -428,6 +428,12 @@ this.props.children }` and `render() { return A_CONSTANT }` also hand back one o
 anything. A `@compute` body returned from `render` has the same cost and is **not** noted, for the same
 reason — nothing distinguishes it from those two.
 
+**It says where the element was written.** The report names a path through the output —
+`section > button.onclick` — and, in development, the file, line and column of the tag the value is
+on: `Written at /app/src/Toolbar.tsx:41:9.` The compiler hands that to the development runtime with
+every tag; the record carries it as `file`, `line` and `column`. A tree built by hand with `__h` has
+no such place, and its report gives the path alone.
+
 **Where it reaches, and the one place it cannot.** Every row of a `.map()`, a `filter` or an array
 literal is compared — those rows are built by the render, so both renders have them, and each row is
 checked in full rather than sharing one budget with its neighbours. A `list()` row is
