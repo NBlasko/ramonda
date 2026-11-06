@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { existsSync, readFileSync, statSync, writeSync } from "node:fs";
-import { join, relative, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { checkProject } from "./check";
 import { withoutItsApi } from "./typescriptApi";
@@ -48,9 +49,51 @@ const USAGE = `ramonda-css — the tools for a project whose source TypeScript c
                                    (--check reports a stale css-system instead of writing)
   ramonda-css explain <property>   what your config does to one property, and which line decided it
 
+  --json   with the check, \`lint\` or \`format --check\`: the findings as one JSON object on stdout,
+           for a program to read — the shape \`ramonda-check --json\` prints
+
 The check takes a PROJECT — a tsconfig, or the directory holding one — because a program is what
 is type-checked. \`format\` and \`lint\` take paths, because a file is what they rewrite and read.`;
 const argv = process.argv.slice(2);
+
+/**
+ * `--json`: what the check, `lint` or `format --check` found, as one object on stdout — the shape
+ * `ramonda-check --json` prints, so a program reading one reads all three. A run that cannot start
+ * still answers in words; only a finished run is an object.
+ */
+const json = argv.includes("--json");
+
+/** This package's version, from its own `package.json` — found by walking up, so source and build agree. */
+function version(): string {
+  for (let at = dirname(fileURLToPath(import.meta.url)); dirname(at) !== at; at = dirname(at)) {
+    const file = join(at, "package.json");
+    if (!existsSync(file)) continue;
+    const pkg = JSON.parse(readFileSync(file, "utf8")) as { name?: string; version: string };
+    if (pkg.name === "@ramonda/css") return pkg.version;
+  }
+  return "unknown";
+}
+
+interface JsonFinding {
+  code: string;
+  severity: "error";
+  file: string;
+  line?: number;
+  column?: number;
+  message: string;
+}
+
+/** The object, and the exit code the text run would give. */
+function answer(findings: JsonFinding[], more: Record<string, unknown>): never {
+  const ok = findings.length === 0;
+  process.stdout.write(
+    `${JSON.stringify({ tool: "ramonda-css", version: version(), ok, findings, notes: [], ...more })}\n`,
+  );
+  process.exit(ok ? 0 : 1);
+}
+
+/** A number is TypeScript's; a name is one of our own CSS rules — the text run says it the same way. */
+const codeOf = (code: number | string): string => (typeof code === "number" ? `TS${code}` : code);
 
 /** Relative to where the command was run, which is how a person reads their own tree. */
 const where = (file: string) => relative(process.cwd(), file) || file;
@@ -145,6 +188,25 @@ if (!tsconfig.endsWith(".json")) {
 
 const report = said(() => checkProject(tsconfig));
 
+if (json) {
+  answer(
+    report.findings.map((finding) => ({
+      // A block that could not be read is code 0, and the text run calls it a refusal.
+      code: report.refusals.includes(finding) ? "unreadable-block" : codeOf(finding.code),
+      severity: "error",
+      file: finding.file,
+      line: finding.line,
+      column: finding.column,
+      message: report.refusals.includes(finding) ? finding.message.replace(/^.*?:\d+:\d+\s+/, "") : finding.message,
+    })),
+    {
+      files: report.files,
+      styled: report.styled,
+      ignored: report.exempted.map((one) => ({ file: one.file, line: one.line, reason: one.reason })),
+    },
+  );
+}
+
 /**
  * Every exemption, on every run, whether or not anything failed.
  *
@@ -237,6 +299,12 @@ function runTool(which: "format" | "lint", args: readonly string[]): never {
   const paths = args.filter((argument) => !argument.startsWith("-"));
   const cwd = process.cwd();
 
+  // Before anything is written: a formatting run REWRITES files, and has nothing to report.
+  if (json && which === "format" && !check) {
+    console.error(`\n${TAG} \`--json\` reports; \`format\` writes. Use \`format --check --json\`.\n`);
+    process.exit(1);
+  }
+
   /**
    * The ARGUMENTS first, because a path that is not there is answerable without any tool — and
    * `filesUnder` reaches it through `statSync`, which throws `ENOENT`. Measured, the output was a
@@ -318,6 +386,17 @@ function runTool(which: "format" | "lint", args: readonly string[]): never {
       process.exit(1);
     }
 
+    if (json) {
+      answer(
+        changed.map((file) => ({
+          code: "not-formatted",
+          severity: "error",
+          file: resolve(file),
+          message: `${where(file)} is not formatted. Run \`ramonda-css format\` to write it.`,
+        })),
+        { files: files.length },
+      );
+    }
     if (changed.length === 0) {
       // The two modes did different things and must not claim the same one: `--check` wrote to
       // nothing by design, and a write run with nothing to change wrote to nothing in fact.
@@ -349,6 +428,20 @@ function runTool(which: "format" | "lint", args: readonly string[]): never {
     if (!(error instanceof ToolFailed)) throw error;
     console.error(`\n${TAG} \`${name}\` refused:\n\n${error.message}\n`);
     process.exit(1);
+  }
+
+  if (json) {
+    answer(
+      found.map((finding) => ({
+        code: finding.code,
+        severity: "error",
+        file: resolve(finding.file),
+        line: finding.line,
+        column: finding.column,
+        message: finding.message,
+      })),
+      { files: files.length },
+    );
   }
 
   if (found.length === 0) {

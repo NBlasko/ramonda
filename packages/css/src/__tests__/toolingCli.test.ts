@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import {
   mkdirSync,
   mkdtempSync,
@@ -8,6 +8,7 @@ import {
   symlinkSync,
   unlinkSync,
   writeFileSync,
+  realpathSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -705,5 +706,53 @@ describe("a block beside another attribute", () => {
     const out = readFileSync(join(root, "src", "Card.tsx"), "utf8");
 
     expect(lineWith(out, "id=")).toContain("className=");
+  });
+});
+
+/**
+ * `--json`, in the shape `ramonda-check --json` prints — for an agent that would otherwise parse the
+ * prose. Read off stdout alone: the object is the whole of it.
+ */
+describe("--json", () => {
+  const json = (root: string, args: string[]) => {
+    const result = spawnSync(process.execPath, [BIN, ...args, "--json"], { cwd: root, encoding: "utf8" });
+    return { status: result.status, stdout: result.stdout, stderr: result.stderr };
+  };
+
+  test("lint: a fault is a finding at the author's own line, and exit 1", () => {
+    const root = project({ "Card.tsx": `export function f() {\n  debugger;\n}\n${STYLED}` });
+    const { status, stdout } = json(root, ["lint", "src/Card.tsx"]);
+    expect(status).toBe(1);
+    const report = JSON.parse(stdout);
+    expect(report).toMatchObject({ tool: "ramonda-css", ok: false, files: 1 });
+    expect(report.findings).toHaveLength(1);
+    expect(report.findings[0]).toMatchObject({
+      severity: "error",
+      file: join(realpathSync(root), "src", "Card.tsx"),
+      line: 2,
+    });
+    expect(report.findings[0].code).toContain("debugger");
+  });
+
+  test("format --check: a file that is not formatted is a finding; a formatted one is ok", () => {
+    const root = project({ "Card.tsx": `const   a =    1;\n${STYLED}` });
+    const before = json(root, ["format", "--check", "src/Card.tsx"]);
+    expect(before.status).toBe(1);
+    expect(JSON.parse(before.stdout).findings).toMatchObject([{ code: "not-formatted" }]);
+
+    run(root, ["format", "src/Card.tsx"]);
+    const after = json(root, ["format", "--check", "src/Card.tsx"]);
+    expect(after.status).toBe(0);
+    expect(JSON.parse(after.stdout)).toMatchObject({ ok: true, findings: [] });
+  });
+
+  test("format without --check writes, so --json refuses it before anything is written", () => {
+    const source = `const   a =    1;\n${STYLED}`;
+    const root = project({ "Card.tsx": source });
+    const { status, stdout, stderr } = json(root, ["format", "src/Card.tsx"]);
+    expect(status).toBe(1);
+    expect(stdout).toBe("");
+    expect(stderr).toContain("format --check --json");
+    expect(readFileSync(join(root, "src", "Card.tsx"), "utf8")).toBe(source);
   });
 });

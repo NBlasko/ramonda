@@ -142,6 +142,7 @@ Parses every JavaScript file a build emitted (.js, .mjs, .cjs, in every folder g
 one does not parse — most often decorators a bundler left untransformed, which no browser can load.
 
 Options:
+  --json         print the result as one JSON object on stdout, for a program to read
   -h, --help     print this and exit
   -v, --version  print the version and exit
 
@@ -164,13 +165,18 @@ async function main() {
     console.log(own.version);
     return;
   }
+  /**
+   * `--json`: the result as one object on stdout, in the shape `ramonda-check --json` prints — see
+   * `src/jsonReport.ts` there. A run that cannot start still answers in words, with exit code 2.
+   */
+  const json = args.includes("--json");
   // An option is not a path: `--help` was read as one once, could not be read, and the run went on.
-  const option = args.find((arg) => arg.startsWith("-"));
+  const option = args.find((arg) => arg.startsWith("-") && arg !== "--json");
   if (option !== undefined) {
     console.error(`[check-bundle] unknown option ${option}. See --help.`);
     process.exit(2);
   }
-  const targets = args;
+  const targets = args.filter((arg) => arg !== "--json");
   if (targets.length === 0) {
     console.error("usage: ramonda-check-bundle <dir-or-file> [...]  (--help for more)");
     process.exit(2);
@@ -203,6 +209,18 @@ async function main() {
       }
     }),
   );
+
+  if (json) {
+    const own = JSON.parse(await readFile(new URL("./package.json", import.meta.url), "utf8"));
+    const findings = failures
+      .sort((a, b) => a.file.localeCompare(b.file))
+      .map(({ file, message }) => ({ code: "unparseable-bundle", severity: "error", file: resolve(file), message }));
+    const ok = findings.length === 0;
+    process.stdout.write(
+      `${JSON.stringify({ tool: "ramonda-check-bundle", version: own.version, ok, findings, notes: [], files: files.length })}\n`,
+    );
+    process.exit(ok ? 0 : 1);
+  }
 
   if (failures.length > 0) {
     console.error(`[check-bundle] ${failures.length} of ${files.length} emitted file(s) do not parse:\n`);

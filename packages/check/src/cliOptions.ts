@@ -10,6 +10,7 @@ export const OPTIONS: readonly (readonly [flag: string, takes: string, what: str
   ["--fix", "", "write the fixes that have exactly one answer; everything else is still reported"],
   ["--dry-run", "", "with --fix: say what it would write, and write nothing"],
   ["--certify", "", "print what this package can and cannot claim about the graph it ships"],
+  ["--json", "", "print the findings as one JSON object on stdout, for a program to read"],
   ["--help", "", "print this and exit (also -h)"],
   ["--version", "", "print the version and exit (also -v)"],
 ];

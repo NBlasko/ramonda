@@ -111,6 +111,7 @@ is the only one that sees a tree assembled at runtime.
 | `--fix` | Writes the fixes that have exactly one answer. Everything that needs a person is still reported. |
 | `--dry-run` | With `--fix`: says what it would write, and writes nothing. |
 | `--certify` | Prints what a package can and cannot claim about the graph it ships. |
+| `--json` | Prints the findings as one JSON object on stdout, for a program to read. [Reading the result from a program](#reading-the-result-from-a-program) |
 | `--help`, `-h` | Prints the options and exits. |
 | `--version`, `-v` | Prints the version and exits. |
 
@@ -126,7 +127,52 @@ read — TypeScript 7 among them, which has no API to read it with.
 `ramonda-check-bundle <dir-or-file> [...]` parses every `.js`, `.mjs` and `.cjs` file under the paths
 given, and exits with **1** if one does not parse — see [the bundle that did not
 parse](#the-bundle-that-did-not-parse). It exits with **2** when there is nothing to check: no path,
-one that cannot be read, or no JavaScript in it. It takes `--help` and `--version` too.
+one that cannot be read, or no JavaScript in it. It takes `--help`, `--version` and `--json` too.
+
+### Reading the result from a program
+
+`--json` prints the run as one object on stdout and nothing else there, with the same exit code. It is
+for a program — a coding agent above all — that would otherwise read the prose:
+
+```json
+{
+  "tool": "ramonda-check",
+  "version": "0.16.0",
+  "ok": false,
+  "findings": [
+    {
+      "code": "unknown-hook-option",
+      "severity": "error",
+      "file": "/app/src/Players.tsx",
+      "line": 5,
+      "column": 46,
+      "message": "<Players> gives Head `robots`, and Head has no such option. It takes `description`, `dir`, `lang`, `link`, `meta`, `title`.",
+      "data": {
+        "component": "Players",
+        "hook": "Head",
+        "option": "robots",
+        "takes": ["description", "dir", "lang", "link", "meta", "title"],
+        "file": "/app/src/Players.tsx",
+        "line": 5,
+        "column": 46
+      }
+    }
+  ],
+  "notes": []
+}
+```
+
+- `code` is the rule's id, or for a fault the graph answers, the name of that check:
+  `missing-provider`, `unresolved-component`, `unreachable-declaration`, `unreachable-route-table`,
+  `params-off-route`, `keys-off-route`, `second-provider`, `render-cycle`, `class-as-child`.
+- `message` is what the text run prints for the finding; `data` is everything the finding records.
+- `ok` is `false` exactly when the run exits 1. `ignored` lists every `ramonda-check-ignore` with its
+  reason, and `counts` what the run read.
+
+`ramonda-check-bundle --json` prints the same shape, one `unparseable-bundle` finding per file that does
+not parse, and so does [`ramonda-css --json`](/style-blocks/tooling#reading-the-result-from-a-program).
+`--json` reports a plain run: with `--fix`, `--split`, `--diff` or `--certify` it is refused, since
+those have no JSON form. A command line that cannot be read still answers in words, with exit code 2.
 
 ## Everything it reports
 
