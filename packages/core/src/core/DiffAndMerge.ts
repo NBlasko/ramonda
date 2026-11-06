@@ -639,12 +639,14 @@ function executeChangesOnStringNode(
     reorderPlaced(enhancedNode, orderedNodes, previousOrder, cloneChildren);
     // Kept while the children are plain; a region keeps its own record, and this one would only hold the
     // nodes of before it. The pass that leaves the region writes it again from what it placed.
-    (enhancedNode as Placed)[PLACED] =
+    const placed =
       (enhancedNode as EnhancedChildNode)[CHILD_RECORD] !== undefined
         ? undefined
         : orderedNodes.length === 1
           ? orderedNodes[0]
           : orderedNodes;
+    // A lone child placed again is the same record, and a write on a node costs more than a read.
+    if ((enhancedNode as Placed)[PLACED] !== placed) (enhancedNode as Placed)[PLACED] = placed;
   }
 
   return enhancedNode;
@@ -922,7 +924,8 @@ function claimOrMount(
   // Built, not inserted: `reorderChildren` places it, after the nodes this
   // render drops have been unmounted. See buildDetachedNode.
   const mounted = buildDetachedNode(vchild, placeholderComponent, parent);
-  if (mounted) stampBuilt(mounted, vchild, slot);
+  // `stampBuilt`'s rule, with the key already read.
+  if (mounted && !keyed) (mounted as EnhancedChildNode)[SLOT_SYM] = slot;
   cloneChildren.push(DONE);
   return mounted;
 }
@@ -2077,10 +2080,11 @@ export function unmountNodeInPlace(node: EnhancedChildNode): void {
  * removing rows. Measured in Chromium on 1000 js-framework-benchmark rows, 7.3 ms against 2.3; on its
  * clear, a third of the time.
  *
- * The next node is read AFTER this one is released, because releasing can take nodes out from under
- * the walk: a block's anchor, told its host is going (`hostRemoved`), removes the block's nodes after
- * it — the anchor itself stays — and the next node is then the one past them. Read before, it would be a
- * node already gone, and the walk would stop there: a second block in the same element never told.
+ * The next node is the one this one had, while releasing it moved nothing. Releasing can move nodes: a
+ * block's anchor, told its host is going (`hostRemoved`), removes the block's nodes after it; a ref's
+ * callback tearing down the widget it held takes the widget's host out, or moves it. Then the walk starts
+ * over from the first child — letting a node go a second time does nothing — so nothing after it is
+ * missed, whatever moved where: a second block in the same element is still told.
  */
 function releaseWithin(parent: Node): void {
   let child = parent.firstChild as EnhancedChildNode | null;
@@ -2090,19 +2094,11 @@ function releaseWithin(parent: Node): void {
     releaseRef(child);
     releaseChildRecord(child);
     releaseField(child);
-    // The sibling it had, while that is still here: a node that took itself out or moved itself — a ref's
-    // callback tearing down the widget it held — leaves the walk where it was. Gone with a block's nodes,
-    // the next one is past them. Both gone, the walk starts over — letting a node go twice does nothing —
-    // and a last node gone leaves nothing after it.
-    child = (
-      next !== null && next.parentNode === parent
-        ? next
-        : child.parentNode === parent
-          ? child.nextSibling
-          : next !== null
-            ? parent.firstChild
-            : null
-    ) as EnhancedChildNode | null;
+    const stayed = child.parentNode === parent;
+    if (stayed && child.nextSibling === next) child = next as EnhancedChildNode | null;
+    // A last node that took itself out leaves nothing after it.
+    else if (!stayed && next === null) child = null;
+    else child = parent.firstChild as EnhancedChildNode | null;
   }
 }
 

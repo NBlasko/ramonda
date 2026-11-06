@@ -286,6 +286,39 @@ describe("a node that takes itself out while it is let go", () => {
     expect(app.instance.second.current).toBe(null);
   });
 
+  test("the siblings a node moved its neighbour past are let go too", async () => {
+    class Parking extends Component {
+      @state shown = true;
+      readonly widget = createRef<HTMLElement>(this.parked);
+      readonly x = createRef<HTMLElement>();
+      readonly y = createRef<HTMLElement>();
+      parked(element: HTMLElement | null) {
+        // A widget's teardown parking its overlay at the end of the same parent.
+        const overlay = document.getElementById("overlay");
+        if (element === null && overlay !== null) overlay.parentNode?.appendChild(overlay);
+      }
+      render() {
+        return (
+          <div>
+            {this.shown ? (
+              <section>
+                <p ref={this.widget}>widget</p>
+                <p id="overlay">overlay</p>
+                <p ref={this.x}>x</p>
+                <p ref={this.y}>y</p>
+              </section>
+            ) : null}
+          </div>
+        );
+      }
+    }
+    const app = await getDOM<Parking>(<Parking />);
+    await app.settle();
+    app.instance.shown = false;
+    await app.settle();
+    expect({ x: app.instance.x.current, y: app.instance.y.current }).toEqual({ x: null, y: null });
+  });
+
   test("a last node that takes itself out ends the walk", async () => {
     class Last extends Component {
       @state shown = true;
