@@ -12,6 +12,10 @@ in `if (__DEV__)`, so a production build ships none of them. Nearly every *check
 its message; the exception is named where it applies (`RML009`), because a guard that ran only in
 development would protect the one build that was never exposed to a request.
 
+**Every code has a page of its own**, at `/reference/diagnostics/` and the code in lower case — and
+`npx ramonda-check explain RMD020` prints the same page for the version you have installed, with no
+network.
+
 **Arrived with a symptom rather than a code?** [Something is wrong](/symptoms) lists what you can
 see and sends each one here.
 

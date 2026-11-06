@@ -48,6 +48,8 @@ export function agentsFile(mode: Mode, addons: readonly AddOn[]): string {
     "",
     `    ${DOCS}/reference/diagnostics/rmd020`,
     "",
+    "`npx ramonda-check explain RMD020` prints the same page for the version this project installs, with no network, and `npx ramonda-check docs <page>` any page of the docs (`npx ramonda-check docs` lists them). Prefer these to the site, which describes the latest release.",
+    "",
     `- A \`ramonda-check\` finding names a rule. The rules are on ${DOCS}/reference/check.`,
     `- ${has("css") ? "`npx ramonda-check --json`, `npx ramonda-check-bundle <folder> --json` and `npx ramonda-css --json` print" : "`npx ramonda-check --json` and `npx ramonda-check-bundle <folder> --json` print"} the findings as one JSON object, with the rule, the file, the line and the message. Read that rather than the prose.`,
   ];

@@ -70,3 +70,6 @@ notes/
 
 # Local agent configuration and skills — machine-local, like notes/.
 .claude/
+
+# The docs as text, packed into @ramonda/check at release — scripts/pack-docs-text.mjs.
+packages/check/docs/

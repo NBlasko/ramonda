@@ -10,6 +10,7 @@ import { certify, packageRootOf, renderCertificate } from "./certify";
 import { type AnyRule, failingRules, RULES } from "./rules";
 import { filesOf, splitOf } from "./split";
 import { OPTIONS } from "./cliOptions";
+import { docs, explain } from "./docsCommand";
 import { type AnyGraphReport, GRAPH_REPORTS } from "./graphReports";
 import { type JsonFinding, locationOf, messageOf, printJson } from "./jsonReport";
 
@@ -56,6 +57,10 @@ const HELP = `Usage: ramonda-check [tsconfig.json] [options]
 Proves what a running page cannot, from the source: a context consumer with no provider above it,
 and every rule on https://ramonda.dev/rules. The project is the tsconfig given, or ./tsconfig.json.
 
+Commands, from the docs for this version, with no network:
+  ramonda-check explain <code|rule>   what a diagnostic (RMD020) or a rule (unknown-hook-option) means
+  ramonda-check docs [page]           a page of the docs (forms/fields), or with none, every page
+
 Options:
 ${OPTIONS.map(([flag, takes, what]) => `  ${`${flag} ${takes}`.padEnd(22)} ${what}`).join("\n")}
 
@@ -76,6 +81,9 @@ if (argv.includes("--version") || argv.includes("-v")) {
   console.log(own.version);
   process.exit(0);
 }
+// The two commands that read the docs this version was released with — see `docsCommand.ts`.
+if (argv[0] === "explain") explain(TAG, argv[1]);
+if (argv[0] === "docs") docs(TAG, argv[1]);
 {
   const flags = OPTIONS.map(([flag]) => flag);
   const takesValue = new Set(OPTIONS.filter(([, takes]) => takes !== "").map(([flag]) => flag));

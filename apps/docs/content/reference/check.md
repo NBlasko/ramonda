@@ -124,6 +124,17 @@ It exits with **0** when there is nothing to report — `--split` and `--diff` d
 a run — **1** when a rule found something, and **2** when the command line or the project cannot be
 read — TypeScript 7 among them, which has no API to read it with.
 
+### The docs for this version, offline
+
+`ramonda-check explain <code|rule>` prints the page for a diagnostic code — `RMD020`, in any case — or
+for one of the rules here, `unknown-hook-option`. `ramonda-check docs <page>` prints any page by its
+path — `forms/fields`, or its address on this site — and with no page, the list of every one.
+
+They read the docs as text that `@ramonda/check` carries, packed when this version was released, so
+they answer for the version installed, with no network: this site describes only the latest release.
+A slip is answered with the closest code, rule or page. An install without the docs — a build from
+the repository — says so, names the page on this site, and exits with 2.
+
 `ramonda-check-bundle <dir-or-file> [...]` parses every `.js`, `.mjs` and `.cjs` file under the paths
 given, and exits with **1** if one does not parse — see [the bundle that did not
 parse](#the-bundle-that-did-not-parse). It exits with **2** when there is nothing to check: no path,
