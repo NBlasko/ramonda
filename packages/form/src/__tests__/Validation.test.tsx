@@ -1,5 +1,5 @@
 import { Component, INSPECT, type RamondaNode } from "@ramonda/core";
-import { render } from "@ramonda/testing-library";
+import { allowDiagnostics, render } from "@ramonda/testing-library";
 import { describe, expect, test, vi } from "vitest";
 import { Form } from "../Form";
 import type { StandardResult, StandardSchemaV1, ValidateOn } from "../types";
@@ -285,6 +285,7 @@ describe("validation", () => {
   });
 
   test("a rejected validation during a submit releases the button instead of wedging it", async () => {
+    allowDiagnostics("RMF004"); // the test exists to show a rejected validation
     const onSubmit = vi.fn();
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
     // The priming call resolves; the submit's own call rejects.
@@ -312,6 +313,7 @@ describe("validation", () => {
   });
 
   test("a rejected revalidation keeps the messages it already had", async () => {
+    allowDiagnostics("RMF004"); // the test exists to show a rejected validation
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
     let failing = false;
     const schema: StandardSchemaV1<Values, Values> = {
@@ -540,20 +542,20 @@ describe("validation", () => {
       }
     }
 
+    // Methods, not arrows in the markup: an arrow is a new function every render, which RMD020
+    // reports — and did, once an earlier test in this file stopped hiding the reports of later ones.
     class Pair extends Component {
+      takeLeft(form: Form<typeof schema>): void {
+        left = form;
+      }
+      takeRight(form: Form<typeof schema>): void {
+        right = form;
+      }
       render(): RamondaNode {
         return (
           <div>
-            <OneForm
-              take={(form) => {
-                left = form;
-              }}
-            />
-            <OneForm
-              take={(form) => {
-                right = form;
-              }}
-            />
+            <OneForm take={this.takeLeft} />
+            <OneForm take={this.takeRight} />
           </div>
         );
       }

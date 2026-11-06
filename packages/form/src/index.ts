@@ -7,6 +7,7 @@ export type {
   ArrayNode,
   Collision,
   FieldApi,
+  FieldIssue,
   FieldNode,
   FormDay,
   FormNumber,

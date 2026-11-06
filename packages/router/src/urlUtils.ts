@@ -1,31 +1,157 @@
-import type { HashTag, RouterState } from "./types";
+import type { RouterState } from "./types";
 
 // Pure, framework-agnostic URL <-> state functions. Depend only on the standard
 // `URL` / `URLSearchParams` / `window.location` browser APIs.
+
+/**
+ * The owners, in a container with no prototype. An owner's name comes from the URL, and in a plain
+ * object `__proto__` is not a key — writing it replaces the prototype — while `constructor` reads as
+ * the `Object` function. Internal: an app is never handed this container, only records from it.
+ */
+function owners(): Record<string, Record<string, string>> {
+  return Object.create(null) as Record<string, Record<string, string>>;
+}
+
+/**
+ * Writes `key` as an OWN property, which a plain object can hold whatever the name: `__proto__`
+ * becomes a key, not a new prototype. What an app is handed — `searchParams`, `hashParams` — stays an
+ * ordinary object, so `hasOwnProperty` works on it; the first fix gave those no prototype at all, and
+ * a second review found that broke app code no changeset warned about.
+ */
+function put(out: Record<string, string>, key: string, value: string): void {
+  // Only the one name that needs it: `defineProperty` is the slow path, and this runs for every key of
+  // every URL parse and every reader's line. Every other name is an ordinary assignment.
+  if (key === "__proto__")
+    Object.defineProperty(out, key, { value, enumerable: true, writable: true, configurable: true });
+  else out[key] = value;
+}
+
+/** `Object.assign`, but through `put` — assignment would run the `__proto__` setter. */
+function copyInto(out: Record<string, string>, from: Record<string, string> | undefined): Record<string, string> {
+  if (from !== undefined) for (const key of Object.keys(from)) put(out, key, from[key]!);
+  return out;
+}
 
 function parseQueryParams(search: string): Record<string, string> {
   const out: Record<string, string> = {};
   const sp = new URLSearchParams(search);
   sp.forEach((value, key) => {
-    out[key] = value;
+    put(out, key, value);
   });
   return out;
 }
 
-function parseHash(hash: string): HashTag[] {
-  const tags: HashTag[] = [];
-  if (!hash) return tags;
+/**
+ * The hash, one `#` segment per owner, each read exactly as the query is:
+ * `#nav=video#nav:tab=comments&sort=new` → `{ "": { nav: "video" }, nav: { tab: "comments", sort: "new" } }`.
+ *
+ * The FIRST segment is always the top, `""`, and only a later one names its owner before a `:`. A link
+ * from elsewhere to `#section:intro` is therefore a section's name and not an owner. Every key and
+ * value is percent-encoded when written, so a `:` or a `#` the router writes is always structure.
+ *
+ * The keys of one segment are joined with `&`, never one pair per segment: `#access_token=…&state=…`,
+ * the shape an OAuth redirect hands back, is one segment with two keys.
+ */
+function parseHash(hash: string): Record<string, Record<string, string>> {
+  const body = hash.startsWith("#") ? hash.slice(1) : hash;
+  const scopes = owners();
+  if (body === "") return scopes;
+  const [top = "", ...rest] = body.split("#");
+  scopes[""] = parseQueryParams(top);
+  for (const segment of rest) {
+    const colon = segment.indexOf(":");
+    const owner = colon === -1 ? "" : canonicalOwner(segment.slice(0, colon));
+    const pairs = parseQueryParams(colon === -1 ? segment : segment.slice(colon + 1));
+    scopes[owner] = copyInto(copyInto({}, scopes[owner]), pairs);
+  }
+  return scopes;
+}
 
-  // "#a=1#b=2" → ["a=1", "b=2"]
-  const parts = hash.split("#").filter(Boolean);
-  parts.forEach((part, index) => {
-    // URLSearchParams is used deliberately: it decodes `+`→space and `%xx` correctly.
-    const params = new URLSearchParams(part);
-    const first = params.entries().next().value;
-    if (first) tags.push({ key: first[0], value: first[1], level: index });
-    else tags.push({ key: part, value: "", level: index });
-  });
-  return tags;
+/**
+ * A key as it appears in an owner path. Percent-encoded as everywhere in the hash, and `.` as well,
+ * which `encodeURIComponent` leaves alone and the path uses between keys.
+ */
+function ownerKey(key: string): string {
+  return encodeURIComponent(key).replace(/\./g, "%2E");
+}
+
+/**
+ * An owner path as a link spells it, in the one form `ownedBy` writes. A hand-written link can leave a
+ * character unencoded — `a,b` where the router writes `a%2Cb` — and named an owner no `<HashLevel>`
+ * matched: the child read nothing, and changing the parent's key left it behind. Found by the final
+ * review. A part that cannot be decoded is kept as written.
+ */
+function canonicalOwner(path: string): string {
+  return path
+    .split(".")
+    .map((part) => {
+      try {
+        return ownerKey(decodeURIComponent(part));
+      } catch {
+        return part;
+      }
+    })
+    .join(".");
+}
+
+/** The owner of what is written under `key` by a writer whose own owner is `owner`. */
+export function ownedBy(owner: string, key: string): string {
+  return owner === "" ? ownerKey(key) : `${owner}.${ownerKey(key)}`;
+}
+
+/**
+ * What a writer under `owner` reads: the top, every owner on the way down to its own, and its own — the
+ * same line it writes. The nearer owner wins a key both use.
+ *
+ * Its line and nothing else. One record of every owner's keys let a child's key shadow its parent's —
+ * a page writing its own `nav` made the parent read it, and unmount the page — and let two siblings
+ * that use one name read whichever wrote last. Found by a review of this branch.
+ */
+export function hashParamsFor(scopes: Record<string, Record<string, string>>, owner: string): Record<string, string> {
+  const out = copyInto({}, scopes[""]);
+  if (owner === "") return out;
+  let line = "";
+  for (const key of owner.split(".")) {
+    line = line === "" ? key : `${line}.${key}`;
+    copyInto(out, scopes[line]);
+  }
+  return out;
+}
+
+/** The top first, then each owner after the one that owns it — the order a URL is written in. */
+function orderedOwners(scopes: Record<string, Record<string, string>>): string[] {
+  const depth = (owner: string) => (owner === "" ? 0 : owner.split(".").length);
+  return Object.keys(scopes).sort((a, b) => depth(a) - depth(b));
+}
+
+/**
+ * The owners after one of them writes its keys.
+ *
+ * Every key whose value CHANGED takes with it everything it owns, at every depth: a child's keys belong
+ * to what the key above it showed, and a different value there shows something else. A key that did
+ * not change keeps what it owns — a parent re-asserting `nav` does not wipe the page under it, and a
+ * change to `panel` does not touch what `nav` owns. That last one is why ownership is by KEY and not by
+ * depth: by depth alone, two pages side by side were one level, and either one cleared the other.
+ */
+export function writeHashScope(
+  scopes: Record<string, Record<string, string>>,
+  owner: string,
+  next: Record<string, string>,
+): Record<string, Record<string, string>> {
+  const current = scopes[owner] ?? {};
+  if (samePairs(current, next)) return scopes;
+
+  const changed = new Set([...Object.keys(current), ...Object.keys(next)]);
+  for (const key of changed) if (Object.hasOwn(current, key) && current[key] === next[key]) changed.delete(key);
+  const cleared = [...changed].map((key) => ownedBy(owner, key));
+  const isCleared = (o: string) => cleared.some((c) => o === c || o.startsWith(`${c}.`));
+
+  const out = owners();
+  for (const [o, pairs] of Object.entries(scopes)) if (o !== owner && !isCleared(o)) out[o] = pairs;
+  // A copy, never the caller's object: a record the app kept and edited later changed the router's
+  // state behind every identity check. Found by the final review.
+  out[owner] = copyInto({}, next);
+  return out;
 }
 
 /**
@@ -74,7 +200,7 @@ export function parseUrl(): RouterState {
   return {
     baseUrl: normalizePathname(window.location.pathname),
     queryParams: parseQueryParams(window.location.search),
-    hashTags: parseHash(window.location.hash),
+    hashScopes: parseHash(window.location.hash),
   };
 }
 
@@ -84,7 +210,7 @@ export function parseUrlString(url: string): RouterState {
   return {
     baseUrl: normalizePathname(parsed.pathname),
     queryParams: parseQueryParams(parsed.search),
-    hashTags: parseHash(parsed.hash),
+    hashScopes: parseHash(parsed.hash),
   };
 }
 
@@ -98,11 +224,88 @@ export function buildUrl(state: RouterState): string {
     url += "?" + qs;
   }
 
-  // Sort by level so URL order is deterministic regardless of insertion order.
-  const sorted = [...state.hashTags].sort((a, b) => a.level - b.level);
-  for (const ht of sorted) {
-    url += ht.value ? `#${ht.key}=${ht.value}` : `#${ht.key}`;
+  // Each owner's keys are written as the query is, except that a key with no value stays bare:
+  // `#install` is a section's name, and `#install=` would be a different fragment that names no element.
+  // The top is always the first segment, empty when it has no keys and something below it does; an
+  // owner with no keys is not written.
+  const segment = (pairs: Record<string, string>) =>
+    Object.entries(pairs)
+      .map(([k, v]) => (v === "" ? encodeURIComponent(k) : `${encodeURIComponent(k)}=${encodeURIComponent(v)}`))
+      .join("&");
+  const below = orderedOwners(state.hashScopes).filter((o) => o !== "" && Object.keys(state.hashScopes[o]!).length > 0);
+  const top = segment(state.hashScopes[""] ?? {});
+  if (top !== "" || below.length > 0) {
+    url += "#" + [top, ...below.map((o) => `${o}:${segment(state.hashScopes[o]!)}`)].join("#");
   }
 
   return sanitizeHref(url);
+}
+
+/** Whether two flat records hold the same pairs. */
+export function samePairs(a: Record<string, string>, b: Record<string, string>): boolean {
+  const keys = Object.keys(a);
+  return keys.length === Object.keys(b).length && keys.every((key) => Object.hasOwn(b, key) && a[key] === b[key]);
+}
+
+/**
+ * A route state made well-formed — what the Router reads through, on every read, and `keepUnchanged`
+ * on every write.
+ *
+ * What a page restores is JSON: its owners are a plain object, so `constructor` reads as the `Object`
+ * function. One the PREVIOUS router version rendered has no `hashScopes` at all, a `hashTags` instead —
+ * measured, the client threw and the app did not hydrate until the cache was purged. It is repaired on
+ * READ because core restores the field from the blob with no hook for the Router, and a component's
+ * own `@created` can read it before `init` re-reads the URL.
+ *
+ * Free when the state is already well-formed — it comes back as itself — and the SAME repaired object
+ * for the same raw one, so a provider reading it four times publishes one identity. Only the fields a
+ * state has: the old `hashTags` is not carried into what is written next.
+ */
+const REPAIRED = new WeakMap<object, RouterState>();
+
+export function wellFormed(state: RouterState): RouterState {
+  const given = state as Partial<RouterState>;
+  const scopes = given.hashScopes;
+  if (
+    given.queryParams !== undefined &&
+    typeof scopes === "object" &&
+    scopes !== null &&
+    Object.getPrototypeOf(scopes) === null
+  )
+    return state;
+  const known = REPAIRED.get(state);
+  if (known !== undefined) return known;
+  const fixed = owners();
+  if (typeof scopes === "object" && scopes !== null) {
+    for (const owner of Object.keys(scopes)) fixed[owner] = scopes[owner]!;
+  }
+  const repaired: RouterState = {
+    baseUrl: given.baseUrl ?? "/",
+    queryParams: given.queryParams ?? {},
+    hashScopes: fixed,
+  };
+  REPAIRED.set(state, repaired);
+  return repaired;
+}
+
+/**
+ * The next state, with every part that did not change kept as the object it was.
+ *
+ * Each part is published to its readers on its own, and a reader re-renders when its part's object
+ * changes. A `push` parses the whole URL, so it made a new `{}` for a query and a hash that had not
+ * moved, and a component reading only the hash re-rendered on every path change. Comparing here, once,
+ * keeps "a component re-renders for the part it reads" true — for a push, an in-place update and
+ * back/forward alike.
+ */
+export function keepUnchanged(given: RouterState, next: RouterState): RouterState {
+  const prev = wellFormed(given);
+  const queryParams = samePairs(prev.queryParams, next.queryParams) ? prev.queryParams : next.queryParams;
+  const prevOwners = Object.keys(prev.hashScopes);
+  const hashScopes =
+    prevOwners.length === Object.keys(next.hashScopes).length &&
+    prevOwners.every((o) => Object.hasOwn(next.hashScopes, o) && samePairs(prev.hashScopes[o]!, next.hashScopes[o]!))
+      ? prev.hashScopes
+      : next.hashScopes;
+  if (queryParams === next.queryParams && hashScopes === next.hashScopes) return next;
+  return { ...next, queryParams, hashScopes };
 }

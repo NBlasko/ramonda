@@ -1,5 +1,157 @@
 # @ramonda/check
 
+## 0.16.0
+
+### Minor Changes
+
+- 8d6d363: `ramonda-check` and `ramonda-check-bundle` take `--help` and `--version`. `--help` lists every option and the exit codes. An option either command does not have is refused with exit 2 — `ramonda-check` names the one a slip was meant to be — where before `ramonda-check` ignored it and `ramonda-check-bundle` read it as a path; `-x` and `--graph=file` are named too. `ramonda-check-bundle` checks a file under a folder whose name starts with `-`, which node used to read as an option. `ramonda-check` refuses a second tsconfig and a `--dry-run` without `--fix` instead of ignoring them, and exits 2, not 1, when TypeScript 7 leaves it nothing to read the project with. A path is told from an option's file by its position, and `--graph` never writes over the tsconfig the run reads — `ramonda-check tsconfig.json --graph tsconfig.json` replaced the project's config with the graph. That holds however the file is spelled — another case, or a link — and for the graph `--diff` reads and the page `--graph-html` writes; an option given twice is refused; a folder is read as the tsconfig inside it.
+- f14650c: `field-set-by-an-event` and `RMD062`: a field sent an edit while a commit runs
+  
+  A field learns its model through render, and the render an edit's handler causes runs once the commit
+  is over. `field-set-by-an-event` reports an edit sent from the work a commit runs — `render()`, the
+  constructor, `@created`, `@mounted`, `@updated`, `@destroyed`, `@watchProp`, `@catchError`, a ref's
+  callback (`createRef(this.attached)`), and every method and accessor of the class they use:
+  dispatching `input`, `change`, `beforeinput` or a composition event — or one whose type cannot be
+  read — at a field the class renders, an element a query finds or one a form's `elements` hands; a
+  `click` on a checkbox, a radio or a `<label>` of one the class renders; writing `.value` or
+  `.checked` on a field it renders with that model; `document.execCommand`. What is handed to run after
+  the commit — a microtask, a timer, a promise's `then` — an event handler, and an event dispatched at
+  the document or a store are not reported: a row whose `onclick` clicks its checkbox does what a
+  `<label>` does. An `async` hook is read whole: whether a statement runs before an `await` or after it
+  depends on values, so an edit past one is handed to `queueMicrotask` to say it is meant for later.
+  
+  ```tsx
+  @state accepted = true;                    // not this.box.current?.click() in @mounted
+  ```
+  
+  `RMD062` reports the same at runtime, when a field reads its model while the render of its last edit
+  waits for the running commit — a second event in the same commit, which cannot know whether the
+  handler took the first edit or refused it. In a development build it says what to write instead; a
+  production build records it for the app's collector. The edit is answered either way.
+- c450128: `field-the-user-cannot-change`: a controlled field no handler on it can change
+  
+  A field with a `value` — a `Select`, a `TextArea`, an `<input>`; `checked` on a checkbox or a radio —
+  shows the model, and only the handler written on the field writes it. Reported, each provable from the
+  source: no handler on the field (`oninput`, or for a pick `oninput` or `onchange`, either also written
+  `on:input`, `on:change`); a text field with
+  only `onchange`, which comes on blur, so every keystroke is undone before it; `value` beside
+  `defaultValue`, or `checked` beside `defaultChecked`; a field whose model is a literal — `value=""`,
+  `checked={true}` — or a `const` holding one; a spread on a controlled field, except the schema's
+  constraints, `html(path)` from `@ramonda/form/bguard` (made into a `const` or a class's field), which
+  `reset-the-model-does-not-hear` and `form-value-in-the-wrong-control` read through as well; and a spread of a prop, which is read where the component is used; a handler taken from a prop declared optional; a date, time, color or range with only `onchange`, which comes after the `input`
+  the field already answered; and a box picked through `onclick`, which writes the
+  model before the field decides the pick. Not reported: a field
+  `disabled` as written, a text field that is `readonly`, an `<input>` whose type is not edited
+  (`hidden`, `submit`, `button`, `reset`, `image`, `file`), and a `value` written as `null` or
+  `undefined`, which is no model.
+  
+  `option-that-cannot-choose` reports an `<option selected>` only inside a `Select` with a `value`, a
+  `defaultValue`, or a spread that may carry one. `attribute-that-does-nothing` takes `defaultValue` and
+  `defaultChecked` as written on an `<input>`, a `Select` and a `TextArea`, where they start an
+  uncontrolled field. `fresh-object-in-props` says what core compares by content. `dev-guard-as-an-expression`
+  reads an empty arm in parentheses, `__DEV__ ? publish() : (null)`, as empty, and every rule asks about
+  `null` and `undefined` the same way.
+- b984d56: `form-field-without-what-the-form-needs`: a field inside a `@ramonda/form` form carries every attribute the form needs
+  
+  A `@ramonda/form` form is recognised by one shape — `<form onsubmit={this.X.submit}>`, where `X` is a
+  field of the same class initialised `this.use(Form, …)` and `Form` is imported from `@ramonda/form` —
+  and every controlled field inside it is written with `name`, `value` (`checked` on a box), `oninput`,
+  `onblur` and `aria-invalid`, each by name. "Inside" is the render that holds the form, every component
+  rendered there in turn, and the children of a component that places its children in its own form. A
+  component that takes those attributes as props is checked where it is used inside a form: each use
+  hands every one of them. A spread of a prop on a field — defaults, then `{...this.props.attrs}` for a
+  caller to overwrite them — is checked at every use, inside a form or not: an object written there,
+  setting none the field writes before it to nothing — a shorthand `{ oninput }` followed to the `const`
+  it names — and handing no `value` (`checked`) without an `oninput` or `onchange` beside it, unless the
+  field writes its own.
+  
+  Reported too: a component that holds a `Form` and renders no `<form onsubmit={this.X.submit}>` for it,
+  a hook that holds one, and a component used inside a form whose render cannot be read — a `declare
+  class`, or one from a package's declarations.
+- 1daf9bd: `form-value-in-the-wrong-control` and `RMF005`: a form's value in a control that hands back another kind
+  
+  A field turns what its control produced back into its value by the control's own `type`:
+  `type="number"` and `type="range"` hand back a number whatever the field held — a slider now writes a
+  number, as an empty field cannot say what it is waiting for — `type="checkbox"` true or false, and
+  every other control its text.
+  `type="date"` serves a `Date` and a date written as text, told apart by the value the field holds: text
+  (a date written as text starts at `""`) gets text back, and a `Date` or nothing gets a day — so a `Date`
+  field that held none now takes a day rather than text, and one emptied holds nothing (`undefined`) rather than `""`. A number field written
+  without `type="number"` fills the form with text, a text field in a slider fills it with a number, and
+  the schema reports a value the reader never typed wrong.
+  
+  ```tsx
+  <input type="number" name={age.name} value={age.inputValue} oninput={age.oninput} />
+  ```
+  
+  `inputValue` is typed `FormNumber | ""` for a number, `FormDay | ""` for a date and `FormText` for text —
+  a number and two strings to TypeScript, marked so the check can tell them from any other; all three are
+  exported. `ramonda-check` reports each in a control that hands back another kind, in an `<input>` whose
+  `type` it cannot read, and an `inputValue` whose type it cannot read.
+  For it, `ramonda-check` now reads every project with the language's own lib and, in place of the DOM
+  lib, a stand-in for each name it declares, read from the DOM lib of the TypeScript the check runs —
+  about 0.2 s more per run, whatever the app's size (measured on a Linux laptop, Ryzen 5 2500U). A
+  rule that told the platform's names from a project's own by whether they resolved asks which file
+  declares them now. `RMF005` reports the same in a running page once the field holds a value: a number
+  or a day through a control that hands back text, and text through one that hands back a number.
+- 79fad29: `reset-the-model-does-not-hear`: a reset reaches no field with a `value`
+  
+  The browser's reset puts every field of a form back on screen and tells no handler, so a field with a
+  `value` shows one thing while its model holds another. A `<button type="reset">` (or `<input
+  type="reset">`) is allowed inside a `<form>` of the same render, naming no other form, whose content is
+  all written there and holds no field with a `value` (`checked`); a component, `children` or a value
+  placed in that form is reported, since it may hold one — a spread on a field included — and so is a
+  form with an `id`, which a
+  field anywhere joins with `form="id"`. `reset` is allowed when it is taken from a
+  hook — `this.form.reset()`, or a field of the form through a `const` — or from a value whose type a form
+  does not fit, such as a `CanvasRenderingContext2D`. It is read off types, never names: the browser's reset
+  is reported under any name — a type alias, another variable, `const clear = form.reset`, `form["reset"]`,
+  `const { reset } = form` — and so is `reset` on a type a form fits (`const r: Resettable = form`), on a
+  value whose type cannot be read, and a form cast to a type that is not one (`form as unknown as Canvas`).
+  It trusts the type the author writes, as TypeScript does: a form put through `unknown` and given another
+  type is that type from there on, and an instance of the project's own class is that class.
+  A `<button>` whose `type` cannot be read, or is left to a spread, may reset its form, and is reported
+  only when that form holds something a reset would undo.
+
+### Patch Changes
+
+- c9d06e4: `browser-url` names `hashParams` as the router's answer to `location.hash`, after the router's rename.
+- 8044df9: `browser-url` reports only what the router answers — `pathname`, `search` and `hash`. `location.origin`, `host`, `protocol` and `href` are the browser's to tell, and reading them stopped a build that needed the origin for a share link, with no way out but an ignore comment.
+- 2dec79a: `ramonda-check-bundle` walks each folder once. It followed links, so a folder linking back to itself — a symlinked folder in `public/`, copied into the build as a link — was walked `loop/loop/…` until the system refused, and the build failed with ELOOP. A link that points nowhere is skipped too, where it failed the whole run with "cannot read dist".
+- bd8a783: Markup handed down as a prop is compared by what it says, so a parent's render no longer re-renders a child whose markup is unchanged
+  
+  JSX is built afresh by every render, so `<Panel><Big n={1} /></Panel>` handed `Panel` new `children`
+  each time and `Panel` rendered whenever its parent did. Children, a single node as a prop
+  (`header={<Header />}`), and a `list()` with a method or module-level callback — among the children
+  or as a prop of its own — are now compared by content for every component and every hook, with no declaration. Measured in a
+  production build, 20 panels of 500 elements under a parent whose state changed for an unrelated
+  reason: 25.1 ms and 20 panel renders per change before, 0.2 ms and none after; when the markup
+  really changes, 25.4 ms before and 25.5 ms after.
+  
+  Only what the framework built is opened — a vnode, the children array JSX makes, a list. Everything
+  the app builds is compared by reference, including an object or an array that holds nodes
+  (`slots={{ header: <Header /> }}`): the app may change it in place, and a copy of something changed in
+  place compares equal to the original, so the change would never be shown. Such a slots prop is
+  declared on the child with `@StableProps("slots")`. Markup built by a different component, a `list()`
+  whose callback changed, and markup past a budget of 500 values for its key are all called
+  different — the child renders, as it did before. Markup holding a form field settles like any other:
+  a field answers its own edits in its own listener, so the render around it adds nothing.
+  
+  `Portal` now watches its `target` together with its `children`, and reconciles once when both
+  change. It used to notice a new target through `children`, which a props factory rebuilt on every
+  run; with markup settled, a target change with the same children would otherwise not move the block.
+  
+  A `@watchProp` on `children`, or a `@compute` reading it, now runs only when the children say
+  something different. A hook that noticed some other prop through `children` being new on every run —
+  as `Portal` did with its target — should watch that prop itself.
+  
+  `RMD022` no longer reports a hook's markup that the runtime settles; markup holding a handler built
+  in place is still reported.
+  
+  `@ramonda/check`: `fresh-object-in-props` names `@StableProps("slots")` as the answer for a slots
+  object or an array of nodes.
+- 21ee695: The advice for a value built per item no longer goes in a circle. RMD020 said a `@compute` cannot help per item and sent the reader to `@memoized`; called with the item, `@memoized` was then refused by RMD047, because an object is no cache key. RMD020 now says to call `@memoized` with the item's id and read the item inside, or to build every item's value in one `@compute` keyed by id — and RMD047 and `unkeyable-memoized-argument` name the same `@compute`, so neither is a dead end.
+
 ## 0.15.6
 
 ### Patch Changes

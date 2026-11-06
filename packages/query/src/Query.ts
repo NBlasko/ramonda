@@ -51,6 +51,19 @@ export interface QueryProps<TData, K extends QueryKey = QueryKey> extends QueryD
    */
   enabled?: boolean;
   /**
+   * `true` for data only the browser has — IndexedDB, `localStorage`, a file the reader picked.
+   *
+   * A server render (and a page baked at build time) does not fetch, and shows the query loading;
+   * the client's first render shows the same, so hydration keeps the page, and then it fetches.
+   * Left out, a server render fetches, waits, and sends the data in the page.
+   *
+   * A boolean rather than an `env: "client"` like a lifecycle method's: in a props object an
+   * `"client"` widens to `string` and refuses to compile without `as const`, which is the one thing a
+   * reader would never guess. There is no server-only counterpart — a query that fetched only there
+   * would never fetch on a page reached by a client navigation.
+   */
+  clientOnly?: boolean;
+  /**
    * Data to put IN THE CACHE for this key, if nothing is there yet.
    *
    * It behaves exactly like a fetched answer, because that is what it becomes: every observer
@@ -827,6 +840,14 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
    */
   private fetchIfNeeded(force: boolean): Promise<void> {
     if (this.props.enabled === false) return Promise.resolve();
+    // Data only the browser has: the server renders the query loading, and the client fetches. Here,
+    // where every path that fetches meets, beside `enabled` — not in the mount path alone, where a key
+    // that moved during the server render, or an invalidation there, still ran the fetcher on the
+    // server. Found by the final review.
+    //
+    // Asked of the PROVIDER, not of `this.onServer`: that is set in this hook's own `@created`, which
+    // runs after its owner's — measured, a `refetch()` from the owner's `@created` fetched on the server.
+    if (this.props.clientOnly === true && this.ctx.onServer()) return Promise.resolve();
 
     const options = this.behaviour();
     // Resolved against the client's defaults before asking about staleness: an

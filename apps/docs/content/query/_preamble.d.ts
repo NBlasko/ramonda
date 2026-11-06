@@ -43,6 +43,8 @@ declare global {
     invalidate(key: unknown[]): void;
     remove(key: unknown[]): void;
   };
+  /** An IndexedDB read, for the example of data only the browser has. */
+  const readFromIndexedDb: () => Promise<string[]>;
   const loadTodos: (...args: any[]) => any;
   const loadThing: (...args: any[]) => any;
   /**

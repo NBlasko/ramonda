@@ -208,3 +208,44 @@ describe("typing", () => {
     }
   });
 });
+
+/**
+ * `clientOnly: true` compiles in a props object with nothing pinned and no `as const` — the reason it is a
+ * boolean. `env: "client"` was tried first: in an object literal the string widens and the call is
+ * refused, with the error on `this.use` rather than on the option.
+ */
+class ClientOnly extends Component {
+  private todo = this.use(Query, () => ({
+    key: ["todo", 1],
+    fetch: ({ signal }: FetchContext) => getTodo(1, { signal }),
+    clientOnly: true,
+  }));
+
+  render(): RamondaNode {
+    return <p>{this.todo.data?.title}</p>;
+  }
+}
+void ClientOnly;
+
+/**
+ * `retry: false` compiles with nothing pinned. It was refused with a long error on `this.use`: `retry`
+ * took a count or a predicate, and a literal `false` in an unpinned props object widens to `boolean`
+ * anyway — so the type takes a boolean, and `retry: !permanent` reads as it should.
+ */
+class NoRetry extends Component<{ permanent: boolean }> {
+  private todo = this.use(Query, () => ({
+    key: ["todo", 1],
+    fetch: ({ signal }: FetchContext) => getTodo(1, { signal }),
+    retry: false,
+  }));
+  private other = this.use(Query, (self: NoRetry) => ({
+    key: ["todo", 2],
+    fetch: ({ signal }: FetchContext) => getTodo(2, { signal }),
+    retry: !self.props.permanent,
+  }));
+
+  render(): RamondaNode {
+    return <p>{this.todo.data?.title ?? this.other.data?.title}</p>;
+  }
+}
+void NoRetry;

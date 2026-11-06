@@ -1,5 +1,5 @@
 import { Component, state } from "@ramonda/core";
-import { act, render } from "@ramonda/testing-library";
+import { act, allowDiagnostics, render } from "@ramonda/testing-library";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { QueryClientProvider } from "../context";
 import { Query } from "../Query";
@@ -39,6 +39,7 @@ function failing() {
 
 describe("RMQ002", () => {
   test("a render that shows only the data is reported, and the key is named", async () => {
+    allowDiagnostics("RMQ002"); // the test exists to show it
     class Card extends Component {
       private provider = this.use(QueryClientProvider);
       user = this.use(Query, () => ({ key: ["user", 7], retry: 0, fetch: failing() }));

@@ -2,6 +2,7 @@ import { expressionFor, nameFor } from "../compiler/dollar";
 import { ARITY, KEYWORDS, PRIMITIVE, SHORTHANDS } from "../compiler/keywords.generated";
 import { ConfigError, type PropertyRules } from "./config";
 import { SYNTAX, type Kind, type TokenDeclaration, isTokenDeclaration } from "./declared";
+import { COLOUR_REFERENCES } from "./colourReferences";
 
 /**
  * What a project's declared variables become: a stylesheet, and a module to write them with.
@@ -914,7 +915,7 @@ function propertyMap(rules: PropertyRules | undefined): Mapped {
     const zero = (onlyVariables || freed !== undefined) && value.includes("CssDimension") ? ` | 0 | "0"` : "";
     const kept = onlyVariables
       ? primitive === "color"
-        ? `${head === "never" ? "" : `${head} | `}"currentcolor"`
+        ? `${head === "never" ? "" : `${head} | `}${COLOUR_REFERENCES.map((word) => JSON.stringify(word)).join(" | ")}`
         : head
       : head;
     const literals = onlyVariables ? "" : `${freed ?? value} | `;

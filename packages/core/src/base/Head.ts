@@ -47,6 +47,20 @@ export interface HeadOptions {
   meta?: readonly MetaTag[];
   /** Canonical URLs, alternates, icons, preloads. */
   link?: readonly LinkTag[];
+  /**
+   * `<html lang>` — the language the page is in. A screen reader picks its pronunciation from it, and
+   * a browser its hyphenation and spell-check. Set it where the language is decided, usually the app
+   * root, from the reader's choice: `lang: self.locale`.
+   */
+  lang?: string;
+  /**
+   * `<html dir>`. Goes with `lang`: a right-to-left language without `dir: "rtl"` is half a page.
+   *
+   * Any string, with the three the platform knows offered first. A strict union refused the natural
+   * spelling, `dir: rtl ? "rtl" : "ltr"`: in a props object nothing pins, the literals widen to
+   * `string`, and the error lands on `this.use` rather than on the option.
+   */
+  dir?: "ltr" | "rtl" | "auto" | (string & {});
 }
 
 /**
@@ -261,6 +275,8 @@ export class Head extends Hook<HeadOptions> {
     (props) => props.description,
     (props) => props.meta,
     (props) => props.link,
+    (props) => props.lang,
+    (props) => props.dir,
   )
   republishOnChange(): void {
     if (this.node === undefined || this.registry === undefined) return;
@@ -302,8 +318,8 @@ export class Head extends Hook<HeadOptions> {
    * particular page happens to set.
    */
   private readOptions(): HeadOptions {
-    const { title, description, meta, link } = this.props;
-    return { title, description, meta, link };
+    const { title, description, meta, link, lang, dir } = this.props;
+    return { title, description, meta, link, lang, dir };
   }
 }
 
@@ -384,7 +400,16 @@ interface HeadRegistry {
    * else's" — see `applyRegistry`.
    */
   appliedTitle: string | undefined;
+  /**
+   * `lang` and `dir` on `<html>`: what each was before any `Head` spoke (`null` for absent), and what
+   * the registry last wrote. The title's two fields, once per attribute, for the same two reasons.
+   */
+  root: Record<RootAttribute, { original: string | null; applied: string | undefined }>;
 }
+
+/** The attributes of `<html>` a `Head` may set. */
+const ROOT_ATTRIBUTES = ["lang", "dir"] as const;
+type RootAttribute = (typeof ROOT_ATTRIBUTES)[number];
 
 /**
  * Keyed by the document rather than kept in module scope — the distinction the
@@ -403,6 +428,10 @@ function registryForDocument(): HeadRegistry {
       adopted: new Map(),
       originalTitle: document.title,
       appliedTitle: undefined,
+      root: {
+        lang: { original: document.documentElement.getAttribute("lang"), applied: undefined },
+        dir: { original: document.documentElement.getAttribute("dir"), applied: undefined },
+      },
     };
     registries.set(document, registry);
   }
@@ -417,6 +446,20 @@ function registryForDocument(): HeadRegistry {
 export function resetHeadRegistry(): void {
   const registry = registries.get(document);
   registries.delete(document);
+
+  // What a `Head` wrote on `<html>` in this request goes back, as its tags do: a server renders the
+  // next request into this same element, and a page that says nothing must not be served the last
+  // one's language. Only what a `Head` wrote: app code that sets `documentElement.lang` itself on the
+  // server is writing to a shared DOM like any other direct write, and is the app's to undo.
+  if (registry !== undefined) {
+    for (const name of ROOT_ATTRIBUTES) {
+      const { original, applied } = registry.root[name];
+      // Whatever wrote it since, unlike `applyRegistry`: this is a request boundary, never a page in
+      // a browser, and what is left on `<html>` here is the next request's. Measured with the
+      // page-going-away guard in its place: one request's language served to the next.
+      if (applied !== undefined) restoreRootAttribute(name, original);
+    }
+  }
 
   /**
    * Unmarked as well as dropped.
@@ -483,6 +526,7 @@ function collectLink(tags: Map<string, ResolvedTag>, tag: LinkTag): void {
  * time as ~3 µs for a 14-tag layout/section/page), traded for one source of truth.
  */
 function flatten(options: HeadOptions): { title: string | undefined; tags: Map<string, ResolvedTag> } {
+  // `lang` and `dir` are not flattened: they are not tags, and `resolve` reads them off the options.
   const tags = new Map<string, ResolvedTag>();
 
   if (options.description !== undefined) collectMeta(tags, { name: "description", content: options.description });
@@ -508,19 +552,29 @@ function flatten(options: HeadOptions): { title: string | undefined; tags: Map<s
  * a stale derived value. The cost is re-deriving selectors each apply — the cache the
  * chain kept — which is the trade made for the tree being the single source of truth.
  */
-function resolve(roots: Set<HeadNode>): { title: string | undefined; tags: Map<string, ResolvedTag> } {
+function resolve(roots: Set<HeadNode>): {
+  title: string | undefined;
+  tags: Map<string, ResolvedTag>;
+  root: Partial<Record<RootAttribute, string>>;
+} {
   let title: string | undefined;
   const tags = new Map<string, ResolvedTag>();
+  // Per attribute, as the title is: the deeper one wins, and one that says nothing leaves it alone.
+  const root: Partial<Record<RootAttribute, string>> = {};
 
   const visit = (node: HeadNode): void => {
     const flat = flatten(node.options);
     if (flat.title !== undefined) title = flat.title;
+    for (const name of ROOT_ATTRIBUTES) {
+      const value = node.options[name];
+      if (value !== undefined) root[name] = value;
+    }
     for (const [selector, tag] of flat.tags) tags.set(selector, tag);
     for (const child of node.children) visit(child);
   };
-  for (const root of roots) visit(root);
+  for (const node of roots) visit(node);
 
-  return { title, tags };
+  return { title, tags, root };
 }
 
 /**
@@ -669,7 +723,7 @@ export function flushHeads(): void {
 }
 
 function applyRegistry(registry: HeadRegistry): void {
-  const { title, tags } = resolve(registry.roots);
+  const { title, tags, root } = resolve(registry.roots);
 
   for (const [selector, spec] of tags) {
     const known = live(registry.managed.get(selector));
@@ -730,6 +784,39 @@ function applyRegistry(registry: HeadRegistry): void {
     document.title = registry.originalTitle;
     registry.appliedTitle = undefined;
   }
+
+  // `lang` and `dir` by the title's rule: claimed always, given back only while still ours.
+  for (const name of ROOT_ATTRIBUTES) {
+    const slot = registry.root[name];
+    const value = root[name];
+    if (value !== undefined) {
+      document.documentElement.setAttribute(name, value);
+      slot.applied = value;
+    } else if (slot.applied !== undefined) {
+      if (document.documentElement.getAttribute(name) === slot.applied) restoreRootAttribute(name, slot.original);
+      slot.applied = undefined;
+    }
+  }
+}
+
+function restoreRootAttribute(name: RootAttribute, original: string | null): void {
+  if (original === null) document.documentElement.removeAttribute(name);
+  else document.documentElement.setAttribute(name, original);
+}
+
+/**
+ * What the tree's `Head`s set on `<html>` — and only that: an attribute the document had of its own is
+ * not reported, so a server shell's `lang` is never mistaken for the page's. Read by `renderPage`.
+ */
+export function rootAttributes(): { lang?: string; dir?: string } {
+  const registry = registries.get(document);
+  if (registry === undefined) return {};
+  const out: { lang?: string; dir?: string } = {};
+  for (const name of ROOT_ATTRIBUTES) {
+    const applied = registry.root[name].applied;
+    if (applied !== undefined) out[name] = applied;
+  }
+  return out;
 }
 
 /**

@@ -3,8 +3,8 @@ import { created, destroyed, Hook, INSPECT, type RenderEnv, state, watchProp } f
 import { ASPECT, EVERY_ASPECT, type FieldHandle, type FieldHost, FieldTree, type Watcher } from "./fieldTree";
 import { FACT, type FormFacts, FormProvider, type FormWatcher } from "./formState";
 import { childKey, keyPrefix, type Path, parsePath, pathKey, readAt, ROOT, writeAt } from "./path";
-import type { FieldNode, FormProps, InferIn, InferOut, StandardSchemaV1, ValidateOn } from "./types";
-import { type Issues, NO_ISSUES, NO_MESSAGES, validate, withIssue } from "./validate";
+import type { FieldIssue, FieldNode, FormProps, InferIn, InferOut, StandardSchemaV1, ValidateOn } from "./types";
+import { type Issues, issuesOf, NO_ISSUES, NO_MESSAGES, validate, withIssue } from "./validate";
 import { report } from "./diagnostics";
 
 /**
@@ -1073,7 +1073,11 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
       const was = before.get(key);
       const now = after.get(key);
       if (was === now) continue;
-      if (was !== undefined && now !== undefined && sameMessages(was, now)) continue;
+      // The messages, AND what the schema put beside them. A field reading `issues` translates by
+      // `code`, and an issue can change its code while its message stays the same — measured, the
+      // field kept showing the first translation.
+      if (was !== undefined && now !== undefined && sameMessages(was, now) && sameIssues(issuesOf(was), issuesOf(now)))
+        continue;
 
       for (const watcher of set) watcher.bump(ASPECT.messages);
     }
@@ -1357,6 +1361,20 @@ function sameMessages(a: readonly string[], b: readonly string[]): boolean {
   return a.length === b.length && a.every((message, index) => message === b[index]);
 }
 
+/**
+ * Whether two fields' issues say the same thing — by `equal`, the comparison this file already uses for
+ * "has this field moved from its default".
+ *
+ * It walks arrays and plain objects at every depth, a key one side has and the other lacks is a
+ * change, and a `RegExp`, `Set` or `Map` is compared by identity. A validation builds every issue
+ * fresh, so two different patterns are two objects, and a field reading `issues` is woken. Three
+ * reviews got here: first only the messages were compared, then one side's keys and JSON — which
+ * writes a `RegExp` as `{}` — and then the same JSON one level down, in a second copy of this logic.
+ */
+function sameIssues(a: readonly FieldIssue[], b: readonly FieldIssue[]): boolean {
+  return a.length === b.length && a.every((issue, index) => equal(issue, b[index]));
+}
+
 function isPromise<T>(value: T | Promise<T>): value is Promise<T> {
   return typeof (value as Promise<T>)?.then === "function";
 }
@@ -1498,7 +1516,7 @@ function adopt(
  * objects and compares everything else with `Object.is`, so a `Date` or a `File` is one
  * comparison rather than a walk of its internals.
  */
-function equal(a: unknown, b: unknown): boolean {
+function equal(a: unknown, b: unknown, walking?: Set<object>): boolean {
   if (Object.is(a, b)) return true;
 
   /**
@@ -1511,17 +1529,38 @@ function equal(a: unknown, b: unknown): boolean {
    */
   if (a instanceof Date && b instanceof Date) return a.getTime() === b.getTime();
 
-  if (Array.isArray(a) && Array.isArray(b)) {
-    return a.length === b.length && a.every((item, index) => equal(item, b[index]));
-  }
+  const array = Array.isArray(a) && Array.isArray(b);
+  if (!array && !(isPlain(a) && isPlain(b))) return false;
 
-  if (isPlain(a) && isPlain(b)) {
-    const keys = Object.keys(a);
-    if (keys.length !== Object.keys(b).length) return false;
-    return keys.every((key) => key in b && equal(a[key], b[key]));
+  /**
+   * A value that refers to itself — an issue carrying the input it was raised on, with a back-reference
+   * — is walked once: met again on the way DOWN, it counts as different. A field woken once too often is
+   * harmless, and the walk without this ran until the stack did. Found by a fourth review.
+   *
+   * The way down only, not every object seen: it is taken off again on the way back up. One object held
+   * in two places is no loop, and a guard that kept every visit called `{ a: X, b: X }` different from
+   * an equal copy — measured — while `equal` also decides whether a form's defaults moved.
+   */
+  // Made on the first descent into an array or object, not on every call: two primitives, equal or
+  // not, are answered above without one.
+  walking ??= new Set();
+  const node = a as object;
+  if (walking.has(node)) return false;
+  walking.add(node);
+  try {
+    if (array) {
+      const left = a as unknown[];
+      const right = b as unknown[];
+      return left.length === right.length && left.every((item, index) => equal(item, right[index], walking));
+    }
+    const left = a as Record<string, unknown>;
+    const right = b as Record<string, unknown>;
+    const keys = Object.keys(left);
+    if (keys.length !== Object.keys(right).length) return false;
+    return keys.every((key) => key in right && equal(left[key], right[key], walking));
+  } finally {
+    walking.delete(node);
   }
-
-  return false;
 }
 
 function isPlain(value: unknown): value is Record<string, unknown> {

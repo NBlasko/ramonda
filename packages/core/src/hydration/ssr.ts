@@ -11,7 +11,7 @@ import { componentOpen, componentClose } from "../core/componentMarker";
 import { anchorId, isCloseAnchor, isOpenAnchor } from "../core/childrenRegion";
 import { collectPortalTargets, portalTargetContainers, resetPortalTargets } from "../base/portalTarget";
 import { flushPostCommit } from "../core/commit";
-import { resetHeadRegistry } from "../base/Head";
+import { resetHeadRegistry, rootAttributes } from "../base/Head";
 import {
   createServerWork,
   finishServerWork,
@@ -380,6 +380,9 @@ export interface StaticRender {
    */
   title?: string;
   head?: string;
+  /** `<html lang>` and `<html dir>`, as `renderPage` returns them. */
+  lang?: string;
+  dir?: string;
   /**
    * Set when the render touched per-request data (a cookie, a header, a seeded value), naming
    * the field. The route CANNOT be prerendered — bake it and one visitor's data would be served
@@ -441,6 +444,13 @@ export interface RenderedPage {
   title: string;
   /** Serialized `<meta>` / `<link>` tags, ready to drop into a `<head>`. */
   head: string;
+  /**
+   * `<html lang>`, when a `Head` in the tree set one. Absent when none did — the shell's own value
+   * stands, which is why it is not a default here.
+   */
+  lang?: string;
+  /** `<html dir>`, by the same rule. */
+  dir?: string;
   /**
    * What each NAMED portal target collected, by name — the blocks belonging in a
    * container outside the app's root.
@@ -574,7 +584,7 @@ const MANAGED_HEAD = `[${PORTAL_ATTR}]`;
  * a pair of anchors (the anchors included, because the client hydrates against
  * them), and outside a block, the elements `Head` marked.
  */
-function collectHead(): { title: string; head: string } {
+function collectHead(): { title: string; head: string; lang?: string; dir?: string } {
   /**
    * Marked BEFORE anything is read, and before the block is paired.
    *
@@ -597,7 +607,7 @@ function collectHead(): { title: string; head: string } {
     }
   }
 
-  return { title: document.title, head };
+  return { title: document.title, head, ...rootAttributes() };
 }
 
 /**

@@ -168,6 +168,31 @@ re-renders — the hook has no smaller boundary of its own. That is the one thin
 child component gives you that a hook doesn't. If a hook's state changes very often
 and the owner is expensive to draw, a child component may be the better shape.
 
+## A misspelt option is not a type error
+
+A hook's options come back from a callback, and TypeScript infers their type from what the callback
+returns. So a key the hook does not take — a typo, or an option from another library — compiles,
+and the hook ignores it. Name the options type as the callback's return type, and the key is checked
+like any other object literal:
+
+```tsx
+import { Component, Head, type HeadOptions } from "@ramonda/core";
+
+class Players extends Component {
+  private head = this.use(Head, (): HeadOptions => ({
+    title: "Players",
+    meta: [{ name: "robots", content: "noindex" }],
+  }));
+
+  render() {
+    return <h1>Players</h1>;
+  }
+}
+```
+
+With the annotation, `robots: "noindex"` beside `title` is refused where it is written; without it,
+the page renders with no robots tag and nothing says why.
+
 ## A hook can return markup
 
 A hook has no element, but it can still produce markup for the owner to place — useful

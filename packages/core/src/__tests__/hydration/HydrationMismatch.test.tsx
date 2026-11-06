@@ -90,6 +90,33 @@ describe("hydration mismatch (RMD007)", () => {
     expect(container.querySelector("span")!.textContent).toBe("Hello Nikola!");
   });
 
+  /**
+   * An empty string child is no text at all on the server — there is nothing to serialise — so the
+   * client finding no node there is the match, not a mismatch. Measured: `<span>{error ?? ""}</span>`,
+   * the commonest way to keep an error slot in place, reported RMD007 on correct markup. `TextArea`
+   * had worked around it for itself; this is the same fault for every element.
+   */
+  test("an empty string child matches the nothing the server sent", async () => {
+    class Field extends Component {
+      render() {
+        return (
+          <div>
+            <span id="error">{""}</span>
+            <b>{"x"}</b>
+            {""}
+          </div>
+        );
+      }
+    }
+
+    const container = await serverHtmlInto(<Field />);
+    hydrateRoot(<Field />, container);
+
+    expect(captured.all).toEqual([]);
+    expect(container.querySelector("#error")!.textContent).toBe("");
+    expect(container.querySelector("b")!.textContent).toBe("x");
+  });
+
   test("adjacent text children are adopted, not rebuilt", async () => {
     class Greeting extends Component {
       render() {

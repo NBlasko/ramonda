@@ -1,5 +1,22 @@
 # @ramonda/router
 
+## 0.13.0
+
+### Minor Changes
+
+- c9d06e4: The hash is read the way the query is, and a key can own what is written below it. `nav.hashParams` is `#a=1&b=2` → `{ a: "1", b: "2" }`, `updateHashParams` changes it, and `HashParamsUpdater` is its type — replacing `hashTags`, `updateHashTags`, `HashTag` and `HashTagsUpdater`, whose hash held one pair per `#` segment: `#access_token=…&state=…`, the shape an OAuth redirect hands back, kept the first pair and dropped the rest without a word.
+  
+  `<HashLevel of="nav">` says that what is written to the hash inside it belongs to the key `nav`: `#nav=video#nav:tab=comments`, each `#` segment after the first naming its owner before a `:`, and `&` between its keys. A change to a key clears what it owns, at every depth, and nothing another key owns, so switching `nav` takes `tab` with it and leaves a sibling `<HashLevel of="panel">` alone. A component does not know its parent; the parent says it where it places the child, and the owners live in the URL, so a reload and Back keep them. `updateHashParams` hands its updater the caller's own keys, and `hashParams` reads the caller's own line: the top and every owner down to its own, the nearer winning a key both use, and no sibling's keys.
+  
+  A bare `#install` is `{ install: "" }`, the name of a section, and is written back bare. A component re-renders on a hash change only if it reads `hashParams`, as with `searchParams`.
+  
+  To move: `nav.hashTags.find((t) => t.key === "tab")?.value` is `nav.hashParams.tab`; `updateHashTags([{ key: "tab", value: "film", level: 0 }])` is `updateHashParams({ tab: "film" })`, and a tag at `level: 1` is written from a component inside `<HashLevel of="…">`, under the key it belongs to. `RouterState` has `hashScopes`, one record per owner, in place of `hashTags`. A page the previous version baked or cached still hydrates: its state is read as an empty hash until the URL is read on mount.
+
+### Patch Changes
+
+- 72719de: What a review of this release's changes found. A field's issue keeps its `message` when the validator's issues are class instances with `message` on the prototype. A field reading `issues` re-renders when an issue changes while its message does not — a `code` moving from `s:minLength` to `s:pattern`, which is what a translation reads. `fillDocument` reads the shell's `<html>` attributes instead of searching their text, so `class="x lang=fr"` is left alone and a valueless `<html lang>` is replaced rather than given a second `lang`. The SSR template empties `dist/client` before each build, so a file deleted from `public/` is not served from the last one, and it lists the files under `dist/client` once at startup, instead of asking the disk whether one exists on every request — each file is still read when it is served — and the build copies `public/` with every link resolved — a linked file or folder lands as what it points at, and a link that loops or points nowhere stops the build naming it — so the server serves only real files and follows no link; a file it listed and that has gone since, as a rebuild in place leaves it, is a 404 rather than a crash, which would have served whatever one pointed at, `.env` included. `fillDocument` writes `lang` and `dir` on the shell before the page goes in, so a shell with no `<html>` leaves a `<html` inside the rendered page alone. The router copies the hash records it takes and hands out, so an updater that edits `prev` and returns it is still a change and a record the app keeps is not the router's, and an owner spelled unencoded in a hand-written link is the same owner.
+- 1df5c20: A component re-renders only when the part of the URL it reads moves. A `push` to a new path, and back/forward, re-parsed the whole URL into new objects, so a component reading only `searchParams` or the hash re-rendered on every path change.
+
 ## 0.12.0
 
 ### Minor Changes

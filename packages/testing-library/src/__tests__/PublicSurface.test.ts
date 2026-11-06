@@ -1,6 +1,12 @@
+import { publishedTypes } from "../../../../scripts/surface/published-types";
 import * as dom from "@testing-library/dom";
 import { describe, expect, test } from "vitest";
 import * as api from "../index";
+
+// `URL`, not `node:path` — this package type-checks without Node's types. Through a variable:
+// written as `new URL("..", import.meta.url)`, Vite takes it for an asset import and rewrites it.
+const HERE = import.meta.url;
+const SURFACE_SRC = decodeURIComponent(new URL("..", HERE).pathname);
 
 /**
  * What this package adds, asserted as a list.
@@ -12,7 +18,7 @@ import * as api from "../index";
  * The docs' `check-api-coverage.mjs` reads this list too, so a new export has to be acknowledged
  * twice — once as API, once as documentation.
  */
-const EXPECTED = ["act", "cleanup", "fireEvent", "render", "renderHook"];
+const EXPECTED = ["act", "allowDiagnostics", "cleanup", "fireEvent", "render", "renderHook"];
 
 /**
  * The TYPES the build publishes, which `Object.keys` cannot see.
@@ -88,6 +94,8 @@ describe("the published types", () => {
     // the list has no duplicate and is sorted, so a type added to `index.ts` without being added
     // here is caught by the docs' coverage check rather than quietly undocumented.
     expect(new Set(EXPECTED_TYPES).size).toBe(EXPECTED_TYPES.length);
+    // From a real program: a type exported and missing from the list fails — a sorted list alone did not.
+    expect(publishedTypes(`${SURFACE_SRC}index.ts`, Object.keys(api), SURFACE_SRC)).toEqual([...EXPECTED_TYPES].sort());
     expect(EXPECTED_TYPES).toEqual([...EXPECTED_TYPES].sort());
   });
 });

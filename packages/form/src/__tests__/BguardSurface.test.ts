@@ -1,6 +1,11 @@
+import { dirname as surfaceDir, join as surfaceJoin } from "node:path";
+import { fileURLToPath as surfaceUrl } from "node:url";
+import { publishedTypes } from "../../../../scripts/surface/published-types";
 import { describe, expect, test } from "vitest";
 import * as submodule from "../bguard";
 import * as api from "../index";
+
+const SURFACE_SRC = surfaceJoin(surfaceDir(surfaceUrl(import.meta.url)), "..");
 
 /**
  * `@ramonda/form/bguard` is the second door — the one that reaches for bguard, so `index.ts` does
@@ -55,6 +60,10 @@ describe("the bguard submodule's surface", () => {
 
   test("every published type is named in EXPECTED_TYPES", () => {
     expect(new Set(EXPECTED_TYPES).size).toBe(EXPECTED_TYPES.length);
+    // From a real program: a type exported and missing from the list fails — a sorted list alone did not.
+    expect(publishedTypes(surfaceJoin(SURFACE_SRC, "bguard.ts"), Object.keys(submodule), SURFACE_SRC)).toEqual(
+      [...EXPECTED_TYPES].sort(),
+    );
     expect(EXPECTED_TYPES).toEqual([...EXPECTED_TYPES].sort());
   });
 });

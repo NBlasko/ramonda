@@ -23,6 +23,8 @@ declare global {
     data?: Record<string, unknown>;
     time: number;
     dedupKey?: string;
+    /** Also thrown where it happened — see `@ramonda/core`'s declaration. */
+    thrown?: true;
   }
 
   var __RAMONDA_DIAGNOSTICS__: ((record: RamondaDiagnostic) => void) | undefined;
@@ -158,6 +160,8 @@ export function refuse(code: "RMF001" | "RMF002", message: string, data?: Record
       fix: SPECS[code].fix,
       data,
       time: Date.now(),
+      // Every refusal is thrown — the caller writes `throw refuse(…)` — so the record says so.
+      thrown: true,
     });
   }
 

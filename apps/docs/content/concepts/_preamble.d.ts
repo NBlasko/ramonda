@@ -51,4 +51,21 @@ declare global {
 
   const title: string;
   const subtitle: string;
+
+  /** A tournament group and its rounds, for the value built per item on the caching page. */
+  interface Fixture {
+    round: number;
+  }
+  interface Group {
+    id: string;
+    fixtures: Fixture[];
+  }
+  interface Round {
+    number: number;
+    fixtures: Fixture[];
+  }
+  const byRound: (fixtures: Fixture[]) => Round[];
+  class Rounds extends Component<{ rounds: Round[] | undefined }> {
+    render(): any;
+  }
 }

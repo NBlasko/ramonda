@@ -74,7 +74,7 @@ package not added at the start is installed like any other, later.
 | | |
 |---|---|
 | `renderToString(vnode, opts?)` | An app → HTML, awaiting async lifecycle. `opts.request` makes it a per-request render so `requestContext()` returns real values. [Details](/ssr/render) |
-| `renderPage(vnode)` | The same, plus `{ title, head }`. [Head](/ssr/head) |
+| `renderPage(vnode)` | The same, plus `{ title, head, lang, dir }`. [Head](/ssr/head) |
 | `renderStatic(vnode, url)` | A build-time render with the request context poisoned — returns `{ html }` to bake or `{ blockedBy }` if the route read per-request data. |
 | `renderDocument(page, options?)` | Wraps a rendered page in a complete document. [Static builds](/ssr/static) |
 | `hydrateRoot(vnode, element)` | Adopts the server's DOM instead of rebuilding it. |
@@ -186,7 +186,8 @@ what it passes into one. One field today, `label`, which devtools adds to the ho
 |---|---|
 | `Router` | A **hook** on the app root; owns the store, adds no element. Also exposes the `Navigator` surface (minus `params()`). [Setup](/routing) |
 | `RouteOutlet` | Renders the matched route. |
-| `Navigator` | `pathname` · `params<T>()` · `searchParams` · `hashTags` · `push` · `replace` · `updateSearchParams` · `updateHashTags` · `back` · `forward`. [Reading the URL](/routing/params) |
+| `HashLevel` | `<HashLevel of="nav">`: what is written to the hash inside it belongs to `nav`, and a change to `nav` clears it. [A hash in levels](/routing/params#a-hash-in-levels) |
+| `Navigator` | `pathname` · `params<T>()` · `searchParams` · `hashParams` · `push` · `replace` · `updateSearchParams` · `updateHashParams` · `back` · `forward`. [Reading the URL](/routing/params) |
 | `Link` | A real `<a href>` that intercepts a plain left click. [Links](/routing/links) |
 | `createRoutes(map)` | Compiles a route table once, capturing its paths in the type. Call it at module scope. |
 | `createRouter(routes)` | Returns `{ Router, RouteOutlet, Navigator, Link, route }` bound to the table, so `<Link href>` is type-checked. [Setup](/routing) |
@@ -197,8 +198,8 @@ what it passes into one. One field today, `label`, which devtools adds to the ho
 
 Types: `RouteConfig` · `PathOf` · `Href` · `TypedRouterKit` · `TypedLinkProps` · `TypedNavigator` ·
 `RouteParams` · `RoutePaths` · `RouterState` · `RouterNavigator` · `NavigateOptions` ·
-`PartialNavigateOptions` · `SearchParamsUpdater` · `HashTagsUpdater` · `HashTag` · `StateUpdater` ·
-`RouteOutletProps` · `LinkProps`
+`PartialNavigateOptions` · `SearchParamsUpdater` · `HashParamsUpdater` · `StateUpdater` ·
+`RouteOutletProps` · `HashLevelProps` · `LinkProps`
 
 ### `@ramonda/router/server`
 
@@ -259,7 +260,8 @@ Every field is reached by property access and its API sits behind `$`:
 
 | | |
 |---|---|
-| `FieldApi` | What every field has: `value` · `error` · `errors` · `touched` · `dirty` · `path` · `name` · `set(next)` · `reset()` · `at(key)`. |
+| `FieldApi` | What every field has: `value` · `error` · `errors` · `issues` · `touched` · `dirty` · `path` · `name` · `set(next)` · `reset()` · `at(key)`. |
+| `FieldIssue` | One of `issues`: the `message`, and whatever else the schema put on it — bguard's `code`, which is what a translation maps. [Translating messages](/forms/validation#translating-the-messages) |
 | `LeafApi` | A field holding a single value. Adds `inputValue`, `invalid`, `oninput` and `onblur`. [Writing a control](/forms/fields#writing-a-control) |
 | `ArrayApi` | A field holding a list. Adds `length` · `rows` · `append(item)` · `insert(at, item)` · `remove(at)` · `move(from, to)`. [Array fields](/forms/arrays) |
 | `Row` | One member of `rows`: `id` · `index` · `field`. The `id` is what keeps a row stable as it moves. |
@@ -404,7 +406,7 @@ those are `@ramonda/router/server`. [Server rendering](/ssr/server)
 | `installDom(url)` | Installs a DOM and the globals a render reads, and hands back a `DomHandle`. [The whole loop](/ssr/server#installdom-url-and-the-domhandle-it-returns) |
 | `installWindow(dom, options?)` | The globals only, for a DOM you brought yourself — a jsdom, or one document reused across a prerender. `navigation: "dom"` takes that DOM's own `location` and `history` instead of building them from `url`. |
 | `DomHandle` | What `installDom` hands back: a `close()` that shuts the render down without the caller knowing what built it. |
-| `fillDocument(document)` | Puts the rendered html, title, head and portal targets into the shell. [Filling the shell](/ssr/server#filldocument-document-the-document-it-takes) |
+| `fillDocument(document)` | Puts the rendered html, title, head, `lang`/`dir` and portal targets into the shell. [Filling the shell](/ssr/server#filldocument-document-the-document-it-takes) |
 | `Document` | The shape `fillDocument` takes — the shell with `<!--ssr-->` where the app goes, and optionally `<!--head-->` and `<!--portals-->`. |
 | `escapeHtml(value)` | Escapes a value for markup. What keeps an app's own title out of the parser. |
 | `PORTAL_TARGET_ATTR` | The attribute a shell puts on a portal container, so a target exists on the server too. [Portal](/composition/portal) |
@@ -548,6 +550,7 @@ panel. [Devtools](/devtools)
 | `act(callback?)` | Commits everything the callback caused. [act](/testing/act) |
 | `fireEvent` | The DOM library's, wrapped so the render is committed. |
 | `cleanup()` | Unmounts everything. Registered automatically. |
+| `allowDiagnostics(...codes)` | Lets this test cause these development diagnostics; any other one still fails it. [A diagnostic fails the test](/testing#a-diagnostic-fails-the-test) |
 | `RenderResult` | What `render` hands back: the container, the bound queries, and `unmount`. |
 | `RenderOptions` | `render`'s second argument — where to mount, and a `wrapper` to put around the tree. |
 | `WrapperComponent` | The shape of that wrapper: a component taking `children`, for a provider a test needs above the subject. |
@@ -556,6 +559,9 @@ panel. [Devtools](/devtools)
 
 Everything from `@testing-library/dom` is re-exported — `screen`, `waitFor`, `within`,
 `prettyDOM`, every query.
+
+Two entries are imported for what they do, and export nothing: `/dont-cleanup-after-each` and
+`/dont-fail-on-diagnostics`.
 
 ---
 

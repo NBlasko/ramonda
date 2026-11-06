@@ -1,6 +1,6 @@
 import { Component } from "@ramonda/core";
 import type { RamondaNode } from "@ramonda/core";
-import { act, render } from "@ramonda/testing-library";
+import { act, allowDiagnostics, render } from "@ramonda/testing-library";
 import { describe, expect, test, vi } from "vitest";
 import { Mutation, type MutationContext } from "../Mutation";
 import { Query } from "../Query";
@@ -393,6 +393,7 @@ describe("Mutation", () => {
   });
 
   test("a mutation without a provider says what is missing", () => {
+    allowDiagnostics("RMD003"); // the test exists to show it
     class Orphan extends Component {
       add = this.use(Mutation, () => ({
         mutate: async (): Promise<Todo> => ({ title: "x" }),

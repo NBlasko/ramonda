@@ -179,7 +179,7 @@ const FIX: Record<Kind, string> = {
     "Give the function a stable identity: a bound method (`onclick={this.submit}`), or `@memoized` when it has to be built per item — that caches by its arguments, per instance.",
   object:
     "Hold the value somewhere stable instead of rebuilding it: a `@compute` getter (recomputed only when what it reads changes), a field, or a module constant if it never varies.\n" +
-    "PER ITEM, none of those works — a `@compute` belongs to the component, not to the row. `@memoized` is the one that does: it caches by its arguments, per instance, and it caches a value as readily as a handler.",
+    "PER ITEM, two things work. `@memoized`, called with the item's id — a string or a number, never the item itself, which no cache key can hold — reading the item inside. Or one `@compute` that builds every item's value at once, keyed by id, read in the row as `this.byId[item.id]`.",
   instance:
     "Construct it once and keep it: a field, a `@compute` getter, or a module constant. If it is a clock — `new Date()` — decide the value once in `@created` and keep it in `@state`, so a server render and its hydration agree (RMD007).",
   nondeterministic:

@@ -137,11 +137,46 @@ client.hydrate(JSON.parse(payload));
 `hydrate` will not overwrite data the client already fetched itself — a page that
 loaded something before the payload arrived knows better than the payload does.
 
+## Data only the browser has
+
+Some data exists only in the browser: IndexedDB, `localStorage`, a file the reader picked. A server
+render cannot fetch it, and a page baked at build time cannot either. `clientOnly: true` keeps the
+query off the server:
+
+```tsx
+class Saved extends Component {
+  private tournaments = this.use(Query, (self: Saved) => ({
+    key: ["tournaments"],
+    fetch: self.load,
+    clientOnly: true,
+  }));
+
+  load(): Promise<string[]> {
+    return readFromIndexedDb();
+  }
+
+  render() {
+    if (this.tournaments.isPending) return <p>Loading…</p>;
+    return <p>{this.tournaments.data?.length} saved</p>;
+  }
+}
+```
+
+The server renders it pending, and so does the client's first render — so the page the server
+sent and the page the browser builds agree, and hydration keeps it. Then the client fetches. On a
+page reached by a client navigation there is no server render, and it fetches as any query does.
+
+There is no server-only counterpart. A query that fetched only during a server render would never
+fetch on a page reached by navigating, and would leave it empty without an error. `InfiniteQuery`
+takes `clientOnly` too.
+
 ## What does not run on the server
 
 Effects never do, so focus and reconnect refetching and polling are client-only by
-construction. `enabled` is read once, when the query mounts, which is the only moment
-a server render has.
+construction. A fetch can still START during a server render: on mount, and when the key moves, the
+query is invalidated, or `refetch()` is called before the render finishes. `enabled` and
+[`clientOnly`](#data-only-the-browser-has) are checked each time one would start, so neither lets a
+fetch through on any of those paths.
 
 ## Next
 

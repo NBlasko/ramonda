@@ -1,8 +1,8 @@
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { createIsrCache, fileStore } from "@ramonda/router/server";
 import { escapeHtml, fillDocument, installDom, mimeFor, parseCookies } from "@ramonda/server";
 
@@ -33,6 +33,10 @@ let prodTemplate;
 let staticSet;
 let isr;
 const STATIC = resolve(here, "dist/static");
+/** What the build wrote for the browser: the bundle under `assets/`, and everything from `public/`. */
+const CLIENT = resolve(here, "dist", "client");
+/** Every file under `CLIENT` by its URL, read once at startup — see `listClientFiles`. */
+let clientFiles = new Map();
 const origin = `http://localhost:${PORT}`;
 
 // Made before Vite, which takes it for hot reload. `vite` is set below, before the first request.
@@ -56,6 +60,7 @@ if (isProd) {
   prodPrerender = mod.prerender;
   prodPlan = mod.plan();
   staticSet = new Set(prodPlan.static);
+  clientFiles = listClientFiles();
   isr = createIsrCache({
     plan: prodPlan,
     // Where baked ISR pages live. A directory, so the cache survives a restart and is shared by
@@ -87,12 +92,12 @@ async function renderDev(req, res) {
     const template = await vite.transformIndexHtml(url, rawHtml);
     const { render } = await vite.ssrLoadModule("/src/entry-server.tsx");
 
-    const { html, title, head, portals, redirect, status } = await render();
+    const { html, title, head, lang, dir, portals, redirect, status } = await render();
     if (redirect) return sendRedirect(res, redirect);
 
     res.statusCode = status ?? 200;
     res.setHeader("Content-Type", "text/html");
-    res.end(fillDocument({ template, html, title, head, portals }));
+    res.end(fillDocument({ template, html, title, head, lang, dir, portals }));
   } catch (error) {
     // Rewrites the stack to your source, not the transformed module.
     vite.ssrFixStacktrace(error);
@@ -121,30 +126,79 @@ function sendHtml(res, html, mode, status = 200) {
 async function bakeShared(path) {
   const dom = installDom(`${origin}${path}`);
   try {
-    const { html, title, head, portals, blockedBy } = await prodPrerender(path);
+    const { html, title, head, lang, dir, portals, blockedBy } = await prodPrerender(path);
     if (blockedBy !== undefined) throw new Error(`Route ${path} is cached but read the request (${blockedBy}).`);
-    return fillDocument({ template: prodTemplate, html, title, head, portals });
+    return fillDocument({ template: prodTemplate, html, title, head, lang, dir, portals });
   } finally {
     dom.close();
   }
 }
 
+/**
+ * Every file under `dist/client`, by the URL it is served at — read ONCE, when production starts.
+ *
+ * A lookup per request instead of a disk check per request: every page asked the disk first, for a
+ * file that almost never exists. The build writes `dist/client` and nothing changes it while the
+ * server runs. The shell, `index.html`, is left out — it still holds `<!--ssr-->`; pages are rendered.
+ */
+function listClientFiles() {
+  const files = new Map();
+  const walk = (dir) => {
+    if (!existsSync(dir)) return;
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const file = join(dir, entry.name);
+      // Real files and folders only. The build copies `public/` with links resolved, so a link here
+      // was put here by hand after the build, and following one could serve anything it points at —
+      // `..`, a folder holding `.env`, the whole disk. It is not followed.
+      if (entry.isDirectory()) walk(file);
+      else if (entry.isFile()) files.set(`/${relative(CLIENT, file).split(sep).join("/")}`, file);
+    }
+  };
+  walk(CLIENT);
+  files.delete("/index.html");
+  return files;
+}
+
+/**
+ * The file a URL names under `dist/client`, or `undefined`. Only one the build wrote: a path that
+ * climbs out with `..`, encoded or not, names nothing on the list.
+ */
+function clientFile(path) {
+  let decoded;
+  try {
+    decoded = decodeURIComponent(path);
+  } catch {
+    return undefined;
+  }
+  return clientFiles.get(decoded);
+}
+
 async function renderProd(req, res) {
   const url = req.url ?? "/";
+  const path = url.split("?")[0];
 
-  if (url.startsWith("/assets/")) {
-    const file = join(here, "dist", "client", "assets", url.slice("/assets/".length));
-    if (existsSync(file)) {
-      res.setHeader("Content-Type", mimeFor(file));
-      res.end(readFileSync(file));
+  const file = clientFile(path);
+  if (file !== undefined) {
+    // Listed at startup, and possibly gone since — a rebuild in place empties `dist/client`. Read
+    // outside any `try`, a missing file was an unhandled rejection and the process exited.
+    let body;
+    try {
+      body = readFileSync(file);
+    } catch {
+      res.statusCode = 404;
+      res.end("Not found");
       return;
     }
+    res.setHeader("Content-Type", mimeFor(file));
+    res.end(body);
+    return;
+  }
+  // A missing bundle file is a 404, not a page: a browser asking for a script must not get HTML.
+  if (path.startsWith("/assets/")) {
     res.statusCode = 404;
     res.end("Not found");
     return;
   }
-
-  const path = url.split("?")[0];
 
   try {
     // 1. STATIC — serve the file the build baked (fall through to a live render if it is missing).
@@ -167,12 +221,12 @@ async function renderProd(req, res) {
 
     // 3. DYNAMIC — render per request (url + cookies for requestContext).
     installDom(`${origin}${url}`);
-    const { html, title, head, portals, redirect, status } = await prodRender({
+    const { html, title, head, lang, dir, portals, redirect, status } = await prodRender({
       url: new URL(url, origin),
       cookies: parseCookies(req.headers.cookie),
     });
     if (redirect) return sendRedirect(res, redirect);
-    sendHtml(res, fillDocument({ template: prodTemplate, html, title, head, portals }), "dynamic", status);
+    sendHtml(res, fillDocument({ template: prodTemplate, html, title, head, lang, dir, portals }), "dynamic", status);
   } catch (error) {
     res.statusCode = 500;
     res.end(`<pre>${escapeHtml(error?.stack ?? error)}</pre>`);

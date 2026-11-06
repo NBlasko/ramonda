@@ -11,7 +11,18 @@
  * Everything below the spread is this project's own business: what to build, for which platform, and
  * where to put it.
  */
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { join } from "node:path";
 import { build } from "esbuild";
 import { ramondaOptions, ramondaDefine } from "@ramonda/build/esbuild";
 
@@ -28,6 +39,36 @@ const shared = {
   // Where a bundler plugin goes, in both builds at once — `@ramonda/css`'s, for instance.
   plugins: [],
 };
+
+// `public/` — a favicon, `robots.txt`, images, a JSON file the site fetches — is copied, and the
+// production server answers it at the same URL the dev server does. FIRST, so a file in it can never
+// overwrite what the build writes below.
+//
+// A link is copied as the file or folder it points at, so `dist/client` holds only real files and the
+// server never follows a link. Reviews found what following them cost — a link to `..` served `.env`,
+// a loop or a broken chain stopped the server starting. A link that loops or points nowhere stops THIS
+// build instead, naming the path, as Vite's own copy of `public/` does.
+//
+// Not `cpSync(…, { dereference: true })`: measured on Node 24, that resolves only the folder it is
+// handed and copies every link INSIDE it as a link.
+// Emptied first. `dist/client` is written whole by this script, and a file deleted from `public/`
+// since the last build stayed there otherwise — listed by the server at startup and served at its old
+// URL. Found by the final review. Only this folder: `dist/static` and an ISR cache are not ours here.
+rmSync("dist/client", { recursive: true, force: true });
+if (existsSync("public")) copyResolved("public", "dist/client", new Set());
+
+function copyResolved(from, to, above) {
+  const real = realpathSync(from);
+  if (above.has(real)) throw new Error(`public/ links back into itself at ${from} — the build cannot copy a loop.`);
+  mkdirSync(to, { recursive: true });
+  for (const entry of readdirSync(from, { withFileTypes: true })) {
+    const source = join(from, entry.name);
+    const found = statSync(source, { throwIfNoEntry: false });
+    if (found === undefined) throw new Error(`public/ has a link that points nowhere: ${source}`);
+    if (found.isDirectory()) copyResolved(source, join(to, entry.name), new Set([...above, real]));
+    else if (found.isFile()) copyFileSync(source, join(to, entry.name));
+  }
+}
 
 const client = await build({
   ...shared,

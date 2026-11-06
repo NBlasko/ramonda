@@ -1,5 +1,15 @@
 # @ramonda/css
 
+## 0.12.0
+
+### Minor Changes
+
+- 8044df9: A project that takes colours only from its tokens writes `transparent` and `currentColor` as they are, in the editor and in the build: neither is a colour picked off a palette. `currentColor` as well as `currentcolor`, since CSS keywords ignore case. `em` is still a length like any other.
+
+### Patch Changes
+
+- 8d6d363: `ramonda-css` says which files it counted: the check reports the files in the tsconfig it read, and `lint` the paths it was given, so the two numbers no longer look like a file went missing.
+
 ## 0.11.0
 
 ### Minor Changes

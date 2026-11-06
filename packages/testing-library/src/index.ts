@@ -16,6 +16,7 @@
 export * from "@testing-library/dom";
 
 export { act } from "./act";
+export { allowDiagnostics } from "./diagnostics";
 export { cleanup } from "./cleanup";
 export { fireEvent } from "./fireEvent";
 export { render } from "./render";
@@ -28,9 +29,11 @@ export { renderHook } from "./renderHook";
 export type { RenderHookProps, RenderHookResult } from "./renderHook";
 
 import { registerAutoCleanup } from "./cleanup";
+import { registerFailOnDiagnostics } from "./diagnostics";
 
 // Registered at import time, which is the only way it holds: a harness rule that
 // a test has to remember is a harness rule that gets forgotten. Opt out with
 // `import "@ramonda/testing-library/dont-cleanup-after-each"` or the
 // RAMONDA_TL_SKIP_AUTO_CLEANUP env var.
 registerAutoCleanup();
+registerFailOnDiagnostics();

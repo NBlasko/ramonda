@@ -1,6 +1,6 @@
 import { Component, Hook, state } from "@ramonda/core";
 import type { RamondaNode } from "@ramonda/core";
-import { act, render } from "@ramonda/testing-library";
+import { act, allowDiagnostics, render } from "@ramonda/testing-library";
 import { describe, expect, test, vi } from "vitest";
 import { QueryClientProvider } from "../context";
 import { Query } from "../Query";
@@ -127,7 +127,7 @@ describe("Query", () => {
     class Reader extends Component {
       private value = this.use(Query, () => ({ key: ["shared"], fetch: fetcher }));
       render(): RamondaNode {
-        return <span class="v">{this.value.data ?? "…"}</span>;
+        return <span className="v">{this.value.data ?? "…"}</span>;
       }
     }
 
@@ -594,6 +594,7 @@ describe("Query", () => {
   });
 
   test("a query without a provider says what is missing", () => {
+    allowDiagnostics("RMD003"); // the test exists to show it
     class Orphan extends Component {
       private thing = this.use(Query, () => ({ key: ["thing"], fetch: async () => "v" }));
       render(): RamondaNode {

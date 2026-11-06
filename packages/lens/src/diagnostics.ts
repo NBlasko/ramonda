@@ -67,6 +67,8 @@ declare global {
     time: number;
     /** Identifies the SOURCE of a fault. Absent means "never deduplicate this". */
     dedupKey?: string;
+    /** Also thrown where it happened — see `@ramonda/core`'s declaration. */
+    thrown?: true;
   }
 
   /**

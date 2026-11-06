@@ -110,9 +110,13 @@ A separate package, beside `@ramonda/core`:
 
 ```install
 @ramonda/form
+bguard
 ```
 
-A new project can take it at scaffold time — `npm create ramonda@latest` offers it as an add-on.
+The form takes any [Standard Schema](/forms/validation#the-schema-contract-standardschemav1) validator.
+The examples on these pages use bguard, which is why it is installed beside it; with zod or another,
+install that instead. A new project can take both at scaffold time — `npm create ramonda@latest`
+offers the form as an add-on, and adds bguard with it.
 
 ## `Form<typeof schema>` — why the pin
 

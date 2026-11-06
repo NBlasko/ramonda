@@ -376,7 +376,7 @@ question its own router already answers:
 [ramonda-check] 1 component(s) reading the browser's URL, not the router's:
 
   src/Article.tsx:31:20
-    <Article> reads `window.location.hash` — the router answers this with `hashTags`.
+    <Article> reads `window.location.hash` — the router answers this with `hashParams`.
 ```
 
 The two are the same fact from two sources, and only one is reactive: read from the router, a

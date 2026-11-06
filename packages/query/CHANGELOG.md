@@ -1,5 +1,20 @@
 # @ramonda/query
 
+## 0.11.0
+
+### Minor Changes
+
+- 7d1641a: `clientOnly: true` on a `Query` or an `InfiniteQuery`, for data only the browser has — IndexedDB, `localStorage`, a file the reader picked. A server render (and a page baked at build time) does not fetch it — not on mount, and not when its key moves, it is invalidated, `refetch()` is called or an infinite query asks for another page during the render — and renders the query pending; the client's first render shows the same, so hydration keeps the page, and then it fetches. A boolean, so it compiles in a props object with nothing pinned.
+- 12509fa: `retry: false` turns retrying off, and `retry: true` means what leaving it out means — the client's default, or 3. `retry: false` is the habit people bring, and it was refused with a type error a screen long whose cause was its last line. A boolean and not `false` alone, because a literal `false` in a props object nothing pins widens to `boolean`: `retry: !permanent` compiles too.
+
+### Patch Changes
+
+- 0f93e5b: A development diagnostic fails the test it happened in. Diagnostics are printed, not thrown, and a test runner hides a passing test's console, so a test could cause RMD020 on every run and say nothing — found by an agent whose tests passed over three of them, one a real bug. After each test, once its tree is unmounted, a Ramonda diagnostic at `warn` or `error` fails it, naming the code. `allowDiagnostics("RMD003")` lets one test show one on purpose; `@ramonda/testing-library/dont-fail-on-diagnostics` or `RAMONDA_TL_ALLOW_DIAGNOSTICS` turns it off for a run. Each test starts with every diagnostic able to be reported again: a package that says each one once per process adds its reset to `globalThis.__RAMONDA_DIAGNOSTICS_RESET__` in development — core and `@ramonda/query` do — and the harness calls them all, depending on no package but core.
+  
+  Hydration no longer reports RMD007 for an empty string child. The server has nothing to serialise for `""`, so finding no text node there is the match: `<span>{error ?? ""}</span>` was reported on correct markup.
+  
+  A diagnostic that is also thrown — a write to a field node, a `@memoized` argument it cannot key on — is marked `thrown` on its record, and does not fail the test: the test already met the throw, and one expecting it with `toThrow` is right. A test that installs a collector of its own and clears it no longer switches the check off for the rest of its file.
+
 ## 0.10.0
 
 ### Minor Changes

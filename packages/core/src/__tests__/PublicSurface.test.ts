@@ -1,5 +1,10 @@
+import { dirname as surfaceDir, join as surfaceJoin } from "node:path";
+import { fileURLToPath as surfaceUrl } from "node:url";
+import { publishedTypes } from "../../../../scripts/surface/published-types";
 import { describe, test, expect } from "vitest";
 import * as api from "../index";
+
+const SURFACE_SRC = surfaceJoin(surfaceDir(surfaceUrl(import.meta.url)), "..");
 
 /**
  * What the package exports, asserted as a list.
@@ -138,6 +143,7 @@ const EXPECTED_TYPES = [
   "DocumentOptions",
   "Each",
   "ErrorBoundaryFallbackProps",
+  "EventOn",
   "HeadOptions",
   "HookMeta",
   "Identity",
@@ -145,7 +151,10 @@ const EXPECTED_TYPES = [
   "Lazy",
   "LifecycleOptions",
   "LinkTag",
+  "ListenerProps",
   "MetaTag",
+  "PortalProps",
+  "PortalTarget",
   "RamondaNode",
   "RefCallback",
   "RefTarget",
@@ -157,9 +166,12 @@ const EXPECTED_TYPES = [
   "RequestKey",
   "RequestKeyOptions",
   "RequestMode",
+  "ScheduledProps",
+  "SelectProps",
   "ServerRequestInit",
   "StaticRender",
   "SubscriptionOwner",
+  "TextAreaProps",
   "VNode",
 ];
 
@@ -184,6 +196,10 @@ describe("public API surface", () => {
     // The compiler proves the types EXIST — see the import below, which fails to check if one is
     // renamed or removed. This proves the LIST is tidy, so a name added to `index.ts` and appended
     // here rather than inserted is caught while the diff still says why.
+    // From a real program: a type exported and missing from the list fails — a sorted list alone did not.
+    expect(publishedTypes(surfaceJoin(SURFACE_SRC, "index.ts"), Object.keys(api), SURFACE_SRC)).toEqual(
+      [...EXPECTED_TYPES].sort(),
+    );
     expect(EXPECTED_TYPES).toEqual([...EXPECTED_TYPES].sort());
     expect(new Set(EXPECTED_TYPES).size).toBe(EXPECTED_TYPES.length);
   });

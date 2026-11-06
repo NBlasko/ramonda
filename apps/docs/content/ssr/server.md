@@ -29,8 +29,8 @@ const template = await readFile("dist/index.html", "utf8");
 async function handle(url: string): Promise<string> {
   const dom = installDom(url);
   try {
-    const { body, title, head, portals } = await renderPage(<App />);
-    return fillDocument({ template, html: body, title, head, portals });
+    const { body, title, head, lang, dir, portals } = await renderPage(<App />);
+    return fillDocument({ template, html: body, title, head, lang, dir, portals });
   } finally {
     dom.close();
   }
@@ -116,6 +116,12 @@ hydration, because the client found no container to adopt. Silence there ships t
 An empty `title` is a report that nothing set one — `renderPage` answers `""` when no
 [`Head`](/ssr/head) in the tree spoke — so it is left alone rather than written. Written, it emptied
 the shell's own `<title>`.
+
+**`lang` and `dir` go on the shell's `<html>`**, replacing what it says or adding what it lacks.
+They come from a [`Head`](/ssr/head#the-pages-language-lang-and-dir) in the page, so a bilingual
+app's pages are not all served as the language its one shell names. A page that set neither leaves
+the shell exactly as it was. Leave them out of the call and the server sends the shell's language;
+the client corrects it after hydration, which a screen reader and a crawler may not wait for.
 
 ### `escapeHtml(value)` and `PORTAL_TARGET_ATTR`
 

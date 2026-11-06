@@ -30,5 +30,7 @@ export default defineConfig({
     globals: true,
     environment: "jsdom",
     setupFiles: ["./src/__tests__/setup.ts"],
+    // Fixtures that are MEANT to fail, run in a vitest of their own by the tests that need one.
+    exclude: ["**/node_modules/**", "src/__tests__/fixtures/**"],
   },
 });

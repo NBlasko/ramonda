@@ -1,6 +1,6 @@
 {
   "name": "@ramonda/testing-library",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Testing utilities for Ramonda components and hooks, built on @testing-library/dom.",
   "license": "MIT",
   "author": "Nikola Blagojević",
@@ -27,6 +27,9 @@
     },
     "./dont-cleanup-after-each": {
       "import": "./dist/dont-cleanup-after-each.js"
+    },
+    "./dont-fail-on-diagnostics": {
+      "import": "./dist/dont-fail-on-diagnostics.js"
     }
   },
   "main": "./dist/index.js",

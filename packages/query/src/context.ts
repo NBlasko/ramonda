@@ -4,14 +4,28 @@ import { QueryClient } from "./QueryClient";
 import type { QueryBehaviour } from "./types";
 
 /**
- * What a provider publishes. One key, and it is the client itself: the cache is
- * not reactive, so there is nothing here to subscribe to per property the way the
- * router splits `baseUrl` from `queryParams`. Waking a component is an observer's
- * job (see `Query`), not the context's.
+ * What a provider publishes: the client itself, and whether this render is a server's. The cache is
+ * not reactive, so there is nothing here to subscribe to per property the way the router splits
+ * `baseUrl` from `queryParams`. Waking a component is an observer's job (see `Query`), not the
+ * context's.
  */
 interface QueryContextValue {
   client: QueryClient | null;
+  /**
+   * Whether the provider was created by a SERVER render — asked when a fetch is about to happen, so
+   * a `clientOnly` query knows not to run its browser-only fetcher there.
+   *
+   * The provider's and not the query's own: a component's `@created` runs before the hooks it holds
+   * have run theirs, so a query that marked itself in its own `@created({ env: "server" })` was told
+   * too late — measured, an infinite query's `fetchNextPage()` from its owner's `@created` ran the
+   * loader on the server. The provider is an ancestor, finished before any descendant is built.
+   * A function, read at the moment, and not the client's state: one client may serve a server render
+   * and then a client one, as a test does.
+   */
+  onServer: () => boolean;
 }
+
+const NEVER = (): boolean => false;
 
 /**
  * `null` is the default rather than a freshly built client, and the difference
@@ -20,7 +34,10 @@ interface QueryContextValue {
  * and only under real traffic. So the absence of a provider is a null, and asking
  * for a client without one throws with instructions.
  */
-const [ClientProvider, ClientConsumer] = createContext<QueryContextValue>({ client: null }, { label: "QueryClient" });
+const [ClientProvider, ClientConsumer] = createContext<QueryContextValue>(
+  { client: null, onServer: NEVER },
+  { label: "QueryClient" },
+);
 
 export { ClientConsumer };
 
@@ -89,7 +106,20 @@ export class QueryClientProvider extends Hook<QueryClientProviderProps | undefin
    * flags an unused *private* member. The router's `routeProvider` is the same
    * shape for the same reasons.
    */
-  protected provider = this.use(ClientProvider, () => ({ client: this.ownClient }));
+  protected provider = this.use(ClientProvider, () => ({ client: this.ownClient, onServer: this.isServerRender }));
+
+  /** Set when a server render creates this provider — see `QueryContextValue.onServer`. */
+  private serverRender = false;
+
+  @created({ env: "server" })
+  markServerRender(): void {
+    this.serverRender = true;
+  }
+
+  /** A method, so it is bound once and the context's value keeps one identity. */
+  isServerRender(): boolean {
+    return this.serverRender;
+  }
 
   /**
    * The client this provider owns, for the component that mounted it — a route
@@ -166,6 +196,11 @@ export class QueryClientAccess extends Hook {
 
   get client(): QueryClient {
     return requireClient(this.ctx.client, this.constructor.name);
+  }
+
+  /** Whether this is a server render — see `QueryContextValue.onServer`. */
+  get onServer(): boolean {
+    return this.ctx.onServer();
   }
 }
 
