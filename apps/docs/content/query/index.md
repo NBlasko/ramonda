@@ -145,10 +145,10 @@ private add = this.use(Mutation<Todo, string>, () => ({
 }));
 ```
 
-One thing the annotated form still has over it: an unknown property in the options object
-(`staleTimee: 10`) is caught in neither form, because the object is returned from the
-callback rather than passed as an argument. Watch the spelling of an option that seems to
-do nothing.
+An unknown property in the options object (`staleTimee: 10`) compiles in either form, because
+the object is returned from the callback rather than passed as an argument. `ramonda-check`
+reports it as [`unknown-hook-option`](/rules/unknown-hook-option), with the option it was
+probably meant to be.
 
 ## Seeing the cache
 

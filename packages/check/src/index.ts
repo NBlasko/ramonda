@@ -38,6 +38,7 @@ export type {
   FragmentLinkToNowhereIssue,
   FreshObjectInHookPropsIssue,
   FreshValueFromAWatchSelectorIssue,
+  UnknownHookOptionIssue,
   FreshObjectInPropsIssue,
   FunctionUsedAsATagIssue,
   ObjectAmongTheChildrenIssue,

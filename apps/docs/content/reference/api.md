@@ -502,8 +502,9 @@ Every rule publishes its own issue shape, named for the rule: `AccessKeyIssue`,
 `ServerEnvInSharedCodeIssue`, `StateMutatedInPlaceIssue`, `StateWrittenWhileRenderingIssue`,
 `TableWithNoHeadersIssue`, `TagNeedsItsParentIssue`, `UnexposedEnvReadIssue`,
 `UnguardedAsyncLifecycleIssue`, `UnkeyableMemoizedArgumentIssue`, `UnknownAriaAttributeIssue`,
-`UnknownRoleIssue`, `UnnamedFrameIssue`, `UnnamedImageIssue`, `UnserializableStateIssue`,
-`UnsplittableImportIssue`, `UnwatchedFieldIssue`, `WatchOfAPropThatIsNotThereIssue`.
+`UnknownHookOptionIssue`, `UnknownRoleIssue`, `UnnamedFrameIssue`, `UnnamedImageIssue`,
+`UnserializableStateIssue`, `UnsplittableImportIssue`, `UnwatchedFieldIssue`,
+`WatchOfAPropThatIsNotThereIssue`.
 
 [issues:end]: #
 

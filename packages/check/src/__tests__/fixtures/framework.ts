@@ -10,6 +10,7 @@ export declare class Component<P = Record<string, unknown>> {
   render(): unknown;
 }
 export declare class Hook<P = Record<string, unknown>> {
+  constructor(runtime: unknown, initialProps: P);
   props: P;
   protected use<T>(hook: T, options?: unknown): unknown;
 }
@@ -31,7 +32,7 @@ export interface RamondaNode {
 export declare function createContext<T>(
   d: T,
   o?: { label?: string; optional?: boolean; single?: boolean; stableProps?: readonly string[] },
-): [unknown, unknown];
+): [new (owner: unknown, options: T) => Hook<T>, new (owner: unknown) => T];
 export declare function createRoutes(table: unknown): unknown;
 export declare function bootstrap(vnode: unknown, el: unknown): void;
 

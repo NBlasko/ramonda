@@ -673,6 +673,7 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
     fromPackage: (id: ts.Node, pkg: string) => importedFromPackage(id, pkg, resolveLocal, resolveStep),
     formValue: (expression: ts.Expression) => formValueOf(checker.getTypeAtLocation(expression)),
     propertyNames: (expression: ts.Expression) => propertyNames(checker.getTypeAtLocation(expression), checker),
+    hookOptions: (hook: ts.Expression) => hookOptions(checker.getTypeAtLocation(hook), checker),
     typeLiterals: (expression: ts.Expression, absentAs?: string) => {
       const type = checker.getTypeAtLocation(expression);
       const read: string[] = [];
@@ -4175,6 +4176,24 @@ const HANDS_NO_NAME =
   ts.TypeFlags.BigIntLike |
   ts.TypeFlags.StringLike |
   ts.TypeFlags.ESSymbolLike;
+
+/**
+ * What a hook's props bag may name: the second parameter of every way to construct it, together.
+ * One signature whose parameter cannot be read makes the whole answer unreadable, which is silence.
+ */
+function hookOptions(type: ts.Type, checker: ts.TypeChecker): string[] | undefined {
+  const signatures = type.getConstructSignatures();
+  if (signatures.length === 0) return undefined;
+  const names = new Set<string>();
+  for (const signature of signatures) {
+    const parameter = signature.getParameters()[1];
+    if (parameter === undefined) return undefined;
+    const read = propertyNames(checker.getNonNullableType(checker.getTypeOfSymbol(parameter)), checker);
+    if (read === undefined) return undefined;
+    for (const name of read) names.add(name);
+  }
+  return [...names];
+}
 
 function propertyNames(type: ts.Type, checker: ts.TypeChecker): string[] | undefined {
   if ((type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) return undefined;

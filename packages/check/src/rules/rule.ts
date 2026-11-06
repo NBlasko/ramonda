@@ -546,6 +546,12 @@ export interface Resolver {
    */
   propertyNames(expression: ts.Expression): string[] | undefined;
   /**
+   * The names a hook's props bag takes, read off the type of its constructor's second parameter —
+   * the one `this.use()` itself matches the bag against. `undefined` when that type cannot say a
+   * name is wrong: `any`, an index, a hook with no such parameter. See `unknown-hook-option`.
+   */
+  hookOptions(hook: ts.Expression): string[] | undefined;
+  /**
    * Whether this assertion puts an `HTMLFormElement` under a type that is not a form and does not
    * hold one — `form as unknown as Canvas` — so its `reset` cannot be followed past it. Asked of the
    * outermost assertion. See `reset-the-model-does-not-hear`.

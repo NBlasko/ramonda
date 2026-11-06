@@ -60,9 +60,10 @@ one `<head>` the way many [portals](/composition/portal) share one target.
 `href`, and carries `type`, `sizes`, `crossOrigin` and `hreflang` where they apply.
 
 There is no `robots` or `canonical` key — those are a `meta` and a `link`. A key `Head` does not take
-compiles and is ignored, because the options come back from a callback; write the callback as
-`(): HeadOptions => ({ … })` and it is refused where it is written. See [a misspelt option is not a
-type error](/hooks#a-misspelt-option-is-not-a-type-error).
+compiles, because the options come back from a callback, and `Head` ignores it; `ramonda-check`
+reports it as [`unknown-hook-option`](/rules/unknown-hook-option). Write the callback as
+`(): HeadOptions => ({ … })` and the editor refuses it too. See [a misspelt option is not a type
+error](/hooks#a-misspelt-option-is-not-a-type-error).
 
 `title` and `description` come first because they are the two that decide clicks.
 **Set them on every page** — a site whose pages all share one title competes with

@@ -73,6 +73,7 @@ const EXPECTED_TYPES = [
   "FragmentLinkToNowhereIssue",
   "FreshObjectInHookPropsIssue",
   "FreshValueFromAWatchSelectorIssue",
+  "UnknownHookOptionIssue",
   "FreshObjectInPropsIssue",
   "FunctionUsedAsATagIssue",
   "ObjectAmongTheChildrenIssue",
