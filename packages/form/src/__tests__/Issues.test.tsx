@@ -398,3 +398,40 @@ describe("an issue that is a class instance", () => {
     }
   });
 });
+
+/**
+ * A refused write is thrown, and its record says so — so a test that expects the throw is not failed
+ * afterwards by `@ramonda/testing-library` over the same refusal.
+ */
+describe("a refused write", () => {
+  test("throws, and its record is marked thrown", () => {
+    const records: RamondaDiagnostic[] = [];
+    const before = globalThis.__RAMONDA_DIAGNOSTICS__;
+    globalThis.__RAMONDA_DIAGNOSTICS__ = (record) => {
+      records.push(record);
+      before?.(record);
+    };
+    let form!: Form<typeof coded>;
+    class Page extends Component {
+      private f = this.use(Form<typeof coded>, () => ({
+        schema: coded,
+        defaultValues: { name: "" },
+        onSubmit: () => {},
+      }));
+      render(): RamondaNode {
+        form = this.f;
+        return <form />;
+      }
+    }
+    const { unmount } = render((<Page />) as never);
+    try {
+      expect(() => {
+        (form.fields.name as unknown as Record<string, unknown>).first = "x";
+      }).toThrow(TypeError);
+      expect(records.find((r) => r.code === "RMF001")?.thrown).toBe(true);
+    } finally {
+      globalThis.__RAMONDA_DIAGNOSTICS__ = before;
+      unmount();
+    }
+  });
+});

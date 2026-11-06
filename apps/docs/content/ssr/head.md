@@ -105,6 +105,10 @@ export class App extends Component {
 It follows the rules the title does. The deeper `Head` wins, so a page in another language can say
 so. When the page goes away, `<html>` gets back what it had, unless something else changed it since.
 
+Set it at the app root, as above, and not only on the pages that differ. After hydration the browser
+has only what the server wrote, so "what it had" is the first page's language, not the shell's: leave
+a French page for one whose `Head` sets no `lang`, and `<html>` stays French.
+
 On the server, `renderPage` returns `lang` and `dir`, and [`fillDocument`](/ssr/server) writes them
 over the shell's `<html lang="en">`. Pass them through, as you pass `title`. A page that set neither
 leaves the shell's value standing.

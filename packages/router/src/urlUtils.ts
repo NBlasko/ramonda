@@ -60,7 +60,7 @@ function parseHash(hash: string): Record<string, Record<string, string>> {
   scopes[""] = parseQueryParams(top);
   for (const segment of rest) {
     const colon = segment.indexOf(":");
-    const owner = colon === -1 ? "" : segment.slice(0, colon);
+    const owner = colon === -1 ? "" : canonicalOwner(segment.slice(0, colon));
     const pairs = parseQueryParams(colon === -1 ? segment : segment.slice(colon + 1));
     scopes[owner] = copyInto(copyInto({}, scopes[owner]), pairs);
   }
@@ -73,6 +73,25 @@ function parseHash(hash: string): Record<string, Record<string, string>> {
  */
 function ownerKey(key: string): string {
   return encodeURIComponent(key).replace(/\./g, "%2E");
+}
+
+/**
+ * An owner path as a link spells it, in the one form `ownedBy` writes. A hand-written link can leave a
+ * character unencoded — `a,b` where the router writes `a%2Cb` — and named an owner no `<HashLevel>`
+ * matched: the child read nothing, and changing the parent's key left it behind. Found by the final
+ * review. A part that cannot be decoded is kept as written.
+ */
+function canonicalOwner(path: string): string {
+  return path
+    .split(".")
+    .map((part) => {
+      try {
+        return ownerKey(decodeURIComponent(part));
+      } catch {
+        return part;
+      }
+    })
+    .join(".");
 }
 
 /** The owner of what is written under `key` by a writer whose own owner is `owner`. */
@@ -129,7 +148,9 @@ export function writeHashScope(
 
   const out = owners();
   for (const [o, pairs] of Object.entries(scopes)) if (o !== owner && !isCleared(o)) out[o] = pairs;
-  out[owner] = next;
+  // A copy, never the caller's object: a record the app kept and edited later changed the router's
+  // state behind every identity check. Found by the final review.
+  out[owner] = copyInto({}, next);
   return out;
 }
 

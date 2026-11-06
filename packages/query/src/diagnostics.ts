@@ -23,6 +23,8 @@ declare global {
     data?: Record<string, unknown>;
     time: number;
     dedupKey?: string;
+    /** Also thrown where it happened — see `@ramonda/core`'s declaration. */
+    thrown?: true;
   }
 
   var __RAMONDA_DIAGNOSTICS__: ((record: RamondaDiagnostic) => void) | undefined;

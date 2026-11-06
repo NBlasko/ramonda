@@ -78,9 +78,12 @@ export interface Document {
  * quiet.
  */
 export function fillDocument({ template, html, title, head, lang, dir, portals }: Document): string {
-  let out = template.replace("<!--ssr-->", () => html ?? "");
-  out = setRootAttribute(out, "lang", lang);
+  // The shell's own `<html>`, BEFORE the page goes in. After it, a shell with no `<html>` — valid HTML —
+  // had the rendered page searched instead, and a `<html` in a code sample or a script string was
+  // rewritten. Found by the final review.
+  let out = setRootAttribute(template, "lang", lang);
   out = setRootAttribute(out, "dir", dir);
+  out = out.replace("<!--ssr-->", () => html ?? "");
   // An EMPTY title is a report that nothing set one — `renderPage` returns `""` when no `Head` in
   // the tree spoke — and not a title of "". Writing it emptied the shell's own `<title>`, which a
   // scaffolded project with no `Head` shipped as `<title></title>`.

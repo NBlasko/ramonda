@@ -100,6 +100,10 @@ test("a query with no provider says what is missing", () => {
 });
 ```
 
+A diagnostic that Ramonda also THROWS — a write to a field node, a `@memoized` argument it cannot
+key on — does not fail the test afterwards. The test already met the throw, and one that expects it
+with `toThrow` is right.
+
 What one test allows, the next does not. Each test also starts with every diagnostic able to be
 reported again, so the second test making a mistake is told as the first was.
 

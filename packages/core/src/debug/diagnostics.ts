@@ -19,6 +19,12 @@ declare global {
     data?: Record<string, unknown>;
     time: number;
     dedupKey?: string;
+    /**
+     * The same fault was also THROWN where it happened. The throw already tells whoever ran the code,
+     * so a collector that fails on diagnostics — `@ramonda/testing-library` — leaves this one to it: a
+     * test expecting the throw is right, and was failed afterwards over the record.
+     */
+    thrown?: true;
   }
 
   var __RAMONDA_DIAGNOSTICS__: ((record: RamondaDiagnostic) => void) | undefined;
@@ -129,6 +135,11 @@ interface DiagnosticSpec {
   title: string;
   /** What to do instead. Always concrete — never "check your code". */
   fix: string;
+  /**
+   * The fault is ALWAYS thrown where it is reported — the code says so here, once, rather than every
+   * call site remembering to. See `RamondaDiagnostic.thrown`.
+   */
+  thrown?: true;
 }
 /**
  * Exported from this MODULE only — `index.ts` does not re-export it, so it is not published surface.
@@ -156,6 +167,7 @@ export const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
     fix: "The consumer is falling back to the context's default value. Mount the matching Provider hook on an ancestor component — a context is only visible to the providing component and its descendants. If the default IS the answer here rather than a stand-in, say so where the context is created — `createContext(value, { optional: true })` — and this goes quiet for every consumer of it at once. The router's `params` is the example: a nav bar beside the outlet has no matched route above it, and `{}` is correct there.",
   },
   RMD004: {
+    thrown: true,
     severity: "error",
     title: "Props mutated by the receiving component",
     fix: "Props are owned by the parent, so the write has nothing to write to — it throws rather than being dropped, because a write that silently does nothing leaves the component running on a value nobody set. Copy the value into @state if this component owns it from here on, or call a callback prop to ask the parent to change it. A hook's props behave identically (RMD015).",
@@ -194,6 +206,7 @@ export const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
     fix: "A JSX tag is either an element name or a component class, and a plain function is neither: nothing constructs it, it has no state and no lifecycle, and the framework has nowhere to put what it returns. What did you want it for? For markup you reuse, call the function in an expression slot — `{sideBar()}` — where it reads as the value it is. For state, lifecycle or hooks with no markup of its own, use a Hook (`this.use(MyHook)`). For state AND markup, make it a component: a component owns whatever its render returns, including nothing at all, so it needs no element to justify itself.",
   },
   RMD015: {
+    thrown: true,
     severity: "error",
     title: "A hook's props assigned by the hook that received them",
     fix: "A hook's props belong to whoever called `this.use(...)`, and the hook re-reads them from the owner on every render — so an assignment here has nothing to write to, and it throws rather than being dropped. Copy the value into @state if the hook owns it from here on, or take a callback prop and ask the owner to change it. This is the same rule as a component's props (RMD004).",
@@ -369,6 +382,7 @@ export const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
     fix: "One item has to become exactly one element, because an element is what carries the row's key and what the diff matches on. A string or a number is not one: wrap it, `list(names, (name) => <li>{name}</li>)`. A nested `list()` is not one either, and it is the common case — a list of pages, each holding a list of rows. Put a COMPONENT between them: `list(pages, (page) => <PageView item={page} />)`, because the component's host element is what wraps the inner rows. The item is skipped rather than rendered, so the page is missing a row wherever this fires.",
   },
   RMD047: {
+    thrown: true,
     // error, not warning: development stops at it, and in production the handler is rebuilt on every
     // render — so everything it is passed to re-renders with it, for the life of the page.
     severity: "error",
@@ -408,6 +422,7 @@ export const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
     fix: "`{Panel}` names the component instead of rendering it — write `<Panel />`. A class is a function rather than a vnode, so it is dropped and the page comes up without it, and until now nothing said so: the check beside this one looks for an OBJECT among children, and a function never reaches it. Handing a component to something else is an attribute — `<Slot view={Panel} />` — and that is a prop, not a child.",
   },
   RMD053: {
+    thrown: true,
     // error, not warning: the read returned nothing, so whatever it was for is missing from the page.
     severity: "error",
     title: "The request was read with no request scope installed",
@@ -449,11 +464,13 @@ export const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
     fix: "`render()` must return markup, not a promise for it. An `async render()` returns a `Promise` the moment it is called, so the diff is handed an object that is not a node — and what you see is a `TypeError` from inside the framework naming neither your component nor `render`. The type system refuses this, so reaching it means a cast, a `@ts-ignore`, or a loosened base class somewhere above. Load the data outside the render: `@mounted` (or `@created`) writing the result into `@state`, and a render that shows what state it is in; or `AsyncLoad`, which takes the promise and renders a fallback while it settles. `ramonda-check` reports the same method before it ships, as `async-render`.",
   },
   RMD055: {
+    thrown: true,
     severity: "error",
     title: "A hook's props passed as a plain object",
     fix: "Pass a callback instead: `this.use(Hook, () => ({ ... }))`. An object literal in a field initializer is evaluated ONCE, while the owner is being constructed, so every value in it is frozen at that moment — a later `this.count` never reaches the hook, and nothing reports the stale value. A callback that reads no signal costs nothing: it runs once, at mount, and never again, and the inline functions in it keep their identity. (A development build calls it again to check it, and keeps nothing from those calls.)",
   },
   RMD056: {
+    thrown: true,
     // An error, and it THROWS in every build — see the Provider in `base/Context.ts`. The prose here
     // is what development prints beside the throw.
     severity: "error",
@@ -504,6 +521,7 @@ export function diagnose(code: DiagnosticCode, dedupKey: string, detail?: string
     data: reportable(data),
     time: Date.now(),
     dedupKey: id,
+    ...(spec.thrown ? { thrown: true as const } : {}),
   });
 
   ramondaLog(spec.severity, message, data);

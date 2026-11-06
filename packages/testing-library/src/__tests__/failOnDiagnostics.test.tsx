@@ -78,12 +78,37 @@ describe("before each test", () => {
     }
   });
 
+  /**
+   * A test that installs a collector of its own and clears it afterwards — the usual pattern in this
+   * repository's tests — replaced the harness's collector, and nothing put it back: every later test
+   * in the file passed whatever it reported. Found by the final review.
+   */
+  test("the harness's own collector is put back if a test took it away", () => {
+    globalThis.__RAMONDA_DIAGNOSTICS__ = undefined;
+    startTest();
+    // Read back through a cast: after `= undefined` the checker narrows the global to that.
+    const sink = globalThis.__RAMONDA_DIAGNOSTICS__ as ((record: never) => void) | undefined;
+    sink?.({ code: "RMD998", scope: "ramonda/core", severity: "warn", time: 0 } as never);
+    expect(diagnosticsFailure()?.message).toContain("RMD998");
+  });
+
   test("core's own is one of them", () => {
     expect(globalThis.__RAMONDA_DIAGNOSTICS_RESET__?.size ?? 0).toBeGreaterThan(0);
   });
 });
 
 describe("what is not a failure", () => {
+  test("a diagnostic that was thrown as well — the test already saw the throw", () => {
+    globalThis.__RAMONDA_DIAGNOSTICS__?.({
+      code: "RMF001",
+      scope: "ramonda/form",
+      severity: "error",
+      thrown: true,
+      time: 0,
+    } as never);
+    expect(diagnosticsFailure()).toBeUndefined();
+  });
+
   test("a record from outside Ramonda, and a debug record from inside it", () => {
     globalThis.__RAMONDA_DIAGNOSTICS__?.({ code: "X1", scope: "someone-else", severity: "error", time: 0 } as never);
     globalThis.__RAMONDA_DIAGNOSTICS__?.({

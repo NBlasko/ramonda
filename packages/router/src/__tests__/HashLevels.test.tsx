@@ -400,3 +400,80 @@ describe("the owners are in the URL", () => {
     expect(navs.video!.hashParams).toEqual({ "section:intro": "" });
   });
 });
+
+/**
+ * From the final review. An owner spelled in a hand-written link — `a,b`, which the router itself
+ * writes as `a%2Cb` — named an owner no `<HashLevel>` matched. And the router kept the very objects an
+ * app handed it or was handed back: an updater that changed `prev` and returned it read as "no
+ * change", and a record the app kept and edited later changed the router's state behind its back.
+ */
+describe("what the router keeps", () => {
+  class Under extends Component {
+    nav = this.use(Navigator);
+    @created keep() {
+      navs.under = this.nav;
+    }
+    render() {
+      return <p>{this.nav.hashParams.tab ?? "none"}</p>;
+    }
+  }
+  class Comma extends Component {
+    nav = this.use(Navigator);
+    @created keep() {
+      navs.shell = this.nav;
+    }
+    render() {
+      return (
+        <HashLevel of="a,b">
+          <Under />
+        </HashLevel>
+      );
+    }
+  }
+  function appOf(Page: typeof Comma) {
+    class App extends Component {
+      router = this.use(Router);
+      render(): RamondaNode {
+        return <Page />;
+      }
+    }
+    return App;
+  }
+
+  test("an owner written by hand, unencoded, is the same owner", async () => {
+    window.history.pushState(null, "", "/#a,b=1#a,b:tab=x");
+    const App = appOf(Comma);
+    render(<App />);
+    expect(navs.under!.hashParams.tab).toBe("x");
+    await write("shell", { "a,b": "2" });
+    expect(hash()).not.toContain("tab=x");
+  });
+
+  test("an updater that changes prev and returns it is still a change", async () => {
+    const App = app(Shell);
+    render(<App />);
+    await write("shell", { nav: "video" });
+    // The owner must already hold a record: with none, `prev` was a fresh `{}` and the test passed
+    // with the fault in place.
+    await write("video", { tab: "comments" });
+    await act(async () =>
+      navs.video!.updateHashParams((prev) => {
+        prev.tab = "suggestions";
+        return prev;
+      }),
+    );
+    expect(hash()).toBe("#nav=video#nav:tab=suggestions");
+    expect(navs.video!.hashParams.tab).toBe("suggestions");
+  });
+
+  test("a record the app keeps, and edits later, is not the router's", async () => {
+    const App = app(Shell);
+    render(<App />);
+    const mine = { nav: "video" };
+    await act(async () => navs.shell!.updateHashParams(mine));
+    mine.nav = "analytics";
+    expect(navs.shell!.hashParams.nav).toBe("video");
+    await act(async () => navs.shell!.push("/other#nav=video"));
+    expect(navs.shell!.hashParams.nav).toBe("video");
+  });
+});

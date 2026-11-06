@@ -57,8 +57,9 @@ describe("the record, as every package declares it", () => {
   it("names the same fields everywhere", () => {
     const collector = fieldsOf(declarationIn(HERE));
 
-    // The five a collector may assume, plus the three it must not require.
-    expect(collector).toEqual(["code", "data", "dedupKey", "fix", "message", "scope", "severity", "time"]);
+    // The five a collector may assume, plus the four it must not require — `thrown` the newest: the
+    // fault was thrown as well, so a harness failing tests on diagnostics leaves it to the throw.
+    expect(collector).toEqual(["code", "data", "dedupKey", "fix", "message", "scope", "severity", "thrown", "time"]);
     for (const reporter of REPORTERS) expect(fieldsOf(declarationIn(reporter))).toEqual(collector);
   });
 

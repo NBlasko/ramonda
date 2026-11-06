@@ -120,6 +120,19 @@ describe("fillDocument writes the page's lang and dir on <html>", () => {
     expect(fillDocument({ template: bare, html: "", lang: "sr" })).toContain(`<html lang="sr">`);
   });
 
+  /**
+   * The shell's own `<html>`, never the page's. The attributes were written after the rendered page was
+   * put in, so a shell with no `<html>` — valid HTML — had the PAGE searched instead, and a `<html`
+   * inside it, in a code sample or a script string, was rewritten. Found by the final review.
+   */
+  test("a shell with no <html> leaves the rendered page alone", () => {
+    const shell = `<!doctype html><head><title>App</title></head><body><!--ssr--></body>`;
+    const page = `<pre>&lt;html&gt;</pre><script>const s = "<html lang=\\"en\\">";</script>`;
+    const out = fillDocument({ template: shell, html: page, lang: "sr" });
+    expect(out).toContain(page);
+    expect(out).not.toContain('lang="sr"');
+  });
+
   test("only the <html> element, not a lang written further down the shell", () => {
     const shell = `<!doctype html><html lang="en"><head></head><body><p lang="en">x</p><!--ssr--></body></html>`;
     const out = fillDocument({ template: shell, html: "", lang: "sr" });

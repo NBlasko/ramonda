@@ -130,7 +130,9 @@ export function createNavigator(store: RouteStateAccess, onServerRedirect?: (url
       updateState(
         (prev) => {
           const scopes = prev.hashScopes;
-          const own = scopes[owner] ?? {};
+          // A copy: an updater that changes `prev` and returns it handed back the router's own record,
+          // which then compared equal to itself and read as no change. Found by the final review.
+          const own = { ...scopes[owner] };
           return {
             ...prev,
             hashScopes: writeHashScope(scopes, owner, typeof next === "function" ? next(own) : next),

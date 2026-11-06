@@ -19,20 +19,30 @@ interface Report {
   severity?: string;
   message?: string;
   fix?: string;
+  thrown?: true;
 }
 
 let seen: Report[] = [];
 const allowed = new Set<string>();
-let installed = false;
+/** The collector on the global now, to tell whether a test has replaced it since. */
+let ours: ((record: RamondaDiagnostic) => void) | undefined;
+/** Which collector is the live one: an older one left inside someone's chain stops collecting. */
+let generation = 0;
 
+/**
+ * Puts the collector on the global — again, if a test has replaced it since. A test that installs
+ * its own collector and clears it afterwards is the usual pattern, and it took this one away for the
+ * rest of the file: every later test passed whatever it reported. Found by the final review.
+ */
 function install(): void {
-  if (installed) return;
-  installed = true;
+  if (ours !== undefined && globalThis.__RAMONDA_DIAGNOSTICS__ === ours) return;
   const existing = globalThis.__RAMONDA_DIAGNOSTICS__;
-  globalThis.__RAMONDA_DIAGNOSTICS__ = (record) => {
-    seen.push(record as Report);
+  const mine = ++generation;
+  ours = (record) => {
+    if (mine === generation) seen.push(record as Report);
     existing?.(record);
   };
+  globalThis.__RAMONDA_DIAGNOSTICS__ = ours;
 }
 
 /**
@@ -47,6 +57,7 @@ export function allowDiagnostics(...codes: string[]): void {
 
 /** Before a test: nothing seen, nothing allowed, and every diagnostic able to be reported again. */
 export function startTest(): void {
+  install();
   seen = [];
   allowed.clear();
   // A diagnostic is said once per process. Without this, the first test to make a mistake takes the
@@ -61,6 +72,9 @@ export function diagnosticsFailure(): Error | undefined {
     (r) =>
       r.scope?.startsWith("ramonda/") === true &&
       (r.severity === "warn" || r.severity === "error") &&
+      // Thrown as well, where it happened: the test already met it, and one that expects the throw is
+      // right — failing it afterwards over the record was the fault.
+      r.thrown !== true &&
       !allowed.has(r.code),
   );
   seen = [];
