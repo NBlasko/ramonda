@@ -382,6 +382,16 @@ async function serves(port, attempt = 0) {
           linked.body.slice(0, 200),
         );
       }
+      // A file the server listed at startup, gone while it runs — a rebuild in place empties
+      // `dist/client`. The read sat outside every `try`, so it was an unhandled rejection and the
+      // process exited. A file that is not there is a 404, and the server goes on answering.
+      rmSync(join(app, "dist", "client", "linked.txt"));
+      const gone = await get("/linked.txt");
+      if (gone === "retry") return "retry";
+      if (gone.status !== 404) fail(`/linked.txt, deleted while the server ran, was answered ${gone.status}`, log);
+      const after = await get("/");
+      if (after === "retry") return "retry";
+      if (after.status !== 200) fail("the server stopped answering after a listed file was deleted", log);
       // Two levels up is the project root, where `server.mjs` and `package.json` are. Encoded, because
       // `fetch` takes a plain `..` out of the URL before it is sent.
       for (const escape of [

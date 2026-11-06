@@ -844,7 +844,10 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
     // where every path that fetches meets, beside `enabled` — not in the mount path alone, where a key
     // that moved during the server render, or an invalidation there, still ran the fetcher on the
     // server. Found by the final review.
-    if (this.props.clientOnly === true && this.onServer) return Promise.resolve();
+    //
+    // Asked of the PROVIDER, not of `this.onServer`: that is set in this hook's own `@created`, which
+    // runs after its owner's — measured, a `refetch()` from the owner's `@created` fetched on the server.
+    if (this.props.clientOnly === true && this.ctx.onServer()) return Promise.resolve();
 
     const options = this.behaviour();
     // Resolved against the client's defaults before asking about staleness: an

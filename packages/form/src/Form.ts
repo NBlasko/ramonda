@@ -1541,8 +1541,8 @@ function equal(a: unknown, b: unknown, walking?: Set<object>): boolean {
    * in two places is no loop, and a guard that kept every visit called `{ a: X, b: X }` different from
    * an equal copy — measured — while `equal` also decides whether a form's defaults moved.
    */
-  // Made only on the first descent: `equal` runs per field per render for `dirty`, and most calls are
-  // two primitives that `Object.is` already settled above.
+  // Made on the first descent into an array or object, not on every call: two primitives, equal or
+  // not, are answered above without one.
   walking ??= new Set();
   const node = a as object;
   if (walking.has(node)) return false;

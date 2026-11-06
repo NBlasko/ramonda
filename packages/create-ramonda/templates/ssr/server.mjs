@@ -179,8 +179,18 @@ async function renderProd(req, res) {
 
   const file = clientFile(path);
   if (file !== undefined) {
+    // Listed at startup, and possibly gone since — a rebuild in place empties `dist/client`. Read
+    // outside any `try`, a missing file was an unhandled rejection and the process exited.
+    let body;
+    try {
+      body = readFileSync(file);
+    } catch {
+      res.statusCode = 404;
+      res.end("Not found");
+      return;
+    }
     res.setHeader("Content-Type", mimeFor(file));
-    res.end(readFileSync(file));
+    res.end(body);
     return;
   }
   // A missing bundle file is a 404, not a page: a browser asking for a script must not get HTML.

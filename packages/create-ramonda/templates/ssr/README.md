@@ -26,7 +26,8 @@ npm start          # serve the built output on http://localhost:5173
 ```
 
 Static files — a favicon, `robots.txt`, images — go in `public/`, which you create. `public/robots.txt`
-is `/robots.txt` in dev and in production: the build copies the folder into `dist/client`.
+is `/robots.txt` in dev and in production: the build copies the folder into `dist/client`, which it
+empties first — keep your own files in `public/`, not there.
 
 ## How rendering modes work
 

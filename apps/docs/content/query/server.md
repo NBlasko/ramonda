@@ -173,8 +173,10 @@ takes `clientOnly` too.
 ## What does not run on the server
 
 Effects never do, so focus and reconnect refetching and polling are client-only by
-construction. `enabled` is read once, when the query mounts, which is the only moment
-a server render has.
+construction. A fetch can still START during a server render: on mount, and when the key moves, the
+query is invalidated, or `refetch()` is called before the render finishes. `enabled` and
+[`clientOnly`](#data-only-the-browser-has) are checked each time one would start, so neither lets a
+fetch through on any of those paths.
 
 ## Next
 

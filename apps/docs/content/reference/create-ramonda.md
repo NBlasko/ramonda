@@ -143,7 +143,9 @@ Vite's types. `ssr` adds:
 **Static files go in `public/`** in both modes — a favicon, `robots.txt`, images, a JSON file the
 site fetches. You create the folder. `public/robots.txt` is served at `/robots.txt`, by the dev server
 and in production alike: `spa` through Vite's build, `ssr` because `scripts/build.mjs` copies the
-folder into `dist/client` and `server.mjs` serves any file there.
+folder into `dist/client` and `server.mjs` serves any file there. A link in `public/` is copied as
+what it points at. The build empties `dist/client` first, so anything else put there is gone after
+the next build: keep your own files in `public/`.
 
 And per add-on: `ramonda.css.ts` and `css-system/` with `css`; `vitest.config.ts` and
 `src/App.test.tsx` with `testing`; `biome.json` with `biome`. With `devtools`, the entry imports the
