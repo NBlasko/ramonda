@@ -286,6 +286,49 @@ describe("a node that takes itself out while it is let go", () => {
     expect(app.instance.second.current).toBe(null);
   });
 
+  test("a last node that takes itself out ends the walk", async () => {
+    class Last extends Component {
+      @state shown = true;
+      readonly last = createRef<HTMLElement>(this.torn);
+      torn(element: HTMLElement | null) {
+        if (element === null) document.getElementById("last")?.remove();
+      }
+      render() {
+        return (
+          <div>
+            {this.shown ? (
+              <section id="rows">
+                <p>1</p>
+                <p id="last" ref={this.last}>
+                  2
+                </p>
+              </section>
+            ) : null}
+          </div>
+        );
+      }
+    }
+    const app = await getDOM<Last>(<Last />);
+    await app.settle();
+    const section = app.container.querySelector("#rows");
+    const descriptor = Object.getOwnPropertyDescriptor(Node.prototype, "firstChild") as PropertyDescriptor;
+    let walks = 0;
+    Object.defineProperty(Node.prototype, "firstChild", {
+      ...descriptor,
+      get(this: Node) {
+        if (this === section) walks++;
+        return descriptor.get?.call(this);
+      },
+    });
+    try {
+      app.instance.shown = false;
+      await app.settle();
+    } finally {
+      Object.defineProperty(Node.prototype, "firstChild", descriptor);
+    }
+    expect(walks).toBe(1);
+  });
+
   test("the siblings after two that a @destroyed took out together are let go too", async () => {
     const destroyedNames: string[] = [];
     class Widget extends Component {

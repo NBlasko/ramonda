@@ -728,7 +728,9 @@ function applyDiffOnChildren(
   }
 
   /**
-   * The pool to claim from: this element's children, MINUS the ones it does not own.
+   * The pool to claim from: the children the last pass placed (`PLACED`), while every one of them is still
+   * here. Otherwise — an element no pass placed into, or one whose children someone took out — this
+   * element's children read from the page, MINUS the ones it does not own.
    *
    * An element may hold a `ChildrenRegion`'s block — a `Portal` aimed at a node in the owner's own
    * render, which is how "inline" is done, and the `Head` hook's tags in a head that also holds the
@@ -2091,13 +2093,16 @@ function releaseWithin(parent: Node): void {
     releaseField(child);
     // The sibling it had, while that is still here: a node that took itself out or moved itself — a ref's
     // callback tearing down the widget it held — leaves the walk where it was. Gone with a block's nodes,
-    // the next one is past them. Both gone, the walk starts over: letting a node go twice does nothing.
+    // the next one is past them. Both gone, the walk starts over — letting a node go twice does nothing —
+    // and a last node gone leaves nothing after it.
     child = (
       next !== null && next.parentNode === parent
         ? next
         : child.parentNode === parent
           ? child.nextSibling
-          : parent.firstChild
+          : next !== null
+            ? parent.firstChild
+            : null
     ) as EnhancedChildNode | null;
   }
 }

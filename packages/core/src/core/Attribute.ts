@@ -66,8 +66,8 @@ export function applyChangesOnAttributes(
   releaseDroppedRef(enhancedNode as EnhancedHTMLNode, nextAttributes.ref);
   /**
    * An `<input>` is told, on every pass, whether it is controlled — a pass that no longer has a
-   * `value` lets the field go, which the attribute diff, reading attributes back off the element,
-   * would never see.
+   * `value` lets the field go. The attribute diff answers for the attribute only; the field's own
+   * listener and what it holds are `controlInput`'s.
    */
   if (enhancedNode.nodeName === "INPUT") {
     writeDefaults(enhancedNode as unknown as HTMLInputElement, rawNextAttributes, onServer);
@@ -81,8 +81,9 @@ export function applyChangesOnAttributes(
  * follows until the user edits and a form's reset returns to, on both sides, so a served page starts
  * on it before any script runs. Nothing writes the property: the field is the user's.
  *
- * Here rather than in the attribute loop, because neither is an attribute of its own name for the
- * diff to read back, so a default taken away — `defaultChecked` turned `false` — would never be seen.
+ * Here rather than in the attribute loop, because neither is an attribute of its own name: the loop
+ * would write `defaultValue` onto the element. A default the render stops naming at all is taken away by
+ * `removePreviousFromenhancedNode`, which knows it from the record.
  */
 function writeDefaults(input: HTMLInputElement, attributes: NodeAttributes, onServer: boolean): void {
   // A field with a `value` (`checked`) is the model's, and so is that attribute: a default written
@@ -142,9 +143,9 @@ function radioWasPicked(radio: HTMLInputElement): boolean {
 /**
  * Lets go of a ref the JSX has stopped giving this element.
  *
- * `ref` is not a DOM attribute, so it is never among the PREVIOUS attributes read
- * back off the node, and the attach loop only walks the keys present in the NEXT
- * ones. A disappearing `ref` was therefore invisible to both, and the element went
+ * `ref` is not a DOM attribute, so the removal loop leaves it alone, and the attach
+ * loop only walks the keys present in the NEXT ones. A disappearing `ref` was
+ * therefore invisible to both, and the element went
  * on holding the handle — a stale strong reference from the node to a ref nothing
  * points at, and a `current` still aimed at an element the JSX no longer connects
  * it to. A component's ref has behaved correctly since it was unified across
@@ -663,6 +664,9 @@ function removePreviousFromenhancedNode(
     // Nothing was written for it last pass either — a record keeps a name it held as `undefined` or
     // `false`, which the page never had — so there is nothing to take away.
     if (isInvisibleOnScreen(previousAttributes[name], name)) continue;
+
+    // No attribute to take away: a dropped ref is let go by `releaseDroppedRef`.
+    if (name === "ref") continue;
 
     if (name.startsWith("on")) {
       const listeners = enhancedNode._listeners ?? {};

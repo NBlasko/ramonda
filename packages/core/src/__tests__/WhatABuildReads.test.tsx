@@ -1,7 +1,7 @@
 import { describe, test, expect } from "vitest";
 import { getDOM } from "../test/setup";
 import { state, destroyed } from "../base/decorators";
-import { Component, __h, list, type EventOn } from "../index";
+import { Component, __h, createRef, list, type EventOn } from "../index";
 import { renderToString } from "../hydration/ssr";
 import { hydrateRoot } from "../hydration/hydrate";
 import { componentAt } from "../core/DiffAndMerge";
@@ -160,6 +160,31 @@ describe("an element the diff updates", () => {
       Element.prototype.removeAttribute = remove;
     }
     expect(removed).toBe(0);
+  });
+
+  test("a ref the render stops giving is let go, with no attribute call", async () => {
+    class Held extends Component {
+      @state held = true;
+      readonly box = createRef<HTMLElement>();
+      render() {
+        return this.held ? <p ref={this.box}>held</p> : <p>held</p>;
+      }
+    }
+    const app = await getDOM<Held>(<Held />);
+    await app.settle();
+    const remove = Element.prototype.removeAttribute;
+    const removed: string[] = [];
+    Element.prototype.removeAttribute = function (this: Element, name: string) {
+      removed.push(name);
+      return remove.call(this, name);
+    };
+    try {
+      app.instance.held = false;
+      await app.settle();
+    } finally {
+      Element.prototype.removeAttribute = remove;
+    }
+    expect({ removed, current: app.instance.box.current }).toEqual({ removed: [], current: null });
   });
 
   test("keeps what the browser changed — a <details> the reader closed stays closed", async () => {
