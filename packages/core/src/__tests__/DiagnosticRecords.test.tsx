@@ -148,3 +148,17 @@ describe("the diagnostic record", () => {
     }
   });
 });
+
+/**
+ * A diagnostic that is also THROWN says so on its record. The throw already tells whoever ran the code;
+ * a test that expects it — `expect(() => …).toThrow()` — is right, and a harness that fails a test on
+ * diagnostics would otherwise fail it anyway over the record. Found by a review of fail-on-diagnostics.
+ */
+describe("a diagnostic that is thrown as well", () => {
+  test("is marked thrown, and one that is only printed is not", () => {
+    diagnose("RMD047", "marked:x", "detail");
+    diagnose("RMD013", "printed:x", "detail");
+    expect(records.find((r) => r.code === "RMD047")?.thrown).toBe(true);
+    expect(records.find((r) => r.code === "RMD013")?.thrown).toBeUndefined();
+  });
+});

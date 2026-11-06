@@ -19,10 +19,13 @@ class Astray extends Component {
     const where = window.location.pathname;
     const anchor = location.hash;
     const query = window.location.search;
-    // No member of the router answers this one, so the report names no replacement rather than
-    // inventing one.
+    // No member of the router answers these, so they are the browser's to tell and not reported —
+    // a share link needs the origin, and there is nowhere else to read it.
     const origin = window.location.origin;
-    return <span>{`${where}${anchor}${query}${origin}`}</span>;
+    const host = location.host;
+    const protocol = window.location.protocol;
+    const href = window.location.href;
+    return <span>{`${where}${anchor}${query}${origin}${host}${protocol}${href}`}</span>;
   }
 }
 

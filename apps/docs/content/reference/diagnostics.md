@@ -67,6 +67,8 @@ interface RamondaDiagnostic {
   time: number;
   /** Identifies the SOURCE of a fault. Absent means "never deduplicate this". */
   dedupKey?: string;
+  /** The fault was also thrown where it happened, so whoever ran the code already met it. */
+  thrown?: true;
 }
 
 declare global {

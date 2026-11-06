@@ -57,7 +57,7 @@ the page's own head, a root element, your stylesheets and scripts.
 
 | option | |
 |---|---|
-| `lang` | `<html lang>`, default `"en"` |
+| `lang` | `<html lang>` when the page's `Head` set none, default `"en"` |
 | `scripts` | module scripts at the end of `<body>` — your hydration entry |
 | `styles` | stylesheet links |
 | `headExtra` | raw markup for anything it doesn't model (favicon, analytics). **Not escaped** |
@@ -73,7 +73,9 @@ slightly differently, so it does the parts that are always the same and leaves t
 rest to `headExtra`.
 
 `lang` defaults to `"en"`, and that is a default rather than a recommendation — a screen reader
-picks pronunciation from it and a search engine decides which audience the page is for.
+picks pronunciation from it and a search engine decides which audience the page is for. A page whose
+[`Head` sets `lang`](/ssr/head#the-pages-language-lang-and-dir) wins over it, and its `dir` is
+written beside it.
 
 ## Your bundler needs two builds
 

@@ -20,4 +20,8 @@ declare global {
   const loadUser: (...args: any[]) => any;
   const getUser: (...args: any[]) => any;
   const waitFor: (...args: any[]) => any;
+  /** A component that reads a context nothing provides — the diagnostic a test may allow. */
+  class Orphan extends Component<any> {
+    render(): any;
+  }
 }

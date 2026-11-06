@@ -33,7 +33,16 @@
  */
 import { execFileSync, spawn as spawnChild } from "node:child_process";
 import { createServer as createNetServer } from "node:net";
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync, rmSync, existsSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  writeFileSync,
+  rmSync,
+  existsSync,
+  symlinkSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -277,6 +286,9 @@ function fail(what, detail) {
  * read versus a live render — and only the second one needs the DOM, the router and everything a
  * production install might have dropped.
  */
+/** What the check puts in `public/robots.txt`, and expects back. */
+const ROBOTS = "User-agent: *\nAllow: /\n";
+
 async function serves(port, attempt = 0) {
   port ??= await freePort();
   const server = spawn(process.execPath, ["server.mjs", "--prod"], {
@@ -340,6 +352,62 @@ async function serves(port, attempt = 0) {
       if (sheet.status !== 200 || !sheet.type.startsWith("text/css")) {
         fail(`${href} was served as ${sheet.status} ${sheet.type}, not as a stylesheet`, log);
       }
+    }
+
+    // A file from `public/`, served as itself; nothing outside `dist/client`; and never the raw shell.
+    if (mode === "ssr") {
+      const robots = await get("/robots.txt");
+      if (robots === "retry") return "retry";
+      if (robots.status !== 200 || robots.body !== ROBOTS || !robots.type.startsWith("text/plain")) {
+        fail(`/robots.txt from public/ was served as ${robots.status} ${robots.type}`, robots.body.slice(0, 200));
+      }
+      const inFolder = await get("/images/logo.txt");
+      if (inFolder === "retry") return "retry";
+      if (inFolder.status !== 200 || inFolder.body !== ROBOTS) {
+        fail(`/images/logo.txt, in a symlinked folder in public/, was served as ${inFolder.status} ${inFolder.type}`);
+      }
+      const leftover = await get("/deleted-since.txt");
+      if (leftover === "retry") return "retry";
+      if (leftover.body.includes("no longer in public"))
+        fail("/deleted-since.txt, left by a previous build, was still served");
+      const escaped = await get("/escape/package.json");
+      if (escaped === "retry") return "retry";
+      if (escaped.body.includes('"dependencies"'))
+        fail("/escape/package.json served the project through a link in dist/client");
+      const linked = await get("/linked.txt");
+      if (linked === "retry") return "retry";
+      if (linked.status !== 200 || linked.body !== ROBOTS) {
+        fail(
+          `/linked.txt, a symlink in public/, was served as ${linked.status} ${linked.type}`,
+          linked.body.slice(0, 200),
+        );
+      }
+      // A file the server listed at startup, gone while it runs — a rebuild in place empties
+      // `dist/client`. The read sat outside every `try`, so it was an unhandled rejection and the
+      // process exited. A file that is not there is a 404, and the server goes on answering.
+      rmSync(join(app, "dist", "client", "linked.txt"));
+      const gone = await get("/linked.txt");
+      if (gone === "retry") return "retry";
+      if (gone.status !== 404) fail(`/linked.txt, deleted while the server ran, was answered ${gone.status}`, log);
+      const after = await get("/");
+      if (after === "retry") return "retry";
+      if (after.status !== 200) fail("the server stopped answering after a listed file was deleted", log);
+      // Two levels up is the project root, where `server.mjs` and `package.json` are. Encoded, because
+      // `fetch` takes a plain `..` out of the URL before it is sent.
+      for (const escape of [
+        "/..%2F..%2Fserver.mjs",
+        "/%2e%2e/%2e%2e/package.json",
+        "/assets/..%2F..%2F..%2Fserver.mjs",
+      ]) {
+        const answer = await get(escape);
+        if (answer === "retry") return "retry";
+        if (answer.body.includes("createServer") || answer.body.includes('"dependencies"')) {
+          fail(`${escape} served a file from outside dist/client`, answer.body.slice(0, 200));
+        }
+      }
+      const shell = await get("/index.html");
+      if (shell === "retry") return "retry";
+      if (shell.body.includes("<!--ssr-->")) fail("/index.html served the raw shell, markers and all");
     }
 
     // A page that does not exist is a 404 with the app's own Not found page in it. Served as 200 it
@@ -548,6 +616,29 @@ try {
     writeFileSync(file, broken);
   }
 
+  // A file in `public/`, where Vite serves static files from in dev. The SSR production build never
+  // copied it and its server answered only `/assets/*`, so the same URL was a 404 after
+  // `npm run build && npm start` — found by an agent publishing a JSON file with its site.
+  mkdirSync(join(app, "public"), { recursive: true });
+  writeFileSync(join(app, "public", "robots.txt"), ROBOTS);
+  // And links — to a file and to a folder — which the build copies as what they point at. The server
+  // follows no link, so these are served only because the copy resolved them. Reviews found a linked
+  // favicon and a linked folder of images each becoming a rendered 404.
+  symlinkSync("robots.txt", join(app, "public", "linked.txt"));
+  mkdirSync(join(app, "shared-images"), { recursive: true });
+  writeFileSync(join(app, "shared-images", "logo.txt"), ROBOTS);
+  symlinkSync(join(app, "shared-images"), join(app, "public", "images"));
+
+  // A block in a `.ts` file with no markup, which the docs say works like one in a `.tsx`. Dev, the
+  // tests and the type check took it; the SSR production build did not — its plugin filter named only
+  // `.tsx`, and esbuild stopped at the `@`. Imported for its side, so it is in the build and nothing
+  // has to read it.
+  if (withAddon) {
+    writeFileSync(join(app, "src", "shared-block.ts"), "export const row = @@(\n  display: flex;\n);\n");
+    const entry = join(app, "src", "App.tsx");
+    writeFileSync(entry, `import "./shared-block";\n${readFileSync(entry, "utf8")}`);
+  }
+
   // A reader's next step, once they want styles: the documented install, on the project they were
   // just given. `ssr` writes its block only after a first build without one — see `addCssDependency`.
   if (!withAddon) {
@@ -588,6 +679,14 @@ try {
     checks.push("a dev server that starts with no unresolved import");
   }
 
+  // What a PREVIOUS build left in `dist/client` — a file since deleted from `public/`. The build copied
+  // `public/` over whatever was there and cleaned nothing, so the server listed the leftover and kept
+  // serving it at its old URL. Found by the final review.
+  if (mode === "ssr") {
+    mkdirSync(join(app, "dist", "client"), { recursive: true });
+    writeFileSync(join(app, "dist", "client", "deleted-since.txt"), "a file no longer in public/\n");
+  }
+
   const buildProject = () => {
     try {
       run("npm", ["run", "build"], { cwd: app });
@@ -601,8 +700,10 @@ try {
   buildProject();
 
   if (withAddon) {
+    // The project's own scripts, as a reader runs them: `test` runs once, and `format:check` is what
+    // `check` uses to refuse unformatted code.
     try {
-      run("npx", ["vitest", "run"], { cwd: app });
+      run("npm", ["test"], { cwd: app });
     } catch (error) {
       fail("the generated project's own tests failed", outputOf(error));
     }
@@ -611,8 +712,7 @@ try {
     // not formatted the way it tells a project to format fails here rather than in a first commit.
     for (const [what, command, args] of [
       ["npm run lint", "npm", ["run", "lint"]],
-      ["biome format .", "npx", ["biome", "format", "."]],
-      ["ramonda-css format --check src", "npx", ["ramonda-css", "format", "--check", "src"]],
+      ["npm run format:check", "npm", ["run", "format:check"]],
     ]) {
       try {
         run(command, args, { cwd: app });
@@ -741,6 +841,10 @@ try {
     } catch (error) {
       fail("`npm ci --omit=dev` failed — a production install of the generated project", outputOf(error));
     }
+    // A link put into what the server serves AFTER the build, pointing at the project itself. The
+    // server follows no link, so nothing under it is served — a fourth review found that following
+    // links would have served `server.mjs`, `package.json` and `.env` through one like this.
+    symlinkSync(app, join(app, "dist", "client", "escape"));
     await servesSomewhere();
     checks.push("a production install that serves");
   }

@@ -2,7 +2,7 @@ import { defineConfig } from "tsup";
 import { dts } from "../../tsup.dts";
 
 export default defineConfig({
-  entry: ["src/index.ts", "src/dont-cleanup-after-each.ts"],
+  entry: ["src/index.ts", "src/dont-cleanup-after-each.ts", "src/dont-fail-on-diagnostics.ts"],
   format: ["esm"],
   dts,
   clean: true,

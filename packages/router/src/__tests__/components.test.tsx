@@ -1,7 +1,7 @@
 import { beforeEach, describe, test, expect } from "vitest";
 import { Component, created } from "@ramonda/core";
 import type { RamondaNode } from "@ramonda/core";
-import { render, act, fireEvent } from "@ramonda/testing-library";
+import { act, allowDiagnostics, fireEvent, render } from "@ramonda/testing-library";
 import { Router, RouteOutlet, Navigator } from "../Router";
 import { Link } from "../Link";
 import { createRoutes } from "../match";
@@ -277,10 +277,20 @@ describe("Navigator: partial-state updates", () => {
     expect(window.location.search).toBe("?a=1&b=2");
   });
 
-  test("updateHashTags changes only the hash", () => {
+  test("a hash with several pairs reaches the page whole, from the browser's own navigation", () => {
+    // `#access_token=…&state=…` is how an OAuth redirect lands; the second pair was dropped once.
+    render(app());
+    act(() => {
+      window.history.pushState(null, "", "/#k1=v1&k2=v2");
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    });
+    expect(route.hashParams).toEqual({ k1: "v1", k2: "v2" });
+  });
+
+  test("updateHashParams changes only the hash", () => {
     render(app());
 
-    act(() => route.updateHashTags([{ key: "open", value: "1", level: 0 }]));
+    act(() => route.updateHashParams({ open: "1" }));
 
     expect(window.location.hash).toBe("#open=1");
     expect(route.pathname).toBe("/");
@@ -357,6 +367,7 @@ describe("Link", () => {
   });
 
   test("a Link with no Router refuses to navigate rather than failing quietly", () => {
+    allowDiagnostics("RMD003"); // the test exists to show it
     const { container } = render(<Link href="/players/9">Go</Link>);
     const a = container.querySelector("a")!;
 

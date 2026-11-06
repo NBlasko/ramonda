@@ -161,9 +161,19 @@ describe("a schema chosen at runtime", () => {
         onSubmit: () => {},
       }));
 
-      /** Runs after the commit, so the form is holding the schema this render installed. */
+      /** The schema the last validation ran against — a plain field, so writing it renders nothing. */
+      private validatedFor: Schema | undefined;
+
+      /**
+       * Runs after the commit, so the form is holding the schema this render installed — and once per
+       * schema. `submit()` writes state, so an `@updated` that submits on every update starts another,
+       * and never settles: written without the guard this was RMD009, 50 renders and then a stop, while
+       * the assertion below still passed. Found when tests began failing on diagnostics.
+       */
       @updated
       applySchema(): void {
+        if (this.validatedFor === this.schema) return;
+        this.validatedFor = this.schema;
         if (this.strict) this.form.submit();
       }
 

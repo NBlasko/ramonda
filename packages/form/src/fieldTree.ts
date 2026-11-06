@@ -1,5 +1,6 @@
 import { indexUnder, keyPrefix, type Path, type PathSegment, pathKey, pathToString } from "./path";
-import type { FieldNode, Row } from "./types";
+import type { FieldIssue, FieldNode, Row } from "./types";
+import { issuesOf } from "./validate";
 import { REFUSAL, refuse, report } from "./diagnostics";
 
 /**
@@ -279,6 +280,10 @@ export class FieldHandle {
 
   get errors(): readonly string[] {
     return this.host.errorsAt(this.at_);
+  }
+
+  get issues(): readonly FieldIssue[] {
+    return issuesOf(this.host.errorsAt(this.at_));
   }
 
   get touched(): boolean {

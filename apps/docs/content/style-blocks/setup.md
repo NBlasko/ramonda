@@ -39,7 +39,7 @@ esbuild builds the same thing:
 ```ts
 import { ramondaCss } from "@ramonda/css/esbuild";
 
-export const plugins = [ramondaCss({ filter: /src\/.*\.tsx$/ })];
+export const plugins = [ramondaCss({ filter: /src\/.*\.tsx?$/ })];
 ```
 
 **And in the tests.** Vitest transforms through its own config, so a file holding a block reaches
@@ -48,7 +48,9 @@ decorators there as it does in the app.
 
 **Set `filter` on esbuild.** esbuild hands a plugin a *path* rather than the code, so a file has to
 be read before it can be asked whether it holds a block. Pointing the plugin at the tree that holds
-them means nothing else is opened at all.
+them means nothing else is opened at all. Name `.ts` as well as `.tsx` — `\.tsx?$` — so a block in a
+file with no markup is compiled too; a file the filter leaves out reaches esbuild unread, and it
+stops at the `@`.
 
 **Link the stylesheet esbuild writes.** It puts every rule in a `.css` file beside the bundle —
 `client.js` gets `client.css` — and nothing loads that file until your HTML links it. Vite does
@@ -60,7 +62,7 @@ A server-rendered app from [`create-ramonda`](/guide/installation) runs Vite in 
 esbuild for the production build, so the plugin goes in two files:
 
 - `vite.config.ts`: add `ramondaCss()` to the `plugins` array beside `ramonda()`.
-- `scripts/build.mjs`: put `ramondaCss({ filter: /src\/.*\.tsx$/ })` in the empty `plugins` array.
+- `scripts/build.mjs`: put `ramondaCss({ filter: /src\/.*\.tsx?$/ })` in the empty `plugins` array.
   Both bundles need it. The server bundle writes the class names into the HTML, and the client
   bundle carries the rules.
 

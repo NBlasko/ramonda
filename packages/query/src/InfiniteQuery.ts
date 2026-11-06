@@ -65,6 +65,7 @@ export class InfiniteQuery<TPage, K extends QueryKey = QueryKey> extends Hook<In
     retry: self.props.retry,
     retryDelay: self.props.retryDelay,
     enabled: self.props.enabled,
+    clientOnly: self.props.clientOnly,
     refetchOnMount: self.props.refetchOnMount,
     refetchOnWindowFocus: self.props.refetchOnWindowFocus,
     refetchOnReconnect: self.props.refetchOnReconnect,
@@ -175,6 +176,9 @@ export class InfiniteQuery<TPage, K extends QueryKey = QueryKey> extends Hook<In
 
   private async fetchEdge(direction: "next" | "previous"): Promise<void> {
     if (this.props.enabled === false) return;
+    // Its own fetch, past the inner query's guard: a page asked for during a server render ran the
+    // browser-only loader there. Asked of the provider — see `QueryContextValue.onServer`.
+    if (this.props.clientOnly === true && this.access.onServer) return;
     if (this.direction !== undefined) return; // already adding a page
 
     this.direction = direction;

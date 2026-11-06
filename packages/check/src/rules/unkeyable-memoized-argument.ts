@@ -140,7 +140,8 @@ export const unkeyableMemoizedArgument = {
       "keying on its identity would miss every time — a fresh object per render fills the map and\n" +
       "hands back a new handler on every pass, which is the churn the decorator exists to prevent.\n\n" +
       "Pass the primitive the object stands for — `row.id` rather than `row` — and read the rest\n" +
-      "inside the handler, where `this` is in scope anyway.\n\n" +
+      "inside the handler, where `this` is in scope anyway. Or, for a VALUE built per row, build\n" +
+      "every row's value in one `@compute`, keyed by id, and read it by id in the row.\n\n" +
       "Development throws, so this is not shipped by anybody who ran the branch. Production builds\n" +
       "the handler and moves on WITHOUT caching that call: the page works and only the memoisation\n" +
       "is lost, silently — which is why it is worth saying before anything runs.\n\n" +

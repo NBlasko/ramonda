@@ -165,13 +165,13 @@ export const $font = Object.freeze({
 /** The 215 properties this project narrows, and what each takes. */
 interface Narrowings {
   /** `-moz-border-bottom-colors` — a colour, and only as one of this project's tokens. */
-  "-moz-border-bottom-colors": Narrowed<"none" | "currentcolor", Token<"color">>;
+  "-moz-border-bottom-colors": Narrowed<"none" | "currentcolor" | "currentColor" | "transparent", Token<"color">>;
   /** `-moz-border-left-colors` — a colour, and only as one of this project's tokens. */
-  "-moz-border-left-colors": Narrowed<"none" | "currentcolor", Token<"color">>;
+  "-moz-border-left-colors": Narrowed<"none" | "currentcolor" | "currentColor" | "transparent", Token<"color">>;
   /** `-moz-border-right-colors` — a colour, and only as one of this project's tokens. */
-  "-moz-border-right-colors": Narrowed<"none" | "currentcolor", Token<"color">>;
+  "-moz-border-right-colors": Narrowed<"none" | "currentcolor" | "currentColor" | "transparent", Token<"color">>;
   /** `-moz-border-top-colors` — a colour, and only as one of this project's tokens. */
-  "-moz-border-top-colors": Narrowed<"none" | "currentcolor", Token<"color">>;
+  "-moz-border-top-colors": Narrowed<"none" | "currentcolor" | "currentColor" | "transparent", Token<"color">>;
   /** `-ms-content-zoom-limit-max` — a percentage, and this project's tokens of that kind. */
   "-ms-content-zoom-limit-max": Narrowed<never, CssDimension<"%"> | Token<"percentage">>;
   /** `-ms-content-zoom-limit-min` — a percentage, and this project's tokens of that kind. */
@@ -189,37 +189,37 @@ interface Narrowings {
   /** `-ms-scroll-limit-y-min` — a length, and only as one of this project's tokens. */
   "-ms-scroll-limit-y-min": Narrowed<never, Token<"length"> | 0 | "0">;
   /** `-ms-scrollbar-3dlight-color` — a colour, and only as one of this project's tokens. */
-  "-ms-scrollbar-3dlight-color": Narrowed<"currentcolor", Token<"color">>;
+  "-ms-scrollbar-3dlight-color": Narrowed<"currentcolor" | "currentColor" | "transparent", Token<"color">>;
   /** `-ms-scrollbar-arrow-color` — a colour, and only as one of this project's tokens. */
-  "-ms-scrollbar-arrow-color": Narrowed<"currentcolor", Token<"color">>;
+  "-ms-scrollbar-arrow-color": Narrowed<"currentcolor" | "currentColor" | "transparent", Token<"color">>;
   /** `-ms-scrollbar-base-color` — a colour, and only as one of this project's tokens. */
-  "-ms-scrollbar-base-color": Narrowed<"currentcolor", Token<"color">>;
+  "-ms-scrollbar-base-color": Narrowed<"currentcolor" | "currentColor" | "transparent", Token<"color">>;
   /** `-ms-scrollbar-darkshadow-color` — a colour, and only as one of this project's tokens. */
-  "-ms-scrollbar-darkshadow-color": Narrowed<"currentcolor", Token<"color">>;
+  "-ms-scrollbar-darkshadow-color": Narrowed<"currentcolor" | "currentColor" | "transparent", Token<"color">>;
   /** `-ms-scrollbar-face-color` — a colour, and only as one of this project's tokens. */
-  "-ms-scrollbar-face-color": Narrowed<"currentcolor", Token<"color">>;
+  "-ms-scrollbar-face-color": Narrowed<"currentcolor" | "currentColor" | "transparent", Token<"color">>;
   /** `-ms-scrollbar-highlight-color` — a colour, and only as one of this project's tokens. */
-  "-ms-scrollbar-highlight-color": Narrowed<"currentcolor", Token<"color">>;
+  "-ms-scrollbar-highlight-color": Narrowed<"currentcolor" | "currentColor" | "transparent", Token<"color">>;
   /** `-ms-scrollbar-shadow-color` — a colour, and only as one of this project's tokens. */
-  "-ms-scrollbar-shadow-color": Narrowed<"currentcolor", Token<"color">>;
+  "-ms-scrollbar-shadow-color": Narrowed<"currentcolor" | "currentColor" | "transparent", Token<"color">>;
   /** `-ms-scrollbar-track-color` — a colour, and only as one of this project's tokens. */
-  "-ms-scrollbar-track-color": Narrowed<"currentcolor", Token<"color">>;
+  "-ms-scrollbar-track-color": Narrowed<"currentcolor" | "currentColor" | "transparent", Token<"color">>;
   /** `-ms-wrap-margin` — a length, and only as one of this project's tokens. */
   "-ms-wrap-margin": Narrowed<never, Token<"length"> | 0 | "0">;
   /** `-webkit-border-after-color` — a colour, and only as one of this project's tokens. */
-  "-webkit-border-after-color": Narrowed<"currentcolor", Token<"color">>;
+  "-webkit-border-after-color": Narrowed<"currentcolor" | "currentColor" | "transparent", Token<"color">>;
   /** `-webkit-border-after-width` — a length, and only as one of this project's tokens. */
   "-webkit-border-after-width": Narrowed<"medium" | "thick" | "thin", Token<"length"> | 0 | "0">;
   /** `-webkit-border-before-color` — a colour, and only as one of this project's tokens. */
-  "-webkit-border-before-color": Narrowed<"currentcolor", Token<"color">>;
+  "-webkit-border-before-color": Narrowed<"currentcolor" | "currentColor" | "transparent", Token<"color">>;
   /** `-webkit-border-before-width` — a length, and only as one of this project's tokens. */
   "-webkit-border-before-width": Narrowed<"medium" | "thick" | "thin", Token<"length"> | 0 | "0">;
   /** `-webkit-border-end-color` — a colour, and only as one of this project's tokens. */
-  "-webkit-border-end-color": Narrowed<"currentcolor", Token<"color">>;
+  "-webkit-border-end-color": Narrowed<"currentcolor" | "currentColor" | "transparent", Token<"color">>;
   /** `-webkit-border-end-width` — a length, and only as one of this project's tokens. */
   "-webkit-border-end-width": Narrowed<"medium" | "thick" | "thin", Token<"length"> | 0 | "0">;
   /** `-webkit-border-start-color` — a colour, and only as one of this project's tokens. */
-  "-webkit-border-start-color": Narrowed<"currentcolor", Token<"color">>;
+  "-webkit-border-start-color": Narrowed<"currentcolor" | "currentColor" | "transparent", Token<"color">>;
   /** `-webkit-border-start-width` — a length, and only as one of this project's tokens. */
   "-webkit-border-start-width": Narrowed<"medium" | "thick" | "thin", Token<"length"> | 0 | "0">;
   /** `-webkit-line-clamp` — a whole number, and this project's tokens of that kind. */
@@ -231,15 +231,15 @@ interface Narrowings {
   /** `-webkit-mask-size` — a length or a percentage, the length only as one of this project's tokens. */
   "-webkit-mask-size": Narrowed<"auto" | "contain" | "cover", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
   /** `-webkit-tap-highlight-color` — a colour, and only as one of this project's tokens. */
-  "-webkit-tap-highlight-color": Narrowed<"currentcolor", Token<"color">>;
+  "-webkit-tap-highlight-color": Narrowed<"currentcolor" | "currentColor" | "transparent", Token<"color">>;
   /** `-webkit-text-fill-color` — a colour, and only as one of this project's tokens. */
-  "-webkit-text-fill-color": Narrowed<"currentcolor", Token<"color">>;
+  "-webkit-text-fill-color": Narrowed<"currentcolor" | "currentColor" | "transparent", Token<"color">>;
   /** `-webkit-text-stroke-color` — a colour, and only as one of this project's tokens. */
-  "-webkit-text-stroke-color": Narrowed<"currentcolor", Token<"color">>;
+  "-webkit-text-stroke-color": Narrowed<"currentcolor" | "currentColor" | "transparent", Token<"color">>;
   /** `-webkit-text-stroke-width` — a length, and only as one of this project's tokens. */
   "-webkit-text-stroke-width": Narrowed<never, Token<"length"> | 0 | "0">;
   /** `accent-color` — a colour, and only as one of this project's tokens. */
-  "accent-color": Narrowed<"auto" | "currentcolor", Token<"color">>;
+  "accent-color": Narrowed<"auto" | "currentcolor" | "currentColor" | "transparent", Token<"color">>;
   /** `animation-delay` — a time, and this project's tokens of that kind. */
   "animation-delay": Narrowed<never, CssDimension<CssTimeUnit> | Token<"time">>;
   /** `animation-duration` — a time, and this project's tokens of that kind. */
@@ -253,7 +253,7 @@ interface Narrowings {
   /** `animation-range-start` — a length or a percentage, the length only as one of this project's tokens. */
   "animation-range-start": Narrowed<"contain" | "cover" | "entry" | "entry-crossing" | "exit" | "exit-crossing" | "normal", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
   /** `background-color` — a colour, and only as one of this project's tokens. */
-  "background-color": Narrowed<"currentcolor", Token<"color">>;
+  "background-color": Narrowed<"currentcolor" | "currentColor" | "transparent", Token<"color">>;
   /** `background-size` — a length or a percentage, the length only as one of this project's tokens. */
   "background-size": Narrowed<"auto" | "contain" | "cover", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
   /** `baseline-shift` — a length or a percentage, the length only as one of this project's tokens. */
@@ -261,19 +261,19 @@ interface Narrowings {
   /** `block-size` — a length or a percentage, the length only as one of this project's tokens. */
   "block-size": Narrowed<"auto" | "fit-content" | "max-content" | "min-content", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
   /** `border-block-color` — a colour, and only as one of this project's tokens. */
-  "border-block-color": Narrowed<"currentcolor", Token<"color"> | `${string} ${string}`>;
+  "border-block-color": Narrowed<"currentcolor" | "currentColor" | "transparent", Token<"color"> | `${string} ${string}`>;
   /** `border-block-end-color` — a colour, and only as one of this project's tokens. */
-  "border-block-end-color": Narrowed<"currentcolor", Token<"color">>;
+  "border-block-end-color": Narrowed<"currentcolor" | "currentColor" | "transparent", Token<"color">>;
   /** `border-block-end-width` — a length, and only as one of this project's tokens. */
   "border-block-end-width": Narrowed<"medium" | "thick" | "thin", Token<"length"> | 0 | "0">;
   /** `border-block-start-color` — a colour, and only as one of this project's tokens. */
-  "border-block-start-color": Narrowed<"currentcolor", Token<"color">>;
+  "border-block-start-color": Narrowed<"currentcolor" | "currentColor" | "transparent", Token<"color">>;
   /** `border-block-start-width` — a length, and only as one of this project's tokens. */
   "border-block-start-width": Narrowed<"medium" | "thick" | "thin", Token<"length"> | 0 | "0">;
   /** `border-block-width` — a length, and only as one of this project's tokens. */
   "border-block-width": Narrowed<"medium" | "thick" | "thin", Token<"length"> | `${string} ${string}` | 0 | "0">;
   /** `border-bottom-color` — a colour, and only as one of this project's tokens. */
-  "border-bottom-color": Narrowed<"currentcolor", Token<"color">>;
+  "border-bottom-color": Narrowed<"currentcolor" | "currentColor" | "transparent", Token<"color">>;
   /** `border-bottom-left-radius` — a length or a percentage, the length only as one of this project's tokens. */
   "border-bottom-left-radius": Narrowed<never, CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | `${string} ${string}` | 0 | "0">;
   /** `border-bottom-right-radius` — a length or a percentage, the length only as one of this project's tokens. */
@@ -281,31 +281,31 @@ interface Narrowings {
   /** `border-bottom-width` — a length, and only as one of this project's tokens. */
   "border-bottom-width": Narrowed<"medium" | "thick" | "thin", Token<"length"> | 0 | "0">;
   /** `border-color` — a colour, and only as one of this project's tokens. */
-  "border-color": Narrowed<"currentcolor", Token<"color"> | `${string} ${string}`>;
+  "border-color": Narrowed<"currentcolor" | "currentColor" | "transparent", Token<"color"> | `${string} ${string}`>;
   /** `border-end-end-radius` — a length or a percentage, the length only as one of this project's tokens. */
   "border-end-end-radius": Narrowed<never, CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
   /** `border-end-start-radius` — a length or a percentage, the length only as one of this project's tokens. */
   "border-end-start-radius": Narrowed<never, CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
   /** `border-inline-color` — a colour, and only as one of this project's tokens. */
-  "border-inline-color": Narrowed<"currentcolor", Token<"color"> | `${string} ${string}`>;
+  "border-inline-color": Narrowed<"currentcolor" | "currentColor" | "transparent", Token<"color"> | `${string} ${string}`>;
   /** `border-inline-end-color` — a colour, and only as one of this project's tokens. */
-  "border-inline-end-color": Narrowed<"currentcolor", Token<"color">>;
+  "border-inline-end-color": Narrowed<"currentcolor" | "currentColor" | "transparent", Token<"color">>;
   /** `border-inline-end-width` — a length, and only as one of this project's tokens. */
   "border-inline-end-width": Narrowed<"medium" | "thick" | "thin", Token<"length"> | 0 | "0">;
   /** `border-inline-start-color` — a colour, and only as one of this project's tokens. */
-  "border-inline-start-color": Narrowed<"currentcolor", Token<"color">>;
+  "border-inline-start-color": Narrowed<"currentcolor" | "currentColor" | "transparent", Token<"color">>;
   /** `border-inline-start-width` — a length, and only as one of this project's tokens. */
   "border-inline-start-width": Narrowed<"medium" | "thick" | "thin", Token<"length"> | 0 | "0">;
   /** `border-inline-width` — a length, and only as one of this project's tokens. */
   "border-inline-width": Narrowed<"medium" | "thick" | "thin", Token<"length"> | `${string} ${string}` | 0 | "0">;
   /** `border-left-color` — a colour, and only as one of this project's tokens. */
-  "border-left-color": Narrowed<"currentcolor", Token<"color">>;
+  "border-left-color": Narrowed<"currentcolor" | "currentColor" | "transparent", Token<"color">>;
   /** `border-left-width` — a length, and only as one of this project's tokens. */
   "border-left-width": Narrowed<"medium" | "thick" | "thin", Token<"length"> | 0 | "0">;
   /** `border-radius` — a length or a percentage, the length only as one of this project's tokens. */
   "border-radius": Narrowed<never, CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
   /** `border-right-color` — a colour, and only as one of this project's tokens. */
-  "border-right-color": Narrowed<"currentcolor", Token<"color">>;
+  "border-right-color": Narrowed<"currentcolor" | "currentColor" | "transparent", Token<"color">>;
   /** `border-right-width` — a length, and only as one of this project's tokens. */
   "border-right-width": Narrowed<"medium" | "thick" | "thin", Token<"length"> | 0 | "0">;
   /** `border-spacing` — a length, and only as one of this project's tokens. */
@@ -315,7 +315,7 @@ interface Narrowings {
   /** `border-start-start-radius` — a length or a percentage, the length only as one of this project's tokens. */
   "border-start-start-radius": Narrowed<never, CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
   /** `border-top-color` — a colour, and only as one of this project's tokens. */
-  "border-top-color": Narrowed<"currentcolor", Token<"color">>;
+  "border-top-color": Narrowed<"currentcolor" | "currentColor" | "transparent", Token<"color">>;
   /** `border-top-left-radius` — a length or a percentage, the length only as one of this project's tokens. */
   "border-top-left-radius": Narrowed<never, CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | `${string} ${string}` | 0 | "0">;
   /** `border-top-right-radius` — a length or a percentage, the length only as one of this project's tokens. */
@@ -333,9 +333,9 @@ interface Narrowings {
   /** `box-ordinal-group` — a whole number, and this project's tokens of that kind. */
   "box-ordinal-group": Narrowed<never, number | `${number}` | `${string}(${string})` | Token<"integer" | "number">>;
   /** `caret-color` — a colour, and only as one of this project's tokens. */
-  "caret-color": Narrowed<"auto" | "currentcolor", Token<"color">>;
+  "caret-color": Narrowed<"auto" | "currentcolor" | "currentColor" | "transparent", Token<"color">>;
   /** `color` — a colour, and only as one of this project's tokens. */
-  "color": Narrowed<"currentcolor", Token<"color">>;
+  "color": Narrowed<"currentcolor" | "currentColor" | "transparent", Token<"color">>;
   /** `column-count` — a whole number, and this project's tokens of that kind. */
   "column-count": Narrowed<"auto", number | `${number}` | `${string}(${string})` | Token<"integer" | "number">>;
   /** `column-gap` — a length or a percentage, the length only as one of this project's tokens. */
@@ -343,7 +343,7 @@ interface Narrowings {
   /** `column-height` — a length, and only as one of this project's tokens. */
   "column-height": Narrowed<"auto", Token<"length"> | 0 | "0">;
   /** `column-rule-color` — a colour, and only as one of this project's tokens. */
-  "column-rule-color": Narrowed<"currentcolor", Token<"color">>;
+  "column-rule-color": Narrowed<"currentcolor" | "currentColor" | "transparent", Token<"color">>;
   /** `column-rule-width` — a length, and only as one of this project's tokens. */
   "column-rule-width": Narrowed<"medium" | "thick" | "thin", Token<"length"> | 0 | "0">;
   /** `column-width` — a length, and only as one of this project's tokens. */
@@ -357,7 +357,7 @@ interface Narrowings {
   /** `flex-shrink` — a number, and this project's tokens of that kind. */
   "flex-shrink": Narrowed<never, number | `${number}` | `${string}(${string})` | Token<"number" | "integer">>;
   /** `flood-color` — a colour, and only as one of this project's tokens. */
-  "flood-color": Narrowed<"currentcolor", Token<"color">>;
+  "flood-color": Narrowed<"currentcolor" | "currentColor" | "transparent", Token<"color">>;
   /** `font-size` — a length or a percentage, the length only as one of this project's tokens. */
   "font-size": Narrowed<"large" | "larger" | "math" | "medium" | "small" | "smaller" | "x-large" | "x-small" | "xx-large" | "xx-small" | "xxx-large", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
   /** `font-smooth` — a length, and only as one of this project's tokens. */
@@ -407,7 +407,7 @@ interface Narrowings {
   /** `letter-spacing` — a length, and only as one of this project's tokens. */
   "letter-spacing": Narrowed<"normal", Token<"length"> | 0 | "0">;
   /** `lighting-color` — a colour, and only as one of this project's tokens. */
-  "lighting-color": Narrowed<"currentcolor", Token<"color">>;
+  "lighting-color": Narrowed<"currentcolor" | "currentColor" | "transparent", Token<"color">>;
   /** `line-clamp` — a whole number, and this project's tokens of that kind. */
   "line-clamp": Narrowed<"none", number | `${number}` | `${string}(${string})` | Token<"integer" | "number">>;
   /** `line-height-step` — a length, and only as one of this project's tokens. */
@@ -463,7 +463,7 @@ interface Narrowings {
   /** `orphans` — a whole number, and this project's tokens of that kind. */
   "orphans": Narrowed<never, number | `${number}` | `${string}(${string})` | Token<"integer" | "number">>;
   /** `outline-color` — a colour, and only as one of this project's tokens. */
-  "outline-color": Narrowed<"auto" | "currentcolor", Token<"color">>;
+  "outline-color": Narrowed<"auto" | "currentcolor" | "currentColor" | "transparent", Token<"color">>;
   /** `outline-offset` — a length, and only as one of this project's tokens. */
   "outline-offset": Narrowed<never, Token<"length"> | 0 | "0">;
   /** `outline-width` — a length, and only as one of this project's tokens. */
@@ -547,21 +547,21 @@ interface Narrowings {
   /** `scroll-padding-top` — a length or a percentage, the length only as one of this project's tokens. */
   "scroll-padding-top": Narrowed<"auto", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
   /** `scrollbar-color` — a colour, and only as one of this project's tokens. */
-  "scrollbar-color": Narrowed<"auto" | "currentcolor", Token<"color">>;
+  "scrollbar-color": Narrowed<"auto" | "currentcolor" | "currentColor" | "transparent", Token<"color">>;
   /** `shape-margin` — a length or a percentage, the length only as one of this project's tokens. */
   "shape-margin": Narrowed<never, CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
   /** `stop-color` — a colour, and only as one of this project's tokens. */
-  "stop-color": Narrowed<"currentcolor", Token<"color">>;
+  "stop-color": Narrowed<"currentcolor" | "currentColor" | "transparent", Token<"color">>;
   /** `stroke-color` — a colour, and only as one of this project's tokens. */
-  "stroke-color": Narrowed<"currentcolor", Token<"color">>;
+  "stroke-color": Narrowed<"currentcolor" | "currentColor" | "transparent", Token<"color">>;
   /** `stroke-miterlimit` — a number, and this project's tokens of that kind. */
   "stroke-miterlimit": Narrowed<never, number | `${number}` | `${string}(${string})` | Token<"number" | "integer">>;
   /** `text-decoration-color` — a colour, and only as one of this project's tokens. */
-  "text-decoration-color": Narrowed<"currentcolor", Token<"color">>;
+  "text-decoration-color": Narrowed<"currentcolor" | "currentColor" | "transparent", Token<"color">>;
   /** `text-decoration-inset` — a length or a percentage, the length only as one of this project's tokens. */
   "text-decoration-inset": Narrowed<"auto", CssDimension<"%"> | Token<"length" | "length-percentage" | "percentage"> | 0 | "0">;
   /** `text-emphasis-color` — a colour, and only as one of this project's tokens. */
-  "text-emphasis-color": Narrowed<"currentcolor", Token<"color">>;
+  "text-emphasis-color": Narrowed<"currentcolor" | "currentColor" | "transparent", Token<"color">>;
   /** `text-fit` — a percentage, and this project's tokens of that kind. */
   "text-fit": Narrowed<"consistent" | "grow" | "none" | "per-line" | "per-line-all" | "shrink", CssDimension<"%"> | Token<"percentage">>;
   /** `text-size-adjust` — a percentage, and this project's tokens of that kind. */

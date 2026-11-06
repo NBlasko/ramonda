@@ -130,10 +130,14 @@ properties: {
 When a token already holds the value written out, the report names it — `12px` under a `$space.m`
 of `12px` says to write `$space.m`.
 
-Three things it deliberately lets through: a bare `0`, which needs no unit and is nobody's hardcoded
-brand colour (`0px` is refused); `var()`, which is the escape CSS itself provides; and a word that
-names another value rather than being one — `currentcolor`, and CSS's own `inherit`, `initial`,
-`unset` and `revert`. `transparent` is a colour, and is refused like any other.
+Three things it lets through: a bare `0`, which needs no unit and is nobody's hardcoded brand colour
+(`0px` is refused); `var()`, which is the escape CSS itself provides; and a word no palette holds —
+`currentcolor` (or `currentColor`), which is the inherited colour; `transparent`, which is no colour
+at all; and CSS's own `inherit`, `initial`, `unset` and `revert`. A project that takes colours from
+its tokens is not asking for a `$color.clear`.
+
+`em` is not one of them. It is a length like `px` and `rem`, so where lengths come from tokens, or a
+property takes only some units, an `em` is refused like any other.
 
 ### `values` — a closed list
 

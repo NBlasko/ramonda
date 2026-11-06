@@ -151,7 +151,15 @@ jobs:
 
   browser:
     name: Browser
-    runs-on: ubuntu-latest
+    # Pinned, not `ubuntu-latest`: that label is moving to Ubuntu 26 a runner at a time (the runner's
+    # own notice says so). On 2026-11-06 Playwright's WebKit closed the moment it launched, with nothing
+    # in its log, on code whose browser steps had passed on `main` the day before. Not proven to be the
+    # image, but a job that passes or fails by which image it draws cannot gate a merge. Try
+    # `ubuntu-latest` again once WebKit is known to launch on 26.
+    runs-on: ubuntu-24.04
+    # Without a limit a job waits GitHub's six hours. On 2026-11-06 the apt install for Firefox and
+    # WebKit hung for over 47 minutes with nothing in the log; a stuck runner should fail fast instead.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup

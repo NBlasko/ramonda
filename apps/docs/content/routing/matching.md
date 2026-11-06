@@ -19,14 +19,15 @@ renders anything.
 
 ## `parseUrlString(url)`
 
-A URL as a `RouterState` — the pathname, the query as an object, and the hash tags. This is what
+A URL as a `RouterState` — the pathname, the query as an object, and the hash as one object per
+[owner](/routing/params#a-hash-in-levels), plus every key in one. This is what
 the router reads on every navigation, and what a `<Link href>` is turned into.
 
 ```ts
 import { parseUrlString } from "@ramonda/router";
 
 parseUrlString("/players/8?tab=stats#open");
-// { baseUrl: "/players/8", queryParams: { tab: "stats" }, hashTags: [{ key: "open", value: "", level: 0 }] }
+// { baseUrl: "/players/8", queryParams: { tab: "stats" }, hashScopes: { "": { open: "" } } }
 ```
 
 **A trailing slash is removed**, so `/players/8/` and `/players/8` are one route. That is not
@@ -45,13 +46,13 @@ For the URL you are currently on, hand it `location.href`.
 The inverse of `parseUrlString` — a `RouterState` back into a string.
 
 ```ts
-buildUrl({ baseUrl: "/players/8", queryParams: { tab: "stats" }, hashTags: [] });
+buildUrl({ baseUrl: "/players/8", queryParams: { tab: "stats" }, hashScopes: {} });
 // "/players/8?tab=stats"
 ```
 
-Keys and values are percent-encoded, and hash tags are written in `level` order rather than in the
-order the object happened to hold them — so the same state always produces the same string, which is
-what lets two URLs be compared.
+Keys and values are percent-encoded, in the query and the hash alike, and pairs are joined with `&`.
+A hash key with an empty value is written bare — `#open`, the name of a section — where a query key
+would be `open=`. The hash is written from `hashScopes`, one `#` segment per owner.
 
 The result goes through `sanitizeHref`, below.
 

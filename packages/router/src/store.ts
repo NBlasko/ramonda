@@ -1,12 +1,12 @@
 import type {
-  HashTagsUpdater,
+  HashParamsUpdater,
   NavigateOptions,
   PartialNavigateOptions,
   RouterState,
   SearchParamsUpdater,
   StateUpdater,
 } from "./types";
-import { buildUrl, parseUrlString } from "./urlUtils";
+import { buildUrl, keepUnchanged, parseUrlString, writeHashScope } from "./urlUtils";
 
 /**
  * How the navigator reaches the route state. Deliberately just two functions
@@ -62,8 +62,12 @@ export interface RouterNavigator {
    * route re-match happens. Stays in place unless `scroll: true` is passed.
    */
   updateSearchParams(next: SearchParamsUpdater, opts?: PartialNavigateOptions): void;
-  /** Change ONLY the hash tags, same race-free contract as updateSearchParams. */
-  updateHashTags(next: HashTagsUpdater, opts?: PartialNavigateOptions): void;
+  /**
+   * Change ONLY one owner's keys in the hash, same race-free contract as updateSearchParams. The
+   * updater is handed those keys and returns them; a key that changes clears what it owns. `owner` is
+   * where the caller's `<HashLevel of>`s put it — `""`, the top, with none.
+   */
+  updateHashParams(next: HashParamsUpdater, opts?: PartialNavigateOptions, owner?: string): void;
   back(): void;
   forward(): void;
 }
@@ -79,7 +83,8 @@ export interface RouterNavigator {
  */
 export function createNavigator(store: RouteStateAccess, onServerRedirect?: (url: string) => void): RouterNavigator {
   function updateState(updater: StateUpdater, options: NavigateOptions = {}): void {
-    const next = updater(store.read()); // freshest, synchronous
+    const prev = store.read(); // freshest, synchronous
+    const next = keepUnchanged(prev, updater(prev));
     const url = buildUrl(next);
 
     if (onServerRedirect) {
@@ -121,12 +126,18 @@ export function createNavigator(store: RouteStateAccess, onServerRedirect?: (url
         { replace: opts.replace, scroll: opts.scroll === true },
       );
     },
-    updateHashTags(next, opts = {}) {
+    updateHashParams(next, opts = {}, owner = "") {
       updateState(
-        (prev) => ({
-          ...prev,
-          hashTags: typeof next === "function" ? next(prev.hashTags) : next,
-        }),
+        (prev) => {
+          const scopes = prev.hashScopes;
+          // A copy: an updater that changes `prev` and returns it handed back the router's own record,
+          // which then compared equal to itself and read as no change. Found by the final review.
+          const own = { ...scopes[owner] };
+          return {
+            ...prev,
+            hashScopes: writeHashScope(scopes, owner, typeof next === "function" ? next(own) : next),
+          };
+        },
         { replace: opts.replace, scroll: opts.scroll === true },
       );
     },
@@ -156,7 +167,7 @@ export const detachedNavigator: RouterNavigator = {
   push: refuse,
   replace: refuse,
   updateSearchParams: refuse,
-  updateHashTags: refuse,
+  updateHashParams: refuse,
   back: refuse,
   forward: refuse,
 };

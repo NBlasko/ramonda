@@ -68,6 +68,8 @@ function toolRanges(): Record<string, string> {
     typescript: "../../package.json",
     "@biomejs/biome": "../../package.json",
     esbuild: "../../apps/docs",
+    // The validator every example on the Forms pages imports, at the version @ramonda/form is built against.
+    bguard: "../form",
   };
 
   const out: Record<string, string> = {};

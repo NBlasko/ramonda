@@ -2,6 +2,7 @@
 
 import { KEYWORDS, PRIMITIVE, SHORTHANDS, UNIT_TYPE } from "../keywords.generated";
 import { type PropertyRules } from "../../config/config";
+import { COLOUR_REFERENCES } from "../../config/colourReferences";
 import { type Named, NARROW, hardcodedFor, ruleFor, tokensOnlyKinds } from "../../config/codegen";
 import { propertyName } from "../normalise";
 import { wordSet } from "../wordSet";
@@ -15,7 +16,7 @@ import { textOnly } from "../ast";
 
 /** Every bare word the `<color>` grammar reaches, minus the one that is not a colour anybody wrote. */
 export const COLOUR_WORDS = new Set(
-  (KEYWORDS.color ?? "").split(" ").filter((one) => one !== "" && one !== "currentcolor"),
+  (KEYWORDS.color ?? "").split(" ").filter((one) => one !== "" && !COLOUR_REFERENCES.includes(one)),
 );
 
 /** The functions that produce a colour — `rgb()`, `oklch()`, `color-mix()`. */

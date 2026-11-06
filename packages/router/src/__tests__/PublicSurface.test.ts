@@ -1,5 +1,10 @@
+import { dirname as surfaceDir, join as surfaceJoin } from "node:path";
+import { fileURLToPath as surfaceUrl } from "node:url";
+import { publishedTypes } from "../../../../scripts/surface/published-types";
 import { describe, expect, test } from "vitest";
 import * as api from "../index";
+
+const SURFACE_SRC = surfaceJoin(surfaceDir(surfaceUrl(import.meta.url)), "..");
 
 /**
  * What the package's main entry exports, asserted as a list.
@@ -18,6 +23,7 @@ const EXPECTED = [
   "buildUrl",
   "createRouter",
   "createRoutes",
+  "HashLevel",
   "matchCompiled",
   "matchParams",
   "parseUrlString",
@@ -36,8 +42,8 @@ const EXPECTED = [
  * a caller who can no longer write down what they were given.
  */
 const EXPECTED_TYPES = [
-  "HashTag",
-  "HashTagsUpdater",
+  "HashLevelProps",
+  "HashParamsUpdater",
   "Href",
   "NavigateOptions",
   "PartialNavigateOptions",
@@ -83,14 +89,18 @@ describe("public API surface", () => {
 
   test("every published type is named in EXPECTED_TYPES", () => {
     expect(new Set(EXPECTED_TYPES).size).toBe(EXPECTED_TYPES.length);
+    // From a real program: a type exported and missing from the list fails — a sorted list alone did not.
+    expect(publishedTypes(surfaceJoin(SURFACE_SRC, "index.ts"), Object.keys(api), SURFACE_SRC)).toEqual(
+      [...EXPECTED_TYPES].sort(),
+    );
     expect(EXPECTED_TYPES).toEqual([...EXPECTED_TYPES].sort());
   });
 });
 
 // Every published type, named once, so `check-types` fails if one is renamed or removed.
 import type {
-  HashTag,
-  HashTagsUpdater,
+  HashLevelProps,
+  HashParamsUpdater,
   Href,
   NavigateOptions,
   PartialNavigateOptions,
@@ -109,8 +119,8 @@ import type {
 } from "../index";
 
 type _Surface = [
-  HashTag,
-  HashTagsUpdater,
+  HashLevelProps,
+  HashParamsUpdater,
   Href,
   NavigateOptions,
   PartialNavigateOptions,

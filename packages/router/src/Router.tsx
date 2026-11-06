@@ -9,10 +9,11 @@ import {
   onWindow,
   captureServerRedirect,
 } from "@ramonda/core";
+import type { RamondaNode } from "@ramonda/core";
 import { createNavigator, detachedNavigator, type RouterNavigator } from "./store";
-import { parseUrl } from "./urlUtils";
+import { hashParamsFor, keepUnchanged, ownedBy, parseUrl, samePairs, wellFormed } from "./urlUtils";
 import { assertPattern, matchCompiled, type ParamsOf, type RouteConfig, type RouteParams } from "./match";
-import type { HashTag, HashTagsUpdater, PartialNavigateOptions, RouterState, SearchParamsUpdater } from "./types";
+import type { HashParamsUpdater, PartialNavigateOptions, RouterState, SearchParamsUpdater } from "./types";
 
 /**
  * What a <Router> publishes to its whole subtree. Split into separate keys on
@@ -27,9 +28,13 @@ interface RouteContextValue {
   state: RouterState;
   baseUrl: string;
   queryParams: Record<string, string>;
-  hashTags: HashTag[];
+  /** Every owner's keys, by owner. Each `Navigator` reads its own line of it — see `hashParamsFor`. */
+  hashScopes: Record<string, Record<string, string>>;
   nav: RouterNavigator;
 }
+
+/** The owners with no Router above — the context's default. */
+const NO_SCOPES: Record<string, Record<string, string>> = Object.freeze(Object.create(null));
 
 /** Published by <RouteOutlet>, because that is what does the matching. */
 interface ParamsContextValue {
@@ -47,7 +52,7 @@ interface ParamsContextValue {
 const EMPTY_STATE: RouterState = {
   baseUrl: "/",
   queryParams: {},
-  hashTags: [],
+  hashScopes: NO_SCOPES,
 };
 
 const [RouteProvider, RouteConsumer] = createContext<RouteContextValue>(
@@ -55,7 +60,7 @@ const [RouteProvider, RouteConsumer] = createContext<RouteContextValue>(
     state: EMPTY_STATE,
     baseUrl: "/",
     queryParams: {},
-    hashTags: [],
+    hashScopes: NO_SCOPES,
     nav: detachedNavigator,
   },
   /**
@@ -158,7 +163,7 @@ export class Router extends Hook {
   /** Stable for this Router's lifetime, so consumers never see a new identity. */
   private nav = createNavigator(
     {
-      read: () => this.routeState,
+      read: () => this.route,
       write: (next) => {
         this.routeState = next;
       },
@@ -171,15 +176,31 @@ export class Router extends Hook {
   // using a Navigator. It reads its own `routeState` (not context), because the
   // Router sits ABOVE its own provider. The one thing missing is `params()`: those
   // come from a <RouteOutlet> below, so only a Navigator under an outlet has them.
+  /**
+   * The route state, well-formed. Every READ goes through here — the store, the getters, the provider —
+   * and only the writes touch `routeState` itself: the store's `write`, `init` and `popstate`.
+   *
+   * A page restores this field from its blob before `init` re-reads the URL, and the component using
+   * the Router runs its own `@created` before that: a read there met the restored state as it was.
+   * One the previous router version rendered has no `hashScopes`, and a third review measured a
+   * TypeError on that path after the readers' own guards had been taken out. Repaired here, once
+   * per read: free when the state is already well-formed, and one repaired object per raw one.
+   */
+  private get route(): RouterState {
+    return wellFormed(this.routeState);
+  }
+
   get pathname(): string {
-    return this.routeState.baseUrl;
+    return this.route.baseUrl;
   }
   get searchParams(): Record<string, string> {
-    return this.routeState.queryParams;
+    return this.route.queryParams;
   }
-  get hashTags(): HashTag[] {
-    return this.routeState.hashTags;
+  /** The top of the hash — what a component with no `<HashLevel>` above it reads. */
+  get hashParams(): Record<string, string> {
+    return this.topHash.read(this.route.hashScopes, "");
   }
+  private topHash = new HashReading();
 
   push(href: string, opts?: { scroll?: boolean }): void {
     this.nav.push(href, opts);
@@ -190,8 +211,8 @@ export class Router extends Hook {
   updateSearchParams(next: SearchParamsUpdater, opts?: PartialNavigateOptions): void {
     this.nav.updateSearchParams(next, opts);
   }
-  updateHashTags(next: HashTagsUpdater, opts?: PartialNavigateOptions): void {
-    this.nav.updateHashTags(next, opts);
+  updateHashParams(next: HashParamsUpdater, opts?: PartialNavigateOptions): void {
+    this.nav.updateHashParams(next, opts);
   }
   back(): void {
     this.nav.back();
@@ -224,7 +245,7 @@ export class Router extends Hook {
     liveRouters++;
 
     // The client's URL is the truth, whatever was restored into state.
-    this.routeState = parseUrl();
+    this.routeState = keepUnchanged(this.routeState, parseUrl());
   }
 
   @destroyed dispose() {
@@ -241,7 +262,7 @@ export class Router extends Hook {
    */
   @onWindow("popstate")
   handlePopState(): void {
-    this.routeState = parseUrl();
+    this.routeState = keepUnchanged(this.routeState, parseUrl());
   }
 
   /**
@@ -254,13 +275,16 @@ export class Router extends Hook {
    * provider. Dropping the modifier entirely would put it in the public API,
    * which for a hook means any consumer could read it.
    */
-  protected routeProvider = this.use(RouteProvider, () => ({
-    state: this.routeState,
-    baseUrl: this.routeState.baseUrl,
-    queryParams: this.routeState.queryParams,
-    hashTags: this.routeState.hashTags,
-    nav: this.nav,
-  }));
+  protected routeProvider = this.use(RouteProvider, () => {
+    const route = this.route;
+    return {
+      state: route,
+      baseUrl: route.baseUrl,
+      queryParams: route.queryParams,
+      hashScopes: route.hashScopes,
+      nav: this.nav,
+    };
+  });
 }
 
 export interface RouteOutletProps {
@@ -295,7 +319,7 @@ export class RouteOutlet extends Component<RouteOutletProps> {
 }
 
 /**
- * Reactive router readers (pathname, searchParams, hashTags, params) plus
+ * Reactive router readers (pathname, searchParams, hashParams, params) plus
  * imperative navigation (push, replace, updateSearchParams, …). Needs a <Router>
  * ancestor.
  *
@@ -307,6 +331,7 @@ export class RouteOutlet extends Component<RouteOutletProps> {
 export class Navigator extends Hook {
   private ctx = this.use(RouteConsumer);
   private paramsCtx = this.use(ParamsConsumer);
+  private hashOwner = this.use(HashLevelConsumer);
 
   get pathname(): string {
     return this.ctx.baseUrl;
@@ -314,9 +339,14 @@ export class Navigator extends Hook {
   get searchParams(): Record<string, string> {
     return this.ctx.queryParams;
   }
-  get hashTags(): HashTag[] {
-    return this.ctx.hashTags;
+  /**
+   * The hash as this component's place sees it: the top, every owner down to its own, and its own —
+   * the line it writes. The nearer owner wins a key both use; a sibling's keys are not in it.
+   */
+  get hashParams(): Record<string, string> {
+    return this.hash.read(this.ctx.hashScopes, this.hashOwner.owner);
   }
+  private hash = new HashReading();
 
   /**
    * The matched route's `:params`. Needs a `<RouteOutlet>` above.
@@ -366,13 +396,83 @@ export class Navigator extends Hook {
   updateSearchParams(next: SearchParamsUpdater, opts?: PartialNavigateOptions): void {
     this.ctx.nav.updateSearchParams(next, opts);
   }
-  updateHashTags(next: HashTagsUpdater, opts?: PartialNavigateOptions): void {
-    this.ctx.nav.updateHashTags(next, opts);
+  /**
+   * Change this component's keys in the hash: the updater is handed the keys written where this
+   * component stands, and a key that changes clears what it owns. That is the top, unless a
+   * `<HashLevel of>` above put it under a key.
+   */
+  updateHashParams(next: HashParamsUpdater, opts?: PartialNavigateOptions): void {
+    this.ctx.nav.updateHashParams(next, opts, this.hashOwner.owner);
   }
   back(): void {
     this.ctx.nav.back();
   }
   forward(): void {
     this.ctx.nav.forward();
+  }
+}
+
+/**
+ * One reader's view of the hash, handed back as the SAME object until its own line changes.
+ *
+ * Worked out per reader, so a fresh object per read would make a component that passes `hashParams` to
+ * a child rebuild that child every render — what RMD020 reports. Recomputed when the owners change,
+ * and kept when the line it reads did not: a sibling's write moves the owners and nothing on this
+ * line, which a second review found handing every reader a fresh, equal object.
+ */
+class HashReading {
+  private scopes: Record<string, Record<string, string>> | undefined;
+  private owner: string | undefined;
+  private value: Record<string, string> | undefined;
+
+  read(scopes: Record<string, Record<string, string>>, owner: string): Record<string, string> {
+    if (this.value === undefined || scopes !== this.scopes || owner !== this.owner) {
+      const next = hashParamsFor(scopes, owner);
+      const same = this.value !== undefined && owner === this.owner && samePairs(this.value, next);
+      this.scopes = scopes;
+      this.owner = owner;
+      if (!same) this.value = next;
+    }
+    return this.value!;
+  }
+}
+
+/**
+ * Who owns what a component writes to the hash: `""`, the top, unless a `<HashLevel of>` says otherwise.
+ * `optional`: with no `<HashLevel>` above, the top is the real answer, not a stand-in.
+ */
+const [HashLevelProvider, HashLevelConsumer] = createContext<{ owner: string }>(
+  { owner: "" },
+  { label: "HashLevel", optional: true },
+);
+
+/** Publishes an owner it is handed. Apart from `HashLevel` so no component consumes and provides one context. */
+class HashLevelScope extends Component<{ owner: string; children?: RamondaNode }> {
+  private provider = this.use(HashLevelProvider, () => ({ owner: this.props.owner }));
+  render() {
+    return this.props.children;
+  }
+}
+
+export interface HashLevelProps {
+  /** The key, written where this `<HashLevel>` stands, that owns what is written inside it. */
+  of: string;
+  children?: RamondaNode;
+}
+
+/**
+ * Everything written to the hash inside it belongs to the key `of`, and a change to that key clears it.
+ *
+ *   <HashLevel of="nav"><VideoPage /></HashLevel>     the page writes `#nav=video#nav:tab=comments`
+ *
+ * Switching `nav` to `analytics` takes `tab` with it, and nothing another key owns. The page's code
+ * does not change for this and does not know its parent: on its own it writes `#tab=comments`. The
+ * PARENT knows its child, and says so where it puts it, so a refactor inside the page cannot move it.
+ * Nothing here depends on what is mounted — who owns what is in the state and in the URL.
+ */
+export class HashLevel extends Component<HashLevelProps> {
+  private above = this.use(HashLevelConsumer);
+  render() {
+    return <HashLevelScope owner={ownedBy(this.above.owner, this.props.of)}>{this.props.children}</HashLevelScope>;
   }
 }

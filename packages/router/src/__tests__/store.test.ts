@@ -48,7 +48,8 @@ describe("navigator: race-free updateState", () => {
     nav.updateState(() => ({
       baseUrl: "/players/7",
       queryParams: { x: "1" },
-      hashTags: [],
+      hashScopes: {},
+      hashParams: {},
     }));
 
     expect(window.location.pathname).toBe("/players/7");
@@ -64,7 +65,8 @@ describe("navigator: race-free updateState", () => {
     a.nav.updateState(() => ({
       baseUrl: "/a",
       queryParams: {},
-      hashTags: [],
+      hashScopes: {},
+      hashParams: {},
     }));
 
     expect(a.read().baseUrl).toBe("/a");

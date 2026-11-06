@@ -12,6 +12,9 @@ export interface RenderResult {
   title?: string;
   /** Its `<meta>` / `<link>`, serialized and ready to drop into the shell's head. */
   head?: string;
+  /** `<html lang>` and `<html dir>`, when a `Head` set them — written over the shell's. */
+  lang?: string;
+  dir?: string;
   /** What each named portal target collected — a container per entry goes in the shell. */
   portals?: Record<string, string>;
   redirect?: { url: string; status: number };
@@ -52,8 +55,8 @@ export async function render(request?: ServerRequestInit): Promise<RenderResult>
     // `renderPage`, not `renderToString`: the latter hands back the body and NOTHING else — no
     // title, no meta, no portal blocks. A page whose title and description never reach the HTML is
     // invisible to exactly the crawlers server rendering exists for.
-    const { body, title, head, portals } = await renderPage(<App />, request ? { request } : undefined);
-    return { html: body, title, head, portals, status };
+    const { body, title, head, lang, dir, portals } = await renderPage(<App />, request ? { request } : undefined);
+    return { html: body, title, head, lang, dir, portals, status };
   } catch (err) {
     if (err instanceof ServerRedirect) {
       return { redirect: { url: err.url, status: err.status } };

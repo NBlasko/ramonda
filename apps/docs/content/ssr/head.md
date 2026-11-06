@@ -30,7 +30,7 @@ When you render on the server, `renderPage` returns them next to the body:
 
 ```ts
 const page = await renderPage(<App />);
-// { body, title, head }
+// { body, title, head, lang, dir }
 ```
 
 ## Why a hook
@@ -53,9 +53,16 @@ one `<head>` the way many [portals](/composition/portal) share one target.
 | `description` | `<meta name="description">` — the snippet under the title in a result |
 | `meta` | anything else: Open Graph, Twitter cards, robots, viewport |
 | `link` | canonical URLs, alternates, icons, preloads |
+| `lang` | `<html lang>` — the language the page is in |
+| `dir` | `<html dir>` — `"ltr"`, `"rtl"` or `"auto"`; any string compiles, so `cond ? "rtl" : "ltr"` needs no annotation |
 
 `meta` takes `MetaTag`s and `link` takes `LinkTag`s — a `<link>` is identified by its `rel` plus its
 `href`, and carries `type`, `sizes`, `crossOrigin` and `hreflang` where they apply.
+
+There is no `robots` or `canonical` key — those are a `meta` and a `link`. A key `Head` does not take
+compiles and is ignored, because the options come back from a callback; write the callback as
+`(): HeadOptions => ({ … })` and it is refused where it is written. See [a misspelt option is not a
+type error](/hooks#a-misspelt-option-is-not-a-type-error).
 
 `title` and `description` come first because they are the two that decide clicks.
 **Set them on every page** — a site whose pages all share one title competes with
@@ -68,6 +75,43 @@ The callback form follows a value:
 ```tsx
 head = this.use(Head, (self: Page) => ({ title: `${self.section} — Ramonda` }));
 ```
+
+## The page's language — `lang` and `dir`
+
+A screen reader picks its pronunciation from `<html lang>`, and a browser its hyphenation and
+spell-check. Set it where the language is decided, usually the app root, from the reader's choice:
+
+```tsx
+import { Component, Head, state } from "@ramonda/core";
+
+export class App extends Component {
+  @state locale = "sr";
+
+  head = this.use(Head, (self: App) => ({
+    lang: self.locale,
+    dir: self.locale === "ar" ? "rtl" : "ltr",
+  }));
+
+  english() {
+    this.locale = "en";
+  }
+
+  render() {
+    return <button onclick={this.english}>English</button>;
+  }
+}
+```
+
+It follows the rules the title does. The deeper `Head` wins, so a page in another language can say
+so. When the page goes away, `<html>` gets back what it had, unless something else changed it since.
+
+Set it at the app root, as above, and not only on the pages that differ. After hydration the browser
+has only what the server wrote, so "what it had" is the first page's language, not the shell's: leave
+a French page for one whose `Head` sets no `lang`, and `<html>` stays French.
+
+On the server, `renderPage` returns `lang` and `dir`, and [`fillDocument`](/ssr/server) writes them
+over the shell's `<html lang="en">`. Pass them through, as you pass `title`. A page that set neither
+leaves the shell's value standing.
 
 ## Each `<meta>` needs an identifier — `MetaTag`
 

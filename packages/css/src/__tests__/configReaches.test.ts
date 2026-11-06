@@ -339,6 +339,33 @@ describe("a kind this project takes only from variables", () => {
     expect(names).toContain("inherit");
   });
 
+  // Found by an agent building an app from the docs alone, under the template's strict config:
+  // `background-color: transparent` was refused as "a colour written out", and needed a token
+  // `$color.clear` for it. Neither word is a colour anybody picked off a palette.
+  test("`transparent` is offered too", () => {
+    const { offered } = editorWith(ONLY, `const a = <div className={@@( color: /*|*/ )}>x</div>;\n`, VARIABLES);
+    expect(offered()).toContain("transparent");
+  });
+
+  test.each([
+    ["transparent, where only a colour goes", "background-color: transparent;"],
+    ["transparent, inside a shorthand", "border: 1px solid transparent;"],
+    ["currentcolor", "color: currentcolor;"],
+    ["currentColor, as people write it", "color: currentColor;"],
+  ])("%s is not a colour written out", (_what, declaration) => {
+    const { reported } = editorWith(ONLY, `const a = <div className={@@( ${declaration} )}>x</div>;\n`, VARIABLES);
+    expect(reported()).toEqual([]);
+  });
+
+  test("and a colour that IS written out is still refused", () => {
+    const { reported } = editorWith(
+      ONLY,
+      `const a = <div className={@@( background-color: red; )}>x</div>;\n`,
+      VARIABLES,
+    );
+    expect(reported().length).toBeGreaterThan(0);
+  });
+
   test("and a property of another kind is untouched", () => {
     const { offered } = editorWith(ONLY, `const a = <div className={@@( position: /*|*/ )}>x</div>;\n`, VARIABLES);
 

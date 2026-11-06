@@ -58,18 +58,16 @@ class TextField extends Component<{ of: FieldNode<string>; label: string; id: st
     count(this.props.id);
     return (
       <label className={this.f.error === undefined ? "field" : "field field--invalid"}>
-        {[
-          <span className="field__label">{this.props.label}</span>,
-          <input
-            id={this.props.id}
-            name={this.f.name}
-            value={this.f.inputValue}
-            oninput={this.f.oninput}
-            onblur={this.f.onblur}
-            aria-invalid={this.f.invalid}
-          />,
-          <span id={`${this.props.id}-error`}>{this.f.error ?? ""}</span>,
-        ]}
+        <span className="field__label">{this.props.label}</span>
+        <input
+          id={this.props.id}
+          name={this.f.name}
+          value={this.f.inputValue}
+          oninput={this.f.oninput}
+          onblur={this.f.onblur}
+          aria-invalid={this.f.invalid}
+        />
+        <span id={`${this.props.id}-error`}>{this.f.error ?? ""}</span>
       </label>
     );
   }

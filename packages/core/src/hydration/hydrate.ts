@@ -265,7 +265,11 @@ function hydrateText(
     return nextOf(cursor);
   }
 
-  if (__DEV__) {
+  // An EMPTY string is the one text the server cannot send — there is nothing to serialise — so
+  // finding no text node here is the match. Reported, it was RMD007 on correct markup:
+  // `<span>{error ?? ""}</span>`, the commonest way to hold an error slot open. The node is still
+  // made, because the client's tree has it and a later update writes into it.
+  if (__DEV__ && text !== "") {
     reportStructureMismatch(placeholder, `the text "${text}"`, describeFound(cursor));
   }
   parent.insertBefore(document.createTextNode(text), cursor);

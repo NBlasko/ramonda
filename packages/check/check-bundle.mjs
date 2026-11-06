@@ -35,7 +35,7 @@
  * Usage: ramonda-check-bundle <dir-or-file> [...]
  */
 import { execFile } from "node:child_process";
-import { readFile, readdir, stat } from "node:fs/promises";
+import { readFile, readdir, realpath, stat } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
 
 const JS = /\.(m?js|cjs)$/;
@@ -43,12 +43,18 @@ const JS = /\.(m?js|cjs)$/;
 /** Parallel enough to stay quick on the docs site's ~100 chunks. */
 const CONCURRENCY = 8;
 
-async function collect(target, out) {
+async function collect(target, out, walked = new Set()) {
   const info = await stat(target);
   if (info.isFile()) {
     if (JS.test(target)) out.push(target);
     return;
   }
+  // Each folder once, by its real path. `stat` follows a link, so a folder linking back to itself —
+  // a symlinked folder in `public/`, copied into the build as a link — was walked `loop/loop/…` until
+  // the system refused with ELOOP, and the build failed.
+  const real = await realpath(target);
+  if (walked.has(real)) return;
+  walked.add(real);
   // No directory is skipped. There WAS one exception — a folder named `pagefind`, because this
   // repository's docs site ships a prebuilt search bundle it did not author. That was written when
   // this tool was private to the workspace, and it stopped being defensible the moment the tool
@@ -59,7 +65,11 @@ async function collect(target, out) {
   // indexing step runs AFTER this check. Point the command at what you want checked; that is the
   // control, not a name this file happens to know.
   for (const entry of await readdir(target, { withFileTypes: true })) {
-    await collect(join(target, entry.name), out);
+    const path = join(target, entry.name);
+    // A link that points nowhere is no file to check. `stat` throws on one, and the whole run said
+    // "cannot read dist" over an image a link still named after it was removed.
+    if (entry.isSymbolicLink() && (await stat(path).catch(() => undefined)) === undefined) continue;
+    await collect(path, out, walked);
   }
 }
 

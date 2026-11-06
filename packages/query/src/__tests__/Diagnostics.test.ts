@@ -1,5 +1,6 @@
 import { beforeEach, afterEach, describe, expect, test, vi } from "vitest";
 import { hashKey, resetKeyDiagnostics } from "../hashKey";
+import { report } from "../diagnostics";
 
 /**
  * The records this package hands a collector.
@@ -121,5 +122,22 @@ describe("the diagnostic record", () => {
     expect(errors).toHaveBeenCalledTimes(1);
     expect(String(errors.mock.calls[0][0])).toContain("[Ramonda query RMQ001]");
     expect(ours(records)).toEqual([]);
+  });
+});
+
+/**
+ * Saying each thing once per process is right in a page and wrong across tests: the first test takes
+ * the only report. So the record of what was said can be forgotten from outside, through the one
+ * global set every package registers in — which `@ramonda/testing-library` empties before each test.
+ */
+describe("what this package already said", () => {
+  test("is forgotten through the shared reset, so a later test is told again", () => {
+    report("RMQ001", "the same thing", "repeat");
+    report("RMQ001", "the same thing", "repeat");
+    expect(ours(records).filter((r) => r.dedupKey === "RMQ001:repeat")).toHaveLength(1);
+
+    for (const forget of globalThis.__RAMONDA_DIAGNOSTICS_RESET__ ?? []) forget();
+    report("RMQ001", "the same thing", "repeat");
+    expect(ours(records).filter((r) => r.dedupKey === "RMQ001:repeat")).toHaveLength(2);
   });
 });

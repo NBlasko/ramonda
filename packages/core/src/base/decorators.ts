@@ -1121,7 +1121,8 @@ export function memoized<T extends (...args: any[]) => any>(
             `A key can hold a string, a number or a boolean — an object cannot be compared by value, and keying ` +
             `on its identity would miss every time, so the handler would be rebuilt on every render and everything ` +
             `it is passed to would re-render with it. Pass the primitive the object stands for (\`row.id\` rather ` +
-            `than \`row\`) and read the rest inside the handler. In production this call is not memoised and the ` +
+            `than \`row\`) and read the rest inside the handler — or build every row's value in one \`@compute\`, ` +
+            `keyed by id, and read it by id. In production this call is not memoised and the ` +
             `page keeps working.`,
         );
       } else {
