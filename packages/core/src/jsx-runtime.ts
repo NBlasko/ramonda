@@ -36,12 +36,20 @@ import { reportFunctionTag } from "./debug/jsxRules";
 
 type Props = Record<string, unknown> & { children?: unknown };
 
-/** Attributes without `children`, with `key` folded back in. */
+/**
+ * Attributes without `children`, with `key` folded back in.
+ *
+ * The compiler builds a fresh object per element, so one without `children` IS the attributes, and is
+ * handed on as it is — no copy for the leaves of a tree. One with `children` is copied without them, in
+ * one shallow spread: they would be set on the element as an attribute.
+ */
 function attributesOf(props: Props | null, key: string | number | undefined): Record<string, unknown> {
-  // The compiler builds a fresh object per element, so this copy is the only allocation added and
-  // it is one shallow spread. `children` must not survive into it: it would be set on the element
-  // as an attribute.
-  const { children: _children, ...rest } = props ?? {};
+  if (props === null || props === undefined) return key === undefined ? {} : { key };
+  if (!("children" in props)) {
+    if (key !== undefined) props.key = key;
+    return props;
+  }
+  const { children: _children, ...rest } = props;
   if (key !== undefined) rest["key"] = key;
   return rest;
 }

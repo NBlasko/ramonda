@@ -509,6 +509,11 @@ function buildDetachedNode(
  */
 function appendBuiltChildren(vnodeChildren: unknown[], placeholderComponent: MaybeComponent, parent: ChildNode): void {
   if (__DEV__) lintChildKeys(vnodeChildren, placeholderComponent);
+  // An element with no children shares one empty record: a leaf builds no array to say it holds nothing.
+  if (vnodeChildren.length === 0) {
+    (parent as Placed)[PLACED] = NO_CHILDREN;
+    return;
+  }
   const placed: ChildNode[] = [];
   for (let slot = 0; slot < vnodeChildren.length; slot++) {
     const vchild = filterVirtualChild(vnodeChildren[slot]);
@@ -534,7 +539,10 @@ function appendBuiltChildren(vnodeChildren: unknown[], placeholderComponent: May
  */
 const PLACED = Symbol("placed");
 
-type Placed = { [PLACED]?: ChildNode[] };
+/** The record of an element built with no children. Read, sliced, never written. */
+const NO_CHILDREN: readonly ChildNode[] = Object.freeze([]);
+
+type Placed = { [PLACED]?: readonly ChildNode[] };
 
 function placedChildren(parent: Node): EnhancedChildNode[] | undefined {
   const placed = (parent as Placed)[PLACED];
