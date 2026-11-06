@@ -60,6 +60,9 @@ export function applyChangesOnAttributes(
     ? NONE
     : ((enhancedNode as Written)[WRITTEN] ?? getAllFromNode(enhancedNode as EnhancedHTMLNode));
   const nextAttributes = formatAttributes(rawNextAttributes);
+  // Dropped while the pass writes, and kept only once it has: a pass that throws halfway — a name the
+  // DOM refuses — leaves no record, and the next one reads the page it left.
+  (enhancedNode as Written)[WRITTEN] = undefined;
   removePreviousFromenhancedNode(enhancedNode as EnhancedHTMLNode, previousAttributes, nextAttributes);
   attachNextOnenhancedNode(enhancedNode as EnhancedHTMLNode, previousAttributes, nextAttributes, onServer);
   (enhancedNode as Written)[WRITTEN] = nextAttributes;
@@ -589,7 +592,8 @@ function getPreviousFromenhancedNode(enhancedNode: EnhancedHTMLNode, name: strin
  * render would be its own bug.
  */
 function formPropertyDiverged(enhancedNode: EnhancedHTMLNode, name: string, next: unknown): boolean {
-  if (name !== "value" && !PROPERTY_TRUTH.has(name)) return false;
+  // The names, not `PROPERTY_TRUTH.has`: this is asked of every attribute that compares equal.
+  if (name !== "value" && name !== "checked" && name !== "muted" && name !== "indeterminate") return false;
   if (!(name in enhancedNode)) return false;
 
   const live = (enhancedNode as unknown as Record<string, unknown>)[name];
@@ -679,11 +683,10 @@ function removePreviousFromenhancedNode(
       delete listeners[name];
     } else if (enhancedNode.nodeName === "INPUT" && (name === "defaultValue" || name === "defaultChecked")) {
       // Written as `value` / `checked` (see `writeDefaults`), so that is what goes when the render stops
-      // naming the default — unless the render names that attribute itself, as a model's value.
-      const written = name === "defaultValue" ? "value" : "checked";
-      if (isInvisibleOnScreen(nextAttributes[written], written)) {
-        removeByQualifiedName(enhancedNode, written);
-      }
+      // naming the default — unless a model holds that attribute, by the rule `writeDefaults` keeps.
+      const modelHolds =
+        name === "defaultValue" ? nextAttributes.value != null : typeof nextAttributes.checked === "boolean";
+      if (!modelHolds) removeByQualifiedName(enhancedNode, name === "defaultValue" ? "value" : "checked");
     } else if (!heldAsADefault(enhancedNode, name, nextAttributes)) {
       removeByQualifiedName(enhancedNode, name);
     }

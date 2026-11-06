@@ -1,4 +1,4 @@
-import { describe, test, expect } from "vitest";
+import { describe, test, expect, vi } from "vitest";
 import { getDOM } from "../test/setup";
 import { state, destroyed } from "../base/decorators";
 import { Component, __h, createRef, list, type EventOn } from "../index";
@@ -185,6 +185,46 @@ describe("an element the diff updates", () => {
       Element.prototype.removeAttribute = remove;
     }
     expect({ removed, current: app.instance.box.current }).toEqual({ removed: [], current: null });
+  });
+
+  test("a pass that throws halfway leaves no record: the next one reads what it wrote", async () => {
+    const clicked: string[] = [];
+    class Shaky extends Component {
+      @state step = 0;
+      first() {
+        clicked.push("first");
+      }
+      second() {
+        clicked.push("second");
+      }
+      attributes(): Record<string, unknown> {
+        if (this.step === 0) return { onclick: this.first };
+        // A name the DOM refuses: `setAttribute` throws after the new handler is attached.
+        if (this.step === 1) return { onclick: this.second, "bad name": "x" };
+        return {};
+      }
+      render() {
+        return <div>{__h("button", this.attributes() as never, "b")}</div>;
+      }
+    }
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const app = await getDOM<Shaky>(<Shaky />);
+      await app.settle();
+      for (const step of [1, 2]) {
+        app.instance.step = step;
+        // The throwing pass reaches the test as the commit's error; what matters is the pass after it.
+        try {
+          await app.settle();
+        } catch {
+          // the step-1 pass
+        }
+      }
+      (app.container.querySelector("button") as HTMLButtonElement).click();
+    } finally {
+      errors.mockRestore();
+    }
+    expect(clicked).toEqual([]);
   });
 
   test("keeps what the browser changed — a <details> the reader closed stays closed", async () => {
@@ -539,14 +579,24 @@ describe("what an element's attribute record does not hold", () => {
     class Held extends Component {
       @state step = 0;
       @state text = "model";
+      @state on = true;
       typed(event: EventOn<HTMLInputElement>) {
         this.text = event.currentTarget.value;
       }
+      toggled(event: EventOn<HTMLInputElement>) {
+        this.on = event.currentTarget.checked;
+      }
       render() {
         return this.step === 0 ? (
-          <input value={this.text} defaultValue="old" oninput={this.typed} />
+          <div>
+            <input value={this.text} defaultValue="old" oninput={this.typed} />
+            <input type="checkbox" checked={this.on} defaultChecked onchange={this.toggled} />
+          </div>
         ) : (
-          <input value={this.text} oninput={this.typed} />
+          <div>
+            <input value={this.text} oninput={this.typed} />
+            <input type="checkbox" checked={this.on} onchange={this.toggled} />
+          </div>
         );
       }
     }
@@ -554,7 +604,11 @@ describe("what an element's attribute record does not hold", () => {
     await app.settle();
     app.instance.step = 1;
     await app.settle();
-    expect((app.container.querySelector("input") as HTMLInputElement).getAttribute("value")).toBe("model");
+    const [text, box] = Array.from(app.container.querySelectorAll("input"));
+    expect({ value: text.getAttribute("value"), checked: box.hasAttribute("checked") }).toEqual({
+      value: "model",
+      checked: true,
+    });
   });
 
   test("a volume the reader moved and a video's place stay on a render that does not change them", async () => {
