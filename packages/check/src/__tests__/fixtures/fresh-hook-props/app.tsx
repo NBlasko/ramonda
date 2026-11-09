@@ -114,6 +114,13 @@ class Reporting extends Component<{ id: string }> {
     return { conf, n: 0 };
   });
 
+  // Not reported: the same, one local further away — still what the key is made of.
+  u = this.use(Plain, (self: Reporting) => {
+    const id = self.props.id;
+    const conf = ["todo", id];
+    return { conf, n: 0 };
+  });
+
   // Not reported: a plain field through the parameter is still not a signal.
   o = this.use(Plain, (self: Reporting) => ({ conf: { dense: true }, n: self.plain }));
 

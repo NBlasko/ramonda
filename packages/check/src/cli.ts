@@ -84,7 +84,13 @@ if (argv.includes("--version") || argv.includes("-v")) {
 // The two commands that read the docs this version was released with — see `docsCommand.ts`. Not where
 // a path of that name exists: `ramonda-check docs` checked the project in ./docs before these commands
 // did, and a CI step written that way must keep checking it. Found by review.
-if ((argv[0] === "explain" || argv[0] === "docs") && !existsSync(resolve(argv[0]))) {
+// A PROJECT of that name, that is — a tsconfig, or a folder holding one. An ordinary `docs/` folder, which
+// most repositories have, is not one; the second review found any folder at all switched the command off.
+const projectNamed = (word: string): boolean => {
+  const at = statSync(resolve(word), { throwIfNoEntry: false });
+  return at !== undefined && (at.isFile() || existsSync(join(resolve(word), "tsconfig.json")));
+};
+if ((argv[0] === "explain" || argv[0] === "docs") && !projectNamed(argv[0])) {
   if (argv[0] === "explain") explain(TAG, argv[1]);
   docs(TAG, argv[1]);
 }

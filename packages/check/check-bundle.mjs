@@ -225,7 +225,10 @@ async function main() {
       try {
         written += writeSync(1, bytes, written, bytes.length - written);
       } catch (error) {
+        // As `src/print.ts`: a closed reader ends it, a full pipe waits a millisecond.
+        if (error.code === "EPIPE") break;
         if (error.code !== "EAGAIN") throw error;
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1);
       }
     }
     process.exit(ok ? 0 : 1);

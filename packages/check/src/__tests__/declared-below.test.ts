@@ -24,6 +24,8 @@ describe("a props callback reading a field declared below it", () => {
       "c<-count",
       "d<-limit",
       "e<-total",
+      "f<-pending",
+      "g<-total",
     ]);
   });
 

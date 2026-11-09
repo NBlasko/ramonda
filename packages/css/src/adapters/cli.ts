@@ -94,7 +94,11 @@ function printWhole(text: string): void {
     try {
       written += writeSync(1, bytes, written, bytes.length - written);
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "EAGAIN") throw error;
+      const code = (error as NodeJS.ErrnoException).code;
+      // A reader that closed the pipe early — `| head` — ends it; a full pipe waits a millisecond.
+      if (code === "EPIPE") return;
+      if (code !== "EAGAIN") throw error;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1);
     }
   }
 }

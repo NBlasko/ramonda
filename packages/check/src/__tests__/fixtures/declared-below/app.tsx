@@ -21,11 +21,16 @@ class Reported extends Base {
   // REPORTED — destructuring reads the field when the callback is called, even where the only use of
   // it is inside a function handed over in the bag: that function keeps the `undefined` it was given.
   e = this.use(Uses, ({ total }: Reported) => ({ on: () => total }));
+  // REPORTED — `@state` with no initialiser is still made a signal at its own line, below this one.
+  f = this.use(Uses, (self: Reported) => ({ on: self.pending }));
+  // REPORTED — a rest element copies every field when the callback is called; `all.total` is one.
+  g = this.use(Uses, ({ ...all }: Reported) => ({ on: () => all.total }));
 
   browser = this.use(Ready);
   limit = 10;
   total = 3;
   @state count = 0;
+  @state pending?: number;
 
   render() {
     return <p />;

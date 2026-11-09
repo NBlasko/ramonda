@@ -15,5 +15,5 @@ test("a manual cleanup puts back the address the test started at", () => {
     encoding: "utf8",
     env: { ...process.env, NO_COLOR: "1", FORCE_COLOR: "0" },
   });
-  expect(`${run.stdout}${run.stderr}`).toMatch(/Tests {2}2 passed \(2\)/);
+  expect(`${run.stdout}${run.stderr}`).toMatch(/Tests {2}4 passed \(4\)/);
 }, 60_000);

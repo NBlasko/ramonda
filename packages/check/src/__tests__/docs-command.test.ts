@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -106,6 +106,23 @@ describe("ramonda-check docs", () => {
  * the same for `--json`. Found by review; `ramonda-css` had met it and works around it the same way.
  */
 describe("a page bigger than a pipe", () => {
+  /** A reader that stops early — `| head` — closes the pipe; that is the reader's choice, not a crash. */
+  test("ends quietly when the reader stops reading", () => {
+    const docs = packed();
+    writeFileSync(
+      join(docs, "big.md"),
+      `# Big\n\n${"a line of text that is long enough to add up quickly.\n".repeat(4000)}`,
+    );
+    const errors = join(docs, "stderr.txt");
+    const result = spawnSync(
+      "sh",
+      ["-c", `"${process.execPath}" "${join(root, "bin.mjs")}" docs big 2>"${errors}" | head -c 10 >/dev/null`],
+      { encoding: "utf8", env: { ...process.env, RAMONDA_CHECK_DOCS: docs } },
+    );
+    expect(result.status).toBe(0);
+    expect(readFileSync(errors, "utf8")).toBe("");
+  });
+
   test("comes back whole", () => {
     const docs = packed();
     const big = `# Big\n\n${"a line of text that is long enough to add up quickly.\n".repeat(4000)}`;
@@ -122,6 +139,20 @@ describe("a page bigger than a pipe", () => {
  * printing the docs instead. Where that folder exists, the word is still the project. Found by review.
  */
 describe("a folder named like a command", () => {
+  test("an ordinary folder of that name, with no project in it, leaves the command alone", () => {
+    const cwd = mkdtempSync(join(tmpdir(), "check-docs-plain-"));
+    scratch.push(cwd);
+    mkdirSync(join(cwd, "docs"));
+    writeFileSync(join(cwd, "docs", "guide.md"), "# a repository's own docs\n");
+    const result = spawnSync(process.execPath, [join(root, "bin.mjs"), "docs", "forms/fields"], {
+      cwd,
+      encoding: "utf8",
+      env: { ...process.env, RAMONDA_CHECK_DOCS: packed() },
+    });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("# Fields\n");
+  });
+
   test("is still the project it names", () => {
     const cwd = mkdtempSync(join(tmpdir(), "check-docs-folder-"));
     scratch.push(cwd);

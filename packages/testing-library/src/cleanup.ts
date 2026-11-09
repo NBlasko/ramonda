@@ -87,7 +87,10 @@ export function registerAddressStart(): void {
   const before = (globalThis as { beforeEach?: (fn: () => void) => void }).beforeEach;
   if (typeof before !== "function" || typeof window === "undefined") return;
   before(() => {
-    startedAt = window.location.href;
+    // Not while the last test's trees are still mounted: a project that cleans up at the START of a
+    // test, in its own `beforeEach`, has not cleaned yet — this hook runs first — and the address now
+    // is where the last test left it. Found by the second review.
+    if (mounted.size === 0) startedAt = window.location.href;
   });
 }
 

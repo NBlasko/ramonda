@@ -271,17 +271,30 @@ export const freshObjectInHookProps = {
         // reactive read outside it — see `reactiveReadIn`.
         // The value, and — when it is a local built in the callback, `const key = [...]; return { key }`
         // — that local's initialiser: what it reads is what it is made of too. Found by review.
+        // Followed through every local it is built from, however many deep: `const id = …; const key =
+        // [id]` is one value made of `id`. The second review found one local was not enough.
         const madeOf: ts.Node[] = [written];
-        if (ts.isIdentifier(written)) {
-          const local = resolve(written)?.declarations?.[0];
-          if (local !== undefined && ts.isVariableDeclaration(local) && local.initializer !== undefined) {
-            for (let at: ts.Node | undefined = local; at !== undefined; at = at.parent) {
-              if (at === call.arguments[1]) {
+        const inCallback = (node: ts.Node) => {
+          for (let at: ts.Node | undefined = node; at !== undefined; at = at.parent)
+            if (at === call.arguments[1]) return true;
+          return false;
+        };
+        for (let index = 0; index < madeOf.length && index < 50; index++) {
+          (function locals(node: ts.Node): void {
+            if (ts.isIdentifier(node)) {
+              const local = resolve(node)?.declarations?.[0];
+              if (
+                local !== undefined &&
+                ts.isVariableDeclaration(local) &&
+                local.initializer !== undefined &&
+                inCallback(local) &&
+                !madeOf.includes(local.initializer)
+              ) {
                 madeOf.push(local.initializer);
-                break;
               }
             }
-          }
+            ts.forEachChild(node, locals);
+          })(madeOf[index]);
         }
         const rebuiltBecauseOf = reactiveReadIn(call.arguments[1], cls, resolve, madeOf);
         if (rebuiltBecauseOf === undefined) continue;

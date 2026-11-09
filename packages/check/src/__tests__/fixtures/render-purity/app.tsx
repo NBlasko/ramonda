@@ -231,8 +231,8 @@ class InTheCallback extends Component {
   // REPORTED — a random number differs between two calls in one tick, so the runtime reports it
   // (RMD021) even where nothing can run the callback again. Measured.
   random = this.use(Seeded, () => ({ seed: Math.random() }));
-  // NOT reported — a clock read in a callback that reads nothing is taken once, at mount, and kept:
-  // what such a callback is for. The runtime says nothing either: both calls fall in one millisecond.
+  // REPORTED — a clock read in a callback that reads nothing is still two values on a server-rendered
+  // page: one taken on the server, one in the browser.
   once = this.use(Seeded, () => ({ seed: 1, at: Date.now() }));
   // NOT reported — handed over, and run later by the hook rather than by the callback.
   later = this.use(Seeded, () => ({ seed: 1, later: () => Date.now() }));
