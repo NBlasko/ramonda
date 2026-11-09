@@ -44,6 +44,27 @@ for (const path of paths) {
   console.log(`  ✓ ${path}`);
 }
 
+// The page a static host serves for a path it has no file for: the app's own `"*"` route, rendered at
+// a path no other route matches. A host that knows `404.html` serves it with the 404 status.
+installDom(`${origin}/404`);
+const missing = await prerender("/404");
+if (missing.html !== undefined) {
+  await mkdir(OUT, { recursive: true });
+  await writeFile(
+    join(OUT, "404.html"),
+    fillDocument({
+      template,
+      html: missing.html,
+      title: missing.title,
+      head: missing.head,
+      lang: missing.lang,
+      dir: missing.dir,
+      portals: missing.portals,
+    }),
+  );
+  console.log("  ✓ 404.html");
+}
+
 if (blocked > 0) {
   console.error(`\n${blocked} route(s) marked prerender read per-request data. Fix the config or the route.`);
   process.exit(1);

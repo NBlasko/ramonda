@@ -849,6 +849,60 @@ try {
     checks.push("a style block that compiled");
   }
 
+  /* ── 5b. the site as one folder, for a host that only serves files ────────────────────────── */
+  // FINDING-38: every route prerendered and nothing said what to upload — the pages in dist/static,
+  // the scripts in dist/client — and with no 404.html, so a host showed its own. And the plan the
+  // server and the build read was asked with no paths, so marking a `:param` route static threw
+  // the moment either one started.
+  if (mode === "ssr") {
+    const notFound = join(app, "dist/static/404.html");
+    if (!existsSync(notFound) || !readFileSync(notFound, "utf8").includes("Not found")) {
+      fail('the build wrote no dist/static/404.html from the "*" route');
+    }
+
+    // The starter app has routes that render per request, so there is no static site to make.
+    let refused = "";
+    try {
+      run("npm", ["run", "build:static"], { cwd: app });
+    } catch (error) {
+      refused = outputOf(error);
+    }
+    if (!refused.includes("/about") || !refused.includes("/hello/:name")) {
+      fail("`build:static` did not refuse, by name, the routes that are not static", refused || "(it succeeded)");
+    }
+
+    // Every route static, a `:param` one included: one folder, ready to upload.
+    const entry = join(app, "src", "entry-server.tsx");
+    const original = readFileSync(entry, "utf8");
+    const edits = [
+      ['"/about": { revalidate: 60 }', '"/about": { prerender: true }'],
+      ['"/hello/:name": {}', '"/hello/:name": { prerender: true }'],
+      ["const PRERENDER_PATHS: string[] = [];", 'const PRERENDER_PATHS: string[] = ["/hello/world"];'],
+    ];
+    let allStatic = original;
+    for (const [from, to] of edits) {
+      if (!allStatic.includes(from))
+        fail(`the SSR template no longer has \`${from}\` — update check-scaffold's all-static edit`);
+      allStatic = allStatic.replace(from, to);
+    }
+    writeFileSync(entry, allStatic);
+    try {
+      run("npm", ["run", "build:static"], { cwd: app });
+    } catch (error) {
+      fail("`build:static` failed on a project whose every route is static", outputOf(error));
+    }
+    const site = join(app, "dist", "site");
+    for (const file of ["index.html", "about/index.html", "hello/world/index.html", "404.html", "assets/client.js"]) {
+      if (!existsSync(join(site, file))) fail(`dist/site has no ${file}`);
+    }
+    if (readFileSync(join(site, "index.html"), "utf8").includes("<!--ssr-->")) {
+      fail("dist/site/index.html is the page shell, not the baked home page");
+    }
+    writeFileSync(entry, original);
+    run("npm", ["run", "build"], { cwd: app });
+    checks.push("a static site in one folder, with its 404.html");
+  }
+
   /* ── 6. a PRODUCTION install, and a page served from it ───────────────────────────────────── */
   if (mode === "ssr") {
     // `--omit=dev` is the whole point of this step: a package the server needs at RUNTIME, filed

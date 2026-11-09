@@ -32,14 +32,21 @@ const server = defineServer(routes, {
   "/hello/:name": {}, // dynamic — the :name differs per request
 });
 
+/**
+ * The pages of every `:param` route marked `prerender` — from your data, e.g.
+ * `["/hello/world"]` for `"/hello/:name": { prerender: true }`. A build cannot know them otherwise.
+ * ONE list, read by both functions below: the server and the build must agree on what was baked.
+ */
+const PRERENDER_PATHS: string[] = [];
+
 /** The concrete paths a static build should bake. Used by scripts/prerender.mjs. */
 export function staticPaths(): string[] {
-  return routePlan(server).static;
+  return routePlan(server, PRERENDER_PATHS).static;
 }
 
 /** The full plan (static / isr / server / needsData) — the prod server dispatches on it. */
 export function plan() {
-  return routePlan(server);
+  return routePlan(server, PRERENDER_PATHS);
 }
 
 /**
