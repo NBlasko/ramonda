@@ -736,6 +736,24 @@ try {
     if (shipped.length > 0) fail("the production build ships the devtools panel", shipped.join("\n"));
     checks.push("no devtools panel in the production build");
   }
+  // The client bundle is what crosses the network, and an unminified one was a fifth bigger
+  // compressed (FINDING-37: 86 KB against 69 KB gzipped). Counted as INDENTED lines, not lines: the
+  // readable output of the starter app is thousands of them, minified output none — while a string
+  // the bundle carries may hold line breaks of its own, as the CSS package's table of shorthands does,
+  // so a plain line count called a minified bundle of 106 lines unminified. The source map beside it
+  // keeps a production stack trace pointing at the reader's own files.
+  if (mode === "ssr") {
+    const bundle = join(app, "dist/client/assets/client.js");
+    const code = existsSync(bundle) ? readFileSync(bundle, "utf8") : "";
+    const indented = code.split("\n").filter((line) => /^ {2,}\S/.test(line)).length;
+    if (code === "" || indented > 20) {
+      fail(`the client bundle is not minified: ${indented} indented lines in dist/client/assets/client.js`);
+    }
+    if (!code.includes("//# sourceMappingURL=client.js.map") || !existsSync(`${bundle}.map`)) {
+      fail("the client bundle has no source map beside it");
+    }
+    checks.push("a minified client bundle with its source map");
+  }
   if (mode === "ssr") {
     const baked = join(app, "dist/static/index.html");
     if (!existsSync(baked)) fail("the build produced no dist/static/index.html");
