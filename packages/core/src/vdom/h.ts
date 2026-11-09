@@ -276,6 +276,23 @@ export function __h(
   rawAttributes: Record<string, any> | null,
   ...children: ComponentChild[]
 ): VNode {
+  /**
+   * An ELEMENT's attributes copied, because the diff keeps them as its record of what it wrote, and a
+   * hand-built vnode may be handed the same object on every render, changed in place — its old values
+   * would then be gone before the next pass compares with them. A component's props are handed on as
+   * they are. Compiled JSX goes through `createVNode`, and the compiler builds a fresh object for every
+   * element.
+   */
+  const attributes = typeof name === "string" ? { ...rawAttributes } : rawAttributes;
+  return createVNode(name, attributes, ...children);
+}
+
+/** `__h` for the JSX runtime, which hands over an attributes object of its own — see `__h`. */
+export function createVNode(
+  name: ComponentKind | UnsupportedTagFn,
+  rawAttributes: Record<string, any> | null,
+  ...children: ComponentChild[]
+): VNode {
   const parsedChildren = normalizeChildren(children, currentOrigin.id);
 
   const attributes: Record<string, any> = rawAttributes ?? {};

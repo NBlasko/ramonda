@@ -13,6 +13,25 @@ import {
 import { queueBeforeTheMounts } from "./commit";
 type NodeAttributes = Record<string, any>;
 
+/** What an element built this pass already carries: nothing. Read, never written. */
+const NONE: NodeAttributes = Object.freeze({});
+
+/**
+ * What the diff wrote on an element last pass — the attributes it is compared with on the next.
+ *
+ * Kept rather than read back from the page: reading every attribute back on every pass was the largest
+ * single cost in every profile of js-framework-benchmark, and it made the page the record of what
+ * Ramonda meant, so an attribute anyone else changed — the browser closing a `<details>`, a library's
+ * class — was written back on the next render that touched the element for any reason. What Ramonda
+ * wrote is the record, as in React: such a change stays until Ramonda itself changes that value.
+ *
+ * An element with no record — one a hydration adopted, which no pass wrote — is read from the page
+ * once, so what only the server wrote is still taken away.
+ */
+const WRITTEN = Symbol("written");
+
+type Written = { [WRITTEN]?: NodeAttributes };
+
 /**
  * `onServer` skips attaching event listeners, which a server render has no use for.
  *
@@ -23,19 +42,39 @@ type NodeAttributes = Record<string, any>;
  *
  * Passed as a parameter rather than looked up per attribute: it is one property read per ELEMENT, and
  * the loop below runs per attribute.
+ *
+ * `built` says the element was created for this pass: it has no attributes, listeners or key yet, so
+ * there is nothing to read back — and so, from nothing, nothing to take away.
  */
-export function applyChangesOnAttributes(enhancedNode: ChildNode, rawNextAttributes: NodeAttributes, onServer = false) {
+export function applyChangesOnAttributes(
+  enhancedNode: ChildNode,
+  rawNextAttributes: NodeAttributes,
+  onServer = false,
+  built = false,
+) {
   if (!("tagName" in enhancedNode)) return;
 
-  const previousAttributes = getAllFromNode(enhancedNode as EnhancedHTMLNode);
+  // The record is the attributes object the last pass was handed, not a copy: nobody changes one after
+  // handing it over — the compiler builds a fresh one per element, and `__h` copies what an app hands it.
+  const previousAttributes = built
+    ? NONE
+    : ((enhancedNode as Written)[WRITTEN] ?? getAllFromNode(enhancedNode as EnhancedHTMLNode));
   const nextAttributes = formatAttributes(rawNextAttributes);
-  removePreviousFromenhancedNode(enhancedNode as EnhancedHTMLNode, previousAttributes, nextAttributes);
-  attachNextOnenhancedNode(enhancedNode as EnhancedHTMLNode, previousAttributes, nextAttributes, onServer);
+  try {
+    removePreviousFromenhancedNode(enhancedNode as EnhancedHTMLNode, previousAttributes, nextAttributes);
+    attachNextOnenhancedNode(enhancedNode as EnhancedHTMLNode, previousAttributes, nextAttributes, onServer);
+  } catch (error) {
+    // A pass that throws halfway — a name the DOM refuses — leaves no record, and the next one reads the
+    // page it left.
+    (enhancedNode as Written)[WRITTEN] = undefined;
+    throw error;
+  }
+  (enhancedNode as Written)[WRITTEN] = nextAttributes;
   releaseDroppedRef(enhancedNode as EnhancedHTMLNode, nextAttributes.ref);
   /**
    * An `<input>` is told, on every pass, whether it is controlled — a pass that no longer has a
-   * `value` lets the field go, which the attribute diff, reading attributes back off the element,
-   * would never see.
+   * `value` lets the field go. The attribute diff answers for the attribute only; the field's own
+   * listener and what it holds are `controlInput`'s.
    */
   if (enhancedNode.nodeName === "INPUT") {
     writeDefaults(enhancedNode as unknown as HTMLInputElement, rawNextAttributes, onServer);
@@ -49,8 +88,9 @@ export function applyChangesOnAttributes(enhancedNode: ChildNode, rawNextAttribu
  * follows until the user edits and a form's reset returns to, on both sides, so a served page starts
  * on it before any script runs. Nothing writes the property: the field is the user's.
  *
- * Here rather than in the attribute loop, because neither is an attribute of its own name for the
- * diff to read back, so a default taken away — `defaultChecked` turned `false` — would never be seen.
+ * Here rather than in the attribute loop, because neither is an attribute of its own name: the loop
+ * would write `defaultValue` onto the element. A default the render stops naming at all is taken away by
+ * `removePreviousFromenhancedNode`, which knows it from the record.
  */
 function writeDefaults(input: HTMLInputElement, attributes: NodeAttributes, onServer: boolean): void {
   // A field with a `value` (`checked`) is the model's, and so is that attribute: a default written
@@ -110,9 +150,9 @@ function radioWasPicked(radio: HTMLInputElement): boolean {
 /**
  * Lets go of a ref the JSX has stopped giving this element.
  *
- * `ref` is not a DOM attribute, so it is never among the PREVIOUS attributes read
- * back off the node, and the attach loop only walks the keys present in the NEXT
- * ones. A disappearing `ref` was therefore invisible to both, and the element went
+ * `ref` is not a DOM attribute, so the removal loop leaves it alone, and the attach
+ * loop only walks the keys present in the NEXT ones. A disappearing `ref` was
+ * therefore invisible to both, and the element went
  * on holding the handle — a stale strong reference from the node to a ref nothing
  * points at, and a `current` still aimed at an element the JSX no longer connects
  * it to. A component's ref has behaved correctly since it was unified across
@@ -270,6 +310,7 @@ export function writeValue(enhancedNode: EnhancedHTMLNode, value: unknown, onSer
  * still ticked, a video still audible, a checkbox still mixed.
  */
 const PROPERTY_TRUTH = new Set(["checked", "muted", "indeterminate"]);
+// `formPropertyDiverged` names the same three, as comparisons: it is asked of every equal attribute.
 
 function attachNextOnenhancedNode(
   enhancedNode: EnhancedHTMLNode,
@@ -306,7 +347,11 @@ function attachNextOnenhancedNode(
 
     const previousAttribute = getPreviousFromenhancedNode(enhancedNode, name, previousAttributes[name]);
 
-    if (!attributesEqual(nextAttribute, previousAttribute) || formPropertyDiverged(enhancedNode, name, nextAttribute)) {
+    if (
+      !attributesEqual(nextAttribute, previousAttribute) ||
+      changedInPlace(name, nextAttribute) ||
+      formPropertyDiverged(enhancedNode, name, nextAttribute)
+    ) {
       setNextOnenhancedNode(enhancedNode, name, nextAttribute, onServer);
     }
   }
@@ -526,6 +571,9 @@ function getPreviousFromenhancedNode(enhancedNode: EnhancedHTMLNode, name: strin
   // `?? ""`: an element that never had a style must compare equal to an empty
   // one, or the first render writes `style=""` onto every host.
   if (name === "style") return enhancedNode[STYLE_SYM] ?? "";
+  // A ref is applied on every pass, whatever was written last: when two elements share one and the
+  // second goes away, the first takes it back on that same pass by re-asserting it.
+  if (name === "ref") return undefined;
   return value;
 }
 
@@ -540,6 +588,9 @@ function getPreviousFromenhancedNode(enhancedNode: EnhancedHTMLNode, name: strin
  * agrees, and writes nothing — while the control keeps showing whatever the user
  * left there. The model silently stops being what is on screen.
  *
+ * Every name in `PROPERTY_TRUTH` is asked the same way: a media element's `muted`, whose attribute is
+ * only its default, and a checkbox's `indeterminate`, which has no attribute at all.
+ *
  * Asked IN ADDITION to the attribute comparison, never instead of it: the
  * attribute is what the element serializes, so it has to stay right for a server
  * render and for anything that reads the markup back.
@@ -550,13 +601,19 @@ function getPreviousFromenhancedNode(enhancedNode: EnhancedHTMLNode, name: strin
  * render would be its own bug.
  */
 function formPropertyDiverged(enhancedNode: EnhancedHTMLNode, name: string, next: unknown): boolean {
-  if (name !== "value" && name !== "checked") return false;
+  // `value` and the names in `PROPERTY_TRUTH`, as comparisons: this is asked of every equal attribute.
+  if (name !== "value" && name !== "checked" && name !== "muted" && name !== "indeterminate") return false;
   if (!(name in enhancedNode)) return false;
+  // On the elements whose property it is: a custom element's `muted` may read back as anything, and asked
+  // of it, a getter that never says `true` would be written on every pass.
+  if (name === "indeterminate" && enhancedNode.nodeName !== "INPUT") return false;
+  if (name === "muted" && enhancedNode.nodeName !== "VIDEO" && enhancedNode.nodeName !== "AUDIO") return false;
 
   const live = (enhancedNode as unknown as Record<string, unknown>)[name];
   // A boolean attribute is on when it is PRESENT, so any visible value means a
   // ticked box — `checked=""` and the mistaken `checked="false"` (RMD029) both.
-  if (name === "checked") return live !== true;
+  // `muted` and `indeterminate` the same way — see `PROPERTY_TRUTH`.
+  if (name !== "value") return live !== true;
   // A number field's `1.50` already shows the model's 1.5 — see `showsTheModel`.
   if (enhancedNode.nodeName === "INPUT") return !showsTheModel(enhancedNode as unknown as HTMLInputElement, next);
   return !attributesEqual(next, live);
@@ -621,6 +678,12 @@ function removePreviousFromenhancedNode(
     const nextAttribute = nextAttributes[name];
 
     if (!isInvisibleOnScreen(nextAttribute, name)) continue;
+    // Nothing was written for it last pass either — a record keeps a name it held as `undefined` or
+    // `false`, which the page never had — so there is nothing to take away.
+    if (isInvisibleOnScreen(previousAttributes[name], name)) continue;
+
+    // No attribute to take away: a dropped ref is let go by `releaseDroppedRef`.
+    if (name === "ref") continue;
 
     if (name.startsWith("on")) {
       const listeners = enhancedNode._listeners ?? {};
@@ -631,6 +694,12 @@ function removePreviousFromenhancedNode(
         enhancedNode.removeEventListener(type, previousAttributes[name]);
       }
       delete listeners[name];
+    } else if (enhancedNode.nodeName === "INPUT" && (name === "defaultValue" || name === "defaultChecked")) {
+      // Written as `value` / `checked` (see `writeDefaults`), so that is what goes when the render stops
+      // naming the default — unless this pass writes that attribute itself. Not `writeDefaults`' question
+      // (does a model hold the field): `checked={false}` holds it and writes no attribute.
+      const written = name === "defaultValue" ? "value" : "checked";
+      if (isInvisibleOnScreen(nextAttributes[written], written)) removeByQualifiedName(enhancedNode, written);
     } else if (!heldAsADefault(enhancedNode, name, nextAttributes)) {
       removeByQualifiedName(enhancedNode, name);
     }
@@ -696,6 +765,20 @@ function isBooleanAttribute(name: string): boolean {
 // Objects/functions (ref, event handlers) are compared by identity.
 function isPrimitive(val: unknown): boolean {
   return val === null || (typeof val !== "object" && typeof val !== "function");
+}
+
+/**
+ * An attribute VALUE that is an object is the same object after it changes in place — a `URL` whose
+ * `searchParams` were set — so being the one written last says nothing about the string it makes: it is
+ * written on every pass, as it was while the page, which holds that string, was what the diff compared
+ * with. A listener is not a value: an `on…` object (`{ handleEvent }`) is the same listener while it is
+ * the same object, and re-adding it would move it behind every listener added since.
+ */
+// A `ref` is an object too, and is applied on every pass on its own account — see
+// `getPreviousFromenhancedNode`.
+function changedInPlace(name: string, next: unknown): boolean {
+  // `null` never reaches here: the loop skips a value invisible on screen first.
+  return typeof next === "object" && !name.startsWith("on");
 }
 
 function attributesEqual(next: unknown, previous: unknown): boolean {

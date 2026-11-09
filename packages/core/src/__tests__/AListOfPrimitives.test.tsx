@@ -136,6 +136,43 @@ describe("a list of primitives", () => {
     app.unmount();
   });
 
+  /**
+   * An item held once remembers one id; held twice, the second occurrence is a second row and mints its
+   * own. Given the first's id instead, the two rows would share one key and one of them would be lost.
+   */
+  test("an item held once and then twice keeps its row, and gains exactly one", async () => {
+    const app = await mount();
+    await app.settle();
+    app.instance.items = ["x"];
+    await app.settle();
+    const first = rowsIn(app.container)[0];
+    creates = destroys = 0;
+
+    app.instance.items = ["x", "x"];
+    await app.settle();
+
+    expect(app.container.textContent).toBe("xx");
+    expect({ creates, destroys, kept: rowsIn(app.container)[0] === first, codes }).toEqual({
+      creates: 1,
+      destroys: 0,
+      kept: true,
+      codes: [],
+    });
+
+    // And back: the second row goes, the first stays.
+    creates = destroys = 0;
+    app.instance.items = ["x"];
+    await app.settle();
+    expect({ text: app.container.textContent, creates, destroys, kept: rowsIn(app.container)[0] === first }).toEqual({
+      text: "x",
+      creates: 0,
+      destroys: 1,
+      kept: true,
+    });
+
+    app.unmount();
+  });
+
   test("dropping one of several equal items destroys exactly one", async () => {
     const app = await mount();
     await app.settle();

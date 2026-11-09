@@ -1021,6 +1021,96 @@ describe("Portal follows a reactive target", () => {
   });
 });
 
+/**
+ * Two portals placed into one element of the app's own render, and the element taken away. The teardown
+ * walks the element's children and tells each block's anchor its host is going (`hostRemoved`) — and the
+ * first one, told, removes its own nodes. The walk reads the next node only after that, or it would stop at
+ * a node already gone and never reach the second block: its component would never be destroyed.
+ */
+describe("two portals in one element the render takes away", () => {
+  test("are both torn down", async () => {
+    const destroyedNames: string[] = [];
+
+    class Inside extends Component<{ name: string }> {
+      @destroyed
+      gone() {
+        destroyedNames.push(this.props.name);
+      }
+      render() {
+        return <i>{this.props.name}</i>;
+      }
+    }
+
+    class Page extends Component {
+      @state shown = true;
+      // A signal, so both factories run again once the element exists — as the docs write it.
+      @state root: Element | null = null;
+      box = createRef<HTMLElement>(this.attached);
+      first = this.use(Portal, (self: Page) => ({
+        children: <Inside name="first" />,
+        target: self.root as Element,
+      }));
+      second = this.use(Portal, (self: Page) => ({
+        children: <Inside name="second" />,
+        target: self.root as Element,
+      }));
+      attached(element: HTMLElement | null) {
+        if (element !== null) this.root = element;
+      }
+      render() {
+        return <div>{this.shown ? <section ref={this.box} /> : null}</div>;
+      }
+    }
+
+    const { instance, settle } = await getDOM<Page>(<Page />);
+    await settle();
+    const placed = instance.root?.querySelectorAll("i").length;
+    instance.shown = false;
+    await settle();
+
+    expect({ placed, destroyed: destroyedNames.sort() }).toEqual({ placed: 2, destroyed: ["first", "second"] });
+  });
+});
+
+/**
+ * A portal aimed at an element its owner is building, placed while that element's children are still
+ * being built: the block goes in first, and the element's own children must still come before it.
+ */
+describe("a portal placed into an element while its children are built", () => {
+  test("leaves the element's own children first", async () => {
+    class Guest extends Component<{ target: { current: Element | null } }> {
+      portal = this.use(Portal, (self: Guest) => ({
+        children: <i>guest</i>,
+        target: self.props.target.current as Element,
+      }));
+      render() {
+        return <b>own</b>;
+      }
+    }
+    class Page extends Component {
+      @state shown = false;
+      readonly box = createRef<HTMLElement>();
+      render() {
+        return this.shown ? (
+          <section ref={this.box}>
+            <div>
+              <Guest target={this.box} />
+            </div>
+          </section>
+        ) : (
+          <p>off</p>
+        );
+      }
+    }
+    const { instance, settle, container } = await getDOM<Page>(<Page />);
+    await settle();
+    instance.shown = true;
+    await settle();
+    const section = container.querySelector("section") as HTMLElement;
+    expect(Array.from(section.childNodes, (node) => node.nodeName)).toEqual(["DIV", "#comment", "I", "#comment"]);
+  });
+});
+
 describe("Portal reconciles keyed children by identity", () => {
   test("reordering keyed children moves the same nodes, not their contents", async () => {
     const target = document.createElement("ul");
