@@ -1,6 +1,7 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { getDOM } from "../test/setup";
 import { Component, state, memoized } from "../index";
+import { State } from "../reactivity/State";
 
 /**
  * What `@memoized` does with an argument it cannot build a cache key from.
@@ -302,5 +303,120 @@ describe("two memoized methods on one component", () => {
     app.instance.edit("remove")();
     app.instance.remove("edit")();
     expect(calls).toEqual(["edit:remove", "remove:edit"]);
+  });
+});
+
+/**
+ * A call with one string, number or boolean is looked up by that value itself, and any other call by a key
+ * built from its arguments, in a table of its own. Both tell a value from its spelling as text.
+ */
+describe("what a handler is looked up by", () => {
+  test("a number, a boolean and the same thing spelled as text are three keys", async () => {
+    class Panel extends Component {
+      @memoized
+      pick(value: string | number | boolean) {
+        return () => value;
+      }
+      render() {
+        return <div />;
+      }
+    }
+    using app = await getDOM<Panel>(<Panel />);
+    const panel = app.instance;
+    expect([panel.pick(5)(), panel.pick("5")(), panel.pick(true)(), panel.pick("true")()]).toEqual([
+      5,
+      "5",
+      true,
+      "true",
+    ]);
+  });
+
+  test("one string that spells a built key is not the call it spells", async () => {
+    class Panel extends Component {
+      @memoized
+      pick(...parts: (string | number)[]) {
+        return () => parts.join("+");
+      }
+      render() {
+        return <div />;
+      }
+    }
+    using app = await getDOM<Panel>(<Panel />);
+    const panel = app.instance;
+    // `("a", 1)` is keyed `s:a|n:1`; the one string below spells exactly that.
+    expect([panel.pick("a", 1)(), panel.pick("s:a|n:1")()]).toEqual(["a+1", "s:a|n:1"]);
+  });
+});
+
+describe("a handler no render asked for", () => {
+  test("is let go after a commit without it, and built afresh when asked for again — one argument or two", async () => {
+    const seen: (() => number)[] = [];
+    const pairs: (() => string)[] = [];
+    class Rows extends Component {
+      @state shown = true;
+      @memoized
+      pick(id: number) {
+        return () => id;
+      }
+      @memoized
+      pair(id: number, part: string) {
+        return () => `${id}${part}`;
+      }
+      render() {
+        if (this.shown) seen.push(this.pick(7));
+        if (this.shown) pairs.push(this.pair(7, "a"));
+        return <div>{this.shown ? "yes" : "no"}</div>;
+      }
+    }
+    const app = await getDOM<Rows>(<Rows />);
+    await app.settle();
+    app.instance.shown = false;
+    await app.settle();
+    app.instance.shown = true;
+    await app.settle();
+    expect({ one: seen[0] === seen[seen.length - 1], two: pairs[0] === pairs[pairs.length - 1] }).toEqual({
+      one: false,
+      two: false,
+    });
+  });
+});
+
+describe("a component that goes away", () => {
+  test("lets go of what its handlers' builders read — one argument or two", async () => {
+    // A signal outside the component: its listeners are what a handler's builder left on it.
+    const shared = new State(0);
+    const listeners = () => (shared as unknown as { _listeners?: Map<unknown, unknown> })._listeners?.size ?? 0;
+    class Row extends Component {
+      @memoized
+      pick(id: number) {
+        const offset = shared.get();
+        return () => id + offset;
+      }
+      @memoized
+      pair(id: number, part: string) {
+        const offset = shared.get();
+        return () => `${id + offset}${part}`;
+      }
+      render() {
+        return (
+          <p>
+            <a onclick={this.pick(1)}>one</a>
+            <a onclick={this.pair(1, "a")}>two</a>
+          </p>
+        );
+      }
+    }
+    class Page extends Component {
+      @state shown = true;
+      render() {
+        return <div>{this.shown ? <Row /> : null}</div>;
+      }
+    }
+    const app = await getDOM<Page>(<Page />);
+    await app.settle();
+    const held = listeners();
+    app.instance.shown = false;
+    await app.settle();
+    expect({ held: held > 0, left: listeners() }).toEqual({ held: true, left: 0 });
   });
 });

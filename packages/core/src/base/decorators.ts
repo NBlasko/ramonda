@@ -1004,7 +1004,25 @@ interface MemoEntry {
   listenerId?: number;
 }
 
-const memoMap = new WeakMap<object, Map<string, MemoEntry>>();
+/**
+ * One instance's cache: a table per decorated method (`member`), each split by how its key is made. A call
+ * with ONE string, number or boolean is looked up by that value itself — a `Map` tells `5` from `"5"` as
+ * the built key did, and the commonest call, `this.select(row.id)` once per row per render, builds no
+ * string to find a handler that is already there. Any other call is keyed by `buildKey`'s string, in a
+ * table of its own, so a single string argument can never meet a built key.
+ */
+interface MemberCache {
+  one: Map<unknown, MemoEntry>;
+  many: Map<string, MemoEntry>;
+}
+type InstanceCache = Map<number, MemberCache>;
+
+const memoMap = new WeakMap<object, InstanceCache>();
+
+function isKeyValue(arg: unknown): boolean {
+  const t = typeof arg;
+  return t === "string" || t === "number" || t === "boolean";
+}
 
 /**
  * Lets go of an entry's subscriptions.
@@ -1020,14 +1038,21 @@ function releaseMemoEntry(entry: MemoEntry): void {
   entry.deps.clear();
 }
 
-const cleanUp = (instanceMap: Map<string, MemoEntry>) => {
-  for (const [key, entry] of instanceMap.entries()) {
+function sweepTable<K>(table: Map<K, MemoEntry>): void {
+  for (const [key, entry] of table) {
     if (entry.used) {
       entry.used = false;
     } else {
       releaseMemoEntry(entry);
-      instanceMap.delete(key);
+      table.delete(key);
     }
+  }
+}
+
+const cleanUp = (instanceMap: InstanceCache) => {
+  for (const member of instanceMap.values()) {
+    sweepTable(member.one);
+    sweepTable(member.many);
   }
 };
 
@@ -1068,7 +1093,7 @@ export function memoized<T extends (...args: any[]) => any>(
      * and `remove(id)`: every row re-rendered on every select.
      */
     if (memoMap.has(this)) return;
-    const instanceMap = new Map<string, MemoEntry>();
+    const instanceMap: InstanceCache = new Map();
     memoMap.set(this, instanceMap);
 
     attachEffect(this, () => cleanUp(instanceMap), true);
@@ -1084,13 +1109,17 @@ export function memoized<T extends (...args: any[]) => any>(
      * consumer all register the same way, and `releaseMemoEntry`'s own comment says why.
      */
     this[GLOBAL_RUNTIME].clearReactives.push(() => {
-      for (const entry of instanceMap.values()) releaseMemoEntry(entry);
+      for (const member of instanceMap.values()) {
+        for (const entry of member.one.values()) releaseMemoEntry(entry);
+        for (const entry of member.many.values()) releaseMemoEntry(entry);
+      }
       instanceMap.clear();
     });
   });
 
   return function (this: any, ...args: any[]) {
-    const key = buildKey(args);
+    const single = args.length === 1 && isKeyValue(args[0]);
+    const key: unknown = single ? args[0] : buildKey(args);
 
     if (key === undefined) {
       /**
@@ -1165,9 +1194,14 @@ export function memoized<T extends (...args: any[]) => any>(
      * A `\u0000` separator rather than `:` or `|`, because `buildKey` puts a caller's own string
      * straight into the key and a separator a caller can type is a separator a caller can forge.
      */
-    const scoped = `${member}\u0000${key}`;
     const instanceMap = memoMap.get(this)!;
-    let entry = instanceMap.get(scoped);
+    let tables = instanceMap.get(member);
+    if (tables === undefined) {
+      tables = { one: new Map(), many: new Map() };
+      instanceMap.set(member, tables);
+    }
+    const table: Map<unknown, MemoEntry> = single ? tables.one : tables.many;
+    let entry = table.get(key);
 
     if (entry) {
       entry.used = true;
@@ -1212,7 +1246,7 @@ export function memoized<T extends (...args: any[]) => any>(
 
       const fresh: MemoEntry = { fn: fn as (...a: any[]) => any, used: true };
       entry = fresh;
-      instanceMap.set(scoped, fresh);
+      table.set(key, fresh);
 
       if (collected.size > 0) {
         const listenerId = createId();
@@ -1226,9 +1260,9 @@ export function memoized<T extends (...args: any[]) => any>(
         const invalidate = (): void => {
           // Only if this entry is still the one under that key. A later build for the same key
           // replaced it, and dropping the replacement would throw away a handler this never watched.
-          if (instanceMap.get(scoped) !== fresh) return;
+          if (table.get(key) !== fresh) return;
           releaseMemoEntry(fresh);
-          instanceMap.delete(scoped);
+          table.delete(key);
         };
         for (const dep of collected) dep[attach]({ id: listenerId, onChange: invalidate });
       }
