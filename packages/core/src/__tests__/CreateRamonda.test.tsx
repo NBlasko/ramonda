@@ -101,4 +101,17 @@ describe("createRamonda", () => {
     expect(app.container.textContent).toBe("onetwo");
     expect(shared.children).toBeUndefined();
   });
+
+  test("an element's attributes are copied, a component's props handed on as they are", () => {
+    // The diff keeps an element's attributes object as its record of what it wrote, so the one an app
+    // hands over is copied; a component's props are the component's, as the app made them.
+    const attributes = { id: "a" };
+    const props = { label: "x" };
+    const element = __h("p", attributes) as unknown as { attributes: object };
+    const component = __h(Box, props) as unknown as { attributes: object };
+    expect({ copied: element.attributes !== attributes, handedOn: component.attributes === props }).toEqual({
+      copied: true,
+      handedOn: true,
+    });
+  });
 });

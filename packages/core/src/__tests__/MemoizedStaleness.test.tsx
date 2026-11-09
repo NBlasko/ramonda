@@ -1,6 +1,7 @@
 import { describe, test, expect, vi, beforeEach } from "vitest";
 import { getDOM } from "../test/setup";
 import { Component } from "../base/Component";
+import { list } from "../base/list";
 import { state, memoized } from "../base/decorators";
 
 /**
@@ -163,5 +164,106 @@ describe("a memoized handler whose builder read nothing", () => {
 
     expect(handlers.length).toBeGreaterThan(3);
     expect(new Set(handlers).size).toBe(1);
+  });
+
+  /**
+   * Every `@memoized` method on a component shares one cache, and the cache is swept once per commit. It
+   * was swept once per METHOD: with two, the first sweep marked every entry unused and the second deleted
+   * them all, so each commit rebuilt every handler. Measured on js-framework-benchmark's shape — a row
+   * component handed `select(id)` and `remove(id)` — every row re-rendered on every select.
+   */
+  test("keeps it beside a second @memoized method on the same component", async () => {
+    const handlers: Array<() => void> = [];
+
+    class App extends Component {
+      @state tick = 0;
+      @state selected = "";
+
+      @memoized
+      pick(id: string) {
+        return () => {
+          this.selected = id;
+        };
+      }
+
+      @memoized
+      drop(id: string) {
+        return () => {
+          this.selected = `-${id}`;
+        };
+      }
+
+      render() {
+        handlers.push(this.pick("row-1"));
+        return <span id="t">{this.tick}</span>;
+      }
+    }
+
+    using app = await getDOM<App>(<App />);
+    await app.settle();
+    for (let tick = 1; tick <= 3; tick++) {
+      app.instance.tick = tick;
+      await app.settle();
+    }
+
+    expect(handlers.length).toBeGreaterThan(3);
+    expect(new Set(handlers).size).toBe(1);
+  });
+
+  test("so a row component handed two of them re-renders only when its own props move", async () => {
+    let renders = 0;
+
+    class Item extends Component<{ id: number; on: boolean; onpick: () => void; ondrop: () => void }> {
+      render() {
+        renders++;
+        return (
+          <li className={this.props.on ? "on" : ""} onclick={this.props.onpick}>
+            {this.props.id}
+          </li>
+        );
+      }
+    }
+
+    class Table extends Component {
+      @state rows: number[] = [];
+      @state selected = 0;
+
+      @memoized
+      select(id: number) {
+        return () => {
+          this.selected = id;
+        };
+      }
+
+      @memoized
+      remove(id: number) {
+        return () => {
+          this.rows = this.rows.filter((row) => row !== id);
+        };
+      }
+
+      row(id: number) {
+        return <Item key={id} id={id} on={this.selected === id} onpick={this.select(id)} ondrop={this.remove(id)} />;
+      }
+
+      render() {
+        return <ul>{list(this.rows, this.row)}</ul>;
+      }
+    }
+
+    using app = await getDOM<Table>(<Table />);
+    await app.settle();
+    app.instance.rows = [1, 2, 3, 4, 5];
+    await app.settle();
+    const counted: number[] = [];
+    for (const id of [2, 3, 4]) {
+      renders = 0;
+      app.instance.selected = id;
+      await app.settle();
+      counted.push(renders);
+    }
+
+    // The first select turns one row on; each after it turns one off and one on.
+    expect(counted).toEqual([1, 2, 2]);
   });
 });

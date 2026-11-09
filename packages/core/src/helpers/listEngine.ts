@@ -197,16 +197,30 @@ export interface ListHost {
  * only STATE, and the diff owning where that state lives is what makes a region
  * per parent and per position for free.
  */
+/** The ids of one item's occurrences: one id for the item a list holds once, an array past that. */
+type Ids = string | string[];
+
+function countOf(ids: Ids | undefined): number {
+  return ids === undefined ? 0 : typeof ids === "string" ? 1 : ids.length;
+}
+
+function idAt(ids: Ids | undefined, occurrence: number): string | undefined {
+  if (ids === undefined) return undefined;
+  if (typeof ids === "string") return occurrence === 0 ? ids : undefined;
+  return ids[occurrence];
+}
+
 export class ListEngine<T> {
   /**
    * item → the ids minted for it, one per occurrence.
    *
-   * An array rather than a single id so a list may legitimately contain the same
-   * item twice (`[tag, tag]`): the 2nd occurrence gets its own id and both rows
-   * stay stable. Reference identity cannot tell two occurrences apart, and
-   * neither could a hand-written key.
+   * An array when the list holds the same item twice (`[tag, tag]`): the 2nd occurrence
+   * gets its own id and both rows stay stable. Reference identity cannot tell two
+   * occurrences apart, and neither could a hand-written key. One id, not an array, for an
+   * item the list holds once — nearly every item — so a pass over 1000 rows does not build
+   * 1000 arrays to say so.
    */
-  private ids = new Map<T, string[]>();
+  private ids = new Map<T, Ids>();
   /** key → the scope that produced its vnode last render. */
   private scopes = new Map<string, ItemScope<T>>();
   /**
@@ -345,8 +359,7 @@ export class ListEngine<T> {
     /** The keys rows wrote for themselves this pass, for the collision check. */
     let yours: Set<unknown> | undefined;
 
-    const seen = new Map<T, number>();
-    const next = new Map<T, string[]>();
+    const next = new Map<T, Ids>();
     const out: VNode[] = [];
     const clean: boolean[] = [];
     const rowScopes: RowScope[] = [];
@@ -359,20 +372,14 @@ export class ListEngine<T> {
       // item's scope, and the whole point is to decide without calling the
       // mapper at all.
       //
-      // Which occurrence of this exact item is this?
-      const occurrence = seen.get(item) ?? 0;
-      seen.set(item, occurrence + 1);
+      // Which occurrence of this exact item is this? As many as it has ids already.
+      const carried = next.get(item);
+      const occurrence = countOf(carried);
 
-      let carried = next.get(item);
-      if (!carried) {
-        carried = [];
-        next.set(item, carried);
-      }
       // Reuse the id this occurrence had last render, or mint a new one.
       // Dropping the rest of `this.ids` is the pruning: an item that left the
       // list is simply not carried over, so the map cannot grow forever.
-      const previous = this.ids.get(item);
-      let id: string | undefined = carried[occurrence] ?? previous?.[occurrence];
+      let id: string | undefined = idAt(this.ids.get(item), occurrence);
 
       // The reference missed, so this object is new HERE — but it may be a row
       // that already exists, handed over as a fresh object by a refetch. Align
@@ -399,7 +406,9 @@ export class ListEngine<T> {
         // it across — see `carryIdentity`.
         stampIdentity(item, id);
       }
-      carried[occurrence] = id;
+      if (carried === undefined) next.set(item, id);
+      else if (typeof carried === "string") next.set(item, [carried, id]);
+      else carried.push(id);
       const key = id;
 
       const scopeKey = key;

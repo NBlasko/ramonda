@@ -162,7 +162,8 @@ describe("what a render costs the DOM", () => {
   /**
    * A row appended or prepended costs the same: build one `<li>`, put its text in it, put it in the
    * list. Two insertions either way — the two hundred rows already there are never touched, which
-   * is the whole reason the move minimiser exists.
+   * is the whole reason the move minimiser exists. The text goes into the new `<li>` by `appendChild`,
+   * before the `<li>` is anywhere: an element built this pass has nothing to reorder.
    */
   test("appending and prepending one row cost the same, and cost two insertions", async () => {
     for (const where of ["append", "prepend"] as const) {
@@ -175,7 +176,7 @@ describe("what a render costs the DOM", () => {
         await dom.settle();
       });
 
-      expect({ where, ...counts }).toMatchObject({ where, insertBefore: 2, removeChild: 0, text: 0 });
+      expect({ where, ...counts }).toMatchObject({ where, insertBefore: 1, appendChild: 1, removeChild: 0, text: 0 });
       dom.unmount();
     }
   });
@@ -369,12 +370,14 @@ describe("what a component costs, against the same markup without one", () => {
     const fresh = { id: 9999, label: "new" };
 
     expect(await measure((self) => (self.data = [...self.data, fresh]))).toMatchObject({
-      insertBefore: 2,
+      insertBefore: 1,
+      appendChild: 1,
       removeChild: 0,
       text: 0,
     });
     expect(await measure((self) => (self.data = [fresh, ...self.data]))).toMatchObject({
-      insertBefore: 2,
+      insertBefore: 1,
+      appendChild: 1,
       removeChild: 0,
       text: 0,
     });
@@ -468,7 +471,7 @@ describe("what a component costs, against the same markup without one", () => {
 
     expect({ ...filled }).toEqual({ ...plainFilled });
     expect({ ...emptied }).toEqual({ ...plainEmptied });
-    expect(filled).toMatchObject({ insertBefore: 2, appendChild: 0, removeChild: 0 });
+    expect(filled).toMatchObject({ insertBefore: 1, appendChild: 1, removeChild: 0 });
   });
 
   /**
