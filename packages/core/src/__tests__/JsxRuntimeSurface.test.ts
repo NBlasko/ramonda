@@ -16,7 +16,12 @@ import * as runtime from "../jsx-runtime";
  * caught by whichever project upgraded first. A list per entry is what the rest of this repository
  * already does; these two were missed.
  */
-const RUNTIME = ["Fragment", "jsx", "jsxs"];
+/**
+ * `__template` and `__block` are what Ramonda's own compiler writes for an element tree whose shape never
+ * changes — a prototype for now (see `core/block.ts`); only the production entry carries them, because
+ * the compiler imports from it in every build.
+ */
+const RUNTIME = ["Fragment", "__block", "__template", "jsx", "jsxs"];
 
 /** `jsxDEV` takes the source location the production one has no argument for. */
 const DEV = ["Fragment", "jsxDEV"];

@@ -1,6 +1,7 @@
 import { enclosingBlock } from "./enclosingBlock";
 import { settleProps } from "../helpers/common";
 import { applyChangesOnAttributes } from "./Attribute";
+import { BLOCK, BLOCK_STATE, applyBlock, type BlockVNode } from "./block";
 import type {
   BaseComponent,
   ComponentChild,
@@ -606,6 +607,14 @@ function executeChangesOnStringNode(
   placeholderComponent: MaybeComponent,
   maybeenhancedNode: MaybeEnhancedNode | EnhancedChildNode,
 ) {
+  // PROTOTYPE: a compiled block — see `core/block.ts`.
+  if ((vnode as Partial<BlockVNode>)[BLOCK] !== undefined) {
+    return applyBlock(
+      vnode as BlockVNode,
+      maybeenhancedNode as Element | undefined,
+      placeholderComponent?.[COMPONENT_RUNTIME]?.env === "server",
+    );
+  }
   const built = maybeenhancedNode?.nodeName !== vnode.name;
   const enhancedNode = built ? createElement(vnode) : maybeenhancedNode;
 
@@ -2166,6 +2175,12 @@ function areSimilarNodes(enhancedNode: EnhancedNode | EnhancedChildNode, virtual
    * live instance with no teardown. There is no host element to be confused for a `<span>` now, and
    * a component that stops being rendered loses its region — which is what runs its `@destroyed`.
    */
+  // PROTOTYPE: a block matches only a node cloned from the same template, and a node cloned from one only
+  // a block of it.
+  const vBlock = (virtualNode as Partial<BlockVNode>)[BLOCK];
+  const eBlock = (enhancedNode as { [BLOCK_STATE]?: { template: unknown } })[BLOCK_STATE];
+  if (vBlock !== undefined || eBlock !== undefined) return vBlock?.template === eBlock?.template;
+
   return enhancedNode.nodeName === virtualNode.name;
 }
 
