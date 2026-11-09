@@ -35,6 +35,12 @@ export interface RenderOptions {
    */
   baseElement?: HTMLElement;
   /**
+   * The address to mount the tree at — `"/tournament?id=t1"`, or a whole URL on the same origin. Set
+   * with `history.replaceState` before anything is mounted, so a router reads it as the page it was
+   * opened on. `cleanup` puts the address back after the test.
+   */
+  url?: string;
+  /**
    * A component to wrap the tree in — a context provider, a router shell,
    * anything the component under test needs above it. It receives the rendered
    * node as its children.
@@ -110,6 +116,7 @@ export interface RenderResult<T = unknown> extends BoundFunctions<typeof default
  */
 export function render<T = unknown>(ui: VNode, options: RenderOptions = {}): RenderResult<T> {
   requireHarness();
+  if (options.url !== undefined) window.history.replaceState(null, "", options.url);
   const baseElement = options.baseElement ?? document.body;
   const containerIsOurs = options.container === undefined;
 

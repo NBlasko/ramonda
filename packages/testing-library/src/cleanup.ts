@@ -44,8 +44,19 @@ export function unmountTracked(tree: MountedTree): void {
  * test. Measured while building this: the affected tests pass one at a time and
  * fail together, pointing at the wrong file.
  */
+/**
+ * The address the run started at, taken when this module loads — before any test could move it.
+ *
+ * A test that navigates moves the ONE `location` every test shares, and unmounting the tree left it
+ * there: measured, the next test started at the URL the one before had pushed, so a routed app
+ * rendered the wrong page in a test that never asked for one. `cleanup` puts it back.
+ */
+const startedAt: string | undefined = typeof window === "undefined" ? undefined : window.location.href;
+
 export function cleanup(): void {
   for (const tree of [...mounted]) unmountTracked(tree);
+  // After the unmount, so nothing still mounted hears the address change as a navigation.
+  if (startedAt !== undefined && window.location.href !== startedAt) window.history.replaceState(null, "", startedAt);
 }
 
 /**
