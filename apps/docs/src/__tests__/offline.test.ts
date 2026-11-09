@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -29,27 +29,40 @@ const check = (...args: string[]) =>
     env: { ...process.env, RAMONDA_CHECK_DOCS: packed },
   });
 
+/**
+ * Every page is checked as a FILE in what was packed, and the commands are run a few times — once for a
+ * code, once for a rule, once for a page. Running the command once per code and per rule spawned some
+ * hundred and seventy processes: two minutes, and past the time limit on a slower CI runner.
+ */
 describe("the docs @ramonda/check carries", () => {
   test("every code the diagnostics page explains has its page", () => {
     const page = readFileSync(join(here, "..", "..", "content", "reference", "diagnostics.md"), "utf8");
     const codes = [...page.matchAll(/^## (RM[DQFL]\d{3}) — /gm)].map((match) => match[1]);
     expect(codes.length).toBeGreaterThan(50);
     for (const code of codes) {
-      const run = check("explain", code);
-      expect(run.status, code).toBe(0);
-      expect(run.stdout.startsWith(`# ${code} — `), code).toBe(true);
+      const file = join(packed, "reference", "diagnostics", `${code.toLowerCase()}.md`);
+      expect(existsSync(file), code).toBe(true);
+      expect(readFileSync(file, "utf8").startsWith(`# ${code} — `), code).toBe(true);
     }
   });
 
   test("every rule the checker has has its page", () => {
     for (const rule of ruleCatalogue()) {
-      const run = check("explain", rule.id);
-      expect(run.status, rule.id).toBe(0);
-      expect(run.stdout, rule.id).toContain(rule.id);
+      const file = join(packed, "rules", `${rule.id}.md`);
+      expect(existsSync(file), rule.id).toBe(true);
+      expect(readFileSync(file, "utf8"), rule.id).toContain(rule.id);
     }
   });
 
-  test("the index, and a page by the address the index gives it", () => {
+  test("the commands read them: a code, a rule, the index, and a page by the address the index gives it", () => {
+    const code = check("explain", "RMD020");
+    expect(code.status).toBe(0);
+    expect(code.stdout.startsWith("# RMD020 — ")).toBe(true);
+
+    const rule = check("explain", "unknown-hook-option");
+    expect(rule.status).toBe(0);
+    expect(rule.stdout).toContain("unknown-hook-option");
+
     const index = check("docs");
     expect(index.stdout).toContain("# Ramonda");
     const address = /\((https:\/\/ramonda\.dev\/forms\/fields\.md)\)/.exec(index.stdout)?.[1];
