@@ -78,6 +78,19 @@ export function autoCleanupOn(): boolean {
   return !autoCleanupDisabled && !readEnvFlag("RAMONDA_TL_SKIP_AUTO_CLEANUP");
 }
 
+/**
+ * Takes the address each test starts at, for `cleanup` to put back — registered whether or not the
+ * cleanup after each test is: a project that opted out and calls `cleanup()` itself was sent back to
+ * the address at load. Found by review.
+ */
+export function registerAddressStart(): void {
+  const before = (globalThis as { beforeEach?: (fn: () => void) => void }).beforeEach;
+  if (typeof before !== "function" || typeof window === "undefined") return;
+  before(() => {
+    startedAt = window.location.href;
+  });
+}
+
 export function registerAutoCleanup(): void {
   if (!autoCleanupOn()) return;
 
@@ -85,15 +98,9 @@ export function registerAutoCleanup(): void {
   // for its users. Whichever one is running has already put `afterEach` on the
   // global, and if none has, there is nothing sensible to hook and the user
   // calls `cleanup()` themselves.
-  const g = globalThis as { afterEach?: (fn: () => void) => void; beforeEach?: (fn: () => void) => void };
-  const hook = g.afterEach;
+  const hook = (globalThis as { afterEach?: (fn: () => void) => void }).afterEach;
   if (typeof hook !== "function") return;
 
-  if (typeof g.beforeEach === "function" && typeof window !== "undefined") {
-    g.beforeEach(() => {
-      startedAt = window.location.href;
-    });
-  }
   hook(cleanup);
   hooked = true;
 }

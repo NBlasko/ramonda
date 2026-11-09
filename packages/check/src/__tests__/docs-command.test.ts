@@ -99,3 +99,43 @@ describe("ramonda-check docs", () => {
     expect(stderr).toContain("Did you mean forms/fields?");
   });
 });
+
+/**
+ * Output bigger than a pipe holds. A write to a pipe is asynchronous and `process.exit` does not wait
+ * for it, so a page past 64 KB was cut when read through a pipe — which is how a program reads it, and
+ * the same for `--json`. Found by review; `ramonda-css` had met it and works around it the same way.
+ */
+describe("a page bigger than a pipe", () => {
+  test("comes back whole", () => {
+    const docs = packed();
+    const big = `# Big\n\n${"a line of text that is long enough to add up quickly.\n".repeat(4000)}`;
+    writeFileSync(join(docs, "big.md"), big);
+    const { status, stdout } = run(docs, "docs", "big");
+    expect(status).toBe(0);
+    expect(stdout.length).toBe(big.length);
+  });
+});
+
+/**
+ * `ramonda-check docs` meant "check the project in ./docs" before it was a command — a folder is read as
+ * the tsconfig inside it — and a CI step written that way kept passing while checking nothing, by
+ * printing the docs instead. Where that folder exists, the word is still the project. Found by review.
+ */
+describe("a folder named like a command", () => {
+  test("is still the project it names", () => {
+    const cwd = mkdtempSync(join(tmpdir(), "check-docs-folder-"));
+    scratch.push(cwd);
+    mkdirSync(join(cwd, "docs"));
+    writeFileSync(
+      join(cwd, "docs", "tsconfig.json"),
+      JSON.stringify({ compilerOptions: { jsx: "preserve" }, files: [] }),
+    );
+    const result = spawnSync(process.execPath, [join(root, "bin.mjs"), "docs"], {
+      cwd,
+      encoding: "utf8",
+      env: { ...process.env, RAMONDA_CHECK_DOCS: packed() },
+    });
+    expect(result.stdout).not.toContain("# Ramonda");
+    expect(`${result.stdout}${result.stderr}`).toContain("[ramonda-check]");
+  });
+});

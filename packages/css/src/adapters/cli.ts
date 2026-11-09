@@ -83,12 +83,26 @@ interface JsonFinding {
   message: string;
 }
 
+/**
+ * All of `text` to stdout before returning. A write to a PIPE is asynchronous and `process.exit` does
+ * not wait for it — see the formatter's note below, where it was first measured. `EAGAIN` is a full
+ * pipe on a non-blocking stdout: try again. The `--json` object takes the same path.
+ */
+function printWhole(text: string): void {
+  const bytes = Buffer.from(text, "utf8");
+  for (let written = 0; written < bytes.length; ) {
+    try {
+      written += writeSync(1, bytes, written, bytes.length - written);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EAGAIN") throw error;
+    }
+  }
+}
+
 /** The object, and the exit code the text run would give. */
 function answer(findings: JsonFinding[], more: Record<string, unknown>): never {
   const ok = findings.length === 0;
-  process.stdout.write(
-    `${JSON.stringify({ tool: "ramonda-css", version: version(), ok, findings, notes: [], ...more })}\n`,
-  );
+  printWhole(`${JSON.stringify({ tool: "ramonda-css", version: version(), ok, findings, notes: [], ...more })}\n`);
   process.exit(ok ? 0 : 1);
 }
 
@@ -362,10 +376,7 @@ function runTool(which: "format" | "lint", args: readonly string[]): never {
      * `writeSync` in a loop, because a pipe accepts what it has room for and answers with how much
      * it took. The loop is what makes the write finish before the exit.
      */
-    const bytes = Buffer.from(formatted, "utf8");
-    for (let written = 0; written < bytes.length; ) {
-      written += writeSync(1, bytes, written, bytes.length - written);
-    }
+    printWhole(formatted);
     process.exit(0);
   }
 

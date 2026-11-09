@@ -871,13 +871,23 @@ try {
       fail("`build:static` did not refuse, by name, the routes that are not static", refused || "(it succeeded)");
     }
 
-    // Every route static, a `:param` one included: one folder, ready to upload.
+    // Every route static, a `:param` one included — and a `/:page` route that `/404` would match, so
+    // the 404 page has to be baked from a path only `"*"` matches. One folder, ready to upload.
+    const appFile = join(app, "src", "App.tsx");
+    const originalApp = readFileSync(appFile, "utf8");
+    const withPage = originalApp.replace(
+      '"/about": <AboutPage />,',
+      '"/about": <AboutPage />,\n  "/:page": <AboutPage />,',
+    );
+    if (withPage === originalApp)
+      fail("the SSR template's route table changed — update check-scaffold's all-static edit");
+    writeFileSync(appFile, withPage);
     const entry = join(app, "src", "entry-server.tsx");
     const original = readFileSync(entry, "utf8");
     const edits = [
       ['"/about": { revalidate: 60 }', '"/about": { prerender: true }'],
-      ['"/hello/:name": {}', '"/hello/:name": { prerender: true }'],
-      ["const PRERENDER_PATHS: string[] = [];", 'const PRERENDER_PATHS: string[] = ["/hello/world"];'],
+      ['"/hello/:name": {}', '"/hello/:name": { prerender: true },\n  "/:page": { prerender: true }'],
+      ["const PRERENDER_PATHS: string[] = [];", 'const PRERENDER_PATHS: string[] = ["/hello/world", "/x"];'],
     ];
     let allStatic = original;
     for (const [from, to] of edits) {
@@ -898,7 +908,11 @@ try {
     if (readFileSync(join(site, "index.html"), "utf8").includes("<!--ssr-->")) {
       fail("dist/site/index.html is the page shell, not the baked home page");
     }
+    if (!readFileSync(join(site, "404.html"), "utf8").includes("Not found")) {
+      fail('dist/site/404.html is another route\'s page — baked from a path a route other than "*" matches');
+    }
     writeFileSync(entry, original);
+    writeFileSync(appFile, originalApp);
     run("npm", ["run", "build"], { cwd: app });
     checks.push("a static site in one folder, with its 404.html");
   }

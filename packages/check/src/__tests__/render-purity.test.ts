@@ -88,6 +88,7 @@ describe("a clock or a random number reached from a render", () => {
       "Date.now() via render → stampFromBase",
       "Math.random() via the props callback of seeded",
       "Date.now() via the props callback of seeded",
+      "Math.random() via the props callback of random",
     ]);
   });
 
@@ -132,7 +133,7 @@ describe("a clock or a random number reached from a render", () => {
    * DOES rather than where it came from.
    */
   test("parsing a timestamp and a deterministic import are not reported", () => {
-    expect(run().findings["clock-read-while-rendering"]).toHaveLength(11);
+    expect(run().findings["clock-read-while-rendering"]).toHaveLength(12);
   });
 });
 

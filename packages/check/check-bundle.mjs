@@ -35,6 +35,7 @@
  * Usage: ramonda-check-bundle <dir-or-file> [...]
  */
 import { execFile } from "node:child_process";
+import { writeSync } from "node:fs";
 import { readFile, readdir, realpath, stat } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
 
@@ -216,9 +217,17 @@ async function main() {
       .sort((a, b) => a.file.localeCompare(b.file))
       .map(({ file, message }) => ({ code: "unparseable-bundle", severity: "error", file: resolve(file), message }));
     const ok = findings.length === 0;
-    process.stdout.write(
+    // Whole before the exit: a write to a pipe is asynchronous, and the exit does not wait for it.
+    const bytes = Buffer.from(
       `${JSON.stringify({ tool: "ramonda-check-bundle", version: own.version, ok, findings, notes: [], files: files.length })}\n`,
     );
+    for (let written = 0; written < bytes.length; ) {
+      try {
+        written += writeSync(1, bytes, written, bytes.length - written);
+      } catch (error) {
+        if (error.code !== "EAGAIN") throw error;
+      }
+    }
     process.exit(ok ? 0 : 1);
   }
 

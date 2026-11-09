@@ -1,6 +1,7 @@
 import ts from "typescript";
 import { isHandedOver, isThisUse, memberName, positionOf } from "../syntax";
 import { walkRenders } from "./render-reach";
+import { reactiveReadIn } from "./fresh-object-in-hook-props";
 import type { Rule } from "./rule";
 
 /**
@@ -60,6 +61,9 @@ function nonDeterministic(node: ts.Node): string | undefined {
   return undefined;
 }
 
+/** The reads that differ between two calls in one tick — the rest are a clock, which does not. */
+const RANDOM = new Set(["Math.random()", "crypto.randomUUID()", "crypto.getRandomValues()"]);
+
 export const clockReadWhileRendering = {
   id: "clock-read-while-rendering",
 
@@ -117,9 +121,20 @@ export const clockReadWhileRendering = {
       const callback = call.arguments[1];
       if (callback === undefined || !(ts.isArrowFunction(callback) || ts.isFunctionExpression(callback))) continue;
       const named = memberName(member) ?? "?";
+      /**
+       * A CLOCK read only where something can run the callback again. One that reads no signal is
+       * called once, at mount, and keeps what it read — what such a callback is for — and the runtime
+       * agrees: both of its calls fall in one millisecond. A RANDOM read differs between those two
+       * calls, so the runtime reports it either way (RMD021, measured), and so does this. Found by review.
+       */
+      let rerun: boolean | undefined;
       (function look(node: ts.Node): void {
         if (node !== callback && isHandedOver(node)) return;
-        const read = nonDeterministic(node);
+        let read = nonDeterministic(node);
+        if (read !== undefined && !RANDOM.has(read)) {
+          rerun ??= reactiveReadIn(callback, cls, resolve) !== undefined;
+          if (!rerun) read = undefined;
+        }
         if (read !== undefined) {
           found.push({ component: self.name, read, through: [`the props callback of ${named}`], ...positionOf(node) });
         }

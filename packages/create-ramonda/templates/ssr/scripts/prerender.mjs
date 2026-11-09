@@ -14,7 +14,7 @@ const origin = "http://localhost:5173";
 
 // The DOM must exist before the app module is imported (class fields/decorators run at import).
 installDom(`${origin}/`);
-const { staticPaths, prerender } = await import("../dist/server/entry-server.js");
+const { staticPaths, prerender, notFoundPath } = await import("../dist/server/entry-server.js");
 // The shell `scripts/build.mjs` wrote, with the built script and stylesheet already in it.
 const template = await readFile(resolve(root, "dist/client/index.html"), "utf-8");
 
@@ -45,24 +45,33 @@ for (const path of paths) {
 }
 
 // The page a static host serves for a path it has no file for: the app's own `"*"` route, rendered at
-// a path no other route matches. A host that knows `404.html` serves it with the 404 status.
-installDom(`${origin}/404`);
-const missing = await prerender("/404");
-if (missing.html !== undefined) {
-  await mkdir(OUT, { recursive: true });
-  await writeFile(
-    join(OUT, "404.html"),
-    fillDocument({
-      template,
-      html: missing.html,
-      title: missing.title,
-      head: missing.head,
-      lang: missing.lang,
-      dir: missing.dir,
-      portals: missing.portals,
-    }),
-  );
-  console.log("  ✓ 404.html");
+// a path no other route matches — `notFoundPath` asks the route table — and only if it does not read
+// the request, like every other page baked here. A host that knows `404.html` serves it with the 404.
+const missingAt = notFoundPath();
+if (missingAt === undefined) {
+  console.log('  – 404.html not baked: every path tried is another route\'s, so "*" has no URL to render at.');
+} else {
+  installDom(`${origin}${missingAt}`);
+  const missing = await prerender(missingAt);
+  if (missing.blockedBy !== undefined) {
+    console.error(`  ✗ 404.html — the "*" route reads the request (${missing.blockedBy}); cannot be prerendered.`);
+    blocked++;
+  } else {
+    await mkdir(OUT, { recursive: true });
+    await writeFile(
+      join(OUT, "404.html"),
+      fillDocument({
+        template,
+        html: missing.html,
+        title: missing.title,
+        head: missing.head,
+        lang: missing.lang,
+        dir: missing.dir,
+        portals: missing.portals,
+      }),
+    );
+    console.log("  ✓ 404.html");
+  }
 }
 
 if (blocked > 0) {

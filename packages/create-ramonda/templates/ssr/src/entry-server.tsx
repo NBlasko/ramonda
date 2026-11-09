@@ -44,6 +44,14 @@ export function staticPaths(): string[] {
   return routePlan(server, PRERENDER_PATHS).static;
 }
 
+/**
+ * A path only the `"*"` route matches — what `404.html` is baked from — or `undefined` if every one
+ * tried is some page's. `/404` first; a `/:page` route would match it, so the others are longer.
+ */
+export function notFoundPath(): string | undefined {
+  return ["/404", "/404/not/found", "/-/404/not/found"].find((path) => matchCompiled(path, routes).key === "*");
+}
+
 /** The full plan (static / isr / server / needsData) — the prod server dispatches on it. */
 export function plan() {
   return routePlan(server, PRERENDER_PATHS);

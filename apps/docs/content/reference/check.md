@@ -132,7 +132,9 @@ path — `forms/fields`, or its address on this site — and with no page, the l
 
 They read the docs as text that `@ramonda/check` carries, packed when this version was released, so
 they answer for the version installed, with no network: this site describes only the latest release.
-A slip is answered with the closest code, rule or page. An install without the docs — a build from
+A slip is answered with the closest code, rule or page. Where a folder named `docs` or `explain`
+exists, the word is still that folder's project, as it was before these commands — run them from
+another directory. An install without the docs — a build from
 the repository — says so, names the page on this site, and exits with 2.
 
 `ramonda-check-bundle <dir-or-file> [...]` parses every `.js`, `.mjs` and `.cjs` file under the paths

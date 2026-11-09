@@ -83,8 +83,9 @@ export function reactiveReadIn(
   body: ts.Node,
   cls: ts.ClassDeclaration,
   resolve: RuleContext["resolve"],
-  outside?: ts.Node,
+  outside?: ts.Node | readonly ts.Node[],
 ): string | undefined {
+  const excluded = outside === undefined ? [] : Array.isArray(outside) ? outside : [outside as ts.Node];
   const reactive = new Set<string>();
   // The class ITSELF and then its bases: `heritage` answers the chain ABOVE a class, and reading
   // only that found nothing at all — a component's own `@state` is where this fires most.
@@ -119,7 +120,7 @@ export function reactiveReadIn(
     // A read INSIDE the value is what the value is made of: `key: ["todo", self.props.id]` differs
     // whenever `id` does, which is the point of it. Only a read elsewhere can run the callback again
     // and rebuild the value with nothing in it changed.
-    if (node === outside) return;
+    if (excluded.includes(node)) return;
     // A function handed over in the bag is not run by the callback, so what it reads is not read here.
     if (isHandedOver(node)) return;
     if (ts.isIdentifier(node) && destructured.has(node.text) && isLocalRead(node)) {
@@ -268,7 +269,21 @@ export const freshObjectInHookProps = {
 
         // Asked per prop, and only once a literal has been found: what can rebuild THIS value is a
         // reactive read outside it — see `reactiveReadIn`.
-        const rebuiltBecauseOf = reactiveReadIn(call.arguments[1], cls, resolve, written);
+        // The value, and — when it is a local built in the callback, `const key = [...]; return { key }`
+        // — that local's initialiser: what it reads is what it is made of too. Found by review.
+        const madeOf: ts.Node[] = [written];
+        if (ts.isIdentifier(written)) {
+          const local = resolve(written)?.declarations?.[0];
+          if (local !== undefined && ts.isVariableDeclaration(local) && local.initializer !== undefined) {
+            for (let at: ts.Node | undefined = local; at !== undefined; at = at.parent) {
+              if (at === call.arguments[1]) {
+                madeOf.push(local.initializer);
+                break;
+              }
+            }
+          }
+        }
+        const rebuiltBecauseOf = reactiveReadIn(call.arguments[1], cls, resolve, madeOf);
         if (rebuiltBecauseOf === undefined) continue;
 
         found.push({

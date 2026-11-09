@@ -107,6 +107,13 @@ class Reporting extends Component<{ id: string }> {
   // never runs — so nothing can run it again. Measured: the runtime reports nothing here.
   s2 = this.use(Plain, () => ({ conf: { dense: true }, n: 0, run: () => this.tick }));
 
+  // Not reported: the same key, built in a local one line up — what it reads is what it is made of.
+  // Found by review: the reads in the local's initialiser were counted as reads outside the value.
+  t = this.use(Plain, (self: Reporting) => {
+    const conf = ["todo", self.props.id];
+    return { conf, n: 0 };
+  });
+
   // Not reported: a plain field through the parameter is still not a signal.
   o = this.use(Plain, (self: Reporting) => ({ conf: { dense: true }, n: self.plain }));
 

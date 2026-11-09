@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import { printWhole } from "./print";
 
 /**
  * `ramonda-check explain <code|rule>` and `ramonda-check docs [page]`: the docs for the version that
@@ -72,7 +73,7 @@ export function explain(tag: string, asked: string | undefined): never {
 
   const file = join(dir, `${path}.md`);
   if (existsSync(file)) {
-    process.stdout.write(readFileSync(file, "utf8"));
+    printWhole(readFileSync(file, "utf8"));
     process.exit(0);
   }
   const family = code ? "reference/diagnostics/" : "rules/";
@@ -94,7 +95,7 @@ export function docs(tag: string, asked: string | undefined): never {
   const dir = docsDir();
   if (!existsSync(join(dir, "llms.txt"))) absent(tag, asked === undefined ? `${SITE}/llms.txt` : `${SITE}/${asked}`);
   if (asked === undefined) {
-    process.stdout.write(readFileSync(join(dir, "llms.txt"), "utf8"));
+    printWhole(readFileSync(join(dir, "llms.txt"), "utf8"));
     process.exit(0);
   }
   // `forms/fields`, `/forms/fields`, `forms/fields.md`, or the page's address on the site.
@@ -105,7 +106,7 @@ export function docs(tag: string, asked: string | undefined): never {
     .replace(/\/$/, "");
   const file = join(dir, `${path === "" ? "index" : path}.md`);
   if (existsSync(file)) {
-    process.stdout.write(readFileSync(file, "utf8"));
+    printWhole(readFileSync(file, "utf8"));
     process.exit(0);
   }
   const meant = closest(path, pagesIn(dir));

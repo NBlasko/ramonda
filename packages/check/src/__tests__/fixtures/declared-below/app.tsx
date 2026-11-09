@@ -18,9 +18,13 @@ class Reported extends Base {
   c = this.use(Uses, () => ({ on: this.count }));
   // REPORTED — through a destructured parameter.
   d = this.use(Uses, ({ limit }: Reported) => ({ on: limit }));
+  // REPORTED — destructuring reads the field when the callback is called, even where the only use of
+  // it is inside a function handed over in the bag: that function keeps the `undefined` it was given.
+  e = this.use(Uses, ({ total }: Reported) => ({ on: () => total }));
 
   browser = this.use(Ready);
   limit = 10;
+  total = 3;
   @state count = 0;
 
   render() {
@@ -40,6 +44,13 @@ class Silent extends Base {
   c = this.use(Uses, (self: Silent) => ({ on: self.inherited }));
   // Read inside a function handed over in the bag: run later, when everything is set.
   d = this.use(Uses, (self: Silent) => ({ on: () => self.late }));
+  // A `declare` field and one with no initialiser emit no assignment here: `props` is the base's, set
+  // before this class's fields, and the other is `undefined` wherever it is declared.
+  e = this.use(Uses, (self: Silent) => ({ on: self.props }));
+  f = this.use(Uses, (self: Silent) => ({ on: self.typedOnly }));
+
+  declare props: Record<string, unknown>;
+  typedOnly: number | undefined;
 
   late = 1;
 

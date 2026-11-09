@@ -217,6 +217,11 @@ export function stablePropsOf(tagName: ts.Node, resolve: ElementContext["resolve
       ?.expression;
     if (base === undefined || (!ts.isIdentifier(base) && !ts.isPropertyAccessExpression(base))) break;
     declaration = resolve(base)?.declarations?.find((one): one is ts.ClassDeclaration => ts.isClassDeclaration(one));
+    // A base from an installed package carries no decorators in its `.d.ts`; ask its graph, as for the
+    // tag itself. Found by review: an app's subclass lost what the package's class declared.
+    if (declaration?.getSourceFile().isDeclarationFile) {
+      for (const name of resolve.installedStableProps?.(base) ?? []) found.add(name);
+    }
   }
 
   return found;

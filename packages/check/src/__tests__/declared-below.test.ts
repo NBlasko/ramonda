@@ -23,6 +23,7 @@ describe("a props callback reading a field declared below it", () => {
       "b<-limit",
       "c<-count",
       "d<-limit",
+      "e<-total",
     ]);
   });
 

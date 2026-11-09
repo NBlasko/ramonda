@@ -79,6 +79,11 @@ export const fieldReadBeforeItIsDeclared = {
       for (const after of members.slice(index + 1)) {
         if (!ts.isPropertyDeclaration(after)) continue;
         if (after.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.StaticKeyword)) continue;
+        // A `declare` field, and one with no initialiser, emit no assignment here: the first narrows a
+        // base's field, set before this class's; the second is `undefined` wherever it is declared.
+        // Found by review — `declare props: Props` below a `use` was reported as a crash.
+        if (after.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.DeclareKeyword)) continue;
+        if (after.initializer === undefined) continue;
         const name = memberName(after);
         if (name !== undefined && !later.has(name)) later.set(name, after);
       }
@@ -86,6 +91,7 @@ export const fieldReadBeforeItIsDeclared = {
 
       const owner = callbackOwner(callback);
       const reported = new Set<string>();
+      const parameter = callback.parameters[0]?.name;
       const say = (field: string, at: ts.Node) => {
         const declared = later.get(field);
         if (declared === undefined || reported.has(field)) return;
@@ -99,6 +105,16 @@ export const fieldReadBeforeItIsDeclared = {
           ...positionOf(at),
         });
       };
+
+      // A destructured parameter reads each member when the callback is CALLED — whatever happens to
+      // the local afterwards, a function handed over in the bag included, which keeps the `undefined`
+      // it was given. Found by review: a destructure used only inside such a function was missed.
+      if (parameter !== undefined && ts.isObjectBindingPattern(parameter)) {
+        for (const element of parameter.elements) {
+          const member = element.propertyName ?? element.name;
+          if (ts.isIdentifier(member)) say(member.text, element);
+        }
+      }
 
       (function look(node: ts.Node): void {
         if (node !== callback && isHandedOver(node)) return;

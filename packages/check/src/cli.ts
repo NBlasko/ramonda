@@ -81,9 +81,13 @@ if (argv.includes("--version") || argv.includes("-v")) {
   console.log(own.version);
   process.exit(0);
 }
-// The two commands that read the docs this version was released with — see `docsCommand.ts`.
-if (argv[0] === "explain") explain(TAG, argv[1]);
-if (argv[0] === "docs") docs(TAG, argv[1]);
+// The two commands that read the docs this version was released with — see `docsCommand.ts`. Not where
+// a path of that name exists: `ramonda-check docs` checked the project in ./docs before these commands
+// did, and a CI step written that way must keep checking it. Found by review.
+if ((argv[0] === "explain" || argv[0] === "docs") && !existsSync(resolve(argv[0]))) {
+  if (argv[0] === "explain") explain(TAG, argv[1]);
+  docs(TAG, argv[1]);
+}
 {
   const flags = OPTIONS.map(([flag]) => flag);
   const takesValue = new Set(OPTIONS.filter(([, takes]) => takes !== "").map(([flag]) => flag));
@@ -228,22 +232,8 @@ if (diffAgainst && !existsSync(resolve(diffAgainst))) {
 }
 
 const result = analyzeProject(tsconfig);
-const {
-  issues,
-  findings,
-  unresolved,
-  annotated,
-  unreachable,
-  unreachableRoutes,
-  paramsOffRoute,
-  keysOffRoute,
-  secondProviders,
-  renderCycles,
-  classesAsChildren,
-  counts,
-  graph,
-  notes,
-} = result;
+// The faults the graph answers are read through `GRAPH_REPORTS`, not here.
+const { findings, annotated, counts, graph, notes } = result;
 
 if (!wantsJson) for (const note of notes) console.warn(`${TAG} ${note}`);
 /** What the run says about a file it wrote. On stderr under `--json`, where stdout is the object. */
@@ -544,17 +534,12 @@ if (wantsFix) {
 
 const failing = failingRules(findings);
 
+// From `GRAPH_REPORTS`, the list both printers read — a hand-written list beside it was a second one to
+// keep in step, and a report added to only one would have made the plain run say "quiet" above its own
+// finding while `--json` said `ok: false`. Found by review.
 if (
-  issues.length === 0 &&
   failing.length === 0 &&
-  unresolved.length === 0 &&
-  unreachable.length === 0 &&
-  unreachableRoutes.length === 0 &&
-  secondProviders.length === 0 &&
-  paramsOffRoute.length === 0 &&
-  keysOffRoute.length === 0 &&
-  renderCycles.length === 0 &&
-  classesAsChildren.length === 0
+  (GRAPH_REPORTS as readonly AnyGraphReport[]).every((report) => report.items(result).length === 0)
 ) {
   console.log(
     `${TAG} ${counts.components} components, ${counts.contexts} contexts, ${counts.roots} root(s) — ` +

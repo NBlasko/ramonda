@@ -1,3 +1,5 @@
+import { printWhole } from "./print";
+
 /**
  * What `--json` prints: one object on stdout, for a program — a coding agent above all — that would
  * otherwise parse the prose.
@@ -51,5 +53,5 @@ export function locationOf(item: unknown): { file?: string; line?: number; colum
 
 /** The report, as the one line a reader parses. */
 export function printJson(report: JsonReport): void {
-  process.stdout.write(`${JSON.stringify(report)}\n`);
+  printWhole(`${JSON.stringify(report)}\n`);
 }
