@@ -17,4 +17,5 @@ the server sent is still taken away. A `ref` is applied on every render, as befo
 before, so the next render restores what a click changed. Other state an element keeps only in a property, such as a media element's `volume` or
 `currentTime`, is compared with what Ramonda wrote: a volume the reader moved stays, and a playing video
 keeps its place on an unrelated render. `__h` copies an element's attributes object, so one
-an app hands it on every render, changed in place, is written as it is now.
+an app hands it on every render, changed in place, is written as it is now. An attribute whose value is an object, such as a `URL`, is written on every render, as
+before, since an object changed in place is the same object with a new value.

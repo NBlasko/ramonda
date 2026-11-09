@@ -522,7 +522,7 @@ function appendBuiltChildren(vnodeChildren: unknown[], placeholderComponent: May
     if (vchild === undefined) continue;
     const node = buildDetachedNode(vchild, placeholderComponent, parent);
     if (node === undefined) continue;
-    stampBuilt(node, vchild, slot);
+    stampBuilt(node, slot, typeof vchild !== "string" && vchild.attributes?.key != null);
     // Before a block hosted here, as `reorderChildren` places a child: a portal aimed at this element can
     // put its block in while a child is being built, and the element's own children come first. Asked for
     // each child, because building the next one can move or take away the block.
@@ -597,8 +597,8 @@ function stillPlaced(
  * A node built this instant carries no slot, so there is nothing to read and nothing to clear — only an
  * unkeyed child has anything to write. See `stampSlot` for why a keyed one carries none.
  */
-function stampBuilt(node: ChildNode, vchild: ComponentChild, slot: number): void {
-  if (typeof vchild === "string" || vchild.attributes?.key == null) (node as EnhancedChildNode)[SLOT_SYM] = slot;
+function stampBuilt(node: ChildNode, slot: number, keyed: boolean): void {
+  if (!keyed) (node as EnhancedChildNode)[SLOT_SYM] = slot;
 }
 
 function executeChangesOnStringNode(
@@ -924,8 +924,7 @@ function claimOrMount(
   // Built, not inserted: `reorderChildren` places it, after the nodes this
   // render drops have been unmounted. See buildDetachedNode.
   const mounted = buildDetachedNode(vchild, placeholderComponent, parent);
-  // `stampBuilt`'s rule, with the key already read.
-  if (mounted && !keyed) (mounted as EnhancedChildNode)[SLOT_SYM] = slot;
+  if (mounted) stampBuilt(mounted, slot, keyed);
   cloneChildren.push(DONE);
   return mounted;
 }
@@ -2080,11 +2079,13 @@ export function unmountNodeInPlace(node: EnhancedChildNode): void {
  * removing rows. Measured in Chromium on 1000 js-framework-benchmark rows, 7.3 ms against 2.3; on its
  * clear, a third of the time.
  *
- * The next node is the one this one had, while releasing it moved nothing. Releasing can move nodes: a
- * block's anchor, told its host is going (`hostRemoved`), removes the block's nodes after it; a ref's
- * callback tearing down the widget it held takes the widget's host out, or moves it. Then the walk starts
- * over from the first child — letting a node go a second time does nothing — so nothing after it is
- * missed, whatever moved where: a second block in the same element is still told.
+ * The next node is the one this one had, while releasing it moved neither of them. Releasing can move
+ * nodes: a block's anchor, told its host is going (`hostRemoved`), removes the block's nodes after it; a
+ * ref's callback tearing down the widget it held takes the widget's host out, or moves it or its
+ * neighbour. Then the walk starts over from the first child — letting a node go a second time does
+ * nothing — so a second block in the same element is still told. What it sees is the node and the one
+ * after it: a release that moves or takes out a node further on goes unseen, as it did when the walk
+ * read a live `childNodes`.
  */
 function releaseWithin(parent: Node): void {
   let child = parent.firstChild as EnhancedChildNode | null;

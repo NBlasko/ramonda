@@ -760,7 +760,10 @@ function isPrimitive(val: unknown): boolean {
 }
 
 function attributesEqual(next: unknown, previous: unknown): boolean {
-  if (next === previous) return true;
+  // An object is the same object after it changes in place — a `URL` whose `searchParams` were set — so
+  // being the one written last says nothing about its value: it is written on every pass, as it was while
+  // the page, which holds its string, was what the diff compared with.
+  if (next === previous) return typeof next !== "object" || next === null;
   if (isPrimitive(next) && isPrimitive(previous)) {
     return String(next) === String(previous);
   }

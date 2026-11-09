@@ -227,6 +227,24 @@ describe("an element the diff updates", () => {
     expect(clicked).toEqual([]);
   });
 
+  test("an object value changed in place is written as it is now", async () => {
+    class Pager extends Component {
+      @state page = 1;
+      readonly url = new URL("https://example.com/list?page=1");
+      render() {
+        this.url.searchParams.set("page", String(this.page));
+        return <nav>{__h("a", { href: this.url } as never, "next")}</nav>;
+      }
+    }
+    const app = await getDOM<Pager>(<Pager />);
+    await app.settle();
+    app.instance.page = 2;
+    await app.settle();
+    expect((app.container.querySelector("a") as HTMLAnchorElement).getAttribute("href")).toBe(
+      "https://example.com/list?page=2",
+    );
+  });
+
   test("keeps what the browser changed — a <details> the reader closed stays closed", async () => {
     const app = await getDOM<Panel>(<Panel />);
     await app.settle();
