@@ -191,6 +191,12 @@ export function stablePropsOf(tagName: ts.Node, resolve: ElementContext["resolve
     for (const name of stablePropsFromCreateContext(one, resolve)) found.add(name);
   }
 
+  // An installed package's class has no decorators in its `.d.ts`; its published graph says what
+  // it declared. The resolver may not offer it — one built for a single file, in a test.
+  if (declarations.some((one) => one.getSourceFile().isDeclarationFile)) {
+    for (const name of resolve.installedStableProps?.(tagName) ?? []) found.add(name);
+  }
+
   let declaration = declarations.find((one): one is ts.ClassDeclaration => ts.isClassDeclaration(one));
 
   for (let hop = 0; hop < 4 && declaration !== undefined && !seen.has(declaration); hop++) {

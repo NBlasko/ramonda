@@ -10,6 +10,7 @@ import type { FormType, FormValue, Resolver, Silencer } from "./rules/rule";
 import { domStub } from "./domStub";
 import { DOM_STUB_FILE, isTheDomLib } from "./rules/platform";
 import { unwrap } from "./rules/follow-value";
+import { stablePropsOf } from "./rules/fresh-object-in-props";
 import {
   activate,
   applyClass,
@@ -510,6 +511,11 @@ interface ComponentNode {
   /** Prop paths this component's own type declares as taking a component. */
   slots: string[];
   /**
+   * The props its class declares a value with `@StableProps` — carried in a package's graph, because
+   * a `.d.ts` carries no decorators and an app cannot see the declaration any other way.
+   */
+  stableProps?: string[];
+  /**
    * Whether the class carries an `export` modifier — what a library's surface is.
    *
    * The modifier and not the package's entry point: a class re-exported by a barrel with
@@ -674,6 +680,13 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
     formValue: (expression: ts.Expression) => formValueOf(checker.getTypeAtLocation(expression)),
     propertyNames: (expression: ts.Expression) => propertyNames(checker.getTypeAtLocation(expression), checker),
     hookOptions: (hook: ts.Expression) => hookOptions(checker.getTypeAtLocation(hook), checker),
+    installedStableProps: (name: ts.Node) => {
+      const symbol = resolve(name);
+      if (symbol === undefined) return undefined;
+      const spliced = splicedFor(symbol);
+      const node = spliced?.components.get(symbol.name);
+      return node === undefined ? undefined : new Set(node.stableProps ?? []);
+    },
     typeLiterals: (expression: ts.Expression, absentAs?: string) => {
       const type = checker.getTypeAtLocation(expression);
       const read: string[] = [];
@@ -1589,6 +1602,7 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
       mounts: [],
       slotHoles: [],
       slots: slotsOf(node),
+      stableProps: [...stablePropsOf(node.name, resolver)],
       exported: (ts.getCombinedModifierFlags(node) & ts.ModifierFlags.Export) !== 0,
       uses: new Set(),
       opaque: false,
@@ -2271,6 +2285,7 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
           mounts: [],
           slotHoles: [],
           slots: node.slots ?? [],
+          stableProps: node.stableProps ?? [],
           exported: node.exported === true,
           uses: new Set(),
           // Where the package stopped, this run stops too.
@@ -3762,6 +3777,7 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
         ...(node.exported ? { exported: true } : {}),
         ...(node.opaque ? { opaque: true } : {}),
         ...(node.slots.length > 0 ? { slots: node.slots } : {}),
+        ...((node.stableProps?.length ?? 0) > 0 ? { stableProps: node.stableProps } : {}),
       });
     }
     for (const fact of contexts.values()) {
@@ -3798,6 +3814,7 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
         // opaque here too, through the propagation whose `carriers` list includes `splicedNodes`.
         ...(node.opaque ? { opaque: true } : {}),
         ...(node.slots.length > 0 ? { slots: node.slots } : {}),
+        ...((node.stableProps?.length ?? 0) > 0 ? { stableProps: node.stableProps } : {}),
       });
     }
     nodes.push(...rootNodes);

@@ -238,7 +238,9 @@ export const freshObjectInHookProps = {
       const hook = hookNamed(call.arguments[0]);
       const bag = bagOf(call.arguments[1]);
       if (bag === undefined) continue;
-      if (!declarationIsReadable(hook, resolve)) continue;
+      // An installed hook can be judged only where its package's graph says what it declared — a
+      // missing declaration and an invisible one are otherwise the same, and neither may be reported.
+      if (!declarationIsReadable(hook, resolve) && resolve.installedStableProps(hook) === undefined) continue;
 
       const settled = stablePropsOf(hook, resolve);
       // Everything up to the last spread may be overwritten by it, exactly as in JSX.

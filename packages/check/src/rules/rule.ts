@@ -552,6 +552,12 @@ export interface Resolver {
    */
   hookOptions(hook: ts.Expression): string[] | undefined;
   /**
+   * What an INSTALLED package's hook or component declares with `@StableProps`, read from the graph
+   * the package publishes — `undefined` when it publishes none, or the name is not in it, which is
+   * not the same answer as an empty set: nothing can be said, rather than nothing was declared.
+   */
+  installedStableProps(name: ts.Node): ReadonlySet<string> | undefined;
+  /**
    * Whether this assertion puts an `HTMLFormElement` under a type that is not a form and does not
    * hold one — `form as unknown as Canvas` — so its `reset` cannot be followed past it. Asked of the
    * outermost assertion. See `reset-the-model-does-not-hear`.
