@@ -370,6 +370,11 @@ state lost, `@destroyed` and `@created` run again.
 @compute get config() { … }            // ✓ recomputed only when its inputs change
 ```
 
+An element's `style` is the exception: `<div style={{ color: "red" }}>` rebuilt with the same contents is
+not reported. The diff writes a style as text and compares the text, so nothing is written to the page,
+and an element has no render to repeat. Contents that differ between the two calls still are — the style
+is then not a function of state.
+
 If the two are **not** the same, the check walks *into* them — an object by key, an array by index — so
 a function inside somebody's config is reported as the function it is, at the place it sits:
 

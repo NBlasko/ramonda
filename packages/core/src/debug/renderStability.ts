@@ -375,7 +375,16 @@ function compareNode(a: unknown, b: unknown, path: string, depth: number, walk: 
         typeof aNode.name === "function"
           ? (aNode.name as { [STABLE_PROPS]?: readonly string[] })[STABLE_PROPS]
           : undefined;
-      compareAttributes(aNode.attributes, bNode.attributes, here, walk, false, 0, declared);
+      compareAttributes(
+        aNode.attributes,
+        bNode.attributes,
+        here,
+        walk,
+        false,
+        0,
+        declared,
+        typeof aNode.name === "string",
+      );
     }
 
     const aChildren = aNode.children ?? (aNode.attributes?.children as unknown[] | undefined);
@@ -408,6 +417,7 @@ function compareAttributes(
   skipFunctions = false,
   depth = 0,
   declared?: readonly string[],
+  element = false,
 ): void {
   for (const key of Object.keys(a)) {
     if (walk.budget <= 0) return;
@@ -420,6 +430,14 @@ function compareAttributes(
     const bValue = b[key];
     if (skipFunctions && (typeof aValue === "function" || typeof bValue === "function")) continue;
     if (Object.is(aValue, bValue)) continue;
+    /**
+     * An ELEMENT's `style`, rebuilt with the same contents, costs nothing but the object: the diff
+     * writes a style as text and compares the text, so no DOM write follows, and an element is not a
+     * component, so nothing re-renders. Measured over ten renders with a MutationObserver and a spy on
+     * the `cssText` setter: 0 writes for an object rebuilt each render, 10 for one whose value moved.
+     * Contents that DIFFER are still compared below — those are not a function of state.
+     */
+    if (element && depth === 0 && key === "style" && valueEqualThorough(aValue, bValue)) continue;
 
     walk.budget--;
 

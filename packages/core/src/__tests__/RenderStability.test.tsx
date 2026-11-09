@@ -142,6 +142,32 @@ describe("RMD020 — values built inside render()", () => {
   });
 
   test("an inline object prop is reported", async () => {
+    class Card extends Component<{ conf: unknown }> {
+      render() {
+        return <i>card</i>;
+      }
+    }
+    class Panel extends Component {
+      render() {
+        return <Card conf={{ color: "red" }} />;
+      }
+    }
+
+    await getDOM<Panel>(<Panel />);
+
+    expect(reported()).toContain("RMD020");
+    expect(reported()).toContain("conf");
+    expect(reported()).toContain("new object or array");
+  });
+
+  /**
+   * A `style` object on an ELEMENT, rebuilt with the same contents, costs no DOM write: the diff
+   * writes the style as text and compares the text. Measured with a MutationObserver and a spy on the
+   * `cssText` setter over ten renders — 0 writes for an object rebuilt each render, 0 for a held one,
+   * 10 for a style whose value moved. An element is not a component, so nothing re-renders either.
+   * Reported, it sent a reader to move it into a `@compute` for nothing.
+   */
+  test("a style object on an element, rebuilt with the same contents, is not reported", async () => {
     class Panel extends Component {
       render() {
         return <div style={{ color: "red" }}>hi</div>;
@@ -149,10 +175,19 @@ describe("RMD020 — values built inside render()", () => {
     }
 
     await getDOM<Panel>(<Panel />);
+    expect(reported()).not.toContain("RMD020");
+  });
 
+  test("but one whose contents differ between two renders still is — it is not a function of state", async () => {
+    class Panel extends Component {
+      render() {
+        return <div style={{ width: `${Math.random()}px` }}>hi</div>;
+      }
+    }
+
+    await getDOM<Panel>(<Panel />);
     expect(reported()).toContain("RMD020");
     expect(reported()).toContain("style");
-    expect(reported()).toContain("new object or array");
   });
 
   test("a @compute holding the object is not reported", async () => {
@@ -298,9 +333,14 @@ describe("RMD020 — values built inside render()", () => {
   });
 
   test("the report names the component", async () => {
+    class Card extends Component<{ conf: unknown }> {
+      render() {
+        return <i>card</i>;
+      }
+    }
     class VeryParticularPanel extends Component {
       render() {
-        return <div style={{ color: "red" }}>hi</div>;
+        return <Card conf={{ color: "red" }} />;
       }
     }
 
@@ -369,9 +409,14 @@ describe("the switch", () => {
   test("nothing is checked when it is off", async () => {
     configureDev({ strictRender: false });
 
+    class Card extends Component<{ conf: unknown }> {
+      render() {
+        return <i>card</i>;
+      }
+    }
     class Panel extends Component {
       render() {
-        return <div style={{ color: "red" }}>hi</div>;
+        return <Card conf={{ color: "red" }} />;
       }
     }
 
