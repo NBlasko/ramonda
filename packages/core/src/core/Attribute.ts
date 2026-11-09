@@ -604,6 +604,10 @@ function formPropertyDiverged(enhancedNode: EnhancedHTMLNode, name: string, next
   // `value` and the names in `PROPERTY_TRUTH`, as comparisons: this is asked of every equal attribute.
   if (name !== "value" && name !== "checked" && name !== "muted" && name !== "indeterminate") return false;
   if (!(name in enhancedNode)) return false;
+  // On the elements whose property it is: a custom element's `muted` may read back as anything, and asked
+  // of it, a getter that never says `true` would be written on every pass.
+  if (name === "indeterminate" && enhancedNode.nodeName !== "INPUT") return false;
+  if (name === "muted" && enhancedNode.nodeName !== "VIDEO" && enhancedNode.nodeName !== "AUDIO") return false;
 
   const live = (enhancedNode as unknown as Record<string, unknown>)[name];
   // A boolean attribute is on when it is PRESENT, so any visible value means a
@@ -770,6 +774,8 @@ function isPrimitive(val: unknown): boolean {
  * with. A listener is not a value: an `on…` object (`{ handleEvent }`) is the same listener while it is
  * the same object, and re-adding it would move it behind every listener added since.
  */
+// A `ref` is an object too, and is applied on every pass on its own account — see
+// `getPreviousFromenhancedNode`.
 function changedInPlace(name: string, next: unknown): boolean {
   // `null` never reaches here: the loop skips a value invisible on screen first.
   return typeof next === "object" && !name.startsWith("on");

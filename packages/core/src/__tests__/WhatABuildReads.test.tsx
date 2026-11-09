@@ -738,6 +738,47 @@ describe("what an element's attribute record does not hold", () => {
     expect(video.muted).toBe(true);
   });
 
+  test("a custom element's `muted` and `indeterminate` are written when they change, not on every render", async () => {
+    let written = 0;
+    class QuietPlayer extends HTMLElement {
+      static observedAttributes = ["muted", "indeterminate"];
+      // Reflected as the attribute's string, as a custom element is free to: it never reads back `true`.
+      get muted(): string {
+        return this.getAttribute("muted") ?? "";
+      }
+      set muted(value: unknown) {
+        this.setAttribute("muted", String(value));
+      }
+      get indeterminate(): string {
+        return this.getAttribute("indeterminate") ?? "";
+      }
+      set indeterminate(value: unknown) {
+        this.setAttribute("indeterminate", String(value));
+      }
+      // Every write of either, whether through the property or the attribute.
+      attributeChangedCallback() {
+        written++;
+      }
+    }
+    if (customElements.get("quiet-player") === undefined) customElements.define("quiet-player", QuietPlayer);
+    class Page extends Component {
+      @state renders = 0;
+      render() {
+        return (
+          <div data-renders={this.renders}>{__h("quiet-player", { muted: true, indeterminate: true } as never)}</div>
+        );
+      }
+    }
+    const app = await getDOM<Page>(<Page />);
+    await app.settle();
+    const first = written;
+    for (let i = 0; i < 3; i++) {
+      app.instance.renders++;
+      await app.settle();
+    }
+    expect(written).toBe(first);
+  });
+
   test("a checkbox the reader clicked out of mixed is mixed again on the next render", async () => {
     class Mixed extends Component {
       @state renders = 0;

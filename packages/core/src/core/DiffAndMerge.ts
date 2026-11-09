@@ -644,7 +644,9 @@ function executeChangesOnStringNode(
         ? undefined
         : orderedNodes.length === 1
           ? orderedNodes[0]
-          : orderedNodes;
+          : orderedNodes.length === 0
+            ? NO_CHILDREN
+            : orderedNodes;
     // A lone child placed again is the same record, and a write on a node costs more than a read.
     if ((enhancedNode as Placed)[PLACED] !== placed) (enhancedNode as Placed)[PLACED] = placed;
   }
