@@ -40,10 +40,18 @@ export interface ClockReadWhileRenderingIssue {
  * rule that also guessed at `uuid()` or `nanoid()` would be guessing at names — which is how a
  * checker starts reporting a helper called `randomHexColour` that returns a constant.
  */
-function nonDeterministic(node: ts.Node): string | undefined {
+/** What a read is, and whether it is RANDOM — two calls in one tick differ — or a clock, which does not. */
+interface Read {
+  read: string;
+  random: boolean;
+}
+
+function nonDeterministic(node: ts.Node): Read | undefined {
   // `new Date()` with no arguments. With one, it parses, and parsing is deterministic.
   if (ts.isNewExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "Date") {
-    return node.arguments === undefined || node.arguments.length === 0 ? "new Date()" : undefined;
+    return node.arguments === undefined || node.arguments.length === 0
+      ? { read: "new Date()", random: false }
+      : undefined;
   }
 
   if (!ts.isCallExpression(node) || !ts.isPropertyAccessExpression(node.expression)) return undefined;
@@ -53,16 +61,15 @@ function nonDeterministic(node: ts.Node): string | undefined {
   const owner = call.expression.text;
   const member = call.name.text;
 
-  if (owner === "Date" && member === "now") return "Date.now()";
-  if (owner === "Math" && member === "random") return "Math.random()";
-  if (owner === "performance" && member === "now") return "performance.now()";
+  if (owner === "Date" && member === "now") return { read: "Date.now()", random: false };
+  if (owner === "Math" && member === "random") return { read: "Math.random()", random: true };
+  if (owner === "performance" && member === "now") return { read: "performance.now()", random: false };
   // The platform's random id and random bytes — named by the runtime's RMD021 beside `Math.random()`.
-  if (owner === "crypto" && (member === "randomUUID" || member === "getRandomValues")) return `crypto.${member}()`;
+  if (owner === "crypto" && (member === "randomUUID" || member === "getRandomValues")) {
+    return { read: `crypto.${member}()`, random: true };
+  }
   return undefined;
 }
-
-/** The reads that differ between two calls in one tick; the others are a clock. */
-const RANDOM = new Set(["Math.random()", "crypto.randomUUID()", "crypto.getRandomValues()"]);
 
 export const clockReadWhileRendering = {
   id: "clock-read-while-rendering",
@@ -70,7 +77,7 @@ export const clockReadWhileRendering = {
   report: {
     severity: "error",
     reportedWhen:
-      "`Date.now()`, `new Date()` or `Math.random()` is reached from a render, by any path, or read in a hook's props callback",
+      "`Date.now()`, `new Date()` or `Math.random()` is reached from a render, by any path; or read in a hook's props callback — a random read always, a clock where the callback can run again or the project renders on a server",
     alsoReportedAs: "RMD021",
     heading: (found) => `${found.length} clock or random read(s) reached from a render:`,
     lines: (issue) => [
@@ -101,7 +108,7 @@ export const clockReadWhileRendering = {
     walkRenders(cls, {
       resolve,
       visit(node, through) {
-        const read = nonDeterministic(node);
+        const read = nonDeterministic(node)?.read;
         if (read === undefined) return;
         found.push({ component: self.name, read, through: [...through], ...positionOf(node) });
       },
@@ -131,8 +138,9 @@ export const clockReadWhileRendering = {
       let twice: boolean | undefined;
       (function look(node: ts.Node): void {
         if (node !== callback && isHandedOver(node)) return;
-        let read = nonDeterministic(node);
-        if (read !== undefined && !RANDOM.has(read)) {
+        const reading = nonDeterministic(node);
+        let read = reading?.read;
+        if (reading !== undefined && !reading.random) {
           twice ??= resolve.rendersOnServer() || reactiveReadIn(callback, cls, resolve) !== undefined;
           if (!twice) read = undefined;
         }

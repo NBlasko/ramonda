@@ -31,20 +31,6 @@ export function unmountTracked(tree: MountedTree): void {
 }
 
 /**
- * Unmounts everything rendered by this module.
- *
- * Registered automatically after each test when the framework exposes a global
- * `afterEach` (vitest with `globals: true`, or jest). Call it by hand otherwise.
- *
- * **Skipping it is a bad trade, and the failure it causes does not look like a
- * leak.** A container left in the document keeps a LIVE component tree, so its
- * effects and window listeners stay attached. Worse, ids stop being unique
- * across containers, and jsdom resolves even a scoped `container.querySelector("#x")`
- * through a document-wide index — so a query returns a node from an EARLIER
- * test. Measured while building this: the affected tests pass one at a time and
- * fail together, pointing at the wrong file.
- */
-/**
  * The address before a test asked for another with `render(…, { url })`, which `cleanup` puts back.
  *
  * Only an address the TEST set. Three reviews in a row found a case where guessing "where the test
@@ -59,6 +45,20 @@ export function rememberAddress(): void {
   if (restoreTo === undefined && typeof window !== "undefined") restoreTo = window.location.href;
 }
 
+/**
+ * Unmounts everything rendered by this module.
+ *
+ * Registered automatically after each test when the framework exposes a global
+ * `afterEach` (vitest with `globals: true`, or jest). Call it by hand otherwise.
+ *
+ * **Skipping it is a bad trade, and the failure it causes does not look like a
+ * leak.** A container left in the document keeps a LIVE component tree, so its
+ * effects and window listeners stay attached. Worse, ids stop being unique
+ * across containers, and jsdom resolves even a scoped `container.querySelector("#x")`
+ * through a document-wide index — so a query returns a node from an EARLIER
+ * test. Measured while building this: the affected tests pass one at a time and
+ * fail together, pointing at the wrong file.
+ */
 export function cleanup(): void {
   for (const tree of [...mounted]) unmountTracked(tree);
   // After the unmount, so nothing still mounted hears the address change as a navigation.

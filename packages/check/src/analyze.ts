@@ -674,13 +674,15 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
    * — it is a `const`, and one built halfway down works only while nothing above it runs first,
    * which is an ordering nobody can see from the call site.
    */
+  /** Whether this program renders on a server — set where the imports are read, below. */
+  const serverRendering = { found: false };
   const resolver: Resolver = Object.assign(resolve, {
     coreName: (id: ts.Node) => coreExportName(id, resolveLocal, resolveStep, resolve),
     fromPackage: (id: ts.Node, pkg: string) => importedFromPackage(id, pkg, resolveLocal, resolveStep),
     formValue: (expression: ts.Expression) => formValueOf(checker.getTypeAtLocation(expression)),
     propertyNames: (expression: ts.Expression) => propertyNames(checker.getTypeAtLocation(expression), checker),
     hookOptions: (hook: ts.Expression) => hookOptions(checker.getTypeAtLocation(hook), checker),
-    rendersOnServer: () => rendersOnServer,
+    rendersOnServer: () => serverRendering.found,
     isArray: (expression: ts.Expression) => {
       const type = checker.getNonNullableType(checker.getTypeAtLocation(expression));
       const members = type.isUnion() ? type.types : [type];
@@ -1051,6 +1053,9 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
    */
   const SERVER_ENTRIES = new Set(["renderToString", "renderPage", "renderStatic", "hydrateRoot"]);
   let rendersOnServer = false;
+  // Hung on the holder the resolver reads — see its note: a `let` closed over 370 lines above its
+  // declaration works only while nothing asks before this line. Found by review.
+  serverRendering.found = false;
 
   for (const file of sources) {
     for (const statement of file.statements) {
@@ -1061,12 +1066,13 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
       imported.add(`${scope}/${name}`);
 
       // `@ramonda/server` exists for one purpose, so importing it is the answer on its own.
-      if (`${scope}/${name}` === "@ramonda/server") rendersOnServer = true;
+      if (`${scope}/${name}` === "@ramonda/server") rendersOnServer = serverRendering.found = true;
 
       const clause = statement.importClause?.namedBindings;
       if (clause !== undefined && ts.isNamedImports(clause)) {
         for (const element of clause.elements) {
-          if (SERVER_ENTRIES.has((element.propertyName ?? element.name).text)) rendersOnServer = true;
+          if (SERVER_ENTRIES.has((element.propertyName ?? element.name).text))
+            rendersOnServer = serverRendering.found = true;
         }
       }
     }
