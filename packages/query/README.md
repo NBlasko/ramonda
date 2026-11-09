@@ -40,8 +40,12 @@ class App extends Component {
 class UserCard extends Component<{ id: string }> {
   private user = this.use(Query, (self: UserCard) => ({
     key: ["user", self.props.id],
-    fetch: ({ signal }: FetchContext) => api.getUser(self.props.id, { signal }),
+    fetch: self.load,
   }));
+
+  load({ signal }: FetchContext) {
+    return api.getUser(this.props.id, { signal });
+  }
 
   render() {
     if (this.user.isPending) return <p>Loading…</p>;
@@ -51,7 +55,9 @@ class UserCard extends Component<{ id: string }> {
 }
 ```
 
-`TData` comes from `fetch` — nothing is declared at the call site.
+`TData` comes from `fetch` — nothing is declared at the call site. `fetch` is a method, handed over:
+it is the same function every time the callback runs again, where an arrow written in the callback
+would hand the query a new one each time.
 
 ## What it does
 
@@ -86,20 +92,29 @@ exactly as [the router](../router) owns route state.
 
 ## Typing the callbacks
 
-`this.use(Query, () => ({ … }))` infers `TData` from `fetch`, but the props object
-is what the type is inferred FROM — so a callback parameter left unannotated has no
-contextual type. Either annotate it, as above, or name the data type on the hook and
-get every parameter typed:
+`fetch` is typed where its method is declared, `key` included:
 
 ```tsx
-private todo = this.use(Query<Todo, readonly ["todo", number]>, (self: TodoCard) => ({
-  key: ["todo", self.props.id] as const,
-  fetch: ({ signal, key }) => api.getTodo(key[1], { signal }),  // both typed
-}));
+import { Query, type FetchContext } from "@ramonda/query";
+
+class TodoCard extends Component<{ id: number }> {
+  private todo = this.use(Query, (self: TodoCard) => ({
+    key: ["todo", self.props.id] as const,
+    fetch: self.load,
+  }));
+
+  load({ signal, key }: FetchContext<readonly ["todo", number]>): Promise<Todo> {
+    return api.getTodo(key[1], { signal });
+  }
+
+  render() {
+    return <p>{this.todo.data?.title}</p>;
+  }
+}
 ```
 
-`Query<Todo>` is an instantiation expression — ordinary TypeScript, and it compiles
-away. Naming the types does the most for a mutation, where `onSuccess`, `onError` and
+`Query<Todo>` names the data type on the hook instead — an instantiation expression,
+ordinary TypeScript, and it compiles away. Naming the types does the most for a mutation, where `onSuccess`, `onError` and
 `onSettled` would each need an annotation otherwise, and where it types `mutate`'s own
 parameter as well.
 

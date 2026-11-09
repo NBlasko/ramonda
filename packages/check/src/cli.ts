@@ -10,6 +10,9 @@ import { certify, packageRootOf, renderCertificate } from "./certify";
 import { type AnyRule, failingRules, RULES } from "./rules";
 import { filesOf, splitOf } from "./split";
 import { OPTIONS } from "./cliOptions";
+import { docs, explain } from "./docsCommand";
+import { type AnyGraphReport, GRAPH_REPORTS } from "./graphReports";
+import { type JsonFinding, locationOf, messageOf, printJson } from "./jsonReport";
 
 /**
  * `ramonda-check [tsconfig]`
@@ -54,6 +57,10 @@ const HELP = `Usage: ramonda-check [tsconfig.json] [options]
 Proves what a running page cannot, from the source: a context consumer with no provider above it,
 and every rule on https://ramonda.dev/rules. The project is the tsconfig given, or ./tsconfig.json.
 
+Commands, from the docs for this version, with no network:
+  ramonda-check explain <code|rule>   what a diagnostic (RMD020) or a rule (unknown-hook-option) means
+  ramonda-check docs [page]           a page of the docs (forms/fields), or with none, every page
+
 Options:
 ${OPTIONS.map(([flag, takes, what]) => `  ${`${flag} ${takes}`.padEnd(22)} ${what}`).join("\n")}
 
@@ -73,6 +80,21 @@ if (argv.includes("--version") || argv.includes("-v")) {
   const own = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string };
   console.log(own.version);
   process.exit(0);
+}
+// The two commands that read the docs this version was released with — see `docsCommand.ts`. Not where
+// a path of that name exists: `ramonda-check docs` checked the project in ./docs before these commands
+// did, and a CI step written that way must keep checking it. Found by review.
+// A PROJECT of that name, that is — a tsconfig, or a folder holding one. An ordinary `docs/` folder, which
+// most repositories have, is not one; the second review found any folder at all switched the command off.
+const projectNamed = (word: string): boolean => {
+  const at = statSync(resolve(word), { throwIfNoEntry: false });
+  // A folder holding a tsconfig — what `ramonda-check docs` was read as. Not a FILE of that name: the
+  // project argument is a tsconfig, and a file called `docs` is not one. Found by the third review.
+  return at !== undefined && at.isDirectory() && existsSync(join(resolve(word), "tsconfig.json"));
+};
+if ((argv[0] === "explain" || argv[0] === "docs") && !projectNamed(argv[0])) {
+  if (argv[0] === "explain") explain(TAG, argv[1]);
+  docs(TAG, argv[1]);
 }
 {
   const flags = OPTIONS.map(([flag]) => flag);
@@ -115,6 +137,7 @@ const diffAgainst = valueOf("--diff");
 const wantsSplit = argv.includes("--split");
 const wantsFix = argv.includes("--fix");
 const wantsCertify = argv.includes("--certify");
+const wantsJson = argv.includes("--json");
 const dryRun = argv.includes("--dry-run");
 // By POSITION: a word is a path unless the word before it is a flag that takes one. Matched by text,
 // `--graph out.json out.json` dropped the second as "the value" and checked ./tsconfig.json instead.
@@ -128,6 +151,13 @@ if (positionals.length > 1) {
 if (dryRun && !wantsFix) {
   console.error(`${TAG} --dry-run goes with --fix: ramonda-check --fix --dry-run`);
   process.exit(2);
+}
+// `--json` is the plain run, read by a program: the reports beside it are prose with no JSON form.
+for (const flag of ["--fix", "--split", "--diff", "--certify"]) {
+  if (wantsJson && argv.includes(flag)) {
+    console.error(`${TAG} --json reports a plain run, and ${flag} has no JSON form. Run them apart.`);
+    process.exit(2);
+  }
 }
 // Each option once: `--graph a.json --graph b.json` read the first and dropped the second unsaid.
 for (const [flag] of OPTIONS) {
@@ -210,24 +240,12 @@ if (diffAgainst && !existsSync(resolve(diffAgainst))) {
 }
 
 const result = analyzeProject(tsconfig);
-const {
-  issues,
-  findings,
-  unresolved,
-  annotated,
-  unreachable,
-  unreachableRoutes,
-  paramsOffRoute,
-  keysOffRoute,
-  secondProviders,
-  renderCycles,
-  classesAsChildren,
-  counts,
-  graph,
-  notes,
-} = result;
+// The faults the graph answers are read through `GRAPH_REPORTS`, not here.
+const { findings, annotated, counts, graph, notes } = result;
 
-for (const note of notes) console.warn(`${TAG} ${note}`);
+if (!wantsJson) for (const note of notes) console.warn(`${TAG} ${note}`);
+/** What the run says about a file it wrote. On stderr under `--json`, where stdout is the object. */
+const said = wantsJson ? console.error : console.log;
 
 if (graphAt) {
   const target = resolve(graphAt);
@@ -236,7 +254,7 @@ if (graphAt) {
   // between two commits is the reason it exists at all.
   writeFileSync(target, `${JSON.stringify(graph, null, 2)}\n`);
   const holes = graph.edges.filter((e) => e.kind === "unresolved").length;
-  console.log(
+  said(
     `${TAG} graph written to ${graphAt} — ${graph.nodes.length} nodes, ${graph.edges.length} edges` +
       (holes > 0 ? `, ${holes} of them unresolved` : ""),
   );
@@ -278,7 +296,7 @@ if (graphHtmlAt) {
   const lost = graph.nodes.filter(
     (node) => node.kind !== "root" && !graph.edges.some((edge) => edge.to === node.id),
   ).length;
-  console.log(
+  said(
     `${TAG} graph drawn to ${graphHtmlAt} — ${graph.nodes.length} nodes, ${graph.edges.length} edges` +
       (lost > 0 ? `, ${lost} that nothing points at` : ""),
   );
@@ -398,6 +416,50 @@ if (diffAgainst) {
  * number cannot creep up unread. This is also the only place a reader learns what the map does not
  * cover.
  */
+/**
+ * `--json`: everything the text run would report, as one object — see `jsonReport.ts`. The same
+ * readers as the text below, so the two cannot report different things.
+ */
+if (wantsJson) {
+  const own = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string };
+  const found: JsonFinding[] = [];
+  for (const graphReport of GRAPH_REPORTS as readonly AnyGraphReport[]) {
+    for (const item of graphReport.items(result)) {
+      const at = locationOf(item);
+      found.push({
+        code: graphReport.id,
+        severity: "error",
+        ...at,
+        message: messageOf(graphReport.lines(item)),
+        data: item,
+      });
+    }
+  }
+  for (const rule of RULES) {
+    for (const issue of findings[rule.id]) {
+      const at = locationOf(issue);
+      found.push({
+        code: rule.id,
+        severity: rule.report.severity,
+        ...at,
+        message: messageOf(rule.report.lines(issue as never), at),
+        data: issue,
+      });
+    }
+  }
+  const ok = !found.some((finding) => finding.severity === "error");
+  printJson({
+    tool: "ramonda-check",
+    version: own.version,
+    ok,
+    findings: found,
+    notes,
+    ignored: annotated,
+    counts,
+  });
+  process.exit(ok ? 0 : 1);
+}
+
 if (annotated.length > 0) {
   console.warn(`\n${TAG} ${annotated.length} site(s) this cannot resolve, with a reason written beside them:\n`);
   for (const site of annotated) {
@@ -480,17 +542,12 @@ if (wantsFix) {
 
 const failing = failingRules(findings);
 
+// From `GRAPH_REPORTS`, the list both printers read — a hand-written list beside it was a second one to
+// keep in step, and a report added to only one would have made the plain run say "quiet" above its own
+// finding while `--json` said `ok: false`. Found by review.
 if (
-  issues.length === 0 &&
   failing.length === 0 &&
-  unresolved.length === 0 &&
-  unreachable.length === 0 &&
-  unreachableRoutes.length === 0 &&
-  secondProviders.length === 0 &&
-  paramsOffRoute.length === 0 &&
-  keysOffRoute.length === 0 &&
-  renderCycles.length === 0 &&
-  classesAsChildren.length === 0
+  (GRAPH_REPORTS as readonly AnyGraphReport[]).every((report) => report.items(result).length === 0)
 ) {
   console.log(
     `${TAG} ${counts.components} components, ${counts.contexts} contexts, ${counts.roots} root(s) — ` +
@@ -500,205 +557,19 @@ if (
 }
 
 /**
- * The strict rule: a component this cannot follow is an ERROR.
- *
- * The walk goes quiet below a name it cannot resolve, so everything under it is unjudged and the
- * build passes over a page that may be broken. A map with unmarked blanks is worse than no map,
- * because it is trusted. Whatever this cannot resolve, a bundler could not have code-split either.
+ * The faults computed from the whole graph, each printed from what `graphReports.ts` says about it —
+ * after the verdict above, before the rules. Why each one is a fault is written there.
  */
-if (unresolved.length > 0) {
-  console.error(`\n${TAG} ${unresolved.length} place(s) naming a component that cannot be followed:\n`);
-  for (const hole of unresolved) {
-    console.error(`  ${hole.file}:${hole.line}:${hole.column}`);
-    console.error(`    through \`${hole.what}\` — ${hole.why}`);
-    console.error("");
-    for (const line of hole.fix.split("\n")) console.error(`      ${line}`);
-    console.error("");
-  }
-  console.error(
-    `Nothing below one of these is judged, so a broken page can pass. If the source is right and\n` +
-      `this is the one that cannot see it, write the reason on the line — it is listed on every run:\n\n` +
-      `    // ramonda-check-ignore the chunk is deliberately missing, to demonstrate the failure\n`,
-  );
-}
-
-/**
- * The first rule computed from the graph rather than from the source.
- *
- * The walk visits everything a root mounts, so what it never arrived at is what nothing mounts. An
- * EXPORTED one is left alone: an app is entered through what it publishes, and an SSR entry is
- * called by the server rather than by this program.
- */
-if (unreachable.length > 0) {
-  console.error(`\n${TAG} ${unreachable.length} declaration(s) no root reaches:\n`);
-  for (const dead of unreachable) {
-    console.error(`  ${dead.file}:${dead.line}:${dead.column}`);
-    console.error(`    ${dead.name} — nothing mounts this ${dead.kind}, on any path from any root.`);
+for (const graphReport of GRAPH_REPORTS as readonly AnyGraphReport[]) {
+  const items = graphReport.items(result);
+  if (items.length === 0) continue;
+  console.error(`\n${TAG} ${graphReport.heading(items.length)}:\n`);
+  for (const item of items) {
+    console.error(`  ${item.file}:${item.line}:${item.column}`);
+    for (const line of graphReport.lines(item)) console.error(line);
     console.error("");
   }
-  console.error(
-    `Delete it, or mount it. Nothing outside its own file can even name it, so no import\n` +
-      `elsewhere is keeping it alive — and an EXPORTED one is never reported, because an app is\n` +
-      `entered through what it publishes and this cannot see who does the entering.\n`,
-  );
-}
-
-/**
- * A whole section of a site that can never appear, which each page on its own gives no sign of.
- */
-if (unreachableRoutes.length > 0) {
-  console.error(`\n${TAG} ${unreachableRoutes.length} route table(s) whose views can never appear:\n`);
-  for (const table of unreachableRoutes) {
-    console.error(`  ${table.file}:${table.line}:${table.column}`);
-    console.error(
-      table.why === "unmounted"
-        ? `    ${table.views} view(s), and no <RouteOutlet> in this build is handed this table.`
-        : `    ${table.views} view(s), and no root reaches the <RouteOutlet> that mounts them.`,
-    );
-    console.error("");
-  }
-  console.error(
-    `Hand the table to a <RouteOutlet>, and mount that outlet somewhere a root can reach —\n` +
-      `or delete the table. Every page in it renders today's nothing, and each one on its own\n` +
-      `looks perfectly well formed, which is why nothing else says a word.\n`,
-  );
-}
-
-/**
- * The other read the runtime throws on, and the one nothing else can see.
- *
- * Two faults printed as one section because they are the same mistake at two distances, and each
- * line says which it is: nothing routes to this component at all, or something does and it is a
- * different route from the one the read names. The router's own two messages make the same split.
- */
-if (paramsOffRoute.length > 0) {
-  console.error(`\n${TAG} ${paramsOffRoute.length} params(pattern) read(s) the routing cannot answer:\n`);
-  for (const read of paramsOffRoute) {
-    console.error(`  ${read.file}:${read.line}:${read.column}`);
-    // The path from a root, because the READ may be in a package the reader cannot edit — and then
-    // the line to change is the mount, which is the only part of this that is theirs.
-    if (read.path.length > 1) console.error(`    ${read.path.join(" > ")}`);
-    console.error(
-      read.why === "no-outlet"
-        ? `    <${read.component}> reads \`${read.member}.params("${read.pattern}")\`, and no arrangement in ` +
-            `this build puts it under a <RouteOutlet>.`
-        : `    <${read.component}> reads \`${read.member}.params("${read.pattern}")\`, but the route that ` +
-            `mounts it is "${read.route}", which supplies no ${(read.missing ?? [])
-              .map((name) => `\`:${name}\``)
-              .join(", ")}.`,
-    );
-    console.error("");
-  }
-  console.error(
-    `Params are published by the outlet that MATCHED, and each outlet publishes only its own — so a\n` +
-      `component reads the pattern of the route that mounts IT, and chrome beside the outlet (a nav\n` +
-      `bar, a header, a footer) has a pathname and no params at all. The router throws on both of\n` +
-      `these in every build.\n\n` +
-      `Name the route this component is really rendered by, or move the read into the page that is\n` +
-      `on that route and pass the value down as a prop. Use \`pathname\` if it is not part of a route,\n` +
-      `and \`params<T>()\` with no argument when it is genuinely written against no ONE route.\n`,
-  );
-}
-
-/**
- * The other door, printed apart from the first because the fix is a different sentence.
- *
- * A pattern read that goes wrong THROWS at runtime; a claimed key that goes wrong hands back
- * `undefined` where the type promised a string. So this says what the read will actually do, and
- * names the honest spelling — an optional key — rather than only refusing.
- */
-if (keysOffRoute.length > 0) {
-  console.error(`\n${TAG} ${keysOffRoute.length} params() read(s) claiming a key the routing does not supply:\n`);
-  for (const read of keysOffRoute) {
-    console.error(`  ${read.file}:${read.line}:${read.column}`);
-    if (read.path.length > 1) console.error(`    ${read.path.join(" > ")}`);
-    const claimed = read.keys.map((name) => `\`${name}\``).join(", ");
-    const absent = (read.missing ?? read.keys).map((name) => `\`${name}\``).join(", ");
-    console.error(
-      read.why === "no-outlet"
-        ? `    <${read.component}> reads \`${read.member}.params()\` for ${claimed}, and no arrangement in ` +
-            `this build puts it under a <RouteOutlet> — so the params are empty and ${claimed} ` +
-            `${read.keys.length === 1 ? "is" : "are"} \`undefined\`. This read does not throw, which is why ` +
-            `nothing has told you.`
-        : `    <${read.component}> reads \`${read.member}.params()\` for ${claimed}, but the route that ` +
-            `mounts it is "${read.route}", which supplies no ${absent}. The read gives \`undefined\` where ` +
-            `the type says \`string\`, without throwing. Name the pattern instead, or mark the key optional ` +
-            `if this component really is rendered by routes that disagree.`,
-    );
-    console.error("");
-  }
-}
-
-/**
- * The runtime throws when this happens. Here it is said before anything renders, on every path the
- * source can produce — including the branch nobody clicked.
- */
-if (secondProviders.length > 0) {
-  console.error(`\n${TAG} ${secondProviders.length} second provider(s) for a context that allows one:\n`);
-  for (const second of secondProviders) {
-    console.error(`  ${second.file}:${second.line}:${second.column}`);
-    console.error(`    <${second.provider}> mounts a second "${second.context}", and one is already above it:`);
-    console.error(`    ${second.path.join(" → ")}`);
-    console.error("");
-  }
-  console.error(
-    `Mount it once, on a component that wraps the rest. A context whose author wrote\n` +
-      `\`single: true\` is one where two CONFLICT rather than the nearer winning — for the\n` +
-      `router's, both listen to popstate and both write history.\n`,
-  );
-}
-
-/**
- * A cycle by itself is not a fault — a tree renders itself for each child and stops when the data
- * runs out. This is the ring where nothing can stop.
- */
-if (renderCycles.length > 0) {
-  console.error(`\n${TAG} ${renderCycles.length} ring(s) of mounts that nothing can skip:\n`);
-  for (const ring of renderCycles) {
-    console.error(`  ${ring.file}:${ring.line}:${ring.column}`);
-    console.error(`    ${ring.path.join(" → ")}`);
-    console.error("");
-  }
-  console.error(
-    `Every step on this ring runs on EVERY render — no branch, no callback, no loop — so the\n` +
-      `first render recurses until the stack gives out, before a page appears. Put the recursion\n` +
-      `behind the data that ends it: a condition, or the callback \`list()\` takes.\n`,
-  );
-}
-
-/**
- * `{Named}` where `<Named />` was meant. It renders nothing and the runtime says nothing, because a
- * class is a function and the check for an object among children never sees it.
- */
-if (classesAsChildren.length > 0) {
-  console.error(
-    `\n${TAG} ${classesAsChildren.length} component(s) named among children, where an element was meant:\n`,
-  );
-  for (const named of classesAsChildren) {
-    console.error(`  ${named.file}:${named.line}:${named.column}`);
-    console.error(`    {${named.name}} renders nothing. Write <${named.name} />.`);
-    console.error("");
-  }
-  console.error(
-    `A class among children is dropped, and nothing reports it at run time — the check for an\n` +
-      `object that is not markup never sees it, because a class is a function. Handing a component\n` +
-      `OVER is an attribute: \`<Slot view={Named} />\` is a binding, not a child.\n`,
-  );
-}
-
-if (issues.length > 0) {
-  console.error(`\n${TAG} ${issues.length} consumer(s) with no provider above them:\n`);
-  for (const issue of issues) {
-    console.error(`  ${issue.file}:${issue.line}:${issue.column}`);
-    console.error(`    <${issue.consumer}> consumes "${issue.context}" — nothing provides it on this path:`);
-    console.error(`    ${issue.path.join(" → ")}`);
-    console.error("");
-  }
-  console.error(
-    `Mount the matching Provider on a component above it — a context reaches only the providing\n` +
-      `component and its descendants. This ran before the app did, so nothing had to render for it\n` +
-      `to be found.\n`,
-  );
+  if (graphReport.advice !== undefined) console.error(graphReport.advice);
 }
 
 /**

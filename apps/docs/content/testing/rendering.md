@@ -23,10 +23,27 @@ Testing Library convention), so content rendered outside the container is still 
 | `baseElement` | what queries bind to |
 | `wrapper` | a component mounted above the tree — a context provider, a router shell |
 | `hydrate` | adopt server markup: `true` for what's already in `container`, or a **string** of markup |
+| `url` | the address to mount at — `"/tournament?id=t1"` — see [a routed app](#a-routed-app-at-an-address) |
 
 `render` hands back a `RenderResult`: the `container`, the bound queries, `rerender`, `unmount`, and
 the `instance` below. A `wrapper` in the options is a `WrapperComponent` — a component taking
 `children`, for a provider a test needs above the subject.
+
+## A routed app, at an address
+
+A router reads the page's address when it mounts, so a test names the address in `url` and renders the
+app itself — its own `Router` and outlets, nothing standing in for them:
+
+```tsx
+test("a tournament's page", () => {
+  const { container } = render(<App />, { url: "/tournament?id=t1" });
+  expect(container.querySelector("h1")?.textContent).toBe("Spring cup");
+});
+```
+
+The address is one for every test in a file. `cleanup` puts back the address a test's `url` replaced, so
+the next test is not on the page this one went to — from there or anywhere it navigated after. A test
+that moves the address without `url` owns where it went: name the page with `url` to have it put back.
 
 ## `instance` — driving a component directly
 

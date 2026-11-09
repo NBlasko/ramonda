@@ -219,4 +219,9 @@ if (existsSync(publicDir)) {
   cpSync(publicDir, dist, { recursive: true });
 }
 
+// The pages as Markdown, `llms.txt` and `llms-full.txt`, which `build-content.mjs` wrote before the
+// build emptied `dist/`. A page's `.md` sits beside its `.html`.
+cpSync(join(root, "src", "generated", "text"), dist, { recursive: true });
+console.log(`[docs] ${"(text)".padEnd(24)} → dist/llms.txt, dist/llms-full.txt and a .md per page`);
+
 console.log(`[docs] ${routePaths.length} page(s) + 404, ${bytes} B of HTML → dist/`);

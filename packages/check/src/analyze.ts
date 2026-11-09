@@ -10,6 +10,7 @@ import type { FormType, FormValue, Resolver, Silencer } from "./rules/rule";
 import { domStub } from "./domStub";
 import { DOM_STUB_FILE, isTheDomLib } from "./rules/platform";
 import { unwrap } from "./rules/follow-value";
+import { stablePropsOf } from "./rules/fresh-object-in-props";
 import {
   activate,
   applyClass,
@@ -510,6 +511,11 @@ interface ComponentNode {
   /** Prop paths this component's own type declares as taking a component. */
   slots: string[];
   /**
+   * The props its class declares a value with `@StableProps` — carried in a package's graph, because
+   * a `.d.ts` carries no decorators and an app cannot see the declaration any other way.
+   */
+  stableProps?: string[];
+  /**
    * Whether the class carries an `export` modifier — what a library's surface is.
    *
    * The modifier and not the package's entry point: a class re-exported by a barrel with
@@ -668,11 +674,28 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
    * — it is a `const`, and one built halfway down works only while nothing above it runs first,
    * which is an ordering nobody can see from the call site.
    */
+  /** Whether this program renders on a server — set where the imports are read, below. */
+  const serverRendering = { found: false };
   const resolver: Resolver = Object.assign(resolve, {
     coreName: (id: ts.Node) => coreExportName(id, resolveLocal, resolveStep, resolve),
     fromPackage: (id: ts.Node, pkg: string) => importedFromPackage(id, pkg, resolveLocal, resolveStep),
     formValue: (expression: ts.Expression) => formValueOf(checker.getTypeAtLocation(expression)),
     propertyNames: (expression: ts.Expression) => propertyNames(checker.getTypeAtLocation(expression), checker),
+    hookOptions: (hook: ts.Expression) => hookOptions(checker.getTypeAtLocation(hook), checker),
+    rendersOnServer: () => serverRendering.found,
+    isArray: (expression: ts.Expression) => {
+      const type = checker.getNonNullableType(checker.getTypeAtLocation(expression));
+      const members = type.isUnion() ? type.types : [type];
+      if (members.some((member) => (member.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0)) return undefined;
+      return members.every((member) => checker.isArrayType(member) || checker.isTupleType(member));
+    },
+    installedStableProps: (name: ts.Node) => {
+      const symbol = resolve(name);
+      if (symbol === undefined) return undefined;
+      const spliced = splicedFor(symbol);
+      const node = spliced?.components.get(symbol.name);
+      return node === undefined ? undefined : new Set(node.stableProps ?? []);
+    },
     typeLiterals: (expression: ts.Expression, absentAs?: string) => {
       const type = checker.getTypeAtLocation(expression);
       const read: string[] = [];
@@ -1030,6 +1053,9 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
    */
   const SERVER_ENTRIES = new Set(["renderToString", "renderPage", "renderStatic", "hydrateRoot"]);
   let rendersOnServer = false;
+  // Hung on the holder the resolver reads — see its note: a `let` closed over 370 lines above its
+  // declaration works only while nothing asks before this line. Found by review.
+  serverRendering.found = false;
 
   for (const file of sources) {
     for (const statement of file.statements) {
@@ -1040,12 +1066,13 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
       imported.add(`${scope}/${name}`);
 
       // `@ramonda/server` exists for one purpose, so importing it is the answer on its own.
-      if (`${scope}/${name}` === "@ramonda/server") rendersOnServer = true;
+      if (`${scope}/${name}` === "@ramonda/server") rendersOnServer = serverRendering.found = true;
 
       const clause = statement.importClause?.namedBindings;
       if (clause !== undefined && ts.isNamedImports(clause)) {
         for (const element of clause.elements) {
-          if (SERVER_ENTRIES.has((element.propertyName ?? element.name).text)) rendersOnServer = true;
+          if (SERVER_ENTRIES.has((element.propertyName ?? element.name).text))
+            rendersOnServer = serverRendering.found = true;
         }
       }
     }
@@ -1588,6 +1615,7 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
       mounts: [],
       slotHoles: [],
       slots: slotsOf(node),
+      stableProps: [...stablePropsOf(node.name, resolver)],
       exported: (ts.getCombinedModifierFlags(node) & ts.ModifierFlags.Export) !== 0,
       uses: new Set(),
       opaque: false,
@@ -2270,6 +2298,7 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
           mounts: [],
           slotHoles: [],
           slots: node.slots ?? [],
+          stableProps: node.stableProps ?? [],
           exported: node.exported === true,
           uses: new Set(),
           // Where the package stopped, this run stops too.
@@ -3761,6 +3790,7 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
         ...(node.exported ? { exported: true } : {}),
         ...(node.opaque ? { opaque: true } : {}),
         ...(node.slots.length > 0 ? { slots: node.slots } : {}),
+        ...((node.stableProps?.length ?? 0) > 0 ? { stableProps: node.stableProps } : {}),
       });
     }
     for (const fact of contexts.values()) {
@@ -3797,6 +3827,7 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
         // opaque here too, through the propagation whose `carriers` list includes `splicedNodes`.
         ...(node.opaque ? { opaque: true } : {}),
         ...(node.slots.length > 0 ? { slots: node.slots } : {}),
+        ...((node.stableProps?.length ?? 0) > 0 ? { stableProps: node.stableProps } : {}),
       });
     }
     nodes.push(...rootNodes);
@@ -4175,6 +4206,24 @@ const HANDS_NO_NAME =
   ts.TypeFlags.BigIntLike |
   ts.TypeFlags.StringLike |
   ts.TypeFlags.ESSymbolLike;
+
+/**
+ * What a hook's props bag may name: the second parameter of every way to construct it, together.
+ * One signature whose parameter cannot be read makes the whole answer unreadable, which is silence.
+ */
+function hookOptions(type: ts.Type, checker: ts.TypeChecker): string[] | undefined {
+  const signatures = type.getConstructSignatures();
+  if (signatures.length === 0) return undefined;
+  const names = new Set<string>();
+  for (const signature of signatures) {
+    const parameter = signature.getParameters()[1];
+    if (parameter === undefined) return undefined;
+    const read = propertyNames(checker.getNonNullableType(checker.getTypeOfSymbol(parameter)), checker);
+    if (read === undefined) return undefined;
+    for (const name of read) names.add(name);
+  }
+  return [...names];
+}
 
 function propertyNames(type: ts.Type, checker: ts.TypeChecker): string[] | undefined {
   if ((type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) return undefined;

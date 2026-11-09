@@ -31,6 +31,21 @@ export function unmountTracked(tree: MountedTree): void {
 }
 
 /**
+ * The address before a test asked for another with `render(…, { url })`, which `cleanup` puts back.
+ *
+ * Only an address the TEST set. Three reviews in a row found a case where guessing "where the test
+ * started" was wrong — an address set in `beforeAll`, a tree rendered there, a project cleaning up at
+ * the start of a test instead of the end — so nothing is guessed: a test that navigates by itself
+ * leaves the address where it went, and a test that names one gets the page back as it found it.
+ */
+let restoreTo: string | undefined;
+
+/** Called by `render` before it sets `url` — the first one in a test is what `cleanup` restores. */
+export function rememberAddress(): void {
+  if (restoreTo === undefined && typeof window !== "undefined") restoreTo = window.location.href;
+}
+
+/**
  * Unmounts everything rendered by this module.
  *
  * Registered automatically after each test when the framework exposes a global
@@ -46,6 +61,11 @@ export function unmountTracked(tree: MountedTree): void {
  */
 export function cleanup(): void {
   for (const tree of [...mounted]) unmountTracked(tree);
+  // After the unmount, so nothing still mounted hears the address change as a navigation.
+  if (restoreTo !== undefined) {
+    if (window.location.href !== restoreTo) window.history.replaceState(null, "", restoreTo);
+    restoreTo = undefined;
+  }
 }
 
 /**
@@ -74,6 +94,13 @@ export function registerAutoCleanup(): void {
   if (typeof hook !== "function") return;
 
   hook(cleanup);
+  hooked = true;
+}
+
+/** Whether the cleanup after each test is in place — what `render` asks before it mounts anything. */
+let hooked = false;
+export function cleanupHooked(): boolean {
+  return hooked;
 }
 
 function readEnvFlag(name: string): boolean {

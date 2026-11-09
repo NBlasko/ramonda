@@ -41,7 +41,8 @@
     "bin.mjs",
     "check-bundle.mjs",
     "dist",
-    "README.md"
+    "README.md",
+    "docs"
   ],
   "scripts": {
     "build": "tsup",

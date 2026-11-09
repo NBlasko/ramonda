@@ -83,6 +83,25 @@ implementation cannot host that half.
 process, so two instances behind a load balancer serve two different caches; `fileStore({ dir })`
 needs a volume they share. See [choosing a store](/ssr/modes#choosing-a-store-isrstore).
 
+## Every route static: one folder for a static host
+
+When every route is baked at build, no server is needed, and a project from `create-ramonda` makes the
+whole site one folder:
+
+```sh
+npm run build:static
+```
+
+`dist/site` then holds every page as `about/index.html`, the scripts, everything from `public/`, and
+`404.html` — the app's own `"*"` page, which a static host serves for a path it has no file for. Upload
+that folder. A page is a folder's `index.html`, which static hosts serve at `/about`; most redirect
+`/about/` to `/about` or the other way, and the router reads both as the same route.
+
+A route that is not baked — one that renders per request, or an ISR one — needs `npm start` running, so
+`build:static` refuses and names it rather than uploading a site that serves it as a missing page. A
+`:param` route marked `prerender` is baked from the paths in `PRERENDER_PATHS`, in
+`src/entry-server.tsx` — the one list the build and the server both read.
+
 ## What is decided at build time
 
 Two things, and both surprise people once.

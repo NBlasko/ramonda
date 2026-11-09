@@ -15,6 +15,7 @@ export interface FieldHost {
   dirtyAt(path: Path): boolean;
   touch(path: Path): void;
   resetAt(path: Path): void;
+  setErrorAt(path: Path, message: string): void;
   rowIds(path: Path): readonly string[];
   splice(path: Path, start: number, remove: number, insert: readonly unknown[]): void;
   move(path: Path, from: number, to: number): void;
@@ -300,6 +301,10 @@ export class FieldHandle {
 
   reset(): void {
     this.host.resetAt(this.at_);
+  }
+
+  setError(message: string): void {
+    this.host.setErrorAt(this.at_, message);
   }
 
   at(key: string): unknown {

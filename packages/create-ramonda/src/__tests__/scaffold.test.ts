@@ -880,6 +880,99 @@ describe("the generated README", () => {
 });
 
 /**
+ * `AGENTS.md`, what a coding agent reads first. Found by the docs-only trial: the agent learned the
+ * framework from its feedback loop, and had to discover the loop — the command that proves a change,
+ * what a code means, the rules a habit from elsewhere breaks. What the file says is held to the docs
+ * here, so a renamed page or a retired code fails this rather than sending an agent nowhere.
+ */
+describe("the generated AGENTS.md", () => {
+  const docs = join(workspace, "apps", "docs", "content");
+  const diagnostics = readFileSync(join(docs, "reference", "diagnostics.md"), "utf8");
+  const combos = [
+    ["spa", []],
+    ["ssr", []],
+    ["spa", ["router", "query", "form", "lens", "css", "devtools", "testing", "biome"]],
+    ["ssr", ["router", "query", "form", "lens", "css", "devtools", "testing", "biome"]],
+  ] as const;
+
+  test("is written in every project, with a CLAUDE.md that points at it", () => {
+    for (const [mode, addons] of combos) {
+      const project = make(mode, [...addons]);
+      expect(project.read("AGENTS.md")).toContain("`npm run check`");
+      expect(project.read("CLAUDE.md")).toBe("@AGENTS.md\n");
+    }
+  });
+
+  test("names every step the project's own `check` script runs, and no other", () => {
+    for (const [mode, addons] of combos) {
+      const project = make(mode, [...addons]);
+      const check = (JSON.parse(project.read("package.json")) as { scripts: Record<string, string> }).scripts.check;
+      const line =
+        project
+          .read("AGENTS.md")
+          .split("\n")
+          .find((l) => l.startsWith("Run `npm run check`")) ?? "";
+      expect(line.includes("lint")).toBe(check.includes("npm run lint"));
+      expect(line.includes("format check")).toBe(check.includes("format:check"));
+      expect(line.includes("the tests")).toBe(check.includes("npm test"));
+      expect(line).toContain("ramonda-check");
+    }
+  });
+
+  test("every page it links is one the docs have", () => {
+    for (const [mode, addons] of combos) {
+      const text = make(mode, [...addons]).read("AGENTS.md");
+      const links = [...text.matchAll(/https:\/\/ramonda\.dev(\/[a-z0-9/.-]*)?/g)].map((m) =>
+        (m[1] ?? "/").replace(/\.$/, ""),
+      );
+      expect(links.length).toBeGreaterThan(3);
+      // The text the docs build writes beside the pages — `apps/docs/scripts/page-text.mjs`.
+      const built = readFileSync(join(workspace, "apps", "docs", "scripts", "build-content.mjs"), "utf8");
+      for (const file of ["llms.txt", "llms-full.txt"]) expect(built).toContain(`"${file}"`);
+      for (const link of links) {
+        if (link === "/llms.txt" || link === "/llms-full.txt") continue;
+        if (link.endsWith(".md")) {
+          const page = link.slice(0, -3);
+          expect(existsSync(join(docs, `${page}.md`)) || existsSync(join(docs, page, "index.md")), link).toBe(true);
+          continue;
+        }
+        const code = /^\/reference\/diagnostics\/(rm[a-z]\d+)$/.exec(link);
+        if (code) {
+          expect(diagnostics, link).toMatch(new RegExp(`^## ${code[1].toUpperCase()} — `, "m"));
+          continue;
+        }
+        const page = link.replace(/\/$/, "");
+        const exists = existsSync(join(docs, `${page || "/index"}.md`)) || existsSync(join(docs, page, "index.md"));
+        expect(exists, link).toBe(true);
+      }
+    }
+  });
+
+  test("every code it names is one the diagnostics page explains, and not a retired one", () => {
+    for (const [mode, addons] of combos) {
+      for (const [code] of make(mode, [...addons])
+        .read("AGENTS.md")
+        .matchAll(/\bRM[DQFL]\d{3}\b/g)) {
+        expect(diagnostics, code).toMatch(new RegExp(`^## ${code} — (?!retired)`, "m"));
+      }
+    }
+  });
+
+  test("says only what the project has", () => {
+    const bare = make("spa", []).read("AGENTS.md");
+    expect(bare).not.toContain("<Select>");
+    expect(bare).not.toContain("allowDiagnostics");
+    expect(bare).not.toContain("ramonda-css");
+    expect(bare).not.toContain("entry-server");
+    const full = make("ssr", ["form", "testing", "css"]).read("AGENTS.md");
+    expect(full).toContain("<Select>");
+    expect(full).toContain('allowDiagnostics("RMD020")');
+    expect(full).toContain("ramonda-css explain");
+    expect(full).toContain("src/entry-server.tsx");
+  });
+});
+
+/**
  * Writing into a folder that already holds files — `--overwrite`, and the common start: `git init`, a
  * README, a `.gitignore`, then the app. Found by the trial: its `.gitignore` listed `secret.env` and was
  * replaced without a word, so the next `git add -A` would have committed the secret.
@@ -907,6 +1000,16 @@ describe("a folder that already has files", () => {
     const { read } = into({ "README.md": "MY README\n" });
     expect(read("README.md")).toBe("MY README\n");
     expect(read("README.ramonda.md")).toContain("## Before a commit");
+  });
+
+  test("keeps its AGENTS.md and CLAUDE.md, and writes the project's beside them", () => {
+    const { read, result } = into({ "AGENTS.md": "MY RULES\n", "CLAUDE.md": "MINE\n" });
+    expect(read("AGENTS.md")).toBe("MY RULES\n");
+    expect(read("CLAUDE.md")).toBe("MINE\n");
+    expect(read("AGENTS.ramonda.md")).toContain("`npm run check`");
+    expect(read("CLAUDE.ramonda.md")).toBe("@AGENTS.md\n");
+    expect(result.replaced).toEqual([]);
+    expect(result.kept).toEqual(["AGENTS.md", "CLAUDE.md"]);
   });
 
   test("names every other file it replaced, and only those", () => {

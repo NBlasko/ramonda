@@ -8,6 +8,7 @@ import MarkdownIt from "markdown-it";
 import { JSDOM } from "jsdom";
 import { highlighter } from "./highlighter.mjs";
 import { ruleCatalogue } from "@ramonda/check";
+import { llmsFull, llmsIndex, pageText, textPath } from "./page-text.mjs";
 
 /**
  * Turns `content/**.md` into one generated module the site imports.
@@ -606,6 +607,9 @@ function pageOf(source, routePath, label, editable) {
       ...(String(data.nav) === "false" ? { nav: false } : {}),
       ...(editable === undefined ? {} : { source: editable }),
       tree,
+      // The Markdown it is rendered from, for the text a coding agent reads — see `page-text.mjs`.
+      body,
+      label,
     };
   }
 }
@@ -677,8 +681,32 @@ for (const page of pages) {
   );
 }
 
+/**
+ * The same pages as text — one Markdown file each, `llms.txt` and `llms-full.txt` — for a coding
+ * agent. Written beside the other generated files, and copied into `dist/` by the prerender, because
+ * the build empties `dist/` after this runs.
+ */
+const textDir = join(root, "src", "generated", "text");
+rmSync(textDir, { recursive: true, force: true });
+const pagePaths = new Set(pages.map((page) => page.path));
+const texts = pages.map((page) => ({
+  ...page,
+  text: pageText(page.body, { title: page.title, pages: pagePaths, where: page.label }),
+}));
+for (const page of texts) {
+  const file = join(textDir, textPath(page.path));
+  mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(file, page.text);
+}
+const home = pages.find((page) => page.path === "/");
+writeFileSync(
+  join(textDir, "llms.txt"),
+  llmsIndex(texts, { name: home.title, summary: home.description, leaveOut: new Set(["Diagnostics", "Rules"]) }),
+);
+writeFileSync(join(textDir, "llms-full.txt"), llmsFull(texts));
+
 // Metadata only — no trees. This is what the route table and sidebar import.
-const meta = pages.map(({ tree: _tree, ...rest }) => rest);
+const meta = pages.map(({ tree: _tree, body: _body, label: _label, ...rest }) => rest);
 
 /**
  * `satisfies` rather than an annotation, and the difference is the whole point.

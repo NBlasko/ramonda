@@ -24,6 +24,11 @@ describe("a hook prop rebuilt when the callback runs again", () => {
       "Plain.conf:object <- this.props.id",
       "Plain.conf:object <- this.upstream",
       "BaseProvider.conf:array <- this.tick",
+      "Plain.conf:object <- self.tick",
+      "Plain.conf:object <- self.props.id",
+      "Plain.conf:object <- self.tick",
+      "Plain.conf:object <- tick",
+      "Plain.conf:object <- all.tick",
     ]);
   });
 
@@ -38,8 +43,9 @@ describe("a hook prop rebuilt when the callback runs again", () => {
   test("a callback that reads nothing reactive is silent", () => {
     const found = run().findings["fresh-object-in-hook-props"];
     expect(found.map((issue) => issue.rebuiltBecauseOf)).not.toContain("this.plain");
-    // Five of the eleven `use` calls in the fixture are reported, so a leak shows as a count.
-    expect(found).toHaveLength(5);
+    expect(found.map((issue) => issue.rebuiltBecauseOf)).not.toContain("self.plain");
+    // Ten of the `use` calls in the fixture are reported, so a leak shows as a count.
+    expect(found).toHaveLength(10);
   });
 
   /**

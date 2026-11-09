@@ -76,6 +76,10 @@ const client = await build({
   outfile: "dist/client/assets/client.js",
   // So the build says which stylesheet it wrote, rather than this script guessing a file name.
   metafile: true,
+  // What crosses the network: unminified, a fifth bigger even compressed. The map beside it keeps a
+  // production stack trace pointing at your own files. Nothing here depends on a class's name.
+  minify: true,
+  sourcemap: true,
 });
 
 await build({

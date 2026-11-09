@@ -35,10 +35,14 @@
  * Usage: ramonda-check-bundle <dir-or-file> [...]
  */
 import { execFile } from "node:child_process";
+import { writeSync } from "node:fs";
 import { readFile, readdir, realpath, stat } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
 
 const JS = /\.(m?js|cjs)$/;
+
+/** What a full stdout pipe is waited out on, a millisecond at a time — see `src/print.ts`. */
+const PAUSE = new Int32Array(new SharedArrayBuffer(4));
 
 /** Parallel enough to stay quick on the docs site's ~100 chunks. */
 const CONCURRENCY = 8;
@@ -142,6 +146,7 @@ Parses every JavaScript file a build emitted (.js, .mjs, .cjs, in every folder g
 one does not parse — most often decorators a bundler left untransformed, which no browser can load.
 
 Options:
+  --json         print the result as one JSON object on stdout, for a program to read
   -h, --help     print this and exit
   -v, --version  print the version and exit
 
@@ -164,13 +169,18 @@ async function main() {
     console.log(own.version);
     return;
   }
+  /**
+   * `--json`: the result as one object on stdout, in the shape `ramonda-check --json` prints — see
+   * `src/jsonReport.ts` there. A run that cannot start still answers in words, with exit code 2.
+   */
+  const json = args.includes("--json");
   // An option is not a path: `--help` was read as one once, could not be read, and the run went on.
-  const option = args.find((arg) => arg.startsWith("-"));
+  const option = args.find((arg) => arg.startsWith("-") && arg !== "--json");
   if (option !== undefined) {
     console.error(`[check-bundle] unknown option ${option}. See --help.`);
     process.exit(2);
   }
-  const targets = args;
+  const targets = args.filter((arg) => arg !== "--json");
   if (targets.length === 0) {
     console.error("usage: ramonda-check-bundle <dir-or-file> [...]  (--help for more)");
     process.exit(2);
@@ -203,6 +213,29 @@ async function main() {
       }
     }),
   );
+
+  if (json) {
+    const own = JSON.parse(await readFile(new URL("./package.json", import.meta.url), "utf8"));
+    const findings = failures
+      .sort((a, b) => a.file.localeCompare(b.file))
+      .map(({ file, message }) => ({ code: "unparseable-bundle", severity: "error", file: resolve(file), message }));
+    const ok = findings.length === 0;
+    // Whole before the exit: a write to a pipe is asynchronous, and the exit does not wait for it.
+    const bytes = Buffer.from(
+      `${JSON.stringify({ tool: "ramonda-check-bundle", version: own.version, ok, findings, notes: [], files: files.length })}\n`,
+    );
+    for (let written = 0; written < bytes.length; ) {
+      try {
+        written += writeSync(1, bytes, written, bytes.length - written);
+      } catch (error) {
+        // As `src/print.ts`: a closed reader ends it, a full pipe waits a millisecond.
+        if (error.code === "EPIPE") break;
+        if (error.code !== "EAGAIN") throw error;
+        Atomics.wait(PAUSE, 0, 0, 1);
+      }
+    }
+    process.exit(ok ? 0 : 1);
+  }
 
   if (failures.length > 0) {
     console.error(`[check-bundle] ${failures.length} of ${files.length} emitted file(s) do not parse:\n`);

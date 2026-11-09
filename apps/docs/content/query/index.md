@@ -106,33 +106,38 @@ class App extends Component {
 
 ## Typing the callbacks
 
-`TData` is inferred from `fetch`, but the props object is what the type is inferred
-**from** — so a callback parameter left unannotated has no contextual type:
+`TData` is inferred from `fetch`. Write `fetch` as a **method** of the component and hand it over —
+`fetch: self.load` — and its parameter is typed where the method is declared, `key` included:
 
 ```tsx
-fetch: ({ signal }) => api.getUser(id, { signal })
-// ✗ 'signal' implicitly has an 'any' type
+import { Query, type FetchContext } from "@ramonda/query";
+
+class TodoCard extends Component<{ id: number }> {
+  private todo = this.use(Query, (self: TodoCard) => ({
+    key: ["todo", self.props.id] as const,
+    fetch: self.load,
+  }));
+
+  load({ signal, key }: FetchContext<readonly ["todo", number]>): Promise<Todo> {
+    return api.getTodo(key[1], { signal });
+  }
+
+  render() {
+    return <p>{this.todo.data?.title}</p>;
+  }
+}
 ```
 
-Two ways out. Annotate it, which is one word:
+A method is the same function every time the callback runs again, which an arrow written in the
+callback is not: each run hands the hook a new `fetch`, so it is told its props changed whenever the
+key moves. The runtime reports that as [RMD022](/reference/diagnostics/rmd022), and `ramonda-check` as
+[`function-built-in-hook-props`](/rules/function-built-in-hook-props). An arrow's parameter has no
+contextual type either — `fetch: ({ signal }) => …` is *'signal' implicitly has an 'any' type*.
 
-```tsx
-fetch: ({ signal }: FetchContext) => api.getUser(id, { signal })
-```
-
-Or name the data type on the hook itself, which reverses the direction — the object is
-then checked against a target type, so every parameter is typed, `key` included:
-
-```tsx
-private todo = this.use(Query<Todo, readonly ["todo", number]>, (self: TodoCard) => ({
-  key: ["todo", self.props.id] as const,
-  fetch: ({ signal, key }) => api.getTodo(key[1], { signal }),  // both typed
-}));
-```
-
-`Query<Todo>` is ordinary TypeScript — an [instantiation
+`Query<Todo>` names the data type on the hook itself, when you want it checked against the method's
+return rather than read from it. It is ordinary TypeScript — an [instantiation
 expression](https://www.typescriptlang.org/docs/handbook/release-notes/typescript-4-7.html#instantiation-expressions),
-which names a generic class's type arguments without calling it. It compiles away entirely.
+which names a generic class's type arguments without calling it, and it compiles away entirely.
 
 Naming the type does the most work on a **mutation**, where `onSuccess`, `onerror` and
 `onSettled` would each need an annotation otherwise — and where it types `mutate`'s own
@@ -145,10 +150,10 @@ private add = this.use(Mutation<Todo, string>, () => ({
 }));
 ```
 
-One thing the annotated form still has over it: an unknown property in the options object
-(`staleTimee: 10`) is caught in neither form, because the object is returned from the
-callback rather than passed as an argument. Watch the spelling of an option that seems to
-do nothing.
+An unknown property in the options object (`staleTimee: 10`) compiles in either form, because
+the object is returned from the callback rather than passed as an argument. `ramonda-check`
+reports it as [`unknown-hook-option`](/rules/unknown-hook-option), with the option it was
+probably meant to be.
 
 ## Seeing the cache
 

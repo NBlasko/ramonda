@@ -736,6 +736,24 @@ try {
     if (shipped.length > 0) fail("the production build ships the devtools panel", shipped.join("\n"));
     checks.push("no devtools panel in the production build");
   }
+  // The client bundle is what crosses the network, and an unminified one was a fifth bigger
+  // compressed (FINDING-37: 86 KB against 69 KB gzipped). Counted as INDENTED lines, not lines: the
+  // readable output of the starter app is thousands of them, minified output none — while a string
+  // the bundle carries may hold line breaks of its own, as the CSS package's table of shorthands does,
+  // so a plain line count called a minified bundle of 106 lines unminified. The source map beside it
+  // keeps a production stack trace pointing at the reader's own files.
+  if (mode === "ssr") {
+    const bundle = join(app, "dist/client/assets/client.js");
+    const code = existsSync(bundle) ? readFileSync(bundle, "utf8") : "";
+    const indented = code.split("\n").filter((line) => /^ {2,}\S/.test(line)).length;
+    if (code === "" || indented > 20) {
+      fail(`the client bundle is not minified: ${indented} indented lines in dist/client/assets/client.js`);
+    }
+    if (!code.includes("//# sourceMappingURL=client.js.map") || !existsSync(`${bundle}.map`)) {
+      fail("the client bundle has no source map beside it");
+    }
+    checks.push("a minified client bundle with its source map");
+  }
   if (mode === "ssr") {
     const baked = join(app, "dist/static/index.html");
     if (!existsSync(baked)) fail("the build produced no dist/static/index.html");
@@ -829,6 +847,74 @@ try {
     if (!/\br-[a-zA-Z0-9_.-]+/.test(all)) fail("no compiled class name reached the built output");
     if (all.includes("@@(")) fail("`@@(` survived into the build — the plugin did not run");
     checks.push("a style block that compiled");
+  }
+
+  /* ── 5b. the site as one folder, for a host that only serves files ────────────────────────── */
+  // FINDING-38: every route prerendered and nothing said what to upload — the pages in dist/static,
+  // the scripts in dist/client — and with no 404.html, so a host showed its own. And the plan the
+  // server and the build read was asked with no paths, so marking a `:param` route static threw
+  // the moment either one started.
+  if (mode === "ssr") {
+    const notFound = join(app, "dist/static/404.html");
+    if (!existsSync(notFound) || !readFileSync(notFound, "utf8").includes("Not found")) {
+      fail('the build wrote no dist/static/404.html from the "*" route');
+    }
+
+    // The starter app has routes that render per request, so there is no static site to make.
+    let refused = "";
+    try {
+      run("npm", ["run", "build:static"], { cwd: app });
+    } catch (error) {
+      refused = outputOf(error);
+    }
+    if (!refused.includes("/about") || !refused.includes("/hello/:name")) {
+      fail("`build:static` did not refuse, by name, the routes that are not static", refused || "(it succeeded)");
+    }
+
+    // Every route static, a `:param` one included — and a `/:page` route that `/404` would match, so
+    // the 404 page has to be baked from a path only `"*"` matches. One folder, ready to upload.
+    const appFile = join(app, "src", "App.tsx");
+    const originalApp = readFileSync(appFile, "utf8");
+    const withPage = originalApp.replace(
+      '"/about": <AboutPage />,',
+      '"/about": <AboutPage />,\n  "/:page": <AboutPage />,',
+    );
+    if (withPage === originalApp)
+      fail("the SSR template's route table changed — update check-scaffold's all-static edit");
+    writeFileSync(appFile, withPage);
+    const entry = join(app, "src", "entry-server.tsx");
+    const original = readFileSync(entry, "utf8");
+    const edits = [
+      ['"/about": { revalidate: 60 }', '"/about": { prerender: true }'],
+      ['"/hello/:name": {}', '"/hello/:name": { prerender: true },\n  "/:page": { prerender: true }'],
+      ["const PRERENDER_PATHS: string[] = [];", 'const PRERENDER_PATHS: string[] = ["/hello/world", "/x"];'],
+    ];
+    let allStatic = original;
+    for (const [from, to] of edits) {
+      if (!allStatic.includes(from))
+        fail(`the SSR template no longer has \`${from}\` — update check-scaffold's all-static edit`);
+      allStatic = allStatic.replace(from, to);
+    }
+    writeFileSync(entry, allStatic);
+    try {
+      run("npm", ["run", "build:static"], { cwd: app });
+    } catch (error) {
+      fail("`build:static` failed on a project whose every route is static", outputOf(error));
+    }
+    const site = join(app, "dist", "site");
+    for (const file of ["index.html", "about/index.html", "hello/world/index.html", "404.html", "assets/client.js"]) {
+      if (!existsSync(join(site, file))) fail(`dist/site has no ${file}`);
+    }
+    if (readFileSync(join(site, "index.html"), "utf8").includes("<!--ssr-->")) {
+      fail("dist/site/index.html is the page shell, not the baked home page");
+    }
+    if (!readFileSync(join(site, "404.html"), "utf8").includes("Not found")) {
+      fail('dist/site/404.html is another route\'s page — baked from a path a route other than "*" matches');
+    }
+    writeFileSync(entry, original);
+    writeFileSync(appFile, originalApp);
+    run("npm", ["run", "build"], { cwd: app });
+    checks.push("a static site in one folder, with its 404.html");
   }
 
   /* ── 6. a PRODUCTION install, and a page served from it ───────────────────────────────────── */

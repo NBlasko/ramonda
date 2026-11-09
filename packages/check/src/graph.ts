@@ -75,6 +75,12 @@ export interface GraphNode {
    * of scope rather than approximated.
    */
   slots?: string[];
+  /**
+   * Props the class declares a value with `@StableProps`. Carried in a library's fragment: a `.d.ts`
+   * has no decorators, so an app reading a package's hook or component cannot see the declaration —
+   * and two rules either stayed silent on it or reported the very prop it declared.
+   */
+  stableProps?: string[];
 }
 
 /**

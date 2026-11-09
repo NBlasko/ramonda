@@ -12,6 +12,10 @@ in `if (__DEV__)`, so a production build ships none of them. Nearly every *check
 its message; the exception is named where it applies (`RML009`), because a guard that ran only in
 development would protect the one build that was never exposed to a request.
 
+**Every code has a page of its own**, at `/reference/diagnostics/` and the code in lower case — and
+`npx ramonda-check explain RMD020` prints the same page for the version you have installed, with no
+network.
+
 **Arrived with a symptom rather than a code?** [Something is wrong](/symptoms) lists what you can
 see and sends each one here.
 
@@ -366,6 +370,11 @@ state lost, `@destroyed` and `@created` run again.
 @compute get config() { … }            // ✓ recomputed only when its inputs change
 ```
 
+An element's `style` is the exception: `<div style={{ color: "red" }}>` rebuilt with the same contents is
+not reported. The diff writes a style as text and compares the text, so nothing is written to the page,
+and an element has no render to repeat. Contents that differ between the two calls still are — the style
+is then not a function of state.
+
 If the two are **not** the same, the check walks *into* them — an object by key, an array by index — so
 a function inside somebody's config is reported as the function it is, at the place it sits:
 
@@ -381,7 +390,7 @@ not a rebuild at all, so that is reported as the last case instead.
 consequence is the same as a plain object's, and so is the fix: construct it once and keep it in a field,
 a `@compute`, or a module constant.
 
-```tsx expect-report:clock-read-while-rendering
+```tsx expect-report:clock-read-while-rendering+fresh-object-in-props
 <Row at={new Date()} />     // ✗ a new Date every render
 readonly at = new Date();   // ✓ constructed once, with the component
 <Row at={this.at} />
@@ -423,6 +432,12 @@ It is asked of the decorator, not of the output, and that is deliberate: `render
 this.props.children }` and `render() { return A_CONSTANT }` also hand back one object, and neither hides
 anything. A `@compute` body returned from `render` has the same cost and is **not** noted, for the same
 reason — nothing distinguishes it from those two.
+
+**It says where the element was written.** The report names a path through the output —
+`section > button.onclick` — and, in development, the file, line and column of the tag the value is
+on: `Written at /app/src/Toolbar.tsx:41:9.` The compiler hands that to the development runtime with
+every tag; the record carries it as `file`, `line` and `column`. A tree built by hand with `__h` has
+no such place, and its report gives the path alone.
 
 **Where it reaches, and the one place it cannot.** Every row of a `.map()`, a `filter` or an array
 literal is compared — those rows are built by the render, so both renders have them, and each row is
@@ -640,7 +655,7 @@ A hook's props callback is cached on the signals it reads, so a render where non
 does not call it again. This prop came out different anyway — which means the value reaching it
 never passes through a signal, so nothing marked the cache stale.
 
-```tsx
+```tsx expect-report:cached-read-of-a-plain-field
 class Panel extends Component {
   items: string[] = [];                    // ✗ not @state
   add(x: string) {

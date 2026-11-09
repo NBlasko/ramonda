@@ -52,8 +52,9 @@ A folder holding only `.git` counts as empty. Into any other, the scaffolder wri
 `--overwrite`, or after you confirm. Then:
 
 - your `.gitignore` is kept, and the lines the project needs that it lacks are added at the end;
-- your `README.md` is kept, and the project's own is written beside it as `README.ramonda.md` — unless
-  yours is already the project's;
+- your `README.md`, `AGENTS.md` and `CLAUDE.md` are kept, and the project's own is written beside each
+  as `README.ramonda.md`, `AGENTS.ramonda.md` and `CLAUDE.ramonda.md` — unless yours is already the
+  project's;
 - any other file of yours that the template also writes — `package.json`, `src/App.tsx` — is replaced,
   and the scaffolder names each one it replaced; one already identical to the project's is not named;
 - every other file is left alone, and is not read. A file of yours under `src` is part of the project
@@ -101,8 +102,9 @@ lists them all.
 | `dev` | The development server, with hot reload | always |
 | `build` | `ramonda-check`, then `typecheck`, then the production build — and with `ssr` the pages baked at build time — then `ramonda-check-bundle` over what it emitted | always |
 | `build:bundles` | The production build alone, which `build` runs in the middle | `ssr` |
+| `build:static` | `build`, then the whole site as one folder, `dist/site`, for a static host — refused while a route is not baked. [Deploying](/deploying#every-route-static-one-folder-for-a-static-host) | `ssr` |
 | `typecheck` | `tsc --noEmit` — or, with `css`, `ramonda-css`, which is the same check reading style blocks too | always |
-| `check` | `lint` and `test`, where the project has them, then `build` — the one to run before a commit | always |
+| `check` | `lint`, `format:check` and `test`, where the project has them, then `build` — the one to run before a commit | always |
 | `test` | The tests, once | `testing` |
 | `test:watch` | The tests, again on every change | `testing` |
 | `lint`, `format` | biome — and with `css`, `ramonda-css lint src` and `ramonda-css format src` for the files biome cannot read | `biome` |
@@ -127,6 +129,8 @@ Both modes:
 | `src/App.tsx` | The app. With `css`, its page is written in style blocks |
 | `vite.config.ts` | Vite, with `ramonda()` from `@ramonda/build` |
 | `tsconfig.json`, `index.html`, `README.md`, `.gitignore` | What they are anywhere |
+| `AGENTS.md` | For a coding agent: the command that proves a change, how to look up a diagnostic code, and the rules a habit from other libraries breaks first. It names only what the project has |
+| `CLAUDE.md` | One line, `@AGENTS.md`, for an agent that reads that file name instead |
 | `pnpm-workspace.yaml` | For pnpm only: it lets esbuild run its install script. npm and yarn ignore it, and it does not make the project a workspace |
 
 `spa` adds `src/main.tsx`, which mounts the app, `src/style.css`, and `src/vite-env.d.ts` for
@@ -137,7 +141,8 @@ Vite's types. `ssr` adds:
 | `src/entry-client.tsx` | Takes over the server-rendered page in the browser |
 | `src/entry-server.tsx` | Says how each route renders |
 | `server.mjs` | The server, for `dev` and for `start` |
-| `scripts/build.mjs`, `scripts/prerender.mjs` | The production build, and the pages baked at build time |
+| `scripts/build.mjs`, `scripts/prerender.mjs` | The production build, and the pages baked at build time — `404.html` from the `"*"` route among them |
+| `scripts/build-static.mjs` | What `build:static` adds: the pages, the scripts and `public/` in one folder |
 | `global.d.ts` | Types for `import.meta.env` |
 
 **Static files go in `public/`** in both modes — a favicon, `robots.txt`, images, a JSON file the

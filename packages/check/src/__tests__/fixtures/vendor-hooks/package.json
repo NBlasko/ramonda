@@ -1,0 +1,9 @@
+{
+  "name": "@acme/hooks",
+  "version": "1.0.0",
+  "private": true,
+  "types": "published/index.d.ts",
+  "ramonda": {
+    "graph": "./published/ramonda-graph.json"
+  }
+}

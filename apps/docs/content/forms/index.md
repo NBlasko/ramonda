@@ -151,7 +151,7 @@ this.use(Form, () => ({ schema, defaultValues, onSubmit: this.save }));
 | `submitCount` | How many times submit has been attempted. |
 | `submit(event?)` | Hand it straight to `onsubmit={…}`; it calls `preventDefault`, and focuses the first invalid field. |
 | `reset(values?)` | Back to the defaults, or to the values you pass. |
-| `setError(path, message)` | A message from somewhere the schema cannot see — usually the server. |
+| `setError(path, message)` | A message from somewhere the schema cannot see — usually the server — by the path an API names it with. A field's own `$.setError(message)` is the typed way. |
 
 ## Editing a record you had to fetch
 
