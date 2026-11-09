@@ -93,6 +93,8 @@ interface ItemScope<T> {
   dirtyBelow: boolean;
   /** The engine this row belongs to, so a list inside it can climb from row to row. */
   engine: ListEngine<unknown>;
+  /** The id the row is keyed by in this engine — what `scopes` holds it under. */
+  key?: string;
   addDep(state: State<unknown>): void;
 }
 
@@ -278,6 +280,9 @@ export class ListEngine<T> {
   private anyDirty = false;
   /** Set by `buildItem` so the caller can store the scope it just refreshed. */
   private lastScope: ItemScope<T> | undefined;
+
+  /** Last pass's scope at each position of `each`, `undefined` where the position produced no row. */
+  private byIndex: (ItemScope<T> | undefined)[] | undefined;
   /** Whether last pass's rows carried keys of their own. See `keyed`. */
   private wasKeyed = false;
 
@@ -359,60 +364,89 @@ export class ListEngine<T> {
     /** The keys rows wrote for themselves this pass, for the collision check. */
     let yours: Set<unknown> | undefined;
 
-    const next = new Map<T, Ids>();
+    /**
+     * The same array as last pass, every position holding a row: a row of it was invalidated
+     * — every row of a list reading the one signal that moved, a select — or a list inside one was. Each
+     * id and each scope is then where last pass left it, so they are taken by position, and the maps
+     * that find them by item and by id are neither read nor rebuilt.
+     */
+    const byIndex = this.byIndex;
+    let same = each === before && !builderChanged && byIndex !== undefined && byIndex.length === each.length;
+    if (same) {
+      for (let i = 0; i < each.length; i++) {
+        // A position that produced no row last pass has no scope to take. An item replaced in place is
+        // taken as the row it replaced, which the check below rebuilds with the new item.
+        if ((byIndex as (ItemScope<T> | undefined)[])[i] === undefined) {
+          same = false;
+          break;
+        }
+      }
+    }
+
+    const next = same ? this.ids : new Map<T, Ids>();
     const out: VNode[] = [];
     const clean: boolean[] = [];
     const rowScopes: RowScope[] = [];
-    const nextScopes = new Map<string, ItemScope<T>>();
+    const nextScopes = same ? this.scopes : new Map<string, ItemScope<T>>();
+    const nextByIndex: (ItemScope<T> | undefined)[] = same
+      ? (byIndex as (ItemScope<T> | undefined)[])
+      : new Array(each.length);
 
     for (let i = 0; i < each.length; i++) {
       const item = each[i];
 
-      // The key is settled BEFORE anything is built — it is what finds the
-      // item's scope, and the whole point is to decide without calling the
-      // mapper at all.
-      //
-      // Which occurrence of this exact item is this? As many as it has ids already.
-      const carried = next.get(item);
-      const occurrence = countOf(carried);
+      let key: string;
+      let existing: ItemScope<T> | undefined;
+      if (same) {
+        existing = (byIndex as ItemScope<T>[])[i];
+        key = existing.key as string;
+      } else {
+        // The key is settled BEFORE anything is built — it is what finds the
+        // item's scope, and the whole point is to decide without calling the
+        // mapper at all.
+        //
+        // Which occurrence of this exact item is this? As many as it has ids already.
+        const carried = next.get(item);
+        const occurrence = countOf(carried);
 
-      // Reuse the id this occurrence had last render, or mint a new one.
-      // Dropping the rest of `this.ids` is the pruning: an item that left the
-      // list is simply not carried over, so the map cannot grow forever.
-      let id: string | undefined = idAt(this.ids.get(item), occurrence);
+        // Reuse the id this occurrence had last render, or mint a new one.
+        // Dropping the rest of `this.ids` is the pruning: an item that left the
+        // list is simply not carried over, so the map cannot grow forever.
+        let id: string | undefined = idAt(this.ids.get(item), occurrence);
 
-      // The reference missed, so this object is new HERE — but it may be a row
-      // that already exists, handed over as a fresh object by a refetch. Align
-      // the two arrays once, and then the identity is on the item to be read.
-      // Only the first occurrence: a second one is a second row and mints its own.
-      if (id === undefined && occurrence === 0 && !this.wasKeyed) {
-        if (!aligned && before !== undefined) {
-          carryIdentity(before, each, host.name);
-          aligned = true;
+        // The reference missed, so this object is new HERE — but it may be a row
+        // that already exists, handed over as a fresh object by a refetch. Align
+        // the two arrays once, and then the identity is on the item to be read.
+        // Only the first occurrence: a second one is a second row and mints its own.
+        if (id === undefined && occurrence === 0 && !this.wasKeyed) {
+          if (!aligned && before !== undefined) {
+            carryIdentity(before, each, host.name);
+            aligned = true;
+          }
+          id = identityOf(item);
         }
-        id = identityOf(item);
-      }
 
-      if (id === undefined) {
-        // From the process-wide counter, not a per-list one. A per-list counter
-        // was right while identity lived in the region: two lists both starting
-        // at `f0` could not see each other, because neither id ever left. It
-        // travels with the ITEM now, so the same object shown in a second list
-        // carries `f0` into a list that has already minted `f0` for a different
-        // row — one key on two rows, and the diff hands one row's node to the
-        // other. A global id cannot collide with one carried in from anywhere.
-        id = `f${createId()}`;
-        // Written onto the item, so the array that replaces this one can carry
-        // it across — see `carryIdentity`.
-        stampIdentity(item, id);
-      }
-      if (carried === undefined) next.set(item, id);
-      else if (typeof carried === "string") next.set(item, [carried, id]);
-      else carried.push(id);
-      const key = id;
+        if (id === undefined) {
+          // From the process-wide counter, not a per-list one. A per-list counter
+          // was right while identity lived in the region: two lists both starting
+          // at `f0` could not see each other, because neither id ever left. It
+          // travels with the ITEM now, so the same object shown in a second list
+          // carries `f0` into a list that has already minted `f0` for a different
+          // row — one key on two rows, and the diff hands one row's node to the
+          // other. A global id cannot collide with one carried in from anywhere.
+          id = `f${createId()}`;
+          // Written onto the item, so the array that replaces this one can carry
+          // it across — see `carryIdentity`.
+          stampIdentity(item, id);
+        }
+        if (carried === undefined) next.set(item, id);
+        else if (typeof carried === "string") next.set(item, [carried, id]);
+        else carried.push(id);
+        key = id;
 
+        existing = this.scopes.get(key);
+      }
       const scopeKey = key;
-      const existing = this.scopes.get(scopeKey);
 
       // Nothing this item's output depends on has changed, it is still the same
       // object, it has not moved out from under a mapper that reads the position,
@@ -428,7 +462,8 @@ export class ListEngine<T> {
         clean.push(!existing.dirtyBelow);
         existing.dirtyBelow = false;
         rowScopes.push(existing as RowScope);
-        this.claimScope(nextScopes, scopeKey, existing);
+        nextByIndex[i] = existing;
+        if (!same) this.claimScope(nextScopes, scopeKey, existing);
         continue;
       }
 
@@ -440,6 +475,7 @@ export class ListEngine<T> {
         if (__DEV__) {
           diagnose("RMD013", `${host.name}:empty`, `The render callback produced nothing for item ${i}.`);
         }
+        this.dropRow(same, i, nextByIndex);
         continue;
       }
 
@@ -456,6 +492,7 @@ export class ListEngine<T> {
             `The render callback returned ${describe(vnode)} for item ${i}.`,
           );
         }
+        this.dropRow(same, i, nextByIndex);
         continue;
       }
 
@@ -498,21 +535,26 @@ export class ListEngine<T> {
       out.push(vnode);
       clean.push(false);
       this.lastScope!.dirtyBelow = false;
+      this.lastScope!.key = scopeKey;
       rowScopes.push(this.lastScope! as RowScope);
-      this.claimScope(nextScopes, scopeKey, this.lastScope!);
+      nextByIndex[i] = this.lastScope;
+      if (!same) this.claimScope(nextScopes, scopeKey, this.lastScope!);
     }
 
-    this.ids = next;
     // Every row, or none of it counts — see the note on `keyedRows`.
     this.wasKeyed = rows > 0 && keyedRows === rows;
+    this.byIndex = nextByIndex;
 
-    // Scopes for items that left: unsubscribe, or their signals keep a live
-    // reference to a list entry that no longer exists.
-    for (const [scopeKey, scope] of this.scopes) {
-      if (nextScopes.get(scopeKey) === scope) continue;
-      this.releaseScope(scope);
+    if (!same) {
+      this.ids = next;
+      // Scopes for items that left: unsubscribe, or their signals keep a live
+      // reference to a list entry that no longer exists.
+      for (const [scopeKey, scope] of this.scopes) {
+        if (nextScopes.get(scopeKey) === scope) continue;
+        this.releaseScope(scope);
+      }
+      this.scopes = nextScopes;
     }
-    this.scopes = nextScopes;
 
     return this.wrap(owner, out, clean, rowScopes);
   }
@@ -529,6 +571,18 @@ export class ListEngine<T> {
    * `host.reBuild()` for an item that does not exist for the life of the page,
    * and marking the engine dirty each time, which defeats the whole-list skip.
    */
+  /**
+   * A position that produced no row this pass. Taken by position, its scope is still in `scopes`, and is
+   * let go here as an unclaimed one is at the end of a pass that rebuilt the maps.
+   */
+  private dropRow(same: boolean, index: number, nextByIndex: (ItemScope<T> | undefined)[]): void {
+    const scope = nextByIndex[index];
+    nextByIndex[index] = undefined;
+    if (!same || scope === undefined) return;
+    this.releaseScope(scope);
+    this.scopes.delete(scope.key as string);
+  }
+
   private claimScope(nextScopes: Map<string, ItemScope<T>>, scopeKey: string, scope: ItemScope<T>): void {
     const shadowed = nextScopes.get(scopeKey);
     if (shadowed !== undefined && shadowed !== scope) this.releaseScope(shadowed);
@@ -654,6 +708,7 @@ export class ListEngine<T> {
       scope.deps.clear();
     }
     this.scopes.clear();
+    this.byIndex = undefined;
     // The cached result would otherwise keep the last vnode tree alive too.
     this.lastNode = undefined;
     // And the row above: through it, the outer engine and its whole tree.
