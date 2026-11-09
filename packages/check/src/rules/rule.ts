@@ -558,6 +558,11 @@ export interface Resolver {
    */
   installedStableProps(name: ts.Node): ReadonlySet<string> | undefined;
   /**
+   * Whether this expression's TYPE is an array or a tuple — every member of a union one. `undefined`
+   * when the type cannot say: `any`, `unknown`, a type parameter with no constraint.
+   */
+  isArray(expression: ts.Expression): boolean | undefined;
+  /**
    * Whether this assertion puts an `HTMLFormElement` under a type that is not a form and does not
    * hold one — `form as unknown as Canvas` — so its `reset` cannot be followed past it. Asked of the
    * outermost assertion. See `reset-the-model-does-not-hear`.

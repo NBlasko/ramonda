@@ -96,7 +96,7 @@ export function freshnessOf(
  */
 export interface Looking<T> {
   /** What this expression certainly is, when the source says so; `undefined` to keep walking. */
-  leaf(expression: ts.Expression): T | undefined;
+  leaf(expression: ts.Expression, resolve: ElementContext["resolve"]): T | undefined;
   /** Whether a value declared at module scope counts, or the walk stops at the module boundary. */
   throughModuleScope: boolean;
   /**
@@ -206,7 +206,7 @@ function isGlobal(id: ts.Identifier): boolean {
  * `new Date(0)`, `new Map()`, a class instance: a new identity every time, which the runtime reports
  * as RMD020. `.bind` is not here — it builds a FUNCTION, and is in `A_FUNCTION`.
  */
-function builtByACall(expression: ts.Expression): "object" | "array" | undefined {
+function builtByACall(expression: ts.Expression, resolve: ElementContext["resolve"]): "object" | "array" | undefined {
   if (ts.isNewExpression(expression)) return "object";
   if (!ts.isCallExpression(expression)) return undefined;
   const callee = expression.expression;
@@ -221,7 +221,10 @@ function builtByACall(expression: ts.Expression): "object" | "array" | undefined
     }
     return GLOBAL_BUILDERS[owner.text][callee.name.text];
   }
-  return ARRAY_BUILDERS.has(callee.name.text) ? "array" : undefined;
+  // Only on what the type says is an array: a string has `.slice` and `.concat` too, and builds a
+  // string, which compares by value — `label={name.slice(0, 3)}` was reported as a new array. Found
+  // by review. A type that cannot be read is silence, as everywhere here.
+  return ARRAY_BUILDERS.has(callee.name.text) && resolve.isArray(owner) === true ? "array" : undefined;
 }
 
 /**
@@ -238,12 +241,12 @@ function isABind(expression: ts.Expression): boolean {
 
 /** Looking for a value REBUILT during the render: a literal, or what a call or a `new` builds, inside a function. */
 const REBUILT: Looking<"object" | "array"> = {
-  leaf: (expression) =>
+  leaf: (expression, resolve) =>
     ts.isObjectLiteralExpression(expression)
       ? "object"
       : ts.isArrayLiteralExpression(expression)
         ? "array"
-        : builtByACall(expression),
+        : builtByACall(expression, resolve),
   throughModuleScope: false,
   throughBranches: true,
   throughCalls: true,
@@ -345,7 +348,7 @@ export function follow<T>(
   // required around a concise arrow's literal, so both are peeled before anything is decided.
   const written = unwrap(expression);
 
-  const leaf = how.leaf(written);
+  const leaf = how.leaf(written, resolve);
   if (leaf !== undefined) return { value: leaf, foundIn: undefined };
 
   if (ts.isIdentifier(written)) {

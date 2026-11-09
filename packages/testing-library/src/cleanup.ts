@@ -45,13 +45,17 @@ export function unmountTracked(tree: MountedTree): void {
  * fail together, pointing at the wrong file.
  */
 /**
- * The address the run started at, taken when this module loads — before any test could move it.
+ * The address the current test started at.
  *
  * A test that navigates moves the ONE `location` every test shares, and unmounting the tree left it
  * there: measured, the next test started at the URL the one before had pushed, so a routed app
  * rendered the wrong page in a test that never asked for one. `cleanup` puts it back.
+ *
+ * Taken at the start of EACH test, by the `beforeEach` registered beside the cleanup — not once when
+ * this package loads, which sent every test after the first back to the run's address in a file that
+ * set its own in `beforeAll`. Found by review. Without a runner's hooks it is the address at load.
  */
-const startedAt: string | undefined = typeof window === "undefined" ? undefined : window.location.href;
+let startedAt: string | undefined = typeof window === "undefined" ? undefined : window.location.href;
 
 export function cleanup(): void {
   for (const tree of [...mounted]) unmountTracked(tree);
@@ -81,9 +85,15 @@ export function registerAutoCleanup(): void {
   // for its users. Whichever one is running has already put `afterEach` on the
   // global, and if none has, there is nothing sensible to hook and the user
   // calls `cleanup()` themselves.
-  const hook = (globalThis as { afterEach?: (fn: () => void) => void }).afterEach;
+  const g = globalThis as { afterEach?: (fn: () => void) => void; beforeEach?: (fn: () => void) => void };
+  const hook = g.afterEach;
   if (typeof hook !== "function") return;
 
+  if (typeof g.beforeEach === "function" && typeof window !== "undefined") {
+    g.beforeEach(() => {
+      startedAt = window.location.href;
+    });
+  }
   hook(cleanup);
   hooked = true;
 }

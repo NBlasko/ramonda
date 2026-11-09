@@ -59,6 +59,7 @@ class Reported extends Component {
 /** The same calls where nothing is rebuilt. */
 class Silent extends Component {
   @state items = [1, 2, 3];
+  @state label = "spring cup";
   conf = { dense: true };
 
   @compute get visible() {
@@ -68,6 +69,9 @@ class Silent extends Component {
   render() {
     return (
       <ul>
+        {/* A string's `.slice` and `.concat` build a string, which compares by value. */}
+        <Row conf={this.label.slice(0, 3)} />
+        <Row conf={this.label.concat("!")} />
         {/* A @compute hands back the same array until `items` changes. */}
         <Row conf={this.visible} />
         {/* `assign` into something held hands back what is held. */}
