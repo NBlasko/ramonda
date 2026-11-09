@@ -1,5 +1,5 @@
 import ts from "typescript";
-import { positionOf } from "../syntax";
+import { isHandedOver, isThisUse, memberName, positionOf } from "../syntax";
 import { walkRenders } from "./render-reach";
 import type { Rule } from "./rule";
 
@@ -65,7 +65,8 @@ export const clockReadWhileRendering = {
 
   report: {
     severity: "error",
-    reportedWhen: "`Date.now()`, `new Date()` or `Math.random()` is reached from a render, by any path",
+    reportedWhen:
+      "`Date.now()`, `new Date()` or `Math.random()` is reached from a render, by any path, or read in a hook's props callback",
     alsoReportedAs: "RMD021",
     heading: (found) => `${found.length} clock or random read(s) reached from a render:`,
     lines: (issue) => [
@@ -101,6 +102,30 @@ export const clockReadWhileRendering = {
         found.push({ component: self.name, read, through: [...through], ...positionOf(node) });
       },
     });
+
+    /**
+     * A hook's props callback, which is cached on the signals it reads: a random number or a clock
+     * read there is frozen into the props until something unrelated runs the callback again, and then
+     * it jumps — for a query key, an entry that changes on somebody else's state change. The runtime
+     * reports the random half as RMD021; this read only renders, and was silent on it. A function
+     * handed over in the bag is run later, by the hook, and is not the callback's read.
+     */
+    for (const member of cls.members) {
+      if (!ts.isPropertyDeclaration(member) || member.initializer === undefined) continue;
+      const call = member.initializer;
+      if (!ts.isCallExpression(call) || !isThisUse(call)) continue;
+      const callback = call.arguments[1];
+      if (callback === undefined || !(ts.isArrowFunction(callback) || ts.isFunctionExpression(callback))) continue;
+      const named = memberName(member) ?? "?";
+      (function look(node: ts.Node): void {
+        if (node !== callback && isHandedOver(node)) return;
+        const read = nonDeterministic(node);
+        if (read !== undefined) {
+          found.push({ component: self.name, read, through: [`the props callback of ${named}`], ...positionOf(node) });
+        }
+        ts.forEachChild(node, look);
+      })(callback);
+    }
 
     return found;
   },
