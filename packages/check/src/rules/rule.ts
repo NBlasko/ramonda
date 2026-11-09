@@ -563,6 +563,11 @@ export interface Resolver {
    */
   isArray(expression: ts.Expression): boolean | undefined;
   /**
+   * Whether the project renders on a server — the same answer `needsServerRendering` is gated on, for a
+   * rule whose fault exists there for SOME of what it reads rather than all.
+   */
+  rendersOnServer(): boolean;
+  /**
    * Whether this assertion puts an `HTMLFormElement` under a type that is not a form and does not
    * hold one — `form as unknown as Canvas` — so its `reset` cannot be followed past it. Asked of the
    * outermost assertion. See `reset-the-model-does-not-hear`.

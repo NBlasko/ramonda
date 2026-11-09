@@ -89,7 +89,6 @@ describe("a clock or a random number reached from a render", () => {
       "Math.random() via the props callback of seeded",
       "Date.now() via the props callback of seeded",
       "Math.random() via the props callback of random",
-      "Date.now() via the props callback of once",
     ]);
   });
 
@@ -134,7 +133,7 @@ describe("a clock or a random number reached from a render", () => {
    * DOES rather than where it came from.
    */
   test("parsing a timestamp and a deterministic import are not reported", () => {
-    expect(run().findings["clock-read-while-rendering"]).toHaveLength(13);
+    expect(run().findings["clock-read-while-rendering"]).toHaveLength(12);
   });
 });
 
@@ -143,4 +142,17 @@ test("neither fails the run", () => {
   expect(result.findings["state-written-while-rendering"].length).toBeGreaterThan(0);
   expect(result.findings["clock-read-while-rendering"].length).toBeGreaterThan(0);
   expect(result.issues).toEqual([]);
+});
+
+/**
+ * The same clock read, in a project that renders on a server: the callback is called once there and
+ * once in the browser, and two clocks are two values — a page whose hydration disagrees.
+ */
+test("a clock read in a props callback is reported where the project renders on a server", () => {
+  const found = analyzeProject(join(here, "fixtures", "clock-ssr", "tsconfig.json")).findings[
+    "clock-read-while-rendering"
+  ];
+  expect(found.map((issue) => `${issue.read} via ${issue.through.join(" → ")}`)).toEqual([
+    "Date.now() via the props callback of once",
+  ]);
 });

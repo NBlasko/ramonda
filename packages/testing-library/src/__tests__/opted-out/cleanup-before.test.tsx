@@ -18,8 +18,7 @@ beforeAll(() => {
 beforeEach(() => cleanup());
 
 test("a test that navigates", () => {
-  render(<Where />);
-  window.history.pushState(null, "", "/elsewhere");
+  render(<Where />, { url: "/elsewhere" });
   expect(window.location.pathname).toBe("/elsewhere");
 });
 

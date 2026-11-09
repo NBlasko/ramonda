@@ -88,7 +88,9 @@ if (argv.includes("--version") || argv.includes("-v")) {
 // most repositories have, is not one; the second review found any folder at all switched the command off.
 const projectNamed = (word: string): boolean => {
   const at = statSync(resolve(word), { throwIfNoEntry: false });
-  return at !== undefined && (at.isFile() || existsSync(join(resolve(word), "tsconfig.json")));
+  // A folder holding a tsconfig — what `ramonda-check docs` was read as. Not a FILE of that name: the
+  // project argument is a tsconfig, and a file called `docs` is not one. Found by the third review.
+  return at !== undefined && at.isDirectory() && existsSync(join(resolve(word), "tsconfig.json"));
 };
 if ((argv[0] === "explain" || argv[0] === "docs") && !projectNamed(argv[0])) {
   if (argv[0] === "explain") explain(TAG, argv[1]);

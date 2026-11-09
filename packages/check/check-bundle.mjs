@@ -41,6 +41,9 @@ import { join, relative, resolve } from "node:path";
 
 const JS = /\.(m?js|cjs)$/;
 
+/** What a full stdout pipe is waited out on, a millisecond at a time — see `src/print.ts`. */
+const PAUSE = new Int32Array(new SharedArrayBuffer(4));
+
 /** Parallel enough to stay quick on the docs site's ~100 chunks. */
 const CONCURRENCY = 8;
 
@@ -228,7 +231,7 @@ async function main() {
         // As `src/print.ts`: a closed reader ends it, a full pipe waits a millisecond.
         if (error.code === "EPIPE") break;
         if (error.code !== "EAGAIN") throw error;
-        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1);
+        Atomics.wait(PAUSE, 0, 0, 1);
       }
     }
     process.exit(ok ? 0 : 1);

@@ -95,6 +95,12 @@ export interface CallbackOwner {
   is(expression: ts.Expression): boolean;
   /** A destructured parameter's locals, each with the member it reads: `{ tick: t }` is `t` → `tick`. */
   destructured: ReadonlyMap<string, string>;
+  /**
+   * Whether this expression is the parameter's REST copy, `{ ...all }` — every member, copied when the
+   * callback is called, so `all.tick` reads `tick`. By the binding it resolves to, not its name: an inner
+   * `(all) => all.total` is somebody else's `all`.
+   */
+  isRest(expression: ts.Expression, resolve: (id: ts.Node) => ts.Symbol | undefined): boolean;
 }
 
 export function callbackOwner(callback: ts.Node): CallbackOwner {
@@ -102,14 +108,24 @@ export function callbackOwner(callback: ts.Node): CallbackOwner {
     ts.isArrowFunction(callback) || ts.isFunctionExpression(callback) ? callback.parameters[0]?.name : undefined;
   const self = parameter !== undefined && ts.isIdentifier(parameter) ? parameter.text : undefined;
   const destructured = new Map<string, string>();
+  const rests: ts.BindingElement[] = [];
   if (parameter !== undefined && ts.isObjectBindingPattern(parameter)) {
     for (const element of parameter.elements) {
       if (!ts.isIdentifier(element.name)) continue;
+      // A rest element is not a member named after its binding — see `isRest`.
+      if (element.dotDotDotToken !== undefined) {
+        rests.push(element);
+        continue;
+      }
       const member = element.propertyName ?? element.name;
       if (ts.isIdentifier(member)) destructured.set(element.name.text, member.text);
     }
   }
   return {
+    isRest: (expression, resolve) =>
+      rests.length > 0 &&
+      ts.isIdentifier(expression) &&
+      rests.some((rest) => resolve(expression)?.declarations?.includes(rest) === true),
     is: (expression) =>
       expression.kind === ts.SyntaxKind.ThisKeyword ||
       (self !== undefined && ts.isIdentifier(expression) && expression.text === self),

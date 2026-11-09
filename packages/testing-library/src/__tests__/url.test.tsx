@@ -31,19 +31,31 @@ describe("render's url", () => {
 });
 
 describe("cleanup", () => {
-  test("a test that navigates…", () => {
-    render(<Where />);
+  test("a test rendered at a url, that then navigates…", () => {
+    render(<Where />, { url: "/tournament?id=t1" });
     window.history.pushState(null, "", "/somewhere?x=1");
     expect(window.location.pathname).toBe("/somewhere");
   });
 
-  test("…does not leave the next one there", () => {
+  test("…does not leave the next one on its pages", () => {
     expect(window.location.href).toBe(START);
   });
 
   test("puts it back when called by hand too", () => {
-    window.history.pushState(null, "", "/elsewhere");
+    render(<Where />, { url: "/elsewhere" });
     cleanup();
     expect(window.location.href).toBe(START);
+  });
+
+  /**
+   * An address the test did not name is not touched: guessing where a test "started" was wrong in a
+   * case each of three reviews found — `beforeAll`, a tree rendered there, a cleanup at the start of a
+   * test. A test that navigates by itself owns where it went.
+   */
+  test("an address the test set by itself is its own", () => {
+    window.history.replaceState(null, "", "/mine");
+    cleanup();
+    expect(window.location.pathname).toBe("/mine");
+    window.history.replaceState(null, "", START);
   });
 });

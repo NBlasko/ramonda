@@ -98,10 +98,13 @@ function printWhole(text: string): void {
       // A reader that closed the pipe early — `| head` — ends it; a full pipe waits a millisecond.
       if (code === "EPIPE") return;
       if (code !== "EAGAIN") throw error;
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1);
+      Atomics.wait(PAUSE, 0, 0, 1);
     }
   }
 }
+
+/** What a full pipe is waited out on, a millisecond at a time — one buffer, not one per wait. */
+const PAUSE = new Int32Array(new SharedArrayBuffer(4));
 
 /** The object, and the exit code the text run would give. */
 function answer(findings: JsonFinding[], more: Record<string, unknown>): never {

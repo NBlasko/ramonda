@@ -1,4 +1,4 @@
-import { Component, Hook, bootstrap, compute, state } from "@ramonda/core";
+import { Component, Hook, bootstrap, compute, persist, state } from "@ramonda/core";
 
 class Ready extends Hook<undefined> {
   ready = true;
@@ -54,8 +54,14 @@ class Silent extends Base {
   e = this.use(Uses, (self: Silent) => ({ on: self.props }));
   f = this.use(Uses, (self: Silent) => ({ on: self.typedOnly }));
 
+  // `@persist` alone defines nothing: `draft` is `undefined` wherever it is declared.
+  h = this.use(Uses, (self: Silent) => ({ on: self.draft }));
+  // An inner `all` is somebody else's: only the rest copy's own binding reads too early.
+  i = this.use(Uses, ({ ...all }: Silent) => ({ on: () => [all].map((all) => all.late) }));
+
   declare props: Record<string, unknown>;
   typedOnly: number | undefined;
+  @persist draft?: string;
 
   late = 1;
 

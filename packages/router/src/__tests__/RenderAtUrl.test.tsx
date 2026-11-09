@@ -43,8 +43,8 @@ describe("a routed app in a test", () => {
     expect(container.querySelector("i")?.textContent).toBe("t1");
   });
 
-  test("a test that navigates…", async () => {
-    const { container } = render(<App />);
+  test("a test that starts at a url and navigates…", async () => {
+    const { container } = render(<App />, { url: "/" });
     await act(async () => nav.push("/tournament"));
     expect(container.querySelector("p")?.textContent).toBe("tournament");
   });

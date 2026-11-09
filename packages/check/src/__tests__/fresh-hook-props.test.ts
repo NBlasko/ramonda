@@ -28,6 +28,7 @@ describe("a hook prop rebuilt when the callback runs again", () => {
       "Plain.conf:object <- self.props.id",
       "Plain.conf:object <- self.tick",
       "Plain.conf:object <- tick",
+      "Plain.conf:object <- all.tick",
     ]);
   });
 
@@ -43,8 +44,8 @@ describe("a hook prop rebuilt when the callback runs again", () => {
     const found = run().findings["fresh-object-in-hook-props"];
     expect(found.map((issue) => issue.rebuiltBecauseOf)).not.toContain("this.plain");
     expect(found.map((issue) => issue.rebuiltBecauseOf)).not.toContain("self.plain");
-    // Nine of the sixteen `use` calls in the fixture are reported, so a leak shows as a count.
-    expect(found).toHaveLength(9);
+    // Ten of the `use` calls in the fixture are reported, so a leak shows as a count.
+    expect(found).toHaveLength(10);
   });
 
   /**

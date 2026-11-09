@@ -41,8 +41,9 @@ test("a tournament's page", () => {
 });
 ```
 
-The address is one for every test in a file, and a test that navigates moves it. `cleanup` puts it back
-where the run started after each test, so the next one is not on the page the last one went to.
+The address is one for every test in a file. `cleanup` puts back the address a test's `url` replaced, so
+the next test is not on the page this one went to — from there or anywhere it navigated after. A test
+that moves the address without `url` owns where it went: name the page with `url` to have it put back.
 
 ## `instance` — driving a component directly
 

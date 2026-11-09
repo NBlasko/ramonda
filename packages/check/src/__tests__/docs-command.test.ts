@@ -115,8 +115,12 @@ describe("a page bigger than a pipe", () => {
     );
     const errors = join(docs, "stderr.txt");
     const result = spawnSync(
-      "sh",
-      ["-c", `"${process.execPath}" "${join(root, "bin.mjs")}" docs big 2>"${errors}" | head -c 10 >/dev/null`],
+      "bash",
+      // `pipefail`, so the status is the command's own and not `head`'s.
+      [
+        "-c",
+        `set -o pipefail; "${process.execPath}" "${join(root, "bin.mjs")}" docs big 2>"${errors}" | head -c 10 >/dev/null`,
+      ],
       { encoding: "utf8", env: { ...process.env, RAMONDA_CHECK_DOCS: docs } },
     );
     expect(result.status).toBe(0);
@@ -139,6 +143,18 @@ describe("a page bigger than a pipe", () => {
  * printing the docs instead. Where that folder exists, the word is still the project. Found by review.
  */
 describe("a folder named like a command", () => {
+  test("and so does a FILE of that name", () => {
+    const cwd = mkdtempSync(join(tmpdir(), "check-docs-file-"));
+    scratch.push(cwd);
+    writeFileSync(join(cwd, "docs"), "#!/bin/sh\n");
+    const result = spawnSync(process.execPath, [join(root, "bin.mjs"), "docs", "forms/fields"], {
+      cwd,
+      encoding: "utf8",
+      env: { ...process.env, RAMONDA_CHECK_DOCS: packed() },
+    });
+    expect(result.stdout).toBe("# Fields\n");
+  });
+
   test("an ordinary folder of that name, with no project in it, leaves the command alone", () => {
     const cwd = mkdtempSync(join(tmpdir(), "check-docs-plain-"));
     scratch.push(cwd);

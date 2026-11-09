@@ -130,7 +130,12 @@ export function reactiveReadIn(
         return;
       }
     }
-    if (ts.isPropertyAccessExpression(node) && isOwner(node.expression) && ts.isIdentifier(node.name)) {
+    // Through the owner, or through the parameter's rest copy — `{ ...all }` read `all.tick` at the call.
+    if (
+      ts.isPropertyAccessExpression(node) &&
+      (isOwner(node.expression) || owner.isRest(node.expression, resolve)) &&
+      ts.isIdentifier(node.name)
+    ) {
       const written = node.expression.getText();
       // Every prop is a signal, so any read under `this.props` counts — named down to the prop
       // itself when one is written, because "this.props changes" is not a sentence anyone can act
@@ -282,7 +287,15 @@ export const freshObjectInHookProps = {
         for (let index = 0; index < madeOf.length && index < 50; index++) {
           (function locals(node: ts.Node): void {
             if (ts.isIdentifier(node)) {
-              const local = resolve(node)?.declarations?.[0];
+              // A destructured local, `const { id } = self.props`, is the variable it is taken from.
+              // Found by the third review: only a plain `const id = …` was followed.
+              let local: ts.Node | undefined = resolve(node)?.declarations?.[0];
+              while (
+                local !== undefined &&
+                (ts.isBindingElement(local) || ts.isObjectBindingPattern(local) || ts.isArrayBindingPattern(local))
+              ) {
+                local = local.parent;
+              }
               if (
                 local !== undefined &&
                 ts.isVariableDeclaration(local) &&

@@ -680,6 +680,7 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
     formValue: (expression: ts.Expression) => formValueOf(checker.getTypeAtLocation(expression)),
     propertyNames: (expression: ts.Expression) => propertyNames(checker.getTypeAtLocation(expression), checker),
     hookOptions: (hook: ts.Expression) => hookOptions(checker.getTypeAtLocation(hook), checker),
+    rendersOnServer: () => rendersOnServer,
     isArray: (expression: ts.Expression) => {
       const type = checker.getNonNullableType(checker.getTypeAtLocation(expression));
       const members = type.isUnion() ? type.types : [type];

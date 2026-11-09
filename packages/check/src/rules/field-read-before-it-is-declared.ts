@@ -1,5 +1,6 @@
 import ts from "typescript";
 import { callbackOwner, hookNamed, isHandedOver, isLocalRead, isThisUse, memberName, positionOf } from "../syntax";
+import { hasDecorator } from "./render-reach";
 import type { Rule } from "./rule";
 
 /**
@@ -63,7 +64,7 @@ export const fieldReadBeforeItIsDeclared = {
       "order they depend on each other.\n\n",
   },
 
-  read(cls, { self }) {
+  read(cls, { self, resolve }) {
     const found: FieldReadBeforeItIsDeclaredIssue[] = [];
     const members = [...cls.members];
 
@@ -83,9 +84,10 @@ export const fieldReadBeforeItIsDeclared = {
         // base's field, set before this class's; the second is `undefined` wherever it is declared.
         // Found by review — `declare props: Props` below a `use` was reported as a crash.
         if (after.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.DeclareKeyword)) continue;
-        // Undecorated only: a decorator such as `@state` makes even an uninitialised field a signal at
-        // its own line, below the callback. Found by the second review.
-        if (after.initializer === undefined && (ts.getDecorators(after) ?? []).length === 0) continue;
+        // Except `@state`, which makes even an uninitialised field a signal at its own line, below the
+        // callback — found by the second review. Any decorator is not that: `@persist` alone defines
+        // nothing, so its field is `undefined` wherever it is declared — found by the third.
+        if (after.initializer === undefined && !hasDecorator(after, "state", resolve)) continue;
         const name = memberName(after);
         if (name !== undefined && !later.has(name)) later.set(name, after);
       }
@@ -111,35 +113,30 @@ export const fieldReadBeforeItIsDeclared = {
       // A destructured parameter reads each member when the callback is CALLED — whatever happens to
       // the local afterwards, a function handed over in the bag included, which keeps the `undefined`
       // it was given. Found by review: a destructure used only inside such a function was missed.
-      // A rest element, `{ ...all }`, copies every field: what is read off `all` is read too early.
-      const rests = new Set<string>();
       if (parameter !== undefined && ts.isObjectBindingPattern(parameter)) {
         for (const element of parameter.elements) {
-          if (element.dotDotDotToken !== undefined) {
-            if (ts.isIdentifier(element.name)) rests.add(element.name.text);
-            continue;
-          }
+          if (element.dotDotDotToken !== undefined) continue;
           const member = element.propertyName ?? element.name;
           if (ts.isIdentifier(member)) say(member.text, element);
         }
       }
 
-      (function look(node: ts.Node): void {
-        if (node !== callback && isHandedOver(node)) {
-          // A handed-over function runs later — but a rest copy it reads off was taken at the call.
-          if (rests.size > 0) lookInRests(node);
-          return;
-        }
-        if (ts.isPropertyAccessExpression(node) && owner.is(node.expression) && ts.isIdentifier(node.name)) {
-          say(node.name.text, node);
-        }
-        // Off a rest copy, even inside a handed-over function — the copy was made at the call.
+      // A rest copy, `{ ...all }`, was taken at the call: what is read off it is read too early,
+      // wherever the read is — a handed-over function included. One walk, over the whole callback.
+      (function rest(node: ts.Node): void {
         if (
           ts.isPropertyAccessExpression(node) &&
-          ts.isIdentifier(node.expression) &&
-          rests.has(node.expression.text) &&
-          ts.isIdentifier(node.name)
+          ts.isIdentifier(node.name) &&
+          owner.isRest(node.expression, resolve)
         ) {
+          say(node.name.text, node);
+        }
+        ts.forEachChild(node, rest);
+      })(callback);
+
+      (function look(node: ts.Node): void {
+        if (node !== callback && isHandedOver(node)) return;
+        if (ts.isPropertyAccessExpression(node) && owner.is(node.expression) && ts.isIdentifier(node.name)) {
           say(node.name.text, node);
         }
         if (ts.isIdentifier(node) && owner.destructured.has(node.text) && isLocalRead(node)) {
@@ -147,18 +144,6 @@ export const fieldReadBeforeItIsDeclared = {
         }
         ts.forEachChild(node, look);
       })(callback);
-
-      function lookInRests(at: ts.Node): void {
-        if (
-          ts.isPropertyAccessExpression(at) &&
-          ts.isIdentifier(at.expression) &&
-          rests.has(at.expression.text) &&
-          ts.isIdentifier(at.name)
-        ) {
-          say(at.name.text, at);
-        }
-        ts.forEachChild(at, lookInRests);
-      }
     }
 
     return found;

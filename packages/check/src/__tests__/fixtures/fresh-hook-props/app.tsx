@@ -121,6 +121,16 @@ class Reporting extends Component<{ id: string }> {
     return { conf, n: 0 };
   });
 
+  // Not reported: a destructured local is the value it is taken from.
+  v = this.use(Plain, (self: Reporting) => {
+    const { id } = self.props;
+    const conf = ["todo", id];
+    return { conf, n: 0 };
+  });
+
+  // REPORTED — read through the parameter's rest copy, which is a read of `tick` at the call.
+  w = this.use(Plain, ({ ...all }: Reporting) => ({ conf: { dense: true }, n: all.tick }));
+
   // Not reported: a plain field through the parameter is still not a signal.
   o = this.use(Plain, (self: Reporting) => ({ conf: { dense: true }, n: self.plain }));
 

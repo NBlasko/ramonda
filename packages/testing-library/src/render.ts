@@ -8,7 +8,7 @@ import {
   type queries as defaultQueries,
 } from "@testing-library/dom";
 import { act } from "./act";
-import { trackMountedTree, unmountTracked } from "./cleanup";
+import { trackMountedTree, unmountTracked, rememberAddress } from "./cleanup";
 import { requireHarness } from "./harness";
 
 /**
@@ -37,7 +37,7 @@ export interface RenderOptions {
   /**
    * The address to mount the tree at — `"/tournament?id=t1"`, or a whole URL on the same origin. Set
    * with `history.replaceState` before anything is mounted, so a router reads it as the page it was
-   * opened on. `cleanup` puts the address back after the test.
+   * opened on. `cleanup` puts back the address it replaced, so the next test is not on this page.
    */
   url?: string;
   /**
@@ -116,7 +116,10 @@ export interface RenderResult<T = unknown> extends BoundFunctions<typeof default
  */
 export function render<T = unknown>(ui: VNode, options: RenderOptions = {}): RenderResult<T> {
   requireHarness();
-  if (options.url !== undefined) window.history.replaceState(null, "", options.url);
+  if (options.url !== undefined) {
+    rememberAddress();
+    window.history.replaceState(null, "", options.url);
+  }
   const baseElement = options.baseElement ?? document.body;
   const containerIsOurs = options.container === undefined;
 

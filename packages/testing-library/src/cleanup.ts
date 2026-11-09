@@ -45,22 +45,27 @@ export function unmountTracked(tree: MountedTree): void {
  * fail together, pointing at the wrong file.
  */
 /**
- * The address the current test started at.
+ * The address before a test asked for another with `render(…, { url })`, which `cleanup` puts back.
  *
- * A test that navigates moves the ONE `location` every test shares, and unmounting the tree left it
- * there: measured, the next test started at the URL the one before had pushed, so a routed app
- * rendered the wrong page in a test that never asked for one. `cleanup` puts it back.
- *
- * Taken at the start of EACH test, by the `beforeEach` registered beside the cleanup — not once when
- * this package loads, which sent every test after the first back to the run's address in a file that
- * set its own in `beforeAll`. Found by review. Without a runner's hooks it is the address at load.
+ * Only an address the TEST set. Three reviews in a row found a case where guessing "where the test
+ * started" was wrong — an address set in `beforeAll`, a tree rendered there, a project cleaning up at
+ * the start of a test instead of the end — so nothing is guessed: a test that navigates by itself
+ * leaves the address where it went, and a test that names one gets the page back as it found it.
  */
-let startedAt: string | undefined = typeof window === "undefined" ? undefined : window.location.href;
+let restoreTo: string | undefined;
+
+/** Called by `render` before it sets `url` — the first one in a test is what `cleanup` restores. */
+export function rememberAddress(): void {
+  if (restoreTo === undefined && typeof window !== "undefined") restoreTo = window.location.href;
+}
 
 export function cleanup(): void {
   for (const tree of [...mounted]) unmountTracked(tree);
   // After the unmount, so nothing still mounted hears the address change as a navigation.
-  if (startedAt !== undefined && window.location.href !== startedAt) window.history.replaceState(null, "", startedAt);
+  if (restoreTo !== undefined) {
+    if (window.location.href !== restoreTo) window.history.replaceState(null, "", restoreTo);
+    restoreTo = undefined;
+  }
 }
 
 /**
@@ -76,22 +81,6 @@ export function disableAutoCleanup(): void {
 /** Whether trees are unmounted after each test — off when a project opted out. */
 export function autoCleanupOn(): boolean {
   return !autoCleanupDisabled && !readEnvFlag("RAMONDA_TL_SKIP_AUTO_CLEANUP");
-}
-
-/**
- * Takes the address each test starts at, for `cleanup` to put back — registered whether or not the
- * cleanup after each test is: a project that opted out and calls `cleanup()` itself was sent back to
- * the address at load. Found by review.
- */
-export function registerAddressStart(): void {
-  const before = (globalThis as { beforeEach?: (fn: () => void) => void }).beforeEach;
-  if (typeof before !== "function" || typeof window === "undefined") return;
-  before(() => {
-    // Not while the last test's trees are still mounted: a project that cleans up at the START of a
-    // test, in its own `beforeEach`, has not cleaned yet — this hook runs first — and the address now
-    // is where the last test left it. Found by the second review.
-    if (mounted.size === 0) startedAt = window.location.href;
-  });
 }
 
 export function registerAutoCleanup(): void {
