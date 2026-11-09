@@ -1,5 +1,16 @@
 # @ramonda/testing-library
 
+## 0.5.0
+
+### Minor Changes
+
+- e4e9f45: `render` refuses when the test runner has no global `afterEach` — a vitest without `globals: true` — instead of skipping the cleanup and the diagnostics check after each test in silence. The error says what is missing and both ways out: turn on the runner's globals, or import `dont-cleanup-after-each` and `dont-fail-on-diagnostics` to say the project does them itself.
+- da68b6d: `render(<App />, { url: "/tournament?id=t1" })` mounts the tree at that address, so a routed app is tested on the page a test names, and `cleanup` puts back the address it replaced — so a test that starts at a url and navigates no longer leaves the next one on its page.
+
+### Patch Changes
+
+- e4e9f45: `@ramonda/testing-library/dont-cleanup-after-each` and `/dont-fail-on-diagnostics` carry their types. They were exported with none, so the import a setup file writes failed the type check with TS2882 on TypeScript 6.
+
 ## 0.4.0
 
 ### Minor Changes
