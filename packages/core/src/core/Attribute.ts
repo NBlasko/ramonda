@@ -347,7 +347,11 @@ function attachNextOnenhancedNode(
 
     const previousAttribute = getPreviousFromenhancedNode(enhancedNode, name, previousAttributes[name]);
 
-    if (!attributesEqual(nextAttribute, previousAttribute) || formPropertyDiverged(enhancedNode, name, nextAttribute)) {
+    if (
+      !attributesEqual(nextAttribute, previousAttribute) ||
+      changedInPlace(name, nextAttribute) ||
+      formPropertyDiverged(enhancedNode, name, nextAttribute)
+    ) {
       setNextOnenhancedNode(enhancedNode, name, nextAttribute, onServer);
     }
   }
@@ -759,11 +763,20 @@ function isPrimitive(val: unknown): boolean {
   return val === null || (typeof val !== "object" && typeof val !== "function");
 }
 
+/**
+ * An attribute VALUE that is an object is the same object after it changes in place — a `URL` whose
+ * `searchParams` were set — so being the one written last says nothing about the string it makes: it is
+ * written on every pass, as it was while the page, which holds that string, was what the diff compared
+ * with. A listener is not a value: an `on…` object (`{ handleEvent }`) is the same listener while it is
+ * the same object, and re-adding it would move it behind every listener added since.
+ */
+function changedInPlace(name: string, next: unknown): boolean {
+  // `null` never reaches here: the loop skips a value invisible on screen first.
+  return typeof next === "object" && !name.startsWith("on");
+}
+
 function attributesEqual(next: unknown, previous: unknown): boolean {
-  // An object is the same object after it changes in place — a `URL` whose `searchParams` were set — so
-  // being the one written last says nothing about its value: it is written on every pass, as it was while
-  // the page, which holds its string, was what the diff compared with.
-  if (next === previous) return typeof next !== "object" || next === null;
+  if (next === previous) return true;
   if (isPrimitive(next) && isPrimitive(previous)) {
     return String(next) === String(previous);
   }

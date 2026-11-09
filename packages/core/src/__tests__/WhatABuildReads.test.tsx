@@ -245,6 +245,31 @@ describe("an element the diff updates", () => {
     );
   });
 
+  test("a listener given as an object keeps its place among the element's listeners", async () => {
+    const heard: string[] = [];
+    class Listening extends Component {
+      @state renders = 0;
+      readonly handler = {
+        handleEvent() {
+          heard.push("app");
+        },
+      };
+      render() {
+        return <div>{__h("button", { onclick: this.handler, "data-renders": this.renders } as never, "b")}</div>;
+      }
+    }
+    const app = await getDOM<Listening>(<Listening />);
+    await app.settle();
+    const button = app.container.querySelector("button") as HTMLButtonElement;
+    button.addEventListener("click", function library() {
+      heard.push("library");
+    });
+    app.instance.renders++;
+    await app.settle();
+    button.click();
+    expect(heard).toEqual(["app", "library"]);
+  });
+
   test("keeps what the browser changed — a <details> the reader closed stays closed", async () => {
     const app = await getDOM<Panel>(<Panel />);
     await app.settle();
