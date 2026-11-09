@@ -609,11 +609,7 @@ function executeChangesOnStringNode(
 ) {
   // PROTOTYPE: a compiled block — see `core/block.ts`.
   if ((vnode as Partial<BlockVNode>)[BLOCK] !== undefined) {
-    return applyBlock(
-      vnode as BlockVNode,
-      maybeenhancedNode as Element | undefined,
-      placeholderComponent?.[COMPONENT_RUNTIME]?.env === "server",
-    );
+    return applyBlock(vnode as BlockVNode, maybeenhancedNode as Element | undefined, placeholderComponent);
   }
   const built = maybeenhancedNode?.nodeName !== vnode.name;
   const enhancedNode = built ? createElement(vnode) : maybeenhancedNode;
@@ -625,14 +621,26 @@ function executeChangesOnStringNode(
   const onServer = placeholderComponent?.[COMPONENT_RUNTIME]?.env === "server";
 
   applyChangesOnAttributes(enhancedNode, vnode.attributes, onServer, built);
+  diffChildrenOf(enhancedNode, vnode.children, placeholderComponent, built);
+  return enhancedNode;
+}
 
-  const vnodeChildren = vnode.children;
-
+/**
+ * Brings an element's children into line with `vnodeChildren` — the element diff's second half, and a
+ * compiled block's for an element whose children are a hole (see `core/block.ts`). `built` says the
+ * element was created this pass and holds nothing yet.
+ */
+export function diffChildrenOf(
+  enhancedNode: ChildNode,
+  vnodeChildren: unknown[],
+  placeholderComponent: MaybeComponent,
+  built: boolean,
+): void {
   // A new element has no children to claim, keep or move: each is built and appended, in order. Those
   // that are regions — a list, a component — keep the path that knows them.
   if (built && (vnodeChildren as { [HAS_REGION]?: boolean })[HAS_REGION] !== true) {
     appendBuiltChildren(vnodeChildren, placeholderComponent, enhancedNode);
-    return enhancedNode;
+    return;
   }
 
   const { cloneChildren, orderedNodes, previousOrder } = applyDiffOnChildren(
@@ -659,8 +667,6 @@ function executeChangesOnStringNode(
     // A lone child placed again is the same record, and a write on a node costs more than a read.
     if ((enhancedNode as Placed)[PLACED] !== placed) (enhancedNode as Placed)[PLACED] = placed;
   }
-
-  return enhancedNode;
 }
 
 function createElement(vnodeString: VNodeString): SVGElement | HTMLElement {
