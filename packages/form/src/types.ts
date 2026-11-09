@@ -135,6 +135,13 @@ export interface FieldApi<T> {
   readonly name: string;
   set(next: T): void;
   reset(): void;
+  /**
+   * Puts a message on this field — a server's answer, mapped onto the field it is about. The typed
+   * door to `form.setError(path, message)`: a field that is not in the schema is a type error here,
+   * where a string path is checked by nobody. Marks the field touched so the message shows, and the
+   * next validation clears it.
+   */
+  setError(message: string): void;
   /** Escape hatch: a property named `$`, or a key not known until runtime. */
   at<K extends keyof NonNullable<T> & string>(key: K): FieldNode<NonNullable<T>[K]>;
 }

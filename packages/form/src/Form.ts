@@ -785,7 +785,11 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
    * the value that was sent and the user has since changed it.
    */
   setError(path: string, message: string): void {
-    const parsed = parsePath(path);
+    this.setErrorAt(parsePath(path), message);
+  }
+
+  /** `setError` by a parsed path — what a field's own `$.setError(message)` calls. */
+  setErrorAt(parsed: Path, message: string): void {
     this.issues = withIssue(this.issues, parsed, message);
     this.touchedKeys.add(pathKey(parsed));
     this.bump();
@@ -1009,6 +1013,7 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
       write: (path, next) => this.write(path, next),
       touch: (path) => this.touch(path),
       resetAt: (path) => this.resetAt(path),
+      setErrorAt: (path, message) => this.setErrorAt(path, message),
       rowIds: (path) => this.rowIds(path),
       splice: (path, start, remove, insert) => this.splice(path, start, remove, insert),
       move: (path, from, to) => this.move(path, from, to),
