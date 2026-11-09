@@ -133,14 +133,57 @@ browser draws. That is a [hydration mismatch](/ssr/mismatches), and naming both 
 ## Remembering the choice
 
 `@state` lasts as long as the page. To keep the reader's choice past a reload, keep it where the next
-visit can find it before anything renders:
+visit finds it before anything renders — in the address, or in a cookie.
 
-- **In the address**, `/sr/matches` — a route parameter, [read like any other](/routing/params). Each
-  language is then its own page: it can be baked at build time, linked to and found by a search engine
-  in that language. The best answer for a site that renders on a server.
-- **In a cookie**, which the server reads through [`requestContext()`](/ssr/request). The first HTML is
-  already in the reader's language, but a page that reads the request is rendered for each request
-  and cannot be baked.
+**A choice kept in the browser is not enough on a page baked at build time.** Every reader gets the same
+file, so a reader who chose English is sent the page in Serbian, and the switch after hydration is a
+flash on every load. The answer is to make each language its own page.
+
+### One route per language
+
+The language is the first segment of the address — `/en/matches`, `/sr-Latn/matches` — and the
+component above the outlet reads it from the path:
+
+```tsx
+import { Component, Head, compute, createContext } from "@ramonda/core";
+import { createRoutes, createRouter } from "@ramonda/router";
+
+const routes = createRoutes({ "/:lang/matches": <MatchCount count={3} /> });
+const { Router, RouteOutlet, Navigator } = createRouter(routes);
+const [LanguageProvider] = createContext({ locale: "en" as Locale });
+
+class App extends Component {
+  router = this.use(Router);
+  route = this.use(Navigator);
+  language = this.use(LanguageProvider, (self: App) => ({ locale: self.locale }));
+  head = this.use(Head, (self: App) => ({ lang: self.locale, link: self.alternates }));
+
+  /** The first segment, when it is a language this app has. */
+  @compute get locale(): Locale {
+    return this.route.pathname.startsWith("/sr-Latn/") ? "sr-Latn" : "en";
+  }
+
+  /** The same page in every language, for a search engine: `<link rel="alternate" hreflang>`. */
+  @compute get alternates() {
+    const rest = this.route.pathname.replace(/^\/[^/]+/, "");
+    return (["en", "sr-Latn"] as const).map((lang) => ({ rel: "alternate", hreflang: lang, href: `/${lang}${rest}` }));
+  }
+
+  render() {
+    return <RouteOutlet routes={routes} />;
+  }
+}
+```
+
+Each language is then a page of its own: baked at build in that language, linked to, and found by a
+search engine in it. Mark the route `prerender: true` in `src/entry-server.tsx` and list the pages in
+`PRERENDER_PATHS` — `["/en/matches", "/sr-Latn/matches"]` — and switching language is a link to the same
+page under the other segment. A host serving only files cannot read a reader's settings, so `/` itself is
+the default language's page, or a link to each.
+
+**With a server, a cookie works too**, read through [`requestContext()`](/ssr/request): the first HTML is
+already in the reader's language. A page that reads the request is rendered for each request, though,
+and cannot be baked.
 
 ## Words inside the page that are in another language
 
