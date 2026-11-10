@@ -200,6 +200,10 @@ Usually a value that differs by nature (`Date`, `Math.random`), a browser-only A
 render, or a branch on the environment inside `render()`. See
 [hydration mismatches](/ssr/mismatches) for the two-pass pattern that fixes it.
 
+A value from the URL's hash is another: a browser never sends the part after `#` to a server, so a
+render that shows it cannot match the server's HTML — nor can a baked page's query. See
+[what the server never sees](/routing/server#what-the-server-never-sees).
+
 ## RMD008 — State changed after the component was unmounted
 
 A fetch that resolved after the user navigated away, most often. The update is **dropped** — in
