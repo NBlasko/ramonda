@@ -1,7 +1,7 @@
 import { enclosingBlock } from "./enclosingBlock";
 import { settleProps } from "../helpers/common";
 import { applyChangesOnAttributes } from "./Attribute";
-import { BLOCK, BLOCK_STATE, applyBlock, markupOf, type BlockVNode } from "./block";
+import { BLOCK, BLOCK_STATE, applyBlock, blockOf, markupOf, type BlockVNode } from "./block";
 import type {
   BaseComponent,
   ComponentChild,
@@ -608,7 +608,7 @@ function executeChangesOnStringNode(
   maybeenhancedNode: MaybeEnhancedNode | EnhancedChildNode,
 ) {
   // PROTOTYPE: a compiled block — see `core/block.ts`.
-  if ((vnode as Partial<BlockVNode>)[BLOCK] !== undefined) {
+  if (blockOf(vnode) !== undefined) {
     return applyBlock(vnode as BlockVNode, maybeenhancedNode as Element | undefined, placeholderComponent);
   }
   // A node a compiled block made holds that block's static parts and its record: an element of the same
@@ -1119,7 +1119,7 @@ export function holdsARegion(children: readonly unknown[]): boolean {
       const inner = (child as { children?: unknown }).children;
       if (Array.isArray(inner)) found = holdsARegion(inner);
       // A compiled block's children are in its holes.
-      const block = (child as Partial<BlockVNode>)[BLOCK] !== undefined ? markupOf(child as BlockVNode) : undefined;
+      const block = blockOf(child) !== undefined ? markupOf(child as BlockVNode) : undefined;
       for (let j = 0; !found && block !== undefined && j < block.length; j++) found = holdsARegion(block[j]);
     }
   }

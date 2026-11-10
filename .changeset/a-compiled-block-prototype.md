@@ -10,7 +10,8 @@ updates it by comparing each hole with the value it wrote last. A hole is an att
 the attribute rules as any attribute is, an element's one child — text written straight into its text
 node, markup through the children diff — or an element's children. A block a server rendered is
 hydrated in place, once its markup is checked against the template — tags, the template's own
-attributes and text; markup from another template, another route's page, is built instead. A
+attributes and text; markup from another template, another route's page, is built instead. An
+attribute only the server wrote goes, as it does from any element hydration adopts. A
 template's static parts are never compared again after that: what someone else changes or takes out
 there stays, as an attribute someone else sets does. `@ramonda/build` writes
 these calls. Measured on js-framework-benchmark

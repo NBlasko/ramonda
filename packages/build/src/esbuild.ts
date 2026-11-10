@@ -1,5 +1,4 @@
 import { readFile } from "node:fs/promises";
-import { compileJsx } from "./compile";
 import type { RamondaOptions } from "./options";
 export type { RamondaOptions } from "./options";
 import { RAMONDA_TRANSFORM, check, envDefines, fillIn, lowersDecorators, refuse } from "./settings";
@@ -122,6 +121,8 @@ export function ramonda(settings: RamondaOptions = {}): EsbuildPluginLike {
         build.onLoad({ filter: /\.[jt]sx$/, namespace: "file" }, async (args) => {
           if (/[\\/]node_modules[\\/]/.test(args.path)) return undefined;
           const code = await readFile(args.path, "utf8");
+          // Here, on the first file it reads: a build with `compile: false` never loads the parser.
+          const { compileJsx } = await import("./compile");
           const compiled = compileJsx(code, args.path);
           if (compiled === undefined) return undefined;
           const map = Buffer.from(JSON.stringify(compiled.map)).toString("base64");

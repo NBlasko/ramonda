@@ -1,7 +1,7 @@
 import { diagnose } from "./diagnostics";
 import { displayName } from "../helpers/utils";
 import type { BaseComponent } from "../types/vdom";
-import { BOOLEAN_ATTRIBUTES } from "../helpers/constants";
+import { ATTRIBUTE_OF_PROPERTY, BOOLEAN_ATTRIBUTES } from "../helpers/constants";
 import { isInvisibleOnScreen } from "../core/Attribute";
 import { isComponentClose, isComponentOpen } from "../core/componentMarker";
 
@@ -172,7 +172,7 @@ export function reportAttributeMismatches(
     if (!isComparable(attribute, value)) continue;
 
     // Ramonda normalizes to the JSX spelling; the DOM's names are `class` and `for`.
-    const domName = attribute === "className" ? "class" : attribute === "htmlFor" ? "for" : attribute;
+    const domName = ATTRIBUTE_OF_PROPERTY[attribute] ?? attribute;
 
     const found = node.getAttribute(domName);
     if (found === null) continue;

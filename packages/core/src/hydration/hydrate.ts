@@ -3,7 +3,7 @@ import { COMPONENT_TYPE, CHILD_RECORD, ORIGIN_SYM, REQUEST_ATTR } from "../helpe
 import { className, displayName } from "../helpers/utils";
 import { installClientRequestScope } from "./requestContext";
 import { adoptAttributes, applyChangesOnAttributes, formatAttributes } from "../core/Attribute";
-import { BLOCK, adoptBlock, type BlockVNode } from "../core/block";
+import { adoptBlock, blockOf, type BlockVNode } from "../core/block";
 import { generateRenderOutput } from "../helpers/generateRenderOutput";
 import { seedWatchProps } from "../helpers/watchProps";
 import { runComponentEffects } from "../reactivity/effect";
@@ -288,7 +288,7 @@ function hydrateElement(
   }
 
   // A compiled block adopts the server's element hole by hole — see `adoptBlock`.
-  if ((vnode as Partial<BlockVNode>)[BLOCK] !== undefined) {
+  if (blockOf(vnode) !== undefined) {
     const adopted = adoptBlock(vnode as BlockVNode, cursor as unknown as Element, {
       children: (children, element) => hydrateChildren(children, placeholder, element),
       attributes: (element, attributes) => {
@@ -296,7 +296,16 @@ function hydrateElement(
         adoptAttributes(element as unknown as ChildNode, attributes);
       },
     });
-    return adopted ? nextOf(cursor) : hydrationFallback(vnode, placeholder, cursor, parent);
+    if (adopted) return nextOf(cursor);
+    // The tag is the template's; what differs is the rest of what the template writes.
+    if (__DEV__) {
+      reportStructureMismatch(
+        placeholder,
+        `<${vnodeName(vnode)}> with the attributes and text its compiled template writes`,
+        describeFound(cursor),
+      );
+    }
+    return hydrationFallback(vnode, placeholder, cursor, parent, false);
   }
 
   if (__DEV__) {
@@ -1090,8 +1099,10 @@ function hydrationFallback(
   placeholder: MaybeComponent,
   existingNode: EnhancedChildNode | null,
   parent: Node,
+  /** `false` when the caller has said already what differs. */
+  report = true,
 ): EnhancedChildNode | null {
-  if (__DEV__) {
+  if (__DEV__ && report) {
     reportStructureMismatch(placeholder, `<${vnodeName(vnode)}>`, describeFound(existingNode));
   }
   const fresh = diffAndMerge(vnode, placeholder, undefined);

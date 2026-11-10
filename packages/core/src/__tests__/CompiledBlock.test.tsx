@@ -1,4 +1,4 @@
-import { describe, test, expect } from "vitest";
+import { describe, test, expect, vi } from "vitest";
 import { getDOM } from "../test/setup";
 import { Component, state, list, memoized } from "../index";
 import { __template, __block } from "../jsx-runtime";
@@ -6,6 +6,7 @@ import { renderToString } from "../hydration/ssr";
 import { hydrateRoot } from "../hydration/hydrate";
 import { flushSync } from "../testing";
 import { componentAt } from "../core/DiffAndMerge";
+import { resetDiagnostics } from "../debug/diagnostics";
 
 /**
  * What the JSX compiler writes for an element tree whose shape never changes, written here by hand: the
@@ -520,24 +521,58 @@ describe("a keyed element and a block of the same key, taking turns", () => {
   });
 });
 
-describe("a template attribute written over two lines", () => {
-  test("is the server's, though the parser gave its CRLF back as LF", async () => {
-    const WRAPPED = __template({ t: "p", a: { title: "one\r\ntwo" }, c: ["x"] });
-    class Wrapped extends Component {
+describe("a served block whose root carries what only the server wrote", () => {
+  test("is adopted, and the server's own attribute goes", async () => {
+    class Marked extends Component {
       render() {
-        return <div>{__block(WRAPPED, [])}</div>;
+        return <div>{__block(HOME, [])}</div>;
       }
     }
     const container = document.createElement("div");
     document.body.appendChild(container);
-    container.innerHTML = await renderToString(<Wrapped />);
-    const served = container.querySelector("p");
-    hydrateRoot(<Wrapped />, container);
+    container.innerHTML = await renderToString(<Marked />);
+    const served = container.querySelector("#home") as HTMLElement;
+    served.setAttribute("data-served", "1");
+    hydrateRoot(<Marked />, container);
     await Promise.resolve();
     await Promise.resolve();
-    const kept = container.querySelector("p") === served;
+    const after = { kept: container.querySelector("#home") === served, html: served.outerHTML };
     container.remove();
-    expect(kept).toBe(true);
+    expect(after).toEqual({ kept: true, html: '<div id="home">home</div>' });
+  });
+});
+
+describe("a served block from another template, in development", () => {
+  test("is reported as the compiled template it was rendered from", async () => {
+    const records: { code: string; message: string }[] = [];
+    globalThis.__RAMONDA_DIAGNOSTICS__ = (record) => records.push(record);
+    resetDiagnostics();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    let served = true;
+    class Route extends Component {
+      render() {
+        return <main>{__block(served ? PLAYERS_LIST : HOME, [])}</main>;
+      }
+    }
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    try {
+      container.innerHTML = await renderToString(<Route />);
+      served = false;
+      hydrateRoot(<Route />, container);
+      await Promise.resolve();
+      await Promise.resolve();
+    } finally {
+      globalThis.__RAMONDA_DIAGNOSTICS__ = undefined;
+      warn.mockRestore();
+      log.mockRestore();
+      container.remove();
+    }
+    const mismatch = records.filter((record) => record.code === "RMD007").map((record) => record.message);
+    expect(mismatch).toEqual([
+      expect.stringContaining("<div> with the attributes and text its compiled template writes"),
+    ]);
   });
 });
 

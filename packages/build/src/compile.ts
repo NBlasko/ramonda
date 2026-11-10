@@ -89,7 +89,7 @@ export function compileJsx(code: string, id: string): Compiled | undefined {
   if (parsed.errors.length > 0) return undefined;
 
   const out = new MagicString(code);
-  const compiler = new Compiler(code, out);
+  const compiler = new Compiler(out);
   for (const node of outermostJsx(parsed.program as unknown as Node)) compiler.jsx(node, false);
   if (compiler.templates.length === 0) return undefined;
 
@@ -234,11 +234,9 @@ type Piece = string | Node;
 
 class Compiler {
   readonly templates: string[] = [];
-  private readonly code: string;
   private readonly out: MagicString;
 
-  constructor(code: string, out: MagicString) {
-    this.code = code;
+  constructor(out: MagicString) {
     this.out = out;
   }
 
@@ -295,7 +293,9 @@ class Compiler {
         } else if (value.type === "Literal") {
           const text = value.value as string;
           if (name !== "key" && bakeable(tag, name)) {
-            baked.push(`${JSON.stringify(ATTRIBUTE_OF_PROPERTY[name] ?? name)}: ${JSON.stringify(text)}`);
+            // With line breaks as HTML gives them back — a CRLF checkout's arrive as LF in a served page.
+            const written = text.replace(/\r\n?/g, "\n");
+            baked.push(`${JSON.stringify(ATTRIBUTE_OF_PROPERTY[name] ?? name)}: ${JSON.stringify(written)}`);
             continue;
           }
           // JSX's string, which has no escapes, as a JavaScript one.

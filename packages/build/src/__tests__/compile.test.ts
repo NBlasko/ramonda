@@ -90,6 +90,13 @@ describe("a host element tree", () => {
     expect(a).toBe(`{ t: "a", d: [["onclick", 0], ["hidden", 1]], c: ["x"] }`);
   });
 
+  test("a literal written over two lines of a CRLF file is baked with LF, as HTML gives it back", () => {
+    const {
+      templates: [p],
+    } = compile(`const p = <p title="one\r\ntwo">x</p>;`);
+    expect(p).toBe(`{ t: "p", a: { "title": "one\\ntwo" }, c: ["x"] }`);
+  });
+
   test("`htmlFor` is written as `for` on the template", () => {
     const {
       templates: [label],
@@ -239,6 +246,10 @@ describe("the plugins", () => {
       off: off.includes("__ramondaTemplate"),
       packaged: packaged.includes("__ramondaTemplate"),
     }).toEqual({ on: true, off: false, packaged: false });
+  });
+
+  test("the Vite plugin leaves a module with no file behind it to the plugin that makes it up", async () => {
+    expect(await viteRamonda().load.call(undefined, join(tmpdir(), "no-such-dir", "routes.tsx"))).toBeNull();
   });
 
   test("the esbuild plugin reads files only: a module another plugin made up is left to it", async () => {

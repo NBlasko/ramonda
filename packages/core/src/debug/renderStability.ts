@@ -1,4 +1,4 @@
-import { BLOCK, viewOf, type BlockVNode } from "../core/block";
+import { blockOf, viewOf, type BlockVNode } from "../core/block";
 import { STABLE_PROPS } from "../helpers/constants";
 import { displayName } from "../helpers/utils";
 import { devFlags } from "../config";
@@ -342,10 +342,7 @@ function compareNode(a: unknown, b: unknown, path: string, depth: number, walk: 
 
   // A compiled block keeps its attributes and children in a template and its holes: compared as the
   // element tree it stands for.
-  if (
-    (a as Partial<BlockVNode> | null)?.[BLOCK] !== undefined &&
-    (b as Partial<BlockVNode> | null)?.[BLOCK] !== undefined
-  ) {
+  if (blockOf(a) !== undefined && blockOf(b) !== undefined) {
     compareNode(viewOf(a as BlockVNode), viewOf(b as BlockVNode), path, depth, walk);
     return;
   }

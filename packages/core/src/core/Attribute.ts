@@ -739,6 +739,28 @@ function removePreviousFromenhancedNode(
 }
 
 /**
+ * Takes away what only the server wrote on an element a compiled block adopts — an attribute `next` does
+ * not name, the exposed request's stamp among them — as the attribute diff does from any element it
+ * adopts, and keeps what it keeps: an attribute a default holds (see {@link heldAsADefault}).
+ *
+ * Names are compared folded on an HTML element, where the parser folded the page's, and as written on
+ * an SVG one, where it did not.
+ */
+export function dropServerOnly(element: Element, next: NodeAttributes, svg: boolean): void {
+  const named = new Set<string>();
+  for (const name in next) {
+    const attribute = ATTRIBUTE_OF_PROPERTY[name] ?? name;
+    named.add(svg ? attribute : attribute.toLowerCase());
+  }
+  for (const attribute of Array.from(element.attributes)) {
+    const name = attribute.name;
+    if (named.has(svg ? name : name.toLowerCase())) continue;
+    if (heldAsADefault(element as unknown as EnhancedHTMLNode, ALIASED_BACK[name] ?? name, next)) continue;
+    element.removeAttribute(name);
+  }
+}
+
+/**
  * An `<input>`'s `value` or `checked` attribute that its `defaultValue` or `defaultChecked` holds:
  * `writeDefaults` writes it, and only when the default changes. Taken away here and written back
  * there, a radio's `checked` would turn the default back on and the user's pick off, on every pass.

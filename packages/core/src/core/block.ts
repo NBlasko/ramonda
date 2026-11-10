@@ -26,7 +26,7 @@
  */
 import { TEXT_TYPE, ORIGIN_SYM, KEY_SYM, IS_SVG, BLOCK, svgElements } from "../helpers/constants";
 import { currentOrigin } from "./origin";
-import { COMPARED_WITH_THE_ELEMENT, applyChangesOnAttributes } from "./Attribute";
+import { COMPARED_WITH_THE_ELEMENT, applyChangesOnAttributes, dropServerOnly } from "./Attribute";
 import { diffChildrenOf, holdsARegion } from "./DiffAndMerge";
 import { normalizeChildren } from "../vdom/h";
 import { COMPONENT_RUNTIME } from "./runtime";
@@ -52,6 +52,11 @@ export interface TemplateNode {
 interface Site {
   readonly path: readonly number[];
   readonly svg: boolean;
+  /**
+   * Per attribute hole, settled once from its name: whether it reaches the attribute diff on every
+   * render (`COMPARED_WITH_THE_ELEMENT`).
+   */
+  readonly always?: readonly boolean[];
   readonly d?: readonly (readonly [string, number])[];
   readonly h?: number;
   readonly k?: number;
@@ -98,7 +103,8 @@ export function template(description: TemplateNode): Template {
   const walk = (node: TemplateNode, path: number[]): void => {
     if (node.d !== undefined || node.h !== undefined || node.k !== undefined) {
       const svg = svgElements.has(node.t);
-      sites.push({ path, svg, d: node.d, h: node.h, k: node.k });
+      const always = node.d?.map(([name]) => COMPARED_WITH_THE_ELEMENT.has(name));
+      sites.push({ path, svg, always, d: node.d, h: node.h, k: node.k });
     }
     if (node.h !== undefined) loneHoles.push(node.h);
     if (node.k !== undefined) childrenHoles.push(node.k);
@@ -190,12 +196,11 @@ function attributesOf(site: Site, values: readonly unknown[]): Record<string, un
 }
 
 /**
- * Whether a hole's attribute has to go through the attribute diff: a different value, an object that
- * may have changed in place, or one of the names the element itself may have moved away from.
+ * Whether a hole's attribute has to go through the attribute diff: a different value, one of the names
+ * the element itself may have moved away from (`always`), or an object that may have changed in place.
  */
-function attributeChanged(name: string, next: unknown, previous: unknown): boolean {
-  if (next !== previous || COMPARED_WITH_THE_ELEMENT.has(name)) return true;
-  return typeof next === "object" && next !== null && !name.startsWith("on");
+function attributeChanged(next: unknown, previous: unknown, always: boolean): boolean {
+  return next !== previous || always || (typeof next === "object" && next !== null);
 }
 
 /**
@@ -282,7 +287,7 @@ export function applyBlock(vnode: BlockVNode, existing: Element | undefined, own
     if (d !== undefined) {
       for (let j = 0; j < d.length; j++) {
         const index = d[j][1];
-        if (attributeChanged(d[j][0], values[index], previous[index])) {
+        if (attributeChanged(values[index], previous[index], (site.always as boolean[])[j])) {
           applyChangesOnAttributes(element, attributesOf(site, values), onServer);
           break;
         }
@@ -297,8 +302,11 @@ export function applyBlock(vnode: BlockVNode, existing: Element | undefined, own
   return existing;
 }
 
-function lines(value: string | null): string | null {
-  return value === null ? null : value.replace(/\r\n?/g, "\n");
+/** What `element`'s template node writes: its baked attributes, and each hole's value. */
+function writtenBy(node: TemplateNode, values: readonly unknown[]): Record<string, unknown> {
+  const written: Record<string, unknown> = { ...node.a };
+  for (const [name, hole] of node.d ?? []) written[name] = values[hole];
+  return written;
 }
 
 /**
@@ -308,13 +316,18 @@ function lines(value: string | null): string | null {
  * a static part is never compared again, so a page the server rendered from another template (another
  * route's `<div>`) has to be told apart here, or it would be kept as this one.
  */
-function matches(node: TemplateNode, element: Node, sites: Element[]): boolean {
+function matches(
+  node: TemplateNode,
+  element: Node,
+  sites: Element[],
+  all: (readonly [Element, TemplateNode])[],
+): boolean {
   const svg = svgElements.has(node.t);
   if (element.nodeType !== 1 || element.nodeName !== (svg ? node.t : node.t.toUpperCase())) return false;
   if (node.a !== undefined) {
-    // Line breaks as the HTML parser gives them back: a CRLF in the source arrives as LF.
-    for (const name in node.a) if (lines((element as Element).getAttribute(name)) !== lines(node.a[name])) return false;
+    for (const name in node.a) if ((element as Element).getAttribute(name) !== node.a[name]) return false;
   }
+  all.push([element as Element, node]);
   if (node.d !== undefined || node.h !== undefined || node.k !== undefined) sites.push(element as Element);
   // What a hole holds is the hole's to adopt.
   if (node.h !== undefined || node.k !== undefined) return true;
@@ -323,7 +336,7 @@ function matches(node: TemplateNode, element: Node, sites: Element[]): boolean {
     if (child === null) return false;
     if (typeof expected === "string") {
       if (child.nodeType !== 3 || (child as Text).data !== expected) return false;
-    } else if (!matches(expected, child, sites)) {
+    } else if (!matches(expected, child, sites, all)) {
       return false;
     }
     child = child.nextSibling;
@@ -350,7 +363,11 @@ export function adoptBlock(
   const { template, values } = vnode[BLOCK];
   const sites = template.sites;
   const elements: Element[] = [];
-  if (!matches(template.description, root, elements)) return false;
+  const all: (readonly [Element, TemplateNode])[] = [];
+  if (!matches(template.description, root, elements, all)) return false;
+  // What only the server wrote — an attribute no template part or hole names, the exposed request's
+  // stamp among them — goes, as it does from an element the attribute diff adopts.
+  for (const [element, node] of all) dropServerOnly(element, writtenBy(node, values), svgElements.has(node.t));
 
   (root as unknown as Record<symbol, unknown>)[ORIGIN_SYM] = vnode[ORIGIN_SYM];
   const key = vnode.attributes.key;

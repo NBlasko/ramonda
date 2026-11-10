@@ -1,5 +1,4 @@
 import { readFile } from "node:fs/promises";
-import { compileJsx } from "./compile";
 import type { RamondaOptions } from "./options";
 export type { RamondaOptions } from "./options";
 import {
@@ -219,12 +218,16 @@ export function ramonda(options: RamondaOptions = {}): VitePluginLike {
      * The JSX compiler, here rather than in a transform: it reads the source as the app wrote it, before
      * the transform that compiles JSX to `jsx()` calls — which runs ahead of every transform but an
      * enforced one, and this plugin's own transform has to run after it. A module with a query is
-     * Vite's own (`?raw`, `?url`), and one in `node_modules` was built by somebody else.
+     * Vite's own (`?raw`, `?url`), one in `node_modules` was built by somebody else, and one with no file
+     * behind it is another plugin's to load. The compiler — the parser with it — is imported here, on the
+     * first module it reads: a build with `compile: false` never loads it.
      */
     async load(id) {
       if (!compile || id.startsWith("\0") || id.includes("?") || !JSX_SCRIPT.test(id)) return null;
       if (id.includes("/node_modules/")) return null;
-      const code = await readFile(id, "utf8");
+      const code = await readSource(id);
+      if (code === undefined) return null;
+      const { compileJsx } = await import("./compile");
       const compiled = compileJsx(code, id);
       return compiled === undefined ? null : { code: compiled.code, map: compiled.map };
     },
@@ -260,3 +263,13 @@ export function ramonda(options: RamondaOptions = {}): VitePluginLike {
 /** A module Oxc has turned into JavaScript: what a decorator can be written in. */
 const SCRIPT = /\.[cm]?[jt]sx?$/;
 const JSX_SCRIPT = /\.[jt]sx$/;
+
+/** A module's source, or `undefined` when no file has its name — a module some other plugin makes up. */
+async function readSource(id: string): Promise<string | undefined> {
+  try {
+    return await readFile(id, "utf8");
+  } catch (error) {
+    if ((error as { code?: string }).code === "ENOENT") return undefined;
+    throw error;
+  }
+}
