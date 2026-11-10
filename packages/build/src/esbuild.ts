@@ -41,7 +41,8 @@ export const ramondaOptions = RAMONDA_TRANSFORM;
  * The `define` entries a build needs, merged with your own.
  *
  * ```ts
- * await build({ ...ramondaOptions, define: ramondaDefine({ __DEV__: "false" }) });
+ * process.env.NODE_ENV = "production"; // `import.meta.env.DEV` follows it
+ * await build({ ...ramondaOptions, define: ramondaDefine() });
  * ```
  *
  * ## Why this is a function and not a key on `ramondaOptions`

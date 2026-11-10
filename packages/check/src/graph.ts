@@ -84,12 +84,6 @@ export interface GraphNode {
 }
 
 /**
- * `kind` is what a walk reads; `via` is how it was written, which only a message needs.
- *
- * Splitting them is what keeps the format still when a new way of naming a component arrives: it
- * adds a `via` value, and every reader that switches on `kind` is unaffected.
- */
-/**
  * Whether a node was declared in ANOTHER package than the one the graph is of.
  *
  * Every id starts with the package it is in — `turniri/src/App.tsx#App`, `@ramonda/core/src/base/
@@ -105,6 +99,12 @@ export function fromAnotherPackage(graph: ComponentGraph, id: string): boolean {
   return graph.nodes.some((node) => node.id.startsWith(own));
 }
 
+/**
+ * `kind` is what a walk reads; `via` is how it was written, which only a message needs.
+ *
+ * Splitting them is what keeps the format still when a new way of naming a component arrives: it
+ * adds a `via` value, and every reader that switches on `kind` is unaffected.
+ */
 export interface GraphEdge {
   from: string;
   /** Absent on an `unresolved` edge, which is the whole point of that kind. */

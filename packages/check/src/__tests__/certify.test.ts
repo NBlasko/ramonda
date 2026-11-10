@@ -173,6 +173,26 @@ describe("a certificate for an app", () => {
     expect(certificate.claims.map((claim) => claim.id)).toContain("current");
   });
 
+  // Found by review: only the all-held footer had an app's wording; one missing claim fell back to
+  // "an app installing this", under a header saying nobody installs it.
+  test("and with a claim not made, still speaks of the app itself", () => {
+    const printed = renderCertificate({
+      package: { name: "turniri", version: "0.0.0" },
+      scope: "app",
+      covers: { components: 30, exported: 0 },
+      claims: [
+        {
+          id: "complete",
+          held: false,
+          says: "every component it names, it can follow",
+          against: [{ at: "src/a.tsx:1:1", why: "a hole" }],
+        },
+      ],
+    });
+    expect(printed).toContain("1 claim(s) not made");
+    expect(printed).not.toContain("installing this");
+  });
+
   test("and does not speak of an app that installs it", () => {
     const printed = renderCertificate({
       package: { name: "turniri", version: "0.0.0" },

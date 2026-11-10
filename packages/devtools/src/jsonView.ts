@@ -1,4 +1,4 @@
-import { escapeHtml } from "./format";
+import { entriesOfMapsAndSets, escapeHtml } from "./format";
 
 /**
  * A value as a collapsible tree — the thing a one-line preview kept failing to be.
@@ -178,7 +178,7 @@ function row(key: string | undefined, value: unknown, walk: Walk, depth: number)
 /** The pretty text behind the copy button — the whole value, not the bounded view of it. */
 export function toPrettyText(value: unknown): string {
   try {
-    return JSON.stringify(value, null, 2) ?? String(value);
+    return JSON.stringify(value, entriesOfMapsAndSets, 2) ?? String(value);
   } catch {
     return String(value);
   }

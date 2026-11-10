@@ -22,6 +22,9 @@ interface Setting {
 }
 
 /** Every property a declaration sets: itself, and every longhand when it is a shorthand. */
+/** What a setting the block wrote ITSELF is filed under, so it is never compared with its own kind. */
+const OWN = "this block";
+
 const setsOf = (property: string): readonly string[] => [property, ...(SHORTHANDS[property] ?? [])];
 
 /** Whether two declarations set any one property in common — what the merge's warning groups by. */
@@ -116,10 +119,17 @@ export function orderAcrossBlocks(
     one.conditions.join("|") === other.conditions.join("|");
 
   /** What a later setting is checked against, and what it clears, as the merge does. */
-  const against = <S extends Setting>(standing: S[], later: Setting, told: (earlier: S) => void): void => {
+  const against = <S extends Setting>(
+    standing: S[],
+    later: Setting,
+    told: (earlier: S) => void,
+    /** Earlier settings this one is not compared with — it still clears them. */
+    skip: (earlier: S) => boolean = () => false,
+  ): void => {
     const slot = widthSlot(later.conditions);
     const loses = standing.find(
       (earlier) =>
+        !skip(earlier) &&
         earlier.important === later.important &&
         !sameConditions(earlier, later) &&
         touch(earlier.property, later.property) &&
@@ -161,7 +171,6 @@ export function orderAcrossBlocks(
           if (kind === "cond") break;
           if (kind === "from") {
             const argument = (element as ts.CallExpression).arguments[0];
-            const earlierVia = via;
             via = `\`...$(${argument.getText().replace(/^\((.*)\)$/s, "$1")})\``;
             const inner = blockOf(argument);
             if (inner === undefined) continue;
@@ -178,7 +187,6 @@ export function orderAcrossBlocks(
               [],
               (one) => {
                 mine.push({ ...one, via });
-                if (earlierVia === "") return;
                 against(standing, one, (earlier) => {
                   // At the name itself: the parentheses around it are the virtual file's, and a place
                   // in them maps to nowhere in the author's text.
@@ -198,7 +206,17 @@ export function orderAcrossBlocks(
           const went = read(
             [element],
             [],
-            (later) => against(standing, later, (earlier) => said(later.node, later, earlier, earlier.via)),
+            (later) => {
+              // Against what a SPREAD left only: two of the block's own are the compiler's question.
+              against(
+                standing,
+                later,
+                (earlier) => said(later.node, later, earlier, earlier.via),
+                (earlier) => earlier.via === OWN,
+              );
+              // Kept, so a spread BELOW it is compared with it — found by review, they were dropped.
+              standing.push({ ...later, via: OWN });
+            },
             top,
           );
           if (!went) break;

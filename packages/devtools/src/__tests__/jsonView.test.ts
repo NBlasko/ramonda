@@ -135,3 +135,11 @@ describe("a Map and a Set", () => {
     expect(plain(new Set(["p"]))).toContain('0 : "p"');
   });
 });
+
+// Found by review: raw mode and copy went through plain `JSON.stringify`, which writes a Map as `{}`.
+describe("a Map and a Set as text", () => {
+  it("keep their entries in the pretty text behind raw mode and copy", () => {
+    expect(toPrettyText(new Map([["ada", 3]]))).toContain('"ada"');
+    expect(toPrettyText(new Set(["p"]))).toContain('"p"');
+  });
+});

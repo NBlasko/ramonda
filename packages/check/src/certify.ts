@@ -264,7 +264,10 @@ export function renderCertificate(certificate: Certificate): string {
       ? certificate.scope === "app"
         ? "  Every claim holds. Every component this app names can be followed, and nothing was exempted."
         : "  Every claim holds. An app that installs this can walk its graph end to end."
-      : `  ${missing.length} claim(s) not made. An app installing this gets a map with blanks in it,\n` +
+      : certificate.scope === "app"
+        ? `  ${missing.length} claim(s) not made. Below each place above, this app's own check judges\n` +
+          "  nothing — the list is meant to get shorter, not to score."
+        : `  ${missing.length} claim(s) not made. An app installing this gets a map with blanks in it,\n` +
           "  and the report above is the list of them — it is meant to get shorter, not to score.",
   );
   return lines.join("\n");

@@ -32,11 +32,11 @@ export class Player extends Component {
 ```
 
 The table is in the example on purpose: the pattern you name is **checked against it**, so the two
-cannot drift. In a real app the kit is minted once and imported — `import { Navigator } from "./routes"`
-— and the check comes with it.
+cannot drift. In a real app the table and its registration sit in `routes.ts`, and every page
+imports `Navigator` from `@ramonda/router` — the check comes with the registration.
 
 **Name the pattern and the type comes out of it.** `id` is a `string` with nothing annotated, and the
-pattern is checked against the table your kit was built from — a route that table does not declare is
+pattern is checked against the table your app registered — a route that table does not declare is
 a type error, and so is a static path, because it has no params to read. That is the same machinery
 `route("/players/:id", { id })` has always used for building an href, pointed the other way.
 

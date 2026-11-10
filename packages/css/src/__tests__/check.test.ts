@@ -2771,6 +2771,26 @@ describe("an override from another block that the sheet will not honour", () => 
     expect(findings[0].line).toBe(3);
   });
 
+  // Found by review: the block's own declarations were checked against spreads above them, but never
+  // kept, so a spread BELOW one of them was compared with nothing.
+  test("a spread below a conditioned declaration of the block's own", () => {
+    const findings = found({
+      "Card.tsx":
+        `const card = @@( border-color: blue; );\n` +
+        `export const page = @@(\n  @media print { border: none; }\n  ...$(card);\n);\n`,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
+  // And the block's own two declarations are the COMPILER's to compare — said once, not twice.
+  test("but two of the block's own declarations are reported once, by the compiler", () => {
+    expect(
+      found({
+        "Card.tsx": `const card = @@( color: red; );\nexport const page = @@( ...$(card); @media print { border: none; } border-color: blue; );\n`,
+      }),
+    ).toHaveLength(1);
+  });
+
   test("and under a WEAKER condition than the spread's", () => {
     expect(
       found({
