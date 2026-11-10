@@ -1,5 +1,5 @@
 import { Component, Head, Portal, created, list, portalTarget, state } from "@ramonda/core";
-import { Router, RouteOutlet, createRouter, createRoutes } from "@ramonda/router";
+import { Link, Navigator, Router, RouteOutlet, createRoutes } from "@ramonda/router";
 import { QueryClientProvider } from "@ramonda/query";
 import { NestingPage } from "./NestingPage";
 import { ProductsPage } from "./ProductsPage";
@@ -206,13 +206,15 @@ export const routes = createRoutes({
 });
 
 /**
- * The kit, minted once. `Link` and `Navigator` are reachable only from here — `@ramonda/router`
- * exports neither — so there is no second, unchecked import to reach for by accident.
- *
- * Below the table on purpose: `createRouter` reads it. The classes above use these inside field
- * initializers and `render`, which run per instance rather than while this module is evaluating.
+ * The table, registered: every `Link`, `Navigator` and `route()` in this program is checked against
+ * it, and each is imported from `@ramonda/router` — never from here, so no page imports this module
+ * back.
  */
-export const { Link, Navigator, route } = createRouter(routes);
+declare module "@ramonda/router" {
+  interface Register {
+    routes: typeof routes;
+  }
+}
 
 export class App extends Component {
   router = this.use(Router);

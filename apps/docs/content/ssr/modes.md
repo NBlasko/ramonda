@@ -35,7 +35,11 @@ export const routes = createRoutes({
   "/account": <Account />,
   "*": <NotFound />,
 });
-export const { Router, RouteOutlet, Navigator, Link, route } = createRouter(routes);
+declare module "@ramonda/router" {
+  interface Register {
+    routes: typeof routes;
+  }
+}
 ```
 
 **The rendering config** is server-only. It says how each route renders, and it lives in a
@@ -75,7 +79,7 @@ defineServer(routes, {
 });
 ```
 
-So the route table is the single source of truth, and both `createRouter` (which types your
+So the route table is the single source of truth, and both its registration (which types your
 `<Link href>`) and `defineServer` (which types this config) are checked against it. You never
 maintain two lists by hand. (The `"*"` fallback is not a real destination, so it needs no entry.)
 

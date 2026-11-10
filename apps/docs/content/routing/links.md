@@ -10,7 +10,7 @@ order: 71
 To let people move between pages, use `<Link>`:
 
 ```tsx
-import { Link } from "./routes";
+import { Link } from "@ramonda/router";
 
 <Link href="/players/9" className="navlink">Player 9</Link>;
 ```
@@ -36,7 +36,7 @@ left to the browser.
 A path may carry a query and a hash. `push` takes the same:
 
 ```tsx
-import { Link } from "./routes";
+import { Link } from "@ramonda/router";
 
 const sortedBy = (key: string) => <Link href={`/players?sort=${encodeURIComponent(key)}#top`}>By {key}</Link>;
 ```
@@ -75,7 +75,7 @@ Sometimes a navigation is the result of an action, not a link someone clicks —
 redirect after saving. For that, use the router's `push` (next page):
 
 ```tsx
-import { Navigator } from "./routes";
+import { Navigator } from "@ramonda/router";
 
 export class SaveButton extends Component<{ onSave: () => Promise<void> }> {
   route = this.use(Navigator);

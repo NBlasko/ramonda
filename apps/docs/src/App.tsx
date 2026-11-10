@@ -1,7 +1,8 @@
 import { Component, list, state } from "@ramonda/core";
 import type { RamondaNode, VNode } from "@ramonda/core";
 import { Router, RouteOutlet } from "@ramonda/router";
-import { Navigator, Link, routes, pages } from "./routes";
+import { Navigator, Link } from "@ramonda/router";
+import { routes, pages } from "./routes";
 import { Search } from "./Search";
 import { grouped } from "./navigation";
 

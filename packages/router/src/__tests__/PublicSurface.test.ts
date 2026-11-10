@@ -21,12 +21,14 @@ const SURFACE_SRC = surfaceJoin(surfaceDir(surfaceUrl(import.meta.url)), "..");
  */
 const EXPECTED = [
   "buildUrl",
-  "createRouter",
   "createRoutes",
   "HashLevel",
+  "Link",
   "matchCompiled",
   "matchParams",
+  "Navigator",
   "parseUrlString",
+  "route",
   "RouteOutlet",
   "routePaths",
   "Router",
@@ -36,18 +38,20 @@ const EXPECTED = [
 /**
  * The TYPES the main entry publishes, which `Object.keys` cannot see.
  *
- * Most of this package's surface is types, and that is what it is FOR: `createRouter` hands back a
- * kit whose `Link` and `Navigator` only accept paths the route table declares, and every one of the
- * `Typed…` names is how that reaches an annotation. A type dropped here is not a smaller API, it is
+ * Most of this package's surface is types, and that is what it is FOR: `Link` and `Navigator` only
+ * accept paths the table an app REGISTERS declares, `Href` is how a component in a package types an
+ * href prop against that table, and the `Typed…` names are how the rest reaches an annotation. A type dropped here is not a smaller API, it is
  * a caller who can no longer write down what they were given.
  */
 const EXPECTED_TYPES = [
+  "BuiltHref",
   "HashLevelProps",
   "HashParamsUpdater",
   "Href",
   "NavigateOptions",
   "PartialNavigateOptions",
   "PathOf",
+  "Register",
   "RouteConfig",
   "RouteOutletProps",
   "RouteParams",
@@ -58,17 +62,13 @@ const EXPECTED_TYPES = [
   "StateUpdater",
   "TypedLinkProps",
   "TypedNavigator",
-  "TypedRouterKit",
 ];
 
 /**
- * The internals a consumer must not reach.
- *
- * `Link` and `Navigator` are the sharp ones, and their absence is the design: they come from
- * `createRouter` so that they carry the route table's types. Exported bare they would be the
- * untyped versions of themselves, which is the API this package was rebuilt to remove.
+ * The internals a consumer must not reach. `createRouter` is gone: a kit imported from the module that
+ * holds the table made every page and that module import each other — see `Register`.
  */
-const FORBIDDEN = ["Link", "Navigator", "RouteHook", "store", "compile", "SPECS", "report"];
+const FORBIDDEN = ["createRouter", "RouteHook", "store", "compile", "SPECS", "report"];
 
 describe("public API surface", () => {
   test("exports exactly what it means to", () => {
@@ -81,7 +81,7 @@ describe("public API surface", () => {
     expect({ added, removed }).toEqual({ added: [], removed: [] });
   });
 
-  test("the router kit is the only way to a Link", () => {
+  test("nothing internal, and no kit", () => {
     for (const name of FORBIDDEN) {
       expect(api).not.toHaveProperty(name);
     }
@@ -99,12 +99,14 @@ describe("public API surface", () => {
 
 // Every published type, named once, so `check-types` fails if one is renamed or removed.
 import type {
+  BuiltHref,
   HashLevelProps,
   HashParamsUpdater,
   Href,
   NavigateOptions,
   PartialNavigateOptions,
   PathOf,
+  Register,
   RouteConfig,
   RouteOutletProps,
   RouteParams,
@@ -115,16 +117,17 @@ import type {
   StateUpdater,
   TypedLinkProps,
   TypedNavigator,
-  TypedRouterKit,
 } from "../index";
 
 type _Surface = [
+  BuiltHref,
   HashLevelProps,
   HashParamsUpdater,
   Href,
   NavigateOptions,
   PartialNavigateOptions,
   PathOf<RouteConfig>,
+  Register,
   RouteConfig,
   RouteOutletProps,
   RouteParams,
@@ -134,6 +137,5 @@ type _Surface = [
   SearchParamsUpdater,
   StateUpdater,
   TypedLinkProps<"/">,
-  TypedNavigator<RouteConfig>,
-  TypedRouterKit<RouteConfig>,
+  TypedNavigator,
 ];

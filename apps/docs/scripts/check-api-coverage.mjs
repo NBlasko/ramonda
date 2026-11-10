@@ -198,11 +198,6 @@ const reference = readFileSync(join(root, "content", "reference", "api.md"), "ut
  * option or prose, and is none of this check's business.
  */
 const NOT_EXPORTS = new Set([
-  // From `createRouter`, deliberately never exported bare: they carry the route table's types,
-  // and the untyped versions of themselves are the API this package was rebuilt to remove.
-  "Navigator",
-  "Link",
-  "route",
   // `@ramonda/build`'s two adapter entries, guarded by their own surface tests. `ramonda` is not
   // in the expected list for the reason given above — every page mentioning `@ramonda/anything`
   // would satisfy a search for it.

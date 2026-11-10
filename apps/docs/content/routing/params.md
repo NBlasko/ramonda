@@ -11,10 +11,15 @@ To read the current URL inside a component — the `id` in `/players/9`, a `?que
 `#hash` — use `Navigator`:
 
 ```tsx
-import { createRoutes, createRouter } from "@ramonda/router";
+import { createRoutes, Navigator } from "@ramonda/router";
 
-const routes = createRoutes({ "/players/:id": <Profile /> });
-export const { Navigator } = createRouter(routes);
+// routes.ts — the table, registered once (see /routing)
+const routes = createRoutes({ "/players/:id": <Profile />, "/teams/:teamId": <Team /> });
+declare module "@ramonda/router" {
+  interface Register {
+    routes: typeof routes;
+  }
+}
 
 export class Player extends Component {
   route = this.use(Navigator);
@@ -130,10 +135,9 @@ Say it may be absent and nothing is reported, because nothing was claimed:
 
 ```tsx
 import { Component } from "@ramonda/core";
-import { createRoutes, createRouter } from "@ramonda/router";
+import { Navigator } from "@ramonda/router";
 
-const routes = createRoutes({ "/players/:id": <Profile />, "/teams/:teamId": <Team /> });
-export const { Navigator } = createRouter(routes);
+// The table registered above: `/players/:id` and `/teams/:teamId`.
 
 // Rendered by both, and they disagree about their params — the case params<T>() is for.
 export class OwnerChip extends Component {
@@ -169,7 +173,7 @@ live in the URL. Then it survives a reload, it's shareable as a link, and Back u
 it, all for free. Read it with `searchParams`, and change it with `updateSearchParams`:
 
 ```tsx
-import { Navigator } from "./routes";
+import { Navigator } from "@ramonda/router";
 
 export class Filters extends Component {
   route = this.use(Navigator);
@@ -214,7 +218,7 @@ The page cannot know who its parent is. The parent knows its child, so it says s
 ```tsx
 import { Component } from "@ramonda/core";
 import { HashLevel } from "@ramonda/router";
-import { Navigator } from "./routes";
+import { Navigator } from "@ramonda/router";
 
 class VideoPage extends Component {
   route = this.use(Navigator);

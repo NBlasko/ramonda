@@ -1369,8 +1369,9 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
    * `const { Router, RouteOutlet, Link } = createRouter(routes)` — a kit of components handed back by
    * a factory, destructured once and used as tags everywhere after.
    *
-   * This is the shape `npm create ramonda` scaffolds and the routing documentation teaches, and every
-   * tag written from it used to be a hole. A hole is an ERROR here, so a scaffolded routed project
+   * `@ramonda/router` handed its components back this way until it took a registered table instead,
+   * and a library may still ship a factory of that shape (`vendor-kit`). Every tag written from one
+   * used to be a hole. A hole is an ERROR here, so a scaffolded routed project
    * could not build at all — and nothing BELOW an unresolved tag is judged, so most of the app went
    * unexamined with it.
    *
@@ -2472,7 +2473,23 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
       if (ts.isCallExpression(node) && isThisUse(node)) {
         const arg = node.arguments[0];
         const named = arg === undefined ? undefined : hookNamed(arg);
-        const symbol = named !== undefined && ts.isIdentifier(named) ? resolve(named) : undefined;
+        let symbol = named !== undefined && ts.isIdentifier(named) ? resolve(named) : undefined;
+        /**
+         * `const Named = Counter` and then `this.use(Named)` — the same one hop a TAG gets, and through
+         * a cast too: `Counter as unknown as typeof Counter` is the class with a narrower type, which
+         * is how `@ramonda/router` exports `Navigator`. Only a variable whose initializer NAMES
+         * something is followed; a call or anything else stays what it was.
+         */
+        for (let hops = 0; symbol !== undefined && hops < ALIAS_HOPS; hops++) {
+          if (components.has(symbol) || providerSymbols.has(symbol) || consumerSymbols.has(symbol)) break;
+          const declaration = symbol.declarations?.[0];
+          if (!declaration || !ts.isVariableDeclaration(declaration) || !declaration.initializer) break;
+          const inner = unwrapAs(declaration.initializer);
+          if (!ts.isIdentifier(inner)) break;
+          const next = resolve(inner);
+          if (next === undefined || next === symbol) break;
+          symbol = next;
+        }
         if (!symbol) {
           // A hook picked at runtime: it might be any provider, so nothing below can be judged.
           if (arg) {
@@ -3317,7 +3334,9 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
       ts.isPropertyDeclaration(declaration) ||
       ts.isPropertyAssignment(declaration)
     ) {
-      return declaration.initializer;
+      // Through a cast: `Reader as unknown as typeof Reader` is the same class with another type, and
+      // is how a package narrows one — `@ramonda/router` exports `Link` and `Navigator` that way.
+      return declaration.initializer && unwrapAs(declaration.initializer);
     }
     return undefined;
   }

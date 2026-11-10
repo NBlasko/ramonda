@@ -2,11 +2,11 @@ import { beforeEach, describe, expect, test } from "vitest";
 import { Component } from "@ramonda/core";
 import { render, act, fireEvent } from "@ramonda/testing-library";
 import { createRoutes } from "../match";
-import { createRouter } from "../createRouter";
+import { Link, Navigator, Router, RouteOutlet, route } from "../index";
 
 /**
- * Typed routing: `createRouter(routes)` binds `<Link href>` / `route()` / `Navigator` to the
- * table's actual paths. The runtime pieces are the same components as the untyped exports;
+ * Typed routing: the table registered below binds `<Link href>` / `route()` / `Navigator` to its
+ * actual paths. The runtime pieces are the same components the package uses inside;
  * what this file proves is (1) `route()` builds URLs, (2) a typed `<Link>` still navigates,
  * and (3) the TYPES reject a stale href / bad param — the `@ts-expect-error` lines below are
  * validated by `check-types` (an unused expectation there fails the build).
@@ -39,7 +39,16 @@ const routes = createRoutes({
   "*": <Home />,
 });
 
-const { Router, RouteOutlet, Navigator, Link, route } = createRouter(routes);
+/**
+ * The registration an app writes beside its table. One per program, so this file's table is the
+ * package's for its own type check — every typed pattern the router's tests name is in it. What
+ * happens WITHOUT one is a different program: see `Registration.test.ts`.
+ */
+declare module "../registry" {
+  interface Register {
+    routes: typeof routes;
+  }
+}
 
 beforeEach(() => {
   window.history.pushState(null, "", "/");

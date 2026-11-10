@@ -6,7 +6,7 @@
  * Nothing else in this repository does it, and that gap has cost more shipped bugs than any
  * other. Every one of these reached a released package, and not one was visible to `pnpm check`:
  *
- * - `ramonda-check` refused the SSR template's own `createRouter` destructure, so a scaffolded
+ * - `ramonda-check` refused the SSR template's own router-kit destructure (since replaced by a registered table), so a scaffolded
  *   routed project could not run `npm run build` at all — exit 1, empty `dist`.
  * - `scripts/prerender.mjs` imported jsdom while the scaffolder installed linkedom. The project
  *   type-checked, bundled both halves, and died on `ERR_MODULE_NOT_FOUND` at the last step.

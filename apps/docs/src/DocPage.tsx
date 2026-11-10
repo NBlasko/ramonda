@@ -1,6 +1,6 @@
 import { Component, Head, AsyncLoad } from "@ramonda/core";
 import type { AsyncLoadFailure, RamondaNode } from "@ramonda/core";
-import { Link } from "./routes";
+import { Link } from "@ramonda/router";
 import { EDIT_BASE, neighbours } from "./navigation";
 import type { PageMeta } from "./content-types";
 import { pageLoaders } from "./generated/page-loaders";

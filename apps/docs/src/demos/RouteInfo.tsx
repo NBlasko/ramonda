@@ -1,5 +1,5 @@
 import { Component } from "@ramonda/core";
-import { Navigator, Link } from "../routes";
+import { Navigator, Link } from "@ramonda/router";
 
 // A live one: this page is served by a Ramonda router, so the hook below is
 // reading the real navigation state of the site you are on. Click the links and
