@@ -9,7 +9,7 @@
  *
  * ## The description, which the compiler writes
  *
- * `{ t: tag, a?: { name: value }, d?: [[name, hole], …], c?: [child, …], h?: hole, k?: hole }`:
+ * `{ t: tag, a?: { name: value }, d?: [[name, hole], …], c?: [child, …], h?: hole, k?: hole, y?: hole }`:
  *
  * - `a` — plain string attributes, set on the template once: an `id`, a `class`, an `aria-*`. Only names
  *   no rule of the attribute diff looks at belong here; the compiler decides.
@@ -26,7 +26,7 @@
  */
 import { TEXT_TYPE, ORIGIN_SYM, KEY_SYM, IS_SVG, BLOCK, svgElements } from "../helpers/constants";
 import { currentOrigin } from "./origin";
-import { applyChangesOnAttributes } from "./Attribute";
+import { COMPARED_WITH_THE_ELEMENT, applyChangesOnAttributes } from "./Attribute";
 import { diffChildrenOf, holdsARegion } from "./DiffAndMerge";
 import { normalizeChildren } from "../vdom/h";
 import { COMPONENT_RUNTIME } from "./runtime";
@@ -44,6 +44,8 @@ export interface TemplateNode {
   readonly c?: readonly (string | TemplateNode)[];
   readonly h?: number;
   readonly k?: number;
+  /** On the root only: the hole holding the block's key, which the compiler keeps in source order. */
+  readonly y?: number;
 }
 
 /** One element with holes: its path from the root, and what of it is a hole. */
@@ -62,7 +64,11 @@ export interface Template {
   /** The child holes: `h` ones, normalized only when they hold markup, and `k` ones, always. */
   readonly loneHoles: readonly number[];
   readonly childrenHoles: readonly number[];
-  /** Built on first use, where a `document` exists, and cloned for each block. */
+  /**
+   * Built on first use, where a `document` exists, and cloned for each block. On a server that renders
+   * each request into a document of its own, it is the first one's: a clone is adopted by the document
+   * it is put into, and what the cache keeps alive is one document per template, not one per request.
+   */
   root?: Element;
 }
 
@@ -99,7 +105,9 @@ export function template(description: TemplateNode): Template {
     });
   };
   walk(description, []);
-  return { description, rootName: description.t.toUpperCase(), sites, loneHoles, childrenHoles };
+  // A `nodeName` as the DOM gives it: an HTML tag upper case, an SVG one as written.
+  const rootName = svgElements.has(description.t) ? description.t : description.t.toUpperCase();
+  return { description, rootName, sites, loneHoles, childrenHoles };
 }
 
 /**
@@ -117,10 +125,13 @@ export function block(template: Template, values: unknown[], key?: string | numb
   for (let i = 0; i < children.length; i++) {
     values[children[i]] = normalizeChildren(values[children[i]] as unknown[], origin);
   }
+  // A key the compiler wrote among the holes, where it stood in the source.
+  const keyHole = template.description.y;
+  if (keyHole !== undefined) key = values[keyHole] as string | number | undefined;
   return {
     type: TEXT_TYPE,
     name: template.rootName,
-    attributes: key === undefined ? {} : { key },
+    attributes: key == null ? {} : { key },
     children: [],
     [ORIGIN_SYM]: origin,
     [BLOCK]: { template, values },
@@ -176,17 +187,11 @@ function attributesOf(site: Site, values: readonly unknown[]): Record<string, un
 }
 
 /**
- * The attributes a user changes on the element itself — typing, a click — and that the attribute diff
- * compares with the element (`formPropertyDiverged`): handed to it on every render, as an element's are.
- */
-const LIVE = new Set(["value", "checked", "muted", "indeterminate"]);
-
-/**
  * Whether a hole's attribute has to go through the attribute diff: a different value, an object that
  * may have changed in place, or one of the names the element itself may have moved away from.
  */
 function attributeChanged(name: string, next: unknown, previous: unknown): boolean {
-  if (next !== previous || LIVE.has(name)) return true;
+  if (next !== previous || COMPARED_WITH_THE_ELEMENT.has(name)) return true;
   return typeof next === "object" && next !== null && !name.startsWith("on");
 }
 

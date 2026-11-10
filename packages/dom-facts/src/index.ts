@@ -227,3 +227,10 @@ export const UNEDITED_INPUT_TYPES: ReadonlySet<string> = new Set([
   "reset",
   "submit",
 ]);
+
+/**
+ * The attributes JSX spells as their DOM property, because the attribute's own name is a keyword in
+ * JavaScript: `className` is written as `class`, and `htmlFor` as `for`. `@ramonda/core` reads them back
+ * under the JSX name, and `@ramonda/build` writes the attribute's name into a template.
+ */
+export const ATTRIBUTE_OF_PROPERTY: Readonly<Record<string, string>> = { className: "class", htmlFor: "for" };

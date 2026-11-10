@@ -462,3 +462,26 @@ describe("a served block from another template", () => {
     expect(html).toBe('<div id="home">home</div>');
   });
 });
+
+/** `<svg viewBox="0 0 2 2"><circle r={r} /></svg>` — an icon, served and hydrated. */
+const DOT = __template({ t: "svg", a: { viewBox: "0 0 2 2" }, c: [{ t: "circle", d: [["r", 0]] }] });
+
+describe("a block rooted in an svg element", () => {
+  test("is adopted by hydration, the server's node kept", async () => {
+    class Icon extends Component {
+      render() {
+        return <span>{__block(DOT, [1])}</span>;
+      }
+    }
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    container.innerHTML = await renderToString(<Icon />);
+    const served = container.querySelector("svg");
+    hydrateRoot(<Icon />, container);
+    await Promise.resolve();
+    await Promise.resolve();
+    const kept = container.querySelector("svg") === served;
+    container.remove();
+    expect(kept).toBe(true);
+  });
+});

@@ -1,5 +1,13 @@
 import type { EnhancedHTMLNode } from "../types/vdom";
-import { IS_SVG, KEY_SYM, STYLE_SYM, REF_SYM, BOOLEAN_ATTRIBUTES, keptInAProperty } from "../helpers/constants";
+import {
+  IS_SVG,
+  KEY_SYM,
+  STYLE_SYM,
+  REF_SYM,
+  BOOLEAN_ATTRIBUTES,
+  keptInAProperty,
+  ATTRIBUTE_OF_PROPERTY,
+} from "../helpers/constants";
 import { checkBooleanAttribute } from "../debug/booleanAttribute";
 import {
   INPUT_OWN_EVENTS,
@@ -325,6 +333,13 @@ export function writeValue(enhancedNode: EnhancedHTMLNode, value: unknown, onSer
  * still ticked, a video still audible, a checkbox still mixed.
  */
 const PROPERTY_TRUTH = new Set(["checked", "muted", "indeterminate"]);
+
+/**
+ * The names `formPropertyDiverged` compares with the element itself — `value` and `PROPERTY_TRUTH`: a
+ * user moves them on the element, so they reach the attribute diff on every render, however equal their
+ * value is to the last one. A compiled block asks this of each attribute hole (`core/block.ts`).
+ */
+export const COMPARED_WITH_THE_ELEMENT: ReadonlySet<string> = new Set(["value", ...PROPERTY_TRUTH]);
 // `formPropertyDiverged` names the same three, as comparisons: it is asked of every equal attribute.
 
 function attachNextOnenhancedNode(
@@ -555,7 +570,9 @@ function setNextOnenhancedNode(enhancedNode: EnhancedHTMLNode, name: string, val
 }
 
 /** The DOM's name for each attribute the JSX spells differently — read back the way it was written. */
-const ALIASED_BACK: Readonly<Record<string, string>> = { class: "className", for: "htmlFor" };
+const ALIASED_BACK: Readonly<Record<string, string>> = Object.fromEntries(
+  Object.entries(ATTRIBUTE_OF_PROPERTY).map(([property, attribute]) => [attribute, property]),
+);
 
 function removeByQualifiedName(enhancedNode: EnhancedHTMLNode, name: string) {
   if (name === "key") {

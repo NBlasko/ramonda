@@ -20,12 +20,19 @@
  *
  * A component, a fragment, an element with a spread (`{...props}`, whose attributes are not known here), a
  * namespaced tag or attribute, a `class` attribute (the runtime reports it and renames it), a `key` below
- * the root, and text holding an entity (`&amp;`), which the transform after this decodes. A host element
- * inside one of these is still compiled, as a block of its own.
+ * the root, and text or an attribute holding an entity (`&amp;`), which the transform after this decodes.
+ * A host element inside one of these is still compiled, as a block of its own.
+ *
+ * ## The source stays where it was
+ *
+ * Every expression the app wrote — a hole's value, a handler, a callback — keeps its place and its text;
+ * only the JSX syntax around it is rewritten, and the holes are passed in the order they stand in the
+ * source (the key among them). So the source map points a stack trace or a breakpoint inside a handler at
+ * the line it was written on.
  */
 import { parseSync } from "oxc-parser";
 import MagicString from "magic-string";
-import { BOOLEAN_ATTRIBUTES } from "@ramonda/dom-facts";
+import { ATTRIBUTE_OF_PROPERTY, BOOLEAN_ATTRIBUTES } from "@ramonda/dom-facts";
 
 const RUNTIME = "@ramonda/core/jsx-runtime";
 const TEMPLATE = "__ramondaTemplate";
@@ -51,9 +58,6 @@ const RULED_NAMES = new Set([
   "defaultValue",
   "defaultChecked",
 ]);
-
-/** The DOM's name for an attribute JSX spells as the property. */
-const ATTRIBUTE_NAME: Record<string, string> = { className: "class", htmlFor: "for" };
 
 // The node shapes this reads, as `oxc-parser` hands them over (ESTree, with `start` / `end` offsets).
 interface Node {
@@ -81,20 +85,18 @@ export function compileJsx(code: string, id: string): Compiled | undefined {
   // The transform after this reports what does not parse, in its own words.
   if (parsed.errors.length > 0) return undefined;
 
-  const compiler = new Compiler(code);
   const out = new MagicString(code);
-  for (const node of outermostJsx(parsed.program as unknown as Node)) {
-    const emitted = compiler.emit(node);
-    if (emitted !== code.slice(node.start, node.end)) out.overwrite(node.start, node.end, emitted);
-  }
+  const compiler = new Compiler(code, out);
+  for (const node of outermostJsx(parsed.program as unknown as Node)) compiler.jsx(node, false);
   if (compiler.templates.length === 0) return undefined;
 
   const body = (parsed.program as unknown as { body: Node[] }).body;
-  // After the imports, and before any code that may build a block while the module loads.
-  let at = 0;
+  // After the imports and the directives, and before any code that may build a block while the module
+  // loads — and never ahead of a `#!` line, which has to stay the first.
+  let at = code.startsWith("#!") ? code.indexOf("\n") + 1 || code.length : 0;
   for (const statement of body) {
     if (statement.type === "ImportDeclaration") at = statement.end;
-    else if (at === 0 && statement.type === "ExpressionStatement" && statement.directive !== undefined) {
+    else if (statement.type === "ExpressionStatement" && statement.directive !== undefined && at <= statement.start) {
       at = statement.end;
     } else break;
   }
@@ -168,9 +170,9 @@ function attributeName(attribute: Node): string | undefined {
   return name.type === "JSXIdentifier" ? (name.name as string) : undefined;
 }
 
-/** A child as JSX means it: text (cleaned), an expression, an element — or nothing (blank, a comment). */
+/** A child as JSX means it: text (cleaned, with its source range), an expression, an element. */
 type Child =
-  | { kind: "text"; text: string }
+  | { kind: "text"; text: string; node: Node }
   | { kind: "expression"; node: Node }
   | { kind: "element"; node: JSXElement };
 
@@ -182,7 +184,7 @@ function childrenOf(element: JSXElement): Child[] | undefined {
       if (text === undefined) continue;
       // An entity is decoded by the transform after this one; this one leaves the element to it.
       if (text.includes("&")) return undefined;
-      children.push({ kind: "text", text });
+      children.push({ kind: "text", text, node: child });
     } else if (child.type === "JSXExpressionContainer") {
       const expression = child.expression as Node;
       if (expression.type === "JSXEmptyExpression") continue;
@@ -205,6 +207,9 @@ function templatable(element: JSXElement, root: boolean): boolean {
     const name = attributeName(attribute);
     if (name === undefined || name === "class") return false;
     if (name === "key" && !root) return false;
+    // An entity in a literal is decoded by the transform after this one, as it is in text.
+    const value = attribute.value as Node | null;
+    if (value?.type === "Literal" && typeof value.value === "string" && value.value.includes("&")) return false;
   }
   return childrenOf(element) !== undefined;
 }
@@ -215,78 +220,66 @@ function bakeable(tag: string, name: string): boolean {
   return !BOOLEAN_ATTRIBUTES.has(name.toLowerCase());
 }
 
+/**
+ * What a compiled root's call is made of, in source order: text the compiler writes, and expressions the
+ * app wrote, which stay where they are.
+ */
+type Piece = string | Node;
+
 class Compiler {
   readonly templates: string[] = [];
   private readonly code: string;
-  constructor(code: string) {
+  private readonly out: MagicString;
+
+  constructor(code: string, out: MagicString) {
     this.code = code;
+    this.out = out;
   }
 
-  /** The code for `node`, with every JSX inside it compiled. */
-  emit(node: Node): string {
-    if (isJsx(node)) {
-      return templatable(node as JSXElement, true) ? this.block(node as JSXElement) : this.keep(node as JSXElement);
+  /**
+   * One JSX node: a compiled block, or JSX left for the transform after this with what is inside it
+   * compiled. `inChildren` says it stands among JSX children, where a block, being an expression, goes
+   * in braces.
+   */
+  jsx(node: Node, inChildren: boolean): void {
+    if (templatable(node as JSXElement, true)) {
+      if (inChildren) {
+        this.out.appendLeft(node.start, "{");
+        this.out.prependRight(node.end, "}");
+      }
+      this.block(node as JSXElement);
+    } else {
+      this.keep(node as JSXElement);
     }
-    return this.splice(node.start, node.end, outermostJsx(node));
   }
 
-  /** The source between `start` and `end`, each node in `inner` replaced by what `emit` makes of it. */
-  private splice(start: number, end: number, inner: Node[], wrap = false): string {
-    let text = "";
-    let at = start;
-    for (const node of inner) {
-      text += this.code.slice(at, node.start);
-      const emitted = this.emit(node);
-      text += wrap && emitted !== this.code.slice(node.start, node.end) ? `{${emitted}}` : emitted;
-      at = node.end;
-    }
-    return text + this.code.slice(at, end);
+  /** Every JSX node inside an expression the app wrote. */
+  private expression(node: Node): void {
+    for (const inner of outermostJsx(node)) this.jsx(inner, false);
   }
 
   /** JSX left for the transform after this, with the elements inside it compiled. */
-  private keep(element: JSXElement): string {
-    const replaced: { start: number; end: number; text: string }[] = [];
+  private keep(element: JSXElement): void {
     const attributes = element.type === "JSXElement" ? element.openingElement.attributes : [];
     for (const attribute of attributes) {
       const value = (attribute.type === "JSXSpreadAttribute" ? attribute.argument : attribute.value) as Node | null;
       if (value === null || value === undefined) continue;
-      const inner = value.type === "JSXExpressionContainer" ? (value.expression as Node) : value;
-      if (inner.type === "JSXEmptyExpression" || inner.type === "Literal") continue;
-      const emitted = this.emit(inner);
-      if (emitted !== this.code.slice(inner.start, inner.end)) {
-        replaced.push({ start: inner.start, end: inner.end, text: inner === value ? `{${emitted}}` : emitted });
-      }
+      if (value.type === "JSXExpressionContainer") this.expression(value.expression as Node);
+      else if (isJsx(value)) this.jsx(value, true);
+      else if (value.type !== "Literal") this.expression(value);
     }
     for (const child of element.children) {
-      if (child.type === "JSXExpressionContainer") {
-        const expression = child.expression as Node;
-        if (expression.type === "JSXEmptyExpression") continue;
-        const emitted = this.emit(expression);
-        if (emitted !== this.code.slice(expression.start, expression.end)) {
-          replaced.push({ start: expression.start, end: expression.end, text: emitted });
-        }
-      } else if (isJsx(child)) {
-        const emitted = this.emit(child);
-        if (emitted !== this.code.slice(child.start, child.end)) {
-          // A compiled child is an expression, which JSX takes in braces.
-          const text = templatable(child as JSXElement, true) ? `{${emitted}}` : emitted;
-          replaced.push({ start: child.start, end: child.end, text });
-        }
-      }
+      if (child.type === "JSXExpressionContainer") this.expression(child.expression as Node);
+      else if (isJsx(child)) this.jsx(child, true);
     }
-    let text = "";
-    let at = element.start;
-    for (const r of replaced.sort((a, b) => a.start - b.start)) {
-      text += this.code.slice(at, r.start) + r.text;
-      at = r.end;
-    }
-    return text + this.code.slice(at, element.end);
   }
 
-  /** A compiled root: `__ramondaBlock(template, [hole values], key)`. */
-  private block(element: JSXElement): string {
-    const holes: string[] = [];
-    let key: string | undefined;
+  /** A compiled root: `__ramondaBlock(template, [hole values in source order])`. */
+  private block(element: JSXElement): void {
+    const holes: Piece[][] = [];
+    let keyHole: number | undefined;
+    const hole = (pieces: Piece[]): number => holes.push(pieces) - 1;
+
     const describe = (node: JSXElement, root: boolean): string => {
       const tag = hostTag(node) as string;
       const baked: string[] = [];
@@ -294,28 +287,29 @@ class Compiler {
       for (const attribute of node.openingElement.attributes) {
         const name = attributeName(attribute) as string;
         const value = attribute.value as Node | null;
-        let expression: string;
+        let pieces: Piece[];
         if (value === null) {
-          expression = "true";
+          pieces = ["true"];
         } else if (value.type === "Literal") {
-          if (name !== "key" && typeof value.value === "string" && bakeable(tag, name)) {
-            baked.push(`${JSON.stringify(ATTRIBUTE_NAME[name] ?? name)}: ${JSON.stringify(value.value)}`);
+          const text = value.value as string;
+          if (name !== "key" && bakeable(tag, name)) {
+            baked.push(`${JSON.stringify(ATTRIBUTE_OF_PROPERTY[name] ?? name)}: ${JSON.stringify(text)}`);
             continue;
           }
-          expression = this.code.slice(value.start, value.end);
+          // JSX's string, which has no escapes, as a JavaScript one.
+          pieces = [JSON.stringify(text)];
         } else if (value.type === "JSXExpressionContainer") {
           const inner = value.expression as Node;
           if (inner.type === "JSXEmptyExpression") continue;
-          expression = this.emit(inner);
+          pieces = [inner];
         } else {
-          expression = this.emit(value);
+          pieces = [value];
         }
         if (name === "key" && root) {
-          key = expression;
+          keyHole = hole(pieces);
           continue;
         }
-        holes.push(expression);
-        dynamic.push(`[${JSON.stringify(name)}, ${holes.length - 1}]`);
+        dynamic.push(`[${JSON.stringify(name)}, ${hole(pieces)}]`);
       }
       const parts = [`t: ${JSON.stringify(tag)}`];
       if (baked.length > 0) parts.push(`a: { ${baked.join(", ")} }`);
@@ -328,25 +322,71 @@ class Compiler {
       if (children.length === 0) {
         // nothing
       } else if (fixed) {
-        const described = children.map((child) =>
-          child.kind === "text" ? JSON.stringify(child.text) : describe((child as { node: JSXElement }).node, false),
-        );
+        const described: string[] = [];
+        for (const child of children) {
+          if (child.kind !== "text") {
+            described.push(describe((child as { node: JSXElement }).node, false));
+            continue;
+          }
+          // Text runs side by side — split by a JSX comment — are one text node, as a server sends them.
+          const last = described.length - 1;
+          if (last >= 0 && described[last].startsWith('"')) {
+            described[last] = JSON.stringify((JSON.parse(described[last]) as string) + child.text);
+          } else {
+            described.push(JSON.stringify(child.text));
+          }
+        }
         parts.push(`c: [${described.join(", ")}]`);
       } else if (children.length === 1 && children[0].kind === "expression") {
-        holes.push(this.emit(children[0].node));
-        parts.push(`h: ${holes.length - 1}`);
+        parts.push(`h: ${hole([children[0].node])}`);
       } else {
-        const values = children.map((child) =>
-          child.kind === "text" ? JSON.stringify(child.text) : this.emit(child.node),
-        );
-        holes.push(`[${values.join(", ")}]`);
-        parts.push(`k: ${holes.length - 1}`);
+        const pieces: Piece[] = ["["];
+        children.forEach((child, i) => {
+          if (i > 0) pieces.push(", ");
+          pieces.push(child.kind === "text" ? JSON.stringify(child.text) : child.node);
+        });
+        pieces.push("]");
+        parts.push(`k: ${hole(pieces)}`);
       }
+      if (root && keyHole !== undefined) parts.push(`y: ${keyHole}`);
       return `{ ${parts.join(", ")} }`;
     };
-    const description = describe(element, true);
-    this.templates.push(description);
+
+    this.templates.push(describe(element, true));
     const name = templateName(this.templates.length - 1);
-    return `${BLOCK}(${name}, [${holes.join(", ")}]${key === undefined ? "" : `, ${key}`})`;
+
+    // The call, in source order: the app's expressions stay where they are, everything else is written.
+    const pieces: Piece[] = [`${BLOCK}(${name}, [`];
+    holes.forEach((hole, i) => {
+      if (i > 0) pieces.push(", ");
+      pieces.push(...hole);
+    });
+    pieces.push("])");
+    this.write(element.start, element.end, pieces);
+  }
+
+  /**
+   * Rewrites `start`–`end` as `pieces`: each node keeps its source — with the JSX inside it compiled — and
+   * the text between them replaces whatever stood there.
+   */
+  private write(start: number, end: number, pieces: Piece[]): void {
+    let at = start;
+    let text = "";
+    const flush = (until: number): void => {
+      if (until > at) this.out.overwrite(at, until, text);
+      else if (text !== "") this.out.appendLeft(at, text);
+      text = "";
+    };
+    for (const piece of pieces) {
+      if (typeof piece === "string") {
+        text += piece;
+        continue;
+      }
+      flush(piece.start);
+      if (isJsx(piece)) this.jsx(piece, false);
+      else this.expression(piece);
+      at = piece.end;
+    }
+    flush(end);
   }
 }

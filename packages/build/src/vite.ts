@@ -1,5 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { compileJsx } from "./compile";
+import type { RamondaOptions } from "./options";
+export type { RamondaOptions } from "./options";
 import {
   PUBLIC_ENV_PREFIX,
   RAMONDA_TRANSFORM,
@@ -38,15 +40,6 @@ interface CompiledMap {
   sources: string[];
   names: string[];
   mappings: string;
-}
-
-/** What `ramonda()` can be told. */
-export interface RamondaOptions {
-  /**
-   * Compile JSX into templates and holes (see `compile.ts`). On unless set to `false`, which is for
-   * telling whether a fault is the compiler's: the same app, built the way it was before it existed.
-   */
-  compile?: boolean;
 }
 
 /** What Vite hands the `config` hook as `this`: the one thing read from it is which Vite is running. */

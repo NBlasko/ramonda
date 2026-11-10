@@ -1,5 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { compileJsx } from "./compile";
+import type { RamondaOptions } from "./options";
+export type { RamondaOptions } from "./options";
 import { RAMONDA_TRANSFORM, check, envDefines, fillIn, lowersDecorators, refuse } from "./settings";
 
 /**
@@ -24,19 +26,10 @@ interface EsbuildPluginLike {
   setup: (build: {
     initialOptions: EsbuildOptionsLike;
     onLoad: (
-      options: { filter: RegExp },
+      options: { filter: RegExp; namespace?: string },
       callback: (args: { path: string }) => Promise<OnLoadResultLike | undefined>,
     ) => void;
   }) => void;
-}
-
-/** What `ramonda()` can be told. */
-export interface RamondaOptions {
-  /**
-   * Compile JSX into templates and holes (see `compile.ts`). On unless set to `false`, which is for
-   * telling whether a fault is the compiler's: the same app, built the way it was before it existed.
-   */
-  compile?: boolean;
 }
 
 /**
@@ -125,8 +118,9 @@ export function ramonda(settings: RamondaOptions = {}): EsbuildPluginLike {
 
       // The JSX compiler reads each module as the app wrote it; esbuild then compiles what is left.
       if (settings.compile !== false) {
-        build.onLoad({ filter: /\.[jt]sx$/ }, async (args) => {
-          if (args.path.includes("/node_modules/")) return undefined;
+        // Files only — a module another plugin made up has no path to read — and never a package's.
+        build.onLoad({ filter: /\.[jt]sx$/, namespace: "file" }, async (args) => {
+          if (/[\\/]node_modules[\\/]/.test(args.path)) return undefined;
           const code = await readFile(args.path, "utf8");
           const compiled = compileJsx(code, args.path);
           if (compiled === undefined) return undefined;

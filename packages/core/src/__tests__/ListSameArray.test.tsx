@@ -2,6 +2,7 @@ import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { getDOM } from "../test/setup";
 import { Component, state, list } from "../index";
 import { State } from "../reactivity/State";
+import { componentAt } from "../core/DiffAndMerge";
 
 /**
  * A list handed the SAME array again while a row of it was invalidated — every row of a list reading the
@@ -160,5 +161,36 @@ describe("a list handed the same array again", () => {
       rows: 2,
       listeners: 2,
     });
+  });
+
+  test("a row's state goes with its item when the array is reversed in place", async () => {
+    class Line extends Component<{ item: Item }> {
+      @state open = false;
+      render() {
+        return <li className={this.open ? "open" : ""}>{this.props.item.label}</li>;
+      }
+    }
+    class Lines extends Component {
+      @state items: Item[] = [1, 2, 3].map((id) => ({ id, label: `item ${id}` }));
+      @state tick = 0;
+      line(item: Item) {
+        // Every row reads `tick`, so the pass after the reverse rebuilds them all over the same array.
+        void this.tick;
+        return <Line item={item} />;
+      }
+      render() {
+        return <ul>{list(this.items, this.line)}</ul>;
+      }
+    }
+    const app = await getDOM<Lines>(<Lines />);
+    await app.settle();
+    (componentAt(app.container.querySelector("li") as Element) as Line).open = true;
+    await app.settle();
+    // In place — reported in development (RMD005), and still rendered right.
+    (app.instance.items as Item[]).reverse();
+    app.instance.tick++;
+    await app.settle();
+    const lis = Array.from(app.container.querySelectorAll("li"), (li) => `${li.textContent}:${li.className}`);
+    expect(lis).toEqual(["item 3:", "item 2:", "item 1:open"]);
   });
 });

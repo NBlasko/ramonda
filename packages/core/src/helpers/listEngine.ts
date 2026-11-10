@@ -374,9 +374,11 @@ export class ListEngine<T> {
     let same = each === before && !builderChanged && byIndex !== undefined && byIndex.length === each.length;
     if (same) {
       for (let i = 0; i < each.length; i++) {
-        // A position that produced no row last pass has no scope to take. An item replaced in place is
-        // taken as the row it replaced, which the check below rebuilds with the new item.
-        if ((byIndex as (ItemScope<T> | undefined)[])[i] === undefined) {
+        // A position that produced no row last pass has no scope to take, and one holding another item —
+        // the array replaced, sorted or reversed in place (RMD005) — has to find its row by the item, so
+        // a row's state goes where its item went.
+        const scope = (byIndex as (ItemScope<T> | undefined)[])[i];
+        if (scope === undefined || scope.item !== each[i]) {
           same = false;
           break;
         }
