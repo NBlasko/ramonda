@@ -1,7 +1,7 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
-import { Component, created, mounted, renderToString } from "@ramonda/core";
+import { Component, created, renderToString } from "@ramonda/core";
 import type { RamondaNode } from "@ramonda/core";
-import { render } from "@ramonda/testing-library";
+import { allowDiagnostics, render } from "@ramonda/testing-library";
 import { Router, RouteOutlet, Navigator } from "../Router";
 import { scanComponentTree } from "../../../core/src/debug/inspector";
 import { createRoutes } from "../match";
@@ -14,12 +14,11 @@ import { createRoutes } from "../match";
  * server's route travels to the client inside the blob and is restored there
  * BEFORE any client lifecycle runs.
  *
- * That is why `adoptUrl()` re-reads the URL:
+ * That is why `init()` re-reads the URL:
  *
  *   1. field initializer  -> parseUrl()      (the client's URL)
  *   2. restore from blob  -> the SERVER's route  ← overwrites (1)
- *   3. @mounted adoptUrl() -> parseUrl()      (the client's URL again, AFTER the hydration
- *                                              render, so that render matches the server's markup)
+ *   3. @created init()     -> parseUrl()      (the client's URL again)
  *
  * Without step 3 a client that hydrates at a different URL than the server
  * rendered — a cached page, a CDN serving one document for many paths, a client
@@ -110,6 +109,7 @@ describe("Router hydration", () => {
   });
 
   test("the client's URL wins over the route restored from the server", async () => {
+    allowDiagnostics("RMD007"); // the test exists to show it
     // Server renders /players.
     setUrl("/players");
     const html = await renderToString(<App />);
@@ -163,7 +163,7 @@ describe("Router hydration", () => {
   });
 
   /**
-   * And read BEFORE `Router.adoptUrl` repairs it. The component that uses the Router runs its own
+   * And read BEFORE `Router.init` repairs it. The component that uses the Router runs its own
    * `@created` first — its method decorator registered before the field that uses the hook — so a read
    * there met the restored state as it was. A third review found the guards had been removed from the
    * readers and the repair left only in `init`.
@@ -195,7 +195,7 @@ describe("Router hydration", () => {
     expect(old).not.toContain("hashScopes");
     const { container } = render(<Reads />, { hydrate: old });
     expect(container.querySelector("#players")).toBeTruthy();
-    // Read BEFORE `adoptUrl` re-read the URL — after it, the hash would say `tab: "film"`. Without this the
+    // Read BEFORE `init` re-read the URL — after it, the hash would say `tab: "film"`. Without this the
     // test could pass with the read happening after the repair it exists to cover.
     expect(seen).toEqual({});
   });
@@ -208,104 +208,5 @@ describe("Router hydration", () => {
 
     expect(container.querySelector("#players")).toBeTruthy();
     expect(baseUrlFrom(container)).toBe("/players");
-  });
-
-  /**
-   * **Hydration renders what the server rendered; the browser's URL comes right after.**
-   *
-   * The hash never reaches a server, and a baked page has no query. The router used to read the
-   * browser's URL BEFORE the hydration render, so any component showing a hash key — on every page,
-   * not only a baked one — rendered something the server had not, and hydration reported `RMD007`.
-   * Found by the second trial on a language switch that kept `#t=…`; the app had to hold the link
-   * back until `@mounted` itself. The re-read is in `@mounted` now: the hydration render matches the
-   * server's markup, and the URL arrives as an ordinary update, before `render` returns.
-   */
-  test("a hash only the browser has hydrates without a mismatch, then shows", async () => {
-    let createdSaw: string | undefined;
-    class Tab extends Component {
-      route = this.use(Navigator);
-      @created({ env: "client" }) early(): void {
-        createdSaw = this.route.hashParams.tab ?? "none";
-      }
-      render() {
-        return (
-          <div>
-            <span id="tab">{this.route.hashParams.tab ?? "none"}</span>
-          </div>
-        );
-      }
-    }
-    const tabs = createRoutes({ "/": <Tab /> });
-    class TabApp extends Component {
-      router = this.use(Router);
-      render() {
-        return (
-          <div>
-            <RouteOutlet routes={tabs} />
-          </div>
-        );
-      }
-    }
-    setUrl("/");
-    const html = await renderToString(<TabApp />);
-    setUrl("/#tab=film");
-
-    const { container } = render(<TabApp />, { hydrate: html });
-
-    expect(container.querySelector("#tab")?.textContent).toBe("film");
-    // The cost, said where it is decided: `@created` runs before the hydration render, so it sees
-    // the server's URL. A component that needs the browser's reads it in `render` — see the test below
-    // for why not `@mounted`.
-    expect(createdSaw).toBe("none");
-  });
-
-  /**
-   * A child's `@mounted` runs BEFORE the Router's own. Found by review: with the re-read only in the
-   * Router's `@mounted`, a child writing the query from its own `@mounted` started from the server's
-   * empty one and wrote it over the reader's — `?q=ada` and `#tab=film` were lost for good. A write
-   * takes the browser's URL first now.
-   *
-   * A READ there still sees the server's URL, and that is pinned rather than hidden: measured, the
-   * child's own `@mounted` runs before any hook's and the context is republished only on the next
-   * render, so nothing public can take the URL sooner.
-   */
-  test("a child writing from its @mounted keeps what the reader had in the URL", async () => {
-    let mountedSaw: string | undefined;
-    class Pager extends Component {
-      route = this.use(Navigator);
-      @mounted({ env: "client" }) start(): void {
-        mountedSaw = this.route.searchParams.q ?? "none";
-        this.route.updateSearchParams((params) => ({ ...params, page: "2" }));
-      }
-      render() {
-        return (
-          <div>
-            <span id="q">{this.route.searchParams.q ?? "none"}</span>
-          </div>
-        );
-      }
-    }
-    const pages = createRoutes({ "/players": <Pager /> });
-    class PagerApp extends Component {
-      router = this.use(Router);
-      render() {
-        return (
-          <div>
-            <RouteOutlet routes={pages} />
-          </div>
-        );
-      }
-    }
-    setUrl("/players");
-    const html = await renderToString(<PagerApp />);
-    setUrl("/players?q=ada#tab=film");
-
-    render(<PagerApp />, { hydrate: html });
-    await new Promise((resolve) => setTimeout(resolve, 0));
-
-    expect(mountedSaw).toBe("none");
-    expect(window.location.search).toContain("q=ada");
-    expect(window.location.search).toContain("page=2");
-    expect(window.location.hash).toContain("tab=film");
   });
 });

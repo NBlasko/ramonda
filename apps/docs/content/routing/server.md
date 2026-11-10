@@ -28,21 +28,56 @@ There is no server-only router API — the same code renders on both sides.
 
 ## The browser's URL wins on hydration
 
-The route the server rendered travels to the browser in the hydration data, and the
-first render in the browser — the one that adopts the server's markup — uses it. Right
-after, the router reads the actual URL, and the page updates the way a navigation would.
+The route the server rendered travels to the browser in the hydration data, and then
+the router re-reads the actual URL as it starts up. That last step matters: if the
+browser is at a *different* URL than the server rendered — a cached page, a CDN
+serving one file for many paths, a redirect between request and hydration — re-reading
+is what makes it show the right page instead of the server's. Every lifecycle method and
+every render in the browser sees that one URL.
 
-Both halves matter. The browser often has more than the server saw: the hash never reaches
-a server, a baked page was rendered with no query, and a cached page or a CDN serving one
-file for many paths was rendered at another path. Rendering that difference during
-hydration would disagree with the markup (`RMD007`); rendering only the server's route
-would show the wrong page. So a component can read `hashParams` or `searchParams` in
-`render` on any page, and the value is there before the first paint.
+### What the server never sees
 
-**One consequence:** a `@created` or `@mounted` below the router runs before that re-read, so
-while hydrating it sees the server's URL — no hash, and on a baked page no query. Read them in
-`render`, which runs again with the browser's URL right after. A navigation written from either
-one (`updateSearchParams`, `push`) is safe: a write takes the browser's URL first.
+The hash never reaches a server, and a page baked at build time was rendered with no query.
+So a render that shows something from `hashParams` — or, on a baked page, `searchParams` —
+gives one thing in the server's HTML and another in the browser:
+
+```tsx
+render() {
+  return <a href={`/en/view#${this.route.hashParams.t}`}>English</a>;
+}
+```
+
+The baked file holds `href="/en/view#"`. Opened at `/sr/view#t=abc`, the browser's render says
+`href="/en/view#t=abc"`. Hydration adopts the server's markup and checks it against that render;
+they differ, so the browser's wins — the attribute is put right — and in development
+[`RMD007`](/reference/diagnostics/rmd007) says that server and client rendered different output.
+The page ends up right either way. The warning is there because a difference is usually a fault —
+a clock, a random number, `window` read in a render — and it cannot tell which kind this is.
+
+To render what only the browser knows without it, show it once the page is live:
+
+```tsx
+import { Component, mounted, state } from "@ramonda/core";
+import { Navigator } from "@ramonda/router";
+
+class Shell extends Component {
+  route = this.use(Navigator);
+  @state live = false;
+
+  @mounted({ env: "client" }) goLive(): void {
+    this.live = true;
+  }
+
+  render() {
+    const hash = this.live ? `#${this.route.hashParams.t}` : "";
+    return <a href={`/en/view${hash}`}>English</a>;
+  }
+}
+```
+
+Until `@mounted`, the render gives what the server gave; right after, it re-renders with the hash.
+Data keyed by the query is the same shape with a [`clientOnly` query](/query/server#data-only-the-browser-has),
+which renders pending on the server and on the client's first render alike.
 
 ## Route guards and redirects
 

@@ -5,7 +5,6 @@ import {
   state,
   compute,
   created,
-  mounted,
   destroyed,
   onWindow,
   captureServerRedirect,
@@ -129,18 +128,18 @@ export class Router extends Hook {
    * The route state. A plain `@state` field, so the signal behind it stays an
    * implementation detail — nothing an app touches ever sees the State class.
    *
-   * Seeded from the URL at construction, re-read in `adoptUrl()`, and re-read on
+   * Seeded from the URL at construction, re-read in `init()`, and re-read on
    * popstate. Those are the ONLY moments the URL is read as the source of truth.
    *
-   * The seed here is not redundant with `adoptUrl()`, and the two are not
+   * The seed here is not redundant with `init()`, and the two are not
    * interchangeable — each covers a case the other cannot:
    *
-   * - This one runs on the SERVER too, where `adoptUrl()` never does (it is
+   * - This one runs on the SERVER too, where `init()` never does (it is
    *   `env: "client"`). It is also what `RouteProvider` publishes, because
    *   `useCommon` evaluates the options callback when the hook is constructed —
    *   before any lifecycle. Replace it with a placeholder and every route stops
    *   matching.
-   * - `adoptUrl()` covers hydration: `@state` auto-persists, so the SERVER's route
+   * - `init()` covers hydration: `@state` auto-persists, so the SERVER's route
    *   arrives in the state blob and is restored over this seed. Without the
    *   re-read, `routeState` keeps the server's route — and so does the rendered
    *   page, measured `rendered: players | routeState.baseUrl: /players` while
@@ -164,12 +163,7 @@ export class Router extends Hook {
   /** Stable for this Router's lifetime, so consumers never see a new identity. */
   private nav = createNavigator(
     {
-      read: () => {
-        // Off the server only: there the request's URL is the truth, and `parseUrl` would read the
-        // DOM stand-in. See `adoptUrl` for why a write takes the browser's URL first.
-        if (!this.adopted && typeof window !== "undefined" && !this.serverRedirect) this.adoptUrl();
-        return this.route;
-      },
+      read: () => this.route,
       write: (next) => {
         this.routeState = next;
       },
@@ -249,37 +243,8 @@ export class Router extends Hook {
       );
     }
     liveRouters++;
-  }
 
-  /**
-   * The browser's URL is the truth, whatever was restored into state — but AFTER the hydration
-   * render, not before it.
-   *
-   * Read in `@created`, it was in place for the hydration render, which then disagreed with the
-   * server's markup wherever the two URLs differ: the hash, which never reaches a server, on every
-   * page; the query, on a baked page; the whole path, on a cached one. Each was `RMD007`, and an app
-   * showing a hash key had to hold it back until `@mounted` itself. Found by the second trial.
-   *
-   * Here the hydration render shows what the server rendered, and the URL arrives as an ordinary
-   * update. A fresh client mount gets the same answer from the seed. The one thing that changes is
-   * `@created` below the router, which runs before this and sees the server's URL while hydrating.
-   *
-   * **And it is ALSO taken by the first WRITE, whenever that comes.** Core runs a child's
-   * `@mounted` before its parent's, so this one comes last — and a child writing the query from its
-   * own `@mounted` started from the server's empty one and wrote it over the reader's: found by
-   * review, `?q=ada` and `#tab=film` lost for good. Every write reads the state through the
-   * navigator's `read`, and a write never happens during a render, so that read takes the URL first.
-   *
-   * What is NOT covered, measured: a child's `@mounted` that only READS sees the server's URL while
-   * hydrating — its own `@mounted` runs before any hook's, and the context it reads is republished
-   * only on the next render. Taking the URL there needs a moment core does not offer publicly.
-   */
-  private adopted = false;
-
-  @mounted({ env: "client" })
-  adoptUrl(): void {
-    if (this.adopted) return;
-    this.adopted = true;
+    // The client's URL is the truth, whatever was restored into state.
     this.routeState = keepUnchanged(this.routeState, parseUrl());
   }
 
