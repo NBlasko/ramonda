@@ -24,6 +24,7 @@ interface Node {
   options?: Record<string, unknown>;
   /** Per `@compute`: reads the cache answered, and reads that ran the body. */
   computes?: Record<string, { hits: number; misses: number }>;
+  computeValues?: Record<string, unknown>;
   hooks: Node[];
   children: Node[];
   node?: unknown;
@@ -2222,7 +2223,7 @@ describe("what a @compute's cache did", () => {
     // The heading is the neutral one. It was nearly "Wasted computes", which is a verdict the
     // panel is not entitled to: a compute whose dependencies genuinely move every time is
     // correct code and would have been sitting under that word.
-    expect(text).toContain("Computed");
+    expect(text).toContain("Cache");
   });
 
   /**
@@ -2249,8 +2250,35 @@ describe("what a @compute's cache did", () => {
     expect(panel.shadowRoot.querySelector(".comp-summary")).toBe(row);
   });
 
+  /**
+   * Found by the second trial: under COMPUTED every getter showed a quoted string such as
+   * `isLanding: "3 of 4 reads cached"`, which reads as the getter returning that string, and the
+   * value itself was nowhere. The value goes under "Computed"; the counters under "Cache".
+   */
+  it("shows what each compute holds, with the counters under a heading of their own", () => {
+    const panel = mount(() => [
+      node("App", "component", {
+        computes: { isLanding: { hits: 3, misses: 1 } },
+        computeValues: { isLanding: false },
+      }),
+    ]);
+
+    const keysUnder = (title: string) => {
+      const block = Array.from(panel.shadowRoot.querySelectorAll(".state-block")).find(
+        (el) => el.querySelector(".state-title")?.textContent?.trim() === title,
+      );
+      return Array.from(block?.querySelectorAll(".sk") ?? []).map((k) => k.textContent!.trim().replace(/:$/, ""));
+    };
+    expect(keysUnder("Computed")).toEqual(["isLanding"]);
+    expect(keysUnder("Cache")).toEqual(["isLanding"]);
+    const text = panel.shadowRoot.textContent ?? "";
+    expect(text).toContain("3 of 4 reads cached");
+    expect(text).not.toContain('"3 of 4 reads cached"');
+  });
+
   it("shows no section for a component with no computes", () => {
     const panel = mount(() => [node("App", "component", {})]);
     expect(panel.shadowRoot.textContent ?? "").not.toContain("Computed");
+    expect(panel.shadowRoot.textContent ?? "").not.toContain("Cache");
   });
 });

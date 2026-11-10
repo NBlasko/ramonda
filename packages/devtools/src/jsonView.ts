@@ -27,6 +27,15 @@ import { escapeHtml } from "./format";
  * stops is a tree that lies about what the app holds.
  */
 
+/**
+ * A sentence the panel says ABOUT a value, shown as plain text. A string would be quoted, and a
+ * quoted sentence reads as the value itself — the second trial read `"3 of 4 reads cached"` as what
+ * a getter returned.
+ */
+export class Phrase {
+  constructor(readonly text: string) {}
+}
+
 export interface JsonViewOptions {
   /** Levels that start expanded. 1 shows an object's own keys and nothing deeper. */
   openDepth?: number;
@@ -63,6 +72,8 @@ export function renderJsonHtml(value: unknown, options: JsonViewOptions = INLINE
 /** `Array(8)`, `{4 keys}`, `"text"` — what a container looks like before you open it. */
 export function summarize(value: unknown): string {
   if (Array.isArray(value)) return `Array(${value.length})`;
+  if (value instanceof Map) return `Map(${value.size})`;
+  if (value instanceof Set) return `Set(${value.size})`;
   if (isPlain(value)) {
     const keys = Object.keys(value);
     return keys.length === 0 ? "{}" : `{${keys.length} ${keys.length === 1 ? "key" : "keys"}}`;
@@ -77,6 +88,7 @@ function isPlain(value: unknown): value is Record<string, unknown> {
 }
 
 function leafText(value: unknown): string {
+  if (value instanceof Phrase) return value.text;
   if (typeof value === "string") return JSON.stringify(value);
   if (typeof value === "function") return "ƒ()";
   if (typeof value === "bigint") return `${value}n`;
@@ -98,6 +110,7 @@ function leafText(value: unknown): string {
 }
 
 function leafClass(value: unknown): string {
+  if (value instanceof Phrase) return "jv-meta";
   if (typeof value === "string") return "jv-s";
   if (typeof value === "number" || typeof value === "bigint") return "jv-n";
   if (typeof value === "boolean") return "jv-b";
@@ -114,7 +127,9 @@ function keyHtml(key: string | undefined): string {
 function row(key: string | undefined, value: unknown, walk: Walk, depth: number): string {
   if (walk.left-- <= 0) return "";
 
-  const container = Array.isArray(value) || isPlain(value);
+  // A Map and a Set are containers too: shown as `Map [object Map]` they were the one value in the
+  // panel nobody could open — found by the second trial, on a component's `Map` prop.
+  const container = Array.isArray(value) || isPlain(value) || value instanceof Map || value instanceof Set;
   if (!container) {
     return `<div class="jv-row">${keyHtml(key)}<span class="${leafClass(value)}">${escapeHtml(leafText(value))}</span></div>`;
   }
@@ -128,10 +143,14 @@ function row(key: string | undefined, value: unknown, walk: Walk, depth: number)
 
   const entries: [string, unknown][] = Array.isArray(value)
     ? value.map((item, index) => [String(index), item])
-    : Object.entries(value);
+    : value instanceof Map
+      ? [...value].map(([mapKey, item]): [string, unknown] => [summarize(mapKey), item])
+      : value instanceof Set
+        ? [...value].map((item, index): [string, unknown] => [String(index), item])
+        : Object.entries(value as Record<string, unknown>);
 
   if (entries.length === 0) {
-    return `<div class="jv-row">${keyHtml(key)}<span class="jv-meta">${Array.isArray(value) ? "Array(0)" : "{}"}</span></div>`;
+    return `<div class="jv-row">${keyHtml(key)}<span class="jv-meta">${escapeHtml(summarize(value))}</span></div>`;
   }
 
   walk.seen.add(value);

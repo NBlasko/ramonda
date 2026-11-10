@@ -30,12 +30,12 @@ const shared = {
   ...ramondaOptions,
   bundle: true,
   format: "esm",
-  // The production condition picks `@ramonda/core`'s optimized build, and `__DEV__` compiles the
-  // development-only branches out of your own code.
+  // The production condition picks each package's optimized build, and `ramondaDefine` sets
+  // `import.meta.env.DEV` to false, which compiles your own development-only branches out.
   conditions: ["production"],
   // Through `ramondaDefine` because writing `define` plainly would drop the entries that make
   // `import.meta.env.RAMONDA_PUBLIC_*` readable — see its own note.
-  define: ramondaDefine({ __DEV__: "false" }),
+  define: ramondaDefine(),
   // Where a bundler plugin goes, in both builds at once — `@ramonda/css`'s, for instance.
   plugins: [],
 };

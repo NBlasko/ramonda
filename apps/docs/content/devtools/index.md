@@ -232,6 +232,18 @@ Nothing catches that today, and it turns only while somebody is looking, which i
 an app to start changing under them. Read fields, derive values, return. No writes, no fetches, no
 logging.
 
+### What a `@compute` holds, and what its cache did
+
+Two blocks, for a component with a `@compute`:
+
+- **Computed** — what each one holds now: `isLanding  false`, `ranked  Array(8)`. Only a value its
+  cache holds currently is shown. The panel never runs the getter to fill one in, because that would
+  run your code from inside the panel and move the counters beside it, so a compute whose inputs
+  changed since it was last read is left out until something reads it.
+- **Cache** — what the cache did: `3 of 4 reads cached`, or `never cached — ran on all 41 reads`.
+  A compute that never hits is not necessarily wrong: its inputs may move on every pass, and a plain
+  getter would cost the same. The numbers are there so you can tell.
+
 ## The query cache
 
 The `QUERY` tab lists every live cache, with each entry's key, status, freshness, observer count and

@@ -206,3 +206,42 @@ function statsFor(name: string): Record<string, { hits: number; misses: number }
   if (!node?.computes) throw new Error(`no compute stats for <${name}>`);
   return node.computes;
 }
+
+/**
+ * The VALUE, beside the counters. Found by the second trial: the panel showed only the counters, as
+ * `isLanding: "3 of 4 reads cached"`, which read as the getter returning that string — and the value
+ * itself was nowhere. It is read off the cache, never by running the body: a peek that computed would
+ * move the very counters it sits beside, and could run app code from inside the panel.
+ */
+describe("what a @compute holds", () => {
+  test("the cached value is reported, and a stale one is left out rather than recomputed", async () => {
+    class Widget extends Component {
+      @state n = 1;
+      @compute get doubled() {
+        return this.n * 2;
+      }
+      @compute get unread() {
+        return this.n * 3;
+      }
+      render() {
+        return <p>{this.doubled}</p>;
+      }
+    }
+
+    const app = await getDOM<Widget>(<Widget />);
+    setInspectRoot(document.body);
+    expect(valuesFor("Widget")).toEqual({ doubled: 2 });
+
+    // Invalidated and not read again: the cache holds nothing current, so nothing is shown — and
+    // asking did not run the body, so the counters did not move.
+    const before = statsFor("Widget").doubled;
+    app.instance.n = 5;
+    expect(valuesFor("Widget")).toEqual({});
+    expect(statsFor("Widget").doubled).toEqual(before);
+  });
+});
+
+function valuesFor(name: string): Record<string, unknown> {
+  const node = allNodes(inspectTree()).find((n) => n.name === name);
+  return (node as { computeValues?: Record<string, unknown> } | undefined)?.computeValues ?? {};
+}

@@ -1750,7 +1750,8 @@ export function compute<T, R>(
      */
     let counters: ComputeCounters | undefined;
     if (__DEV__) {
-      counters = { hits: 0, misses: 0 };
+      // `peek` reads the cache and never runs the body — see `computeValuesOf`.
+      counters = { hits: 0, misses: 0, peek: () => ({ fresh: !cache.isDirty, value: cache.value }) };
       registerCompute(this, String(context.name), counters);
     }
 

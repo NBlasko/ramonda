@@ -54,7 +54,7 @@ A folder holding only `.git` counts as empty. Into any other, the scaffolder wri
 - your `.gitignore` is kept, and the lines the project needs that it lacks are added at the end;
 - your `README.md`, `AGENTS.md` and `CLAUDE.md` are kept, and the project's own is written beside each
   as `README.ramonda.md`, `AGENTS.ramonda.md` and `CLAUDE.ramonda.md` — unless yours is already the
-  project's;
+  project's, or, for `CLAUDE.md`, already has a line `@AGENTS.md`, which is all the project's says;
 - any other file of yours that the template also writes — `package.json`, `src/App.tsx` — is replaced,
   and the scaffolder names each one it replaced; one already identical to the project's is not named;
 - every other file is left alone, and is not read. A file of yours under `src` is part of the project

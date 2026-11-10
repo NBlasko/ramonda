@@ -252,14 +252,23 @@ describe("the types a Vite project needs", () => {
     expect(pkg.devDependencies.vite).toBeDefined();
   });
 
-  test("SSR does not need it — esbuild, its own __DEV__, no css", () => {
-    /**
-     * The templates differ on purpose, so the check is that the SSR one still declares the
-     * global it actually uses rather than acquiring a reference it does not.
-     */
-    const { read, dir } = make("ssr", []);
-    expect(read("global.d.ts")).toContain("declare const __DEV__: boolean");
+  test("SSR does not need it — esbuild, no css", () => {
+    const { dir } = make("ssr", []);
     expect(existsSync(join(dir, "src", "vite-env.d.ts"))).toBe(false);
+  });
+
+  /**
+   * `__DEV__` is nowhere in a project. Found by the second trial: `vite.config.ts` defined it with no
+   * word why, while the installation page says a project does not need it — and measured, nothing a
+   * project installs reads it (every package picks its development or production build through its
+   * `exports` conditions, and `__DEV__` appears in their `dist` only inside comments). An app's own
+   * development branch is `import.meta.env.DEV`, which `@ramonda/build` defines on both halves.
+   */
+  test("and nothing in it defines or declares `__DEV__`", () => {
+    const { read } = make("ssr", []);
+    for (const file of ["vite.config.ts", "scripts/build.mjs", "global.d.ts"]) {
+      expect(read(file), file).not.toContain("__DEV__");
+    }
   });
 });
 
@@ -319,18 +328,15 @@ describe("development is development", () => {
     /**
      * `dev` is now a Vite middleware server with hot reload — `node server.mjs`, not an
      * esbuild build. Vite runs the app in development (diagnostics, strict render, devtools);
-     * `vite.config.ts` sets `__DEV__` true. The production `build`/`start` path is unchanged
+     * the development conditions pick core's development build. The production `build`/`start` path is unchanged
      * and still uses production conditions, so a scaffolded app never accidentally serves the
      * production core during development (the bug the old assertions guarded).
      */
     expect(scripts.dev).toBe("node server.mjs");
-    expect(read("vite.config.ts")).toContain("__DEV__");
-    expect(read("vite.config.ts")).toMatch(/__DEV__.*true/);
     expect(read("scripts/build.mjs")).toContain('conditions: ["production"]');
     // Through `ramondaDefine`, which merges in the `import.meta.env.RAMONDA_PUBLIC_*` entries — writing
-    // `define` plainly would drop them and every such read would throw in a browser. The assertion is
-    // still about `__DEV__` being false in the build; only the spelling moved.
-    expect(read("scripts/build.mjs")).toContain('ramondaDefine({ __DEV__: "false" })');
+    // `define` plainly would drop them and every such read would throw in a browser.
+    expect(read("scripts/build.mjs")).toContain("define: ramondaDefine()");
     expect(read("scripts/build.mjs")).toContain('ramondaDefine } from "@ramonda/build/esbuild"');
     expect(scripts.start).toContain("--prod");
   });
@@ -466,12 +472,21 @@ describe("the scaffolded server shuts its DOM down through its own handle", () =
 });
 
 describe("the generated project declares what its own code needs", () => {
-  test("the SSR template declares __DEV__, which guards the devtools import", () => {
+  // Found by the second trial: the comment sent a reader looking for a flower; the badge is a round R.
+  test("the entry names the devtools badge as it looks", () => {
+    const entry =
+      make("spa", ["devtools"]).read("src/main.tsx") + make("ssr", ["devtools"]).read("src/entry-client.tsx");
+    expect(entry).toContain("round R badge");
+    expect(entry).not.toContain("flower");
+  });
+
+  test("the SSR template guards the devtools import with `import.meta.env.DEV`, which it declares", () => {
     const { read } = make("ssr", ["devtools"]);
 
-    // The entry says `if (__DEV__)`, so the project has to declare it or its own `tsc` fails.
-    // esbuild replaces it per build: true for `dev`, false for `build`.
-    expect(read("global.d.ts")).toContain("__DEV__");
+    // The entry says `if (import.meta.env.DEV)`, so the project has to declare it or its own `tsc`
+    // fails. `@ramonda/build` defines it per build: true for `dev`, false for `build`.
+    expect(read("src/entry-client.tsx")).toContain("import.meta.env.DEV");
+    expect(read("global.d.ts")).toContain("readonly DEV: boolean");
   });
 
   test("the SPA template has no globals to declare at all", () => {
@@ -1010,6 +1025,25 @@ describe("a folder that already has files", () => {
     expect(read("CLAUDE.ramonda.md")).toBe("@AGENTS.md\n");
     expect(result.replaced).toEqual([]);
     expect(result.kept).toEqual(["AGENTS.md", "CLAUDE.md"]);
+  });
+
+  /**
+   * Found by the second trial: its `CLAUDE.md` was its own, but ended in `@AGENTS.md` — the one line
+   * the project's file is — and a `CLAUDE.ramonda.md` was written beside it anyway, a file the user
+   * had to decide about that did nothing.
+   */
+  test("says in the README why biome.json leaves src out, when blocks and Biome are both chosen", () => {
+    const { read } = make("spa", ["css", "biome"]);
+    expect(read("biome.json")).toContain('"!src"');
+    expect(read("README.md")).toContain("`biome.json` leaves `src` out, and that is not `src` going unlinted");
+    expect(make("spa", ["biome"]).read("README.md")).not.toContain("leaves `src` out");
+  });
+
+  test("writes no CLAUDE.ramonda.md beside a CLAUDE.md that already loads AGENTS.md", () => {
+    const { read, result, dir } = into({ "CLAUDE.md": "# mine\n\nSome rules.\n\n@AGENTS.md\n" });
+    expect(read("CLAUDE.md")).toBe("# mine\n\nSome rules.\n\n@AGENTS.md\n");
+    expect(existsSync(join(dir, "CLAUDE.ramonda.md"))).toBe(false);
+    expect(result.kept).toEqual([]);
   });
 
   test("names every other file it replaced, and only those", () => {

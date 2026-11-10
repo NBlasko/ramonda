@@ -10,6 +10,5 @@ import { ramonda } from "@ramonda/build/vite";
 // server still starts, warns about nothing, and hands the browser a module that dies with
 // `SyntaxError: Invalid or unexpected token`.
 export default defineConfig({
-  define: { __DEV__: "true" },
   plugins: [ramonda()],
 });
