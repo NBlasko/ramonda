@@ -24,6 +24,11 @@ const template = await readFile(resolve(root, "dist/client/index.html"), "utf-8"
 // clearing it here is the one place it cannot be forgotten.
 await rm(resolve(root, "dist/isr"), { recursive: true, force: true });
 
+// Emptied for the same reason, and this script is its only writer: a page baked by an earlier build —
+// a route since deleted or renamed — stayed here, and `build:static` copies the whole folder into the
+// site, so it stayed online. A file you add to every build (a `sitemap.xml`) is written after the loop.
+await rm(OUT, { recursive: true, force: true });
+
 const paths = staticPaths();
 console.log(`Prerendering ${paths.length} static route(s): ${paths.join(", ") || "(none)"}\n`);
 

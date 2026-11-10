@@ -808,7 +808,18 @@ const reported = [];
  * failure a stale line-number assertion has — it keeps passing while asserting nothing.
  */
 const used = new Set();
-const usedRules = new Set();
+/**
+ * Per EXAMPLE, not per page. Keyed by the file, a marker counted as used whenever another example on
+ * the same page made the same report — measured on `style-blocks/order.md`, whose second
+ * `expect-report:override-out-of-order` stayed "used" with its example rewritten to report nothing,
+ * because the first one on the page still did.
+ */
+const usedRules = new Map();
+const useRule = (unit, rule) => {
+  const set = usedRules.get(unit) ?? new Set();
+  set.add(rule);
+  usedRules.set(unit, set);
+};
 let groupIndex = 0;
 for (const group of groups.values()) {
   // The globals are generated PER GROUP, so a section's own preamble can claim a name the framework
@@ -878,7 +889,7 @@ for (const group of groups.values()) {
       }
       if (allowed !== undefined && allowed.has(finding.rule)) {
         used.add(unit);
-        usedRules.add(`${unit.file}\u0000${finding.rule}`);
+        useRule(unit, finding.rule);
         continue;
       }
 
@@ -963,7 +974,7 @@ for (const group of groups.values()) {
       }
       if (allowed !== undefined && allowed.has(rule)) {
         used.add(unit);
-        usedRules.add(`${unit.file}\u0000${rule}`);
+        useRule(unit, rule);
         continue;
       }
       reported.push({
@@ -1005,7 +1016,7 @@ const stale = units.filter(
     unit.expectReport !== undefined &&
     (unit.expectReport === true
       ? !used.has(unit)
-      : [...unit.expectReport].some((rule) => !usedRules.has(`${unit.file}\u0000${rule}`))),
+      : [...unit.expectReport].some((rule) => !usedRules.get(unit)?.has(rule))),
 );
 
 if (stale.length > 0) {

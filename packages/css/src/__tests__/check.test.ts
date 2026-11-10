@@ -2705,6 +2705,90 @@ describe("a narrower whole shorthand after a wider one from another block", () =
 });
 
 /**
+ * `override-out-of-order` across blocks — what the merge could only warn about in development, with
+ * no file and no line. Found by the second trial: a shared card with `@media print { border: none; }`,
+ * spread into a block that sets `border-top-color` with no condition. The sheet emits the stronger
+ * condition last, so the spread's one wins wherever both apply, whatever the author's order says.
+ * Twelve build warnings went past, naming no file, and `npm run check` passed.
+ */
+describe("an override from another block that the sheet will not honour", () => {
+  const found = (files: Record<string, string>) =>
+    check(files).findings.filter((one) => one.code === "override-out-of-order");
+  const BASE = `const card = @@( border: 1px solid red; @media print { border: none; } );\n`;
+
+  test("a longhand after a spread whose shorthand is under a condition — at the longhand's line", () => {
+    const findings = found({ "Card.tsx": `${BASE}export const accent = @@( ...$(card); border-top-color: blue; );\n` });
+    expect(findings).toHaveLength(1);
+    expect(findings[0].message).toContain("`border-top-color`");
+    expect(findings[0].message).toContain("@media print");
+    expect(findings[0].line).toBe(2);
+  });
+
+  test("a narrower shorthand, the trial's own second shape", () => {
+    expect(
+      found({ "Card.tsx": `${BASE}export const tint = @@( ...$(card); border-color: transparent; );\n` }),
+    ).toHaveLength(1);
+  });
+
+  test("through a spread of a block from another file", () => {
+    expect(
+      found({
+        "card.ts": `export ${BASE}`,
+        "Accent.tsx": `import { card } from "./card";\nexport const accent = @@( ...$(card); border-top-color: blue; );\n`,
+      }),
+    ).toHaveLength(1);
+  });
+
+  test("through a spread of a spread", () => {
+    expect(
+      found({
+        "Card.tsx": `${BASE}const panel = @@( ...$(card); );\nexport const accent = @@( ...$(panel); border-top-color: blue; );\n`,
+      }),
+    ).toHaveLength(1);
+  });
+
+  test("through mergeClassNames, told at the argument", () => {
+    const findings = found({
+      "node_modules/@ramonda/css/index.d.ts": `export declare function mergeClassNames(...parts: unknown[]): string;\n`,
+      "node_modules/@ramonda/css/package.json": `{ "name": "@ramonda/css", "types": "index.d.ts" }\n`,
+      "Card.tsx":
+        `import { mergeClassNames } from "@ramonda/css";\n${BASE}const top = @@( border-top-color: blue; );\n` +
+        `export const a = <div className={mergeClassNames(card, top)}>x</div>;\n`,
+    });
+    expect(findings).toHaveLength(1);
+    expect(findings[0].line).toBe(4);
+  });
+
+  test("and under a WEAKER condition than the spread's", () => {
+    expect(
+      found({
+        "Card.tsx":
+          `const base = @@( @media (min-width: 60rem) { padding: 2rem; } );\n` +
+          `export const card = @@( ...$(base); @media (min-width: 40rem) { padding-left: 1rem; } );\n`,
+      }),
+    ).toHaveLength(1);
+  });
+
+  test.each([
+    [
+      "the other order: the spread with no condition, this one under it",
+      "color: red;",
+      "@media print { color: blue; }",
+    ],
+    ["both under the same condition", "@media print { color: red; }", "@media print { color: blue; }"],
+    ["properties that do not touch", "@media print { border: none; }", "color: blue;"],
+    // A selector adds specificity, which settles it before the sheet's order does.
+    ["a spread's rule under a selector", "&:hover { color: red; }", "color: blue;"],
+    // Of different importance: importance decides, whatever the conditions.
+    ["an important one after it", "@media print { color: red; }", "color: blue !important;"],
+  ])("not for %s", (_what, first, second) => {
+    expect(
+      found({ "Card.tsx": `const base = @@( ${first} );\nexport const card = @@( ...$(base); ${second} );\n` }),
+    ).toEqual([]);
+  });
+});
+
+/**
  * §17: a `$` token is a `var()` to the sheet, so a shorthand holding one reaches it WHOLE — in a
  * spread's block and in the block after it. The virtual file writes it as a property access,
  * `__vars.border.thin`, or inside a template when it is part of a value, and the walk read only
