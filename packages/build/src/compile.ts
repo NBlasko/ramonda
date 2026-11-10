@@ -19,7 +19,8 @@
  * ## What is left as it is, for the transform after this
  *
  * A component, a fragment, an element with a spread (`{...props}`, whose attributes are not known here), a
- * namespaced tag or attribute, a `class` attribute (the runtime reports it and renames it), a `key` below
+ * namespaced tag or attribute, a `class` attribute (the runtime reports it and renames it), a `children`
+ * attribute (JSX's way to give an element its children), a `key` below
  * the root, and text or an attribute holding an entity (`&amp;`), which the transform after this decodes.
  * A host element inside one of these is still compiled, as a block of its own.
  *
@@ -74,6 +75,8 @@ interface JSXElement extends Node {
 export interface Compiled {
   code: string;
   map: ReturnType<MagicString["generateMap"]>;
+  /** Each template's description, in the order the module numbers them. */
+  templates: string[];
 }
 
 /** Compiles the JSX in one module. `undefined` when there is nothing to compile, or it does not parse. */
@@ -100,11 +103,13 @@ export function compileJsx(code: string, id: string): Compiled | undefined {
       at = statement.end;
     } else break;
   }
-  const head =
-    `\nimport { __template as ${TEMPLATE}, __block as ${BLOCK} } from "${RUNTIME}";\n` +
-    compiler.templates.map((t, i) => `const ${templateName(i)} = /* @__PURE__ */ ${TEMPLATE}(${t});\n`).join("");
-  out.appendLeft(at, head);
-  return { code: out.toString(), map: out.generateMap({ source: id, includeContent: true, hires: true }) };
+  const names = compiler.templates.map((_, i) => templateName(i)).join(", ");
+  out.appendLeft(at, `\nimport { __template as ${TEMPLATE}, __block as ${BLOCK} } from "${RUNTIME}";\nvar ${names};\n`);
+  return {
+    code: out.toString(),
+    map: out.generateMap({ source: id, includeContent: true, hires: true }),
+    templates: compiler.templates,
+  };
 }
 
 function templateName(index: number): string {
@@ -205,7 +210,8 @@ function templatable(element: JSXElement, root: boolean): boolean {
   for (const attribute of element.openingElement.attributes) {
     if (attribute.type !== "JSXAttribute") return false;
     const name = attributeName(attribute);
-    if (name === undefined || name === "class") return false;
+    // `children` is JSX's own: the element's children, never an attribute of that name.
+    if (name === undefined || name === "class" || name === "children") return false;
     if (name === "key" && !root) return false;
     // An entity in a literal is decoded by the transform after this one, as it is in text.
     const value = attribute.value as Node | null;
@@ -243,11 +249,7 @@ class Compiler {
    */
   jsx(node: Node, inChildren: boolean): void {
     if (templatable(node as JSXElement, true)) {
-      if (inChildren) {
-        this.out.appendLeft(node.start, "{");
-        this.out.prependRight(node.end, "}");
-      }
-      this.block(node as JSXElement);
+      this.block(node as JSXElement, inChildren);
     } else {
       this.keep(node as JSXElement);
     }
@@ -275,7 +277,7 @@ class Compiler {
   }
 
   /** A compiled root: `__ramondaBlock(template, [hole values in source order])`. */
-  private block(element: JSXElement): void {
+  private block(element: JSXElement, braced: boolean): void {
     const holes: Piece[][] = [];
     let keyHole: number | undefined;
     const hole = (pieces: Piece[]): number => holes.push(pieces) - 1;
@@ -352,16 +354,22 @@ class Compiler {
       return `{ ${parts.join(", ")} }`;
     };
 
-    this.templates.push(describe(element, true));
+    const description = describe(element, true);
+    this.templates.push(description);
     const name = templateName(this.templates.length - 1);
 
-    // The call, in source order: the app's expressions stay where they are, everything else is written.
-    const pieces: Piece[] = [`${BLOCK}(${name}, [`];
+    /**
+     * The call, in source order: the app's expressions stay where they are, everything else is written —
+     * the braces it takes among JSX children too, as part of the call. The template is made where it is
+     * first used, into a `var` the module declares: a function that builds a block can run before the
+     * module's own body has (a circular import), and finds it then as it would any other day.
+     */
+    const pieces: Piece[] = [`${braced ? "{" : ""}${BLOCK}(${name} || (${name} = ${TEMPLATE}(${description})), [`];
     holes.forEach((hole, i) => {
       if (i > 0) pieces.push(", ");
       pieces.push(...hole);
     });
-    pieces.push("])");
+    pieces.push(braced ? "])}" : "])");
     this.write(element.start, element.end, pieces);
   }
 

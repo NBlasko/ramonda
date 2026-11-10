@@ -64,6 +64,8 @@ export interface Template {
   /** The child holes: `h` ones, normalized only when they hold markup, and `k` ones, always. */
   readonly loneHoles: readonly number[];
   readonly childrenHoles: readonly number[];
+  /** Both kinds of child hole, for a comparison that asks of each hole whether it holds children. */
+  readonly childHoles: ReadonlySet<number>;
   /**
    * Built on first use, where a `document` exists, and cloned for each block. On a server that renders
    * each request into a document of its own, it is the first one's: a clone is adopted by the document
@@ -107,7 +109,8 @@ export function template(description: TemplateNode): Template {
   walk(description, []);
   // A `nodeName` as the DOM gives it: an HTML tag upper case, an SVG one as written.
   const rootName = svgElements.has(description.t) ? description.t : description.t.toUpperCase();
-  return { description, rootName, sites, loneHoles, childrenHoles };
+  const childHoles = new Set([...loneHoles, ...childrenHoles]);
+  return { description, rootName, sites, loneHoles, childrenHoles, childHoles };
 }
 
 /**
@@ -255,12 +258,14 @@ export function applyBlock(vnode: BlockVNode, existing: Element | undefined, own
       if (site.h !== undefined) {
         const value = values[site.h];
         const text = element.lastChild as Text;
-        // A string or a number goes into the text node the template holds; anything else is children.
+        // A string or a number goes into the text node the template holds; anything else is children,
+        // built into an element that holds nothing once that node is gone.
         if (isText(value)) {
           text.nodeValue = String(value);
           texts[i] = text;
         } else {
-          diffChildrenOf(element, value as unknown[], owner, false);
+          element.removeChild(text);
+          diffChildrenOf(element, value as unknown[], owner, true);
         }
       }
       if (site.k !== undefined) diffChildrenOf(element, values[site.k] as unknown[], owner, true);
@@ -292,6 +297,10 @@ export function applyBlock(vnode: BlockVNode, existing: Element | undefined, own
   return existing;
 }
 
+function lines(value: string | null): string | null {
+  return value === null ? null : value.replace(/\r\n?/g, "\n");
+}
+
 /**
  * Whether `element`, from the server, is what `node` describes: the same tag, the template's own
  * attributes, its static children text for text and element for element — and, in the order the
@@ -303,7 +312,8 @@ function matches(node: TemplateNode, element: Node, sites: Element[]): boolean {
   const svg = svgElements.has(node.t);
   if (element.nodeType !== 1 || element.nodeName !== (svg ? node.t : node.t.toUpperCase())) return false;
   if (node.a !== undefined) {
-    for (const name in node.a) if ((element as Element).getAttribute(name) !== node.a[name]) return false;
+    // Line breaks as the HTML parser gives them back: a CRLF in the source arrives as LF.
+    for (const name in node.a) if (lines((element as Element).getAttribute(name)) !== lines(node.a[name])) return false;
   }
   if (node.d !== undefined || node.h !== undefined || node.k !== undefined) sites.push(element as Element);
   // What a hole holds is the hole's to adopt.
@@ -410,5 +420,5 @@ export function blockOf(vnode: unknown): { template: Template; values: unknown[]
 }
 
 export function isChildHole(template: Template, index: number): boolean {
-  return template.loneHoles.includes(index) || template.childrenHoles.includes(index);
+  return template.childHoles.has(index);
 }

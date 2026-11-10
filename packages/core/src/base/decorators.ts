@@ -1191,8 +1191,8 @@ export function memoized<T extends (...args: any[]) => any>(
      * symbols with the same description render as one string, and two symbol-named methods collided
      * again — the same fault, one shape over.
      *
-     * A `\u0000` separator rather than `:` or `|`, because `buildKey` puts a caller's own string
-     * straight into the key and a separator a caller can type is a separator a caller can forge.
+     * A table per member, so two members' keys never meet whatever a caller's strings spell — see
+     * `MemberCache`.
      */
     const instanceMap = memoMap.get(this)!;
     let tables = instanceMap.get(member);

@@ -216,14 +216,6 @@ export function ramonda(options: RamondaOptions = {}): VitePluginLike {
     },
 
     /**
-     * The decorators, lowered on Vite 8 — see the note on {@link ramonda}. On Vite 7 esbuild is Vite's
-     * own transform and has already done it, so this returns at once.
-     *
-     * Every module of the app's own, after Oxc: a dependency is published compiled, and a file with
-     * no `@` in it has no decorator to lower. `esbuild` is imported here rather than at the top so
-     * that a Vite 7 build, and the esbuild half of this package, never load it twice.
-     */
-    /**
      * The JSX compiler, here rather than in a transform: it reads the source as the app wrote it, before
      * the transform that compiles JSX to `jsx()` calls — which runs ahead of every transform but an
      * enforced one, and this plugin's own transform has to run after it. A module with a query is
@@ -237,6 +229,14 @@ export function ramonda(options: RamondaOptions = {}): VitePluginLike {
       return compiled === undefined ? null : { code: compiled.code, map: compiled.map };
     },
 
+    /**
+     * The decorators, lowered on Vite 8 — see the note on {@link ramonda}. On Vite 7 esbuild is Vite's
+     * own transform and has already done it, so this returns at once.
+     *
+     * Every module of the app's own, after Oxc: a dependency is published compiled, and a file with
+     * no `@` in it has no decorator to lower. `esbuild` is imported here rather than at the top so
+     * that a Vite 7 build, and the esbuild half of this package, never load it twice.
+     */
     transform: {
       order: "post",
       async handler(code, id) {

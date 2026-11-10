@@ -562,18 +562,6 @@ export class ListEngine<T> {
   }
 
   /**
-   * Stores this pass's scope for a key, releasing whatever it displaces.
-   *
-   * Two items answering the same key is user error, reported in DEV as RMD002 twenty lines above,
-   * but the map only holds one scope per key — so the first item's scope was
-   * overwritten here after it had already subscribed to everything its mapper
-   * read. It was then in neither map: gone from this pass's, never in the
-   * previous pass's, so the cleanup loop that detaches the scopes which did not
-   * carry over could not reach it. A live subscription with no owner, calling
-   * `host.reBuild()` for an item that does not exist for the life of the page,
-   * and marking the engine dirty each time, which defeats the whole-list skip.
-   */
-  /**
    * A position that produced no row this pass. Taken by position, its scope is still in `scopes`, and is
    * let go here as an unclaimed one is at the end of a pass that rebuilt the maps.
    */
@@ -585,6 +573,18 @@ export class ListEngine<T> {
     this.scopes.delete(scope.key as string);
   }
 
+  /**
+   * Stores this pass's scope for a key, releasing whatever it displaces.
+   *
+   * Two items answering the same key is user error, reported in DEV as RMD002 twenty lines above,
+   * but the map only holds one scope per key — so the first item's scope was
+   * overwritten here after it had already subscribed to everything its mapper
+   * read. It was then in neither map: gone from this pass's, never in the
+   * previous pass's, so the cleanup loop that detaches the scopes which did not
+   * carry over could not reach it. A live subscription with no owner, calling
+   * `host.reBuild()` for an item that does not exist for the life of the page,
+   * and marking the engine dirty each time, which defeats the whole-list skip.
+   */
   private claimScope(nextScopes: Map<string, ItemScope<T>>, scopeKey: string, scope: ItemScope<T>): void {
     const shadowed = nextScopes.get(scopeKey);
     if (shadowed !== undefined && shadowed !== scope) this.releaseScope(shadowed);

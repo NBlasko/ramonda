@@ -76,6 +76,11 @@ Components, fragments and elements with a spread (`{...props}`) are compiled the
 element inside them is a template of its own. `ramonda({ compile: false })` builds the app without the
 compiler — the way to tell whether something that misbehaves is the compiler's.
 
+With esbuild the compiler reads each `.tsx` and `.jsx` file in its `onLoad` step, and esbuild hands a
+file to the first plugin that loads it. A plugin of yours that loads those files too — to instrument
+them for coverage, say — goes before `ramonda()` in `plugins`, and the files it loads are then
+compiled the ordinary way.
+
 ## Vite
 
 ```ts

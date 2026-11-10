@@ -485,3 +485,72 @@ describe("a block rooted in an svg element", () => {
     expect(kept).toBe(true);
   });
 });
+
+/** `<li id="view" title={title}>{label}</li>`, keyed "a". */
+const VIEW = __template({ t: "li", a: { id: "view" }, d: [["title", 0]], h: 1, y: 2 });
+
+describe("a keyed element and a block of the same key, taking turns", () => {
+  test("are each built as what they are — neither takes the other's node", async () => {
+    class Item extends Component {
+      @state editing = false;
+      render() {
+        const edit = { className: "edit" };
+        return (
+          <ul>
+            {this.editing ? (
+              <li key="a" {...edit}>
+                editing
+              </li>
+            ) : (
+              __block(VIEW, ["shown", "label", "a"])
+            )}
+          </ul>
+        );
+      }
+    }
+    const app = await getDOM<Item>(<Item />);
+    await app.settle();
+    const seen: string[] = [];
+    for (const editing of [true, false]) {
+      app.instance.editing = editing;
+      await app.settle();
+      seen.push((app.container.querySelector("ul") as HTMLElement).innerHTML);
+    }
+    expect(seen).toEqual(['<li class="edit">editing</li>', '<li id="view" title="shown">label</li>']);
+  });
+});
+
+describe("a template attribute written over two lines", () => {
+  test("is the server's, though the parser gave its CRLF back as LF", async () => {
+    const WRAPPED = __template({ t: "p", a: { title: "one\r\ntwo" }, c: ["x"] });
+    class Wrapped extends Component {
+      render() {
+        return <div>{__block(WRAPPED, [])}</div>;
+      }
+    }
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    container.innerHTML = await renderToString(<Wrapped />);
+    const served = container.querySelector("p");
+    hydrateRoot(<Wrapped />, container);
+    await Promise.resolve();
+    await Promise.resolve();
+    const kept = container.querySelector("p") === served;
+    container.remove();
+    expect(kept).toBe(true);
+  });
+});
+
+describe("a child hole built holding markup", () => {
+  test("holds the markup and nothing else", async () => {
+    class Boxed extends Component {
+      render() {
+        return <div>{__block(LONE, [<b>bold</b>])}</div>;
+      }
+    }
+    const app = await getDOM<Boxed>(<Boxed />);
+    await app.settle();
+    const p = app.container.querySelector("p") as HTMLElement;
+    expect(Array.from(p.childNodes, (node) => node.nodeName)).toEqual(["B"]);
+  });
+});

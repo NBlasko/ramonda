@@ -611,7 +611,11 @@ function executeChangesOnStringNode(
   if ((vnode as Partial<BlockVNode>)[BLOCK] !== undefined) {
     return applyBlock(vnode as BlockVNode, maybeenhancedNode as Element | undefined, placeholderComponent);
   }
-  const built = maybeenhancedNode?.nodeName !== vnode.name;
+  // A node a compiled block made holds that block's static parts and its record: an element of the same
+  // tag and key that is not that block — an uncompiled branch the key matched — is built afresh.
+  const built =
+    maybeenhancedNode?.nodeName !== vnode.name ||
+    (maybeenhancedNode as { [BLOCK_STATE]?: unknown } | undefined)?.[BLOCK_STATE] !== undefined;
   const enhancedNode = built ? createElement(vnode) : maybeenhancedNode;
 
   // The side this element is being built for, taken from the component that owns it rather than

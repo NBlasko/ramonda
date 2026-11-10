@@ -12,20 +12,23 @@ import { ramonda as viteRamonda } from "../vite";
  * compiler leaves alone is left byte for byte, for the transform after it.
  */
 
-/** The module a compile returns, without the import and the templates put at its head. */
-function body(code: string): string {
-  return code.replace(/\nimport \{ __template[^\n]*\n(const __ramondaT\d+ = [^\n]*\n)*/, "");
-}
-
-/** The templates a compile defined, in order. */
-function templates(code: string): string[] {
-  return [...code.matchAll(/const __ramondaT\d+ = \/\* @__PURE__ \*\/ __ramondaTemplate\((.*)\);/g)].map((m) => m[1]);
+/**
+ * The module a compile returns, without the import and the `var` put at its head, and each template made
+ * where it is first used shown by its name alone — the templates are compared on their own.
+ */
+function body(code: string, all: string[]): string {
+  let text = code.replace(/\nimport \{ __template[^\n]*\nvar [^\n]*;\n/, "");
+  all.forEach((description, i) => {
+    const name = `__ramondaT${i}`;
+    text = text.replace(`${name} || (${name} = __ramondaTemplate(${description}))`, name);
+  });
+  return text;
 }
 
 function compile(source: string, id = "page.tsx") {
   const out = compileJsx(source, id);
   if (out === undefined) throw new Error("nothing was compiled");
-  return { code: body(out.code), templates: templates(out.code), full: out.code };
+  return { code: body(out.code, out.templates), templates: out.templates, full: out.code };
 }
 
 describe("a host element tree", () => {
@@ -116,6 +119,7 @@ describe("what is left to the transform after this one", () => {
     ["a component", `const c = <Panel title="t" />;`],
     ["a spread", `const s = <div {...rest} />;`],
     ["a `class` attribute, which the runtime reports and renames", `const k = <p class="x">a</p>;`],
+    ["a `children` attribute, which is the element's children", `const k = <div children="x" />;`],
     ["text holding an entity", `const e = <p>a &amp; b</p>;`],
     ["an attribute holding an entity", `const e = <a title="Tom &amp; Jerry">x</a>;`],
     ["a namespaced attribute", `const x = <svg xlink:href="#a" />;`],
@@ -129,6 +133,11 @@ describe("what is left to the transform after this one", () => {
       code: `const n = __ramondaBlock(__ramondaT0, [[__ramondaBlock(__ramondaT1, ["a"])]]);`,
       all: [`{ t: "ul", k: 0 }`, `{ t: "li", c: ["a"], y: 0 }`],
     });
+  });
+
+  test("blocks side by side among a component's children each keep their braces", () => {
+    const { code } = compile(`const c = <Card><h2>T</h2><p>{body}</p></Card>;`);
+    expect(code).toBe(`const c = <Card>{__ramondaBlock(__ramondaT0, [])}{__ramondaBlock(__ramondaT1, [body])}</Card>;`);
   });
 
   test("a host element inside kept JSX is still compiled, as a block of its own", () => {
@@ -157,10 +166,32 @@ describe("what is left to the transform after this one", () => {
 });
 
 describe("where the templates go", () => {
-  test("after the imports, so a block built while the module loads finds its template", () => {
+  test("after the imports, the runtime import and one `var` for the module's templates", () => {
     const { full } = compile(`import { a } from "a";\nimport b from "b";\nconst top = <i>x</i>;\n`);
-    expect(full.indexOf("const __ramondaT0")).toBeGreaterThan(full.indexOf(`import b from "b";`));
-    expect(full.indexOf("const __ramondaT0")).toBeLessThan(full.indexOf("const top"));
+    expect(full.indexOf("var __ramondaT0;")).toBeGreaterThan(full.indexOf(`import b from "b";`));
+    expect(full.indexOf("var __ramondaT0;")).toBeLessThan(full.indexOf("const top"));
+  });
+
+  test("made where first used, so a block built before the module's body has run still finds it", () => {
+    // A function that builds a block, called from a module that imports this one in a cycle — before the
+    // `var` line is reached. Run as it would be: the call is the first use, and makes the template.
+    const out = compileJsx(`export function icon() {\n  return <b>i</b>;\n}\n`, "icon.tsx");
+    if (out === undefined) throw new Error("nothing was compiled");
+    const made: unknown[] = [];
+    const module = new Function(
+      "__ramondaTemplate",
+      "__ramondaBlock",
+      // `early` runs first, as the importing module of a cycle would: before any line below it.
+      `const early = icon();\n${out.code.replace(/^\nimport [^\n]*\n/, "").replace("export function", "function")}\nreturn early;`,
+    ) as (template: (d: unknown) => unknown, block: (t: unknown, v: unknown[]) => unknown) => unknown;
+    const early = module(
+      (description) => {
+        made.push(description);
+        return { description };
+      },
+      (template) => template,
+    );
+    expect([early, made.length]).toEqual([{ description: { t: "b", c: ["i"] } }, 1]);
   });
 
   test("after a directive, which has to stay first", () => {
