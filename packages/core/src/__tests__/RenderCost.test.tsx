@@ -1,4 +1,5 @@
 import { describe, test, expect } from "vitest";
+import { COMPILED } from "../test/compiled";
 import { getDOM } from "../test/setup";
 import { state } from "../base/decorators";
 import { Component } from "../base/Component";
@@ -165,7 +166,8 @@ describe("what a render costs the DOM", () => {
    * is the whole reason the move minimiser exists. The text goes into the new `<li>` by `appendChild`,
    * before the `<li>` is anywhere: an element built this pass has nothing to reorder.
    */
-  test("appending and prepending one row cost the same, and cost two insertions", async () => {
+  // The jsx() path's operation count: a compiled template inserts a row in one call and writes text as `nodeValue`.
+  test.skipIf(COMPILED)("appending and prepending one row cost the same, and cost two insertions", async () => {
     for (const where of ["append", "prepend"] as const) {
       const dom = await getDOM<KeyedList>(<KeyedList />);
       await dom.settle();
@@ -355,7 +357,8 @@ describe("what a component costs, against the same markup without one", () => {
    * case moved": the claim is that the region path costs the same as the node path across the whole
    * set, and one number moving falsifies it.
    */
-  test("a list of components costs what a list of elements costs", async () => {
+  // The jsx() path's operation count: a compiled template inserts a row in one call and writes text as `nodeValue`.
+  test.skipIf(COMPILED)("a list of components costs what a list of elements costs", async () => {
     const measure = async (change: (instance: KeyedComponentList) => void) => {
       const dom = await getDOM<KeyedComponentList>(<KeyedComponentList />);
       await dom.settle();
@@ -506,7 +509,8 @@ describe("what a component costs, against the same markup without one", () => {
    * DOM sees exactly the one write the state change asked for. A number above 1 here means the
    * self-render is moving nodes it has no business moving.
    */
-  test("a self-render with a list inside it writes only what changed", async () => {
+  // The jsx() path's operation count: a compiled template inserts a row in one call and writes text as `nodeValue`.
+  test.skipIf(COMPILED)("a self-render with a list inside it writes only what changed", async () => {
     class Row extends Component<{ label: string }> {
       render() {
         return <li>{this.props.label}</li>;

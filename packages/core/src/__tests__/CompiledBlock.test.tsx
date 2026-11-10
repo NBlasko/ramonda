@@ -404,3 +404,61 @@ describe("a list in a block, handed down as children", () => {
     expect(Array.from(app.container.querySelectorAll("i"), (i) => i.textContent)).toEqual(["1 USD", "2 USD"]);
   });
 });
+
+/** `<div><button>Copy</button><i>tip</i><b>{count}</b></div>`. */
+const TOOLBAR = __template({
+  t: "div",
+  c: [
+    { t: "button", c: ["Copy"] },
+    { t: "i", c: ["tip"] },
+    { t: "b", h: 0 },
+  ],
+});
+
+describe("a template's static parts", () => {
+  test("stay as someone else left them, while the holes go on updating", async () => {
+    class Toolbar extends Component {
+      @state count = 0;
+      render() {
+        return <section>{__block(TOOLBAR, [this.count])}</section>;
+      }
+    }
+    const app = await getDOM<Toolbar>(<Toolbar />);
+    await app.settle();
+    // A library's doing: the button's text written over, the tip taken out.
+    (app.container.querySelector("button") as HTMLElement).textContent = "Copied!";
+    (app.container.querySelector("i") as HTMLElement).remove();
+    app.instance.count = 1;
+    await app.settle();
+    expect((app.container.querySelector("div") as HTMLElement).innerHTML).toBe("<button>Copied!</button><b>1</b>");
+  });
+});
+
+/** Two routes' pages: the same root tag, different static content — what the server's markup is checked against. */
+const HOME = __template({ t: "div", a: { id: "home" }, c: ["home"] });
+const PLAYERS_LIST = __template({ t: "div", a: { id: "home" }, c: ["home", { t: "b", c: ["extra"] }] });
+
+describe("a served block from another template", () => {
+  test.each([
+    ["its own attribute differs", __template({ t: "div", a: { id: "players" }, c: ["home"] })],
+    ["its static text differs", __template({ t: "div", a: { id: "home" }, c: ["players"] })],
+    ["it holds more than the template", PLAYERS_LIST],
+  ])("is built, not kept, when %s", async (_name, served) => {
+    let route = "server";
+    class Route extends Component {
+      render() {
+        return <main>{__block(route === "server" ? served : HOME, [])}</main>;
+      }
+    }
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    container.innerHTML = await renderToString(<Route />);
+    route = "client";
+    hydrateRoot(<Route />, container);
+    await Promise.resolve();
+    await Promise.resolve();
+    const html = (container.querySelector("main") as HTMLElement).innerHTML;
+    container.remove();
+    expect(html).toBe('<div id="home">home</div>');
+  });
+});

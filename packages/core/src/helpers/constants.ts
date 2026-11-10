@@ -29,6 +29,8 @@ export const COMPONENT_TYPE = 7;
 export type COMPONENT_TYPE = 7;
 
 export const IS_SVG = Symbol("isSvg");
+/** On a compiled block's vnode: its template and hole values. See `core/block.ts`. */
+export const BLOCK = Symbol("block");
 export const KEY_SYM = Symbol("key");
 /**
  * The JSX child slot this node was built for — its index among its parent's children,

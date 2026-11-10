@@ -2,7 +2,7 @@ import { enclosingBlock } from "../core/enclosingBlock";
 import { COMPONENT_TYPE, CHILD_RECORD, ORIGIN_SYM, REQUEST_ATTR } from "../helpers/constants";
 import { className, displayName } from "../helpers/utils";
 import { installClientRequestScope } from "./requestContext";
-import { applyChangesOnAttributes, formatAttributes } from "../core/Attribute";
+import { adoptAttributes, applyChangesOnAttributes, formatAttributes } from "../core/Attribute";
 import { BLOCK, adoptBlock, type BlockVNode } from "../core/block";
 import { generateRenderOutput } from "../helpers/generateRenderOutput";
 import { seedWatchProps } from "../helpers/watchProps";
@@ -289,9 +289,13 @@ function hydrateElement(
 
   // A compiled block adopts the server's element hole by hole — see `adoptBlock`.
   if ((vnode as Partial<BlockVNode>)[BLOCK] !== undefined) {
-    const adopted = adoptBlock(vnode as BlockVNode, cursor as unknown as Element, (children, element) =>
-      hydrateChildren(children, placeholder, element),
-    );
+    const adopted = adoptBlock(vnode as BlockVNode, cursor as unknown as Element, {
+      children: (children, element) => hydrateChildren(children, placeholder, element),
+      attributes: (element, attributes) => {
+        if (__DEV__) reportAttributeMismatches(placeholder, element, formatAttributes(attributes));
+        adoptAttributes(element as unknown as ChildNode, attributes);
+      },
+    });
     return adopted ? nextOf(cursor) : hydrationFallback(vnode, placeholder, cursor, parent);
   }
 

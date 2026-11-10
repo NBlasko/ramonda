@@ -24,15 +24,16 @@
  * Built with `createElement`, never parsed from HTML: the parser rearranges what it is given — a `<tr>`
  * straight in a `<table>` gains a `<tbody>` — and the paths to the holes would point elsewhere.
  */
-import { TEXT_TYPE, ORIGIN_SYM, KEY_SYM, IS_SVG, svgElements } from "../helpers/constants";
+import { TEXT_TYPE, ORIGIN_SYM, KEY_SYM, IS_SVG, BLOCK, svgElements } from "../helpers/constants";
 import { currentOrigin } from "./origin";
 import { applyChangesOnAttributes } from "./Attribute";
 import { diffChildrenOf, holdsARegion } from "./DiffAndMerge";
 import { normalizeChildren } from "../vdom/h";
 import { COMPONENT_RUNTIME } from "./runtime";
+import { checkNesting } from "../debug/domNesting";
 import type { MaybeComponent, VNodeString } from "../types/vdom";
 
-export const BLOCK = Symbol("block");
+export { BLOCK };
 /** On a block's root element: the template it was cloned from, the nodes its holes are on, what was written. */
 export const BLOCK_STATE = Symbol("blockState");
 
@@ -49,8 +50,6 @@ export interface TemplateNode {
 interface Site {
   readonly path: readonly number[];
   readonly svg: boolean;
-  /** The `nodeName` the element at `path` has — what hydration checks the page against. */
-  readonly nodeName: string;
   readonly d?: readonly (readonly [string, number])[];
   readonly h?: number;
   readonly k?: number;
@@ -91,7 +90,7 @@ export function template(description: TemplateNode): Template {
   const walk = (node: TemplateNode, path: number[]): void => {
     if (node.d !== undefined || node.h !== undefined || node.k !== undefined) {
       const svg = svgElements.has(node.t);
-      sites.push({ path, svg, nodeName: svg ? node.t : node.t.toUpperCase(), d: node.d, h: node.h, k: node.k });
+      sites.push({ path, svg, d: node.d, h: node.h, k: node.k });
     }
     if (node.h !== undefined) loneHoles.push(node.h);
     if (node.k !== undefined) childrenHoles.push(node.k);
@@ -134,8 +133,16 @@ function build(node: TemplateNode): Element {
     : document.createElement(node.t);
   if (node.a !== undefined) for (const name in node.a) element.setAttribute(name, node.a[name]);
   if (node.c !== undefined) {
-    for (const child of node.c)
-      element.appendChild(typeof child === "string" ? document.createTextNode(child) : build(child));
+    for (const child of node.c) {
+      if (typeof child === "string") {
+        element.appendChild(document.createTextNode(child));
+        continue;
+      }
+      const built = build(child);
+      // The template's own pairs, checked once, where they are made — the diff checks only what it builds.
+      if (__DEV__) checkNesting(element, built);
+      element.appendChild(built);
+    }
   }
   // The text node a string or number in the child hole is written into.
   if (node.h !== undefined) element.appendChild(document.createTextNode(""));
@@ -168,9 +175,18 @@ function attributesOf(site: Site, values: readonly unknown[]): Record<string, un
   return attributes;
 }
 
-/** Whether a hole's new value has to be written: a different value, or an object that may have changed. */
+/**
+ * The attributes a user changes on the element itself — typing, a click — and that the attribute diff
+ * compares with the element (`formPropertyDiverged`): handed to it on every render, as an element's are.
+ */
+const LIVE = new Set(["value", "checked", "muted", "indeterminate"]);
+
+/**
+ * Whether a hole's attribute has to go through the attribute diff: a different value, an object that
+ * may have changed in place, or one of the names the element itself may have moved away from.
+ */
 function attributeChanged(name: string, next: unknown, previous: unknown): boolean {
-  if (next !== previous) return true;
+  if (next !== previous || LIVE.has(name)) return true;
   return typeof next === "object" && next !== null && !name.startsWith("on");
 }
 
@@ -271,15 +287,33 @@ export function applyBlock(vnode: BlockVNode, existing: Element | undefined, own
   return existing;
 }
 
-/** The element at `path` under `root`, or `undefined` where the page has no node there. */
-function find(root: Element, path: readonly number[]): Element | undefined {
-  let node: Node | null = root;
-  for (const index of path) {
-    node = (node as Node).firstChild;
-    for (let i = 0; i < index && node !== null; i++) node = node.nextSibling;
-    if (node === null) return undefined;
+/**
+ * Whether `element`, from the server, is what `node` describes: the same tag, the template's own
+ * attributes, its static children text for text and element for element — and, in the order the
+ * template's sites are, the element of each one, collected into `sites`. Asked once, while hydrating:
+ * a static part is never compared again, so a page the server rendered from another template (another
+ * route's `<div>`) has to be told apart here, or it would be kept as this one.
+ */
+function matches(node: TemplateNode, element: Node, sites: Element[]): boolean {
+  const svg = svgElements.has(node.t);
+  if (element.nodeType !== 1 || element.nodeName !== (svg ? node.t : node.t.toUpperCase())) return false;
+  if (node.a !== undefined) {
+    for (const name in node.a) if ((element as Element).getAttribute(name) !== node.a[name]) return false;
   }
-  return node as Element;
+  if (node.d !== undefined || node.h !== undefined || node.k !== undefined) sites.push(element as Element);
+  // What a hole holds is the hole's to adopt.
+  if (node.h !== undefined || node.k !== undefined) return true;
+  let child = element.firstChild;
+  for (const expected of node.c ?? []) {
+    if (child === null) return false;
+    if (typeof expected === "string") {
+      if (child.nodeType !== 3 || (child as Text).data !== expected) return false;
+    } else if (!matches(expected, child, sites)) {
+      return false;
+    }
+    child = child.nextSibling;
+  }
+  return child === null;
 }
 
 /**
@@ -291,16 +325,17 @@ function find(root: Element, path: readonly number[]): Element | undefined {
 export function adoptBlock(
   vnode: BlockVNode,
   root: Element,
-  hydrateChildren: (children: unknown[], parent: Element) => void,
+  adopt: {
+    /** An element's children, as hydration adopts any element's — text, elements, regions. */
+    children: (children: unknown[], parent: Element) => void;
+    /** An element's attributes, as hydration adopts any element's — reported where they differ. */
+    attributes: (element: Element, attributes: Record<string, unknown>) => void;
+  },
 ): boolean {
   const { template, values } = vnode[BLOCK];
   const sites = template.sites;
-  const elements: Element[] = new Array(sites.length);
-  for (let i = 0; i < sites.length; i++) {
-    const element = find(root, sites[i].path);
-    if (element === undefined || element.nodeName !== sites[i].nodeName) return false;
-    elements[i] = element;
-  }
+  const elements: Element[] = [];
+  if (!matches(template.description, root, elements)) return false;
 
   (root as unknown as Record<symbol, unknown>)[ORIGIN_SYM] = vnode[ORIGIN_SYM];
   const key = vnode.attributes.key;
@@ -312,24 +347,16 @@ export function adoptBlock(
     const site = sites[i];
     const element = elements[i];
     if (site.svg) (element as unknown as Record<symbol, unknown>)[IS_SVG] = true;
-    // Read from the page, as an adopted element's attributes are: what only the server wrote goes.
-    if (site.d !== undefined) applyChangesOnAttributes(element, attributesOf(site, values));
+    if (site.d !== undefined) adopt.attributes(element, attributesOf(site, values));
     if (site.h !== undefined) {
       const value = values[site.h];
-      if (isText(value)) {
-        // The server's text node, or a new one where it sent none — an empty string sends nothing.
-        let text = element.firstChild;
-        if (text === null || text.nodeType !== 3) {
-          text = document.createTextNode("");
-          element.insertBefore(text, element.firstChild);
-        }
-        if ((text as Text).data !== String(value)) (text as Text).data = String(value);
-        texts[i] = text as Text;
-      } else {
-        hydrateChildren(value as unknown[], element);
-      }
+      // A string or a number is a text child like any other: the server's node is adopted, made where an
+      // empty string sent none, reported where it differs. It is the text node the hole writes from then on.
+      adopt.children(isText(value) ? [String(value)] : (value as unknown[]), element);
+      const only = element.firstChild;
+      if (isText(value) && only !== null && only.nodeType === 3) texts[i] = only as Text;
     }
-    if (site.k !== undefined) hydrateChildren(values[site.k] as unknown[], element);
+    if (site.k !== undefined) adopt.children(values[site.k] as unknown[], element);
   }
   return true;
 }
@@ -341,4 +368,42 @@ export function markupOf(vnode: BlockVNode): unknown[][] {
   for (const index of template.loneHoles) if (Array.isArray(values[index])) found.push(values[index] as unknown[]);
   for (const index of template.childrenHoles) found.push(values[index] as unknown[]);
   return found;
+}
+
+/** What a development check walks for an element: its tag, its attributes, its children. */
+export interface BlockView {
+  readonly name: string;
+  readonly attributes: Record<string, unknown>;
+  readonly children: unknown[];
+}
+
+/**
+ * A block as the element tree it stands for — for the development checks that compare two renders node
+ * by node (`renderStability`), which read an element's attributes and children where a block keeps them
+ * in its template and its holes.
+ */
+export function viewOf(vnode: BlockVNode): BlockView {
+  const { template, values } = vnode[BLOCK];
+  const view = (node: TemplateNode, root: boolean): BlockView => {
+    const attributes: Record<string, unknown> = { ...node.a };
+    if (root && vnode.attributes.key != null) attributes.key = vnode.attributes.key;
+    if (node.d !== undefined) for (const [name, index] of node.d) attributes[name] = values[index];
+    let children: unknown[] = [];
+    if (node.c !== undefined)
+      children = node.c.map((child) => (typeof child === "string" ? child : view(child, false)));
+    if (node.h !== undefined)
+      children = isText(values[node.h]) ? [String(values[node.h])] : (values[node.h] as unknown[]);
+    if (node.k !== undefined) children = values[node.k] as unknown[];
+    return { name: node.t.toUpperCase(), attributes, children };
+  };
+  return view(template.description, true);
+}
+
+/** A block's template and hole values, and which holes hold children — what a markup comparison reads. */
+export function blockOf(vnode: unknown): { template: Template; values: unknown[] } | undefined {
+  return (vnode as Partial<BlockVNode> | null)?.[BLOCK];
+}
+
+export function isChildHole(template: Template, index: number): boolean {
+  return template.loneHoles.includes(index) || template.childrenHoles.includes(index);
 }

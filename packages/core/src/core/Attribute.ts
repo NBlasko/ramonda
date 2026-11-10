@@ -83,6 +83,21 @@ export function applyChangesOnAttributes(
 }
 
 /**
+ * Hydration of a compiled block's attribute hole: the element is the server's, and only the names its
+ * holes give are this diff's — the template's own attributes are set where it was built, and read back
+ * here they would be taken away as attributes the render no longer gives. So the record it starts from is
+ * the page's value of each of those names: a value the server wrote and the client does not is still
+ * taken away.
+ */
+export function adoptAttributes(enhancedNode: ChildNode, rawNextAttributes: NodeAttributes): void {
+  const page = getAllFromNode(enhancedNode as EnhancedHTMLNode);
+  const written: NodeAttributes = {};
+  for (const name in rawNextAttributes) if (name in page) written[name] = page[name];
+  (enhancedNode as Written)[WRITTEN] = written;
+  applyChangesOnAttributes(enhancedNode, rawNextAttributes);
+}
+
+/**
  * `defaultValue` and `defaultChecked` on an `<input>`: where an uncontrolled field STARTS, and nothing
  * more. Written as the attribute HTML keeps a default in — `value`, or `checked` — which the property
  * follows until the user edits and a form's reset returns to, on both sides, so a served page starts

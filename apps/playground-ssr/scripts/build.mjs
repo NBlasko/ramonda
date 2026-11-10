@@ -41,9 +41,7 @@ const shared = {
   // plugin REFUSES a target that would leave the decorators in — including one written below this
   // spread, which silently wins otherwise. Measured: `target: "esnext"` under the spread alone
   // builds happily and exits 0, and the failure surfaces later as a bundle that does not parse.
-  // JSX through `jsx()` until the compiled block hydrates — this app is served and hydrated, and the
-  // same opt-out as the packages' suites, lifted with theirs.
-  plugins: [ramonda({ compile: false })],
+  plugins: [ramonda()],
   ...ramondaOptions,
   bundle: true,
   format: "esm",

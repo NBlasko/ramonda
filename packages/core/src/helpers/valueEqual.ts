@@ -28,6 +28,7 @@
  * Depth counts structural recursion only. Primitives compare by `Object.is` before the
  * bound is consulted, so `["posts", { page: 1 }]` matches at the default depth.
  */
+import { BLOCK } from "./constants";
 const DEFAULT_DEPTH = 2;
 const MAX_WIDTH = 50;
 
@@ -69,6 +70,17 @@ export function valueEqual(
 ): boolean {
   if (Object.is(a, b)) return true;
   if (depth >= maxDepth) return false;
+
+  // A compiled block keeps what it says under a symbol, which `Object.keys` does not reach: its
+  // template and its hole values are what two of them are compared by.
+  const blockA = (a as { [BLOCK]?: { template: unknown; values: unknown[] } } | null)?.[BLOCK];
+  const blockB = (b as { [BLOCK]?: { template: unknown; values: unknown[] } } | null)?.[BLOCK];
+  if (blockA !== undefined || blockB !== undefined) {
+    if (blockA === undefined || blockB === undefined || blockA.template !== blockB.template) return false;
+    const keyA = (a as { attributes?: { key?: unknown } }).attributes?.key;
+    const keyB = (b as { attributes?: { key?: unknown } }).attributes?.key;
+    return Object.is(keyA, keyB) && valueEqual(blockA.values, blockB.values, maxDepth, depth + 1, maxWidth);
+  }
 
   if (Array.isArray(a) && Array.isArray(b)) {
     if (a.length !== b.length) return false;
