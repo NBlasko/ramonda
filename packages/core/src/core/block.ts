@@ -27,7 +27,7 @@
 import { TEXT_TYPE, ORIGIN_SYM, KEY_SYM, IS_SVG, svgElements } from "../helpers/constants";
 import { currentOrigin } from "./origin";
 import { applyChangesOnAttributes } from "./Attribute";
-import { diffChildrenOf } from "./DiffAndMerge";
+import { diffChildrenOf, holdsARegion } from "./DiffAndMerge";
 import { normalizeChildren } from "../vdom/h";
 import { COMPONENT_RUNTIME } from "./runtime";
 import type { MaybeComponent, VNodeString } from "../types/vdom";
@@ -49,6 +49,8 @@ export interface TemplateNode {
 interface Site {
   readonly path: readonly number[];
   readonly svg: boolean;
+  /** The `nodeName` the element at `path` has — what hydration checks the page against. */
+  readonly nodeName: string;
   readonly d?: readonly (readonly [string, number])[];
   readonly h?: number;
   readonly k?: number;
@@ -88,7 +90,8 @@ export function template(description: TemplateNode): Template {
   const childrenHoles: number[] = [];
   const walk = (node: TemplateNode, path: number[]): void => {
     if (node.d !== undefined || node.h !== undefined || node.k !== undefined) {
-      sites.push({ path, svg: svgElements.has(node.t), d: node.d, h: node.h, k: node.k });
+      const svg = svgElements.has(node.t);
+      sites.push({ path, svg, nodeName: svg ? node.t : node.t.toUpperCase(), d: node.d, h: node.h, k: node.k });
     }
     if (node.h !== undefined) loneHoles.push(node.h);
     if (node.k !== undefined) childrenHoles.push(node.k);
@@ -171,12 +174,15 @@ function attributeChanged(name: string, next: unknown, previous: unknown): boole
   return typeof next === "object" && next !== null && !name.startsWith("on");
 }
 
-/** Whether two normalized children arrays hold the same entries — then there is nothing to diff. */
+/**
+ * Whether two normalized children arrays hold the same entries, and nothing in them changes on its own —
+ * then there is nothing to diff. A `list()` anywhere inside rebuilds its rows only when the diff reaches
+ * it, so the same entries holding one are diffed all the same (`holdsARegion`).
+ */
 function sameChildren(next: unknown, previous: unknown): boolean {
-  if (next === previous) return true;
-  if (!Array.isArray(next) || !Array.isArray(previous) || next.length !== previous.length) return false;
+  if (!Array.isArray(next) || !Array.isArray(previous) || next.length !== previous.length) return next === previous;
   for (let i = 0; i < next.length; i++) if (next[i] !== previous[i]) return false;
-  return true;
+  return !holdsARegion(next);
 }
 
 /** A child hole (`h`): a string or a number into the text node it holds, anything else as children. */
@@ -263,4 +269,76 @@ export function applyBlock(vnode: BlockVNode, existing: Element | undefined, own
   }
   known.values = values;
   return existing;
+}
+
+/** The element at `path` under `root`, or `undefined` where the page has no node there. */
+function find(root: Element, path: readonly number[]): Element | undefined {
+  let node: Node | null = root;
+  for (const index of path) {
+    node = (node as Node).firstChild;
+    for (let i = 0; i < index && node !== null; i++) node = node.nextSibling;
+    if (node === null) return undefined;
+  }
+  return node as Element;
+}
+
+/**
+ * Hydration: makes `root`, an element the server rendered from the same template, this block's own —
+ * nothing is built. The server wrote it with this code, so each hole's element is where the template
+ * says; where one is not, `false` says so and nothing has been touched, and the block is built instead.
+ * `hydrateChildren` adopts what a child hole holds as markup, the way any element's children are.
+ */
+export function adoptBlock(
+  vnode: BlockVNode,
+  root: Element,
+  hydrateChildren: (children: unknown[], parent: Element) => void,
+): boolean {
+  const { template, values } = vnode[BLOCK];
+  const sites = template.sites;
+  const elements: Element[] = new Array(sites.length);
+  for (let i = 0; i < sites.length; i++) {
+    const element = find(root, sites[i].path);
+    if (element === undefined || element.nodeName !== sites[i].nodeName) return false;
+    elements[i] = element;
+  }
+
+  (root as unknown as Record<symbol, unknown>)[ORIGIN_SYM] = vnode[ORIGIN_SYM];
+  const key = vnode.attributes.key;
+  if (key != null) (root as unknown as Record<symbol, unknown>)[KEY_SYM] = key;
+  const texts: (Text | undefined)[] = new Array(sites.length);
+  (root as unknown as { [BLOCK_STATE]: BlockState })[BLOCK_STATE] = { template, elements, texts, values };
+
+  for (let i = 0; i < sites.length; i++) {
+    const site = sites[i];
+    const element = elements[i];
+    if (site.svg) (element as unknown as Record<symbol, unknown>)[IS_SVG] = true;
+    // Read from the page, as an adopted element's attributes are: what only the server wrote goes.
+    if (site.d !== undefined) applyChangesOnAttributes(element, attributesOf(site, values));
+    if (site.h !== undefined) {
+      const value = values[site.h];
+      if (isText(value)) {
+        // The server's text node, or a new one where it sent none — an empty string sends nothing.
+        let text = element.firstChild;
+        if (text === null || text.nodeType !== 3) {
+          text = document.createTextNode("");
+          element.insertBefore(text, element.firstChild);
+        }
+        if ((text as Text).data !== String(value)) (text as Text).data = String(value);
+        texts[i] = text as Text;
+      } else {
+        hydrateChildren(value as unknown[], element);
+      }
+    }
+    if (site.k !== undefined) hydrateChildren(values[site.k] as unknown[], element);
+  }
+  return true;
+}
+
+/** What a block's child holes hold as markup — the children a walk looking for a `list()` opens. */
+export function markupOf(vnode: BlockVNode): unknown[][] {
+  const { template, values } = vnode[BLOCK];
+  const found: unknown[][] = [];
+  for (const index of template.loneHoles) if (Array.isArray(values[index])) found.push(values[index] as unknown[]);
+  for (const index of template.childrenHoles) found.push(values[index] as unknown[]);
+  return found;
 }

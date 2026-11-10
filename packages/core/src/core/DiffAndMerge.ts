@@ -1,7 +1,7 @@
 import { enclosingBlock } from "./enclosingBlock";
 import { settleProps } from "../helpers/common";
 import { applyChangesOnAttributes } from "./Attribute";
-import { BLOCK, BLOCK_STATE, applyBlock, type BlockVNode } from "./block";
+import { BLOCK, BLOCK_STATE, applyBlock, markupOf, type BlockVNode } from "./block";
 import type {
   BaseComponent,
   ComponentChild,
@@ -1100,7 +1100,7 @@ const regionsBelow = new WeakMap<readonly unknown[], boolean>();
  * why this cannot lean on `HAS_REGION`, which `h` sets for a group as much as for a list. Once per
  * array: settled markup hands the same arrays back.
  */
-function holdsARegion(children: readonly unknown[]): boolean {
+export function holdsARegion(children: readonly unknown[]): boolean {
   const known = regionsBelow.get(children);
   if (known !== undefined) return known;
   let found = false;
@@ -1114,6 +1114,9 @@ function holdsARegion(children: readonly unknown[]): boolean {
       // on its own — its state, a list it renders — reports to the component, which renders itself.
       const inner = (child as { children?: unknown }).children;
       if (Array.isArray(inner)) found = holdsARegion(inner);
+      // A compiled block's children are in its holes.
+      const block = (child as Partial<BlockVNode>)[BLOCK] !== undefined ? markupOf(child as BlockVNode) : undefined;
+      for (let j = 0; !found && block !== undefined && j < block.length; j++) found = holdsARegion(block[j]);
     }
   }
   regionsBelow.set(children, found);

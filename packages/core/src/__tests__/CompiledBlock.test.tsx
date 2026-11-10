@@ -2,6 +2,10 @@ import { describe, test, expect } from "vitest";
 import { getDOM } from "../test/setup";
 import { Component, state, list, memoized } from "../index";
 import { __template, __block } from "../jsx-runtime";
+import { renderToString } from "../hydration/ssr";
+import { hydrateRoot } from "../hydration/hydrate";
+import { flushSync } from "../testing";
+import { componentAt } from "../core/DiffAndMerge";
 
 /**
  * What the JSX compiler writes for an element tree whose shape never changes, written here by hand: the
@@ -287,5 +291,116 @@ describe("a child hole's text someone else took out", () => {
     app.instance.text = "b";
     await app.settle();
     expect(p.innerHTML).toBe("b");
+  });
+});
+
+/** `<button onclick={…}>{label}</button>`, served and then hydrated. */
+const BUTTON = __template({ t: "button", d: [["onclick", 0]], h: 1 });
+
+/** `<span>{text}</span>`. */
+const LABEL = __template({ t: "span", h: 0 });
+
+/** `<p><b>{text}</b></p>` — a site below the root, whose element hydration checks. */
+const CARD = __template({ t: "p", c: [{ t: "b", h: 0 }] });
+
+class Card extends Component {
+  render() {
+    return <div id="card">{__block(CARD, ["card"])}</div>;
+  }
+}
+
+describe("a block a server rendered", () => {
+  class Counter extends Component {
+    @state count = 0;
+    bump() {
+      this.count++;
+    }
+    render() {
+      return <div id="counter">{__block(BUTTON, [this.bump, `clicked ${this.count}`])}</div>;
+    }
+  }
+
+  async function served(markup?: string) {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    container.innerHTML = markup ?? (await renderToString(<Counter />));
+    return container;
+  }
+
+  test("is adopted, not built: the server's button is the one that answers and updates", async () => {
+    const container = await served();
+    const button = container.querySelector("button") as HTMLButtonElement;
+    hydrateRoot(<Counter />, container);
+    await Promise.resolve();
+    await Promise.resolve();
+    button.click();
+    flushSync();
+    const after = { same: container.querySelector("button") === button, text: button.textContent };
+    container.remove();
+    expect(after).toEqual({ same: true, text: "clicked 1" });
+  });
+
+  test("holding an empty text, which the server sends as nothing, takes the next text", async () => {
+    class Note extends Component {
+      @state text = "";
+      render() {
+        return <div id="note">{__block(LABEL, [this.text])}</div>;
+      }
+    }
+    const container = await served(await renderToString(<Note />));
+    hydrateRoot(<Note />, container);
+    await Promise.resolve();
+    await Promise.resolve();
+    const note = componentAt(container.querySelector("#note") as Element) as Note;
+    note.text = "written";
+    flushSync();
+    const after = (container.querySelector("span") as HTMLElement).innerHTML;
+    container.remove();
+    expect(after).toBe("written");
+  });
+
+  test("whose markup is not the template's is built instead", async () => {
+    // The server's markup, with the element under the root changed: the root matches, the inside does not.
+    const markup = (await renderToString(<Card />)).replace("<b>", "<i>").replace("</b>", "</i>");
+    const container = await served(markup);
+    hydrateRoot(<Card />, container);
+    await Promise.resolve();
+    await Promise.resolve();
+    const after = {
+      inner: (container.querySelector("p") as HTMLElement).innerHTML,
+      stray: container.querySelector("i"),
+    };
+    container.remove();
+    expect(after).toEqual({ inner: "<b>card</b>", stray: null });
+  });
+});
+
+/** `<section>{this.props.children}</section>` and `<div>{list(…)}</div>`, as the compiler writes them. */
+const SECTION = __template({ t: "section", h: 0 });
+const HOLDER = __template({ t: "div", h: 0 });
+const PRICE = __template({ t: "i", k: 0 });
+
+describe("a list in a block, handed down as children", () => {
+  test("rebuilds the rows that read what changed, though the markup around it settled", async () => {
+    class Panel extends Component<{ children?: unknown }> {
+      render() {
+        return __block(SECTION, [this.props.children]);
+      }
+    }
+    class Owner extends Component {
+      @state currency = "EUR";
+      readonly rows = [{ id: 1 }, { id: 2 }];
+      price(row: { id: number }) {
+        return __block(PRICE, [[row.id, " ", this.currency]], row.id);
+      }
+      render() {
+        return <Panel>{[__block(HOLDER, [list(this.rows, this.price)], "d")]}</Panel>;
+      }
+    }
+    const app = await getDOM<Owner>(<Owner />);
+    await app.settle();
+    app.instance.currency = "USD";
+    await app.settle();
+    expect(Array.from(app.container.querySelectorAll("i"), (i) => i.textContent)).toEqual(["1 USD", "2 USD"]);
   });
 });
