@@ -51,6 +51,31 @@ Invalid or unexpected token` the first time a browser reads it.
 That shipped here once. [Installation](/guide/installation#what-those-settings-are-and-why-they-are-not-yours-to-keep)
 tells that story at length; this page is about the package that closes it.
 
+## The JSX it compiles
+
+The plugin also compiles your JSX before the bundler sees it. A tree of host elements — a row, a card,
+a form — becomes a **template**, built once, and the few values a render computes: the `{…}` in an
+attribute or between tags. A render then compares those values with the ones it wrote last, and leaves
+everything that cannot change alone.
+
+```tsx
+row(row: Row) {
+  return (
+    <tr className={this.selected === row.id ? "danger" : ""}>
+      <td className="col-md-1">{row.id}</td>
+      <td className="col-md-4">{row.label}</td>
+    </tr>
+  );
+}
+```
+
+Here the template is the `<tr>` and its cells with their classes, and each render computes three values:
+the row's class, its id and its label. Your `render()` and the JSX in it read exactly as before.
+
+Components, fragments and elements with a spread (`{...props}`) are compiled the ordinary way, and an
+element inside them is a template of its own. `ramonda({ compile: false })` builds the app without the
+compiler — the way to tell whether something that misbehaves is the compiler's.
+
 ## Vite
 
 ```ts

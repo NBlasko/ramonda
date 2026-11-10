@@ -32,7 +32,9 @@ export default defineConfig({
   },
   // The plugin an app uses. It sets the JSX runtime, and lowers the decorators on Vite 8, where
   // Oxc cannot and an `esbuild` block here is only translated into Oxc's settings.
-  plugins: [ramonda()],
+  // JSX through `jsx()` until the compiled block hydrates — the same opt-out as `@ramonda/core`'s,
+  // lifted when the compiled core suite passes.
+  plugins: [ramonda({ compile: false })],
   resolve: {
     alias: {
       "@ramonda/core/jsx-dev-runtime": resolve(__dirname, "../core/src/jsx-dev-runtime.ts"),

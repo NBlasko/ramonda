@@ -8,7 +8,9 @@ import { ramonda } from "@ramonda/build/vite";
 
 export default defineConfig({
   plugins: [
-    ramonda(),
+    // The suite as the runtime is written, JSX through `jsx()`. `vitest.compiled.config.ts` runs the same
+    // suite through the JSX compiler, until it passes there too and both run on every check.
+    ramonda({ compile: false }),
     dts({
       insertTypesEntry: true,
       rollupTypes: true,

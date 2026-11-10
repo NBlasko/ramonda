@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+import { compileJsx } from "./compile";
 import {
   PUBLIC_ENV_PREFIX,
   RAMONDA_TRANSFORM,
@@ -23,10 +25,28 @@ interface VitePluginLike {
     env: { command: string; mode: string },
   ) => UserConfigLike | undefined;
   configResolved: (config: UserConfigLike) => void;
+  load: (this: unknown, id: string) => Promise<{ code: string; map: CompiledMap } | null>;
   transform: {
     order: "post";
     handler: (this: unknown, code: string, id: string) => Promise<{ code: string; map: string } | null>;
   };
+}
+
+/** A source map as Vite takes one from `load`. */
+interface CompiledMap {
+  version: number;
+  sources: string[];
+  names: string[];
+  mappings: string;
+}
+
+/** What `ramonda()` can be told. */
+export interface RamondaOptions {
+  /**
+   * Compile JSX into templates and holes (see `compile.ts`). On unless set to `false`, which is for
+   * telling whether a fault is the compiler's: the same app, built the way it was before it existed.
+   */
+  compile?: boolean;
 }
 
 /** What Vite hands the `config` hook as `this`: the one thing read from it is which Vite is running. */
@@ -126,9 +146,10 @@ function samePrefix(prefix: string | string[] | undefined): boolean {
  * but the decorators, and a plugin that rewrites a file's syntax first, such as a style block's, has
  * already run whatever order the app listed the plugins in.
  */
-export function ramonda(): VitePluginLike {
+export function ramonda(options: RamondaOptions = {}): VitePluginLike {
   /** Decided in `config`, the first hook Vite calls, and read by the two that follow. */
   let oxc = false;
+  const compile = options.compile !== false;
 
   return {
     name: "ramonda",
@@ -209,6 +230,20 @@ export function ramonda(): VitePluginLike {
      * no `@` in it has no decorator to lower. `esbuild` is imported here rather than at the top so
      * that a Vite 7 build, and the esbuild half of this package, never load it twice.
      */
+    /**
+     * The JSX compiler, here rather than in a transform: it reads the source as the app wrote it, before
+     * the transform that compiles JSX to `jsx()` calls — which runs ahead of every transform but an
+     * enforced one, and this plugin's own transform has to run after it. A module with a query is
+     * Vite's own (`?raw`, `?url`), and one in `node_modules` was built by somebody else.
+     */
+    async load(id) {
+      if (!compile || id.startsWith("\0") || id.includes("?") || !JSX_SCRIPT.test(id)) return null;
+      if (id.includes("/node_modules/")) return null;
+      const code = await readFile(id, "utf8");
+      const compiled = compileJsx(code, id);
+      return compiled === undefined ? null : { code: compiled.code, map: compiled.map };
+    },
+
     transform: {
       order: "post",
       async handler(code, id) {
@@ -231,3 +266,4 @@ export function ramonda(): VitePluginLike {
 
 /** A module Oxc has turned into JavaScript: what a decorator can be written in. */
 const SCRIPT = /\.[cm]?[jt]sx?$/;
+const JSX_SCRIPT = /\.[jt]sx$/;
