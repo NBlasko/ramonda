@@ -740,11 +740,12 @@ function removePreviousFromenhancedNode(
 
 /**
  * Takes away what only the server wrote on an element a compiled block adopts — an attribute `next` does
- * not name, the exposed request's stamp among them — as the attribute diff does from any element it
- * adopts, and keeps what it keeps: an attribute a default holds (see {@link heldAsADefault}).
+ * not name, the exposed request's stamp among them — by the attribute diff's own removal, which keeps
+ * what it keeps: an attribute a default holds (see {@link heldAsADefault}).
  *
- * Names are compared folded on an HTML element, where the parser folded the page's, and as written on
- * an SVG one, where it did not.
+ * What `next` names is matched folded on an HTML element, where the parser folded the page's names, and
+ * as written on an SVG one, where it did not: a block writes its baked attributes once, so one the diff
+ * took away for its spelling would not come back.
  */
 export function dropServerOnly(element: Element, next: NodeAttributes, svg: boolean): void {
   const named = new Set<string>();
@@ -752,12 +753,13 @@ export function dropServerOnly(element: Element, next: NodeAttributes, svg: bool
     const attribute = ATTRIBUTE_OF_PROPERTY[name] ?? name;
     named.add(svg ? attribute : attribute.toLowerCase());
   }
+  const page: NodeAttributes = {};
   for (const attribute of Array.from(element.attributes)) {
-    const name = attribute.name;
-    if (named.has(svg ? name : name.toLowerCase())) continue;
-    if (heldAsADefault(element as unknown as EnhancedHTMLNode, ALIASED_BACK[name] ?? name, next)) continue;
-    element.removeAttribute(name);
+    if (!named.has(svg ? attribute.name : attribute.name.toLowerCase())) {
+      page[ALIASED_BACK[attribute.name] ?? attribute.name] = attribute.value;
+    }
   }
+  removePreviousFromenhancedNode(element as unknown as EnhancedHTMLNode, page, next);
 }
 
 /**
@@ -830,7 +832,7 @@ function isPrimitive(val: unknown): boolean {
  */
 // A `ref` is an object too, and is applied on every pass on its own account — see
 // `getPreviousFromenhancedNode`.
-function changedInPlace(name: string, next: unknown): boolean {
+export function changedInPlace(name: string, next: unknown): boolean {
   // `null` never reaches here: the loop skips a value invisible on screen first.
   return typeof next === "object" && !name.startsWith("on");
 }

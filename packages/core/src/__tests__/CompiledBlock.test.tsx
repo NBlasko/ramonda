@@ -7,6 +7,7 @@ import { hydrateRoot } from "../hydration/hydrate";
 import { flushSync } from "../testing";
 import { componentAt } from "../core/DiffAndMerge";
 import { resetDiagnostics } from "../debug/diagnostics";
+import * as attribute from "../core/Attribute";
 
 /**
  * What the JSX compiler writes for an element tree whose shape never changes, written here by hand: the
@@ -543,23 +544,51 @@ describe("a served block whose root carries what only the server wrote", () => {
 });
 
 describe("a served block from another template, in development", () => {
-  test("is reported as the compiled template it was rendered from", async () => {
+  test.each([
+    [
+      "its own attribute",
+      __template({ t: "div", a: { id: "players" }, c: ["home"] }),
+      'id="home" on <div>, from its compiled template, but the server sent id="players" on <div>',
+    ],
+    [
+      "its static text",
+      __template({ t: "div", a: { id: "home" }, c: ["players"] }),
+      'the text "home", from its compiled template, but the server sent the text "players"',
+    ],
+    ["what it holds", PLAYERS_LIST, "nothing more in <div>, from its compiled template, but the server sent <b>"],
+    [
+      "what it lacks",
+      __template({ t: "div", a: { id: "home" } }),
+      'the text "home", from its compiled template, but the server sent nothing',
+    ],
+    [
+      "an element inside it",
+      __template({ t: "div", a: { id: "home" }, c: [{ t: "i", c: ["home"] }] }),
+      'the text "home", from its compiled template, but the server sent <i>',
+    ],
+    [
+      "an element's own tag",
+      __template({ t: "div", a: { id: "home" }, c: [{ t: "i", c: ["x"] }] }),
+      "<b>, from its compiled template, but the server sent <i>",
+      __template({ t: "div", a: { id: "home" }, c: [{ t: "b", c: ["x"] }] }),
+    ],
+  ])("is reported once, at where %s differs", async (_name, served, message, client = HOME) => {
     const records: { code: string; message: string }[] = [];
     globalThis.__RAMONDA_DIAGNOSTICS__ = (record) => records.push(record);
     resetDiagnostics();
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
-    let served = true;
+    let route = "server";
     class Route extends Component {
       render() {
-        return <main>{__block(served ? PLAYERS_LIST : HOME, [])}</main>;
+        return <main>{__block(route === "server" ? served : client, [])}</main>;
       }
     }
     const container = document.createElement("div");
     document.body.appendChild(container);
     try {
       container.innerHTML = await renderToString(<Route />);
-      served = false;
+      route = "client";
       hydrateRoot(<Route />, container);
       await Promise.resolve();
       await Promise.resolve();
@@ -570,9 +599,58 @@ describe("a served block from another template, in development", () => {
       container.remove();
     }
     const mismatch = records.filter((record) => record.code === "RMD007").map((record) => record.message);
-    expect(mismatch).toEqual([
-      expect.stringContaining("<div> with the attributes and text its compiled template writes"),
-    ]);
+    expect(mismatch).toEqual([`Server and client rendered different output: <Route /> rendered ${message}.`]);
+  });
+});
+
+describe("a text hole over a served element holding more than its text", () => {
+  test("loses what only the server sent on the first update, as an element the diff adopts does", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    let served = true;
+    class Box extends Component {
+      @state text = "x";
+      render() {
+        return <div id="box">{__block(LONE, [served ? ["x", <b>stray</b>] : this.text])}</div>;
+      }
+    }
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    try {
+      container.innerHTML = await renderToString(<Box />);
+      served = false;
+      hydrateRoot(<Box />, container);
+      await Promise.resolve();
+      await Promise.resolve();
+      (componentAt(container.querySelector("#box") as Element) as Box).text = "y";
+      flushSync();
+      expect((container.querySelector("p") as HTMLElement).outerHTML).toBe("<p>y</p>");
+    } finally {
+      warn.mockRestore();
+      container.remove();
+    }
+  });
+});
+
+/** `<button onclick={listener}>go</button>`. */
+const LISTENED = __template({ t: "button", d: [["onclick", 0]], c: ["go"] });
+
+describe("an attribute hole holding a listener object", () => {
+  test("is the same listener while it is the same object — the element is not diffed again", async () => {
+    const listener = { handleEvent() {} };
+    class Toolbar extends Component {
+      @state count = 0;
+      render() {
+        return <div data-count={this.count}>{__block(LISTENED, [listener])}</div>;
+      }
+    }
+    const app = await getDOM<Toolbar>(<Toolbar />);
+    await app.settle();
+    const diffed = vi.spyOn(attribute, "applyChangesOnAttributes");
+    app.instance.count = 1;
+    await app.settle();
+    const nodes = diffed.mock.calls.map((call) => (call[0] as Element).nodeName);
+    diffed.mockRestore();
+    expect(nodes).toEqual(["DIV"]);
   });
 });
 

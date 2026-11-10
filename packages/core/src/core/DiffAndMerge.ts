@@ -1,7 +1,7 @@
 import { enclosingBlock } from "./enclosingBlock";
 import { settleProps } from "../helpers/common";
 import { applyChangesOnAttributes } from "./Attribute";
-import { BLOCK, BLOCK_STATE, applyBlock, blockOf, markupOf, type BlockVNode } from "./block";
+import { applyBlock, blockOf, blockStateOf, markupOf, type BlockVNode } from "./block";
 import type {
   BaseComponent,
   ComponentChild,
@@ -613,9 +613,7 @@ function executeChangesOnStringNode(
   }
   // A node a compiled block made holds that block's static parts and its record: an element of the same
   // tag and key that is not that block — an uncompiled branch the key matched — is built afresh.
-  const built =
-    maybeenhancedNode?.nodeName !== vnode.name ||
-    (maybeenhancedNode as { [BLOCK_STATE]?: unknown } | undefined)?.[BLOCK_STATE] !== undefined;
+  const built = maybeenhancedNode?.nodeName !== vnode.name || blockStateOf(maybeenhancedNode) !== undefined;
   const enhancedNode = built ? createElement(vnode) : maybeenhancedNode;
 
   // The side this element is being built for, taken from the component that owns it rather than
@@ -2190,8 +2188,8 @@ function areSimilarNodes(enhancedNode: EnhancedNode | EnhancedChildNode, virtual
    */
   // PROTOTYPE: a block matches only a node cloned from the same template, and a node cloned from one only
   // a block of it.
-  const vBlock = (virtualNode as Partial<BlockVNode>)[BLOCK];
-  const eBlock = (enhancedNode as { [BLOCK_STATE]?: { template: unknown } })[BLOCK_STATE];
+  const vBlock = blockOf(virtualNode);
+  const eBlock = blockStateOf(enhancedNode);
   if (vBlock !== undefined || eBlock !== undefined) return vBlock?.template === eBlock?.template;
 
   return enhancedNode.nodeName === virtualNode.name;

@@ -72,7 +72,8 @@ export function valueEqual(
   if (depth >= maxDepth) return false;
 
   // A compiled block keeps what it says under a symbol, which `Object.keys` does not reach: its
-  // template and its hole values are what two of them are compared by.
+  // template and its hole values are what two of them are compared by. Read here rather than through
+  // `blockOf`: `core/block.ts` reaches this module through the diff, so importing it back is a cycle.
   const blockA = (a as { [BLOCK]?: { template: unknown; values: unknown[] } } | null)?.[BLOCK];
   const blockB = (b as { [BLOCK]?: { template: unknown; values: unknown[] } } | null)?.[BLOCK];
   if (blockA !== undefined || blockB !== undefined) {

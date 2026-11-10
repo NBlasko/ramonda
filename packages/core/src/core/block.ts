@@ -26,7 +26,7 @@
  */
 import { TEXT_TYPE, ORIGIN_SYM, KEY_SYM, IS_SVG, BLOCK, svgElements } from "../helpers/constants";
 import { currentOrigin } from "./origin";
-import { COMPARED_WITH_THE_ELEMENT, applyChangesOnAttributes, dropServerOnly } from "./Attribute";
+import { COMPARED_WITH_THE_ELEMENT, applyChangesOnAttributes, changedInPlace, dropServerOnly } from "./Attribute";
 import { diffChildrenOf, holdsARegion } from "./DiffAndMerge";
 import { normalizeChildren } from "../vdom/h";
 import { COMPONENT_RUNTIME } from "./runtime";
@@ -197,10 +197,11 @@ function attributesOf(site: Site, values: readonly unknown[]): Record<string, un
 
 /**
  * Whether a hole's attribute has to go through the attribute diff: a different value, one of the names
- * the element itself may have moved away from (`always`), or an object that may have changed in place.
+ * the element itself may have moved away from (`always`), or an object value that may have changed in
+ * place — by the attribute diff's own rule, which takes a listener object for the same listener.
  */
-function attributeChanged(next: unknown, previous: unknown, always: boolean): boolean {
-  return next !== previous || always || (typeof next === "object" && next !== null);
+function attributeChanged(name: string, next: unknown, previous: unknown, always: boolean): boolean {
+  return next !== previous || always || (next !== null && changedInPlace(name, next));
 }
 
 /**
@@ -242,7 +243,7 @@ function writeChild(
 export function applyBlock(vnode: BlockVNode, existing: Element | undefined, owner: MaybeComponent): Element {
   const { template, values } = vnode[BLOCK];
   const onServer = owner?.[COMPONENT_RUNTIME]?.env === "server";
-  const known = (existing as { [BLOCK_STATE]?: BlockState } | undefined)?.[BLOCK_STATE];
+  const known = blockStateOf(existing);
 
   if (existing === undefined || known === undefined || known.template !== template) {
     const root = rootOf(template).cloneNode(true) as Element;
@@ -287,7 +288,7 @@ export function applyBlock(vnode: BlockVNode, existing: Element | undefined, own
     if (d !== undefined) {
       for (let j = 0; j < d.length; j++) {
         const index = d[j][1];
-        if (attributeChanged(values[index], previous[index], (site.always as boolean[])[j])) {
+        if (attributeChanged(d[j][0], values[index], previous[index], (site.always as boolean[])[j])) {
           applyChangesOnAttributes(element, attributesOf(site, values), onServer);
           break;
         }
@@ -321,11 +322,24 @@ function matches(
   element: Node,
   sites: Element[],
   all: (readonly [Element, TemplateNode])[],
+  miss: BlockMiss,
 ): boolean {
   const svg = svgElements.has(node.t);
-  if (element.nodeType !== 1 || element.nodeName !== (svg ? node.t : node.t.toUpperCase())) return false;
+  if (element.nodeType !== 1 || element.nodeName !== (svg ? node.t : node.t.toUpperCase())) {
+    if (__DEV__) missed(miss, `<${node.t}>`, element);
+    return false;
+  }
   if (node.a !== undefined) {
-    for (const name in node.a) if ((element as Element).getAttribute(name) !== node.a[name]) return false;
+    for (const name in node.a) {
+      const found = (element as Element).getAttribute(name);
+      if (found === node.a[name]) continue;
+      if (__DEV__) {
+        const tag = `<${node.t}>`;
+        const page = found === null ? `${tag} without ${name}` : `${name}="${found}" on ${tag}`;
+        missed(miss, `${name}="${node.a[name]}" on ${tag}`, page);
+      }
+      return false;
+    }
   }
   all.push([element as Element, node]);
   if (node.d !== undefined || node.h !== undefined || node.k !== undefined) sites.push(element as Element);
@@ -333,15 +347,36 @@ function matches(
   if (node.h !== undefined || node.k !== undefined) return true;
   let child = element.firstChild;
   for (const expected of node.c ?? []) {
-    if (child === null) return false;
+    if (child === null) {
+      if (__DEV__) missed(miss, typeof expected === "string" ? `the text "${expected}"` : `<${expected.t}>`, null);
+      return false;
+    }
     if (typeof expected === "string") {
-      if (child.nodeType !== 3 || (child as Text).data !== expected) return false;
-    } else if (!matches(expected, child, sites, all)) {
+      if (child.nodeType !== 3 || (child as Text).data !== expected) {
+        if (__DEV__) missed(miss, `the text "${expected}"`, child);
+        return false;
+      }
+    } else if (!matches(expected, child, sites, all, miss)) {
       return false;
     }
     child = child.nextSibling;
   }
+  if (child !== null && __DEV__) missed(miss, `nothing more in <${node.t}>`, child);
   return child === null;
+}
+
+/**
+ * Where a served element first differs from its template, for the report hydration makes: what the
+ * template writes there, and the page's node there — or, for an attribute, the page's own words.
+ */
+export interface BlockMiss {
+  expected: string;
+  found: Node | string | null;
+}
+
+function missed(miss: BlockMiss, expected: string, found: Node | string | null): void {
+  miss.expected = expected;
+  miss.found = found;
 }
 
 /**
@@ -359,12 +394,14 @@ export function adoptBlock(
     /** An element's attributes, as hydration adopts any element's — reported where they differ. */
     attributes: (element: Element, attributes: Record<string, unknown>) => void;
   },
+  /** Filled, in development, with where the page first differs when it is not adopted. */
+  miss: BlockMiss,
 ): boolean {
   const { template, values } = vnode[BLOCK];
   const sites = template.sites;
   const elements: Element[] = [];
   const all: (readonly [Element, TemplateNode])[] = [];
-  if (!matches(template.description, root, elements, all)) return false;
+  if (!matches(template.description, root, elements, all, miss)) return false;
   // What only the server wrote — an attribute no template part or hole names, the exposed request's
   // stamp among them — goes, as it does from an element the attribute diff adopts.
   for (const [element, node] of all) dropServerOnly(element, writtenBy(node, values), svgElements.has(node.t));
@@ -385,8 +422,10 @@ export function adoptBlock(
       // A string or a number is a text child like any other: the server's node is adopted, made where an
       // empty string sent none, reported where it differs. It is the text node the hole writes from then on.
       adopt.children(isText(value) ? [String(value)] : (value as unknown[]), element);
+      // Only while it IS the only child: what the server sent beyond it, left by a mismatch, goes on the
+      // first update, through the children diff, as it does from any element.
       const only = element.firstChild;
-      if (isText(value) && only !== null && only.nodeType === 3) texts[i] = only as Text;
+      if (isText(value) && only !== null && only.nodeType === 3 && only.nextSibling === null) texts[i] = only as Text;
     }
     if (site.k !== undefined) adopt.children(values[site.k] as unknown[], element);
   }
@@ -434,6 +473,11 @@ export function viewOf(vnode: BlockVNode): BlockView {
 /** A block's template and hole values, and which holes hold children — what a markup comparison reads. */
 export function blockOf(vnode: unknown): { template: Template; values: unknown[] } | undefined {
   return (vnode as Partial<BlockVNode> | null)?.[BLOCK];
+}
+
+/** The record a block keeps on the element it made or adopted, if `node` is one. */
+export function blockStateOf(node: unknown): BlockState | undefined {
+  return (node as { [BLOCK_STATE]?: BlockState } | null | undefined)?.[BLOCK_STATE];
 }
 
 export function isChildHole(template: Template, index: number): boolean {

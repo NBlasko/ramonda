@@ -264,12 +264,16 @@ export function ramonda(options: RamondaOptions = {}): VitePluginLike {
 const SCRIPT = /\.[cm]?[jt]sx?$/;
 const JSX_SCRIPT = /\.[jt]sx$/;
 
-/** A module's source, or `undefined` when no file has its name — a module some other plugin makes up. */
+/**
+ * A module's source, or `undefined` when no file has its name — a module some other plugin makes up:
+ * nothing at that path, a path running through a file (`page.mdx/Component.tsx`), or a folder.
+ */
 async function readSource(id: string): Promise<string | undefined> {
   try {
     return await readFile(id, "utf8");
   } catch (error) {
-    if ((error as { code?: string }).code === "ENOENT") return undefined;
+    if (NO_FILE.has((error as { code?: string }).code ?? "")) return undefined;
     throw error;
   }
 }
+const NO_FILE = new Set(["ENOENT", "ENOTDIR", "EISDIR"]);

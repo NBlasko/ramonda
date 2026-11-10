@@ -252,6 +252,23 @@ describe("the plugins", () => {
     expect(await viteRamonda().load.call(undefined, join(tmpdir(), "no-such-dir", "routes.tsx"))).toBeNull();
   });
 
+  test("the Vite plugin leaves it so when the made-up path runs through a file, or names a folder", async () => {
+    const folder = await mkdtemp(join(tmpdir(), "ramonda-made-up-"));
+    const page = join(folder, "page.mdx");
+    await writeFile(page, "# page");
+    const named = join(folder, "View.tsx");
+    await mkdir(named);
+    try {
+      const plugin = viteRamonda();
+      expect({
+        throughAFile: await plugin.load.call(undefined, join(page, "Component.tsx")),
+        aFolder: await plugin.load.call(undefined, named),
+      }).toEqual({ throughAFile: null, aFolder: null });
+    } finally {
+      await rm(folder, { recursive: true });
+    }
+  });
+
   test("the esbuild plugin reads files only: a module another plugin made up is left to it", async () => {
     const virtual: Plugin = {
       name: "virtual",

@@ -3,7 +3,7 @@ import { COMPONENT_TYPE, CHILD_RECORD, ORIGIN_SYM, REQUEST_ATTR } from "../helpe
 import { className, displayName } from "../helpers/utils";
 import { installClientRequestScope } from "./requestContext";
 import { adoptAttributes, applyChangesOnAttributes, formatAttributes } from "../core/Attribute";
-import { adoptBlock, blockOf, type BlockVNode } from "../core/block";
+import { adoptBlock, blockOf, type BlockMiss, type BlockVNode } from "../core/block";
 import { generateRenderOutput } from "../helpers/generateRenderOutput";
 import { seedWatchProps } from "../helpers/watchProps";
 import { runComponentEffects } from "../reactivity/effect";
@@ -289,21 +289,24 @@ function hydrateElement(
 
   // A compiled block adopts the server's element hole by hole — see `adoptBlock`.
   if (blockOf(vnode) !== undefined) {
-    const adopted = adoptBlock(vnode as BlockVNode, cursor as unknown as Element, {
-      children: (children, element) => hydrateChildren(children, placeholder, element),
-      attributes: (element, attributes) => {
-        if (__DEV__) reportAttributeMismatches(placeholder, element, formatAttributes(attributes));
-        adoptAttributes(element as unknown as ChildNode, attributes);
+    const miss: BlockMiss = { expected: `<${vnodeName(vnode)}>`, found: cursor };
+    const adopted = adoptBlock(
+      vnode as BlockVNode,
+      cursor as unknown as Element,
+      {
+        children: (children, element) => hydrateChildren(children, placeholder, element),
+        attributes: (element, attributes) => {
+          if (__DEV__) reportAttributeMismatches(placeholder, element, formatAttributes(attributes));
+          adoptAttributes(element as unknown as ChildNode, attributes);
+        },
       },
-    });
+      miss,
+    );
     if (adopted) return nextOf(cursor);
-    // The tag is the template's; what differs is the rest of what the template writes.
+    // Named where it first differs, inside the element: the tag outside is the template's.
     if (__DEV__) {
-      reportStructureMismatch(
-        placeholder,
-        `<${vnodeName(vnode)}> with the attributes and text its compiled template writes`,
-        describeFound(cursor),
-      );
+      const found = typeof miss.found === "string" ? miss.found : describeFound(miss.found);
+      reportStructureMismatch(placeholder, `${miss.expected}, from its compiled template,`, found);
     }
     return hydrationFallback(vnode, placeholder, cursor, parent, false);
   }
