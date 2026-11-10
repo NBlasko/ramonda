@@ -39,9 +39,10 @@ hydration would disagree with the markup (`RMD007`); rendering only the server's
 would show the wrong page. So a component can read `hashParams` or `searchParams` in
 `render` on any page, and the value is there before the first paint.
 
-**One consequence:** a `@created` below the router runs before that re-read, so while
-hydrating it sees the server's URL. Read the hash or the query in `@mounted` or in
-`render` instead.
+**One consequence:** a `@created` or `@mounted` below the router runs before that re-read, so
+while hydrating it sees the server's URL — no hash, and on a baked page no query. Read them in
+`render`, which runs again with the browser's URL right after. A navigation written from either
+one (`updateSearchParams`, `push`) is safe: a write takes the browser's URL first.
 
 ## Route guards and redirects
 

@@ -84,7 +84,12 @@ export const safeStringify = (v: unknown): string => {
   if (typeof v === "function") return "ƒ()";
   let s: string;
   try {
-    s = JSON.stringify(v) ?? String(v);
+    // A Map and a Set as their entries, or every one of them is `{}` and a change to one never shows
+    // — this string is also the panel's change signature. Found by review.
+    s =
+      JSON.stringify(v, (_key, value: unknown) =>
+        value instanceof Map ? { Map: [...value] } : value instanceof Set ? { Set: [...value] } : value,
+      ) ?? String(v);
   } catch {
     return "[unserializable]";
   }

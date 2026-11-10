@@ -2759,6 +2759,18 @@ describe("an override from another block that the sheet will not honour", () => 
     expect(findings[0].line).toBe(4);
   });
 
+  // Found by review: two spreads were never compared with each other, only a spread with what the
+  // block writes itself — and the merge's dev warning, with no line, was all that was left.
+  test("between two spreads in one block, at the later spread", () => {
+    const findings = found({
+      "Card.tsx":
+        `const printable = @@( @media print { border: none; } );\nconst accent = @@( border-color: blue; );\n` +
+        `export const card = @@( ...$(printable); ...$(accent); );\n`,
+    });
+    expect(findings).toHaveLength(1);
+    expect(findings[0].line).toBe(3);
+  });
+
   test("and under a WEAKER condition than the spread's", () => {
     expect(
       found({

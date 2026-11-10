@@ -1,5 +1,5 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
-import { Component, created, renderToString } from "@ramonda/core";
+import { Component, created, mounted, renderToString } from "@ramonda/core";
 import type { RamondaNode } from "@ramonda/core";
 import { render } from "@ramonda/testing-library";
 import { Router, RouteOutlet, Navigator } from "../Router";
@@ -254,7 +254,58 @@ describe("Router hydration", () => {
 
     expect(container.querySelector("#tab")?.textContent).toBe("film");
     // The cost, said where it is decided: `@created` runs before the hydration render, so it sees
-    // the server's URL. A component that needs the browser's reads it in `@mounted` or `render`.
+    // the server's URL. A component that needs the browser's reads it in `render` — see the test below
+    // for why not `@mounted`.
     expect(createdSaw).toBe("none");
+  });
+
+  /**
+   * A child's `@mounted` runs BEFORE the Router's own. Found by review: with the re-read only in the
+   * Router's `@mounted`, a child writing the query from its own `@mounted` started from the server's
+   * empty one and wrote it over the reader's — `?q=ada` and `#tab=film` were lost for good. A write
+   * takes the browser's URL first now.
+   *
+   * A READ there still sees the server's URL, and that is pinned rather than hidden: measured, the
+   * child's own `@mounted` runs before any hook's and the context is republished only on the next
+   * render, so nothing public can take the URL sooner.
+   */
+  test("a child writing from its @mounted keeps what the reader had in the URL", async () => {
+    let mountedSaw: string | undefined;
+    class Pager extends Component {
+      route = this.use(Navigator);
+      @mounted({ env: "client" }) start(): void {
+        mountedSaw = this.route.searchParams.q ?? "none";
+        this.route.updateSearchParams((params) => ({ ...params, page: "2" }));
+      }
+      render() {
+        return (
+          <div>
+            <span id="q">{this.route.searchParams.q ?? "none"}</span>
+          </div>
+        );
+      }
+    }
+    const pages = createRoutes({ "/players": <Pager /> });
+    class PagerApp extends Component {
+      router = this.use(Router);
+      render() {
+        return (
+          <div>
+            <RouteOutlet routes={pages} />
+          </div>
+        );
+      }
+    }
+    setUrl("/players");
+    const html = await renderToString(<PagerApp />);
+    setUrl("/players?q=ada#tab=film");
+
+    render(<PagerApp />, { hydrate: html });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(mountedSaw).toBe("none");
+    expect(window.location.search).toContain("q=ada");
+    expect(window.location.search).toContain("page=2");
+    expect(window.location.hash).toContain("tab=film");
   });
 });

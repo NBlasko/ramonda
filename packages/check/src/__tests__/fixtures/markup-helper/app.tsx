@@ -115,3 +115,21 @@ export class RowsHelper extends Component {
     return <ul>{rowsOf(["a", "b"])}</ul>;
   }
 }
+
+/** Silent: built inside a click handler — once per click, not once per render. Found by review. */
+export class InAHandler extends Component {
+  shown: unknown = null;
+  render() {
+    return (
+      <button
+        type="button"
+        onclick={() => {
+          const toast = () => <b>Saved</b>;
+          this.shown = toast();
+        }}
+      >
+        Save
+      </button>
+    );
+  }
+}

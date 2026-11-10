@@ -161,12 +161,37 @@ export function orderAcrossBlocks(
           if (kind === "cond") break;
           if (kind === "from") {
             const argument = (element as ts.CallExpression).arguments[0];
+            const earlierVia = via;
             via = `\`...$(${argument.getText().replace(/^\((.*)\)$/s, "$1")})\``;
             const inner = blockOf(argument);
             if (inner === undefined) continue;
+            /**
+             * Against what EARLIER spreads left, too, told once at this spread. Found by review: two
+             * spreads were never compared with each other. What this spread sets among itself is
+             * its own block's business, so its settings join `standing` only after.
+             */
+            const mine: (Setting & { via: string })[] = [];
+            let told = false;
             top.add(inner);
-            const went = read(inner.elements, [], (one) => standing.push({ ...one, via }), top);
+            const went = read(
+              inner.elements,
+              [],
+              (one) => {
+                mine.push({ ...one, via });
+                if (earlierVia === "") return;
+                against(standing, one, (earlier) => {
+                  // At the name itself: the parentheses around it are the virtual file's, and a place
+                  // in them maps to nowhere in the author's text.
+                  let at: ts.Expression = argument;
+                  while (ts.isParenthesizedExpression(at)) at = at.expression;
+                  if (!told) said(at, one, earlier, earlier.via);
+                  told = true;
+                });
+              },
+              top,
+            );
             top.delete(inner);
+            standing.push(...mine);
             if (!went) break;
             continue;
           }

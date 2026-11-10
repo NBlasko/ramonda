@@ -19,7 +19,7 @@ import type { Rule } from "./rule";
  * ## What is reported
  *
  * A `const name = () => …`, `const name = function () {…}` or `function name() {…}` written
- * anywhere inside `render()` — a row callback's body included, where it is built once per row —
+ * inside `render()` or a callback a call in it runs — a row's, where it is built once per row —
  * whose body has markup in it, a row callback inside it included, and whose name is only ever
  * CALLED.
  *
@@ -29,8 +29,8 @@ import type { Rule } from "./rule";
  *   a local. A row callback has to be a value, and handing one over is what `list` asks for. A
  *   helper both called and handed over is left to the handed half's rules.
  * - **A function returning no markup**: a formatter is not rendering.
- * - **A closure in another method.** Only `render()` runs on every render, and a method is where
- *   the advice sends the helper anyway.
+ * - **A closure in another method**, or in a handler written in the markup. Only what `render()`
+ *   runs is built on every render; a handler's body runs per click.
  */
 export interface MarkupHelperInRenderIssue {
   component: string;
@@ -104,7 +104,7 @@ export const markupHelperInRender = {
 
       const visit = (node: ts.Node): void => {
         const helper = functionOf(node);
-        if (helper && returnsMarkup(helper.fn) && onlyCalled(helper.name, body)) {
+        if (helper && runsWithRender(node, body) && returnsMarkup(helper.fn) && onlyCalled(helper.name, body)) {
           found.push({ component: self.name, helper: helper.name.text, ...positionOf(helper.name) });
         }
         ts.forEachChild(node, visit);
@@ -114,6 +114,20 @@ export const markupHelperInRender = {
     return found;
   },
 } as const satisfies Rule<MarkupHelperInRenderIssue>;
+
+/**
+ * Whether a declaration is built when `render()` runs — directly in it, or in a callback a CALL in it
+ * runs, as `list()` and `map()` run a row's. Found by review: one inside a click handler is built per
+ * click, not per render, and the report's own sentence was false for it.
+ */
+function runsWithRender(declaration: ts.Node, render: ts.Node): boolean {
+  for (let at = declaration.parent; at !== undefined && at !== render; at = at.parent) {
+    if (!ts.isFunctionLike(at)) continue;
+    const parent = at.parent;
+    if (!ts.isCallExpression(parent) || !parent.arguments.includes(at as ts.Expression)) return false;
+  }
+  return true;
+}
 
 /**
  * Whether every use of a name inside `render()` is a CALL of it — and there is at least one.

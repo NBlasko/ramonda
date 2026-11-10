@@ -33,6 +33,7 @@ describe("a markup helper built inside render()", () => {
     ["Mixed", "a helper that is also handed over is the handed rule's"],
     ["Fixed", "a helper that returns no markup, and a method — the fix"],
     ["OtherMethod", "a closure in another method is not built on every render"],
+    ["InAHandler", "one built inside a click handler is built per click, not per render"],
   ])("%s is silent — %s", (component) => {
     expect(found().filter((issue) => issue.component === component)).toEqual([]);
   });

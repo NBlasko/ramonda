@@ -164,7 +164,12 @@ export class Router extends Hook {
   /** Stable for this Router's lifetime, so consumers never see a new identity. */
   private nav = createNavigator(
     {
-      read: () => this.route,
+      read: () => {
+        // Off the server only: there the request's URL is the truth, and `parseUrl` would read the
+        // DOM stand-in. See `adoptUrl` for why a write takes the browser's URL first.
+        if (!this.adopted && typeof window !== "undefined" && !this.serverRedirect) this.adoptUrl();
+        return this.route;
+      },
       write: (next) => {
         this.routeState = next;
       },
@@ -258,9 +263,23 @@ export class Router extends Hook {
    * Here the hydration render shows what the server rendered, and the URL arrives as an ordinary
    * update. A fresh client mount gets the same answer from the seed. The one thing that changes is
    * `@created` below the router, which runs before this and sees the server's URL while hydrating.
+   *
+   * **And it is ALSO taken by the first WRITE, whenever that comes.** Core runs a child's
+   * `@mounted` before its parent's, so this one comes last — and a child writing the query from its
+   * own `@mounted` started from the server's empty one and wrote it over the reader's: found by
+   * review, `?q=ada` and `#tab=film` lost for good. Every write reads the state through the
+   * navigator's `read`, and a write never happens during a render, so that read takes the URL first.
+   *
+   * What is NOT covered, measured: a child's `@mounted` that only READS sees the server's URL while
+   * hydrating — its own `@mounted` runs before any hook's, and the context it reads is republished
+   * only on the next render. Taking the URL there needs a moment core does not offer publicly.
    */
+  private adopted = false;
+
   @mounted({ env: "client" })
-  adoptUrl() {
+  adoptUrl(): void {
+    if (this.adopted) return;
+    this.adopted = true;
     this.routeState = keepUnchanged(this.routeState, parseUrl());
   }
 

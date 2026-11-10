@@ -431,7 +431,10 @@ function runTool(which: "format" | "lint", args: readonly string[]): never {
     for (const file of changed) console.error(`  ${where(file)}`);
     // The command that writes them, with the paths this run was given — the trial's check stopped on
     // the list above and had to work the command out.
-    const given = paths.length === 0 ? "" : ` ${paths.join(" ")}`;
+    // Quoted where a shell would split or read it — found by review: pasted as printed, a path with
+    // a space formatted two paths that are not there.
+    const quoted = (path: string) => (/^[\w./@+-]+$/.test(path) ? path : `'${path.replaceAll("'", `'\\''`)}'`);
+    const given = paths.length === 0 ? "" : ` ${paths.map(quoted).join(" ")}`;
     console.error(`\nRun \`ramonda-css format${given}\` to write them.\n`);
     process.exit(1);
   }

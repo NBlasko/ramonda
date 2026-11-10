@@ -2274,6 +2274,30 @@ describe("what a @compute's cache did", () => {
     const text = panel.shadowRoot.textContent ?? "";
     expect(text).toContain("3 of 4 reads cached");
     expect(text).not.toContain('"3 of 4 reads cached"');
+    // And nothing to open: a sentence about a value is not a container. Found by review — the
+    // Phrase wrapper is an object, and every Cache row had grown an "open in full view" button.
+    const cache = Array.from(panel.shadowRoot.querySelectorAll(".state-block")).find(
+      (el) => el.querySelector(".state-title")?.textContent?.trim() === "Cache",
+    );
+    expect(cache?.querySelectorAll(".jv-open")).toHaveLength(0);
+  });
+
+  /**
+   * Found by review: a `Map` and a `Set` can be opened now, but the change signature was
+   * `JSON.stringify`, which writes every one as `{}` — so a Map that gained an entry never refreshed.
+   */
+  it("refreshes a Map whose entries changed", () => {
+    let names = new Map([[1, "ada"]]);
+    const panel = mount(() => [node("App", "component", { props: { names } })]);
+    expect(panel.shadowRoot.textContent).toContain("ada");
+
+    names = new Map([
+      [1, "ada"],
+      [2, "grace"],
+    ]);
+    window.dispatchEvent(new CustomEvent("ramonda:tick"));
+
+    expect(panel.shadowRoot.textContent).toContain("grace");
   });
 
   it("shows no section for a component with no computes", () => {

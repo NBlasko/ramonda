@@ -264,6 +264,18 @@ describe("the types a Vite project needs", () => {
    * `exports` conditions, and `__DEV__` appears in their `dist` only inside comments). An app's own
    * development branch is `import.meta.env.DEV`, which `@ramonda/build` defines on both halves.
    */
+  /**
+   * The build is a PRODUCTION build whatever the shell says. Found by review: `ramondaDefine` takes
+   * `import.meta.env.DEV` from `NODE_ENV`, so a shell exporting `NODE_ENV=development` shipped every
+   * development branch — the devtools import among them — in the production bundle.
+   */
+  test("the build script says production before it asks for the defines", () => {
+    const script = make("ssr", []).read("scripts/build.mjs");
+    const set = script.indexOf('process.env.NODE_ENV = "production"');
+    expect(set).toBeGreaterThan(-1);
+    expect(set).toBeLessThan(script.indexOf("ramondaDefine()"));
+  });
+
   test("and nothing in it defines or declares `__DEV__`", () => {
     const { read } = make("ssr", []);
     for (const file of ["vite.config.ts", "scripts/build.mjs", "global.d.ts"]) {
