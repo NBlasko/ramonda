@@ -5,6 +5,7 @@ import {
   state,
   compute,
   created,
+  mounted,
   destroyed,
   onWindow,
   captureServerRedirect,
@@ -128,18 +129,18 @@ export class Router extends Hook {
    * The route state. A plain `@state` field, so the signal behind it stays an
    * implementation detail — nothing an app touches ever sees the State class.
    *
-   * Seeded from the URL at construction, re-read in `init()`, and re-read on
+   * Seeded from the URL at construction, re-read in `adoptUrl()`, and re-read on
    * popstate. Those are the ONLY moments the URL is read as the source of truth.
    *
-   * The seed here is not redundant with `init()`, and the two are not
+   * The seed here is not redundant with `adoptUrl()`, and the two are not
    * interchangeable — each covers a case the other cannot:
    *
-   * - This one runs on the SERVER too, where `init()` never does (it is
+   * - This one runs on the SERVER too, where `adoptUrl()` never does (it is
    *   `env: "client"`). It is also what `RouteProvider` publishes, because
    *   `useCommon` evaluates the options callback when the hook is constructed —
    *   before any lifecycle. Replace it with a placeholder and every route stops
    *   matching.
-   * - `init()` covers hydration: `@state` auto-persists, so the SERVER's route
+   * - `adoptUrl()` covers hydration: `@state` auto-persists, so the SERVER's route
    *   arrives in the state blob and is restored over this seed. Without the
    *   re-read, `routeState` keeps the server's route — and so does the rendered
    *   page, measured `rendered: players | routeState.baseUrl: /players` while
@@ -243,8 +244,23 @@ export class Router extends Hook {
       );
     }
     liveRouters++;
+  }
 
-    // The client's URL is the truth, whatever was restored into state.
+  /**
+   * The browser's URL is the truth, whatever was restored into state — but AFTER the hydration
+   * render, not before it.
+   *
+   * Read in `@created`, it was in place for the hydration render, which then disagreed with the
+   * server's markup wherever the two URLs differ: the hash, which never reaches a server, on every
+   * page; the query, on a baked page; the whole path, on a cached one. Each was `RMD007`, and an app
+   * showing a hash key had to hold it back until `@mounted` itself. Found by the second trial.
+   *
+   * Here the hydration render shows what the server rendered, and the URL arrives as an ordinary
+   * update. A fresh client mount gets the same answer from the seed. The one thing that changes is
+   * `@created` below the router, which runs before this and sees the server's URL while hydrating.
+   */
+  @mounted({ env: "client" })
+  adoptUrl() {
     this.routeState = keepUnchanged(this.routeState, parseUrl());
   }
 

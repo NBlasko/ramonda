@@ -28,11 +28,20 @@ There is no server-only router API — the same code renders on both sides.
 
 ## The browser's URL wins on hydration
 
-The route the server rendered travels to the browser in the hydration data, and then
-the router re-reads the actual URL as it starts up. That last step matters: if the
-browser is at a *different* URL than the server rendered — a cached page, a CDN
-serving one file for many paths, a redirect between request and hydration — re-reading
-is what makes it show the right page instead of the server's.
+The route the server rendered travels to the browser in the hydration data, and the
+first render in the browser — the one that adopts the server's markup — uses it. Right
+after, the router reads the actual URL, and the page updates the way a navigation would.
+
+Both halves matter. The browser often has more than the server saw: the hash never reaches
+a server, a baked page was rendered with no query, and a cached page or a CDN serving one
+file for many paths was rendered at another path. Rendering that difference during
+hydration would disagree with the markup (`RMD007`); rendering only the server's route
+would show the wrong page. So a component can read `hashParams` or `searchParams` in
+`render` on any page, and the value is there before the first paint.
+
+**One consequence:** a `@created` below the router runs before that re-read, so while
+hydrating it sees the server's URL. Read the hash or the query in `@mounted` or in
+`render` instead.
 
 ## Route guards and redirects
 

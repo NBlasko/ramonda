@@ -48,9 +48,10 @@ so a space, an `&` or a `#` in it stays part of the value.
 **A path and a query, or a `:param`?** A `:param` route — `/players/:id` — is one page per id, and
 each can be [baked at build time](/routing/server) when the ids are known then. When they are not —
 an id the reader created, stored only in their browser — a fixed path with the id in the query,
-`/player?id=…`, is one page, baked once. The baked page has no query, so what it shows for the id
-comes after the page loads: a [`clientOnly` query](/query/server#data-only-the-browser-has) keyed by
-the id renders pending on the server and on the client's first render alike.
+`/player?id=…`, is one page, baked once. The baked page has no query, so the id arrives
+[right after hydration](/routing/server#the-browsers-url-wins-on-hydration), and what it shows for
+the id comes then: a [`clientOnly` query](/query/server#data-only-the-browser-has) keyed by the id
+renders pending on the server and on the client's first render alike.
 
 ## Props
 
