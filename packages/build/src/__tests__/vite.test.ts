@@ -24,7 +24,7 @@ function parses(file: string) {
  */
 
 /** The hooks as Vite will actually call them — object form, so `handler` is where the function is. */
-function hooks(plugin: ReturnType<typeof ramonda>) {
+function hooks(plugin: ReturnType<typeof ramonda>[0]) {
   const config = plugin.config as (config: Record<string, unknown>, env: unknown) => unknown;
   const configResolved = plugin.configResolved as (config: Record<string, unknown>) => void;
   return { config, configResolved };
@@ -32,7 +32,7 @@ function hooks(plugin: ReturnType<typeof ramonda>) {
 
 describe("what the plugin puts in the config", () => {
   test("all three settings, so the app names none of them", () => {
-    const { config } = hooks(ramonda());
+    const { config } = hooks(ramonda()[0]);
     const returned = config({}, { command: "build", mode: "production" }) as {
       esbuild: { jsx: string; jsxImportSource: string; target: string };
     };
@@ -43,7 +43,7 @@ describe("what the plugin puts in the config", () => {
   });
 
   test("a target the app already set, and that works, is left alone", () => {
-    const { config } = hooks(ramonda());
+    const { config } = hooks(ramonda()[0]);
     const returned = config({ esbuild: { target: "es2020" } }, { command: "build", mode: "production" }) as {
       esbuild: Record<string, unknown>;
     };
@@ -55,7 +55,7 @@ describe("what the plugin puts in the config", () => {
   });
 
   test("a target that leaves the decorators in is refused, not overridden", () => {
-    const { config } = hooks(ramonda());
+    const { config } = hooks(ramonda()[0]);
 
     // The plugin COULD win this one silently, and that is exactly why it must not: the app said
     // something specific, it is wrong, and the person who wrote it needs to hear which line.
@@ -72,7 +72,7 @@ describe("what the plugin puts in the config", () => {
    * Both adapters now answer this from the same helper; the esbuild half asserts the mirror image.
    */
   test.each(["jsx", "jsxImportSource"] as const)("a %s that disagrees is refused, not overridden", (name) => {
-    const { config } = hooks(ramonda());
+    const { config } = hooks(ramonda()[0]);
     const env = { command: "build", mode: "production" };
 
     expect(() => config({ esbuild: { [name]: "something-else" } }, env)).toThrow(new RegExp(name));
@@ -80,7 +80,7 @@ describe("what the plugin puts in the config", () => {
   });
 
   test("one the app already set correctly is not handed back, so its line survives", () => {
-    const { config } = hooks(ramonda());
+    const { config } = hooks(ramonda()[0]);
     const returned = config({ esbuild: { jsx: "automatic" } }, { command: "build", mode: "production" }) as {
       esbuild: Record<string, unknown>;
     };
@@ -90,7 +90,7 @@ describe("what the plugin puts in the config", () => {
   });
 
   test("turning esbuild off entirely is refused too, and told what to actually do", () => {
-    const { config } = hooks(ramonda());
+    const { config } = hooks(ramonda()[0]);
     const off = () => config({ esbuild: false }, { command: "build", mode: "production" });
 
     expect(off).toThrow(/decorator/i);
@@ -103,7 +103,7 @@ describe("what the plugin puts in the config", () => {
   });
 
   test("and it checks the resolved config, in case something later put it back", () => {
-    const { configResolved } = hooks(ramonda());
+    const { configResolved } = hooks(ramonda()[0]);
     // What Vite hands this hook has already been through `config` and the merge, so a healthy
     // resolved config carries the prefix — calling it without one is not a realistic arrangement.
     const resolved = { esbuild: { target: "es2022" }, envPrefix: PUBLIC_ENV_PREFIX };
@@ -127,13 +127,13 @@ describe("what the plugin puts in the config", () => {
    */
   describe("envPrefix", () => {
     test("it is filled in when the app said nothing", () => {
-      const { config } = hooks(ramonda());
+      const { config } = hooks(ramonda()[0]);
       const returned = config({}, { command: "build", mode: "production" }) as { envPrefix?: string };
       expect(returned.envPrefix).toBe(PUBLIC_ENV_PREFIX);
     });
 
     test("an app that set the same prefix keeps its own line", () => {
-      const { config } = hooks(ramonda());
+      const { config } = hooks(ramonda()[0]);
       // Not returned, because Vite merges over the app: returning it would replace a line that
       // already agrees, for no gain.
       const returned = config({ envPrefix: PUBLIC_ENV_PREFIX }, { command: "build", mode: "production" }) as
@@ -143,7 +143,7 @@ describe("what the plugin puts in the config", () => {
     });
 
     test("the one-entry array spelling is the same answer", () => {
-      const { config } = hooks(ramonda());
+      const { config } = hooks(ramonda()[0]);
       const returned = config({ envPrefix: [PUBLIC_ENV_PREFIX] }, { command: "build", mode: "production" }) as
         | Record<string, unknown>
         | undefined;
@@ -151,7 +151,7 @@ describe("what the plugin puts in the config", () => {
     });
 
     test("a different prefix is REFUSED rather than overridden", () => {
-      const { config } = hooks(ramonda());
+      const { config } = hooks(ramonda()[0]);
       // Overriding would expose a different set of variables than the app asked for, in silence.
       expect(() => config({ envPrefix: "VITE_" }, { command: "build", mode: "production" })).toThrow(/envPrefix/);
       expect(() => config({ envPrefix: "" }, { command: "build", mode: "production" })).toThrow(/envPrefix/);
@@ -167,7 +167,7 @@ describe("on Vite 8", () => {
   const VITE_8 = { meta: { viteVersion: "8.3.4" } };
   const env = { command: "build", mode: "production" };
   const on8 = () => {
-    const plugin = ramonda();
+    const [plugin] = ramonda();
     const { config, configResolved } = hooks(plugin);
     return { config: config.bind(VITE_8), configResolved, plugin };
   };
@@ -209,7 +209,7 @@ describe("on Vite 8", () => {
     const lowered = await eight.plugin.transform.handler.call({}, source, "/app/src/A.tsx");
     expect(lowered?.code).not.toContain("@Host");
 
-    const seven = ramonda();
+    const [seven] = ramonda();
     hooks(seven).config.call({ meta: { viteVersion: "7.3.6" } }, {}, env);
     expect(await seven.transform.handler.call({}, source, "/app/src/A.tsx")).toBeNull();
   });

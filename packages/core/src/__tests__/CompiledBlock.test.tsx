@@ -603,32 +603,49 @@ describe("a served block from another template, in development", () => {
   });
 });
 
+/** What the test below changes on its component. */
+interface Boxed {
+  text: string;
+  other: number;
+}
+
 describe("a text hole over a served element holding more than its text", () => {
-  test("loses what only the server sent on the first update, as an element the diff adopts does", async () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    let served = true;
-    class Box extends Component {
-      @state text = "x";
-      render() {
-        return <div id="box">{__block(LONE, [served ? ["x", <b>stray</b>] : this.text])}</div>;
+  test.each([
+    ["the text changes", (box: Boxed) => (box.text = "y"), "<p>y</p>"],
+    ["only something else changes", (box: Boxed) => (box.other = 1), "<p>x</p>"],
+  ])(
+    "loses what only the server sent on the first update, as an element the diff adopts does — when %s",
+    async (_name, update, after) => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      let served = true;
+      class Box extends Component {
+        @state text = "x";
+        @state other = 0;
+        render() {
+          return (
+            <div id="box" data-other={this.other}>
+              {__block(LONE, [served ? ["x", <b>stray</b>] : this.text])}
+            </div>
+          );
+        }
       }
-    }
-    const container = document.createElement("div");
-    document.body.appendChild(container);
-    try {
-      container.innerHTML = await renderToString(<Box />);
-      served = false;
-      hydrateRoot(<Box />, container);
-      await Promise.resolve();
-      await Promise.resolve();
-      (componentAt(container.querySelector("#box") as Element) as Box).text = "y";
-      flushSync();
-      expect((container.querySelector("p") as HTMLElement).outerHTML).toBe("<p>y</p>");
-    } finally {
-      warn.mockRestore();
-      container.remove();
-    }
-  });
+      const container = document.createElement("div");
+      document.body.appendChild(container);
+      try {
+        container.innerHTML = await renderToString(<Box />);
+        served = false;
+        hydrateRoot(<Box />, container);
+        await Promise.resolve();
+        await Promise.resolve();
+        update(componentAt(container.querySelector("#box") as Element) as unknown as Boxed);
+        flushSync();
+        expect((container.querySelector("p") as HTMLElement).outerHTML).toBe(after);
+      } finally {
+        warn.mockRestore();
+        container.remove();
+      }
+    },
+  );
 });
 
 /** `<button onclick={listener}>go</button>`. */

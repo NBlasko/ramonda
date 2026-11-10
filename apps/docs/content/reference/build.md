@@ -81,6 +81,10 @@ file to the first plugin that loads it. A plugin of yours that loads those files
 them for coverage, say — goes before `ramonda()` in `plugins`, and the files it loads are then
 compiled the ordinary way.
 
+With Vite the compiler is a plugin of its own, `ramonda:compile`, which `ramonda()` returns beside its
+settings, so `plugins: [ramonda()]` holds both. It compiles each module as Vite read it — a file outside
+`server.fs.allow` is refused before the compiler sees it — ahead of every other transform.
+
 ## Vite
 
 ```ts

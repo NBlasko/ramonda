@@ -229,7 +229,9 @@ function writeChild(
     if (value !== previous) text.nodeValue = String(value);
     return;
   }
-  if (sameChildren(value, previous)) return;
+  // A text with no text node of its own is a text the page does not hold as written — hydration left what
+  // the server sent beside it — so the children diff runs even when the value did not change.
+  if (!(isText(value) && text === undefined) && sameChildren(value, previous)) return;
   state.texts[siteIndex] = undefined;
   diffChildrenOf(element, isText(value) ? [String(value)] : (value as unknown[]), owner, false);
   // Back to a lone text node: the next string goes straight into it again.

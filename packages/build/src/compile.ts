@@ -90,7 +90,7 @@ export function compileJsx(code: string, id: string): Compiled | undefined {
 
   const out = new MagicString(code);
   const compiler = new Compiler(out);
-  for (const node of outermostJsx(parsed.program as unknown as Node)) compiler.jsx(node, false);
+  compiler.expression(parsed.program as unknown as Node);
   if (compiler.templates.length === 0) return undefined;
 
   const body = (parsed.program as unknown as { body: Node[] }).body;
@@ -121,26 +121,46 @@ function isJsx(node: unknown): node is JSXElement {
   return type === "JSXElement" || type === "JSXFragment";
 }
 
-/** The JSX nodes under `root` that no other JSX node holds, in source order. */
-function outermostJsx(root: Node): Node[] {
-  const found: Node[] = [];
-  const walk = (value: unknown): void => {
+/**
+ * Code that may run more than once, or later than where it stands: a function's body — a method's, an
+ * arrow's — a class's, and a loop's. JSX outside all of them runs once, as the module is evaluated.
+ */
+const RUNS_LATER = new Set([
+  "FunctionDeclaration",
+  "FunctionExpression",
+  "ArrowFunctionExpression",
+  "ClassBody",
+  "ForStatement",
+  "ForInStatement",
+  "ForOfStatement",
+  "WhileStatement",
+  "DoWhileStatement",
+]);
+
+/**
+ * The JSX nodes under `root` that no other JSX node holds, in source order — each with whether it stands
+ * where code runs later than `root` does (see `RUNS_LATER`).
+ */
+function outermostJsx(root: Node): { node: Node; later: boolean }[] {
+  const found: { node: Node; later: boolean }[] = [];
+  const walk = (value: unknown, later: boolean): void => {
     if (value === null || typeof value !== "object") return;
     if (Array.isArray(value)) {
-      for (const item of value) walk(item);
+      for (const item of value) walk(item, later);
       return;
     }
     if (isJsx(value)) {
-      found.push(value);
+      found.push({ node: value, later });
       return;
     }
+    const inner = later || RUNS_LATER.has((value as Node).type);
     for (const key in value as Record<string, unknown>) {
       if (key === "start" || key === "end") continue;
-      walk((value as Record<string, unknown>)[key]);
+      walk((value as Record<string, unknown>)[key], inner);
     }
   };
-  walk(root);
-  return found.sort((a, b) => a.start - b.start);
+  walk(root, false);
+  return found.sort((a, b) => a.node.start - b.node.start);
 }
 
 /** The text JSX makes of a text child: lines trimmed where they meet, blank lines gone. */
@@ -253,9 +273,20 @@ class Compiler {
     }
   }
 
-  /** Every JSX node inside an expression the app wrote. */
-  private expression(node: Node): void {
-    for (const inner of outermostJsx(node)) this.jsx(inner, false);
+  /**
+   * Whether the JSX being compiled runs where code may run more than once — see `RUNS_LATER`. Outside
+   * that, as the module is evaluated, a block is made once, and so is its template.
+   */
+  private later = false;
+
+  /** Every JSX node inside an expression the app wrote — or the module's whole program. */
+  expression(node: Node): void {
+    for (const inner of outermostJsx(node)) {
+      const was = this.later;
+      this.later = was || inner.later;
+      this.jsx(inner.node, false);
+      this.later = was;
+    }
   }
 
   /** JSX left for the transform after this, with the elements inside it compiled. */
@@ -284,6 +315,15 @@ class Compiler {
       const tag = hostTag(node) as string;
       const baked: string[] = [];
       const dynamic: string[] = [];
+      // A name written twice is the last one's, as `jsx()` makes it: neither is baked, so the holes, in
+      // source order, leave it the value the last one wrote.
+      const seen = new Set<string>();
+      const twice = new Set<string>();
+      for (const attribute of node.openingElement.attributes) {
+        const name = attributeName(attribute) as string;
+        if (seen.has(name)) twice.add(name);
+        seen.add(name);
+      }
       for (const attribute of node.openingElement.attributes) {
         const name = attributeName(attribute) as string;
         const value = attribute.value as Node | null;
@@ -292,7 +332,7 @@ class Compiler {
           pieces = ["true"];
         } else if (value.type === "Literal") {
           const text = value.value as string;
-          if (name !== "key" && bakeable(tag, name)) {
+          if (name !== "key" && !twice.has(name) && bakeable(tag, name)) {
             // With line breaks as HTML gives them back — a CRLF checkout's arrive as LF in a served page.
             const written = text.replace(/\r\n?/g, "\n");
             baked.push(`${JSON.stringify(ATTRIBUTE_OF_PROPERTY[name] ?? name)}: ${JSON.stringify(written)}`);
@@ -364,7 +404,12 @@ class Compiler {
      * first used, into a `var` the module declares: a function that builds a block can run before the
      * module's own body has (a circular import), and finds it then as it would any other day.
      */
-    const pieces: Piece[] = [`${braced ? "{" : ""}${BLOCK}(${name} || (${name} = ${TEMPLATE}(${description})), [`];
+    // Where the module is evaluated, the block is made once: its template is made right there, and both
+    // calls are pure, so a bundler leaves out what nothing imports, as it does a `jsx()` call.
+    const template = this.later
+      ? `${name} || (${name} = ${TEMPLATE}(${description}))`
+      : `/* @__PURE__ */ ${TEMPLATE}(${description})`;
+    const pieces: Piece[] = [`${braced ? "{" : ""}${this.later ? "" : "/* @__PURE__ */ "}${BLOCK}(${template}, [`];
     holes.forEach((hole, i) => {
       if (i > 0) pieces.push(", ");
       pieces.push(...hole);

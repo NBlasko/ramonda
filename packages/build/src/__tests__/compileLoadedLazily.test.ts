@@ -11,8 +11,12 @@ vi.mock("oxc-parser", () => {
 
 test("neither plugin loads the parser to be configured, or with `compile: false`", async () => {
   const [{ ramonda: vite }, { ramonda: esbuild }] = await Promise.all([import("../vite"), import("../esbuild")]);
-  const plugin = vite({ compile: false });
-  const loaded = await plugin.load.call(undefined, "/app/src/view.tsx");
+  const [, compiler] = vite({ compile: false });
+  const loaded = await compiler.transform.handler.call(
+    undefined,
+    "export const view = <p>{1}</p>;\n",
+    "/app/src/view.tsx",
+  );
   esbuild({ compile: false }).setup({ initialOptions: {}, onLoad: () => undefined });
   expect(loaded).toBeNull();
 });

@@ -1,5 +1,5 @@
 ---
-"@ramonda/core": patch
+"@ramonda/core": minor
 ---
 
 A first step toward compiling JSX at build time: an element tree whose shape never changes can be

@@ -1,4 +1,3 @@
-import { readFile } from "node:fs/promises";
 import type { RamondaOptions } from "./options";
 export type { RamondaOptions } from "./options";
 import {
@@ -15,7 +14,7 @@ import {
 /**
  * Structural, rather than imported from `vite`, so this package's types do not make the whole of
  * Vite a dependency of anybody who only wanted the esbuild half. Vite accepts any object with a
- * `name` and hooks it recognises; these are the three it will call here.
+ * `name` and hooks it recognises; these are the ones it will call here.
  */
 interface VitePluginLike {
   name: string;
@@ -26,14 +25,26 @@ interface VitePluginLike {
     env: { command: string; mode: string },
   ) => UserConfigLike | undefined;
   configResolved: (config: UserConfigLike) => void;
-  load: (this: unknown, id: string) => Promise<{ code: string; map: CompiledMap } | null>;
   transform: {
     order: "post";
     handler: (this: unknown, code: string, id: string) => Promise<{ code: string; map: string } | null>;
   };
 }
 
-/** A source map as Vite takes one from `load`. */
+/**
+ * The JSX compiler, a plugin of its own: its transform runs before every other one, and the decorators'
+ * runs after them all — one plugin holds one transform.
+ */
+interface CompilePluginLike {
+  name: string;
+  enforce: "pre";
+  transform: {
+    order: "pre";
+    handler: (this: unknown, code: string, id: string) => Promise<{ code: string; map: CompiledMap } | null>;
+  };
+}
+
+/** A source map as Vite takes one from a transform. */
 interface CompiledMap {
   version: number;
   sources: string[];
@@ -138,12 +149,12 @@ function samePrefix(prefix: string | string[] | undefined): boolean {
  * but the decorators, and a plugin that rewrites a file's syntax first, such as a style block's, has
  * already run whatever order the app listed the plugins in.
  */
-export function ramonda(options: RamondaOptions = {}): VitePluginLike {
+export function ramonda(options: RamondaOptions = {}): [VitePluginLike, CompilePluginLike] {
   /** Decided in `config`, the first hook Vite calls, and read by the two that follow. */
   let oxc = false;
   const compile = options.compile !== false;
 
-  return {
+  const settings: VitePluginLike = {
     name: "ramonda",
 
     /**
@@ -215,24 +226,6 @@ export function ramonda(options: RamondaOptions = {}): VitePluginLike {
     },
 
     /**
-     * The JSX compiler, here rather than in a transform: it reads the source as the app wrote it, before
-     * the transform that compiles JSX to `jsx()` calls — which runs ahead of every transform but an
-     * enforced one, and this plugin's own transform has to run after it. A module with a query is
-     * Vite's own (`?raw`, `?url`), one in `node_modules` was built by somebody else, and one with no file
-     * behind it is another plugin's to load. The compiler — the parser with it — is imported here, on the
-     * first module it reads: a build with `compile: false` never loads it.
-     */
-    async load(id) {
-      if (!compile || id.startsWith("\0") || id.includes("?") || !JSX_SCRIPT.test(id)) return null;
-      if (id.includes("/node_modules/")) return null;
-      const code = await readSource(id);
-      if (code === undefined) return null;
-      const { compileJsx } = await import("./compile");
-      const compiled = compileJsx(code, id);
-      return compiled === undefined ? null : { code: compiled.code, map: compiled.map };
-    },
-
-    /**
      * The decorators, lowered on Vite 8 — see the note on {@link ramonda}. On Vite 7 esbuild is Vite's
      * own transform and has already done it, so this returns at once.
      *
@@ -258,22 +251,33 @@ export function ramonda(options: RamondaOptions = {}): VitePluginLike {
       },
     },
   };
+
+  /**
+   * The JSX compiler. It reads the source as the app wrote it — Vite's own read, which keeps to
+   * `server.fs.allow` — ahead of the transform that compiles JSX to `jsx()` calls, which runs ahead of
+   * every transform but a `pre` one. A module with a query is Vite's own (`?raw`, `?url`), one in
+   * `node_modules` was built by somebody else, and one whose id starts with `\0` is another plugin's. The
+   * compiler — the parser with it — is imported on the first module it compiles: a build with
+   * `compile: false` never loads it.
+   */
+  const compiler: CompilePluginLike = {
+    name: "ramonda:compile",
+    enforce: "pre",
+    transform: {
+      order: "pre",
+      async handler(code, id) {
+        if (!compile || id.startsWith("\0") || id.includes("?") || !JSX_SCRIPT.test(id)) return null;
+        if (id.includes("/node_modules/")) return null;
+        const { compileJsx } = await import("./compile");
+        const compiled = compileJsx(code, id);
+        return compiled === undefined ? null : { code: compiled.code, map: compiled.map };
+      },
+    },
+  };
+
+  return [settings, compiler];
 }
 
 /** A module Oxc has turned into JavaScript: what a decorator can be written in. */
 const SCRIPT = /\.[cm]?[jt]sx?$/;
 const JSX_SCRIPT = /\.[jt]sx$/;
-
-/**
- * A module's source, or `undefined` when no file has its name — a module some other plugin makes up:
- * nothing at that path, a path running through a file (`page.mdx/Component.tsx`), or a folder.
- */
-async function readSource(id: string): Promise<string | undefined> {
-  try {
-    return await readFile(id, "utf8");
-  } catch (error) {
-    if (NO_FILE.has((error as { code?: string }).code ?? "")) return undefined;
-    throw error;
-  }
-}
-const NO_FILE = new Set(["ENOENT", "ENOTDIR", "EISDIR"]);

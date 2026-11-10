@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { build as esbuild, type Plugin } from "esbuild";
+import { createServer } from "vite";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -13,16 +14,19 @@ import { ramonda as viteRamonda } from "../vite";
  */
 
 /**
- * The module a compile returns, without the import and the `var` put at its head, and each template made
- * where it is first used shown by its name alone — the templates are compared on their own.
+ * The module a compile returns, without the import and the `var` put at its head, and each template shown
+ * by its name alone — the templates are compared on their own. Both shapes a block takes read the same
+ * here: made where first used, inside code that runs later, and made on the spot, pure, where the module
+ * is evaluated. The tests of the two shapes read `full`.
  */
 function body(code: string, all: string[]): string {
   let text = code.replace(/\nimport \{ __template[^\n]*\nvar [^\n]*;\n/, "");
   all.forEach((description, i) => {
     const name = `__ramondaT${i}`;
     text = text.replace(`${name} || (${name} = __ramondaTemplate(${description}))`, name);
+    text = text.replace(`/* @__PURE__ */ __ramondaTemplate(${description})`, name);
   });
-  return text;
+  return text.replaceAll("/* @__PURE__ */ __ramondaBlock(", "__ramondaBlock(");
 }
 
 function compile(source: string, id = "page.tsx") {
@@ -30,6 +34,64 @@ function compile(source: string, id = "page.tsx") {
   if (out === undefined) throw new Error("nothing was compiled");
   return { code: body(out.code, out.templates), templates: out.templates, full: out.code };
 }
+
+describe("where a block is made", () => {
+  test("where the module is evaluated: once, its template on the spot, both calls pure", () => {
+    const { full } = compile(`export const icon = <svg viewBox="0 0 1 1">{size}</svg>;`);
+    expect(full).toContain(
+      `export const icon = /* @__PURE__ */ __ramondaBlock(/* @__PURE__ */ __ramondaTemplate({ t: "svg", a: { "viewBox": "0 0 1 1" }, h: 0 }), [size]);`,
+    );
+  });
+
+  test.each([
+    ["a function", `function view() { return <p>{x}</p>; }`],
+    ["an arrow", `const view = () => <p>{x}</p>;`],
+    ["a method", `class A { render() { return <p>{x}</p>; } }`],
+    ["a class field", `class A { view = <p>{x}</p>; }`],
+    ["a function expression", `const view = function () { return <p>{x}</p>; };`],
+    ["a for…of loop", `for (const x of xs) rows.push(<p>{x}</p>);`],
+    ["a for loop", `for (let i = 0; i < n; i++) rows.push(<p>{x}</p>);`],
+    ["a for…in loop", `for (const k in o) rows.push(<p>{x}</p>);`],
+    ["a while loop", `while (more()) rows.push(<p>{x}</p>);`],
+    ["a do…while loop", `do rows.push(<p>{x}</p>); while (more());`],
+    ["a hole of a block in a function", `const view = () => <ul>{xs.map((x) => <p>{x}</p>)}</ul>;`],
+  ])("inside %s: its template made where first used, and kept", (_name, source) => {
+    const { full } = compile(source);
+    expect(full).toContain(`__ramondaBlock(__ramondaT0 || (__ramondaT0 = __ramondaTemplate(`);
+    expect(full).not.toContain("@__PURE__");
+  });
+
+  test("an element no module imports is left out of the bundle, as a `jsx()` call would be", async () => {
+    const icons = `export const used = <svg viewBox="0 0 1 1" />;\nexport const unused = <svg viewBox="0 0 2 2" />;\n`;
+    const compiled = compileJsx(icons, "icons.tsx");
+    const result = await esbuild({
+      stdin: { contents: `import { used } from "icons"; console.log(used);`, loader: "js" },
+      bundle: true,
+      write: false,
+      format: "esm",
+      plugins: [
+        {
+          name: "icons",
+          setup(build) {
+            build.onResolve({ filter: /^(icons|@ramonda\/core\/jsx-runtime)$/ }, (args) => ({
+              path: args.path,
+              namespace: "icons",
+            }));
+            build.onLoad({ filter: /.*/, namespace: "icons" }, (args) => ({
+              contents:
+                args.path === "icons"
+                  ? (compiled?.code ?? "")
+                  : "export function __template(d) { return { d }; }\nexport function __block(t, v) { return { t, v }; }\n",
+              loader: "js",
+            }));
+          },
+        },
+      ],
+    });
+    const out = result.outputFiles[0].text;
+    expect({ used: out.includes("0 0 1 1"), unused: out.includes("0 0 2 2") }).toEqual({ used: true, unused: false });
+  });
+});
 
 describe("a host element tree", () => {
   test("the js-framework-benchmark row: plain attributes in the template, five holes and the key, in source order", () => {
@@ -109,6 +171,16 @@ describe("a literal written as a hole", () => {
   test("is JSX's string as JavaScript's — a backslash kept, a line break escaped", () => {
     const { code } = compile(`const f = <input pattern="\\d+" placeholder="a\nb" />;`);
     expect(code).toBe(`const f = __ramondaBlock(__ramondaT0, [${JSON.stringify("\\d+")}, ${JSON.stringify("a\nb")}]);`);
+  });
+  test("when its name is written twice on the element, both are holes, and the last one's value wins", () => {
+    const {
+      code,
+      templates: [div],
+    } = compile(`const d = <div title="a" title={t}>x</div>;`);
+    expect({ div, code }).toEqual({
+      div: `{ t: "div", d: [["title", 0], ["title", 1]], c: ["x"] }`,
+      code: `const d = __ramondaBlock(__ramondaT0, ["a", t]);`,
+    });
   });
 });
 
@@ -248,24 +320,39 @@ describe("the plugins", () => {
     }).toEqual({ on: true, off: false, packaged: false });
   });
 
-  test("the Vite plugin leaves a module with no file behind it to the plugin that makes it up", async () => {
-    expect(await viteRamonda().load.call(undefined, join(tmpdir(), "no-such-dir", "routes.tsx"))).toBeNull();
-  });
-
-  test("the Vite plugin leaves it so when the made-up path runs through a file, or names a folder", async () => {
-    const folder = await mkdtemp(join(tmpdir(), "ramonda-made-up-"));
-    const page = join(folder, "page.mdx");
-    await writeFile(page, "# page");
-    const named = join(folder, "View.tsx");
-    await mkdir(named);
+  test("the Vite plugin reads no file itself: a file outside `server.fs.allow` stays refused", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "ramonda-build-allow-"));
+    const app = join(dir, "app");
+    const outside = join(dir, "outside");
+    await mkdir(app);
+    await mkdir(outside);
+    await writeFile(join(outside, "Secret.tsx"), `export const secret = <p>{"secret"}</p>;\n`);
+    await writeFile(join(app, "View.tsx"), `export const view = <p>{"view"}</p>;\n`);
+    // The runtime the compiled module imports, as a stand-in: this package does not depend on core.
+    const runtime = join(app, "runtime.js");
+    await writeFile(runtime, `export const __template = (d) => d, __block = (t, v) => v, jsx = () => null;\n`);
+    const server = await createServer({
+      configFile: false,
+      root: app,
+      logLevel: "silent",
+      plugins: [viteRamonda()],
+      resolve: { alias: { "@ramonda/core/jsx-runtime": runtime, "@ramonda/core/jsx-dev-runtime": runtime } },
+      server: { middlewareMode: true, fs: { strict: true, allow: [app] }, ws: false },
+    });
     try {
-      const plugin = viteRamonda();
-      expect({
-        throughAFile: await plugin.load.call(undefined, join(page, "Component.tsx")),
-        aFolder: await plugin.load.call(undefined, named),
-      }).toEqual({ throughAFile: null, aFolder: null });
+      const serve = (url: string) =>
+        server.transformRequest(url).then(
+          (result) => result?.code ?? null,
+          (error: { code?: string }) => error.code,
+        );
+      const [inside, outsideIt] = await Promise.all([serve("/View.tsx"), serve(`/@fs${join(outside, "Secret.tsx")}`)]);
+      expect({ inside: inside?.includes("__ramondaTemplate"), outside: outsideIt }).toEqual({
+        inside: true,
+        outside: "ERR_LOAD_URL",
+      });
     } finally {
-      await rm(folder, { recursive: true });
+      await server.close();
+      await rm(dir, { recursive: true, force: true });
     }
   });
 
@@ -307,34 +394,26 @@ describe("the plugins", () => {
     expect(await load?.({ path: "C:\\app\\node_modules\\lib\\view.tsx" })).toBeUndefined();
   });
 
-  test("the Vite plugin loads an app's JSX module compiled unless told not to — no package's, no virtual one", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "ramonda-build-compile-"));
-    try {
-      const file = join(dir, "view.tsx");
-      await writeFile(file, `export const view = <p>{1}</p>;\n`);
-      const load = (plugin: ReturnType<typeof viteRamonda>) => plugin.load.call(undefined, file);
-      // A package's own module was built by its authors, and a virtual one is no file to read.
-      const vendored = join(dir, "node_modules", "lib", "view.tsx");
-      await mkdir(join(dir, "node_modules", "lib"), { recursive: true });
-      await writeFile(vendored, `export const view = <p>{1}</p>;\n`);
-      const plugin = viteRamonda();
-      const [on, off, query, packaged, virtual] = await Promise.all([
-        load(plugin),
-        load(viteRamonda({ compile: false })),
-        plugin.load.call(undefined, `${file}?raw`),
-        plugin.load.call(undefined, vendored),
-        plugin.load.call(undefined, "\0virtual.tsx"),
-      ]);
-      expect({ on: on?.code.includes("__ramondaTemplate"), off, query, packaged, virtual }).toEqual({
-        on: true,
-        off: null,
-        query: null,
-        packaged: null,
-        virtual: null,
-      });
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
+  test("the Vite plugin compiles an app's JSX module unless told not to — no package's, no virtual one", async () => {
+    const source = `export const view = <p>{1}</p>;\n`;
+    const file = "/app/src/view.tsx";
+    const [, compiler] = viteRamonda();
+    const compile = (plugin: ReturnType<typeof viteRamonda>[1], id: string) =>
+      plugin.transform.handler.call(undefined, source, id);
+    const [on, off, query, packaged, virtual] = await Promise.all([
+      compile(compiler, file),
+      compile(viteRamonda({ compile: false })[1], file),
+      compile(compiler, `${file}?raw`),
+      compile(compiler, "/app/node_modules/lib/view.tsx"),
+      compile(compiler, "\0virtual.tsx"),
+    ]);
+    expect({ on: on?.code.includes("__ramondaTemplate"), off, query, packaged, virtual }).toEqual({
+      on: true,
+      off: null,
+      query: null,
+      packaged: null,
+      virtual: null,
+    });
   });
 });
 

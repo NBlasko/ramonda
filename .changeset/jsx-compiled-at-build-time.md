@@ -12,3 +12,8 @@ components are holes, written by the same rules as before. Components, fragments
 attribute and text or an attribute with an entity are left to the JSX transform as they were, and a host
 element inside them is compiled on its own. Every expression keeps its place in the source, so a stack
 trace or a breakpoint inside a handler written in JSX points at the line it was written on. `ramonda({ compile: false })` builds the app the way it was built before.
+
+On Vite, `ramonda()` returns two plugins — its settings, and the compiler, `ramonda:compile`, which
+compiles the source Vite read, inside `server.fs.allow`, before every other transform. `plugins: [ramonda()]`
+holds both. An element written where the module is evaluated — an icon kept in a constant — is made there,
+with calls a bundler may leave out, so one that nothing imports is not in the bundle.
