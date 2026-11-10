@@ -8,7 +8,7 @@ order: 116
 # Accessibility
 
 **Two of every five rules `ramonda-check` runs are about accessibility** — thirty-five of
-ninety-four — and it is the part of the framework that is least visible until you run it. This page
+ninety-five — and it is the part of the framework that is least visible until you run it. This page
 says what runs without being asked, what the checker reads, and, at the end, the part none of it
 can answer.
 
@@ -139,7 +139,7 @@ The checker's job is to take the mechanical mistakes off the table so the time g
 
 ## Next
 
-- [Rules](/rules) — all ninety-four, including the thirty-five above.
+- [Rules](/rules) — all ninety-five, including the thirty-five above.
 - [Checking your app](/reference/check) — how to run it, and what it proves that a running page
   cannot.
 - [Writing a control](/forms/fields#writing-a-control) — the ARIA attribute a form field hands its

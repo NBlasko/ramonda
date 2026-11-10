@@ -429,7 +429,10 @@ function runTool(which: "format" | "lint", args: readonly string[]): never {
 
     console.error(`\n${TAG} ${changed.length} file(s) are not formatted:\n`);
     for (const file of changed) console.error(`  ${where(file)}`);
-    console.error("");
+    // The command that writes them, with the paths this run was given — the trial's check stopped on
+    // the list above and had to work the command out.
+    const given = paths.length === 0 ? "" : ` ${paths.join(" ")}`;
+    console.error(`\nRun \`ramonda-css format${given}\` to write them.\n`);
     process.exit(1);
   }
 

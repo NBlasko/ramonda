@@ -135,6 +135,36 @@ That is reuse of *markup*. Reusing **behaviour** — state, a lifecycle, a subsc
 is a different question with its own answer: a [hook](/hooks), which is a class exactly
 like a component with everything except a `render()`.
 
+## A piece of markup used more than once
+
+Inside one component, a repeated piece of markup goes in a **method**, typed `RamondaNode`,
+and `render()` calls it:
+
+```tsx
+import { Component, type RamondaNode } from "@ramonda/core";
+
+class Standings extends Component<{ sortedBy: string }> {
+  columnHead(key: string, label: string): RamondaNode {
+    return <th aria-sort={this.props.sortedBy === key ? "ascending" : "none"}>{label}</th>;
+  }
+
+  render() {
+    return (
+      <tr>
+        {this.columnHead("rank", "#")}
+        {this.columnHead("points", "Points")}
+      </tr>
+    );
+  }
+}
+```
+
+Not a function built at the top of `render()` — `const head = (key) => <th>…</th>`. That is a
+new function on every render, and a piece of the rendering a subclass cannot override, a
+test cannot call and the devtools cannot show. `ramonda-check` reports it as
+`markup-helper-in-render`. A row callback handed to [`list()`](/lists) is not this: handing
+one over is what `list()` asks for.
+
 ## Why there is no fragment (optional)
 
 Other frameworks need a *fragment* — an invisible tag that groups children without

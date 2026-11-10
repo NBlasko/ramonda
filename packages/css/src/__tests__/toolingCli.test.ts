@@ -217,6 +217,9 @@ describe("format", () => {
 
     expect(status).toBe(1);
     expect(output).toContain("are not formatted");
+    // And the command that fixes it, with the same paths — found by the second trial, whose check
+    // stopped on this line and had to work out the command for itself.
+    expect(output).toContain("Run `ramonda-css format src/Card.tsx` to write them.");
     expect(readFileSync(join(root, "src", "Card.tsx"), "utf8")).toBe(before);
   });
 

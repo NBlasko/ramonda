@@ -84,6 +84,7 @@ import { devGuardAsAnExpression } from "./dev-guard-as-an-expression";
 import { unkeyableMemoizedArgument } from "./unkeyable-memoized-argument";
 import { asyncRender } from "./async-render";
 import { computeTakesNoArguments } from "./compute-takes-no-arguments";
+import { markupHelperInRender } from "./markup-helper-in-render";
 import { cachedReadOfAPlainField } from "./cached-read-of-a-plain-field";
 import { watchOfAPropThatIsNotThere } from "./watch-of-a-prop-that-is-not-there";
 import { browserUrl } from "./browser-url";
@@ -283,6 +284,7 @@ export { oneProviderPerComponent, type OneProviderPerComponentIssue } from "./on
 export { lensPathThroughAGap, type LensPathThroughAGapIssue } from "./lens-path-through-a-gap";
 export { unexposedEnvRead, type UnexposedEnvReadIssue } from "./unexposed-env-read";
 export { computeTakesNoArguments, type ComputeTakesNoArgumentsIssue } from "./compute-takes-no-arguments";
+export { markupHelperInRender, type MarkupHelperInRenderIssue } from "./markup-helper-in-render";
 export { rowReadsAPlainField, type RowReadsAPlainFieldIssue } from "./row-reads-a-plain-field";
 export { serverEnvInSharedCode, type ServerEnvInSharedCodeIssue } from "./server-env-in-shared-code";
 export { clientOnlyBecause, isServerOnly } from "./lifecycle-env";
@@ -304,6 +306,7 @@ export { rootsIn, treeFor } from "./tree";
 export const CLASS_RULES = [
   propsWrittenByTheReceiver,
   computeTakesNoArguments,
+  markupHelperInRender,
   asyncRender,
   stateWrittenWhileRendering,
   stateMutatedInPlace,
