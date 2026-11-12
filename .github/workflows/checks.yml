@@ -121,6 +121,8 @@ jobs:
         run: |
           SELFTEST=planted node scripts/check-executable-bits.mjs
           node scripts/check-executable-bits.mjs
+          SELFTEST=skew node scripts/check-playwright-image.mjs
+          node scripts/check-playwright-image.mjs
           node scripts/check-event-spelling.mjs
           node scripts/check-tsconfigs.mjs
           node scripts/check-decorator-duplication.mjs
@@ -153,60 +155,27 @@ jobs:
 
   browser:
     name: Browser
-    # Pinned, not `ubuntu-latest`: that label is moving to Ubuntu 26 a runner at a time (the runner's
-    # own notice says so). On 2026-11-06 Playwright's WebKit closed the moment it launched, with nothing
-    # in its log, on code whose browser steps had passed on `main` the day before. Not proven to be the
-    # image, but a job that passes or fails by which image it draws cannot gate a merge. Try
-    # `ubuntu-latest` again once WebKit is known to launch on 26.
-    runs-on: ubuntu-24.04
-    # Without a limit a job waits GitHub's six hours. On 2026-11-06 the apt install for Firefox and
-    # WebKit hung for over 47 minutes with nothing in the log; a stuck runner should fail fast instead.
+    runs-on: ubuntu-latest
+    # Inside Playwright's own image, which ships Chromium, Firefox and WebKit with every system library
+    # they need, so this job installs no browser. It used to: ~150 apt packages for Firefox and WebKit
+    # on every run, which the cache could not hold, and on 2026-11-06 that step hung for over 47
+    # minutes. The tag must be the Playwright version the lockfile installs — the package looks for
+    # its own version's browsers — and `check-playwright-image.mjs` fails when they part.
+    #
+    # `--user 1001` is the runner's own user, as Playwright's CI guide writes it: the workspace and
+    # `HOME` belong to it, and Firefox refuses to start as root in a home that is not root's.
+    container:
+      image: mcr.microsoft.com/playwright:v1.64.0-noble
+      options: --user 1001
+    # Without a limit a job waits GitHub's six hours; a stuck runner should fail fast instead.
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
 
-      # Its own job rather than a step inside `test`, so the minutes it spends installing a browser
-      # run beside the other checks instead of in front of them. Nothing here depends on it and it
-      # depends on nothing: the app it drives is built in this job from this tree.
-      #
-      # The browser is keyed on the Playwright VERSION rather than on the lockfile: the binary it
-      # wants changes when it changes, and a lockfile hash would throw the cache away on every
-      # unrelated dependency bump.
-      - name: Which browser build to look for
-        id: playwright
-        run: echo "version=$(pnpm --filter playground-core exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
-
-      - name: Restore the browser
-        uses: actions/cache@v6
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-engines-${{ runner.os }}-${{ steps.playwright.outputs.version }}
-
-      # The headless shell alone, not the full Chromium: measured at 267 MB against 656 MB, and this
-      # suite runs headless, so the rest is a download nothing opens. A headed run would need
-      # `playwright install chromium` — locally, where somebody is watching it.
-      #
-      # Unconditional rather than skipped on a cache hit. It takes about a second when the binary is
-      # already there, and a cache that restored badly then repairs itself instead of failing the run.
-      - name: Install Chromium
-        run: pnpm --filter playground-core exec playwright install chromium-headless-shell
-
-      # Apt packages, which are the runner's and not ours to cache.
-      - name: Its system libraries
-        run: pnpm --filter playground-core exec playwright install-deps chromium-headless-shell
-
-      # Firefox and WebKit, for the generators below — and Firefox also for `test:browser`, whose
-      # `firefox-composition.mjs` types through Firefox's own input method, which only Firefox can.
-      #
-      # They are HERE rather than in `test` because that job is the bottleneck for how long CI takes,
-      # and this one was already built to run beside it — its own note above says so. The generators
-      # themselves take about two seconds each; what costs is the download, which the cache above
-      # holds and which no other job pays.
-      - name: The other two engines
-        run: |
-          pnpm --filter playground-core exec playwright install firefox webkit
-          pnpm --filter playground-core exec playwright install-deps firefox webkit
+      # Its own job rather than a step inside `test`, so it runs beside the other checks instead of in
+      # front of them. Nothing here depends on it and it depends on nothing: the app it drives is built
+      # in this job from this tree.
 
       # What `mdn-data` says against what a browser does — three facts this package generates by
       # ASKING, because `mdn-data` was measured wrong about each of them:
