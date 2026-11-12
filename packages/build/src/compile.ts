@@ -33,7 +33,7 @@
  */
 import { parseSync } from "oxc-parser";
 import MagicString from "magic-string";
-import { ATTRIBUTE_OF_PROPERTY, BOOLEAN_ATTRIBUTES } from "@ramonda/dom-facts";
+import { ATTRIBUTE_OF_PROPERTY, BOOLEAN_ATTRIBUTES, svgElements } from "@ramonda/dom-facts";
 
 const RUNTIME = "@ramonda/core/jsx-runtime";
 const TEMPLATE = "__ramondaTemplate";
@@ -103,8 +103,9 @@ export function compileJsx(code: string, id: string): Compiled | undefined {
       at = statement.end;
     } else break;
   }
-  const names = compiler.templates.map((_, i) => templateName(i)).join(", ");
-  out.appendLeft(at, `\nimport { __template as ${TEMPLATE}, __block as ${BLOCK} } from "${RUNTIME}";\nvar ${names};\n`);
+  // A `var` for each template made where first used; one made where the module is evaluated needs none.
+  const names = compiler.kept.length > 0 ? `var ${compiler.kept.join(", ")};\n` : "";
+  out.appendLeft(at, `\nimport { __template as ${TEMPLATE}, __block as ${BLOCK} } from "${RUNTIME}";\n${names}`);
   return {
     code: out.toString(),
     map: out.generateMap({ source: id, includeContent: true, hires: true }),
@@ -254,6 +255,8 @@ type Piece = string | Node;
 
 class Compiler {
   readonly templates: string[] = [];
+  /** The names of the templates made where first used and kept in a `var` — see `later`. */
+  readonly kept: string[] = [];
   private readonly out: MagicString;
 
   constructor(out: MagicString) {
@@ -315,12 +318,18 @@ class Compiler {
       const tag = hostTag(node) as string;
       const baked: string[] = [];
       const dynamic: string[] = [];
-      // A name written twice is the last one's, as `jsx()` makes it: neither is baked, so the holes, in
-      // source order, leave it the value the last one wrote.
+      // An attribute written twice is the last one's, as `jsx()` makes it: neither is baked, so the holes,
+      // in source order, leave it the value the last one wrote. Twice by the attribute it writes — `htmlFor`
+      // and `for`, `tabIndex` and `tabindex` are one — on an HTML element, which folds the name.
+      const svg = svgElements.has(tag);
+      const written = (name: string): string => {
+        const attribute = ATTRIBUTE_OF_PROPERTY[name] ?? name;
+        return svg ? attribute : attribute.toLowerCase();
+      };
       const seen = new Set<string>();
       const twice = new Set<string>();
       for (const attribute of node.openingElement.attributes) {
-        const name = attributeName(attribute) as string;
+        const name = written(attributeName(attribute) as string);
         if (seen.has(name)) twice.add(name);
         seen.add(name);
       }
@@ -332,7 +341,7 @@ class Compiler {
           pieces = ["true"];
         } else if (value.type === "Literal") {
           const text = value.value as string;
-          if (name !== "key" && !twice.has(name) && bakeable(tag, name)) {
+          if (name !== "key" && !twice.has(written(name)) && bakeable(tag, name)) {
             // With line breaks as HTML gives them back — a CRLF checkout's arrive as LF in a served page.
             const written = text.replace(/\r\n?/g, "\n");
             baked.push(`${JSON.stringify(ATTRIBUTE_OF_PROPERTY[name] ?? name)}: ${JSON.stringify(written)}`);
@@ -397,6 +406,7 @@ class Compiler {
     const description = describe(element, true);
     this.templates.push(description);
     const name = templateName(this.templates.length - 1);
+    if (this.later) this.kept.push(name);
 
     /**
      * The call, in source order: the app's expressions stay where they are, everything else is written —

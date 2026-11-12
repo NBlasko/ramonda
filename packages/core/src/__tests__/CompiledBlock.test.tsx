@@ -6,6 +6,7 @@ import { renderToString } from "../hydration/ssr";
 import { hydrateRoot } from "../hydration/hydrate";
 import { flushSync } from "../testing";
 import { componentAt } from "../core/DiffAndMerge";
+import * as diffAndMerge from "../core/DiffAndMerge";
 import { resetDiagnostics } from "../debug/diagnostics";
 import * as attribute from "../core/Attribute";
 
@@ -609,22 +610,46 @@ interface Boxed {
   other: number;
 }
 
-describe("a text hole over a served element holding more than its text", () => {
+/** `<p>{children}</p>` where the children are JSX's own: a children hole. */
+const KIDS = __template({ t: "p", k: 0 });
+
+describe("a child hole over a served element holding more than it does", () => {
+  const text = (box: Boxed): unknown => box.text;
+  const greeting = (box: Boxed): unknown => ["Hi ", box.text];
+  // The same element on every render, as a memoized one is: a value that compares equal.
+  const emphasis = <i>x</i>;
+  const emphasized = (): unknown => emphasis;
   test.each([
-    ["the text changes", (box: Boxed) => (box.text = "y"), "<p>y</p>"],
-    ["only something else changes", (box: Boxed) => (box.other = 1), "<p>x</p>"],
+    ["a text hole, when the text changes", LONE, text, (box: Boxed) => (box.text = "y"), "<p>y</p>"],
+    ["a text hole, when only something else changes", LONE, text, (box: Boxed) => (box.other = 1), "<p>x</p>"],
+    [
+      "a hole holding markup, when only something else changes",
+      LONE,
+      emphasized,
+      (box: Boxed) => (box.other = 1),
+      "<p><i>x</i></p>",
+    ],
+    [
+      "a children hole, when only something else changes",
+      KIDS,
+      greeting,
+      (box: Boxed) => (box.other = 1),
+      "<p>Hi x</p>",
+    ],
   ])(
-    "loses what only the server sent on the first update, as an element the diff adopts does — when %s",
-    async (_name, update, after) => {
+    "loses what only the server sent on the first update, as an element the diff adopts does — %s",
+    async (_name, template, holds, update, after) => {
       const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
       let served = true;
       class Box extends Component {
         @state text = "x";
         @state other = 0;
         render() {
+          const value = holds(this as unknown as Boxed);
+          const page = served ? [...(Array.isArray(value) ? value : [value]), <b>stray</b>] : value;
           return (
             <div id="box" data-other={this.other}>
-              {__block(LONE, [served ? ["x", <b>stray</b>] : this.text])}
+              {__block(template, [page])}
             </div>
           );
         }
@@ -637,9 +662,17 @@ describe("a text hole over a served element holding more than its text", () => {
         hydrateRoot(<Box />, container);
         await Promise.resolve();
         await Promise.resolve();
-        update(componentAt(container.querySelector("#box") as Element) as unknown as Boxed);
+        const box = componentAt(container.querySelector("#box") as Element) as unknown as Boxed;
+        update(box);
         flushSync();
-        expect((container.querySelector("p") as HTMLElement).outerHTML).toBe(after);
+        const html = (container.querySelector("p") as HTMLElement).outerHTML;
+        // Settled once: the next render that changes nothing of the hole does not diff its children again.
+        const diffed = vi.spyOn(diffAndMerge, "diffChildrenOf");
+        box.other = 2;
+        flushSync();
+        const again = diffed.mock.calls.filter((call) => (call[0] as Element).nodeName === "P").length;
+        diffed.mockRestore();
+        expect({ html, again }).toEqual({ html: after, again: 0 });
       } finally {
         warn.mockRestore();
         container.remove();

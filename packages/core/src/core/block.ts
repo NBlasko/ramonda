@@ -90,6 +90,12 @@ interface BlockState {
   readonly elements: Element[];
   /** Per site with `h`: the text node a string or number is written into, while it holds one. */
   readonly texts: (Text | undefined)[];
+  /**
+   * Per child-hole site, set by hydration: the server sent more than the hole adopted, and what is left
+   * goes on the next update, through the children diff, whatever the hole's value — as it goes from any
+   * element the diff adopts.
+   */
+  unsettled?: boolean[];
   values: unknown[];
 }
 
@@ -229,9 +235,7 @@ function writeChild(
     if (value !== previous) text.nodeValue = String(value);
     return;
   }
-  // A text with no text node of its own is a text the page does not hold as written — hydration left what
-  // the server sent beside it — so the children diff runs even when the value did not change.
-  if (!(isText(value) && text === undefined) && sameChildren(value, previous)) return;
+  if (!settle(state, siteIndex) && sameChildren(value, previous)) return;
   state.texts[siteIndex] = undefined;
   diffChildrenOf(element, isText(value) ? [String(value)] : (value as unknown[]), owner, false);
   // Back to a lone text node: the next string goes straight into it again.
@@ -239,6 +243,13 @@ function writeChild(
   if (isText(value) && only !== null && only.nodeType === 3 && only.nextSibling === null) {
     state.texts[siteIndex] = only as Text;
   }
+}
+
+/** Whether hydration left this site unsettled (see `BlockState.unsettled`) — answered once, then cleared. */
+function settle(state: BlockState, siteIndex: number): boolean {
+  if (state.unsettled?.[siteIndex] !== true) return false;
+  state.unsettled[siteIndex] = false;
+  return true;
 }
 
 /** Builds or updates the element for a block vnode. `existing` is a node `areSimilarNodes` matched. */
@@ -297,7 +308,7 @@ export function applyBlock(vnode: BlockVNode, existing: Element | undefined, own
       }
     }
     if (site.h !== undefined) writeChild(known, i, element, values[site.h], previous[site.h], owner);
-    if (site.k !== undefined && !sameChildren(values[site.k], previous[site.k])) {
+    if (site.k !== undefined && (settle(known, i) || !sameChildren(values[site.k], previous[site.k]))) {
       diffChildrenOf(element, values[site.k] as unknown[], owner, false);
     }
   }
@@ -391,8 +402,11 @@ export function adoptBlock(
   vnode: BlockVNode,
   root: Element,
   adopt: {
-    /** An element's children, as hydration adopts any element's — text, elements, regions. */
-    children: (children: unknown[], parent: Element) => void;
+    /**
+     * An element's children, as hydration adopts any element's — text, elements, regions. Answers whether
+     * the server sent more than they claimed.
+     */
+    children: (children: unknown[], parent: Element) => boolean;
     /** An element's attributes, as hydration adopts any element's — reported where they differ. */
     attributes: (element: Element, attributes: Record<string, unknown>) => void;
   },
@@ -412,7 +426,12 @@ export function adoptBlock(
   const key = vnode.attributes.key;
   if (key != null) (root as unknown as Record<symbol, unknown>)[KEY_SYM] = key;
   const texts: (Text | undefined)[] = new Array(sites.length);
-  (root as unknown as { [BLOCK_STATE]: BlockState })[BLOCK_STATE] = { template, elements, texts, values };
+  const state: BlockState = { template, elements, texts, values };
+  (root as unknown as { [BLOCK_STATE]: BlockState })[BLOCK_STATE] = state;
+  const left = (i: number): void => {
+    state.unsettled ??= new Array(sites.length).fill(false);
+    state.unsettled[i] = true;
+  };
 
   for (let i = 0; i < sites.length; i++) {
     const site = sites[i];
@@ -423,13 +442,13 @@ export function adoptBlock(
       const value = values[site.h];
       // A string or a number is a text child like any other: the server's node is adopted, made where an
       // empty string sent none, reported where it differs. It is the text node the hole writes from then on.
-      adopt.children(isText(value) ? [String(value)] : (value as unknown[]), element);
+      if (adopt.children(isText(value) ? [String(value)] : (value as unknown[]), element)) left(i);
       // Only while it IS the only child: what the server sent beyond it, left by a mismatch, goes on the
-      // first update, through the children diff, as it does from any element.
+      // first update (`unsettled`).
       const only = element.firstChild;
       if (isText(value) && only !== null && only.nodeType === 3 && only.nextSibling === null) texts[i] = only as Text;
     }
-    if (site.k !== undefined) adopt.children(values[site.k] as unknown[], element);
+    if (site.k !== undefined && adopt.children(values[site.k] as unknown[], element)) left(i);
   }
   return true;
 }

@@ -73,7 +73,10 @@ Here the template is the `<tr>` and its cells with their classes, and each rende
 the row's class, its id and its label. Your `render()` and the JSX in it read exactly as before.
 
 Components, fragments and elements with a spread (`{...props}`) are compiled the ordinary way, and an
-element inside them is a template of its own. `ramonda({ compile: false })` builds the app without the
+element inside them is a template of its own. Each JSX tree is its own template, so the two branches of
+`cond ? <input className="a" /> : <input className="b" />` are two elements: switching builds the other one,
+and focus, the caret and an open `<details>` stay with the one that went. One element whose attribute
+changes — `<input className={cond ? "a" : "b"} />` — is the same element throughout. `ramonda({ compile: false })` builds the app without the
 compiler — the way to tell whether something that misbehaves is the compiler's.
 
 With esbuild the compiler reads each `.tsx` and `.jsx` file in its `onLoad` step, and esbuild hands a
@@ -83,7 +86,8 @@ compiled the ordinary way.
 
 With Vite the compiler is a plugin of its own, `ramonda:compile`, which `ramonda()` returns beside its
 settings, so `plugins: [ramonda()]` holds both. It compiles each module as Vite read it — a file outside
-`server.fs.allow` is refused before the compiler sees it — ahead of every other transform.
+`server.fs.allow` is refused before the compiler sees it — after any `order: "pre"` transform, such as
+`@ramonda/css`'s, and before the JSX transform.
 
 ## Vite
 

@@ -20,7 +20,7 @@ import { ramonda as viteRamonda } from "../vite";
  * is evaluated. The tests of the two shapes read `full`.
  */
 function body(code: string, all: string[]): string {
-  let text = code.replace(/\nimport \{ __template[^\n]*\nvar [^\n]*;\n/, "");
+  let text = code.replace(/\nimport \{ __template[^\n]*\n(var [^\n]*;\n)?/, "");
   all.forEach((description, i) => {
     const name = `__ramondaT${i}`;
     text = text.replace(`${name} || (${name} = __ramondaTemplate(${description}))`, name);
@@ -172,6 +172,31 @@ describe("a literal written as a hole", () => {
     const { code } = compile(`const f = <input pattern="\\d+" placeholder="a\nb" />;`);
     expect(code).toBe(`const f = __ramondaBlock(__ramondaT0, [${JSON.stringify("\\d+")}, ${JSON.stringify("a\nb")}]);`);
   });
+  test.each([
+    [
+      "`htmlFor` and `for`",
+      `<label htmlFor="a" for={b}>x</label>`,
+      `{ t: "label", d: [["htmlFor", 0], ["for", 1]], c: ["x"] }`,
+    ],
+    [
+      "`tabIndex` and `tabindex`",
+      `<div tabIndex="1" tabindex={b}>x</div>`,
+      `{ t: "div", d: [["tabIndex", 0], ["tabindex", 1]], c: ["x"] }`,
+    ],
+  ])("when %s write the one attribute, both are holes", (_name, element, description) => {
+    const {
+      templates: [template],
+    } = compile(`const e = ${element};`);
+    expect(template).toBe(description);
+  });
+
+  test("on an SVG element, names that differ in case are two attributes, and each is baked", () => {
+    const {
+      templates: [svg],
+    } = compile(`const s = <svg viewBox="0 0 1 1" viewbox="0 0 2 2" />;`);
+    expect(svg).toBe(`{ t: "svg", a: { "viewBox": "0 0 1 1", "viewbox": "0 0 2 2" } }`);
+  });
+
   test("when its name is written twice on the element, both are holes, and the last one's value wins", () => {
     const {
       code,
@@ -246,9 +271,15 @@ describe("what is left to the transform after this one", () => {
 
 describe("where the templates go", () => {
   test("after the imports, the runtime import and one `var` for the module's templates", () => {
-    const { full } = compile(`import { a } from "a";\nimport b from "b";\nconst top = <i>x</i>;\n`);
+    const { full } = compile(`import { a } from "a";\nimport b from "b";\nconst top = () => <i>x</i>;\n`);
     expect(full.indexOf("var __ramondaT0;")).toBeGreaterThan(full.indexOf(`import b from "b";`));
     expect(full.indexOf("var __ramondaT0;")).toBeLessThan(full.indexOf("const top"));
+  });
+
+  test("a `var` only for a template made where first used: one made where the module is evaluated has none", () => {
+    const { full } = compile(`const icon = <i>x</i>;\nconst view = () => <b>{y}</b>;\n`);
+    expect(full.match(/\nvar [^\n]*;\n/g)).toEqual(["\nvar __ramondaT1;\n"]);
+    expect(compile(`export const icon = <i>x</i>;\n`).full).not.toContain("\nvar ");
   });
 
   test("made where first used, so a block built before the module's body has run still finds it", () => {
@@ -352,6 +383,45 @@ describe("the plugins", () => {
       });
     } finally {
       await server.close();
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('the Vite plugin compiles after an `order: "pre"` transform, listed before or after it', async () => {
+    // A syntax no JavaScript parser reads, which such a transform rewrites — as `@ramonda/css`'s does.
+    const blocks = {
+      name: "blocks",
+      enforce: "pre" as const,
+      transform: {
+        order: "pre" as const,
+        handler: (code: string) => (code.includes("@@(") ? code.replace(/@@\(([^)]*)\)/g, '"$1"') : null),
+      },
+    };
+    const dir = await mkdtemp(join(tmpdir(), "ramonda-build-order-"));
+    await writeFile(join(dir, "Card.tsx"), `export const card = <div className={@@(card)}><b>{title}</b></div>;\n`);
+    const runtime = join(dir, "runtime.js");
+    await writeFile(runtime, `export const __template = (d) => d, __block = (t, v) => v, jsx = () => null;\n`);
+    const served = async (plugins: unknown[]) => {
+      const server = await createServer({
+        configFile: false,
+        root: dir,
+        logLevel: "silent",
+        plugins: plugins as never,
+        resolve: { alias: { "@ramonda/core/jsx-runtime": runtime, "@ramonda/core/jsx-dev-runtime": runtime } },
+        server: { middlewareMode: true, ws: false },
+      });
+      try {
+        return (await server.transformRequest("/Card.tsx"))?.code.includes("__ramondaTemplate");
+      } finally {
+        await server.close();
+      }
+    };
+    try {
+      expect({ after: await served([viteRamonda(), blocks]), before: await served([blocks, viteRamonda()]) }).toEqual({
+        after: true,
+        before: true,
+      });
+    } finally {
       await rm(dir, { recursive: true, force: true });
     }
   });

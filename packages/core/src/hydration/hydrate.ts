@@ -686,12 +686,13 @@ function closeBlock(open: Comment, walk: HydrationWalk, component: BaseComponent
   if (__DEV__ && fromServer > 0) reportBlockLengthMismatch(component, fromServer);
 }
 
+/** Answers whether the server sent more than the render claimed — nodes left in place, reported. */
 function hydrateChildren(
   vnodeChildren: unknown[] | undefined,
   placeholder: MaybeComponent,
   existingParent: Node,
-): void {
-  if (!vnodeChildren) return;
+): boolean {
+  if (!vnodeChildren) return existingParent.firstChild !== null;
 
   // A cursor, not an index: steps below split, insert and replace nodes, and
   // childNodes is live, so any position captured up front goes stale.
@@ -724,6 +725,7 @@ function hydrateChildren(
       walk.count + extra,
     );
   }
+  return walk.cursor !== null;
 }
 
 /**

@@ -32,14 +32,13 @@ interface VitePluginLike {
 }
 
 /**
- * The JSX compiler, a plugin of its own: its transform runs before every other one, and the decorators'
+ * The JSX compiler, a plugin of its own: its transform runs before the JSX transform, and the decorators'
  * runs after them all — one plugin holds one transform.
  */
 interface CompilePluginLike {
   name: string;
   enforce: "pre";
   transform: {
-    order: "pre";
     handler: (this: unknown, code: string, id: string) => Promise<{ code: string; map: CompiledMap } | null>;
   };
 }
@@ -253,9 +252,10 @@ export function ramonda(options: RamondaOptions = {}): [VitePluginLike, CompileP
   };
 
   /**
-   * The JSX compiler. It reads the source as the app wrote it — Vite's own read, which keeps to
-   * `server.fs.allow` — ahead of the transform that compiles JSX to `jsx()` calls, which runs ahead of
-   * every transform but a `pre` one. A module with a query is Vite's own (`?raw`, `?url`), one in
+   * The JSX compiler. It reads the source as Vite read it — which keeps to `server.fs.allow` — ahead of
+   * the transform that compiles JSX to `jsx()` calls: a `pre` plugin's transform runs before every plain
+   * plugin's. It is not `order: "pre"` itself, so that a transform which is — `@ramonda/css`'s, which
+   * rewrites syntax no parser reads — has run first, whatever order the plugins are listed in. A module with a query is Vite's own (`?raw`, `?url`), one in
    * `node_modules` was built by somebody else, and one whose id starts with `\0` is another plugin's. The
    * compiler — the parser with it — is imported on the first module it compiles: a build with
    * `compile: false` never loads it.
@@ -264,7 +264,6 @@ export function ramonda(options: RamondaOptions = {}): [VitePluginLike, CompileP
     name: "ramonda:compile",
     enforce: "pre",
     transform: {
-      order: "pre",
       async handler(code, id) {
         if (!compile || id.startsWith("\0") || id.includes("?") || !JSX_SCRIPT.test(id)) return null;
         if (id.includes("/node_modules/")) return null;

@@ -14,6 +14,8 @@ element inside them is compiled on its own. Every expression keeps its place in 
 trace or a breakpoint inside a handler written in JSX points at the line it was written on. `ramonda({ compile: false })` builds the app the way it was built before.
 
 On Vite, `ramonda()` returns two plugins — its settings, and the compiler, `ramonda:compile`, which
-compiles the source Vite read, inside `server.fs.allow`, before every other transform. `plugins: [ramonda()]`
-holds both. An element written where the module is evaluated — an icon kept in a constant — is made there,
+compiles the source Vite read, inside `server.fs.allow`, after `@ramonda/css`'s transform and before the
+JSX transform. `plugins: [ramonda()]`
+holds both. Each JSX tree is its own template, so two branches of a condition are two elements, and
+switching builds the other — one element with a changing attribute stays the same element. An element written where the module is evaluated — an icon kept in a constant — is made there,
 with calls a bundler may leave out, so one that nothing imports is not in the bundle.

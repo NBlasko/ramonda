@@ -25,7 +25,7 @@ const cssText = (loaded: string | { code: string } | null): string | null =>
 /** Every hook this asserts on, narrowed off the structural plugin type. */
 function hooks() {
   const plugin = ramondaCss();
-  const transform = plugin.transform as (this: unknown, code: string, id: string) => { code: string } | null;
+  const transform = plugin.transform.handler as (this: unknown, code: string, id: string) => { code: string } | null;
   // The stylesheet's TEXT: in development `load` hands back a source map beside it, which the tests
   // of the map read on their own — see "a file's stylesheet, with its source map".
   const load = (id: string): string | null => cssText(plugin.load(id));
@@ -45,6 +45,12 @@ describe("where it sits in the pipeline", () => {
 
   test("and it has a name a stack trace can carry", () => {
     expect(ramondaCss().name).toBe("ramonda-css");
+  });
+  test("its transform before every other one — `@ramonda/build`'s JSX compiler's too, listed before or after", () => {
+    // The compiler parses the file, and a block is syntax no parser reads: run first, the compiler finds
+    // nothing it can parse and leaves the whole file to the JSX transform. `@ramonda/build`'s own test runs
+    // the two orders through a real Vite; this is the one field that puts this side of it right.
+    expect(ramondaCss().transform.order).toBe("pre");
   });
 });
 
@@ -307,7 +313,7 @@ describe("a block it cannot read", () => {
 describe("what an app has to write", () => {
   test("the runtime can be pointed somewhere else, which is what a wrapper needs", () => {
     const plugin = ramondaCss({ runtime: "my-wrapper" });
-    const transform = plugin.transform as (this: unknown, code: string, id: string) => { code: string } | null;
+    const transform = plugin.transform.handler as (this: unknown, code: string, id: string) => { code: string } | null;
 
     expect(transform.call({}, STYLED, "/src/Card.tsx")?.code).toContain(`from "my-wrapper"`);
   });
@@ -344,7 +350,7 @@ describe("the assembled stylesheet", () => {
   /** The plugin after one file has been through it, and the CSS it produced. */
   const built = () => {
     const plugin = ramondaCss();
-    plugin.transform.call({}, SOURCE, "/src/Card.tsx");
+    plugin.transform.handler.call({}, SOURCE, "/src/Card.tsx");
     return { plugin, css: cssText(plugin.load("/src/Card.tsx.ramonda-css.css")) ?? "" };
   };
 
@@ -421,7 +427,7 @@ describe("the assembled stylesheet", () => {
    */
   test("but a variable nothing sets is refused even then", () => {
     const plugin = ramondaCss();
-    plugin.transform.call(
+    plugin.transform.handler.call(
       {},
       `const a = <div className={@@( color: var(--nothing-sets-this); )}>x</div>;\n`,
       "/src/Card.tsx",
@@ -478,7 +484,7 @@ describe("what the plugin tells a config about the build", () => {
     const said = inside(dir, () => {
       const plugin = ramondaCss();
       plugin.config({}, { mode: "production" });
-      const transform = plugin.transform as (this: unknown, code: string, id: string) => unknown;
+      const transform = plugin.transform.handler as (this: unknown, code: string, id: string) => unknown;
       try {
         transform.call({}, `const a = <div className={@@( padding: 1em; )}>x</div>;\n`, join(dir, "Card.tsx"));
         return "accepted";
@@ -495,7 +501,7 @@ describe("what the plugin tells a config about the build", () => {
     const said = inside(dir, () => {
       const plugin = ramondaCss();
       plugin.config({}, { mode: "development" });
-      const transform = plugin.transform as (this: unknown, code: string, id: string) => unknown;
+      const transform = plugin.transform.handler as (this: unknown, code: string, id: string) => unknown;
       try {
         transform.call({}, `const a = <div className={@@( padding: 1em; )}>x</div>;\n`, join(dir, "Card.tsx"));
         return "accepted";
@@ -659,7 +665,7 @@ describe("which config a transform is measured against", () => {
   const transforming = (file: string, source = `const a = <div className={@@( padding: 1em; )}>x</div>;\n`) => {
     const plugin = ramondaCss();
     plugin.config({}, { mode: "development" });
-    const transform = plugin.transform as (this: unknown, code: string, id: string) => unknown;
+    const transform = plugin.transform.handler as (this: unknown, code: string, id: string) => unknown;
     try {
       transform.call({}, source, file);
       return "accepted";
@@ -695,7 +701,7 @@ describe("which config a transform is measured against", () => {
     const file = join(repo, "packages", "admin", "Card.tsx");
     const plugin = ramondaCss();
     plugin.config({}, { mode: "development" });
-    const transform = plugin.transform as (this: unknown, code: string, id: string) => unknown;
+    const transform = plugin.transform.handler as (this: unknown, code: string, id: string) => unknown;
     const run = () => {
       try {
         transform.call({}, `const a = <div className={@@( padding: 1em; )}>x</div>;\n`, file);
@@ -734,7 +740,7 @@ describe("a file's stylesheet, with its source map", () => {
     const file = onDisk(STYLED);
     const plugin = ramondaCss();
     plugin.config.call({}, {}, { mode: "development" });
-    plugin.transform.call({}, STYLED, file);
+    plugin.transform.handler.call({}, STYLED, file);
     const loaded = plugin.load.call({}, `${file}.ramonda-css.css`);
 
     if (loaded === null || typeof loaded === "string") throw new Error("the dev server handed back no map");
@@ -748,7 +754,7 @@ describe("a file's stylesheet, with its source map", () => {
   test.each(["production", "staging"])("a build gets the CSS alone, in mode %s", (mode) => {
     const plugin = ramondaCss();
     plugin.config.call({}, {}, { mode, command: "build" });
-    plugin.transform.call({}, STYLED, "/src/Card.tsx");
+    plugin.transform.handler.call({}, STYLED, "/src/Card.tsx");
 
     expect(typeof plugin.load.call({}, "/src/Card.tsx.ramonda-css.css")).toBe("string");
   });
@@ -778,7 +784,7 @@ describe("source marks", () => {
     try {
       const plugin = ramondaCss();
       plugin.config.call({}, { root: "/p" }, { mode, command });
-      return plugin.transform.call({}, STYLED, "/p/src/Card.tsx")?.code ?? "";
+      return plugin.transform.handler.call({}, STYLED, "/p/src/Card.tsx")?.code ?? "";
     } finally {
       if (was !== undefined) process.env.VITEST = was;
     }
