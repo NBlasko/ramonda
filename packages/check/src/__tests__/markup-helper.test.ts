@@ -26,6 +26,8 @@ describe("a markup helper built inside render()", () => {
       "PerRow: cell",
       "RowsHelper: rowsOf",
       "Immediately: cell",
+      "OtherRunners: cell",
+      "OtherRunners: tag",
     ]);
   });
 
@@ -41,6 +43,6 @@ describe("a markup helper built inside render()", () => {
   });
 
   test("each is placed at its own declaration", () => {
-    expect(found().map((issue) => issue.line)).toEqual([9, 24, 28, 46, 114, 160]);
+    expect(found().map((issue) => issue.line)).toEqual([9, 24, 28, 46, 114, 160, 174, 178]);
   });
 });

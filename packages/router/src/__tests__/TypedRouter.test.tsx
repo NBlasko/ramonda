@@ -157,6 +157,12 @@ function _typeChecks() {
       About
     </Link>
   );
+  // What `<a>` itself takes, `<Link>` takes: a style object and a DOM property's own name.
+  // Found by review: the named list let only a string `style` and `tabindex` through.
+  void (<a href="/about" style={{ color: "red" }} tabIndex={0} itemprop="item" />);
+  void (<Link href="/about" style={{ color: "red" }} />);
+  void (<Link href="/about" tabIndex={0} />);
+  void (<Link href="/about" itemprop="item" />);
   // @ts-expect-error — `scrol` is not an option and not an anchor attribute
   void (<Link href="/about" scrol={false} />);
   // @ts-expect-error — `replce` neither

@@ -1,4 +1,4 @@
-import { Component, list, state } from "@ramonda/core";
+import { Component, list, list as each, state } from "@ramonda/core";
 
 const COLUMNS = ["rank", "name", "points"] as const;
 
@@ -161,6 +161,24 @@ export class Immediately extends Component {
           return cell("a");
         })()}
       </tr>
+    );
+  }
+}
+
+/** Reported: in a row callback `Array.from` or an aliased `list` runs right there. */
+export class OtherRunners extends Component {
+  render() {
+    return (
+      <div>
+        {Array.from(COLUMNS, (column) => {
+          const cell = (text: string) => <em>{text}</em>;
+          return cell(column);
+        })}
+        {each(COLUMNS, (column) => {
+          const tag = (text: string) => <b>{text}</b>;
+          return <li>{tag(column)}</li>;
+        })}
+      </div>
     );
   }
 }

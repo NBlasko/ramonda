@@ -1,6 +1,7 @@
 import ts from "typescript";
 import { memberName, positionOf } from "../syntax";
-import type { Rule } from "./rule";
+import { importedFromCore } from "./core-import";
+import type { Rule, RuleContext } from "./rule";
 
 /**
  * A function that returns markup, built inside `render()` and only called there.
@@ -96,7 +97,8 @@ export const markupHelperInRender = {
       "not this: handing one over is what `list()` asks for.",
   },
 
-  read(cls, { self }) {
+  read(cls, context) {
+    const { self } = context;
     const found: MarkupHelperInRenderIssue[] = [];
     for (const member of cls.members) {
       if (!ts.isMethodDeclaration(member) || memberName(member) !== "render" || !member.body) continue;
@@ -104,7 +106,12 @@ export const markupHelperInRender = {
 
       const visit = (node: ts.Node): void => {
         const helper = functionOf(node);
-        if (helper && runsWithRender(node, body) && returnsMarkup(helper.fn) && onlyCalled(helper.name, body)) {
+        if (
+          helper &&
+          runsWithRender(node, body, context) &&
+          returnsMarkup(helper.fn) &&
+          onlyCalled(helper.name, body)
+        ) {
           found.push({ component: self.name, helper: helper.name.text, ...positionOf(helper.name) });
         }
         ts.forEachChild(node, visit);
@@ -141,7 +148,21 @@ const RUNS_NOW = new Set([
  * every one of them. And a function called on the spot, `(() => …)()`, does run with the render and
  * was missed, its parent being the parentheses.
  */
-function runsWithRender(declaration: ts.Node, render: ts.Node): boolean {
+/**
+ * Whether a call runs the callback it is handed before it returns: core's `list` under any name it
+ * was imported as, an array method, or `Array.from`'s map. Found by review: narrowing to `list` by
+ * its written name and to methods had dropped the alias and `Array.from`, both reported before.
+ */
+function runsItNow(callee: ts.Expression, context: RuleContext): boolean {
+  if (ts.isIdentifier(callee))
+    return callee.text === "list" || importedFromCore(callee, context.resolveLocal, context.resolveStep, "list");
+  if (!ts.isPropertyAccessExpression(callee)) return false;
+  const name = callee.name.text;
+  if (name === "from") return ts.isIdentifier(callee.expression) && callee.expression.text === "Array";
+  return RUNS_NOW.has(name);
+}
+
+function runsWithRender(declaration: ts.Node, render: ts.Node, context: RuleContext): boolean {
   for (let at = declaration.parent; at !== undefined && at !== render; at = at.parent) {
     if (!ts.isFunctionLike(at)) continue;
     let outer: ts.Node = at.parent;
@@ -155,9 +176,7 @@ function runsWithRender(declaration: ts.Node, render: ts.Node): boolean {
     if (outer.expression === called) continue;
     // Handed to a call that runs it now: `list(rows, …)` or `rows.map(…)`.
     if (!outer.arguments.includes(at as ts.Expression)) return false;
-    const callee = outer.expression;
-    const name = ts.isIdentifier(callee) ? callee.text : ts.isPropertyAccessExpression(callee) ? callee.name.text : "";
-    if (!(name === "list" || (ts.isPropertyAccessExpression(callee) && RUNS_NOW.has(name)))) return false;
+    if (!runsItNow(outer.expression, context)) return false;
   }
   return true;
 }

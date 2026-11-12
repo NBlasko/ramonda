@@ -30,8 +30,27 @@ export interface LinkProps extends AnchorAttributes {
  * index signature over every lower-case name made a misspelt option compile — `scrol={false}`,
  * `replce` — and land on the anchor as a junk attribute, found by review. `aria-*`, `data-*` and
  * `on…` stay open, being families rather than names.
+ *
+ * And every property the anchor ITSELF has — `tabIndex`, `referrerPolicy` — as the tag's own type
+ * takes them, with its `style` object too. Found by review: a list of names alone refused three
+ * things `<a>` accepts. The microdata attributes are named for the same reason.
  */
-export interface AnchorAttributes {
+export type AnchorAttributes = AnchorNames & Omit<AnchorProperties, keyof AnchorNames | OwnNames>;
+
+/** The props `Link` reads itself, whose DOM namesakes it must not take. */
+type OwnNames = "href" | "className" | "children";
+
+/** The anchor's own properties — not its methods, not its `on…` handlers. */
+type AnchorProperties = {
+  [K in keyof HTMLAnchorElement as K extends `on${string}`
+    ? never
+    : // biome-ignore lint/complexity/noBannedTypes: a method is what is being left out
+      HTMLAnchorElement[K] extends Function
+      ? never
+      : K]?: HTMLAnchorElement[K];
+};
+
+interface AnchorNames {
   lang?: string;
   hreflang?: string;
   title?: string;
@@ -49,7 +68,12 @@ export interface AnchorAttributes {
   translate?: string;
   hidden?: boolean;
   draggable?: boolean;
-  style?: string;
+  style?: string | Record<string, string | undefined>;
+  itemprop?: string;
+  itemscope?: boolean;
+  itemtype?: string;
+  itemid?: string;
+  itemref?: string;
   [aria: `aria-${string}`]: string | number | boolean | undefined;
   [data: `data-${string}`]: string | number | boolean | undefined;
   [event: `on${string}`]: unknown;
