@@ -8,6 +8,7 @@ import type { BaseComponent } from "../types/vdom";
 import { announceCachedRenderOnce, hasCachedRender } from "./cachedRender";
 import { ramondaLog } from "./logger";
 import { diagnose } from "./diagnostics";
+import { type Source, sourceOf, written } from "./source";
 
 /**
  * DEV-only: renders twice and reports anything that came out different.
@@ -190,6 +191,8 @@ const FIX: Record<Kind, string> = {
 interface Walk {
   owner: string;
   budget: number;
+  /** Where the nearest element being compared was written, when the compiler said — `debug/source.ts`. */
+  at?: Source;
 }
 
 /**
@@ -359,6 +362,9 @@ function compareNode(a: unknown, b: unknown, path: string, depth: number, walk: 
       // nothing, so none was kept. See `helpers/utils.ts`.
       typeof aNode.name === "string" ? aNode.name.toLowerCase() : (aNode.name as { name?: string })?.name || "?";
     const here = path ? `${path} > ${tag}` : tag;
+    // The innermost tag that says where it was written is the line the reader goes to.
+    const outer = walk.at;
+    walk.at = sourceOf(aNode) ?? outer;
 
     if (aNode.attributes && bNode.attributes) {
       /**
@@ -377,7 +383,16 @@ function compareNode(a: unknown, b: unknown, path: string, depth: number, walk: 
         typeof aNode.name === "function"
           ? (aNode.name as { [STABLE_PROPS]?: readonly string[] })[STABLE_PROPS]
           : undefined;
-      compareAttributes(aNode.attributes, bNode.attributes, here, walk, false, 0, declared);
+      compareAttributes(
+        aNode.attributes,
+        bNode.attributes,
+        here,
+        walk,
+        false,
+        0,
+        declared,
+        typeof aNode.name === "string",
+      );
     }
 
     const aChildren = aNode.children ?? (aNode.attributes?.children as unknown[] | undefined);
@@ -385,12 +400,13 @@ function compareNode(a: unknown, b: unknown, path: string, depth: number, walk: 
     if (Array.isArray(aChildren) && Array.isArray(bChildren)) {
       compareNode(aChildren, bChildren, here, depth + 1, walk);
     }
+    walk.at = outer;
     return;
   }
 
   // Two leaves — a text child, most often.
   const kind = classify(a, b);
-  if (kind) report(kind, walk.owner, path || "the render output", a, b);
+  if (kind) report(kind, walk, path || "the render output", a, b);
 }
 
 /**
@@ -409,6 +425,7 @@ function compareAttributes(
   skipFunctions = false,
   depth = 0,
   declared?: readonly string[],
+  element = false,
 ): void {
   for (const key of Object.keys(a)) {
     if (walk.budget <= 0) return;
@@ -421,6 +438,14 @@ function compareAttributes(
     const bValue = b[key];
     if (skipFunctions && (typeof aValue === "function" || typeof bValue === "function")) continue;
     if (Object.is(aValue, bValue)) continue;
+    /**
+     * An ELEMENT's `style`, rebuilt with the same contents, costs nothing but the object: the diff
+     * writes a style as text and compares the text, so no DOM write follows, and an element is not a
+     * component, so nothing re-renders. Measured over ten renders with a MutationObserver and a spy on
+     * the `cssText` setter: 0 writes for an object rebuilt each render, 10 for one whose value moved.
+     * Contents that DIFFER are still compared below — those are not a function of state.
+     */
+    if (element && depth === 0 && key === "style" && valueEqualThorough(aValue, bValue)) continue;
 
     walk.budget--;
 
@@ -460,7 +485,7 @@ function compareValue(a: unknown, b: unknown, path: string, depth: number, walk:
     if (isPlainObject(a) && isPlainObject(b)) {
       const aKeys = Object.keys(a);
       if (aKeys.length !== Object.keys(b).length || aKeys.some((k) => !Object.hasOwn(b, k))) {
-        report("nondeterministic", walk.owner, path, a, b);
+        report("nondeterministic", walk, path, a, b);
         return;
       }
       // `skipFunctions` is not passed on: it exempts a `list()`'s inline BUILDER, one level up.
@@ -471,7 +496,7 @@ function compareValue(a: unknown, b: unknown, path: string, depth: number, walk:
 
     if (Array.isArray(a) && Array.isArray(b)) {
       if (a.length !== b.length) {
-        report("nondeterministic", walk.owner, path, a, b);
+        report("nondeterministic", walk, path, a, b);
         return;
       }
       for (let i = 0; i < a.length; i++) {
@@ -485,12 +510,43 @@ function compareValue(a: unknown, b: unknown, path: string, depth: number, walk:
   }
 
   const kind = classify(a, b);
-  if (kind) report(kind, walk.owner, path, a, b);
+  if (kind) report(kind, walk, path, a, b);
 }
 
-function report(kind: Kind, owner: string, path: string, a: unknown, b: unknown): void {
-  diagnose("RMD020", `${owner}:${path}:${kind}`, `${DETAIL[kind](owner, path)}\n\n${FIX[kind]}`, {
+/**
+ * The items handed to `list()`, said in words.
+ *
+ * The path names them `….list.each`, and the second trial read "each" as the row callback — the
+ * thing called for each row — and went looking at inline callbacks. It was the array, built in a
+ * plain getter (`get rows() { return xs.map(…) }`), and the fix was `@compute` on that getter.
+ */
+const LIST_ITEMS = /^(.*?)\.?list\.each$/;
+
+function detailOf(kind: Kind, owner: string, path: string): string {
+  const items = kind === "object" ? LIST_ITEMS.exec(path) : null;
+  if (items === null) return DETAIL[kind](owner, path);
+  const inside = items[1] === "" ? "" : ` (inside \`${items[1]}\`)`;
+  return (
+    `<${owner} /> passes \`list()\` a new array of items on every render${inside}, with the same contents.\n` +
+    `Every row loses its identity and the whole list is rebuilt — its rows re-render, and their state and focus go.`
+  );
+}
+
+function fixOf(kind: Kind, path: string): string {
+  if (kind !== "object" || !LIST_ITEMS.test(path)) return FIX[kind];
+  return (
+    "Build the items where they are kept, not in `render()`: a `@compute` getter returns the same array until what it reads changes — " +
+    "`@compute get rows() { return this.props.xs.map(…) }`, and `list(this.rows, …)`. A plain getter builds a new one on every read."
+  );
+}
+
+function report(kind: Kind, walk: Walk, path: string, a: unknown, b: unknown): void {
+  const owner = walk.owner;
+  const at = walk.at;
+  const where = at === undefined ? "" : `\nWritten at ${written(at)}.`;
+  diagnose("RMD020", `${owner}:${path}:${kind}`, `${detailOf(kind, owner, path)}${where}\n\n${fixOf(kind, path)}`, {
     first: a,
     second: b,
+    ...(at === undefined ? {} : { file: at.fileName, line: at.lineNumber, column: at.columnNumber }),
   });
 }

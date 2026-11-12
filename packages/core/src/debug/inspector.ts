@@ -6,7 +6,7 @@ import { inspectPhase } from "./renderPhase";
 import { definitionOf, type SourceLocation } from "./sourceLocation";
 import { HOOK_META, type HookMeta } from "../types/HookTypes";
 import { CHILD_HOOKS, HOOK_RUNTIME, COMPONENT_RUNTIME } from "../core/runtime";
-import { computeStatsOf } from "./computeStats";
+import { computeStatsOf, computeValuesOf } from "./computeStats";
 
 export interface InspectedNode {
   /**
@@ -40,6 +40,8 @@ export interface InspectedNode {
    * appear. See `debug/computeStats.ts`.
    */
   computes?: Record<string, { hits: number; misses: number }>;
+  /** What each `@compute` holds now — only the current ones. See `computeValuesOf`. */
+  computeValues?: Record<string, unknown>;
   /**
    * What the instance says it holds, from its own `[INSPECT]()`.
    *
@@ -245,6 +247,7 @@ function readHooks(instance: Inspectable): InspectedNode[] {
     options: readOptions(hook),
     reads: readContextReads(hook),
     computes: computeStatsOf(hook),
+    computeValues: computeValuesOf(hook),
     source: definitionOf(hook.constructor),
     hooks: readHooks(hook),
     children: [],
@@ -325,6 +328,7 @@ function scanEntries(entries: RecordEntry[], depth: number): InspectedNode[] {
       detail: readDetail(instance),
       props: readProps(instance),
       computes: computeStatsOf(instance),
+      computeValues: computeValuesOf(instance),
       source: definitionOf(instance.constructor),
       hooks: readHooks(instance),
       children: scanEntries(entry.entries, depth + 1),

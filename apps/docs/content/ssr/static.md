@@ -44,8 +44,9 @@ if (needsData.length && extra.length === 0) {
 }
 ```
 
-(`"*"` is left out — it matches what nothing else did, so it has no URL. Render a 404
-page explicitly at whatever path your host serves for missing files.)
+(`"*"` is left out — it matches what nothing else did, so it has no URL. A project from
+`create-ramonda` bakes it as `404.html`, the file a static host serves for a path it has no file for —
+see [one folder for a static host](/deploying#every-route-static-one-folder-for-a-static-host).)
 
 Those two fields are a `RoutePaths`, which is the shape this answers in: `paths` ready to render,
 and `needsData` for the patterns it cannot enumerate.

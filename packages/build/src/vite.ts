@@ -38,6 +38,7 @@ interface VitePluginLike {
 interface CompilePluginLike {
   name: string;
   enforce: "pre";
+  configResolved: (config: { isProduction?: boolean }) => void;
   transform: {
     handler: (this: unknown, code: string, id: string) => Promise<{ code: string; map: CompiledMap } | null>;
   };
@@ -260,15 +261,20 @@ export function ramonda(options: RamondaOptions = {}): [VitePluginLike, CompileP
    * compiler — the parser with it — is imported on the first module it compiles: a build with
    * `compile: false` never loads it.
    */
+  /** A development build: the compiled templates say where each element was written, as `jsxDEV` is told. */
+  let sources = false;
   const compiler: CompilePluginLike = {
     name: "ramonda:compile",
     enforce: "pre",
+    configResolved(config) {
+      sources = config.isProduction === false;
+    },
     transform: {
       async handler(code, id) {
         if (!compile || id.startsWith("\0") || id.includes("?") || !JSX_SCRIPT.test(id)) return null;
         if (id.includes("/node_modules/")) return null;
         const { compileJsx } = await import("./compile");
-        const compiled = compileJsx(code, id);
+        const compiled = compileJsx(code, id, { sources });
         return compiled === undefined ? null : { code: compiled.code, map: compiled.map };
       },
     },

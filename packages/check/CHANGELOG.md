@@ -1,5 +1,26 @@
 # @ramonda/check
 
+## 0.17.0
+
+### Minor Changes
+
+- f3d9ad9: The checker now sees what the runtime's RMD020, RMD021 and RMD022 report, measured shape by shape:
+  
+  - A hook's props callback read through its parameter — `(self: App) => self.tick`, the way the docs write it — or with the parameter destructured. `fresh-object-in-hook-props` and `cached-read-of-a-plain-field` recognised only `this.`, and were silent on that shape. A value is reported only where a reactive read OUTSIDE it can rebuild it, so `key: ["todo", self.props.id]` stays silent.
+  - A value built by a call as a prop: `.filter()`, `.map()`, `.slice()`, `.concat()` and the other array methods that return a new array, `Object.assign({}, x)`, `Object.keys`/`entries`/`values`/`fromEntries`, `Array.from`, `structuredClone`, and any `new X()`.
+  - `this.save.bind(this)` in the markup, as `function-built-in-the-markup`.
+  - `crypto.randomUUID()` and `crypto.getRandomValues()` in a render, as `clock-read-while-rendering`.
+  - `function-built-in-hook-props`, a new error: a function built in a hook's props callback that runs again, such as `fetch: () => self.load()`. The answer is a method, `fetch: self.load`.
+- 95ca9a9: `field-read-before-it-is-declared`, an error: a hook's props callback reads a field declared below the `use`. `this.use` calls the callback while the fields are still being set from the top down, so a hook there is a bare `TypeError` at mount and a plain field reads `undefined` for good — and TypeScript sees neither, because the read is inside a function. A new project's `AGENTS.md` names the rule.
+- 859ef16: `--json` on `ramonda-check`, `ramonda-check-bundle` and `ramonda-css` (the check, `lint` and `format --check`): the findings as one JSON object on stdout, in one shape for all three — the rule, the file, the line, the column, the message the text run prints, and what the finding records — with the same exit code. For a program, a coding agent above all, that would otherwise parse the prose. A new project's `AGENTS.md` says so.
+- 56178d0: `ramonda-check explain <code|rule>` and `ramonda-check docs [page]`: the docs for the installed version, offline. `@ramonda/check` now carries the docs as text, packed at release, so `explain RMD020` prints that code's page and `explain unknown-hook-option` that rule's, and `docs forms/fields` any page — with the closest match named for a slip. A new project's `AGENTS.md` sends an agent to them first.
+- ed98527: `@StableProps` crosses a package boundary. A package's published graph records what each hook and component declares a value — `Query` its `key`, `Head` its `meta` and `link` — because a `.d.ts` carries no decorators. `fresh-object-in-hook-props` now judges an installed package's hook by it, where it had been silent on every one, and `fresh-object-in-props` no longer reports an installed component's declared prop. A package that publishes no graph is left as before: nothing is said about it.
+- 13bb428: `unknown-hook-option`, an error: a hook's props callback names an option the hook does not take — `this.use(Head, () => ({ robots: "noindex" }))`, `Query({ staleTimee })`. The type check lets it through, because the hook's props type is inferred from the bag, and the hook ignores it. What the hook takes is read off its type, so it covers every hook — the project's own, an installed package's, a context Provider — and the report names the option that was probably meant, or lists the ones it takes.
+
+### Patch Changes
+
+- f47f7d1: `clock-read-while-rendering` reads a hook's props callback too: a `Math.random()` or a clock read there is frozen into the cached props until something unrelated runs the callback again, and then it jumps. The runtime reported the random half as RMD021; the checker read only renders.
+
 ## 0.16.0
 
 ### Minor Changes

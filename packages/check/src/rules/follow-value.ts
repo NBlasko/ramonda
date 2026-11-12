@@ -96,7 +96,7 @@ export function freshnessOf(
  */
 export interface Looking<T> {
   /** What this expression certainly is, when the source says so; `undefined` to keep walking. */
-  leaf(expression: ts.Expression): T | undefined;
+  leaf(expression: ts.Expression, resolve: ElementContext["resolve"]): T | undefined;
   /** Whether a value declared at module scope counts, or the walk stops at the module boundary. */
   throughModuleScope: boolean;
   /**
@@ -140,10 +140,113 @@ export interface Looking<T> {
   throughMemoizedCalls: boolean;
 }
 
-/** Looking for a value REBUILT during the render: only a literal, and only inside a function. */
+/**
+ * The array methods that hand back a NEW array whatever they are given — `.filter()` with nothing
+ * filtered out is still a different array. Measured against the runtime's RMD020, which reports
+ * `items={this.items.filter(…)}`, `.map(…)` and `.slice()` as rebuilt every render; the checker was
+ * silent on all three.
+ */
+const ARRAY_BUILDERS = new Set([
+  "filter",
+  "map",
+  "slice",
+  "concat",
+  "flat",
+  "flatMap",
+  "toSorted",
+  "toReversed",
+  "toSpliced",
+]);
+
+/** The global functions that build one: `Object.assign({}, x)`, `Array.from(x)`, `structuredClone(x)`. */
+const GLOBAL_BUILDERS: Readonly<Record<string, Readonly<Record<string, "object" | "array">>>> = {
+  Object: { assign: "object", fromEntries: "object", entries: "array", keys: "array", values: "array" },
+  Array: { from: "array", of: "array" },
+};
+
+/** The names each file declares itself, once per file — see `isGlobal`. */
+const declaredIn = new WeakMap<ts.SourceFile, Set<string>>();
+
+/**
+ * Whether a name is the platform's own global rather than something this file declares — an import,
+ * a parameter, a local, a class. Read off the file's own declarations, because the walk has no
+ * checker: a file that names its own `Object` is not calling the global one.
+ */
+function isGlobal(id: ts.Identifier): boolean {
+  const file = id.getSourceFile();
+  let names = declaredIn.get(file);
+  if (names === undefined) {
+    const found = new Set<string>();
+    (function look(node: ts.Node): void {
+      if (
+        (ts.isVariableDeclaration(node) ||
+          ts.isParameter(node) ||
+          ts.isBindingElement(node) ||
+          ts.isFunctionDeclaration(node) ||
+          ts.isClassDeclaration(node) ||
+          ts.isImportSpecifier(node) ||
+          ts.isImportClause(node) ||
+          ts.isNamespaceImport(node)) &&
+        node.name !== undefined &&
+        ts.isIdentifier(node.name)
+      ) {
+        found.add(node.name.text);
+      }
+      ts.forEachChild(node, look);
+    })(file);
+    names = found;
+    declaredIn.set(file, names);
+  }
+  return !names.has(id.text);
+}
+
+/**
+ * A value a CALL or a `new` builds during the render, whatever it is handed.
+ *
+ * `new Date(0)`, `new Map()`, a class instance: a new identity every time, which the runtime reports
+ * as RMD020. `.bind` is not here — it builds a FUNCTION, and is in `A_FUNCTION`.
+ */
+function builtByACall(expression: ts.Expression, resolve: ElementContext["resolve"]): "object" | "array" | undefined {
+  if (ts.isNewExpression(expression)) return "object";
+  if (!ts.isCallExpression(expression)) return undefined;
+  const callee = expression.expression;
+  if (ts.isIdentifier(callee)) return callee.text === "structuredClone" && isGlobal(callee) ? "object" : undefined;
+  if (!ts.isPropertyAccessExpression(callee) || !ts.isIdentifier(callee.name)) return undefined;
+  const owner = callee.expression;
+  if (ts.isIdentifier(owner) && owner.text in GLOBAL_BUILDERS && isGlobal(owner)) {
+    // `Object.assign(target, …)` hands back TARGET: a copy only when the target is a literal.
+    if (owner.text === "Object" && callee.name.text === "assign") {
+      const target = expression.arguments[0];
+      return target !== undefined && ts.isObjectLiteralExpression(target) ? "object" : undefined;
+    }
+    return GLOBAL_BUILDERS[owner.text][callee.name.text];
+  }
+  // Only on what the type says is an array: a string has `.slice` and `.concat` too, and builds a
+  // string, which compares by value — `label={name.slice(0, 3)}` was reported as a new array. Found
+  // by review. A type that cannot be read is silence, as everywhere here.
+  return ARRAY_BUILDERS.has(callee.name.text) && resolve.isArray(owner) === true ? "array" : undefined;
+}
+
+/**
+ * `this.save.bind(this)` — a new function on every call, which the runtime reports as RMD020 like an
+ * arrow. A method is already bound here, so the `.bind` is never needed.
+ */
+function isABind(expression: ts.Expression): boolean {
+  return (
+    ts.isCallExpression(expression) &&
+    ts.isPropertyAccessExpression(expression.expression) &&
+    expression.expression.name.text === "bind"
+  );
+}
+
+/** Looking for a value REBUILT during the render: a literal, or what a call or a `new` builds, inside a function. */
 const REBUILT: Looking<"object" | "array"> = {
-  leaf: (expression) =>
-    ts.isObjectLiteralExpression(expression) ? "object" : ts.isArrayLiteralExpression(expression) ? "array" : undefined,
+  leaf: (expression, resolve) =>
+    ts.isObjectLiteralExpression(expression)
+      ? "object"
+      : ts.isArrayLiteralExpression(expression)
+        ? "array"
+        : builtByACall(expression, resolve),
   throughModuleScope: false,
   throughBranches: true,
   throughCalls: true,
@@ -166,7 +269,11 @@ const REBUILT: Looking<"object" | "array"> = {
  */
 const A_FUNCTION: Looking<"arrow" | "function"> = {
   leaf: (expression) =>
-    ts.isArrowFunction(expression) ? "arrow" : ts.isFunctionExpression(expression) ? "function" : undefined,
+    ts.isArrowFunction(expression)
+      ? "arrow"
+      : ts.isFunctionExpression(expression) || isABind(expression)
+        ? "function"
+        : undefined,
   throughModuleScope: false,
   throughBranches: true,
   throughCalls: false,
@@ -241,7 +348,7 @@ export function follow<T>(
   // required around a concise arrow's literal, so both are peeled before anything is decided.
   const written = unwrap(expression);
 
-  const leaf = how.leaf(written);
+  const leaf = how.leaf(written, resolve);
   if (leaf !== undefined) return { value: leaf, foundIn: undefined };
 
   if (ts.isIdentifier(written)) {

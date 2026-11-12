@@ -37,6 +37,19 @@ export function given(children: RamondaNode | undefined): ComponentChild[] {
  * moment they are this render's. Reading each one back THROUGH the proxy is what makes the wrapper
  * reactive to it — so this component does depend on all of them, which is right for something whose
  * whole job is to pass them on.
+ *
+ * Public for exactly that job — a component that wraps one element and passes the rest on, as
+ * `Select` does and as the router's `Link` does:
+ *
+ * ```tsx
+ * class Badge extends Component<{ tone: "ok" | "bad"; [attribute: Lowercase<string>]: unknown }> {
+ *   render() {
+ *     return <span {...forwarded(this, ["tone", "children"])}>{this.props.children}</span>;
+ *   }
+ * }
+ * ```
+ *
+ * Whatever is written after the spread wins, so the wrapper's own attributes go last.
  */
 // biome-ignore lint/suspicious/noExplicitAny: any component, whatever its props
 export function forwarded(component: Component<any>, consumed: readonly string[]): Record<string, unknown> {

@@ -79,8 +79,18 @@ export interface Compiled {
   templates: string[];
 }
 
+/** How to compile a module. */
+export interface CompileOptions {
+  /**
+   * Write where each element was written — the file once, and each element's line and column — into its
+   * template, as the development JSX transform hands `jsxDEV` the place of every tag, so a diagnostic can
+   * name the line (RMD020). For a development build only: a production bundle carries no file paths.
+   */
+  sources?: boolean;
+}
+
 /** Compiles the JSX in one module. `undefined` when there is nothing to compile, or it does not parse. */
-export function compileJsx(code: string, id: string): Compiled | undefined {
+export function compileJsx(code: string, id: string, options: CompileOptions = {}): Compiled | undefined {
   if (!code.includes("<")) return undefined;
   const lang = id.endsWith(".tsx") ? "tsx" : id.endsWith(".jsx") ? "jsx" : undefined;
   if (lang === undefined) return undefined;
@@ -89,7 +99,7 @@ export function compileJsx(code: string, id: string): Compiled | undefined {
   if (parsed.errors.length > 0) return undefined;
 
   const out = new MagicString(code);
-  const compiler = new Compiler(out);
+  const compiler = new Compiler(out, options.sources === true ? placesIn(code, id) : undefined);
   compiler.expression(parsed.program as unknown as Node);
   if (compiler.templates.length === 0) return undefined;
 
@@ -116,6 +126,30 @@ export function compileJsx(code: string, id: string): Compiled | undefined {
     // way, and the map is half the size (measured on the SSR template's App.tsx: 13,414 → 6,439 bytes).
     map: out.generateMap({ source: id, includeContent: true, hires: "boundary" }),
     templates: compiler.templates,
+  };
+}
+
+/** A module's file and the line and column of an offset in it, both counted from 1 as `jsxDEV`'s are. */
+interface Places {
+  file: string;
+  at(offset: number): [number, number];
+}
+
+function placesIn(code: string, file: string): Places {
+  const starts = [0];
+  for (let i = 0; i < code.length; i++) if (code.charCodeAt(i) === 10) starts.push(i + 1);
+  return {
+    file,
+    at(offset) {
+      let low = 0;
+      let high = starts.length - 1;
+      while (low < high) {
+        const middle = (low + high + 1) >> 1;
+        if (starts[middle] <= offset) low = middle;
+        else high = middle - 1;
+      }
+      return [low + 1, offset - starts[low] + 1];
+    },
   };
 }
 
@@ -272,8 +306,12 @@ class Compiler {
   readonly kept: string[] = [];
   private readonly out: MagicString;
 
-  constructor(out: MagicString) {
+  /** Where each element was written, when the build asks for it — see `CompileOptions.sources`. */
+  private readonly places: Places | undefined;
+
+  constructor(out: MagicString, places: Places | undefined) {
     this.out = out;
+    this.places = places;
   }
 
   /**
@@ -361,6 +399,11 @@ class Compiler {
         dynamic.push(`[${JSON.stringify(name)}, ${hole(pieces)}]`);
       }
       const parts = [`t: ${JSON.stringify(tag)}`];
+      if (this.places !== undefined) {
+        if (root) parts.push(`f: ${JSON.stringify(this.places.file)}`);
+        const [line, column] = this.places.at(node.start);
+        parts.push(`l: [${line}, ${column}]`);
+      }
       if (baked.length > 0) parts.push(`a: { ${baked.join(", ")} }`);
       if (dynamic.length > 0) parts.push(`d: [${dynamic.join(", ")}]`);
 

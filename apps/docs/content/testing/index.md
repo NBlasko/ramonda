@@ -66,7 +66,14 @@ There is no setup file to write for JSX. The compiler imports Ramonda's runtime 
 nothing has to be put on `globalThis` and there is no factory name to keep in step with the config.
 
 `globals: true` is what lets cleanup, and the diagnostics check below, register their own
-`afterEach`.
+`afterEach`. Without it there is no `afterEach` to hook, and `render` refuses with an error that says
+so, rather than letting each test's tree stay mounted into the next one. If you run the cleanup and the
+check yourself, say so first in the setup file, and `render` no longer asks:
+
+```ts
+import "@ramonda/testing-library/dont-cleanup-after-each"; // then call cleanup() after each test
+import "@ramonda/testing-library/dont-fail-on-diagnostics";
+```
 
 ## Cleanup runs after every test
 

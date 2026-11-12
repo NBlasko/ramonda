@@ -39,6 +39,7 @@ function host(initial: unknown) {
       touched.add(pathKey(path));
     },
     resetAt: () => {},
+    setErrorAt: () => {},
     rowIds: (path: Path) => {
       const key = pathKey(path);
       const value = readAt(values, path);

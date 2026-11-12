@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { analyzeProject } from "../analyze";
 import { graphHtml } from "../graph-html";
+import { fromAnotherPackage } from "../graph";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -105,3 +106,35 @@ function embedded(html: string): string {
   const at = html.indexOf('type="application/json">');
   return html.slice(at + 'type="application/json">'.length, html.indexOf("</script>", at));
 }
+
+/**
+ * Found by the second trial: `--graph-html` on a finished app said 13 nodes "that nothing points at",
+ * under a band "nothing reaches these" — and all 13 were the framework's own unused exports, `Portal`,
+ * `TextArea`, `Interval`, spliced in from the packages' fragments. It read exactly like dead code in
+ * the app. And a root was labelled `renderStatic$2`, the graph's bookkeeping for a second call.
+ */
+describe("what a package brings and the app does not use", () => {
+  const app = graph([
+    { id: "@acme/app/src/entry.tsx#hydrateRoot", kind: "root", at: "@acme/app/src/entry.tsx:1:1" },
+    { id: "@acme/app/src/entry.tsx#renderStatic$2", kind: "root", at: "@acme/app/src/entry.tsx:9:1" },
+    { id: "@acme/app/src/App.tsx#App", kind: "component", name: "App", at: "@acme/app/src/App.tsx:1:1" },
+    { id: "@acme/app/src/Old.tsx#Old", kind: "component", name: "Old", at: "@acme/app/src/Old.tsx:1:1" },
+    { id: "@ramonda/core/src/base/Portal.ts#Portal", kind: "hook", name: "Portal", at: "x:1:1" },
+  ]);
+
+  test("is marked as another package's, and the app's own are not", () => {
+    const back = JSON.parse(embedded(graphHtml(app))) as { foreign: string[] };
+    expect(back.foreign).toEqual(["@ramonda/core/src/base/Portal.ts#Portal"]);
+    expect(fromAnotherPackage(app, "@acme/app/src/Old.tsx#Old")).toBe(false);
+  });
+
+  test("and the page gives it a band of its own, not the dead-code one", () => {
+    const html = graphHtml(app);
+    expect(html).toContain("from packages, not used by this app — not dead code");
+  });
+
+  test("a hand-built graph whose ids name no package has nothing foreign", () => {
+    const plain = graph([{ id: "a.tsx#App", kind: "component", name: "App", at: "a.tsx:1:1" }]);
+    expect(fromAnotherPackage(plain, "a.tsx#App")).toBe(false);
+  });
+});

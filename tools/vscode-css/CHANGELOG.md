@@ -1,5 +1,12 @@
 # Ramonda CSS
 
+## 0.9.0
+
+- **Goes with `@ramonda/css` 0.12.0.** The colours are unchanged; the copy of the compiler this
+  extension carries, for a project that has none of its own, is the new one. A project that takes
+  colours only from its tokens may now write `transparent` and `currentColor` (in any case, since CSS
+  keywords ignore it) without a report: neither is a colour picked off a palette.
+
 ## 0.8.0
 
 - **Goes with `@ramonda/css` 0.11.0.** The colours are unchanged; the copy of the compiler this

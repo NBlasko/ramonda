@@ -1,4 +1,4 @@
-import { createRoutes, createRouter } from "@ramonda/router";
+import { createRoutes } from "@ramonda/router";
 import { HomePage } from "./pages/HomePage";
 import { ShowcasePage } from "./pages/ShowcasePage";
 import { CssPage } from "./pages/CssPage";
@@ -37,9 +37,12 @@ export const routes = createRoutes({
 });
 
 /**
- * The kit, minted once and imported from here across the app.
- *
- * `Link` and `Navigator` are reachable only this way — `@ramonda/router` exports neither, so there
- * is no second, unchecked import to reach for by accident.
+ * The table, registered: every `Link`, `Navigator` and `route()` in this program is checked against
+ * it, and each is imported from `@ramonda/router` — never from here, so no page imports this module
+ * back.
  */
-export const { Link, Navigator, route } = createRouter(routes);
+declare module "@ramonda/router" {
+  interface Register {
+    routes: typeof routes;
+  }
+}

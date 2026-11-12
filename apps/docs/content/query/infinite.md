@@ -13,7 +13,7 @@ other query: one request per key however many components watch it, one `invalida
 the list stale, one snapshot across the SSR boundary.
 
 ```tsx expect-report:row-without-a-key
-import { InfiniteQuery } from "@ramonda/query";
+import { InfiniteQuery, type PageContext } from "@ramonda/query";
 
 // One page of the feed. A `render:` callback has to produce an element, so a nested
 // list goes through a component — one item to the outer list, and the rows are what it renders.
@@ -27,9 +27,18 @@ class Feed extends Component<{ tag: string }> {
   private feed = this.use(InfiniteQuery<PostPage>, (self: Feed) => ({
     key: ["posts", self.props.tag],
     initialPageParam: 0,
-    loadPage: ({ pageParam, signal }) => api.posts(pageParam as number, { signal }),
-    getNextPageParam: (last) => last.nextCursor,
+    loadPage: self.loadPage,
+    getNextPageParam: self.nextPage,
   }));
+
+  // Methods, handed over: the same functions every time the callback runs again — see RMD022.
+  loadPage({ pageParam, signal }: PageContext): Promise<PostPage> {
+    return api.posts(pageParam as number, { signal });
+  }
+
+  nextPage(last: PostPage): unknown {
+    return last.nextCursor;
+  }
 
   render() {
     if (this.feed.isPending) return <p>Loading…</p>;

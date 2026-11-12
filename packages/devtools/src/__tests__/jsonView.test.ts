@@ -110,3 +110,36 @@ describe("the copy button's text", () => {
     expect(() => toPrettyText(loop)).not.toThrow();
   });
 });
+
+/**
+ * A `Map` is a container, and the second trial saw a `Map` prop shown as `Map [object Map]` — the
+ * one value in the panel that could not be opened, while arrays and objects beside it could.
+ */
+describe("a Map and a Set", () => {
+  it("are named by their size", () => {
+    expect(summarize(new Map([["a", 1]]))).toBe("Map(1)");
+    expect(summarize(new Set([1, 2]))).toBe("Set(2)");
+  });
+
+  it("open into their entries, a Map's keyed by its own keys", () => {
+    const plain = (value: unknown) => text(value, FULL).replaceAll("&quot;", '"');
+    const shown = plain(
+      new Map<unknown, unknown>([
+        ["ada", 3],
+        [7, { x: 1 }],
+      ]),
+    );
+    expect(shown).not.toContain("[object Map]");
+    expect(shown).toContain('"ada" : 3');
+    expect(shown).toContain("7 : {1 key}");
+    expect(plain(new Set(["p"]))).toContain('0 : "p"');
+  });
+});
+
+// Found by review: raw mode and copy went through plain `JSON.stringify`, which writes a Map as `{}`.
+describe("a Map and a Set as text", () => {
+  it("keep their entries in the pretty text behind raw mode and copy", () => {
+    expect(toPrettyText(new Map([["ada", 3]]))).toContain('"ada"');
+    expect(toPrettyText(new Set(["p"]))).toContain('"p"');
+  });
+});

@@ -90,7 +90,7 @@ can't linger.)
 A hook can use other hooks; they all share the owner's re-rendering:
 
 ```tsx
-import { Navigator } from "./routes";
+import { Navigator } from "@ramonda/router";
 
 export class Pagination extends Hook<PaginationProps> {
   private route = this.use(Navigator);

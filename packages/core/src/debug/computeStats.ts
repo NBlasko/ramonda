@@ -35,6 +35,11 @@
 export interface ComputeCounters {
   hits: number;
   misses: number;
+  /**
+   * What the cache holds, when it holds something current — read off the cache, never by running
+   * the body. See `computeValuesOf`.
+   */
+  peek?: () => { fresh: boolean; value: unknown };
 }
 
 const registry = new WeakMap<object, Map<string, ComputeCounters>>();
@@ -47,6 +52,25 @@ export function registerCompute(instance: object, member: string, counters: Comp
     registry.set(instance, members);
   }
   members.set(member, counters);
+}
+
+/**
+ * What each `@compute` of one instance holds right now, for the panel to show beside its counters.
+ *
+ * Found by the second trial: the panel showed only the counters, as `isLanding: "3 of 4 reads
+ * cached"`, which read as the getter returning that string, and the value was nowhere. Only a value
+ * the cache holds CURRENTLY is reported. Computing a stale one would move the counters it sits beside
+ * and run app code from inside the panel, so a stale member is left out rather than recomputed.
+ */
+export function computeValuesOf(instance: object): Record<string, unknown> | undefined {
+  const members = registry.get(instance);
+  if (members === undefined) return undefined;
+  let out: Record<string, unknown> | undefined;
+  for (const [member, counters] of members) {
+    const held = counters.peek?.();
+    if (held?.fresh) (out ??= {})[member] = held.value;
+  }
+  return out;
 }
 
 /**

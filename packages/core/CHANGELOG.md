@@ -1,5 +1,78 @@
 # @ramonda/core
 
+## 0.28.0
+
+### Minor Changes
+
+- 224d8ba: An element's attributes are compared with what Ramonda wrote, not read back from the page
+  
+  Each update read every attribute of an element back from the page and compared the render with that —
+  the largest single cost in every profile of js-framework-benchmark. The page was then the record of what
+  Ramonda meant, so an attribute anyone else changed was written back on the next render that touched the
+  element for any reason: a `<details>` the reader closed opened again, a class a library set was replaced.
+  
+  An element now remembers what the diff wrote on it, and the next render is compared with that. A change
+  made by the browser or by another script stays until Ramonda itself changes that value — as in React.
+  An element no render wrote, one a hydration adopted, is read from the page once, so an attribute only
+  the server sent is still taken away. A `ref` is applied on every render, as before. A checkbox's
+  `checked` and `indeterminate` and a media element's `muted` are compared with the element itself, as
+  before, so the next render restores what a click changed. Other state an element keeps only in a property, such as a media element's `volume` or
+  `currentTime`, is compared with what Ramonda wrote: a volume the reader moved stays, and a playing video
+  keeps its place on an unrelated render. `__h` copies an element's attributes object, so one
+  an app hands it on every render, changed in place, is written as it is now. An attribute whose value is an object, such as a `URL`, is written on every render, as
+  before, since an object changed in place is the same object with a new value.
+- 13aa3d2: An element's children are claimed from what Ramonda placed, not read back from the page
+  
+  An update read every element's `childNodes` back from the page to find which child is which. An element
+  now keeps the children the diff placed in it, and the next update starts from that, as its attributes
+  are compared with what was written on them. A child someone else added stays where they put it — as an
+  attribute someone else set does — and children someone else moved keep the order they were moved to. When
+  one of the element's own children is gone — taken out, or replaced by writing `textContent` — the next
+  render that changes those children reads the page, as before, and puts it back.
+- 8be1690: RMD020 says where the element was written: `Written at src/Toolbar.tsx:41:9`, beside the path through the output it already named, and as `file`, `line` and `column` on the diagnostic record. The development JSX runtime keeps the place the compiler hands it with every tag; the production runtime is unchanged.
+
+### Patch Changes
+
+- 7ef28bb: An element the diff builds is written, not read back
+  
+  A new element has no attributes and no children until the diff writes them, but it went through the
+  update path all the same: its attributes and `childNodes` were read back, and its children went in
+  through the reorder pass one at a time. Now its attributes are only written, and children that are
+  elements or text are built and appended in order; a list or a component among them keeps the path
+  that knows it. Measured on js-framework-benchmark's create, it read 28 empty properties per row.
+- e9ae112: A render builds fewer throwaway objects
+  
+  A list pass no longer builds a map of occurrences and an array per row to say that each item appears
+  once — an item the list holds once keeps one id. The JSX runtime hands on the props of an element with
+  no children as its attributes instead of copying them, and an element built with no children shares
+  one empty record. Measured beside the previous build on js-framework-benchmark: creating 10 000 rows
+  ran 451 → 423 ms of script; the rest unchanged.
+- 2f83b02: A component with two `@memoized` methods keeps its handlers across renders
+  
+  Every `@memoized` method on a component shares one cache, swept once per commit to drop the entries no
+  render asked for. It was swept once per method: with two, the first sweep marked every entry unused and
+  the second deleted them all, so each commit built every handler again — and whatever held one saw a new
+  function. A table whose rows were handed `select(id)` and `remove(id)` re-rendered every row on every
+  select. The cache is now swept once per component, and a handler keeps its identity for as long as a
+  render asks for it.
+- babe307: An element with one child keeps that child as its record
+  
+  The record of what the diff placed in an element holds a lone child on its own and builds an array
+  only for two or more. Most elements on a page hold one child, a cell's text or a link's label, so the
+  diff builds one array less for each of them. Measured beside the previous build on
+  js-framework-benchmark, two runs in opposite order, median script time: creating 10 000 rows went from
+  406 to 380 ms and from 433 to 402 ms, and selecting a row from 109 to 102 ms and from 117 to 108 ms.
+  Appending 1 000 rows went from 42 to 50 ms and from 46 to 51 ms, with a spread of ±6 ms.
+- c963968: RMD020 no longer reports an element's `style` object rebuilt with the same contents — `<div style={{ color: "red" }}>`. The diff writes a style as text and compares the text, so no DOM write follows (measured: none over ten renders), and an element has no render to repeat; the report sent a reader to a `@compute` for nothing. A style whose contents differ between the two calls is still reported.
+- aa5c575: Removing rows walks what they hold by their siblings
+  
+  A node taken out of the page is walked first for what its subtree holds — a ref to clear, a block to
+  tell, a field to let go. The walk read each node's `childNodes`, a list per node; it now steps by
+  `firstChild` and `nextSibling`. Measured in Chromium on 1000 js-framework-benchmark rows: the walk
+  went from 7.3 ms to 2.3 ms. A node that takes itself out while it is let go, such as a ref's callback
+  tearing down the widget it held, no longer ends the walk: the siblings after it are let go too.
+- ed98527: `@StableProps` crosses a package boundary. A package's published graph records what each hook and component declares a value — `Query` its `key`, `Head` its `meta` and `link` — because a `.d.ts` carries no decorators. `fresh-object-in-hook-props` now judges an installed package's hook by it, where it had been silent on every one, and `fresh-object-in-props` no longer reports an installed component's declared prop. A package that publishes no graph is left as before: nothing is said about it.
+
 ## 0.27.0
 
 ### Minor Changes

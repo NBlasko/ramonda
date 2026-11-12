@@ -1,4 +1,5 @@
 import { jsx, jsxs } from "./jsx-runtime";
+import { SOURCE, type Source } from "./debug/source";
 import type { VNode } from "./types/vdom";
 
 export { Fragment } from "./jsx-runtime";
@@ -18,10 +19,19 @@ type Props = Record<string, unknown> & { children?: unknown };
  * static children are spread so each keeps its own index, while a single child that happens to be an
  * array stays one group with its own key space. See `jsx-runtime.ts`.
  *
- * `source` and `self` carry the file and line the tag was written at. Nothing reads them yet;
- * Ramonda's diagnostics get their position from `currentOrigin` instead, which also works for the
- * vnodes built by hand.
+ * `source` carries the file, line and column the tag was written at, and is kept on the vnode so
+ * RMD020 can name the line a rebuilt value is on — see `debug/source.ts`. `self` is not read.
  */
-export function jsxDEV(type: unknown, props: Props | null, key?: string | number, isStaticChildren?: boolean): VNode {
-  return isStaticChildren === true ? jsxs(type, props, key) : jsx(type, props, key);
+export function jsxDEV(
+  type: unknown,
+  props: Props | null,
+  key?: string | number,
+  isStaticChildren?: boolean,
+  source?: Source,
+): VNode {
+  const vnode = isStaticChildren === true ? jsxs(type, props, key) : jsx(type, props, key);
+  if (__DEV__ && source !== undefined && vnode !== null && typeof vnode === "object") {
+    (vnode as { [SOURCE]?: Source })[SOURCE] = source;
+  }
+  return vnode;
 }

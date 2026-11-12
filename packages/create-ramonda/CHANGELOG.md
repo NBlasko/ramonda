@@ -1,5 +1,21 @@
 # create-ramonda
 
+## 0.17.0
+
+### Minor Changes
+
+- 0bf9b1f: A new project has an `AGENTS.md` for a coding agent: the one command that proves a change (`npm run check`, described from the same list the script is built from), how to look up a diagnostic code, and the rules a habit from other libraries breaks first. It names only what the project has. A one-line `CLAUDE.md` points at it. A folder that already has either file keeps it, and the project's is written beside it, as with `README.md`.
+- 5a94379: An SSR project can be deployed to a host that only serves files. `npm run build:static` writes the whole site as one folder, `dist/site` — the baked pages, the scripts, `public/`, and `404.html`, which the build now bakes from the `"*"` route — and refuses, by name, a route that renders per request or on a timer. `src/entry-server.tsx` keeps the paths of a static `:param` route in one list, `PRERENDER_PATHS`, read by both the build and the server: asked with none, a `:param` route marked `prerender` stopped the production server as it started.
+
+### Patch Changes
+
+- 4a19c27: A new project pins the `@ramonda/core` that renders faster.
+- b21cb25: A new project's `AGENTS.md` sends a coding agent to the docs as text: `ramonda.dev/llms.txt` lists every page, every page is also Markdown with `.md` added to its path, and `llms-full.txt` is the whole site in one file.
+- 95ca9a9: `field-read-before-it-is-declared`, an error: a hook's props callback reads a field declared below the `use`. `this.use` calls the callback while the fields are still being set from the top down, so a hook there is a bare `TypeError` at mount and a plain field reads `undefined` for good — and TypeScript sees neither, because the read is inside a function. A new project's `AGENTS.md` names the rule.
+- 859ef16: `--json` on `ramonda-check`, `ramonda-check-bundle` and `ramonda-css` (the check, `lint` and `format --check`): the findings as one JSON object on stdout, in one shape for all three — the rule, the file, the line, the column, the message the text run prints, and what the finding records — with the same exit code. For a program, a coding agent above all, that would otherwise parse the prose. A new project's `AGENTS.md` says so.
+- 56178d0: `ramonda-check explain <code|rule>` and `ramonda-check docs [page]`: the docs for the installed version, offline. `@ramonda/check` now carries the docs as text, packed at release, so `explain RMD020` prints that code's page and `explain unknown-hook-option` that rule's, and `docs forms/fields` any page — with the closest match named for a slip. A new project's `AGENTS.md` sends an agent to them first.
+- ed5e7a8: A new SSR project minifies its client bundle and writes a source map beside it. Unminified, the bundle was a fifth bigger on the wire even compressed; the map keeps a production stack trace pointing at the project's own files.
+
 ## 0.16.0
 
 ### Minor Changes

@@ -12,7 +12,8 @@ components are holes, written by the same rules as before. Components, fragments
 attribute, an element that writes one attribute twice, and text or an attribute with an entity are left to
 the JSX transform as they were, and a host
 element inside them is compiled on its own. Every expression keeps its place in the source, so a stack
-trace or a breakpoint inside a handler written in JSX points at the line it was written on. `ramonda({ compile: false })` builds the app the way it was built before.
+trace or a breakpoint inside a handler written in JSX points at the line it was written on. In a development build each template also says where its elements
+were written, so RMD020 names the file, line and column of a compiled element as it does any other. `ramonda({ compile: false })` builds the app the way it was built before.
 
 On Vite, `ramonda()` returns two plugins — its settings, and the compiler, `ramonda:compile`, which
 compiles the source Vite read, inside `server.fs.allow`, after `@ramonda/css`'s transform and before the

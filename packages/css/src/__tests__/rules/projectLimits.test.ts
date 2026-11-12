@@ -287,6 +287,27 @@ describe("a literal where the project said that kind comes from variables", () =
     expect(message("margin-top: 13px")).toContain("Declare it in");
   });
 
+  /**
+   * The second trial's shape: a token in ANOTHER group of the same kind (`$size.line`, a length),
+   * a value written on `width`, and a message from its `npm test` that named no token.
+   */
+  test("a token in another group of the same kind is named too", () => {
+    const config: Config = {
+      tokens: {
+        $space: kind("length", { xs: "2px", s: "8px" }),
+        $size: kind("length", { line: "1px", score: "56px" }),
+      },
+      properties: { "<length>": { hardcoded: false } },
+    };
+    const found = checkBlock(readBlock(`@@(\n  width: 1px;\n)`, 2, "C.tsx").block, { config }).find(
+      (one) => one.rule === "hardcoded-not-allowed",
+    );
+    // On the FIRST line, the one the trial read.
+    expect(found?.message.split("\n")[0]).toContain("`ramonda.css.ts` holds it as `$size.line` — write that.");
+    // Once: found by review, the message used to name it again three lines down.
+    expect(found?.message.match(/\$size\.line/g)).toHaveLength(1);
+  });
+
   test("and with no `hardcoded: false` anywhere, every one of these is silent", () => {
     const of = (decl: string) => checkBlock(readBlock(`@@(\n  ${decl};\n)`, 2, "C.tsx").block, {}).map((o) => o.rule);
 

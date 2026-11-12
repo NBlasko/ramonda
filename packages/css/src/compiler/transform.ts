@@ -556,6 +556,8 @@ export function transform(source: string, options: TransformOptions = {}): Trans
     let previous: readonly Guard[] = [];
 
     let first = true;
+    /** Whether this block takes another through a spread — see `namesFor`. */
+    const spreads = all.some((segment) => segment.kind === "spread");
     for (const segment of all) {
       /** How many guards this segment shares with the one before it. */
       let shared = 0;
@@ -728,15 +730,20 @@ export function transform(source: string, options: TransformOptions = {}): Trans
        * And what the author CALLED the property, because a key writes `pl` where they wrote
        * `padding-left` — a message naming the form sends somebody looking for a string in no file.
        *
-       * **Only for a declaration under a CONDITION**, which is the same guard the conditions have
-       * and for the same reason: nothing else can be the subject of a warning. Two keys with no
-       * context at all are the same key, and a property compared against itself at one slot is
-       * silent. Every longhand such a shorthand names goes in with it, since the warning names those
-       * without ever having seen a class for one — including one written in another module, which is
-       * how a conditional `padding` here warns about a plain `padding-left` there.
+       * **For a declaration under a condition, and for every one in a block that SPREADS another.**
+       * It was only those under a condition, on the reasoning that nothing else can be the subject
+       * of a warning — and the subject the warning names FIRST is the later declaration, which
+       * usually has none. Found by the second trial: a plain `border-color` after a spread whose
+       * `border` sat under `@media print` came out as `` `bc` ``. A block that spreads is where a
+       * later declaration meets an earlier one from elsewhere, so its declarations are named too;
+       * a block that spreads nothing adds nothing to a module that registered nothing before.
+       * (`mergeClassNames(a, b)` at a call site is the case left: `ramonda-css` reports it, with a
+       * line, as `override-out-of-order`.) Every longhand a shorthand names goes in with it, since
+       * the warning names those without ever having seen a class for one. A selector's declaration
+       * is never compared, so it is never named.
        */
       const namesFor = (declaration: AtomicDeclaration): void => {
-        if (declaration.conditions.length === 0 || declaration.selector !== "") return;
+        if (declaration.selector !== "" || (declaration.conditions.length === 0 && !spreads)) return;
 
         const written = writableProperty(declaration.property);
         if (written !== undefined) namesUsed.set(written, declaration.property);

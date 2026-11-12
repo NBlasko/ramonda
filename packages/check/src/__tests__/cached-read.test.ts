@@ -23,6 +23,8 @@ describe("a cached read of a plain field", () => {
     expect(found.map((issue) => `${issue.named}:${issue.field}:${issue.writtenBy}`)).toEqual([
       "total:rate:start",
       "form:rate:start",
+      "formSelf:rate:start",
+      "formDestructured:rate:start",
       "total:rate:bump",
       "total:rate:bump",
     ]);
@@ -69,6 +71,8 @@ describe("a cached read of a plain field", () => {
     const found = run().findings["cached-read-of-a-plain-field"];
     expect(found.map((issue) => issue.reader)).toEqual([
       "a `@compute`",
+      "a props callback",
+      "a props callback",
       "a props callback",
       "a `@compute`",
       "a `@compute`",

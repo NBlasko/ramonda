@@ -47,6 +47,22 @@ Each replaces every block with something that parses, runs your own tool, and pu
 the indentation the tool chose. **Exclude the files that hold a block from those tools' own runs**,
 or they refuse the file before a wrapper can help.
 
+### Reading the result from a program
+
+`--json` prints what the type check, `lint` or `format --check` found as one JSON object on stdout, with
+the same exit code — the shape [`ramonda-check --json`](/reference/check#reading-the-result-from-a-program)
+prints. A TypeScript error's `code` is `TS` and its number, a CSS rule's is its name, a block that could
+not be read is `unreadable-block`, and a file `format --check` would rewrite is `not-formatted`.
+
+```bash
+ramonda-css --json
+ramonda-css lint src --json
+ramonda-css format --check src --json
+```
+
+`format --json` without `--check` is refused before anything is written: a formatting run rewrites
+files, and has nothing to report.
+
 And the editor formats the buffer, not the file. `ramonda-css format --stdin-file-path <path>` is
 what the extension runs: an editor asks a formatter about the text on screen, and a formatter pointed
 at a path would format what was last saved and hand back edits computed against text you have since

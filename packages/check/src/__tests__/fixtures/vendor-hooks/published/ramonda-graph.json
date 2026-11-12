@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "scope": "library",
+  "package": {
+    "name": "@acme/hooks",
+    "version": "1.0.0"
+  },
+  "hash": "sha256:404a87333c48cf90b59136263a505291b21ce9e3e0bc3f8e5b23439d3089b662",
+  "describes": {
+    "file": "published/index.d.ts",
+    "hash": "sha256:28b162c075b98aa465d404c2ec4c301ac63cb24ee451f7db409f6eccb8ed97b6"
+  },
+  "nodes": [
+    {
+      "id": "@acme/hooks/src/index.tsx#Fetching",
+      "kind": "hook",
+      "name": "Fetching",
+      "at": "@acme/hooks/src/index.tsx:7:1",
+      "exported": true,
+      "stableProps": ["key"]
+    },
+    {
+      "id": "@acme/hooks/src/index.tsx#Grid",
+      "kind": "component",
+      "name": "Grid",
+      "at": "@acme/hooks/src/index.tsx:12:1",
+      "exported": true,
+      "stableProps": ["conf"]
+    },
+    {
+      "id": "@acme/hooks/src/index.tsx#Plain",
+      "kind": "hook",
+      "name": "Plain",
+      "at": "@acme/hooks/src/index.tsx:10:1",
+      "exported": true
+    },
+    {
+      "id": "@acme/hooks/src/index.tsx#Table",
+      "kind": "component",
+      "name": "Table",
+      "at": "@acme/hooks/src/index.tsx:19:1",
+      "exported": true
+    }
+  ],
+  "edges": []
+}

@@ -5,7 +5,7 @@ export type RouteParams = Record<string, string>;
 /**
  * The `:param` names a pattern declares, at the type level.
  *
- * Here rather than in `createRouter.ts` because BOTH sides need it now and `createRouter` imports
+ * Here rather than in `registry.ts` because BOTH sides need it now and `registry.ts` imports
  * from `Router.tsx`, so a type living there could not travel back. `match.ts` is the leaf: it owns
  * `RouteParams` and `compilePattern`, which is the runtime half of exactly this question.
  */
@@ -90,7 +90,7 @@ interface CompiledRoute {
  *
  * `Paths` is a PHANTOM type parameter — nothing at runtime carries it. It exists so
  * `createRoutes` can remember the literal path keys it was given (`"/" | "/u/:id"`),
- * and `createRouter` can type `<Link href>` and `route()` against them. It defaults to
+ * and the registration can type `<Link href>` and `route()` against them. It defaults to
  * `string`, so every existing consumer that takes a plain `RouteConfig` keeps working
  * and a `RouteConfig<"/a" | "/b">` is assignable to `RouteConfig` (a narrower phantom is
  * assignable to the wider default).
@@ -98,7 +98,7 @@ interface CompiledRoute {
 export interface RouteConfig<Paths extends string = string> {
   compiled: CompiledRoute[];
   fallback: VNode | undefined; // the "*" route
-  /** Phantom: the literal path union, read by `createRouter`. Never set at runtime. */
+  /** Phantom: the literal path union, read by the registration. Never set at runtime. */
   readonly __paths?: Paths;
 }
 

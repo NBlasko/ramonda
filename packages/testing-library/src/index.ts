@@ -1,3 +1,5 @@
+// jsdom has no layout; its scroll methods print "Not implemented" — see `jsdom.ts`.
+import "./jsdom";
 /**
  * Testing utilities for Ramonda, built on the DOM Testing Library.
  *

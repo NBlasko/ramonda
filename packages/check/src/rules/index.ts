@@ -32,6 +32,9 @@ import { unnamedFrame } from "./unnamed-frame";
 import { positiveTabIndex } from "./positive-tabindex";
 import { linkWithoutADestination } from "./link-without-a-destination";
 import { freshObjectInHookProps } from "./fresh-object-in-hook-props";
+import { unknownHookOption } from "./unknown-hook-option";
+import { functionBuiltInHookProps } from "./function-built-in-hook-props";
+import { fieldReadBeforeItIsDeclared } from "./field-read-before-it-is-declared";
 import { freshValueFromAWatchSelector } from "./fresh-value-from-a-watch-selector";
 import { freshObjectInProps } from "./fresh-object-in-props";
 import { functionUsedAsATag } from "./function-used-as-a-tag";
@@ -81,6 +84,7 @@ import { devGuardAsAnExpression } from "./dev-guard-as-an-expression";
 import { unkeyableMemoizedArgument } from "./unkeyable-memoized-argument";
 import { asyncRender } from "./async-render";
 import { computeTakesNoArguments } from "./compute-takes-no-arguments";
+import { markupHelperInRender } from "./markup-helper-in-render";
 import { cachedReadOfAPlainField } from "./cached-read-of-a-plain-field";
 import { watchOfAPropThatIsNotThere } from "./watch-of-a-prop-that-is-not-there";
 import { browserUrl } from "./browser-url";
@@ -157,6 +161,9 @@ export { unnamedFrame, type UnnamedFrameIssue } from "./unnamed-frame";
 export { positiveTabIndex, type PositiveTabIndexIssue } from "./positive-tabindex";
 export { linkWithoutADestination, type LinkWithoutADestinationIssue } from "./link-without-a-destination";
 export { freshObjectInHookProps, type FreshObjectInHookPropsIssue } from "./fresh-object-in-hook-props";
+export { unknownHookOption, type UnknownHookOptionIssue } from "./unknown-hook-option";
+export { functionBuiltInHookProps, type FunctionBuiltInHookPropsIssue } from "./function-built-in-hook-props";
+export { fieldReadBeforeItIsDeclared, type FieldReadBeforeItIsDeclaredIssue } from "./field-read-before-it-is-declared";
 export {
   freshValueFromAWatchSelector,
   type FreshValueFromAWatchSelectorIssue,
@@ -277,6 +284,7 @@ export { oneProviderPerComponent, type OneProviderPerComponentIssue } from "./on
 export { lensPathThroughAGap, type LensPathThroughAGapIssue } from "./lens-path-through-a-gap";
 export { unexposedEnvRead, type UnexposedEnvReadIssue } from "./unexposed-env-read";
 export { computeTakesNoArguments, type ComputeTakesNoArgumentsIssue } from "./compute-takes-no-arguments";
+export { markupHelperInRender, type MarkupHelperInRenderIssue } from "./markup-helper-in-render";
 export { rowReadsAPlainField, type RowReadsAPlainFieldIssue } from "./row-reads-a-plain-field";
 export { serverEnvInSharedCode, type ServerEnvInSharedCodeIssue } from "./server-env-in-shared-code";
 export { clientOnlyBecause, isServerOnly } from "./lifecycle-env";
@@ -298,6 +306,7 @@ export { rootsIn, treeFor } from "./tree";
 export const CLASS_RULES = [
   propsWrittenByTheReceiver,
   computeTakesNoArguments,
+  markupHelperInRender,
   asyncRender,
   stateWrittenWhileRendering,
   stateMutatedInPlace,
@@ -325,7 +334,10 @@ export const CLASS_RULES = [
   oneProviderPerComponent,
   serverEnvInSharedCode,
   freshObjectInHookProps,
+  functionBuiltInHookProps,
+  fieldReadBeforeItIsDeclared,
   freshValueFromAWatchSelector,
+  unknownHookOption,
 ] as const;
 
 /** Every rule that reads a FILE. Same arrangement, different subject. */

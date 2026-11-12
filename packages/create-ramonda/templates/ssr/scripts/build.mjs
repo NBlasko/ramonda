@@ -26,16 +26,21 @@ import { join } from "node:path";
 import { build } from "esbuild";
 import { ramonda, ramondaOptions, ramondaDefine } from "@ramonda/build/esbuild";
 
+// A production build, whatever the shell exports: `ramondaDefine` takes `import.meta.env.DEV` from
+// `NODE_ENV`, and a shell with `NODE_ENV=development` would otherwise ship every development branch.
+process.env.NODE_ENV = "production";
+
 const shared = {
   ...ramondaOptions,
   bundle: true,
   format: "esm",
-  // The production condition picks `@ramonda/core`'s optimized build, and `__DEV__` compiles the
-  // development-only branches out of your own code.
+  // The production condition picks each package's optimized build, and `ramondaDefine` — with
+  // `NODE_ENV` set above — makes `import.meta.env.DEV` false, which compiles your own
+  // development-only branches out.
   conditions: ["production"],
   // Through `ramondaDefine` because writing `define` plainly would drop the entries that make
   // `import.meta.env.RAMONDA_PUBLIC_*` readable — see its own note.
-  define: ramondaDefine({ __DEV__: "false" }),
+  define: ramondaDefine(),
   // `ramonda()` compiles the JSX, as the dev server's plugin does, so production runs the same code.
   // Another bundler plugin goes after it, in both builds at once — `@ramonda/css`'s, for instance.
   plugins: [ramonda()],
@@ -77,6 +82,10 @@ const client = await build({
   outfile: "dist/client/assets/client.js",
   // So the build says which stylesheet it wrote, rather than this script guessing a file name.
   metafile: true,
+  // What crosses the network: unminified, a fifth bigger even compressed. The map beside it keeps a
+  // production stack trace pointing at your own files. Nothing here depends on a class's name.
+  minify: true,
+  sourcemap: true,
 });
 
 await build({

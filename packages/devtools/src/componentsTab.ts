@@ -1,5 +1,5 @@
 import { escapeHtml, safeStringify, toOneLine, toServerPath } from "./format";
-import { INLINE, renderJsonHtml } from "./jsonView";
+import { INLINE, renderJsonHtml, Phrase } from "./jsonView";
 import type { ValueView } from "./valueView";
 import { FILTER_KEY, HIDE_HOOKS_KEY, HIDE_VALUES_KEY, PIN_KEY, read, write, writeSession } from "./session";
 import { brand, icon } from "@ramonda/theme";
@@ -30,6 +30,8 @@ interface InspectedNode {
   reads?: Record<string, unknown>;
   /** Per `@compute`: reads the cache answered, and reads that ran the body. */
   computes?: Record<string, { hits: number; misses: number }>;
+  /** What each `@compute` holds now — only the current ones; core leaves a stale one out. */
+  computeValues?: Record<string, unknown>;
   /** Where the class is defined, when core could tell. */
   source?: SourceLocation;
   hooks: InspectedNode[];
@@ -159,12 +161,14 @@ const shortFile = (source: SourceLocation): string => {
  */
 function cacheSummary(
   computes: Record<string, { hits: number; misses: number }> | undefined,
-): Record<string, string> | undefined {
+): Record<string, Phrase> | undefined {
   if (!computes) return undefined;
-  let out: Record<string, string> | undefined;
+  let out: Record<string, Phrase> | undefined;
   for (const [member, { hits, misses }] of Object.entries(computes)) {
     const reads = hits + misses;
-    (out ??= {})[member] = hits === 0 ? `never cached — ran on all ${reads} reads` : `${hits} of ${reads} reads cached`;
+    (out ??= {})[member] = new Phrase(
+      hits === 0 ? `never cached — ran on all ${reads} reads` : `${hits} of ${reads} reads cached`,
+    );
   }
   return out;
 }
@@ -448,7 +452,11 @@ export class ComponentsTab {
       const readsHtml = this.renderValueBlock("Reads from context", n.reads, path, "r", acc);
       // Read-only, and phrased rather than tabulated: two raw numbers make the reader do the
       // division, and the answer they want is "is this cache doing anything".
-      const computesHtml = this.renderValueBlock("Computed", cacheSummary(n.computes), path, "c", acc);
+      // What each compute HOLDS, then what its cache did, under headings of their own: the counters
+      // alone, under "Computed", read as the getters' values — found by the second trial.
+      const computesHtml =
+        this.renderValueBlock("Computed", n.computeValues, path, "cv", acc) +
+        this.renderValueBlock("Cache", cacheSummary(n.computes), path, "c", acc);
 
       const hooksHtml = this.walkTree(n.hooks, `${path}|h`, acc);
       const childrenHtml = this.walkTree(n.children, path, acc);

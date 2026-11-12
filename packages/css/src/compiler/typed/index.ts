@@ -7,6 +7,7 @@ import { neverUsed, overriddenBelow } from "./styleProp";
 import { styleMakesOneUp, styleSetsADeclared } from "./styleAttribute";
 import ts from "typescript";
 import { wholeAcrossBlocks } from "./cascade";
+import { orderAcrossBlocks } from "./order";
 
 /**
  * The rules that need a `ts.Program`, which is what separates them from every rule in `rules/`.
@@ -50,6 +51,7 @@ export const TYPED_RULES = [
   "state-is-a-tuple",
   "allow-list-is-an-interface",
   "narrower-after-a-whole-shorthand",
+  "override-out-of-order",
   "allow-list-not-css",
   "token-set-against-its-declaration",
   "unknown-custom-property",
@@ -114,6 +116,8 @@ export function typedFindingsFor(
   // The compiler asks this inside ONE block; across blocks the spread is a value, and only a
   // program can follow it to the block it names.
   wholeAcrossBlocks(checker, file, helpers, report);
+  // The same for a condition the sheet emits last — what the merge could only warn about in dev.
+  orderAcrossBlocks(checker, file, helpers, report);
   allowListNotCss(checker, file, report);
   // A cast is written anywhere a value is, and needs no block in the file to be one.
   castToABlock(checker, file, helpers?.block, report);

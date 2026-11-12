@@ -37,6 +37,7 @@ import { diffChildrenOf, holdsARegion } from "./DiffAndMerge";
 import { normalizeChildren } from "../vdom/h";
 import { COMPONENT_RUNTIME } from "./runtime";
 import { checkNesting } from "../debug/domNesting";
+import { SOURCE, type Source } from "../debug/source";
 import type { MaybeComponent, VNodeString } from "../types/vdom";
 
 export { BLOCK };
@@ -52,6 +53,12 @@ export interface TemplateNode {
   readonly k?: number;
   /** On the root only: the hole holding the block's key, which the compiler keeps in source order. */
   readonly y?: number;
+  /**
+   * In a development build: the file, on the root, and each element's line and column — where the tag was
+   * written, as `jsxDEV` is told it. Read by RMD020 through `viewOf`; nothing else looks at it.
+   */
+  readonly f?: string;
+  readonly l?: readonly [number, number];
 }
 
 /** One element with holes: its path from the root, and what of it is a hole. */
@@ -526,6 +533,7 @@ export interface BlockView {
  */
 export function viewOf(vnode: BlockVNode): BlockView {
   const { template, values } = vnode[BLOCK];
+  const file = template.description.f;
   const view = (node: TemplateNode, root: boolean): BlockView => {
     const attributes: Record<string, unknown> = { ...node.a };
     if (root && vnode.attributes.key != null) attributes.key = vnode.attributes.key;
@@ -536,7 +544,12 @@ export function viewOf(vnode: BlockVNode): BlockView {
     if (node.h !== undefined)
       children = isText(values[node.h]) ? [String(values[node.h])] : (values[node.h] as unknown[]);
     if (node.k !== undefined) children = values[node.k] as unknown[];
-    return { name: node.t.toUpperCase(), attributes, children };
+    const seen: BlockView = { name: node.t.toUpperCase(), attributes, children };
+    // Where it was written, as an element `jsxDEV` built carries it — so RMD020 names the line here too.
+    if (__DEV__ && file !== undefined && node.l !== undefined) {
+      (seen as { [SOURCE]?: Source })[SOURCE] = { fileName: file, lineNumber: node.l[0], columnNumber: node.l[1] };
+    }
+    return seen;
   };
   return view(template.description, true);
 }

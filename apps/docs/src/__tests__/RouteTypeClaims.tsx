@@ -16,7 +16,7 @@
  * beside it widened the literals straight back. That is the shape to watch for — an `as const` is
  * only as narrow as the annotation next to it lets it be.
  */
-import { Link } from "../routes";
+import { Link } from "@ramonda/router";
 
 export function claims() {
   return (

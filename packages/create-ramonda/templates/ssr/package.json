@@ -8,6 +8,7 @@
     "build:bundles": "node scripts/build.mjs",
     "typecheck": "tsc --noEmit",
     "build": "ramonda-check && npm run typecheck && npm run build:bundles && node scripts/prerender.mjs && ramonda-check-bundle dist",
+    "build:static": "npm run build && node scripts/build-static.mjs",
     "start": "node server.mjs --prod"
   }
 }

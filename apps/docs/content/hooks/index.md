@@ -172,8 +172,15 @@ and the owner is expensive to draw, a child component may be the better shape.
 
 A hook's options come back from a callback, and TypeScript infers their type from what the callback
 returns. So a key the hook does not take — a typo, or an option from another library — compiles,
-and the hook ignores it. Name the options type as the callback's return type, and the key is checked
-like any other object literal:
+and the hook ignores it.
+
+[`ramonda-check`](/reference/check) reports it, as
+[`unknown-hook-option`](/rules/unknown-hook-option), for every hook: one of yours, one from an
+installed package, a context Provider. It names the option you probably meant —
+`staleTimee` is `staleTime` — or lists the ones the hook takes.
+
+To have the editor refuse it as you type, name the options type as the callback's return type, and
+the key is checked like any other object literal:
 
 ```tsx
 import { Component, Head, type HeadOptions } from "@ramonda/core";
@@ -191,7 +198,7 @@ class Players extends Component {
 ```
 
 With the annotation, `robots: "noindex"` beside `title` is refused where it is written; without it,
-the page renders with no robots tag and nothing says why.
+`ramonda-check` reports it when the build runs.
 
 ## A hook can return markup
 

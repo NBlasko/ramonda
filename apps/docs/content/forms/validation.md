@@ -162,7 +162,7 @@ so narrowing would trade a correct message for microseconds.
 A field's `errors` are the messages, one sentence each in the validator's language. Its `issues`
 are the same failures with everything the schema put on them — the `message`, and anything beside
 it: a validator's key for the failure, what it expected. A translation maps the key, and the app
-renders its own sentence:
+renders its own sentence — from the dictionary [Translations](/translations) builds:
 
 ```tsx
 import type { FieldIssue } from "@ramonda/form";
@@ -280,18 +280,22 @@ after a newer one has already answered is dropped rather than overwriting it.
 
 ## Errors the schema cannot know
 
-"That address is already registered" lives on the server. `setError` puts one on a field:
+"That address is already registered" lives on the server. A field's own `setError` puts one on it:
 
 ```tsx
 async save(values: Signup) {
   const answer = await register(values);
-  if (!answer.ok) this.form.setError("email", "that address is already registered");
+  if (!answer.ok) this.form.fields.email.$.setError("that address is already registered");
 }
 ```
 
-The path is a string here, because the message often comes back from an API that names fields
-as strings. It is cleared by the next validation of that field — which is what you want: the
-message goes away as soon as the reader changes the thing it is about.
+The field is reached the way every field is, so a name that is not in the schema is a type error. When
+the API names the field itself — `{ field: "email", message: … }` — `this.form.setError(answer.field,
+answer.message)` takes the path as the string it arrived as.
+
+Either way the message marks the field touched, so it shows, and the next validation of that field
+clears it — which is what you want: the message goes away as soon as the reader changes the thing it
+is about.
 
 If `onSubmit` throws instead of handling its own failure, the form reports
 [RMF003](/reference/diagnostics/rmf003) in development and leaves `isSubmitting`

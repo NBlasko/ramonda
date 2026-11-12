@@ -1,4 +1,4 @@
-import type { ComponentGraph } from "./graph";
+import { type ComponentGraph, fromAnotherPackage } from "./graph";
 
 /**
  * The graph as one self-contained HTML file.
@@ -28,7 +28,12 @@ import type { ComponentGraph } from "./graph";
  *   nothing else surfaces. Drawn dashed: a path that exists in the source and may never be taken.
  */
 export function graphHtml(graph: ComponentGraph): string {
-  const data = JSON.stringify(graph);
+  // Which nodes are another package's, decided once here — see `fromAnotherPackage` — so the picture
+  // and the CLI's count cannot disagree about it.
+  const data = JSON.stringify({
+    ...graph,
+    foreign: graph.nodes.filter((node) => fromAnotherPackage(graph, node.id)).map((node) => node.id),
+  });
   return `<!doctype html>
 <meta charset="utf-8">
 <title>${escapeHtml(graph.package.name)} — component graph</title>
@@ -102,6 +107,10 @@ ${VIEWER}
 const VIEWER = String.raw`
 const graph = JSON.parse(document.getElementById("graph").textContent);
 const byId = new Map(graph.nodes.map((n) => [n.id, n]));
+// Declared in another package: one nothing reaches is that package's unused export, not dead code
+// in this app, so it gets a band of its own below the app's.
+const FOREIGN = new Set(graph.foreign ?? []);
+const UNUSED_PACKAGE = 1e9;
 const out = new Map();
 for (const e of graph.edges) {
   if (!byId.has(e.from) || !byId.has(e.to)) continue;
@@ -138,7 +147,10 @@ for (let i = 0; i < queue.length; i++) {
  * a backtick in a comment closes it. Cost one build.
  */
 function labelOf(node) {
-  const own = node.id.slice(node.id.lastIndexOf("#") + 1);
+  // A ROOT is named by its call, and a second call of the same name in one file has an id ending
+  // in a dollar and a number, which is the graph's bookkeeping and not a name anybody wrote.
+  const tail = node.id.slice(node.id.lastIndexOf("#") + 1);
+  const own = node.kind === "root" ? tail.replace(/[$][0-9]+$/, "") : tail;
   const name = node.name ?? own;
   // A ROUTE OUTLET SITE is minted as file#RouteOutlet@n and carries kind "component" plus the
   // component's own name, so two boxes read RouteOutlet and one of them is a USE rather than a
@@ -173,7 +185,7 @@ function draw() {
   const onlyLost = document.getElementById("onlyLost").checked;
   const shown = graph.nodes.filter((n) => {
     if (hideHelpers && n.kind === "helper") return false;
-    if (onlyLost && depth.has(n.id)) return false;
+    if (onlyLost && (depth.has(n.id) || FOREIGN.has(n.id))) return false;
     return true;
   });
   const visible = new Set(shown.map((n) => n.id));
@@ -182,7 +194,9 @@ function draw() {
   // see LIBRARY above for why depth is not a question its graph can answer.
   const bands = new Map();
   for (const n of shown) {
-    const key = LIBRARY ? (n.exported ? 0 : 1) : depth.has(n.id) ? depth.get(n.id) : Infinity;
+    const key = LIBRARY
+      ? (n.exported ? 0 : 1)
+      : depth.has(n.id) ? depth.get(n.id) : FOREIGN.has(n.id) ? UNUSED_PACKAGE : Infinity;
     (bands.get(key) ?? bands.set(key, []).get(key)).push(n);
   }
   const order = [...bands.keys()].sort((a, b) => a - b);
@@ -210,6 +224,7 @@ function draw() {
     const first = place.get(bands.get(key)[0].id);
     const label = LIBRARY
       ? key === 0 ? "exported — an app can mount these" : "internal to the package"
+      : key === UNUSED_PACKAGE ? "from packages, not used by this app — not dead code"
       : key === Infinity ? "nothing reaches these" : key === 0 ? "roots" : "depth " + key;
     parts.push('<text class="band" x="' + PAD + '" y="' + (first.y - 8) + '">' + label + "</text>");
   }

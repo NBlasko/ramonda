@@ -159,7 +159,20 @@ const card = <div className={@@(
 
 At 40rem and up the element is blue, in dark mode too — the breakpoint is further down the list.
 
-**Write it the other way round and you are told, at run time in development:**
+**Write it the other way round and it is refused**, on the line you wrote — by `ramonda-css` and
+in the editor, which follow the spread to the block it names, in this file or another:
+
+```tsx
+const base = @@( @media (min-width: 40rem) { color: blue; } );
+
+const card = @@(
+  ...$(base);
+  @media (prefers-color-scheme: dark) { color: white; }
+);
+```
+
+The same goes for `mergeClassNames(base, modifier)`. What the check cannot follow — a block that
+arrives as a prop, or is chosen at run time — the merge still warns about, in development only:
 
 ```
 [@ramonda/css] `color` is composed later under `@media (prefers-color-scheme: dark)` than under
@@ -167,10 +180,6 @@ At 40rem and up the element is blue, in dark mode too — the breakpoint is furt
 condition last, so the earlier one wins wherever both apply. Put the two under one condition, or
 compose them the other way round.
 ```
-
-Inside one block that is a build error instead, on the line you wrote. Across a reuse it can only be
-a run-time warning: what is in `...$(base)` is a value, and the compiler does not know it. It is said
-once, and it is not in a production build at all.
 
 ## The one place the stylesheet decides instead of you
 

@@ -1,5 +1,5 @@
 import { Panel } from "./inherited";
-import { Component, bootstrap, compute, list, memoized, mounted, state } from "@ramonda/core";
+import { Component, Hook, bootstrap, compute, list, memoized, mounted, state } from "@ramonda/core";
 import { plainLabel, stampedLabel } from "./format";
 
 declare const items: { id: string; label: string }[];
@@ -89,6 +89,10 @@ class Untimed extends Component {
         <div>
           {/* REPORTED — written in the body. */}
           <span>{Math.random()}</span>
+          {/* REPORTED — the platform's own random id, and its random bytes: the runtime's RMD021
+              names both, and the rule knew only `Math.random()`. */}
+          <span>{crypto.randomUUID()}</span>
+          <span>{crypto.getRandomValues(new Uint8Array(1))[0]}</span>
           {/* REPORTED — the argument-less form asks what time it is. */}
           <span>{new Date().toISOString()}</span>
           {/* NOT reported — parsing a timestamp is deterministic. */}
@@ -214,6 +218,30 @@ class OverridesIt extends OverriddenBase {
   }
 }
 
+/**
+ * A hook's props callback is cached on the signals it reads, so a random number or a clock read there
+ * is frozen into the props until something unrelated runs the callback again — and then it jumps. The
+ * runtime reports the random half as RMD021, measured; this rule read only renders.
+ */
+class Seeded extends Hook<{ seed: unknown; at?: unknown; later?: unknown }> {}
+class InTheCallback extends Component {
+  @state tick = 0;
+  // REPORTED, both — read while the callback builds the props, in a callback that runs again.
+  seeded = this.use(Seeded, (self: InTheCallback) => ({ seed: Math.random(), at: Date.now(), later: self.tick }));
+  // REPORTED — a random number differs between two calls in one tick, so the runtime reports it
+  // (RMD021) even where nothing can run the callback again. Measured.
+  random = this.use(Seeded, () => ({ seed: Math.random() }));
+  // NOT reported — a clock read in a callback that reads nothing, in an app that renders only in the
+  // browser, is taken once and kept. On a server-rendered page it is reported: see `fixtures/clock-ssr`.
+  once = this.use(Seeded, () => ({ seed: 1, at: Date.now() }));
+  // NOT reported — handed over, and run later by the hook rather than by the callback.
+  later = this.use(Seeded, () => ({ seed: 1, later: () => Date.now() }));
+  render() {
+    return <i />;
+  }
+}
+
 bootstrap(<OverridesIt />, null);
+bootstrap(<InTheCallback />, null);
 bootstrap(<OtherPaths />, null);
 bootstrap(<ThroughSuper />, null);

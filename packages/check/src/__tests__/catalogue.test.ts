@@ -83,6 +83,11 @@ describe("the rule catalogue", () => {
       because:
         "`@persist`, which claims the blob whatever the project does, and `@state`, which only crosses under SSR",
     },
+    RMD022: {
+      rules: ["fresh-object-in-hook-props", "function-built-in-hook-props"],
+      because:
+        "an object or array rebuilt in a hook's props callback, which `@StableProps` can settle, and a function, which it cannot",
+    },
     RMD028: {
       rules: ["parent-with-a-foreign-child", "tag-needs-its-parent"],
       because:

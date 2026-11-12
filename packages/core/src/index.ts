@@ -24,6 +24,7 @@ export type { AsyncLoadProps, AsyncLoadFailure, Lazy } from "./base/AsyncLoad";
 export { Select } from "./base/Select";
 export type { SelectProps } from "./base/Select";
 export { TextArea } from "./base/TextArea";
+export { forwarded } from "./base/forwarded";
 export type { TextAreaProps } from "./base/TextArea";
 export { list } from "./base/list";
 export type { Each, ItemRender } from "./base/list";

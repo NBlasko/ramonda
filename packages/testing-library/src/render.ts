@@ -8,7 +8,8 @@ import {
   type queries as defaultQueries,
 } from "@testing-library/dom";
 import { act } from "./act";
-import { trackMountedTree, unmountTracked } from "./cleanup";
+import { trackMountedTree, unmountTracked, rememberAddress } from "./cleanup";
+import { requireHarness } from "./harness";
 
 /**
  * A component class usable as a wrapper: it renders whatever it is given.
@@ -33,6 +34,12 @@ export interface RenderOptions {
    * test renders somewhere outside its own container.
    */
   baseElement?: HTMLElement;
+  /**
+   * The address to mount the tree at — `"/tournament?id=t1"`, or a whole URL on the same origin. Set
+   * with `history.replaceState` before anything is mounted, so a router reads it as the page it was
+   * opened on. `cleanup` puts back the address it replaced, so the next test is not on this page.
+   */
+  url?: string;
   /**
    * A component to wrap the tree in — a context provider, a router shell,
    * anything the component under test needs above it. It receives the rendered
@@ -108,6 +115,11 @@ export interface RenderResult<T = unknown> extends BoundFunctions<typeof default
  * Library convention, so anything rendered outside the container is still found.
  */
 export function render<T = unknown>(ui: VNode, options: RenderOptions = {}): RenderResult<T> {
+  requireHarness();
+  if (options.url !== undefined) {
+    rememberAddress();
+    window.history.replaceState(null, "", options.url);
+  }
   const baseElement = options.baseElement ?? document.body;
   const containerIsOurs = options.container === undefined;
 

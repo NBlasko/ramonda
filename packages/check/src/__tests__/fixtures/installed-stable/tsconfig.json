@@ -1,0 +1,10 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "paths": {
+      "@acme/hooks": ["../vendor-hooks/published/index.d.ts"],
+      "@ramonda/core": ["../framework.ts"]
+    }
+  },
+  "include": [".", "../framework.ts", "../jsx-runtime.ts"]
+}

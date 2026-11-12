@@ -1,5 +1,5 @@
 import ts from "typescript";
-import { hookNamed, isThisUse, positionOf } from "../syntax";
+import { callbackOwner, hookNamed, isHandedOver, isLocalRead, isThisUse, positionOf } from "../syntax";
 import { hasDecorator, heritage } from "./render-reach";
 import { freshnessOf, shorten } from "./follow-value";
 import { stablePropsOf } from "./fresh-object-in-props";
@@ -79,7 +79,13 @@ export interface FreshObjectInHookPropsIssue {
  * Answers the read as WRITTEN, because the report has to name it: "rebuilt whenever `this.theme`
  * changes" is a sentence a reader can act on, where "it is reactive" is not.
  */
-function reactiveReadIn(body: ts.Node, cls: ts.ClassDeclaration, resolve: RuleContext["resolve"]): string | undefined {
+export function reactiveReadIn(
+  body: ts.Node,
+  cls: ts.ClassDeclaration,
+  resolve: RuleContext["resolve"],
+  outside?: ts.Node | readonly ts.Node[],
+): string | undefined {
+  const excluded = outside === undefined ? [] : Array.isArray(outside) ? outside : [outside as ts.Node];
   const reactive = new Set<string>();
   // The class ITSELF and then its bases: `heritage` answers the chain ABOVE a class, and reading
   // only that found nothing at all — a component's own `@state` is where this fires most.
@@ -103,14 +109,34 @@ function reactiveReadIn(body: ts.Node, cls: ts.ClassDeclaration, resolve: RuleCo
     }
   }
 
+  // `this`, the parameter, or the parameter destructured — see `callbackOwner`.
+  const owner = callbackOwner(body);
+  const destructured = owner.destructured;
+  const isOwner = owner.is;
+
   let found: string | undefined;
   (function look(node: ts.Node): void {
     if (found !== undefined) return;
+    // A read INSIDE the value is what the value is made of: `key: ["todo", self.props.id]` differs
+    // whenever `id` does, which is the point of it. Only a read elsewhere can run the callback again
+    // and rebuild the value with nothing in it changed.
+    if (excluded.includes(node)) return;
+    // A function handed over in the bag is not run by the callback, so what it reads is not read here.
+    if (isHandedOver(node)) return;
+    if (ts.isIdentifier(node) && destructured.has(node.text) && isLocalRead(node)) {
+      const member = destructured.get(node.text) as string;
+      if (member === "props" || reactive.has(member)) {
+        found = node.text;
+        return;
+      }
+    }
+    // Through the owner, or through the parameter's rest copy — `{ ...all }` read `all.tick` at the call.
     if (
       ts.isPropertyAccessExpression(node) &&
-      node.expression.kind === ts.SyntaxKind.ThisKeyword &&
+      (isOwner(node.expression) || owner.isRest(node.expression, resolve)) &&
       ts.isIdentifier(node.name)
     ) {
+      const written = node.expression.getText();
       // Every prop is a signal, so any read under `this.props` counts — named down to the prop
       // itself when one is written, because "this.props changes" is not a sentence anyone can act
       // on and `this.props.id` is.
@@ -118,12 +144,12 @@ function reactiveReadIn(body: ts.Node, cls: ts.ClassDeclaration, resolve: RuleCo
         const parent = node.parent;
         found =
           ts.isPropertyAccessExpression(parent) && parent.expression === node
-            ? `this.props.${parent.name.getText()}`
+            ? `${written}.props.${parent.name.getText()}`
             : "a prop";
         return;
       }
       if (reactive.has(node.name.text)) {
-        found = `this.${node.name.text}`;
+        found = `${written}.${node.name.text}`;
         return;
       }
     }
@@ -134,7 +160,7 @@ function reactiveReadIn(body: ts.Node, cls: ts.ClassDeclaration, resolve: RuleCo
 }
 
 /** The props bag a callback hands back, when it hands back one this can read. */
-function bagOf(factory: ts.Expression): ts.ObjectLiteralExpression | undefined {
+export function bagOf(factory: ts.Expression): ts.ObjectLiteralExpression | undefined {
   if (!ts.isArrowFunction(factory) && !ts.isFunctionExpression(factory)) return undefined;
 
   const body = factory.body;
@@ -218,7 +244,9 @@ export const freshObjectInHookProps = {
       const hook = hookNamed(call.arguments[0]);
       const bag = bagOf(call.arguments[1]);
       if (bag === undefined) continue;
-      if (!declarationIsReadable(hook, resolve)) continue;
+      // An installed hook can be judged only where its package's graph says what it declared — a
+      // missing declaration and an invisible one are otherwise the same, and neither may be reported.
+      if (!declarationIsReadable(hook, resolve) && resolve.installedStableProps(hook) === undefined) continue;
 
       const settled = stablePropsOf(hook, resolve);
       // Everything up to the last spread may be overwritten by it, exactly as in JSX.
@@ -226,8 +254,6 @@ export const freshObjectInHookProps = {
         (at, property, index) => (ts.isSpreadAssignment(property) ? index : at),
         -1,
       );
-
-      let rebuiltBecauseOf: string | undefined;
 
       for (const [index, property] of bag.properties.entries()) {
         if (index < lastSpread) continue;
@@ -246,10 +272,45 @@ export const freshObjectInHookProps = {
         const built = freshnessOf(written, resolve, 0);
         if (built === undefined) continue;
 
-        // Asked once per `use`, and only once a literal has been found — the walk costs more than
-        // the question it answers, and most callbacks hold no literal at all.
-        rebuiltBecauseOf ??= reactiveReadIn(call.arguments[1], cls, resolve) ?? "";
-        if (rebuiltBecauseOf === "") break;
+        // Asked per prop, and only once a literal has been found: what can rebuild THIS value is a
+        // reactive read outside it — see `reactiveReadIn`.
+        // The value, and — when it is a local built in the callback, `const key = [...]; return { key }`
+        // — that local's initialiser: what it reads is what it is made of too. Found by review.
+        // Followed through every local it is built from, however many deep: `const id = …; const key =
+        // [id]` is one value made of `id`. The second review found one local was not enough.
+        const madeOf: ts.Node[] = [written];
+        const inCallback = (node: ts.Node) => {
+          for (let at: ts.Node | undefined = node; at !== undefined; at = at.parent)
+            if (at === call.arguments[1]) return true;
+          return false;
+        };
+        for (let index = 0; index < madeOf.length && index < 50; index++) {
+          (function locals(node: ts.Node): void {
+            if (ts.isIdentifier(node)) {
+              // A destructured local, `const { id } = self.props`, is the variable it is taken from.
+              // Found by the third review: only a plain `const id = …` was followed.
+              let local: ts.Node | undefined = resolve(node)?.declarations?.[0];
+              while (
+                local !== undefined &&
+                (ts.isBindingElement(local) || ts.isObjectBindingPattern(local) || ts.isArrayBindingPattern(local))
+              ) {
+                local = local.parent;
+              }
+              if (
+                local !== undefined &&
+                ts.isVariableDeclaration(local) &&
+                local.initializer !== undefined &&
+                inCallback(local) &&
+                !madeOf.includes(local.initializer)
+              ) {
+                madeOf.push(local.initializer);
+              }
+            }
+            ts.forEachChild(node, locals);
+          })(madeOf[index]);
+        }
+        const rebuiltBecauseOf = reactiveReadIn(call.arguments[1], cls, resolve, madeOf);
+        if (rebuiltBecauseOf === undefined) continue;
 
         found.push({
           component: self.name,

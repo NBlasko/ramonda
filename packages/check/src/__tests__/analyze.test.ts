@@ -420,6 +420,17 @@ describe("the composition graph", () => {
    * Leaving it out would make the graph a map with unmarked blanks, which is worse than no map
    * because it is trusted. Every rule computed from this reads the same holes.
    */
+  test("a component and a hook under another name through a CAST are followed, not holes", () => {
+    const { graph, unresolved } = run("holes");
+    expect(unresolved.filter((one) => /`Cast(Hook)?`/.test(one.why))).toEqual([]);
+    const fromApp = graph.edges
+      .filter((e) => e.from.endsWith("#App"))
+      .map((e) => `${e.to?.split("/").pop()} ${e.kind}`);
+    // `Named` and `Cast` render Reader; `Counter` and `CastHook` both use Counter.
+    expect(fromApp.filter((e) => e === "app.tsx#Reader renders")).toHaveLength(2);
+    expect(fromApp.filter((e) => e === "app.tsx#Counter uses")).toHaveLength(2);
+  });
+
   test("a component chosen by a CALL is a recorded hole, not a missing edge", () => {
     const graph = run("holes").graph;
     const hole = graph.edges.find((e) => e.kind === "unresolved");

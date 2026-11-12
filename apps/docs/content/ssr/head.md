@@ -56,13 +56,16 @@ one `<head>` the way many [portals](/composition/portal) share one target.
 | `lang` | `<html lang>` — the language the page is in |
 | `dir` | `<html dir>` — `"ltr"`, `"rtl"` or `"auto"`; any string compiles, so `cond ? "rtl" : "ltr"` needs no annotation |
 
-`meta` takes `MetaTag`s and `link` takes `LinkTag`s — a `<link>` is identified by its `rel` plus its
-`href`, and carries `type`, `sizes`, `crossOrigin` and `hreflang` where they apply.
+`meta` takes `MetaTag`s and `link` takes `LinkTag`s — a `<link>` is identified by its `rel`, its
+`href`, and its `hreflang` and `sizes` when it has them, and carries `type` and `crossOrigin` too. So
+the language alternates of a page can point two languages at one address — `hreflang="x-default"`
+beside the default language's own — and an icon can come in several sizes from one file.
 
 There is no `robots` or `canonical` key — those are a `meta` and a `link`. A key `Head` does not take
-compiles and is ignored, because the options come back from a callback; write the callback as
-`(): HeadOptions => ({ … })` and it is refused where it is written. See [a misspelt option is not a
-type error](/hooks#a-misspelt-option-is-not-a-type-error).
+compiles, because the options come back from a callback, and `Head` ignores it; `ramonda-check`
+reports it as [`unknown-hook-option`](/rules/unknown-hook-option). Write the callback as
+`(): HeadOptions => ({ … })` and the editor refuses it too. See [a misspelt option is not a type
+error](/hooks#a-misspelt-option-is-not-a-type-error).
 
 `title` and `description` come first because they are the two that decide clicks.
 **Set them on every page** — a site whose pages all share one title competes with

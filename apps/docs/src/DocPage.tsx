@@ -1,6 +1,7 @@
+import { textPath } from "../scripts/page-text.mjs";
 import { Component, Head, AsyncLoad } from "@ramonda/core";
 import type { AsyncLoadFailure, RamondaNode } from "@ramonda/core";
-import { Link } from "./routes";
+import { Link } from "@ramonda/router";
 import { EDIT_BASE, neighbours } from "./navigation";
 import type { PageMeta } from "./content-types";
 import { pageLoaders } from "./generated/page-loaders";
@@ -114,6 +115,13 @@ export class DocPage extends Component<DocPageProps> {
               </Link>
             )}
           </div>
+          {/* The page as text — what an agent should read. Found by the second trial: nothing on the
+              HTML page said the Markdown existed, so it was reached only by guessing. */}
+          {this.props.notFound ? null : (
+            <a className="edit-page" href={textPath(this.props.meta.path)}>
+              This page as Markdown
+            </a>
+          )}
           {source === undefined ? null : (
             <a className="edit-page" href={`${EDIT_BASE}${source}`}>
               Edit this page

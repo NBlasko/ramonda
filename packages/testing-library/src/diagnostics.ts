@@ -102,6 +102,18 @@ export function disableFailOnDiagnostics(): void {
  * Registered after each test the way `cleanup` is: through the runner's global hooks, so this package
  * picks no test runner. With no global `afterEach`, there is nothing to hook, and nothing happens.
  */
+/** Whether the check after each test is in place — what `render` asks before it mounts anything. */
+let hooked = false;
+export function diagnosticsHooked(): boolean {
+  return hooked;
+}
+
+/** Whether the project wants the check: neither opt-out was taken. */
+export function failOnDiagnosticsOn(): boolean {
+  const proc = (globalThis as { process?: { env?: Record<string, string> } }).process;
+  return !disabled && !proc?.env?.RAMONDA_TL_ALLOW_DIAGNOSTICS;
+}
+
 export function registerFailOnDiagnostics(): void {
   if (disabled) return;
   const proc = (globalThis as { process?: { env?: Record<string, string> } }).process;
@@ -116,6 +128,7 @@ export function registerFailOnDiagnostics(): void {
   // Installed only here, beside the hooks that empty it. Installed at import as well, it collected
   // every record of a run that had opted out, and nothing ever emptied it.
   install();
+  hooked = true;
   g.beforeEach(startTest);
   g.afterEach(() => {
     // `cleanup` FIRST, here, whatever order the runner calls its hooks in. A hook that throws stops

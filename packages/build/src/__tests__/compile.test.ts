@@ -521,6 +521,36 @@ function originalPosition(
   return found;
 }
 
+describe("where each element was written, for a development build", () => {
+  test("the file on the root, and every element's line and column, counted from 1 as `jsxDEV`'s are", () => {
+    const source = `const v = (\n  <section>\n    <p>x</p>\n    <button onclick={go}>save</button>\n  </section>\n);\n`;
+    const out = compileJsx(source, "/app/src/page.tsx", { sources: true });
+    expect(out?.templates).toEqual([
+      `{ t: "section", f: "/app/src/page.tsx", l: [2, 3], c: [{ t: "p", l: [3, 5], c: ["x"] }, { t: "button", l: [4, 5], d: [["onclick", 0]], c: ["save"] }] }`,
+    ]);
+  });
+
+  test("and nothing of it otherwise: a production bundle carries no file paths", () => {
+    expect(compileJsx(`const p = <p>{x}</p>;`, "/app/src/page.tsx")?.templates).toEqual([`{ t: "p", h: 0 }`]);
+  });
+
+  test("the Vite plugin asks for it when the build is not production", async () => {
+    const source = `export const view = <p>{1}</p>;\n`;
+    const compiled = async (isProduction: boolean) => {
+      const [, compiler] = viteRamonda();
+      compiler.configResolved({ isProduction });
+      return (await compiler.transform.handler.call(undefined, source, "/app/src/view.tsx"))?.code ?? "";
+    };
+    expect({
+      development: (await compiled(false)).includes(`f: "/app/src/view.tsx"`),
+      production: (await compiled(true)).includes("f:"),
+    }).toEqual({
+      development: true,
+      production: false,
+    });
+  });
+});
+
 describe("the source map", () => {
   test("points code inside the JSX — a handler's body — at the line and column it was written on", () => {
     const source = `const v = (\n  <div onclick={() => {\n    doThing();\n    throw new Error("boom");\n  }}>x</div>\n);\n`;

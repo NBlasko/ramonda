@@ -546,6 +546,28 @@ export interface Resolver {
    */
   propertyNames(expression: ts.Expression): string[] | undefined;
   /**
+   * The names a hook's props bag takes, read off the type of its constructor's second parameter —
+   * the one `this.use()` itself matches the bag against. `undefined` when that type cannot say a
+   * name is wrong: `any`, an index, a hook with no such parameter. See `unknown-hook-option`.
+   */
+  hookOptions(hook: ts.Expression): string[] | undefined;
+  /**
+   * What an INSTALLED package's hook or component declares with `@StableProps`, read from the graph
+   * the package publishes — `undefined` when it publishes none, or the name is not in it, which is
+   * not the same answer as an empty set: nothing can be said, rather than nothing was declared.
+   */
+  installedStableProps(name: ts.Node): ReadonlySet<string> | undefined;
+  /**
+   * Whether this expression's TYPE is an array or a tuple — every member of a union one. `undefined`
+   * when the type cannot say: `any`, `unknown`, a type parameter with no constraint.
+   */
+  isArray(expression: ts.Expression): boolean | undefined;
+  /**
+   * Whether the project renders on a server — the same answer `needsServerRendering` is gated on, for a
+   * rule whose fault exists there for SOME of what it reads rather than all.
+   */
+  rendersOnServer(): boolean;
+  /**
    * Whether this assertion puts an `HTMLFormElement` under a type that is not a form and does not
    * hold one — `form as unknown as Canvas` — so its `reset` cannot be followed past it. Asked of the
    * outermost assertion. See `reset-the-model-does-not-hear`.

@@ -1,6 +1,7 @@
 import ts from "typescript";
-import { positionOf } from "../syntax";
+import { isHandedOver, isThisUse, memberName, positionOf } from "../syntax";
 import { walkRenders } from "./render-reach";
+import { reactiveReadIn } from "./fresh-object-in-hook-props";
 import type { Rule } from "./rule";
 
 /**
@@ -23,7 +24,7 @@ import type { Rule } from "./rule";
 export interface ClockReadWhileRenderingIssue {
   /** The component or hook. */
   component: string;
-  /** What was read — `Date.now()`, `new Date()`, `Math.random()`, `performance.now()`. */
+  /** What was read — `Date.now()`, `new Date()`, `Math.random()`, `performance.now()`, `crypto.randomUUID()`. */
   read: string;
   /** How the render got there. */
   through: readonly string[];
@@ -35,14 +36,22 @@ export interface ClockReadWhileRenderingIssue {
 /**
  * The reads that are not a function of state and props.
  *
- * Deliberately short. `Date` and `Math` and `performance` are the three the language offers, and a
+ * Deliberately short. `Date`, `Math`, `performance` and `crypto` are what the platform offers, and a
  * rule that also guessed at `uuid()` or `nanoid()` would be guessing at names — which is how a
  * checker starts reporting a helper called `randomHexColour` that returns a constant.
  */
-function nonDeterministic(node: ts.Node): string | undefined {
+/** What a read is, and whether it is RANDOM — two calls in one tick differ — or a clock, which does not. */
+interface Read {
+  read: string;
+  random: boolean;
+}
+
+function nonDeterministic(node: ts.Node): Read | undefined {
   // `new Date()` with no arguments. With one, it parses, and parsing is deterministic.
   if (ts.isNewExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "Date") {
-    return node.arguments === undefined || node.arguments.length === 0 ? "new Date()" : undefined;
+    return node.arguments === undefined || node.arguments.length === 0
+      ? { read: "new Date()", random: false }
+      : undefined;
   }
 
   if (!ts.isCallExpression(node) || !ts.isPropertyAccessExpression(node.expression)) return undefined;
@@ -52,9 +61,13 @@ function nonDeterministic(node: ts.Node): string | undefined {
   const owner = call.expression.text;
   const member = call.name.text;
 
-  if (owner === "Date" && member === "now") return "Date.now()";
-  if (owner === "Math" && member === "random") return "Math.random()";
-  if (owner === "performance" && member === "now") return "performance.now()";
+  if (owner === "Date" && member === "now") return { read: "Date.now()", random: false };
+  if (owner === "Math" && member === "random") return { read: "Math.random()", random: true };
+  if (owner === "performance" && member === "now") return { read: "performance.now()", random: false };
+  // The platform's random id and random bytes — named by the runtime's RMD021 beside `Math.random()`.
+  if (owner === "crypto" && (member === "randomUUID" || member === "getRandomValues")) {
+    return { read: `crypto.${member}()`, random: true };
+  }
   return undefined;
 }
 
@@ -63,7 +76,8 @@ export const clockReadWhileRendering = {
 
   report: {
     severity: "error",
-    reportedWhen: "`Date.now()`, `new Date()` or `Math.random()` is reached from a render, by any path",
+    reportedWhen:
+      "`Date.now()`, `new Date()` or `Math.random()` is reached from a render, by any path; or read in a hook's props callback — a random read always, a clock where the callback can run again or the project renders on a server",
     alsoReportedAs: "RMD021",
     heading: (found) => `${found.length} clock or random read(s) reached from a render:`,
     lines: (issue) => [
@@ -94,11 +108,48 @@ export const clockReadWhileRendering = {
     walkRenders(cls, {
       resolve,
       visit(node, through) {
-        const read = nonDeterministic(node);
+        const read = nonDeterministic(node)?.read;
         if (read === undefined) return;
         found.push({ component: self.name, read, through: [...through], ...positionOf(node) });
       },
     });
+
+    /**
+     * A hook's props callback, which is cached on the signals it reads: a random number or a clock
+     * read there is frozen into the props until something unrelated runs the callback again, and then
+     * it jumps — for a query key, an entry that changes on somebody else's state change. The runtime
+     * reports the random half as RMD021; this read only renders, and was silent on it. A function
+     * handed over in the bag is run later, by the hook, and is not the callback's read.
+     */
+    for (const member of cls.members) {
+      if (!ts.isPropertyDeclaration(member) || member.initializer === undefined) continue;
+      const call = member.initializer;
+      if (!ts.isCallExpression(call) || !isThisUse(call)) continue;
+      const callback = call.arguments[1];
+      if (callback === undefined || !(ts.isArrowFunction(callback) || ts.isFunctionExpression(callback))) continue;
+      const named = memberName(member) ?? "?";
+      /**
+       * A RANDOM read always: it differs between two calls in one tick, and the runtime reports it either
+       * way (RMD021, measured). A CLOCK read where it can be two values — where something can run the
+       * callback again, or where the project renders on a server, which calls it once on each side. A
+       * callback that reads nothing, in a browser-only app, takes the clock once and keeps it: what such a
+       * callback is for. Three reviews disagreed about this; each case above is one of theirs.
+       */
+      let twice: boolean | undefined;
+      (function look(node: ts.Node): void {
+        if (node !== callback && isHandedOver(node)) return;
+        const reading = nonDeterministic(node);
+        let read = reading?.read;
+        if (reading !== undefined && !reading.random) {
+          twice ??= resolve.rendersOnServer() || reactiveReadIn(callback, cls, resolve) !== undefined;
+          if (!twice) read = undefined;
+        }
+        if (read !== undefined) {
+          found.push({ component: self.name, read, through: [`the props callback of ${named}`], ...positionOf(node) });
+        }
+        ts.forEachChild(node, look);
+      })(callback);
+    }
 
     return found;
   },

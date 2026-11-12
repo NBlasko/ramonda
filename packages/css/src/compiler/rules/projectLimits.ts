@@ -77,7 +77,7 @@ export function literalNotAllowed(
         length: found[0].length,
         message:
           `\`${found[0].trim()}\` is a colour written out, and this project takes colours only from its ` +
-          `own tokens.\n\n        ${wayOut(found[0].trim(), "color", tokens)}, or set ` +
+          `own tokens.${wayOut(found[0].trim(), "color", tokens)} ` +
           `\`${JSON.stringify(property)}: { hardcoded: true }\` beside \`"<color>"\`.`,
       });
       break;
@@ -187,8 +187,8 @@ function dimensionNotAllowed(
         length: text.length,
         message:
           `\`${text}\` is ${NARROW[kind]?.said ?? NARROW[primitive]?.said ?? "a value"} written out, and this ` +
-          `project takes them only from its own tokens.` +
-          `\n\n        ${wayOut(text, kind, tokens)}, or set \`${JSON.stringify(property)}: { hardcoded: true }\`.`,
+          `project takes them only from its own tokens.${wayOut(text, kind, tokens)} ` +
+          `\`${JSON.stringify(property)}: { hardcoded: true }\`.`,
       });
       break;
     }
@@ -204,13 +204,23 @@ function dimensionNotAllowed(
  * value a reader sees in one scheme — is named, and every one of them when several are.
  */
 function wayOut(text: string, kind: string, tokens: ReadonlyMap<string, Named> | undefined): string {
+  const holders = holdersOf(text, kind, tokens);
+  /**
+   * The token on the FIRST line, once. The second trial read only that line — the one a terminal and
+   * a test runner show beside the place — and had to open `ramonda.css.ts` to find `$size.line`, which
+   * the message named three lines down; review then found it named twice. The rest is the other way.
+   */
+  if (holders.length > 0)
+    return ` \`ramonda.css.ts\` holds it as ${holders.join(" or ")} — write that.\n\n        Or set`;
+  return "\n\n        Declare it in `ramonda.css.ts` and write `$group.name`, or set";
+}
+
+function holdersOf(text: string, kind: string, tokens: ReadonlyMap<string, Named> | undefined): string[] {
   const wanted = text.toLowerCase();
-  const holders = [...(tokens?.values() ?? [])]
+  return [...(tokens?.values() ?? [])]
     .filter((one) => one.kind === kind || (kind === "percentage" && one.kind === "length-percentage"))
     .filter((one) => halvesOf(String(one.value)).some((half) => half.toLowerCase() === wanted))
     .map((one) => `\`$${one.path}\``);
-  if (holders.length === 0) return "Declare it in `ramonda.css.ts` and write `$group.name`";
-  return `Write ${holders.join(" or ")}, which \`ramonda.css.ts\` declares with that value`;
 }
 
 /** A value, or the two halves of a `light-dark( … )` pair — each one a value a reader may see. */

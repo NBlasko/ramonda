@@ -12,25 +12,11 @@ import { covers } from "../flatten";
 import ts from "typescript";
 
 /**
- * `narrower-after-a-whole-shorthand` across blocks — a spread, or `mergeClassNames(a, b)`.
- *
- * The compiler refuses a narrower whole shorthand after a wider one inside one block. A spread is a
- * VALUE to it, so a wider one arriving through `...$(base)` was never seen, and the merge could only
- * warn in development. A program can follow the name to the block it was written as, and read what
- * that block sets the way the compiler reads its own — as the author wrote it, one declaration each.
- *
- * WHOLE is what the sheet does with it: a shorthand that does not split (`splitOf` refuses it). A
- * narrower one that splits is pieces in `p`, stronger than `v`, and is not the fault. Only the top
- * level of each block is compared: a nested rule is its own context, as in the compiler's rule, and
- * a spread may only stand at the top. A name the program cannot follow to a block — a prop, a
- * parameter — says nothing, rather than guessing.
+ * How a typed rule reads a block of the virtual file: the block a name was written as, a value as the
+ * sheet gets it, and which helper a call in a block's array is. Shared by the two rules that follow a
+ * spread — `narrower-after-a-whole-shorthand` and `override-out-of-order` — so both read one way.
  */
-export function wholeAcrossBlocks(
-  checker: ts.TypeChecker,
-  file: ts.SourceFile,
-  helpers: Helpers | undefined,
-  report: (node: ts.Node, finding: Omit<TypedFinding, "file" | "at" | "length">) => void,
-): void {
+export function readersFor(checker: ts.TypeChecker, helpers: Helpers | undefined) {
   /** The block a name was written as — its array of declarations — or nothing. */
   const blockOf = (expression: ts.Expression): ts.ArrayLiteralExpression | undefined => {
     let node: ts.Expression = expression;
@@ -46,20 +32,6 @@ export function wholeAcrossBlocks(
     const [array] = initial.arguments;
     return array !== undefined && ts.isArrayLiteralExpression(array) ? array : undefined;
   };
-
-  const whole = (property: string, value: string) =>
-    property !== "all" && SHORTHANDS[property] !== undefined && splitOf(property, value) === undefined;
-
-  /**
-   * A whole shorthand still standing, its importance — which keeps it in its own layer — and where
-   * it came from: this block's own declarations, a spread, or a `mergeClassNames` argument. Only
-   * one that came from ELSEWHERE is this rule's; two in one block are the compiler's own.
-   */
-  interface Standing {
-    readonly property: string;
-    readonly important: boolean;
-    readonly from: number;
-  }
 
   /**
    * Whether an expression is a `$` path — `__vars.border.thin` — by the name the virtual file bound
@@ -88,6 +60,54 @@ export function wholeAcrossBlocks(
     return text;
   };
 
+  /** Which helper a call in a block's array is — by name, since another file's block names its own. */
+  const helper = (element: ts.Expression): "from" | "cond" | undefined => {
+    if (!ts.isCallExpression(element) || !ts.isIdentifier(element.expression)) return undefined;
+    const name = element.expression.text;
+    if (name === helpers?.from || /^__from\d*$/.test(name)) return "from";
+    if (name === helpers?.cond || /^__cond\d*$/.test(name)) return "cond";
+    return undefined;
+  };
+
+  return { blockOf, valueOf, helper };
+}
+
+/**
+ * `narrower-after-a-whole-shorthand` across blocks — a spread, or `mergeClassNames(a, b)`.
+ *
+ * The compiler refuses a narrower whole shorthand after a wider one inside one block. A spread is a
+ * VALUE to it, so a wider one arriving through `...$(base)` was never seen, and the merge could only
+ * warn in development. A program can follow the name to the block it was written as, and read what
+ * that block sets the way the compiler reads its own — as the author wrote it, one declaration each.
+ *
+ * WHOLE is what the sheet does with it: a shorthand that does not split (`splitOf` refuses it). A
+ * narrower one that splits is pieces in `p`, stronger than `v`, and is not the fault. Only the top
+ * level of each block is compared: a nested rule is its own context, as in the compiler's rule, and
+ * a spread may only stand at the top. A name the program cannot follow to a block — a prop, a
+ * parameter — says nothing, rather than guessing.
+ */
+export function wholeAcrossBlocks(
+  checker: ts.TypeChecker,
+  file: ts.SourceFile,
+  helpers: Helpers | undefined,
+  report: (node: ts.Node, finding: Omit<TypedFinding, "file" | "at" | "length">) => void,
+): void {
+  const { blockOf, valueOf, helper } = readersFor(checker, helpers);
+
+  const whole = (property: string, value: string) =>
+    property !== "all" && SHORTHANDS[property] !== undefined && splitOf(property, value) === undefined;
+
+  /**
+   * A whole shorthand still standing, its importance — which keeps it in its own layer — and where
+   * it came from: this block's own declarations, a spread, or a `mergeClassNames` argument. Only
+   * one that came from ELSEWHERE is this rule's; two in one block are the compiler's own.
+   */
+  interface Standing {
+    readonly property: string;
+    readonly important: boolean;
+    readonly from: number;
+  }
+
   /** A group's declarations, as written: property, value and node, nested rules left out. */
   const declared = (element: ts.Expression): [string, string, ts.Node][] => {
     if (!ts.isObjectLiteralExpression(element)) return [];
@@ -101,15 +121,6 @@ export function wholeAcrossBlocks(
       if (value !== undefined) out.push([written, value, property.name]);
     }
     return out;
-  };
-
-  /** Which helper a call in a block's array is — by name, since another file's block names its own. */
-  const helper = (element: ts.Expression): "from" | "cond" | undefined => {
-    if (!ts.isCallExpression(element) || !ts.isIdentifier(element.expression)) return undefined;
-    const name = element.expression.text;
-    if (name === helpers?.from || /^__from\d*$/.test(name)) return "from";
-    if (name === helpers?.cond || /^__cond\d*$/.test(name)) return "cond";
-    return undefined;
   };
 
   /**

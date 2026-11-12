@@ -32,6 +32,7 @@ import {
   SAY,
   unanswered,
 } from "./args";
+import { agentsFile, CLAUDE_FILE, checkSteps } from "./agents";
 
 // What the docs' GIF of the scaffolder is drawn from — see `apps/docs/scripts/build-cli-gif.mjs`.
 export { ADD_ON_INFO, addOnOptions, DEFAULT_ADD_ONS, MODE_OPTIONS, nextSteps, SAY } from "./args";
@@ -336,15 +337,16 @@ function firstUsefulLine(output: string): string | undefined {
  * - so is a folder where it writes a file, and a file where it needs a folder.
  *
  * And while writing: an existing `.gitignore` is kept and gains only the lines it lacks — one
- * replaced without a word lost `secret.env` once — an existing `README.md` stays, with the project's
- * beside it as `README.ramonda.md`, and every other file it replaced is returned, to be named.
+ * replaced without a word lost `secret.env` once — an existing `README.md`, `AGENTS.md` or `CLAUDE.md`
+ * stays, with the project's beside it as `README.ramonda.md` and so on, and every other file it
+ * replaced is returned, to be named.
  */
 export function scaffold(options: ScaffoldOptions): { replaced: string[]; kept: string[] } {
   const stage = stageFor(options.targetDir);
   try {
     writeProject({ ...options, targetDir: stage });
     const files = filesUnder(stage);
-    const blocked = inTheWay(options.targetDir, files, readFileSync(join(stage, "README.md")));
+    const blocked = inTheWay(options.targetDir, files, stage);
     if (blocked.length > 0) {
       throw new Error(
         `In the way in ${options.targetDir}: ${blocked.join(", ")}. A link, a folder where a file goes, or a ` +
@@ -389,15 +391,38 @@ const stat = (path: string) => {
   }
 };
 
-/** The project paths something in `target` stands in the way of. Reads their metadata, and the reader's README only when it is the same size as the project's. */
-function inTheWay(target: string, files: readonly string[], readme: Buffer): string[] {
+/**
+ * The files a reader's own copy of is KEPT, and the name the project's is written under beside it.
+ * Each is the reader's words, not configuration: their README, their instructions for an agent.
+ */
+const KEPT_BESIDE: Readonly<Record<string, string>> = {
+  "README.md": "README.ramonda.md",
+  "AGENTS.md": "AGENTS.ramonda.md",
+  "CLAUDE.md": "CLAUDE.ramonda.md",
+};
+
+/**
+ * A `CLAUDE.md` of the reader's that already loads `AGENTS.md` does all the project's one-line file
+ * does, so nothing is written beside it. Found by the second trial: its own file ended in
+ * `@AGENTS.md`, and a `CLAUDE.ramonda.md` it then had to decide about was written anyway.
+ */
+function alreadyDoesIt(file: string, theirs: Buffer): boolean {
+  return file === "CLAUDE.md" && /^[ \t]*@AGENTS\.md[ \t]*$/m.test(theirs.toString("utf8"));
+}
+
+/** The project paths something in `target` stands in the way of. Reads their metadata, and a kept file of the reader's when it may be the project's or already does what it does. */
+function inTheWay(target: string, files: readonly string[], stage: string): string[] {
   const blocked = new Set<string>();
   const wants = [...files];
-  // Written only beside a README of the reader's own — not beside one identical to the project's.
-  const theirs = join(target, "README.md");
-  const found = stat(theirs);
-  if (found?.isFile() && (found.size !== readme.length || !readFileSync(theirs).equals(readme))) {
-    wants.push("README.ramonda.md");
+  // Written only beside a file of the reader's own — not beside one identical to the project's.
+  for (const [file, beside] of Object.entries(KEPT_BESIDE)) {
+    if (!files.includes(file)) continue;
+    const ours = readFileSync(join(stage, file));
+    const theirs = join(target, file);
+    const found = stat(theirs);
+    if (!found?.isFile()) continue;
+    const same = found.size === ours.length && readFileSync(theirs).equals(ours);
+    if (!same && !alreadyDoesIt(file, readFileSync(theirs))) wants.push(beside);
   }
   for (const file of wants) {
     const parts = file.split("/");
@@ -434,11 +459,13 @@ function place(stage: string, target: string, files: readonly string[]): { repla
         writeFileSync(to, merged);
         kept.push(file);
       }
-    } else if (theirs !== undefined && file === "README.md" && theirs.equals(content)) {
-      // The project's own README, from an earlier run: nothing to keep apart.
-    } else if (theirs !== undefined && file === "README.md") {
-      const beside = join(target, "README.ramonda.md");
-      if (stat(beside)?.isFile() && !readFileSync(beside).equals(content)) replaced.push("README.ramonda.md");
+    } else if (theirs !== undefined && file in KEPT_BESIDE && (theirs.equals(content) || alreadyDoesIt(file, theirs))) {
+      // The project's own copy, from an earlier run, or one that already does what it does: nothing
+      // to keep apart.
+    } else if (theirs !== undefined && file in KEPT_BESIDE) {
+      const name = KEPT_BESIDE[file] as string;
+      const beside = join(target, name);
+      if (stat(beside)?.isFile() && !readFileSync(beside).equals(content)) replaced.push(name);
       writeFileSync(beside, content);
       kept.push(file);
     } else {
@@ -588,17 +615,15 @@ function writeProject({ targetDir, name, mode, addons }: ScaffoldOptions): void 
   if (addons.includes("css")) extraScripts.typecheck = "ramonda-css";
   // One command for "is this project fine", which is what to run before a commit. `build` already
   // runs `ramonda-check` and the type check, so it is the last step and the only one always there.
-  extraScripts.check = [
-    addons.includes("biome") ? "npm run lint" : "",
-    addons.includes("biome") ? "npm run format:check" : "",
-    addons.includes("testing") ? "npm test" : "",
-    "npm run build",
-  ]
-    .filter(Boolean)
+  // The same list `AGENTS.md` describes the command from, so the two cannot disagree.
+  extraScripts.check = checkSteps(addons)
+    .map((step) => step.run)
     .join(" && ");
   pkg.scripts = { ...(pkg.scripts as object), ...extraScripts };
   writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
   writeReadme(targetDir, addons);
+  writeFileSync(join(targetDir, "AGENTS.md"), agentsFile(mode, addons));
+  writeFileSync(join(targetDir, "CLAUDE.md"), CLAUDE_FILE);
 }
 
 /**
@@ -704,7 +729,7 @@ function importDevtools(targetDir: string, mode: Mode, addons: readonly AddOn[])
 
   const body = ['  void import("@ramonda/devtools");', ...panels].join("\n");
   const line = `
-// The devtools panel — press Alt+D, or click the flower badge. Development only: this
+// The devtools panel — press Alt+D, or click the round R badge. Development only: this
 // branch is dropped from a production build, so the panel is never shipped.
 if (${guard}) {
 ${body}
@@ -858,6 +883,14 @@ function writeReadme(targetDir: string, addons: readonly AddOn[]): void {
     parts.push(
       "## Type checking",
       "`typecheck` runs `ramonda-css`, not `tsc`: the same check, reading style blocks too, which `tsc` cannot parse.",
+    );
+  }
+  if (addons.includes("css") && addons.includes("biome")) {
+    // Found by the second trial: `biome.json` alone reads as "src is never linted", and JSON has no
+    // comment to say otherwise.
+    parts.push(
+      "## Linting and formatting",
+      "`biome.json` leaves `src` out, and that is not `src` going unlinted: `npm run lint` and `npm run format` hand it to `ramonda-css lint src` and `ramonda-css format src`, which run this project's own Biome over every file in it — plain `.ts` too — and read the style blocks Biome cannot parse.",
     );
   }
   parts.push(

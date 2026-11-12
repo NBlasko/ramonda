@@ -24,7 +24,7 @@ Documentation: **[ramonda.dev/routing](https://ramonda.dev/routing)**
 
 ```tsx
 import { Component } from "@ramonda/core";
-import { createRouter, createRoutes } from "@ramonda/router";
+import { createRoutes, Router, RouteOutlet } from "@ramonda/router";
 
 const routes = createRoutes({
   "/": <Home />,
@@ -32,9 +32,13 @@ const routes = createRoutes({
   "*": <NotFound />,
 });
 
-// Once, in a module of its own. `Link` and `Navigator` come from here and nowhere else — each is
-// bound to THIS table, so `href` and `push` take the paths it names and nothing else.
-export const { Router, RouteOutlet, Link, Navigator, route } = createRouter(routes);
+// Registered once, beside the table: every `Link`, `Navigator` and `route()` — each imported from
+// `@ramonda/router` — then takes the paths it names and nothing else.
+declare module "@ramonda/router" {
+  interface Register {
+    routes: typeof routes;
+  }
+}
 
 export class App extends Component {
   // Mount the router once, on the component that wraps your app.

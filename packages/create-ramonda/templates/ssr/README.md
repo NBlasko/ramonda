@@ -31,8 +31,8 @@ empties first — keep your own files in `public/`, not there.
 
 ## How rendering modes work
 
-`src/App.tsx` is a routed app (`createRoutes` + `createRouter`, so `<Link href>` is
-type-checked against your routes). `src/entry-server.tsx` says **how each route
+`src/App.tsx` is a routed app: `createRoutes` holds the table, and registering it
+(`interface Register`) type-checks every `<Link href>` against your routes. `src/entry-server.tsx` says **how each route
 renders**, and the build refuses to bake anything unsafe:
 
 ```ts

@@ -131,6 +131,46 @@ describe("what a module registers", () => {
     );
   });
 
+  /**
+   * **The development warning names what the author WROTE, across two modules.** Found by the second
+   * trial: a card with `@media print { border: none; }` in one module, a block spreading it and
+   * setting `border-color` in another, and the warning said `` `bc` `` — the key's short form, a
+   * string in no file. A module registered names only for declarations under a condition, and the
+   * one the warning names first is the LATER one, which usually has none.
+   */
+  test("and the order warning names a property written with no condition by its own name", () => {
+    const base = emit("export const card = @@( border: var(--w) solid red; @media print { border: none; } );\n");
+    const tint = emit(
+      'import { card } from "./card";\nexport const tint = @@( ...$(card); border-color: var(--c); );\n',
+    );
+    const run = (code: string, names: Record<string, unknown>) =>
+      new Function(
+        "_merge",
+        "_clears",
+        "_under",
+        "_named",
+        ...Object.keys(names),
+        `${code
+          .split("\n")
+          .filter((line) => !line.startsWith("import "))
+          .join("\n")
+          .replace(/^export /gm, "")}\nreturn typeof tint === "undefined" ? card : tint;`,
+      )(mergeClassNames, shorthands, conditionsOf, namesOf, ...Object.values(names));
+
+    const said: string[] = [];
+    const real = console.warn;
+    console.warn = (...args: unknown[]) => void said.push(args.map(String).join(" "));
+    try {
+      run(tint, { card: run(base, {}) });
+    } finally {
+      console.warn = real;
+    }
+
+    expect(said.length).toBeGreaterThan(0);
+    expect(said.join("\n")).toContain("`border-color`");
+    expect(said.join("\n")).not.toContain("`bc`");
+  });
+
   /** Two modules writing one shorthand each register it, and the second must not undo the first. */
   test("registering the same shorthand twice is the same answer", () => {
     shorthands({ p: ["pl", "pr"] });

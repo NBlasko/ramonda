@@ -252,14 +252,50 @@ describe("the types a Vite project needs", () => {
     expect(pkg.devDependencies.vite).toBeDefined();
   });
 
-  test("SSR does not need it — esbuild, its own __DEV__, no css", () => {
-    /**
-     * The templates differ on purpose, so the check is that the SSR one still declares the
-     * global it actually uses rather than acquiring a reference it does not.
-     */
-    const { read, dir } = make("ssr", []);
-    expect(read("global.d.ts")).toContain("declare const __DEV__: boolean");
+  test("SSR does not need it — esbuild, no css", () => {
+    const { dir } = make("ssr", []);
     expect(existsSync(join(dir, "src", "vite-env.d.ts"))).toBe(false);
+  });
+
+  /**
+   * `__DEV__` is nowhere in a project. Found by the second trial: `vite.config.ts` defined it with no
+   * word why, while the installation page says a project does not need it — and measured, nothing a
+   * project installs reads it (every package picks its development or production build through its
+   * `exports` conditions, and `__DEV__` appears in their `dist` only inside comments). An app's own
+   * development branch is `import.meta.env.DEV`, which `@ramonda/build` defines on both halves.
+   */
+  /**
+   * The build is a PRODUCTION build whatever the shell says. Found by review: `ramondaDefine` takes
+   * `import.meta.env.DEV` from `NODE_ENV`, so a shell exporting `NODE_ENV=development` shipped every
+   * development branch — the devtools import among them — in the production bundle.
+   */
+  /**
+   * A failed SSR load forgets Vite's module graph, so the next request loads afresh. Found by the
+   * second trial and measured on Vite 8.3.4 alone: an import written before its file failed, and went
+   * on failing after the file was created, until the dev server restarted — `invalidateAll()` was
+   * what made the next load succeed.
+   */
+  test("the dev server recovers from a failed SSR load on the next request", () => {
+    const server = make("ssr", []).read("server.mjs");
+    const failed = server.slice(
+      server.indexOf("async function renderDev"),
+      server.indexOf("async function renderDev") + 1500,
+    );
+    expect(failed).toContain("vite.moduleGraph.invalidateAll()");
+  });
+
+  test("the build script says production before it asks for the defines", () => {
+    const script = make("ssr", []).read("scripts/build.mjs");
+    const set = script.indexOf('process.env.NODE_ENV = "production"');
+    expect(set).toBeGreaterThan(-1);
+    expect(set).toBeLessThan(script.indexOf("ramondaDefine()"));
+  });
+
+  test("and nothing in it defines or declares `__DEV__`", () => {
+    const { read } = make("ssr", []);
+    for (const file of ["vite.config.ts", "scripts/build.mjs", "global.d.ts"]) {
+      expect(read(file), file).not.toContain("__DEV__");
+    }
   });
 });
 
@@ -319,18 +355,15 @@ describe("development is development", () => {
     /**
      * `dev` is now a Vite middleware server with hot reload — `node server.mjs`, not an
      * esbuild build. Vite runs the app in development (diagnostics, strict render, devtools);
-     * `vite.config.ts` sets `__DEV__` true. The production `build`/`start` path is unchanged
+     * the development conditions pick core's development build. The production `build`/`start` path is unchanged
      * and still uses production conditions, so a scaffolded app never accidentally serves the
      * production core during development (the bug the old assertions guarded).
      */
     expect(scripts.dev).toBe("node server.mjs");
-    expect(read("vite.config.ts")).toContain("__DEV__");
-    expect(read("vite.config.ts")).toMatch(/__DEV__.*true/);
     expect(read("scripts/build.mjs")).toContain('conditions: ["production"]');
     // Through `ramondaDefine`, which merges in the `import.meta.env.RAMONDA_PUBLIC_*` entries — writing
-    // `define` plainly would drop them and every such read would throw in a browser. The assertion is
-    // still about `__DEV__` being false in the build; only the spelling moved.
-    expect(read("scripts/build.mjs")).toContain('ramondaDefine({ __DEV__: "false" })');
+    // `define` plainly would drop them and every such read would throw in a browser.
+    expect(read("scripts/build.mjs")).toContain("define: ramondaDefine()");
     expect(read("scripts/build.mjs")).toContain('ramondaDefine } from "@ramonda/build/esbuild"');
     expect(scripts.start).toContain("--prod");
   });
@@ -466,12 +499,21 @@ describe("the scaffolded server shuts its DOM down through its own handle", () =
 });
 
 describe("the generated project declares what its own code needs", () => {
-  test("the SSR template declares __DEV__, which guards the devtools import", () => {
+  // Found by the second trial: the comment sent a reader looking for a flower; the badge is a round R.
+  test("the entry names the devtools badge as it looks", () => {
+    const entry =
+      make("spa", ["devtools"]).read("src/main.tsx") + make("ssr", ["devtools"]).read("src/entry-client.tsx");
+    expect(entry).toContain("round R badge");
+    expect(entry).not.toContain("flower");
+  });
+
+  test("the SSR template guards the devtools import with `import.meta.env.DEV`, which it declares", () => {
     const { read } = make("ssr", ["devtools"]);
 
-    // The entry says `if (__DEV__)`, so the project has to declare it or its own `tsc` fails.
-    // esbuild replaces it per build: true for `dev`, false for `build`.
-    expect(read("global.d.ts")).toContain("__DEV__");
+    // The entry says `if (import.meta.env.DEV)`, so the project has to declare it or its own `tsc`
+    // fails. `@ramonda/build` defines it per build: true for `dev`, false for `build`.
+    expect(read("src/entry-client.tsx")).toContain("import.meta.env.DEV");
+    expect(read("global.d.ts")).toContain("readonly DEV: boolean");
   });
 
   test("the SPA template has no globals to declare at all", () => {
@@ -888,6 +930,99 @@ describe("the generated README", () => {
 });
 
 /**
+ * `AGENTS.md`, what a coding agent reads first. Found by the docs-only trial: the agent learned the
+ * framework from its feedback loop, and had to discover the loop — the command that proves a change,
+ * what a code means, the rules a habit from elsewhere breaks. What the file says is held to the docs
+ * here, so a renamed page or a retired code fails this rather than sending an agent nowhere.
+ */
+describe("the generated AGENTS.md", () => {
+  const docs = join(workspace, "apps", "docs", "content");
+  const diagnostics = readFileSync(join(docs, "reference", "diagnostics.md"), "utf8");
+  const combos = [
+    ["spa", []],
+    ["ssr", []],
+    ["spa", ["router", "query", "form", "lens", "css", "devtools", "testing", "biome"]],
+    ["ssr", ["router", "query", "form", "lens", "css", "devtools", "testing", "biome"]],
+  ] as const;
+
+  test("is written in every project, with a CLAUDE.md that points at it", () => {
+    for (const [mode, addons] of combos) {
+      const project = make(mode, [...addons]);
+      expect(project.read("AGENTS.md")).toContain("`npm run check`");
+      expect(project.read("CLAUDE.md")).toBe("@AGENTS.md\n");
+    }
+  });
+
+  test("names every step the project's own `check` script runs, and no other", () => {
+    for (const [mode, addons] of combos) {
+      const project = make(mode, [...addons]);
+      const check = (JSON.parse(project.read("package.json")) as { scripts: Record<string, string> }).scripts.check;
+      const line =
+        project
+          .read("AGENTS.md")
+          .split("\n")
+          .find((l) => l.startsWith("Run `npm run check`")) ?? "";
+      expect(line.includes("lint")).toBe(check.includes("npm run lint"));
+      expect(line.includes("format check")).toBe(check.includes("format:check"));
+      expect(line.includes("the tests")).toBe(check.includes("npm test"));
+      expect(line).toContain("ramonda-check");
+    }
+  });
+
+  test("every page it links is one the docs have", () => {
+    for (const [mode, addons] of combos) {
+      const text = make(mode, [...addons]).read("AGENTS.md");
+      const links = [...text.matchAll(/https:\/\/ramonda\.dev(\/[a-z0-9/.-]*)?/g)].map((m) =>
+        (m[1] ?? "/").replace(/\.$/, ""),
+      );
+      expect(links.length).toBeGreaterThan(3);
+      // The text the docs build writes beside the pages — `apps/docs/scripts/page-text.mjs`.
+      const built = readFileSync(join(workspace, "apps", "docs", "scripts", "build-content.mjs"), "utf8");
+      for (const file of ["llms.txt", "llms-full.txt"]) expect(built).toContain(`"${file}"`);
+      for (const link of links) {
+        if (link === "/llms.txt" || link === "/llms-full.txt") continue;
+        if (link.endsWith(".md")) {
+          const page = link.slice(0, -3);
+          expect(existsSync(join(docs, `${page}.md`)) || existsSync(join(docs, page, "index.md")), link).toBe(true);
+          continue;
+        }
+        const code = /^\/reference\/diagnostics\/(rm[a-z]\d+)$/.exec(link);
+        if (code) {
+          expect(diagnostics, link).toMatch(new RegExp(`^## ${code[1].toUpperCase()} — `, "m"));
+          continue;
+        }
+        const page = link.replace(/\/$/, "");
+        const exists = existsSync(join(docs, `${page || "/index"}.md`)) || existsSync(join(docs, page, "index.md"));
+        expect(exists, link).toBe(true);
+      }
+    }
+  });
+
+  test("every code it names is one the diagnostics page explains, and not a retired one", () => {
+    for (const [mode, addons] of combos) {
+      for (const [code] of make(mode, [...addons])
+        .read("AGENTS.md")
+        .matchAll(/\bRM[DQFL]\d{3}\b/g)) {
+        expect(diagnostics, code).toMatch(new RegExp(`^## ${code} — (?!retired)`, "m"));
+      }
+    }
+  });
+
+  test("says only what the project has", () => {
+    const bare = make("spa", []).read("AGENTS.md");
+    expect(bare).not.toContain("<Select>");
+    expect(bare).not.toContain("allowDiagnostics");
+    expect(bare).not.toContain("ramonda-css");
+    expect(bare).not.toContain("entry-server");
+    const full = make("ssr", ["form", "testing", "css"]).read("AGENTS.md");
+    expect(full).toContain("<Select>");
+    expect(full).toContain('allowDiagnostics("RMD020")');
+    expect(full).toContain("ramonda-css explain");
+    expect(full).toContain("src/entry-server.tsx");
+  });
+});
+
+/**
  * Writing into a folder that already holds files — `--overwrite`, and the common start: `git init`, a
  * README, a `.gitignore`, then the app. Found by the trial: its `.gitignore` listed `secret.env` and was
  * replaced without a word, so the next `git add -A` would have committed the secret.
@@ -915,6 +1050,35 @@ describe("a folder that already has files", () => {
     const { read } = into({ "README.md": "MY README\n" });
     expect(read("README.md")).toBe("MY README\n");
     expect(read("README.ramonda.md")).toContain("## Before a commit");
+  });
+
+  test("keeps its AGENTS.md and CLAUDE.md, and writes the project's beside them", () => {
+    const { read, result } = into({ "AGENTS.md": "MY RULES\n", "CLAUDE.md": "MINE\n" });
+    expect(read("AGENTS.md")).toBe("MY RULES\n");
+    expect(read("CLAUDE.md")).toBe("MINE\n");
+    expect(read("AGENTS.ramonda.md")).toContain("`npm run check`");
+    expect(read("CLAUDE.ramonda.md")).toBe("@AGENTS.md\n");
+    expect(result.replaced).toEqual([]);
+    expect(result.kept).toEqual(["AGENTS.md", "CLAUDE.md"]);
+  });
+
+  /**
+   * Found by the second trial: its `CLAUDE.md` was its own, but ended in `@AGENTS.md` — the one line
+   * the project's file is — and a `CLAUDE.ramonda.md` was written beside it anyway, a file the user
+   * had to decide about that did nothing.
+   */
+  test("says in the README why biome.json leaves src out, when blocks and Biome are both chosen", () => {
+    const { read } = make("spa", ["css", "biome"]);
+    expect(read("biome.json")).toContain('"!src"');
+    expect(read("README.md")).toContain("`biome.json` leaves `src` out, and that is not `src` going unlinted");
+    expect(make("spa", ["biome"]).read("README.md")).not.toContain("leaves `src` out");
+  });
+
+  test("writes no CLAUDE.ramonda.md beside a CLAUDE.md that already loads AGENTS.md", () => {
+    const { read, result, dir } = into({ "CLAUDE.md": "# mine\n\nSome rules.\n\n@AGENTS.md\n" });
+    expect(read("CLAUDE.md")).toBe("# mine\n\nSome rules.\n\n@AGENTS.md\n");
+    expect(existsSync(join(dir, "CLAUDE.ramonda.md"))).toBe(false);
+    expect(result.kept).toEqual([]);
   });
 
   test("names every other file it replaced, and only those", () => {

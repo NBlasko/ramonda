@@ -14,7 +14,7 @@ const origin = "http://localhost:5173";
 
 // The DOM must exist before the app module is imported (class fields/decorators run at import).
 installDom(`${origin}/`);
-const { staticPaths, prerender } = await import("../dist/server/entry-server.js");
+const { staticPaths, prerender, notFoundPath } = await import("../dist/server/entry-server.js");
 // The shell `scripts/build.mjs` wrote, with the built script and stylesheet already in it.
 const template = await readFile(resolve(root, "dist/client/index.html"), "utf-8");
 
@@ -23,6 +23,11 @@ const template = await readFile(resolve(root, "dist/client/index.html"), "utf-8"
 // content until that route's revalidate window happens to pass. A build is the deploy boundary, so
 // clearing it here is the one place it cannot be forgotten.
 await rm(resolve(root, "dist/isr"), { recursive: true, force: true });
+
+// Emptied for the same reason, and this script is its only writer: a page baked by an earlier build —
+// a route since deleted or renamed — stayed here, and `build:static` copies the whole folder into the
+// site, so it stayed online. A file you add to every build (a `sitemap.xml`) is written after the loop.
+await rm(OUT, { recursive: true, force: true });
 
 const paths = staticPaths();
 console.log(`Prerendering ${paths.length} static route(s): ${paths.join(", ") || "(none)"}\n`);
@@ -42,6 +47,36 @@ for (const path of paths) {
   await mkdir(dirname(file), { recursive: true });
   await writeFile(file, fillDocument({ template, html, title, head, lang, dir, portals }));
   console.log(`  ✓ ${path}`);
+}
+
+// The page a static host serves for a path it has no file for: the app's own `"*"` route, rendered at
+// a path no other route matches — `notFoundPath` asks the route table — and only if it does not read
+// the request, like every other page baked here. A host that knows `404.html` serves it with the 404.
+const missingAt = notFoundPath();
+if (missingAt === undefined) {
+  console.log('  – 404.html not baked: every path tried is another route\'s, so "*" has no URL to render at.');
+} else {
+  installDom(`${origin}${missingAt}`);
+  const missing = await prerender(missingAt);
+  if (missing.blockedBy !== undefined) {
+    console.error(`  ✗ 404.html — the "*" route reads the request (${missing.blockedBy}); cannot be prerendered.`);
+    blocked++;
+  } else {
+    await mkdir(OUT, { recursive: true });
+    await writeFile(
+      join(OUT, "404.html"),
+      fillDocument({
+        template,
+        html: missing.html,
+        title: missing.title,
+        head: missing.head,
+        lang: missing.lang,
+        dir: missing.dir,
+        portals: missing.portals,
+      }),
+    );
+    console.log("  ✓ 404.html");
+  }
 }
 
 if (blocked > 0) {

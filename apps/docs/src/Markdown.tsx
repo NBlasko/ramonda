@@ -8,7 +8,7 @@ import { CodeTabs } from "./CodeTabs";
 import { DataTable } from "./DataTable";
 import type { Cell } from "./DataTable";
 import { ExamplesIndex } from "./ExamplesIndex";
-import { Link, Navigator } from "./routes";
+import { Link, Navigator } from "@ramonda/router";
 
 interface MarkdownProps {
   tree: readonly ContentNode[];

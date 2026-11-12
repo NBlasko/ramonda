@@ -1,5 +1,5 @@
 import ts from "typescript";
-import { isThisUse, memberName, positionOf } from "../syntax";
+import { callbackOwner, isHandedOver, isLocalRead, isThisUse, memberName, positionOf } from "../syntax";
 import { hasDecorator, heritage, memberBody } from "./render-reach";
 // The field judgement itself, shared with `row-reads-a-plain-field`: which fields a CACHED reader
 // can go stale on, and which writes count. See `stale-field.ts` for why it is not written twice.
@@ -82,6 +82,9 @@ export interface CachedReadOfAPlainFieldIssue {
 /** Every `this.X` read anywhere under a node. */
 function fieldsReadIn(node: ts.Node, declaring: readonly ts.ClassLikeDeclaration[]): Set<string> {
   const found = new Set<string>();
+  // A props callback names its owner as `this`, its parameter, or the parameter destructured — see
+  // `callbackOwner`. A method the walk follows into has only `this`.
+  const callback = callbackOwner(node);
   const walked = new Set<ts.Node>();
 
   /**
@@ -100,12 +103,14 @@ function fieldsReadIn(node: ts.Node, declaring: readonly ts.ClassLikeDeclaration
     if (depth > 6 || walked.has(at)) return;
     walked.add(at);
 
+    const owner = at === node ? callback : callbackOwner(at);
     (function look(current: ts.Node): void {
-      if (
-        ts.isPropertyAccessExpression(current) &&
-        current.expression.kind === ts.SyntaxKind.ThisKeyword &&
-        ts.isIdentifier(current.name)
-      ) {
+      // A function handed over in a props bag is not run by the callback — see `isHandedOver`.
+      if (at === node && current !== node && isHandedOver(current)) return;
+      if (ts.isIdentifier(current) && owner.destructured.has(current.text) && isLocalRead(current)) {
+        found.add(owner.destructured.get(current.text) as string);
+      }
+      if (ts.isPropertyAccessExpression(current) && owner.is(current.expression) && ts.isIdentifier(current.name)) {
         const name = current.name.text;
         if (ts.isCallExpression(current.parent) && current.parent.expression === current) {
           for (const cls of declaring) {

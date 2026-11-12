@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import {
   copyFileSync,
   existsSync,
@@ -696,5 +696,39 @@ describe("what a failing run says about blocks", () => {
     expect(output).toContain("style-prop-never-used");
     expect(output).not.toContain("carry a style block");
     expect(output).not.toContain("virtual file");
+  });
+});
+
+/** `--json` on the check: the same findings, as one object on stdout — see `toolingCli.test.ts` for the rest. */
+describe("--json", () => {
+  const json = (root: string) => {
+    const result = spawnSync(process.execPath, [BIN, "tsconfig.json", "--json"], { cwd: root, encoding: "utf8" });
+    return { status: result.status, report: JSON.parse(result.stdout) };
+  };
+
+  test("a clean project is ok, with what it counted", () => {
+    const { status, report } = json(
+      project(`const a = <div className={@@( display: flex; )}>x</div>;\nexport default a;\n`),
+    );
+    expect(status).toBe(0);
+    expect(report).toMatchObject({ tool: "ramonda-css", ok: true, findings: [], files: 2, styled: 1 });
+  });
+
+  test("a CSS fault carries its rule, the author's own line, and the message the text run prints", () => {
+    const { status, report } = json(
+      project(`const a = (\n  <div className={@@(\n    dsiplay: flex;\n  )}>x</div>\n);\nexport default a;\n`),
+    );
+    expect(status).toBe(1);
+    expect(report.findings).toHaveLength(1);
+    expect(report.findings[0]).toMatchObject({ severity: "error", line: 3, column: 5 });
+    expect(report.findings[0].file).toMatch(/Card\.tsx$/);
+    expect(report.findings[0].message).toContain("Did you mean `display`?");
+  });
+
+  test("a block it cannot read is `unreadable-block`", () => {
+    const { report } = json(
+      project(`const a = (\n  <div className={@@(\n    $(name): 24px;\n  )}>x</div>\n);\nexport default a;\n`),
+    );
+    expect(report.findings.map((finding: { code: string }) => finding.code)).toContain("unreadable-block");
   });
 });

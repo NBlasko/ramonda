@@ -7,8 +7,8 @@ order: 76
 
 # Matching and URLs
 
-[`createRouter`](/routing) hands you a `Router`, a `RouteOutlet`, a `Link` and a `Navigator`, all
-typed against your route table, and an app that uses those never needs this page.
+[The router](/routing) gives you a `Router`, a `RouteOutlet`, a `Link` and a `Navigator`, the
+last two typed against your registered route table, and an app that uses those never needs this page.
 
 These are what those are built on, exported because a few jobs sit outside the router and need the
 same answers: a server deciding which route a request is, a script checking that every link in your

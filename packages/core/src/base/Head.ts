@@ -20,7 +20,7 @@ export type MetaTag =
   | { property: string; content: string; name?: never; httpEquiv?: never }
   | { httpEquiv: string; content: string; name?: never; property?: never };
 
-/** One `<link>`. Identified by `rel` plus `href`. */
+/** One `<link>`. Identified by `rel` plus `href`, and by `hreflang` and `sizes` when it has them. */
 export interface LinkTag {
   rel: string;
   href: string;
@@ -142,7 +142,7 @@ export interface HeadOptions {
  * `@destroyed`, `resolve` runs after the commit, and it sees only what is still live.
  *
  * Applying is an **upsert**, keyed by what identifies the tag (`name` / `property`
- * / `httpEquiv` for meta, `rel`+`href` for link), so hydration finds the server's
+ * / `httpEquiv` for meta, `rel`+`href`+`hreflang`+`sizes` for link), so hydration finds the server's
  * tags and updates them in place instead of doubling every one. An element no
  * remaining entry asks for is removed, and the title goes back to what the document
  * had before any `Head` spoke.
@@ -507,7 +507,19 @@ function collectLink(tags: Map<string, ResolvedTag>, tag: LinkTag): void {
   if (tag.sizes) attributes.sizes = tag.sizes;
   if (tag.crossOrigin) attributes.crossorigin = tag.crossOrigin;
   if (tag.hreflang) attributes.hreflang = tag.hreflang;
-  tags.set(`link[rel="${cssEscape(tag.rel)}"][href="${cssEscape(tag.href)}"]`, { tagName: "link", attributes });
+  /**
+   * `hreflang` and `sizes` are part of the identity when given: the language alternates of a page are
+   * one link per language plus `x-default`, which points at the SAME address as the default language's
+   * page — and an icon may come in several sizes from one file. Keyed by `rel` and `href` alone, each
+   * pair became one link, and the page lost a language with no message. Found by the second trial.
+   */
+  const selector =
+    `link[rel="${cssEscape(tag.rel)}"][href="${cssEscape(tag.href)}"]` +
+    // And their ABSENCE too: a link with no `hreflang` must not find one that has it, or switching
+    // between the two writes onto the old element and then removes it as left over.
+    (tag.hreflang ? `[hreflang="${cssEscape(tag.hreflang)}"]` : ":not([hreflang])") +
+    (tag.sizes ? `[sizes="${cssEscape(tag.sizes)}"]` : ":not([sizes])");
+  tags.set(selector, { tagName: "link", attributes });
 }
 
 /**

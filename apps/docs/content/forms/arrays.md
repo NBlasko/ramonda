@@ -169,6 +169,51 @@ known only at runtime. Either way it records the absolute path it resolved to, s
 from row 0 is `contacts.0.kind` — exactly what the rebuilt version would have produced, and it flows
 through [`unknownRefPaths`](/forms/bguard) the same way.
 
+## A rule about the whole list
+
+"At least two players" is a rule about the list, not about any row, so it goes on the array, and its
+message is read off the array's own `$`:
+
+```tsx
+import { Component } from "@ramonda/core";
+import { Form } from "@ramonda/form";
+import { array, object, string } from "bguard";
+
+const schema = object({
+  players: array(string()).custom((received, ctx) => {
+    if (received.length < 2) ctx.addIssue("at least two players", received, "u:too-few");
+  }),
+});
+
+class Entry extends Component {
+  form = this.use(Form<typeof schema>, () => ({
+    schema,
+    defaultValues: { players: [] },
+    onSubmit: () => {},
+  }));
+
+  render() {
+    const players = this.form.fields.players.$;
+    return (
+      <form onsubmit={this.form.submit}>
+        <button type="button" onclick={this.add}>Add a player</button>
+        {players.error ? <p role="alert">{players.error}</p> : null}
+        <button type="submit">Start</button>
+      </form>
+    );
+  }
+
+  add(): void {
+    this.form.fields.players.$.append("");
+  }
+}
+```
+
+An array has `error`, `errors` and `issues` like any field, and no `invalid` — that one is a
+control's `aria-invalid`, and a list is not a control. Its message waits like a leaf's does, and
+adding or removing a row does not count as touching it: measured, `error` stays empty through an
+`append` and appears on the first submit.
+
 ## `rows` is stable until the list changes
 
 `rows` hands back the same array until something structural happens — an append, an insert, a

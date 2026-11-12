@@ -1,10 +1,10 @@
-import { Component } from "@ramonda/core";
+import { Component, forwarded } from "@ramonda/core";
 import type { RamondaNode } from "@ramonda/core";
 import { RouteConsumer } from "./Router";
 import { buildUrl, parseUrlString, sanitizeHref } from "./urlUtils";
 import type { StateUpdater } from "./types";
 
-export interface LinkProps {
+export interface LinkProps extends AnchorAttributes {
   href?: string;
   replace?: boolean;
   /** Scroll to the top after navigating. Default `true` — a link is a real
@@ -21,6 +21,66 @@ export interface LinkProps {
   className?: string;
   children?: RamondaNode;
 }
+
+/**
+ * What else an `<a>` takes, passed straight through to it — see `forwarded`. Found by the second
+ * trial: a language switch could not say `lang="en"`.
+ *
+ * NAMED rather than any lower-case word, and that is the strictness the rest of the router has. An
+ * index signature over every lower-case name made a misspelt option compile — `scrol={false}`,
+ * `replce` — and land on the anchor as a junk attribute, found by review. `aria-*`, `data-*` and
+ * `on…` stay open, being families rather than names.
+ *
+ * And every property the anchor ITSELF has — `tabIndex`, `referrerPolicy` — as the tag's own type
+ * takes them, with its `style` object too. Found by review: a list of names alone refused three
+ * things `<a>` accepts. The microdata attributes are named for the same reason.
+ */
+export type AnchorAttributes = AnchorNames & Omit<AnchorProperties, keyof AnchorNames | OwnNames>;
+
+/** The props `Link` reads itself, whose DOM namesakes it must not take. */
+type OwnNames = "href" | "className" | "children";
+
+/** The anchor's own properties — not its methods, not its `on…` handlers. */
+type AnchorProperties = {
+  [K in keyof HTMLAnchorElement as K extends `on${string}`
+    ? never
+    : // biome-ignore lint/complexity/noBannedTypes: a method is what is being left out
+      HTMLAnchorElement[K] extends Function
+      ? never
+      : K]?: HTMLAnchorElement[K];
+};
+
+interface AnchorNames {
+  lang?: string;
+  hreflang?: string;
+  title?: string;
+  rel?: string;
+  target?: string;
+  download?: string | boolean;
+  id?: string;
+  role?: string;
+  tabindex?: number | string;
+  referrerpolicy?: string;
+  ping?: string;
+  type?: string;
+  dir?: string;
+  accesskey?: string;
+  translate?: string;
+  hidden?: boolean;
+  draggable?: boolean;
+  style?: string | Record<string, string | undefined>;
+  itemprop?: string;
+  itemscope?: boolean;
+  itemtype?: string;
+  itemid?: string;
+  itemref?: string;
+  [aria: `aria-${string}`]: string | number | boolean | undefined;
+  [data: `data-${string}`]: string | number | boolean | undefined;
+  [event: `on${string}`]: unknown;
+}
+
+/** What this component consumes itself, so `forwarded` hands on everything else. */
+const OWN = ["href", "replace", "scroll", "stateResolver", "className", "children", "onclick"];
 
 /**
  * Which clicks we let the browser handle natively instead of intercepting:
@@ -68,8 +128,24 @@ export class Link extends Component<LinkProps> {
     // here was how the two came apart, because `currentHref` sanitizes and this
     // did not — `href="evil.com/path"` rendered as "/" but a left click resolved
     // it against the current URL and navigated to "/evil.com/path".
+    // The app's own handler first — analytics, closing a menu — and its `preventDefault()` is a no.
+    // Taken off the anchor by `OWN`, so it is called here once rather than overwritten unseen.
+    // Called the way a listener is — a function with the anchor as `this`, or an object's
+    // `handleEvent` — as core calls every `on…` it is handed. Found by review: a bare call threw on an
+    // object and the click became a full page load.
+    const own = this.props.onclick as unknown;
+    if (typeof own === "function") own.call(e.currentTarget, e);
+    else if (typeof (own as EventListenerObject | null)?.handleEvent === "function")
+      (own as EventListenerObject).handleEvent(e);
+    if (e.defaultPrevented) return;
+
     const href = this.currentHref;
     if (shouldSkipIntercept(href, e)) return; // let the browser do it
+    // Another window or a file to save is the browser's job too — possible since `target` and
+    // `download` reach the anchor (see `LinkProps`).
+    const anchor = e.currentTarget as Element | null;
+    const target = anchor?.getAttribute("target");
+    if ((target && target !== "_self") || anchor?.hasAttribute("download")) return;
 
     e.preventDefault();
     this.ctx.nav.updateState(() => parseUrlString(href), {
@@ -80,7 +156,8 @@ export class Link extends Component<LinkProps> {
 
   render() {
     return (
-      <a href={this.currentHref} className={this.props.className} onclick={this.onClick}>
+      // The rest first, then its own: the href it routes to and the click it intercepts are the link.
+      <a {...forwarded(this, OWN)} href={this.currentHref} className={this.props.className} onclick={this.onClick}>
         {this.props.children}
       </a>
     );

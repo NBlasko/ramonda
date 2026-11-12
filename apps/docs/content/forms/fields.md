@@ -45,6 +45,7 @@ city.path       // "address.city"
 city.name       // the same, for the input's name attribute
 city.set(next)  // write it
 city.reset()    // back to its default
+city.setError("no such city")  // a message from the server, on this field
 
 // and, for a field one control holds, what that control is written with:
 city.inputValue // the value as the control shows it

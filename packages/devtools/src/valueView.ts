@@ -1,5 +1,5 @@
 import { escapeHtml, safeStringify } from "./format";
-import { FULL, renderJsonHtml, summarize, toPrettyText } from "./jsonView";
+import { FULL, renderJsonHtml, summarize, toPrettyText, Phrase } from "./jsonView";
 import { icon } from "@ramonda/theme";
 
 /**
@@ -175,7 +175,8 @@ export class ValueView {
    * that opens a bigger box containing `3` is noise on every row.
    */
   button(id: string, value: unknown): string {
-    const container = Array.isArray(value) || (typeof value === "object" && value !== null);
+    const container =
+      Array.isArray(value) || (typeof value === "object" && value !== null && !(value instanceof Phrase));
     if (!container) return "";
     return `<button type="button" class="jv-open" data-full="${escapeHtml(id)}" title="open ${escapeHtml(
       summarize(value),

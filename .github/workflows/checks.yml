@@ -473,6 +473,13 @@ jobs:
           SELFTEST=unbuilt node scripts/check-bare-import.mjs
           node scripts/check-bare-import.mjs
 
+      # Reads the manifests, no build. `@ramonda/testing-library` exported its two opt-outs with no
+      # `types`, so the import the docs tell a setup file to write failed a reader's type check.
+      - name: Every export carries its types
+        run: |
+          SELFTEST=missing node scripts/check-export-types.mjs
+          node scripts/check-export-types.mjs
+
       # No build needed — it reads the source. Here so it runs beside the other two source-shape
       # checks rather than in its own job for four seconds of work.
       #

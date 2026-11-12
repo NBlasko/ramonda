@@ -302,6 +302,11 @@ export class Field<T> extends Hook<{ of: FieldTarget<T> }> implements Watcher {
     this.live.reset();
   }
 
+  /** A message on this field, from a server's answer — see `FieldApi.setError`. */
+  setError(message: string): void {
+    this.live.setError(message);
+  }
+
   /* ---- array members, for a field holding a list ---- */
 
   /**

@@ -376,7 +376,7 @@ export class Navigator extends Hook {
    * `/users/:id` and `/people/:id` names one of them and is right on both, because the type it asks
    * for is satisfied on both — the check is about the params, not about the spelling.
    *
-   * It throws in every build, like its counterpart above it in `createRouter.ts`, and for the same
+   * It throws in every build, like its counterpart in `registry.ts`, and for the same
    * reason: the read is broken either way, and a development-only report would let it ship.
    */
   params<T extends RouteParams = RouteParams>(): T;
