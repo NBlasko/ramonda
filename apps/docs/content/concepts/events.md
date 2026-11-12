@@ -382,9 +382,12 @@ file, point a link at it, and click that link. Nothing about it is rendered, so 
 component's markup changes:
 
 ```tsx
-import { Component } from "@ramonda/core";
+import { Component, Timeout } from "@ramonda/core";
 
 class ExportBackup extends Component<{ names: string[] }> {
+  private revoke = this.use(Timeout, () => ({ run: this.revokeLast }));
+  private last = "";
+
   save(): void {
     const blob = new Blob([JSON.stringify(this.props.names)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -393,7 +396,12 @@ class ExportBackup extends Component<{ names: string[] }> {
     link.download = "backup.json";
     link.click();
     // On the next turn: revoked at once, some browsers cancel the download it just started.
-    setTimeout(() => URL.revokeObjectURL(url), 0);
+    this.last = url;
+    this.revoke.start(0);
+  }
+
+  revokeLast(): void {
+    URL.revokeObjectURL(this.last);
   }
 
   render() {
@@ -405,6 +413,10 @@ class ExportBackup extends Component<{ names: string[] }> {
   }
 }
 ```
+
+The wait is a [`Timeout`](/concepts/timers#a-timer-that-starts-when-you-say-timeout-and-interval)
+rather than a raw `setTimeout`, for the reason that page gives: the hook is cleared when the
+component goes, so nothing is left to fire into it.
 
 **In a test**, jsdom has no `URL.createObjectURL`, so stand one in before the click and read what it
 was handed: `URL.createObjectURL = vi.fn(() => "blob:test")`, then `await blob.text()` on the argument
