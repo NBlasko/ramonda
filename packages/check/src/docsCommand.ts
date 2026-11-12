@@ -51,69 +51,101 @@ function closest(asked: string, among: readonly string[]): string[] {
     .map((one) => one.name);
 }
 
-/** Says why there is nothing to read, and where the same page is on the web. Exit 2: nothing could be read. */
-function absent(tag: string, online: string): never {
-  console.error(
-    `${tag} the docs are not in this install of @ramonda/check — a build from the repository has none\n` +
+/**
+ * What a question about the docs got: the page, or why there is none.
+ *
+ * A VALUE rather than a print-and-exit, so a program can ask — the MCP server's `get_docs` and
+ * `explain` — and the CLI below is one reader of it among several, printing what it says.
+ *
+ * - `meant`: the names close to a slip, closest first — empty when nothing is close.
+ * - `online`: set when this install has no docs at all (a build from the repository has none until
+ *   a release packs them), to the same page on the site.
+ */
+export type DocsAnswer =
+  | { found: true; text: string }
+  | { found: false; message: string; meant: string[]; online?: string };
+
+/** No docs in this install: say so, and where the same page is on the web. */
+function notPacked(online: string): DocsAnswer {
+  return {
+    found: false,
+    message:
+      "the docs are not in this install of @ramonda/check — a build from the repository has none\n" +
       `until a release packs them. The page is at ${online}`,
-  );
-  process.exit(2);
+    meant: [],
+    online,
+  };
 }
 
-/** `explain <code|rule>` — a diagnostic code (`RMD020`, `rmq001`) or a checker rule (`unknown-hook-option`). */
-export function explain(tag: string, asked: string | undefined): never {
-  if (asked === undefined || asked.startsWith("-")) {
-    console.error(`${tag} explain takes a code or a rule: ramonda-check explain RMD020`);
-    process.exit(2);
-  }
+/** A diagnostic code (`RMD020`, `rmq001`) or a checker rule (`unknown-hook-option`), explained. */
+export function explainPage(asked: string): DocsAnswer {
   const code = /^rm[dqfl]\d+$/i.test(asked);
   const path = code ? `reference/diagnostics/${asked.toLowerCase()}` : `rules/${asked}`;
   const dir = docsDir();
-  if (!existsSync(join(dir, "llms.txt"))) absent(tag, `${SITE}/${path}`);
+  if (!existsSync(join(dir, "llms.txt"))) return notPacked(`${SITE}/${path}`);
 
   const file = join(dir, `${path}.md`);
-  if (existsSync(file)) {
-    printWhole(readFileSync(file, "utf8"));
-    process.exit(0);
-  }
+  if (existsSync(file)) return { found: true, text: readFileSync(file, "utf8") };
   const family = code ? "reference/diagnostics/" : "rules/";
   const known = pagesIn(dir)
     .filter((page) => page.startsWith(family))
     .map((page) => page.slice(family.length))
     .map((name) => (code ? name.toUpperCase() : name));
   const meant = closest(code ? asked.toUpperCase() : asked, known);
-  console.error(
-    `${tag} no ${code ? "diagnostic" : "rule"} ${code ? asked.toUpperCase() : `\`${asked}\``} in this version.` +
+  return {
+    found: false,
+    message:
+      `no ${code ? "diagnostic" : "rule"} ${code ? asked.toUpperCase() : `\`${asked}\``} in this version.` +
       (meant.length > 0 ? ` Did you mean ${meant.join(", ")}?` : "") +
       ` Every ${code ? "code" : "rule"}: ramonda-check docs ${code ? "reference/diagnostics" : "rules"}`,
-  );
-  process.exit(1);
+    meant,
+  };
 }
 
-/** `docs [page]` — a page by its path, or with none, the index of every page. */
-export function docs(tag: string, asked: string | undefined): never {
+/** A page by its path — `forms/fields`, `/forms/fields`, `forms/fields.md`, its address — or the index. */
+export function docsPage(asked?: string): DocsAnswer {
   const dir = docsDir();
-  if (!existsSync(join(dir, "llms.txt"))) absent(tag, asked === undefined ? `${SITE}/llms.txt` : `${SITE}/${asked}`);
-  if (asked === undefined) {
-    printWhole(readFileSync(join(dir, "llms.txt"), "utf8"));
-    process.exit(0);
-  }
-  // `forms/fields`, `/forms/fields`, `forms/fields.md`, or the page's address on the site.
+  if (!existsSync(join(dir, "llms.txt")))
+    return notPacked(asked === undefined ? `${SITE}/llms.txt` : `${SITE}/${asked.replace(/^\/+/, "")}`);
+  if (asked === undefined) return { found: true, text: readFileSync(join(dir, "llms.txt"), "utf8") };
   const path = asked
     .replace(/^https?:\/\/ramonda\.dev/, "")
     .replace(/^\/+/, "")
     .replace(/\.md$/, "")
     .replace(/\/$/, "");
   const file = join(dir, `${path === "" ? "index" : path}.md`);
-  if (existsSync(file)) {
-    printWhole(readFileSync(file, "utf8"));
-    process.exit(0);
-  }
+  if (existsSync(file)) return { found: true, text: readFileSync(file, "utf8") };
   const meant = closest(path, pagesIn(dir));
-  console.error(
-    `${tag} no page \`${path}\` in these docs.` +
+  return {
+    found: false,
+    message:
+      `no page \`${path}\` in these docs.` +
       (meant.length > 0 ? ` Did you mean ${meant.join(", ")}?` : "") +
       " Every page: ramonda-check docs",
-  );
-  process.exit(1);
+    meant,
+  };
+}
+
+/** Prints an answer and exits: 0 with the page, 2 when nothing could be read, 1 for a slip. */
+function said(tag: string, answer: DocsAnswer): never {
+  if (answer.found) {
+    printWhole(answer.text);
+    process.exit(0);
+  }
+  console.error(`${tag} ${answer.message}`);
+  process.exit(answer.online === undefined ? 1 : 2);
+}
+
+/** `explain <code|rule>` — see `explainPage`. */
+export function explain(tag: string, asked: string | undefined): never {
+  if (asked === undefined || asked.startsWith("-")) {
+    console.error(`${tag} explain takes a code or a rule: ramonda-check explain RMD020`);
+    process.exit(2);
+  }
+  said(tag, explainPage(asked));
+}
+
+/** `docs [page]` — see `docsPage`. */
+export function docs(tag: string, asked: string | undefined): never {
+  said(tag, docsPage(asked));
 }

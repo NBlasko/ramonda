@@ -71,16 +71,32 @@ function published() {
  * only ever a `devDependency` — `build`, `check`, `devtools`, `testing-library` — is a tool.
  */
 function runtimePackages() {
-  const runtime = new Set();
-  for (const file of globSync("{packages,apps}/*/package.json", { cwd: repo })) {
-    const json = JSON.parse(readFileSync(join(repo, file), "utf8"));
-    for (const field of ["dependencies", "peerDependencies"]) {
-      for (const name of Object.keys(json[field] ?? {})) {
-        if (name.startsWith("@ramonda/")) runtime.add(name);
-      }
-    }
+  const manifests = globSync("{packages,apps}/*/package.json", { cwd: repo }).map((file) => ({
+    ...JSON.parse(readFileSync(join(repo, file), "utf8")),
+    file,
+  }));
+  const declaredBy = (json) =>
+    ["dependencies", "peerDependencies"].flatMap((field) =>
+      Object.keys(json[field] ?? {}).filter((name) => name.startsWith("@ramonda/")),
+    );
+  /**
+   * A TOOL's own dependency does not make a package runtime: `@ramonda/mcp` is installed with `-D`
+   * and needs `@ramonda/check` beside it, which is still a tool — counting that peer turned check's
+   * line into `npm install @ramonda/check`. So only a declarer that is itself runtime counts, and an
+   * app always does. Narrowed until nothing changes: a tool may declare a tool that declares another.
+   */
+  // An app here is named `@ramonda/docs` too, and is never a tool: only a published package can be one.
+  const published = new Set(
+    manifests.filter((json) => json.file.startsWith("packages/") && json.private !== true).map((json) => json.name),
+  );
+  let runtime = new Set(manifests.flatMap(declaredBy));
+  for (;;) {
+    const next = new Set(
+      manifests.filter((json) => !published.has(json.name) || runtime.has(json.name)).flatMap(declaredBy),
+    );
+    if (next.size === runtime.size) return next;
+    runtime = next;
   }
-  return runtime;
 }
 
 /**

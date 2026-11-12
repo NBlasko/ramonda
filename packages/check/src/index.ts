@@ -1,4 +1,11 @@
 export { analyzeProject, analyzeProgram } from "./analyze";
+export type { AnalyzeOptions } from "./analyze";
+// The report `--json` prints and the pages `docs` and `explain` print, for a program to read — the MCP
+// server above all. The CLI is built on the same three, so the two cannot say different things.
+export { reportOf } from "./report";
+export type { JsonFinding, JsonReport } from "./jsonReport";
+export { docsPage, explainPage } from "./docsCommand";
+export type { DocsAnswer } from "./docsCommand";
 // Every rule this package runs, as four strings each — what a generator needs to describe them.
 // The documentation site's rule tables are built from this, so they cannot drift from the rules.
 export { ruleCatalogue } from "./rules";

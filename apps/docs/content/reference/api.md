@@ -29,6 +29,7 @@ Everything every package exports. Each entry links to the page that explains it.
 | `@ramonda/server` | A DOM for a server render, and the document it goes into. [Server rendering](/ssr/server) | always with SSR |
 | `@ramonda/testing-library` | Rendering and querying components in tests. [Testing](/testing) | `testing` |
 | `@ramonda/devtools` | The development panel. [Devtools](/devtools) | `devtools`, on by default |
+| `@ramonda/mcp` | An MCP server: a coding agent checks its code with your checker and reads these docs. [The MCP server](/reference/mcp) | — install it |
 | `create-ramonda` | The scaffolder that starts a project. [create-ramonda](/reference/create-ramonda) | — you run it |
 
 Where the last column has a word, it is the one [`--add`](/reference/create-ramonda) takes. A
@@ -450,8 +451,11 @@ The analyzer behind `ramonda-check`, as an import. [Checking your app](/referenc
 
 | | |
 |---|---|
-| `analyzeProject(tsconfig)` | Reads a project and answers with everything below — the context issues, every rule's findings, and the graph they are computed from. |
+| `analyzeProject(tsconfig, options?)` | Reads a project and answers with everything below — the context issues, every rule's findings, and the graph they are computed from. `files` checks code that is not saved yet. |
 | `analyzeProgram(program, notes?)` | The same analysis over a `ts.Program` you already have. The program is the cost of a run — the rules themselves are close to free — so a tool holding its own programs pays once rather than twice. |
+| `reportOf(result)` | A run as the object `ramonda-check --json` prints. |
+| `docsPage(page?)` | A page of the docs this version was released with, or the index — what `ramonda-check docs` prints. |
+| `explainPage(code)` | A diagnostic code's or a rule's page — what `ramonda-check explain` prints. |
 | `ruleCatalogue()` | Every rule as four strings: its `id`, its severity, when it reports, and the runtime diagnostic that reports the same fault. The rule tables on the check page are built from this. |
 | `splitOf(graph)` | What loads before anything, what each split point brings, and what they share. |
 | `diffGraphs(before, after)` | What moved between two graphs — nodes, edges, and the size of the first payload. |
@@ -465,6 +469,9 @@ your config rather than guessing at them.
 | | |
 |---|---|
 | `AnalyzeResult` | Everything one run found. |
+| `AnalyzeOptions` | What `analyzeProject` takes besides the tsconfig. |
+| `JsonReport`, `JsonFinding` | What `reportOf` answers. |
+| `DocsAnswer` | What `docsPage` and `explainPage` answer: the page, or why there is none. |
 | `Findings` | What each rule found, keyed by the rule's id and typed as that rule's own issue. |
 | `RuleSummary` | One rule as `ruleCatalogue()` describes it. |
 | `ContextIssue` | A consumer with no provider above it — the check this package was written for. |
@@ -514,6 +521,21 @@ The rules themselves are **not** exported, and that is a decision. A rule carrie
 own issue type and a `read` that takes a compiler node, so publishing one would make this package's
 internals somebody's dependency and every change to a rule's shape a breaking change.
 `ruleCatalogue()` is what a caller actually wants from them.
+
+
+---
+
+## `@ramonda/mcp`
+
+The server behind `ramonda-mcp`, as an import. [The MCP server](/reference/mcp)
+
+| | |
+|---|---|
+| `createServer(options?)` | The server with its four tools, not yet connected — for a host that serves it some other way than stdio. `ramonda-mcp` serves it over stdio. |
+
+| | |
+|---|---|
+| `ServerOptions` | `cwd`, the app's folder (default: where it was started), and `version`, what the client is told. |
 
 ---
 

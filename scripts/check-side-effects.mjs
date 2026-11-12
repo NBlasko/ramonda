@@ -92,6 +92,11 @@ const DECIDED = {
     expect: undefined,
     why: "A CLI, consumed through its `bin` rather than by importing it. Tree-shaking never enters the picture, and the safe default is the honest declaration.",
   },
+  mcp: {
+    keeps: true,
+    expect: undefined,
+    why: "A server, started through its `bin` (`ramonda-mcp`) rather than imported into a bundle. Like `check`, nothing tree-shakes it, and the safe default is the honest declaration.",
+  },
   build: {
     keeps: false,
     expect: false,

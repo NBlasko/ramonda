@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { dirname, relative, sep } from "node:path";
+import { dirname, relative, resolve, sep } from "node:path";
 import { fileMayHoldABlock, mayHoldABlock, virtualFile } from "@ramonda/css/compiler";
 import ts from "typescript";
 import { declarationEntryOf, fingerprint, loadFragment, packageRootOf } from "./fragment";
@@ -634,8 +634,21 @@ function oneEach(nodes: GraphNode[]): GraphNode[] {
   });
 }
 
-export function analyzeProject(tsconfigPath: string): AnalyzeResult {
-  const { program, notes } = createProgram(tsconfigPath);
+/** What a caller may hand `analyzeProject` besides the tsconfig. */
+export interface AnalyzeOptions {
+  /**
+   * Files by absolute path, read from here instead of the disk — a new file is added to the project,
+   * an existing one is replaced. Nothing is written.
+   *
+   * For a tool that asks about code BEFORE it is saved: the MCP server's `check_code`, where an
+   * agent checks what it is about to write. Measured before it was built: a helper planted in a file
+   * no disk holds is reported at its line, by the same rules, in the same run as the project.
+   */
+  files?: Readonly<Record<string, string>>;
+}
+
+export function analyzeProject(tsconfigPath: string, options: AnalyzeOptions = {}): AnalyzeResult {
+  const { program, notes } = createProgram(tsconfigPath, options.files);
   return analyzeProgram(program, notes);
 }
 
@@ -4064,13 +4077,26 @@ function packageOf(dir: string): { name: string; version: string } {
  * about module resolution moves. `@ramonda/check` may depend on `@ramonda/css`; the forbidden
  * direction is the other one, and it stays forbidden.
  */
-function overlayHost(options: ts.CompilerOptions): ts.CompilerHost {
+/** A path as the compiler spells it — absolute, forward slashes — so a caller's spelling finds it. */
+function samePath(path: string): string {
+  return resolve(path).split(sep).join("/");
+}
+
+function overlayHost(options: ts.CompilerOptions, inMemory: ReadonlyMap<string, string> = new Map()): ts.CompilerHost {
   const host = ts.createCompilerHost(options);
-  const readFromDisk = host.readFile.bind(host);
-  const sourceFromDisk = host.getSourceFile.bind(host);
+  // "The disk" below is the disk with the caller's in-memory files laid over it — see `AnalyzeOptions`.
+  const fromDisk = host.readFile.bind(host);
+  const readFromDisk = (fileName: string) => inMemory.get(samePath(fileName)) ?? fromDisk(fileName);
+  const fromDiskSource = host.getSourceFile.bind(host);
+  const sourceFromDisk: typeof fromDiskSource = (fileName, language, onError, shouldCreate) => {
+    const text = inMemory.get(samePath(fileName));
+    return text === undefined
+      ? fromDiskSource(fileName, language, onError, shouldCreate)
+      : ts.createSourceFile(fileName, text, language, true);
+  };
   // The DOM's stand-ins, a file no disk holds — see `createProgram`.
   const exists = host.fileExists.bind(host);
-  host.fileExists = (fileName) => fileName === DOM_STUB_FILE || exists(fileName);
+  host.fileExists = (fileName) => fileName === DOM_STUB_FILE || inMemory.has(samePath(fileName)) || exists(fileName);
 
   /**
    * Text → its virtual copy, or `undefined` when the file holds no block. One read per file.
@@ -4374,10 +4400,14 @@ function keyNames(key: ts.Node, checker: ts.TypeChecker): string[] | undefined {
   return members.flatMap((member) => (member.isStringLiteral() ? [member.value] : []));
 }
 
-export function createProgram(tsconfigPath: string): {
+export function createProgram(
+  tsconfigPath: string,
+  files: Readonly<Record<string, string>> = {},
+): {
   program: ts.Program;
   notes: string[];
 } {
+  const inMemory = new Map(Object.entries(files).map(([path, text]) => [samePath(path), text]));
   const notes: string[] = [];
   const configFile = ts.readConfigFile(tsconfigPath, ts.sys.readFile);
   if (configFile.error) {
@@ -4401,7 +4431,8 @@ export function createProgram(tsconfigPath: string): {
     for (const error of parsed.errors) notes.push(String(ts.flattenDiagnosticMessageText(error.messageText, " ")));
   }
   const program = ts.createProgram({
-    rootNames: [...parsed.fileNames, DOM_STUB_FILE],
+    // A file handed in memory is part of the project whether or not the disk has it yet.
+    rootNames: [...new Set([...parsed.fileNames, ...inMemory.keys()]), DOM_STUB_FILE],
     /**
      * The host, with `@@( … )` style blocks turned into TSX before the compiler sees them.
      *
@@ -4423,7 +4454,7 @@ export function createProgram(tsconfigPath: string): {
      * half-written in an editor's buffer is not a reason to stop analysing the file it is in. Whether
      * the block itself is well formed is `ramonda-css`'s answer, and it is the one that fails a build.
      */
-    host: overlayHost(parsed.options),
+    host: overlayHost(parsed.options, inMemory),
     /**
      * The project's own options, with the language's lib in place of whatever lib it names, and no
      * `@types/*`.

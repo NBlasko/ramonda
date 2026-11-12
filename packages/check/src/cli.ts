@@ -12,7 +12,8 @@ import { filesOf, splitOf } from "./split";
 import { OPTIONS } from "./cliOptions";
 import { docs, explain } from "./docsCommand";
 import { type AnyGraphReport, GRAPH_REPORTS } from "./graphReports";
-import { type JsonFinding, locationOf, messageOf, printJson } from "./jsonReport";
+import { printJson } from "./jsonReport";
+import { reportOf } from "./report";
 
 /**
  * `ramonda-check [tsconfig]`
@@ -426,43 +427,9 @@ if (diffAgainst) {
  * readers as the text below, so the two cannot report different things.
  */
 if (wantsJson) {
-  const own = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string };
-  const found: JsonFinding[] = [];
-  for (const graphReport of GRAPH_REPORTS as readonly AnyGraphReport[]) {
-    for (const item of graphReport.items(result)) {
-      const at = locationOf(item);
-      found.push({
-        code: graphReport.id,
-        severity: "error",
-        ...at,
-        message: messageOf(graphReport.lines(item)),
-        data: item,
-      });
-    }
-  }
-  for (const rule of RULES) {
-    for (const issue of findings[rule.id]) {
-      const at = locationOf(issue);
-      found.push({
-        code: rule.id,
-        severity: rule.report.severity,
-        ...at,
-        message: messageOf(rule.report.lines(issue as never), at),
-        data: issue,
-      });
-    }
-  }
-  const ok = !found.some((finding) => finding.severity === "error");
-  printJson({
-    tool: "ramonda-check",
-    version: own.version,
-    ok,
-    findings: found,
-    notes,
-    ignored: annotated,
-    counts,
-  });
-  process.exit(ok ? 0 : 1);
+  const report = reportOf(result);
+  printJson(report);
+  process.exit(report.ok ? 0 : 1);
 }
 
 if (annotated.length > 0) {
