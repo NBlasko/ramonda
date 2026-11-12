@@ -269,6 +269,21 @@ describe("the types a Vite project needs", () => {
    * `import.meta.env.DEV` from `NODE_ENV`, so a shell exporting `NODE_ENV=development` shipped every
    * development branch — the devtools import among them — in the production bundle.
    */
+  /**
+   * A failed SSR load forgets Vite's module graph, so the next request loads afresh. Found by the
+   * second trial and measured on Vite 8.3.4 alone: an import written before its file failed, and went
+   * on failing after the file was created, until the dev server restarted — `invalidateAll()` was
+   * what made the next load succeed.
+   */
+  test("the dev server recovers from a failed SSR load on the next request", () => {
+    const server = make("ssr", []).read("server.mjs");
+    const failed = server.slice(
+      server.indexOf("async function renderDev"),
+      server.indexOf("async function renderDev") + 1500,
+    );
+    expect(failed).toContain("vite.moduleGraph.invalidateAll()");
+  });
+
   test("the build script says production before it asks for the defines", () => {
     const script = make("ssr", []).read("scripts/build.mjs");
     const set = script.indexOf('process.env.NODE_ENV = "production"');

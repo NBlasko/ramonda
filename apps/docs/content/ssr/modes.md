@@ -166,6 +166,10 @@ It stops rather than skipping the route, for the same reason a per-request read 
 that says `prerender` and a build that quietly does not is how a site ships missing half its pages
 while every page it did emit looks perfectly correct.
 
+**When the ids exist only in the reader's browser** — stored in IndexedDB, say — there is no list to
+pass, and per request is no answer on a static host. Put the id in the query instead: `/tournament?id=…`
+is one route and one baked page. See [a path and a query, or a `:param`](/routing/links).
+
 **A `revalidate` route with a `:param` needs no paths, and that is the difference.** Nothing is baked
 at build; the cache fills as pages are asked for, and each one is a page of its own — `/products/7`
 and `/products/9` are cached separately under the one route. So the build is told nothing, and

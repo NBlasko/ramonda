@@ -59,6 +59,10 @@ straight from the query is shown [once the page is live](/routing/server#what-th
 - `scroll` — scroll to the top after navigating. Defaults to `true` (a link is a real
   navigation); pass `scroll={false}` for a link that swaps a view in place, like tabs
   partway down a long page.
+- Anything else an `<a>` takes — `lang`, `hreflang`, `title`, `rel`, `target`, `aria-*`, `data-*` —
+  goes onto the anchor as written: `<Link href="/en" lang="en" hreflang="en">English</Link>`.
+- `onclick` runs before the link navigates. Call `event.preventDefault()` in it to stop the
+  navigation — to confirm unsaved changes, say.
 
 ## What it leaves to the browser
 

@@ -100,7 +100,48 @@ that folder. A page is a folder's `index.html`, which static hosts serve at `/ab
 A route that is not baked — one that renders per request, or an ISR one — needs `npm start` running, so
 `build:static` refuses and names it rather than uploading a site that serves it as a missing page. A
 `:param` route marked `prerender` is baked from the paths in `PRERENDER_PATHS`, in
-`src/entry-server.tsx` — the one list the build and the server both read.
+`src/entry-server.tsx` — the one list the build and the server both read. An id only the reader's
+browser has goes in the query instead, on one baked route: see
+[a path and a query, or a `:param`](/routing/links).
+
+## Your site's own address
+
+A canonical link, `og:url` and a sitemap all need the site's absolute address, and a baked page cannot
+take it from `location`: the build renders at the prerender script's own `http://localhost:5173`. Say
+it once, in a variable the build reads:
+
+```sh
+RAMONDA_PUBLIC_SITE_URL=https://turniri.example npm run build:static
+```
+
+Read it in one module, and give each page its canonical link through `Head`:
+
+```ts
+// src/site.ts
+export const SITE = import.meta.env.RAMONDA_PUBLIC_SITE_URL ?? "";
+```
+
+```tsx
+import { Component, Head } from "@ramonda/core";
+import { Navigator } from "@ramonda/router";
+import { SITE } from "./site";
+
+class Page extends Component {
+  route = this.use(Navigator);
+  head = this.use(Head, () => ({
+    link: SITE ? [{ rel: "canonical", href: SITE + this.route.pathname }] : [],
+  }));
+  render() {
+    return <main>…</main>;
+  }
+}
+```
+
+The same variable gives `scripts/prerender.mjs` what a sitemap needs: it already has every baked path
+from `staticPaths()`, so after the loop it can write `dist/static/sitemap.xml` from them, and a
+`robots.txt` whose `Sitemap:` line names it. Write both only when the variable is set — a sitemap of
+`localhost` addresses is worse than none — and the script empties `dist/static` before each build, so
+one from an earlier build never ships.
 
 ## What is decided at build time
 

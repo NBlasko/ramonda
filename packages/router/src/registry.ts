@@ -88,6 +88,9 @@ export interface TypedLinkProps<P extends string> {
   stateResolver?: StateUpdater;
   className?: string;
   children?: RamondaNode;
+  /** Anything else an `<a>` takes, passed through — see `LinkProps`. */
+  // biome-ignore lint/suspicious/noExplicitAny: the same latitude the tag's own type gives
+  [attribute: Lowercase<string>]: any;
 }
 
 /**

@@ -40,6 +40,19 @@ npm create ramonda@latest my-app -- --yes
 npm create ramonda@latest my-app -- --mode ssr --add css,query,testing --no-git
 ```
 
+### Which mode
+
+| The app | Mode | Ships as |
+|---|---|---|
+| Behind a login, nothing for a search engine | `spa` | one folder of files |
+| No server of its own, but pages a search engine reads — data kept in the browser | `ssr`, every route `prerender: true` | one folder: `npm run build:static` |
+| Pages that differ per visitor or per request | `ssr`, those routes rendered per request | a Node server: `npm start` |
+
+The middle row is the one that is easy to miss: `ssr` does not mean a server in production. A route
+whose id exists only in the reader's browser stays one baked page with the id in the query —
+[a path and a query, or a `:param`](/routing/links). See [rendering modes](/ssr/modes) and
+[deploying](/deploying).
+
 ### With no terminal
 
 A script, a CI job or an agent has no terminal to answer a question in. There, every question must

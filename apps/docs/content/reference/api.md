@@ -56,6 +56,7 @@ package not added at the start is installed like any other, later.
 | `Portal` | Renders a subtree into a DOM target elsewhere — e.g. `document.head`. [Portal](/composition/portal) |
 | `portalTarget(name)` | Names a portal target outside the app's root, so it exists on the server too. `PORTAL_TARGET_ATTR` marks the container a shell emits. [Portal](/composition/portal) |
 | `Select` | A `<select>`, whose value is which of its children is chosen. The plain tag is refused: `selected` on an option means whatever the render order made it mean. `<option>` is untouched. [Fields](/forms/fields#a-choice-lives-on-select) |
+| `forwarded(this, consumed)` | Every prop a component does not consume itself, to spread onto the one element it wraps — `{...this.props}` spreads nothing, because props are read key by key. `Select` and the router's `Link` are built with it. |
 | `TextArea` | A `<textarea>`, whose value is the element's TEXT rather than an attribute. The plain tag is refused: nothing written as an attribute can carry the value, so a served page showed an empty field. [Fields](/forms/fields#textarea-a-textarea-keeps-its-value-inside-the-element) |
 | `AsyncLoad` | Loads a module the first time it is rendered. [Lazy loading](/composition/lazy) |
 | `ErrorBoundary` | Catches what a subtree throws while rendering. [Error boundaries](/composition/error-boundaries) |

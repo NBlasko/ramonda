@@ -1,4 +1,4 @@
-import { Component } from "@ramonda/core";
+import { Component, forwarded } from "@ramonda/core";
 import type { RamondaNode } from "@ramonda/core";
 import { RouteConsumer } from "./Router";
 import { buildUrl, parseUrlString, sanitizeHref } from "./urlUtils";
@@ -20,7 +20,17 @@ export interface LinkProps {
   stateResolver?: StateUpdater;
   className?: string;
   children?: RamondaNode;
+  /**
+   * Anything else an `<a>` takes — `lang`, `hreflang`, `title`, `rel`, `target`, `aria-*`, `data-*` —
+   * passed straight through, as `Select` passes everything to its `<select>`. Found by the second
+   * trial: a language switch could not say `lang="en"`. The same latitude the tag itself has.
+   */
+  // biome-ignore lint/suspicious/noExplicitAny: the same latitude the tag's own type gives
+  [attribute: Lowercase<string>]: any;
 }
+
+/** What this component consumes itself, so `forwarded` hands on everything else. */
+const OWN = ["href", "replace", "scroll", "stateResolver", "className", "children", "onclick"];
 
 /**
  * Which clicks we let the browser handle natively instead of intercepting:
@@ -68,8 +78,19 @@ export class Link extends Component<LinkProps> {
     // here was how the two came apart, because `currentHref` sanitizes and this
     // did not — `href="evil.com/path"` rendered as "/" but a left click resolved
     // it against the current URL and navigated to "/evil.com/path".
+    // The app's own handler first — analytics, closing a menu — and its `preventDefault()` is a no.
+    // Taken off the anchor by `OWN`, so it is called here once rather than overwritten unseen.
+    const own = this.props.onclick as ((event: MouseEvent) => void) | undefined;
+    own?.(e);
+    if (e.defaultPrevented) return;
+
     const href = this.currentHref;
     if (shouldSkipIntercept(href, e)) return; // let the browser do it
+    // Another window or a file to save is the browser's job too — possible since `target` and
+    // `download` reach the anchor (see `LinkProps`).
+    const anchor = e.currentTarget as Element | null;
+    const target = anchor?.getAttribute("target");
+    if ((target && target !== "_self") || anchor?.hasAttribute("download")) return;
 
     e.preventDefault();
     this.ctx.nav.updateState(() => parseUrlString(href), {
@@ -80,7 +101,8 @@ export class Link extends Component<LinkProps> {
 
   render() {
     return (
-      <a href={this.currentHref} className={this.props.className} onclick={this.onClick}>
+      // The rest first, then its own: the href it routes to and the click it intercepts are the link.
+      <a {...forwarded(this, OWN)} href={this.currentHref} className={this.props.className} onclick={this.onClick}>
         {this.props.children}
       </a>
     );

@@ -349,6 +349,67 @@ Press the identity button: the same arguments give back the same function, which
 what keeps the listener from being re-attached — and what stops
 [RMD020](/reference/diagnostics/rmd020) reporting the row.
 
+## Files: what the reader picks, and a file to save
+
+A file input is an ordinary element, and the file arrives on its event. Read it in the handler — it
+is not a value to keep in `@state`, and not a form field: parse it there, and keep what you parsed.
+
+```tsx
+import { Component, type EventOn, state } from "@ramonda/core";
+
+class ImportBackup extends Component {
+  @state names: string[] = [];
+
+  async picked(event: EventOn<HTMLInputElement>): Promise<void> {
+    const file = event.currentTarget.files?.[0];
+    if (file === undefined) return;
+    this.names = JSON.parse(await file.text()) as string[];
+  }
+
+  render() {
+    return (
+      <label>
+        Import a backup
+        <input type="file" accept="application/json" onchange={this.picked} />
+      </label>
+    );
+  }
+}
+```
+
+Handing the reader a file is the other direction, and it is a few lines in a click handler: make the
+file, point a link at it, and click that link. Nothing about it is rendered, so nothing in the
+component's markup changes:
+
+```tsx
+import { Component } from "@ramonda/core";
+
+class ExportBackup extends Component<{ names: string[] }> {
+  save(): void {
+    const blob = new Blob([JSON.stringify(this.props.names)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "backup.json";
+    link.click();
+    // On the next turn: revoked at once, some browsers cancel the download it just started.
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+  }
+
+  render() {
+    return (
+      <button type="button" onclick={this.save}>
+        Export
+      </button>
+    );
+  }
+}
+```
+
+**In a test**, jsdom has no `URL.createObjectURL`, so stand one in before the click and read what it
+was handed: `URL.createObjectURL = vi.fn(() => "blob:test")`, then `await blob.text()` on the argument
+it received.
+
 ## Which to use
 
 | the target is… | use |
