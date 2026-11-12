@@ -172,24 +172,6 @@ describe("a literal written as a hole", () => {
     const { code } = compile(`const f = <input pattern="\\d+" placeholder="a\nb" />;`);
     expect(code).toBe(`const f = __ramondaBlock(__ramondaT0, [${JSON.stringify("\\d+")}, ${JSON.stringify("a\nb")}]);`);
   });
-  test.each([
-    [
-      "`htmlFor` and `for`",
-      `<label htmlFor="a" for={b}>x</label>`,
-      `{ t: "label", d: [["htmlFor", 0], ["for", 1]], c: ["x"] }`,
-    ],
-    [
-      "`tabIndex` and `tabindex`",
-      `<div tabIndex="1" tabindex={b}>x</div>`,
-      `{ t: "div", d: [["tabIndex", 0], ["tabindex", 1]], c: ["x"] }`,
-    ],
-  ])("when %s write the one attribute, both are holes", (_name, element, description) => {
-    const {
-      templates: [template],
-    } = compile(`const e = ${element};`);
-    expect(template).toBe(description);
-  });
-
   test("on an SVG element, names that differ in case are two attributes, and each is baked", () => {
     const {
       templates: [svg],
@@ -197,15 +179,17 @@ describe("a literal written as a hole", () => {
     expect(svg).toBe(`{ t: "svg", a: { "viewBox": "0 0 1 1", "viewbox": "0 0 2 2" } }`);
   });
 
-  test("when its name is written twice on the element, both are holes, and the last one's value wins", () => {
-    const {
-      code,
-      templates: [div],
-    } = compile(`const d = <div title="a" title={t}>x</div>;`);
-    expect({ div, code }).toEqual({
-      div: `{ t: "div", d: [["title", 0], ["title", 1]], c: ["x"] }`,
-      code: `const d = __ramondaBlock(__ramondaT0, ["a", t]);`,
-    });
+  test.each([
+    ["a name written twice", `<div title="a" title={t}>x</div>`],
+    ["`htmlFor` and `for`", `<label htmlFor="a" for={b}>x</label>`],
+    ["`tabIndex` and `tabindex`", `<div tabIndex="1" tabindex={b}>x</div>`],
+  ])("an element writing one attribute twice — %s — is left to `jsx()`", (_name, element) => {
+    expect(compileJsx(`const e = ${element};`, "page.tsx")).toBeUndefined();
+  });
+
+  test("and the elements inside it are still compiled", () => {
+    const { code } = compile(`const e = <div title="a" title={t}><p>{x}</p></div>;`);
+    expect(code).toBe(`const e = <div title="a" title={t}>{__ramondaBlock(__ramondaT0, [x])}</div>;`);
   });
 });
 

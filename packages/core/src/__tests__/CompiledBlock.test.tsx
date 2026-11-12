@@ -604,56 +604,6 @@ describe("a served block whose hole names an attribute by another spelling", () 
   });
 });
 
-describe("a served block whose element writes one attribute from two holes", () => {
-  test.each([
-    [
-      "`for` and a null `htmlFor`",
-      __template({
-        t: "label",
-        d: [
-          ["for", 0],
-          ["htmlFor", 1],
-        ],
-        c: ["x"],
-      }),
-      ["a", null],
-      "label",
-      "for",
-      "a",
-    ],
-    [
-      "an undefined `tabIndex` and `tabindex`",
-      __template({
-        t: "div",
-        d: [
-          ["tabIndex", 0],
-          ["tabindex", 1],
-        ],
-        c: ["x"],
-      }),
-      [undefined, "0"],
-      "div",
-      "tabindex",
-      "0",
-    ],
-  ])("keeps what the other writes: %s", async (_name, template, values, tag, attribute, expected) => {
-    class Card extends Component {
-      render() {
-        return <main>{__block(template, values)}</main>;
-      }
-    }
-    const container = document.createElement("div");
-    document.body.appendChild(container);
-    container.innerHTML = await renderToString(<Card />);
-    hydrateRoot(<Card />, container);
-    await Promise.resolve();
-    await Promise.resolve();
-    const value = (container.querySelector(tag) as HTMLElement).getAttribute(attribute);
-    container.remove();
-    expect(value).toBe(expected);
-  });
-});
-
 describe("a served block's static elements", () => {
   test("are not searched for what only the server wrote when they hold exactly what the template bakes", async () => {
     const LIST = __template({

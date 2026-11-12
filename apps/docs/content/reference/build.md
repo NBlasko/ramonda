@@ -72,7 +72,8 @@ row(row: Row) {
 Here the template is the `<tr>` and its cells with their classes, and each render computes three values:
 the row's class, its id and its label. Your `render()` and the JSX in it read exactly as before.
 
-Components, fragments and elements with a spread (`{...props}`) are compiled the ordinary way, and an
+Components, fragments, elements with a spread (`{...props}`) and an element that writes one attribute
+twice (`for` beside `htmlFor`) are compiled the ordinary way, and an
 element inside them is a template of its own. Each JSX tree is its own template, so the two branches of
 `cond ? <input className="a" /> : <input className="b" />` are two elements: switching builds the other one,
 and focus, the caret and an open `<details>` stay with the one that went. One element whose attribute

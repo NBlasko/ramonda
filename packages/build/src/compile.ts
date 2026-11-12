@@ -234,12 +234,19 @@ function childrenOf(element: JSXElement): Child[] | undefined {
 function templatable(element: JSXElement, root: boolean): boolean {
   const tag = hostTag(element);
   if (tag === undefined) return false;
+  const written = new Set<string>();
   for (const attribute of element.openingElement.attributes) {
     if (attribute.type !== "JSXAttribute") return false;
     const name = attributeName(attribute);
     // `children` is JSX's own: the element's children, never an attribute of that name.
     if (name === undefined || name === "class" || name === "children") return false;
     if (name === "key" && !root) return false;
+    // One attribute written twice — `for` and `htmlFor`, `tabIndex` and `tabindex`, or a name repeated in a
+    // `.jsx` file — is left to `jsx()`, which writes them as it always has: one hole per attribute is what
+    // a template holds.
+    const once = attributeWrittenBy(name, svgElements.has(tag));
+    if (written.has(once)) return false;
+    written.add(once);
     // An entity in a literal is decoded by the transform after this one, as it is in text.
     const value = attribute.value as Node | null;
     if (value?.type === "Literal" && typeof value.value === "string" && value.value.includes("&")) return false;
@@ -324,18 +331,6 @@ class Compiler {
       const tag = hostTag(node) as string;
       const baked: string[] = [];
       const dynamic: string[] = [];
-      // An attribute written twice is the last one's, as `jsx()` makes it: neither is baked, so the holes,
-      // in source order, leave it the value the last one wrote. Twice by the attribute it writes — `htmlFor`
-      // and `for`, `tabIndex` and `tabindex` are one — on an HTML element, which folds the name.
-      const svg = svgElements.has(tag);
-      const written = (name: string): string => attributeWrittenBy(name, svg);
-      const seen = new Set<string>();
-      const twice = new Set<string>();
-      for (const attribute of node.openingElement.attributes) {
-        const name = written(attributeName(attribute) as string);
-        if (seen.has(name)) twice.add(name);
-        seen.add(name);
-      }
       for (const attribute of node.openingElement.attributes) {
         const name = attributeName(attribute) as string;
         const value = attribute.value as Node | null;
@@ -344,7 +339,7 @@ class Compiler {
           pieces = ["true"];
         } else if (value.type === "Literal") {
           const text = value.value as string;
-          if (name !== "key" && !twice.has(written(name)) && bakeable(tag, name)) {
+          if (name !== "key" && bakeable(tag, name)) {
             // With line breaks as HTML gives them back — a CRLF checkout's arrive as LF in a served page.
             const folded = text.replace(/\r\n?/g, "\n");
             baked.push(`${JSON.stringify(ATTRIBUTE_OF_PROPERTY[name] ?? name)}: ${JSON.stringify(folded)}`);

@@ -9,7 +9,8 @@ template, built once, and the values of its holes, which is all a render compute
 plain attributes go into the template; every attribute with a rule (a field's `value`, a listener, a
 `ref`, a `style`, a boolean attribute), an element's `{…}` child and children that mix text, values and
 components are holes, written by the same rules as before. Components, fragments, spreads, a `class`
-attribute and text or an attribute with an entity are left to the JSX transform as they were, and a host
+attribute, an element that writes one attribute twice, and text or an attribute with an entity are left to
+the JSX transform as they were, and a host
 element inside them is compiled on its own. Every expression keeps its place in the source, so a stack
 trace or a breakpoint inside a handler written in JSX points at the line it was written on. `ramonda({ compile: false })` builds the app the way it was built before.
 
