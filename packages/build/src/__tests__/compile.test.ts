@@ -488,7 +488,11 @@ describe("the plugins", () => {
 });
 
 /** The source map's original line for the first generated position of `needle`, decoded by hand. */
-function originalLine(code: string, map: { mappings: string }, needle: string): number | undefined {
+function originalPosition(
+  code: string,
+  map: { mappings: string },
+  needle: string,
+): { line: number; column: number } | undefined {
   const at = code.indexOf(needle);
   const line = code.slice(0, at).split("\n").length - 1;
   const column = at - code.lastIndexOf("\n", at - 1) - 1;
@@ -496,7 +500,7 @@ function originalLine(code: string, map: { mappings: string }, needle: string): 
   let source = 0;
   let sourceLine = 0;
   let sourceColumn = 0;
-  let found: number | undefined;
+  let found: { line: number; column: number } | undefined;
   map.mappings.split(";").forEach((segments, generatedLine) => {
     let generatedColumn = 0;
     for (const segment of segments.split(",").filter(Boolean)) {
@@ -519,20 +523,21 @@ function originalLine(code: string, map: { mappings: string }, needle: string): 
         sourceLine += fields[2];
         sourceColumn += fields[3];
       }
-      if (generatedLine === line && generatedColumn <= column && fields.length > 1) found = sourceLine;
+      if (generatedLine === line && generatedColumn <= column && fields.length > 1) {
+        found = { line: sourceLine, column: sourceColumn + (column - generatedColumn) };
+      }
     }
   });
   void source;
-  void sourceColumn;
   return found;
 }
 
 describe("the source map", () => {
-  test("points code inside the JSX — a handler's body — at the line it was written on", () => {
+  test("points code inside the JSX — a handler's body — at the line and column it was written on", () => {
     const source = `const v = (\n  <div onclick={() => {\n    doThing();\n    throw new Error("boom");\n  }}>x</div>\n);\n`;
     const out = compileJsx(source, "page.tsx");
     if (out === undefined) throw new Error("nothing was compiled");
-    // 0-based: `throw` is on the fourth line of the source.
-    expect(originalLine(out.code, out.map, "throw new Error")).toBe(3);
+    // 0-based: `throw` is on the fourth line of the source, four spaces in.
+    expect(originalPosition(out.code, out.map, "throw new Error")).toEqual({ line: 3, column: 4 });
   });
 });

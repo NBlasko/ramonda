@@ -33,7 +33,7 @@
  */
 import { parseSync } from "oxc-parser";
 import MagicString from "magic-string";
-import { ATTRIBUTE_OF_PROPERTY, BOOLEAN_ATTRIBUTES, svgElements } from "@ramonda/dom-facts";
+import { ATTRIBUTE_OF_PROPERTY, BOOLEAN_ATTRIBUTES, attributeWrittenBy, svgElements } from "@ramonda/dom-facts";
 
 const RUNTIME = "@ramonda/core/jsx-runtime";
 const TEMPLATE = "__ramondaTemplate";
@@ -108,7 +108,9 @@ export function compileJsx(code: string, id: string): Compiled | undefined {
   out.appendLeft(at, `\nimport { __template as ${TEMPLATE}, __block as ${BLOCK} } from "${RUNTIME}";\n${names}`);
   return {
     code: out.toString(),
-    map: out.generateMap({ source: id, includeContent: true, hires: true }),
+    // A mapping per word rather than per character: a breakpoint and a stack frame land on a token either
+    // way, and the map is half the size (measured on the SSR template's App.tsx: 13,414 → 6,439 bytes).
+    map: out.generateMap({ source: id, includeContent: true, hires: "boundary" }),
     templates: compiler.templates,
   };
 }
@@ -322,10 +324,7 @@ class Compiler {
       // in source order, leave it the value the last one wrote. Twice by the attribute it writes — `htmlFor`
       // and `for`, `tabIndex` and `tabindex` are one — on an HTML element, which folds the name.
       const svg = svgElements.has(tag);
-      const written = (name: string): string => {
-        const attribute = ATTRIBUTE_OF_PROPERTY[name] ?? name;
-        return svg ? attribute : attribute.toLowerCase();
-      };
+      const written = (name: string): string => attributeWrittenBy(name, svg);
       const seen = new Set<string>();
       const twice = new Set<string>();
       for (const attribute of node.openingElement.attributes) {

@@ -7,6 +7,7 @@ import {
   BOOLEAN_ATTRIBUTES,
   keptInAProperty,
   ATTRIBUTE_OF_PROPERTY,
+  attributeWrittenBy,
 } from "../helpers/constants";
 import { checkBooleanAttribute } from "../debug/booleanAttribute";
 import {
@@ -91,18 +92,24 @@ export function applyChangesOnAttributes(
 }
 
 /**
- * Hydration of a compiled block's attribute hole: the element is the server's, and only the names its
- * holes give are this diff's — the template's own attributes are set where it was built, and read back
- * here they would be taken away as attributes the render no longer gives. So the record it starts from is
- * the page's value of each of those names: a value the server wrote and the client does not is still
- * taken away.
+ * A compiled block's attribute holes, written. Only the names its holes give are this diff's — the
+ * template's own attributes are set where it was built, and read back from the page they would be taken
+ * away as attributes the render no longer gives. So where the element holds no record — the server's,
+ * being hydrated, or one whose last pass threw — the record it starts from is the page's value of each of
+ * those names: a value the page holds and the render does not is still taken away.
  */
-export function adoptAttributes(enhancedNode: ChildNode, rawNextAttributes: NodeAttributes): void {
-  const page = getAllFromNode(enhancedNode as EnhancedHTMLNode);
-  const written: NodeAttributes = {};
-  for (const name in rawNextAttributes) if (name in page) written[name] = page[name];
-  (enhancedNode as Written)[WRITTEN] = written;
-  applyChangesOnAttributes(enhancedNode, rawNextAttributes);
+export function writeHoleAttributes(
+  enhancedNode: ChildNode,
+  rawNextAttributes: NodeAttributes,
+  onServer = false,
+): void {
+  if ((enhancedNode as Written)[WRITTEN] === undefined) {
+    const page = getAllFromNode(enhancedNode as EnhancedHTMLNode);
+    const written: NodeAttributes = {};
+    for (const name in rawNextAttributes) if (name in page) written[name] = page[name];
+    (enhancedNode as Written)[WRITTEN] = written;
+  }
+  applyChangesOnAttributes(enhancedNode, rawNextAttributes, onServer);
 }
 
 /**
@@ -749,13 +756,10 @@ function removePreviousFromenhancedNode(
  */
 export function dropServerOnly(element: Element, next: NodeAttributes, svg: boolean): void {
   const named = new Set<string>();
-  for (const name in next) {
-    const attribute = ATTRIBUTE_OF_PROPERTY[name] ?? name;
-    named.add(svg ? attribute : attribute.toLowerCase());
-  }
+  for (const name in next) named.add(attributeWrittenBy(name, svg));
   const page: NodeAttributes = {};
   for (const attribute of Array.from(element.attributes)) {
-    if (!named.has(svg ? attribute.name : attribute.name.toLowerCase())) {
+    if (!named.has(attributeWrittenBy(attribute.name, svg))) {
       page[ALIASED_BACK[attribute.name] ?? attribute.name] = attribute.value;
     }
   }

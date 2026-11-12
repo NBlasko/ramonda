@@ -26,7 +26,13 @@
  */
 import { TEXT_TYPE, ORIGIN_SYM, KEY_SYM, IS_SVG, BLOCK, svgElements } from "../helpers/constants";
 import { currentOrigin } from "./origin";
-import { COMPARED_WITH_THE_ELEMENT, applyChangesOnAttributes, changedInPlace, dropServerOnly } from "./Attribute";
+import {
+  COMPARED_WITH_THE_ELEMENT,
+  applyChangesOnAttributes,
+  changedInPlace,
+  dropServerOnly,
+  writeHoleAttributes,
+} from "./Attribute";
 import { diffChildrenOf, holdsARegion } from "./DiffAndMerge";
 import { normalizeChildren } from "../vdom/h";
 import { COMPONENT_RUNTIME } from "./runtime";
@@ -252,6 +258,20 @@ function settle(state: BlockState, siteIndex: number): boolean {
   return true;
 }
 
+/**
+ * Makes `root` the block's, built or adopted: where it came from, its key, and the record its updates read
+ * — the elements of its sites, in the order of `template.sites`, and the values written last.
+ */
+function stampRoot(root: Element, vnode: BlockVNode, elements: Element[]): BlockState {
+  const { template, values } = vnode[BLOCK];
+  (root as unknown as Record<symbol, unknown>)[ORIGIN_SYM] = vnode[ORIGIN_SYM];
+  const key = vnode.attributes.key;
+  if (key != null) (root as unknown as Record<symbol, unknown>)[KEY_SYM] = key;
+  const state: BlockState = { template, elements, texts: new Array(template.sites.length), values };
+  (root as unknown as { [BLOCK_STATE]: BlockState })[BLOCK_STATE] = state;
+  return state;
+}
+
 /** Builds or updates the element for a block vnode. `existing` is a node `areSimilarNodes` matched. */
 export function applyBlock(vnode: BlockVNode, existing: Element | undefined, owner: MaybeComponent): Element {
   const { template, values } = vnode[BLOCK];
@@ -260,14 +280,9 @@ export function applyBlock(vnode: BlockVNode, existing: Element | undefined, own
 
   if (existing === undefined || known === undefined || known.template !== template) {
     const root = rootOf(template).cloneNode(true) as Element;
-    (root as unknown as Record<symbol, unknown>)[ORIGIN_SYM] = vnode[ORIGIN_SYM];
-    const key = vnode.attributes.key;
-    if (key != null) (root as unknown as Record<symbol, unknown>)[KEY_SYM] = key;
     const sites = template.sites;
     const elements: Element[] = new Array(sites.length);
-    const texts: (Text | undefined)[] = new Array(sites.length);
-    const state: BlockState = { template, elements, texts, values };
-    (root as unknown as { [BLOCK_STATE]: BlockState })[BLOCK_STATE] = state;
+    const { texts } = stampRoot(root, vnode, elements);
     for (let i = 0; i < sites.length; i++) {
       const site = sites[i];
       const element = resolve(root, site.path);
@@ -302,7 +317,7 @@ export function applyBlock(vnode: BlockVNode, existing: Element | undefined, own
       for (let j = 0; j < d.length; j++) {
         const index = d[j][1];
         if (attributeChanged(d[j][0], values[index], previous[index], (site.always as boolean[])[j])) {
-          applyChangesOnAttributes(element, attributesOf(site, values), onServer);
+          writeHoleAttributes(element, attributesOf(site, values), onServer);
           break;
         }
       }
@@ -422,12 +437,8 @@ export function adoptBlock(
   // stamp among them — goes, as it does from an element the attribute diff adopts.
   for (const [element, node] of all) dropServerOnly(element, writtenBy(node, values), svgElements.has(node.t));
 
-  (root as unknown as Record<symbol, unknown>)[ORIGIN_SYM] = vnode[ORIGIN_SYM];
-  const key = vnode.attributes.key;
-  if (key != null) (root as unknown as Record<symbol, unknown>)[KEY_SYM] = key;
-  const texts: (Text | undefined)[] = new Array(sites.length);
-  const state: BlockState = { template, elements, texts, values };
-  (root as unknown as { [BLOCK_STATE]: BlockState })[BLOCK_STATE] = state;
+  const state = stampRoot(root, vnode, elements);
+  const texts = state.texts;
   const left = (i: number): void => {
     state.unsettled ??= new Array(sites.length).fill(false);
     state.unsettled[i] = true;

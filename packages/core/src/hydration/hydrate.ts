@@ -2,7 +2,7 @@ import { enclosingBlock } from "../core/enclosingBlock";
 import { COMPONENT_TYPE, CHILD_RECORD, ORIGIN_SYM, REQUEST_ATTR } from "../helpers/constants";
 import { className, displayName } from "../helpers/utils";
 import { installClientRequestScope } from "./requestContext";
-import { adoptAttributes, applyChangesOnAttributes, formatAttributes } from "../core/Attribute";
+import { applyChangesOnAttributes, formatAttributes, writeHoleAttributes } from "../core/Attribute";
 import { adoptBlock, blockOf, type BlockMiss, type BlockVNode } from "../core/block";
 import { generateRenderOutput } from "../helpers/generateRenderOutput";
 import { seedWatchProps } from "../helpers/watchProps";
@@ -294,10 +294,16 @@ function hydrateElement(
       vnode as BlockVNode,
       cursor as unknown as Element,
       {
-        children: (children, element) => hydrateChildren(children, placeholder, element),
+        // Left with more than it claimed — this level, or any level inside it, a nested block's among them:
+        // a hole that holds the same value next time is not diffed, so nothing below it would be reached.
+        children: (children, element) => {
+          const before = leftBehind;
+          hydrateChildren(children, placeholder, element);
+          return leftBehind !== before;
+        },
         attributes: (element, attributes) => {
           if (__DEV__) reportAttributeMismatches(placeholder, element, formatAttributes(attributes));
-          adoptAttributes(element as unknown as ChildNode, attributes);
+          writeHoleAttributes(element as unknown as ChildNode, attributes);
         },
       },
       miss,
@@ -686,13 +692,23 @@ function closeBlock(open: Comment, walk: HydrationWalk, component: BaseComponent
   if (__DEV__ && fromServer > 0) reportBlockLengthMismatch(component, fromServer);
 }
 
+/**
+ * How many levels hydration has left holding nodes the server sent beyond what the render claimed. A
+ * compiled block asks it around a hole's children, which reach any depth (see `adoptBlock`).
+ */
+let leftBehind = 0;
+
 /** Answers whether the server sent more than the render claimed — nodes left in place, reported. */
 function hydrateChildren(
   vnodeChildren: unknown[] | undefined,
   placeholder: MaybeComponent,
   existingParent: Node,
 ): boolean {
-  if (!vnodeChildren) return existingParent.firstChild !== null;
+  if (!vnodeChildren) {
+    if (existingParent.firstChild === null) return false;
+    leftBehind++;
+    return true;
+  }
 
   // A cursor, not an index: steps below split, insert and replace nodes, and
   // childNodes is live, so any position captured up front goes stale.
@@ -725,7 +741,9 @@ function hydrateChildren(
       walk.count + extra,
     );
   }
-  return walk.cursor !== null;
+  if (walk.cursor === null) return false;
+  leftBehind++;
+  return true;
 }
 
 /**

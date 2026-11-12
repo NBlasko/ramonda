@@ -544,6 +544,27 @@ describe("a served block whose root carries what only the server wrote", () => {
   });
 });
 
+describe("a served block whose template bakes a name the HTML parser folds", () => {
+  test("keeps the attribute: `tabIndex` is the page's `tabindex`", async () => {
+    const FOCUSABLE = __template({ t: "div", a: { tabIndex: "0" }, c: ["x"] });
+    class Card extends Component {
+      render() {
+        return <main>{__block(FOCUSABLE, [])}</main>;
+      }
+    }
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    container.innerHTML = await renderToString(<Card />);
+    const served = container.querySelector("div") as HTMLElement;
+    hydrateRoot(<Card />, container);
+    await Promise.resolve();
+    await Promise.resolve();
+    const after = { kept: container.querySelector("div") === served, html: served.outerHTML };
+    container.remove();
+    expect(after).toEqual({ kept: true, html: '<div tabindex="0">x</div>' });
+  });
+});
+
 describe("a served block from another template, in development", () => {
   test.each([
     [
@@ -681,6 +702,83 @@ describe("a child hole over a served element holding more than it does", () => {
   );
 });
 
+/** `<div id="head">{header}</div>` and `<h2>{title}</h2>`: a block passed into another block's hole. */
+const HEAD = __template({ t: "div", a: { id: "head" }, h: 0 });
+const TITLE = __template({ t: "h2", h: 0 });
+
+describe("a block inside another block's hole, served holding more than it does", () => {
+  test("loses it on the first update, though the hole holds the same block — as the diff would reach it", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    let served = true;
+    // The same element on every render, as a prop handed down unchanged is.
+    const header = __block(TITLE, ["Title"]);
+    class Panel extends Component {
+      @state open = false;
+      render() {
+        const held = served ? __block(TITLE, [["Title", <b>stale</b>]]) : header;
+        return (
+          <section id="panel">
+            {__block(HEAD, [held])}
+            {this.open && <p>body</p>}
+          </section>
+        );
+      }
+    }
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    try {
+      container.innerHTML = await renderToString(<Panel />);
+      served = false;
+      hydrateRoot(<Panel />, container);
+      await Promise.resolve();
+      await Promise.resolve();
+      (componentAt(container.querySelector("#panel") as Element) as Panel).open = true;
+      flushSync();
+      expect((container.querySelector("#head") as HTMLElement).innerHTML).toBe("<h2>Title</h2>");
+    } finally {
+      warn.mockRestore();
+      container.remove();
+    }
+  });
+});
+
+/** `<button id="save" title="Save" aria-label={label}>go</button>`. */
+const SAVE = __template({ t: "button", a: { id: "save", title: "Save" }, d: [["aria-label", 0]], c: ["go"] });
+
+describe("an attribute pass on a block that threw", () => {
+  test("leaves the template's own attributes where they are, on the pass after it", async () => {
+    class Toolbar extends Component {
+      @state label: unknown = "Save the draft";
+      render() {
+        return <div>{__block(SAVE, [this.label])}</div>;
+      }
+    }
+    const app = await getDOM<Toolbar>(<Toolbar />);
+    await app.settle();
+    // A value that cannot be written: the pass throws halfway, and keeps no record.
+    app.instance.label = {
+      toString() {
+        throw new Error("no text");
+      },
+    };
+    let threw = false;
+    try {
+      await app.settle();
+    } catch {
+      threw = true;
+    }
+    app.instance.label = "Save it";
+    await app.settle();
+    const button = app.container.querySelector("button") as HTMLElement;
+    expect({ threw, id: button.id, title: button.title, label: button.getAttribute("aria-label") }).toEqual({
+      threw: true,
+      id: "save",
+      title: "Save",
+      label: "Save it",
+    });
+  });
+});
+
 /** `<button onclick={listener}>go</button>`. */
 const LISTENED = __template({ t: "button", d: [["onclick", 0]], c: ["go"] });
 
@@ -695,11 +793,12 @@ describe("an attribute hole holding a listener object", () => {
     }
     const app = await getDOM<Toolbar>(<Toolbar />);
     await app.settle();
-    const diffed = vi.spyOn(attribute, "applyChangesOnAttributes");
+    // Both ways an element's attributes are diffed: an element's own, and a block's holes.
+    const diffed = [vi.spyOn(attribute, "applyChangesOnAttributes"), vi.spyOn(attribute, "writeHoleAttributes")];
     app.instance.count = 1;
     await app.settle();
-    const nodes = diffed.mock.calls.map((call) => (call[0] as Element).nodeName);
-    diffed.mockRestore();
+    const nodes = diffed.flatMap((spy) => spy.mock.calls.map((call) => (call[0] as Element).nodeName));
+    for (const spy of diffed) spy.mockRestore();
     expect(nodes).toEqual(["DIV"]);
   });
 });

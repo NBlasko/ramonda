@@ -234,3 +234,15 @@ export const UNEDITED_INPUT_TYPES: ReadonlySet<string> = new Set([
  * under the JSX name, and `@ramonda/build` writes the attribute's name into a template.
  */
 export const ATTRIBUTE_OF_PROPERTY: Readonly<Record<string, string>> = { className: "class", htmlFor: "for" };
+
+/**
+ * The attribute a JSX name writes, as the element holds it: the alias above, folded on an HTML element —
+ * whose parser folds every name, so `tabIndex` and `tabindex` are one attribute — and as written on an SVG
+ * one, which keeps the case. `@ramonda/build` asks it to find an attribute written twice, `@ramonda/core`
+ * to know which attributes on a served element a compiled template names: the two have to agree, or one
+ * bakes what the other takes away.
+ */
+export function attributeWrittenBy(name: string, svg: boolean): string {
+  const attribute = ATTRIBUTE_OF_PROPERTY[name] ?? name;
+  return svg ? attribute : attribute.toLowerCase();
+}
