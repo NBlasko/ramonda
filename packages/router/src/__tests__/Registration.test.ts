@@ -130,4 +130,31 @@ export class Home extends Component {
     expect(errors).toHaveLength(1);
     expect(errors[0]).toContain(`'"/missing"'`);
   });
+
+  /**
+   * A path the app works out — what `/routing/links` teaches. Built with `replace` it is a `string`
+   * and refused; built from typed parts with `as const` it is a template type the table checks.
+   */
+  test("a path built from typed parts is checked; one built as a string is refused", () => {
+    const errors = errorsOf({
+      "routes.tsx": `import { createRoutes } from "@ramonda/router";
+import { Home } from "./Home";
+export const routes = createRoutes({ "/:lang/tournaments": <Home />, "/:lang/new": <Home /> });
+${REGISTER}`,
+      "Home.tsx": `import { Component } from "@ramonda/core";
+import { Link } from "@ramonda/router";
+type Lang = "sr" | "en";
+type Page = "tournaments" | "new";
+const other = (lang: Lang, page: Page) => \`/\${lang === "sr" ? "en" : "sr"}/\${page}\` as const;
+export class Home extends Component {
+  render() {
+    const computed: string = "/sr/new".replace("/sr/", "/en/");
+    return <div><Link href={other("sr", "new")}>ok</Link><Link href={computed}>refused</Link></div>;
+  }
+}
+`,
+    });
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain("'string' is not assignable");
+  });
 });

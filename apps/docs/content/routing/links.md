@@ -53,6 +53,46 @@ comes after the page loads: a [`clientOnly` query](/query/server#data-only-the-b
 the id renders pending on the server and on the client's first render alike, and a value read
 straight from the query is shown [once the page is live](/routing/server#what-the-server-never-sees).
 
+## A path the app works out
+
+Sometimes the app builds the path itself — the same page in the other language, say. Built as a plain
+`string`, it is refused: `pathname.replace("/sr/", "/en/")` is a `string`, and a `string` could be any
+path at all, which is exactly what `href` does not take.
+
+Build it from typed parts instead, and the type can see that it is a path the table has:
+
+```tsx
+import { Component } from "@ramonda/core";
+import { Link } from "@ramonda/router";
+
+type Lang = "sr" | "en";
+const PAGES = ["tournaments", "new"] as const;
+type Page = (typeof PAGES)[number];
+
+/** The same page in the other language — `/sr/new` ↔ `/en/new`. */
+function inOtherLanguage(lang: Lang, page: Page) {
+  return `/${lang === "sr" ? "en" : "sr"}/${page}` as const;
+}
+
+class LanguageSwitch extends Component<{ lang: Lang; page: Page }> {
+  render() {
+    return (
+      <Link href={inOtherLanguage(this.props.lang, this.props.page)} lang={this.props.lang === "sr" ? "en" : "sr"}>
+        {this.props.lang === "sr" ? "English" : "Srpski"}
+      </Link>
+    );
+  }
+}
+```
+
+`as const` keeps the result a template type, `` `/en/tournaments` | `/sr/new` | … ``, rather than a
+`string`, and each of those is checked against `/:lang/tournaments` and `/:lang/new` like a path
+written out. Keeping the query is the same move: append it as `` `?id=${id}` `` — a query needs at
+least one `key=value`, and the type says so.
+
+What is never needed is a way round the check: a path the parts cannot describe is a path the table
+does not have.
+
 ## Props
 
 - `replace` — replace the history entry instead of adding one.
