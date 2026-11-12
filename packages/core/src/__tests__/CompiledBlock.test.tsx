@@ -604,6 +604,87 @@ describe("a served block whose hole names an attribute by another spelling", () 
   });
 });
 
+describe("a served block whose element writes one attribute from two holes", () => {
+  test.each([
+    [
+      "`for` and a null `htmlFor`",
+      __template({
+        t: "label",
+        d: [
+          ["for", 0],
+          ["htmlFor", 1],
+        ],
+        c: ["x"],
+      }),
+      ["a", null],
+      "label",
+      "for",
+      "a",
+    ],
+    [
+      "an undefined `tabIndex` and `tabindex`",
+      __template({
+        t: "div",
+        d: [
+          ["tabIndex", 0],
+          ["tabindex", 1],
+        ],
+        c: ["x"],
+      }),
+      [undefined, "0"],
+      "div",
+      "tabindex",
+      "0",
+    ],
+  ])("keeps what the other writes: %s", async (_name, template, values, tag, attribute, expected) => {
+    class Card extends Component {
+      render() {
+        return <main>{__block(template, values)}</main>;
+      }
+    }
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    container.innerHTML = await renderToString(<Card />);
+    hydrateRoot(<Card />, container);
+    await Promise.resolve();
+    await Promise.resolve();
+    const value = (container.querySelector(tag) as HTMLElement).getAttribute(attribute);
+    container.remove();
+    expect(value).toBe(expected);
+  });
+});
+
+describe("a served block's static elements", () => {
+  test("are not searched for what only the server wrote when they hold exactly what the template bakes", async () => {
+    const LIST = __template({
+      t: "ul",
+      a: { id: "list" },
+      c: [
+        { t: "li", a: { title: "a" }, c: ["one"] },
+        { t: "li", a: { title: "b" }, c: ["two"] },
+        { t: "li", d: [["title", 0]], c: ["three"] },
+      ],
+    });
+    class List extends Component {
+      render() {
+        return <main>{__block(LIST, ["c"])}</main>;
+      }
+    }
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    container.innerHTML = await renderToString(<List />);
+    const searched = vi.spyOn(attribute, "dropServerOnly");
+    hydrateRoot(<List />, container);
+    await Promise.resolve();
+    await Promise.resolve();
+    const elements = searched.mock.calls.map((call) => (call[0] as Element).textContent);
+    searched.mockRestore();
+    container.remove();
+    // Only the element with a hole: the list and its two static items are skipped.
+    expect(elements).toEqual(["three"]);
+  });
+});
+
 describe("a served block from another template, in development", () => {
   test.each([
     [

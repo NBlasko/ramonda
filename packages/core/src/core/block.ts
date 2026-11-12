@@ -202,9 +202,24 @@ function isText(value: unknown): value is string | number {
 
 /** The attributes one site's holes say now, as the attribute diff takes them. */
 function attributesOf(site: Site, values: readonly unknown[]): Record<string, unknown> {
-  const attributes: Record<string, unknown> = {};
-  for (const [name, index] of site.d as readonly (readonly [string, number])[]) attributes[name] = values[index];
-  return attributes;
+  return holesInto({}, site.d as readonly (readonly [string, number])[], values);
+}
+
+/** Each attribute hole's value, under its name, into `into`. */
+function holesInto(
+  into: Record<string, unknown>,
+  holes: readonly (readonly [string, number])[],
+  values: readonly unknown[],
+): Record<string, unknown> {
+  for (const [name, index] of holes) into[name] = values[index];
+  return into;
+}
+
+/** How many attributes a template node bakes. */
+function bakedCount(node: TemplateNode): number {
+  let count = 0;
+  for (const _ in node.a) count++;
+  return count;
 }
 
 /**
@@ -354,9 +369,7 @@ export function applyBlock(vnode: BlockVNode, existing: Element | undefined, own
 
 /** What `element`'s template node writes: its baked attributes, and each hole's value. */
 function writtenBy(node: TemplateNode, values: readonly unknown[]): Record<string, unknown> {
-  const written: Record<string, unknown> = { ...node.a };
-  for (const [name, hole] of node.d ?? []) written[name] = values[hole];
-  return written;
+  return holesInto({ ...node.a }, node.d ?? [], values);
 }
 
 /**
@@ -456,7 +469,12 @@ export function adoptBlock(
   if (!matches(template.description, root, elements, all, miss)) return false;
   // What only the server wrote — an attribute no template part or hole names, the exposed request's
   // stamp among them — goes, as it does from an element the attribute diff adopts.
-  for (const [element, node] of all) dropServerOnly(element, writtenBy(node, values), svgElements.has(node.t));
+  // An element with no hole holding exactly as many attributes as the template bakes holds only those —
+  // `matches` found each — and has nothing to drop: the common case, and a row's every static cell.
+  for (const [element, node] of all) {
+    if (node.d === undefined && element.attributes.length === bakedCount(node)) continue;
+    dropServerOnly(element, writtenBy(node, values), svgElements.has(node.t));
+  }
 
   const state = stampRoot(root, vnode, elements);
   const texts = state.texts;

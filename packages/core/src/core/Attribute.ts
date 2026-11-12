@@ -104,16 +104,20 @@ export function writeHoleAttributes(
   onServer = false,
 ): void {
   if ((enhancedNode as Written)[WRITTEN] === undefined) {
-    // Matched by the attribute each name writes: the page holds `readonly` where the hole says `readOnly`.
+    // Matched by the attribute each name writes — the page holds `readonly` where the hole says `readOnly` —
+    // and given to ONE hole: two that write the same attribute (`for` and `htmlFor`, both written) would
+    // otherwise both start from the page's value, and the one with nothing to write would take away what the
+    // other writes.
     const svg = (enhancedNode as EnhancedHTMLNode)[IS_SVG] === true;
-    const page = new Map<string, unknown>();
-    for (const [name, value] of Object.entries(getAllFromNode(enhancedNode as EnhancedHTMLNode))) {
-      page.set(attributeWrittenBy(name, svg), value);
-    }
-    const written: NodeAttributes = {};
+    const holeOf = new Map<string, string>();
     for (const name in rawNextAttributes) {
       const attribute = attributeWrittenBy(name, svg);
-      if (page.has(attribute)) written[name] = page.get(attribute);
+      if (!holeOf.has(attribute)) holeOf.set(attribute, name);
+    }
+    const written: NodeAttributes = {};
+    for (const [name, value] of Object.entries(getAllFromNode(enhancedNode as EnhancedHTMLNode))) {
+      const hole = holeOf.get(attributeWrittenBy(name, svg));
+      if (hole !== undefined) written[hole] = value;
     }
     (enhancedNode as Written)[WRITTEN] = written;
   }

@@ -346,8 +346,8 @@ class Compiler {
           const text = value.value as string;
           if (name !== "key" && !twice.has(written(name)) && bakeable(tag, name)) {
             // With line breaks as HTML gives them back — a CRLF checkout's arrive as LF in a served page.
-            const written = text.replace(/\r\n?/g, "\n");
-            baked.push(`${JSON.stringify(ATTRIBUTE_OF_PROPERTY[name] ?? name)}: ${JSON.stringify(written)}`);
+            const folded = text.replace(/\r\n?/g, "\n");
+            baked.push(`${JSON.stringify(ATTRIBUTE_OF_PROPERTY[name] ?? name)}: ${JSON.stringify(folded)}`);
             continue;
           }
           // JSX's string, which has no escapes, as a JavaScript one.
