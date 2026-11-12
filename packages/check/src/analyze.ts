@@ -3031,6 +3031,8 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
     const issues: ContextIssue[] = [];
     const seen = new Set<string>();
     const seenSeconds = new Set<string>();
+    /** Each arrangement walked, with the shortest path it was reached by — see `visit`. */
+    const walked = new Map<string, number>();
 
     for (const root of rootMounts) {
       visit(root.target, new Set(), [], new Set(), new Map(), true, undefined);
@@ -3097,6 +3099,20 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
         .sort()
         .join(";")}`;
       if (onPath.has(key) || path.length > PATH_LIMIT) return;
+      /**
+       * Once per ARRANGEMENT, not once per path. Everything below depends on the arrangement — the
+       * node and its binding, what is provided above, whether it may judge, the route above — and on
+       * nothing else about how it was reached: every verdict is deduped and keeps its FIRST path. So
+       * an arrangement already walked has nothing new to say, unless it was walked deeper, where the
+       * depth cap may have cut it short.
+       *
+       * Found measuring the MCP server's check: every path was walked, `apps/docs` (368 components)
+       * took 9.5 s, 6.2 of them here, and a ladder of 22 rungs — 2^22 paths — took 6 s.
+       */
+      const arrangement = `${key}#${[...provided].sort().join(",")}#${judging}#${underRoute === undefined ? "-" : underRoute === null ? "?" : `=${underRoute}`}`;
+      const walkedAt = walked.get(arrangement);
+      if (walkedAt !== undefined && walkedAt <= path.length) return;
+      walked.set(arrangement, path.length);
       reached.add(node);
       /**
        * EVERY arrival is recorded, `undefined` included — an arrival with no outlet above is an
