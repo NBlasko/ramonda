@@ -565,6 +565,45 @@ describe("a served block whose template bakes a name the HTML parser folds", () 
   });
 });
 
+describe("a served block whose hole names an attribute by another spelling", () => {
+  test.each([
+    [
+      "`readOnly` is the page's `readonly`",
+      __template({ t: "input", d: [["readOnly", 0]] }),
+      true,
+      "input",
+      "readonly",
+    ],
+    [
+      "`htmlFor` is the page's `for`",
+      __template({ t: "label", d: [["htmlFor", 0]], c: ["Name"] }),
+      "name",
+      "label",
+      "for",
+    ],
+  ])("takes away what only the server wrote for it: %s", async (_name, template, served, tag, attribute) => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    let value: unknown = served;
+    class Field extends Component {
+      render() {
+        return <form>{__block(template, [value])}</form>;
+      }
+    }
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    container.innerHTML = await renderToString(<Field />);
+    value = tag === "input" ? false : undefined;
+    hydrateRoot(<Field />, container);
+    await Promise.resolve();
+    await Promise.resolve();
+    const element = container.querySelector(tag) as HTMLElement;
+    const written = element.hasAttribute(attribute);
+    container.remove();
+    vi.restoreAllMocks();
+    expect(written).toBe(false);
+  });
+});
+
 describe("a served block from another template, in development", () => {
   test.each([
     [
@@ -776,6 +815,45 @@ describe("an attribute pass on a block that threw", () => {
       title: "Save",
       label: "Save it",
     });
+  });
+});
+
+/** `<div><span title={a}>{t}</span><b aria-label={label}>x</b></div>`. */
+const TWO_SITES = __template({
+  t: "div",
+  c: [
+    { t: "span", d: [["title", 0]], h: 1 },
+    { t: "b", d: [["aria-label", 2]], c: ["x"] },
+  ],
+});
+
+describe("an update of a block that threw halfway", () => {
+  test("is written again in full by the next one, even back to the values before it", async () => {
+    const unwritable = {
+      toString() {
+        throw new Error("no text");
+      },
+    };
+    class Card extends Component {
+      @state values: unknown[] = ["x", "one", "fine"];
+      render() {
+        return <main>{__block(TWO_SITES, this.values)}</main>;
+      }
+    }
+    const app = await getDOM<Card>(<Card />);
+    await app.settle();
+    // The first site takes the new values; the second throws.
+    app.instance.values = ["y", "two", unwritable];
+    let threw = false;
+    try {
+      await app.settle();
+    } catch {
+      threw = true;
+    }
+    app.instance.values = ["x", "one", "fine"];
+    await app.settle();
+    const span = app.container.querySelector("span") as HTMLElement;
+    expect({ threw, title: span.title, text: span.textContent }).toEqual({ threw: true, title: "x", text: "one" });
   });
 });
 

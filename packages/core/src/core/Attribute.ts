@@ -104,9 +104,17 @@ export function writeHoleAttributes(
   onServer = false,
 ): void {
   if ((enhancedNode as Written)[WRITTEN] === undefined) {
-    const page = getAllFromNode(enhancedNode as EnhancedHTMLNode);
+    // Matched by the attribute each name writes: the page holds `readonly` where the hole says `readOnly`.
+    const svg = (enhancedNode as EnhancedHTMLNode)[IS_SVG] === true;
+    const page = new Map<string, unknown>();
+    for (const [name, value] of Object.entries(getAllFromNode(enhancedNode as EnhancedHTMLNode))) {
+      page.set(attributeWrittenBy(name, svg), value);
+    }
     const written: NodeAttributes = {};
-    for (const name in rawNextAttributes) if (name in page) written[name] = page[name];
+    for (const name in rawNextAttributes) {
+      const attribute = attributeWrittenBy(name, svg);
+      if (page.has(attribute)) written[name] = page.get(attribute);
+    }
     (enhancedNode as Written)[WRITTEN] = written;
   }
   applyChangesOnAttributes(enhancedNode, rawNextAttributes, onServer);

@@ -99,7 +99,11 @@ export function compileJsx(code: string, id: string): Compiled | undefined {
   let at = code.startsWith("#!") ? code.indexOf("\n") + 1 || code.length : 0;
   for (const statement of body) {
     if (statement.type === "ImportDeclaration") at = statement.end;
-    else if (statement.type === "ExpressionStatement" && statement.directive !== undefined && at <= statement.start) {
+    else if (
+      statement.type === "ExpressionStatement" &&
+      typeof statement.directive === "string" &&
+      at <= statement.start
+    ) {
       at = statement.end;
     } else break;
   }

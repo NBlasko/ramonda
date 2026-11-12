@@ -698,17 +698,13 @@ function closeBlock(open: Comment, walk: HydrationWalk, component: BaseComponent
  */
 let leftBehind = 0;
 
-/** Answers whether the server sent more than the render claimed — nodes left in place, reported. */
+/** Where the server sent more than the render claimed, the nodes are left in place, reported and counted. */
 function hydrateChildren(
   vnodeChildren: unknown[] | undefined,
   placeholder: MaybeComponent,
   existingParent: Node,
-): boolean {
-  if (!vnodeChildren) {
-    if (existingParent.firstChild === null) return false;
-    leftBehind++;
-    return true;
-  }
+): void {
+  if (!vnodeChildren) return;
 
   // A cursor, not an index: steps below split, insert and replace nodes, and
   // childNodes is live, so any position captured up front goes stale.
@@ -741,9 +737,7 @@ function hydrateChildren(
       walk.count + extra,
     );
   }
-  if (walk.cursor === null) return false;
-  leftBehind++;
-  return true;
+  if (walk.cursor !== null) leftBehind++;
 }
 
 /**

@@ -258,6 +258,38 @@ function settle(state: BlockState, siteIndex: number): boolean {
   return true;
 }
 
+/** Each site's holes, written where they differ from `previous` — or where hydration left one unsettled. */
+function writeSites(
+  known: BlockState,
+  values: unknown[],
+  previous: unknown[],
+  onServer: boolean,
+  owner: MaybeComponent,
+): void {
+  const sites = known.template.sites;
+  for (let i = 0; i < sites.length; i++) {
+    const site = sites[i];
+    const element = known.elements[i];
+    const d = site.d;
+    if (d !== undefined) {
+      for (let j = 0; j < d.length; j++) {
+        const index = d[j][1];
+        if (attributeChanged(d[j][0], values[index], previous[index], (site.always as boolean[])[j])) {
+          writeHoleAttributes(element, attributesOf(site, values), onServer);
+          break;
+        }
+      }
+    }
+    if (site.h !== undefined) writeChild(known, i, element, values[site.h], previous[site.h], owner);
+    if (site.k !== undefined && (settle(known, i) || !sameChildren(values[site.k], previous[site.k]))) {
+      diffChildrenOf(element, values[site.k] as unknown[], owner, false);
+    }
+  }
+}
+
+/** A value no hole holds: what the record says after an update threw, so that every site differs from it. */
+const UNKNOWN: unknown = Object.freeze({});
+
 /**
  * Makes `root` the block's, built or adopted: where it came from, its key, and the record its updates read
  * — the elements of its sites, in the order of `template.sites`, and the values written last.
@@ -308,24 +340,13 @@ export function applyBlock(vnode: BlockVNode, existing: Element | undefined, own
   }
 
   const previous = known.values;
-  const sites = template.sites;
-  for (let i = 0; i < sites.length; i++) {
-    const site = sites[i];
-    const element = known.elements[i];
-    const d = site.d;
-    if (d !== undefined) {
-      for (let j = 0; j < d.length; j++) {
-        const index = d[j][1];
-        if (attributeChanged(d[j][0], values[index], previous[index], (site.always as boolean[])[j])) {
-          writeHoleAttributes(element, attributesOf(site, values), onServer);
-          break;
-        }
-      }
-    }
-    if (site.h !== undefined) writeChild(known, i, element, values[site.h], previous[site.h], owner);
-    if (site.k !== undefined && (settle(known, i) || !sameChildren(values[site.k], previous[site.k]))) {
-      diffChildrenOf(element, values[site.k] as unknown[], owner, false);
-    }
+  try {
+    writeSites(known, values, previous, onServer, owner);
+  } catch (error) {
+    // Halfway: some sites hold the new values and some the old, so neither is the page's. The record is
+    // made to match none, and the next update writes every site again.
+    known.values = values.map(() => UNKNOWN);
+    throw error;
   }
   known.values = values;
   return existing;

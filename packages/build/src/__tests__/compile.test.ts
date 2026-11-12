@@ -304,6 +304,11 @@ describe("where the templates go", () => {
     expect([early, made.length]).toEqual([{ description: { t: "b", c: ["i"] } }, 1]);
   });
 
+  test("before a first statement that is an expression, not a directive", () => {
+    const { full } = compile(`render(<div id="a">x</div>);\n`);
+    expect(full.indexOf("import { __template")).toBeLessThan(full.indexOf("render("));
+  });
+
   test("after a directive, which has to stay first", () => {
     const { full } = compile(`"use client";\nconst top = <i>x</i>;\n`);
     expect(full.startsWith(`"use client";\nimport { __template`)).toBe(true);
