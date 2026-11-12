@@ -5,7 +5,7 @@ import { applyFixes } from "./fix";
 import { analyzeProject } from "./analyze";
 import { graphHtml } from "./graph-html";
 import { diffGraphs, refuseToDiff } from "./diff";
-import type { ComponentGraph } from "./graph";
+import { type ComponentGraph, fromAnotherPackage } from "./graph";
 import { certify, packageRootOf, renderCertificate } from "./certify";
 import { type AnyRule, failingRules, RULES } from "./rules";
 import { filesOf, splitOf } from "./split";
@@ -293,12 +293,17 @@ if (graphHtmlAt) {
   const target = resolve(graphHtmlAt);
   mkdirSync(dirname(target), { recursive: true });
   writeFileSync(target, graphHtml(graph));
-  const lost = graph.nodes.filter(
+  const unreached = graph.nodes.filter(
     (node) => node.kind !== "root" && !graph.edges.some((edge) => edge.to === node.id),
-  ).length;
+  );
+  // Only the app's own count as nothing pointing at them. A package's fragment brings every one of
+  // its declarations, used or not — see `fromAnotherPackage`.
+  const lost = unreached.filter((node) => !fromAnotherPackage(graph, node.id)).length;
+  const unused = unreached.length - lost;
   said(
     `${TAG} graph drawn to ${graphHtmlAt} — ${graph.nodes.length} nodes, ${graph.edges.length} edges` +
-      (lost > 0 ? `, ${lost} that nothing points at` : ""),
+      (lost > 0 ? `, ${lost} of this project's own that nothing points at` : "") +
+      (unused > 0 ? `, ${unused} from packages it does not use` : ""),
   );
 }
 

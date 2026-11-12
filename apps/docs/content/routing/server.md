@@ -32,7 +32,52 @@ The route the server rendered travels to the browser in the hydration data, and 
 the router re-reads the actual URL as it starts up. That last step matters: if the
 browser is at a *different* URL than the server rendered — a cached page, a CDN
 serving one file for many paths, a redirect between request and hydration — re-reading
-is what makes it show the right page instead of the server's.
+is what makes it show the right page instead of the server's. Every lifecycle method and
+every render in the browser sees that one URL.
+
+### What the server never sees
+
+The hash never reaches a server, and a page baked at build time was rendered with no query.
+So a render that shows something from `hashParams` — or, on a baked page, `searchParams` —
+gives one thing in the server's HTML and another in the browser:
+
+```tsx
+render() {
+  return <a href={`/en/view#${this.route.hashParams.t}`}>English</a>;
+}
+```
+
+The baked file holds `href="/en/view#"`. Opened at `/sr/view#t=abc`, the browser's render says
+`href="/en/view#t=abc"`. Hydration adopts the server's markup and checks it against that render;
+they differ, so the browser's wins — the attribute is put right — and in development
+[`RMD007`](/reference/diagnostics/rmd007) says that server and client rendered different output.
+The page ends up right either way. The warning is there because a difference is usually a fault —
+a clock, a random number, `window` read in a render — and it cannot tell which kind this is.
+
+To render what only the browser knows without it, show it once the page is live:
+
+```tsx
+import { Component, mounted, state } from "@ramonda/core";
+import { Navigator } from "@ramonda/router";
+
+class Shell extends Component {
+  route = this.use(Navigator);
+  @state live = false;
+
+  @mounted({ env: "client" }) goLive(): void {
+    this.live = true;
+  }
+
+  render() {
+    const hash = this.live ? `#${this.route.hashParams.t}` : "";
+    return <a href={`/en/view${hash}`}>English</a>;
+  }
+}
+```
+
+Until `@mounted`, the render gives what the server gave; right after, it re-renders with the hash.
+Data keyed by the query is the same shape with a [`clientOnly` query](/query/server#data-only-the-browser-has),
+which renders pending on the server and on the client's first render alike.
 
 ## Route guards and redirects
 
@@ -41,7 +86,7 @@ should be somewhere else, send them. But **the guard is only half of it**, and t
 half is what `render()` does meanwhile:
 
 ```tsx
-import { Navigator } from "./routes";
+import { Navigator } from "@ramonda/router";
 
 class Account extends Component {
   private route = this.use(Navigator);
@@ -83,7 +128,7 @@ Most real apps have a moment on startup where the token has not been checked yet
 "no", render your pending state on "not yet", and render the page only on "yes":
 
 ```tsx
-import { Navigator } from "./routes";
+import { Navigator } from "@ramonda/router";
 
 class Account extends Component {
   private route = this.use(Navigator);

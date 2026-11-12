@@ -41,13 +41,14 @@ export const ramondaOptions = RAMONDA_TRANSFORM;
  * The `define` entries a build needs, merged with your own.
  *
  * ```ts
- * await build({ ...ramondaOptions, define: ramondaDefine({ __DEV__: "false" }) });
+ * process.env.NODE_ENV = "production"; // `import.meta.env.DEV` follows it
+ * await build({ ...ramondaOptions, define: ramondaDefine() });
  * ```
  *
  * ## Why this is a function and not a key on `ramondaOptions`
  *
  * `ramondaOptions` is spread, and a spread cannot refuse anything. A build that writes its own
- * `define` after the spread — which is what every build does, because `__DEV__` lives there —
+ * `define` after the spread — which is what a build that defines anything of its own does —
  * would silently replace the env entries and every `import.meta.env.RAMONDA_PUBLIC_…` read would
  * become a live reference that throws in a browser. A key that is lost by writing the obvious thing
  * is worse than no key, so this asks to be called instead.

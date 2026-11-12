@@ -1,6 +1,6 @@
 import { Component, state, createRef, onDocument, list } from "@ramonda/core";
 import type { RamondaNode } from "@ramonda/core";
-import { Link } from "./routes";
+import { Link } from "@ramonda/router";
 import { pages } from "./generated/content";
 import type { DocPath } from "./generated/content";
 

@@ -52,6 +52,12 @@ it in `render()` is the bug, not the fix.)
 **Browser-only APIs read during a render** — `window.innerWidth`, `localStorage`,
 `matchMedia` — none exist on the server.
 
+**The URL's hash, and the query of a page baked at build time.** A browser never sends the part
+after `#` with a request, and a baked page was rendered before any request existed, so a render
+that shows `hashParams` — or a baked page's `searchParams` — gives one thing on the server and
+another in the browser. See [what the server never sees](/routing/server#what-the-server-never-sees)
+for the whole story and the pattern.
+
 ## The pattern for client-only UI
 
 Render something stable, then fill it in once the browser is running:

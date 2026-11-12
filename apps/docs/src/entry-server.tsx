@@ -1,7 +1,8 @@
 import { renderPage, renderDocument } from "@ramonda/core";
 import { routePaths } from "@ramonda/router";
 import { App } from "./App";
-import { routes } from "./routes";
+import { pages, routes } from "./routes";
+import { textPath } from "../scripts/page-text.mjs";
 import { brand } from "@ramonda/theme";
 
 /**
@@ -25,9 +26,21 @@ function attr(value: string): string {
  * `renderDocument` (which handles charset/viewport/title), so it goes in as
  * `headExtra`. `og:url`/`canonical` are per-page; the rest is site-wide.
  */
-function headExtra(path: string, title: string): string {
+export function headExtra(path: string, title: string): string {
   const url = BASE + (path === "/" ? "" : path);
+  /**
+   * Where the page is as Markdown, and the whole site as text. Found by the second trial: an agent
+   * read the home page as HTML, found neither, and reached them only by guessing `/llms.txt`. A path
+   * with no page — the 404 — has no Markdown, so it points nowhere rather than at a missing file.
+   */
+  const text = pages.some((page) => page.path === path)
+    ? [
+        `<link rel="alternate" type="text/markdown" href="${attr(BASE + textPath(path))}">`,
+        `<link rel="alternate" type="text/plain" title="Every page, as text" href="${BASE}/llms.txt">`,
+      ]
+    : [];
   return [
+    ...text,
     // Before the stylesheet is parsed: this is the face the first paragraph is set in, and asking
     // for it a round trip later is what makes a page flash from the fallback to the real thing.
     // Only the roman — the italic and the mono are wanted by some pages and not others, and the

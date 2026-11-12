@@ -577,31 +577,48 @@ if (existsSync(cssConfig)) {
 /**
  * `./routes` — the module every routed app has, so an example can import from it and be checked.
  *
- * `Link` and `Navigator` are reachable only through `createRouter`, so there is no import from the
- * package that a component example could show. Writing the factory call into every example instead
- * would teach the opposite of what the router asks for — call it ONCE, in a module of its own — and
- * a reader copies what the example does.
- *
- * Every block is written flat into this directory, so a sibling `routes.d.ts` is what `./routes`
- * resolves to from any of them. The types come from the real package rather than a hand-written
- * shim: `this.use(Navigator)` then has to actually carry `push`, `params` and the rest, which is
- * the half a shim gets wrong quietly.
+ * An example imports `Link` and `Navigator` from `@ramonda/router` and `routes` from here. Every
+ * block is written flat into this directory, so a sibling `routes.d.ts` is what `./routes` resolves
+ * to from any of them.
  */
 writeFileSync(
   join(work, "routes.d.ts"),
-  `import { createRouter } from "@ramonda/router";
-import type { RouteConfig } from "@ramonda/router";
-
-declare const kit: ReturnType<typeof createRouter<RouteConfig>>;
+  `import type { RouteConfig } from "@ramonda/router";
 
 export declare const routes: RouteConfig;
-export declare const Router: typeof kit.Router;
-export declare const RouteOutlet: typeof kit.RouteOutlet;
-export declare const Navigator: typeof kit.Navigator;
-export declare const Link: typeof kit.Link;
-export declare const route: typeof kit.route;
 `,
 );
+
+/**
+ * The registration an app writes beside its table — LOOSE, a table of any path — for every program
+ * whose examples do not write their own.
+ *
+ * Without one, every `<Link href>` in an example is refused by the unregistered type, which is right
+ * for an app and wrong for a page showing one component.
+ */
+/**
+ * An example that writes its OWN registration keeps it, checked, under a name of its own.
+ *
+ * A section's pages are one program, and a registration is global to its program: the one
+ * `routing/index.md` teaches typed every href on `routing/links.md` against its three paths, and two
+ * pages registering two tables was a conflict (TS2717). Renamed, the block still has to type-check —
+ * `typeof routes` has to be a table — and it registers nothing for anyone else.
+ */
+function ownRegistration(text, path) {
+  const tag = path.replace(/[^\w]/g, "_").slice(-40);
+  return text.replace(/\binterface Register\b/g, `interface Register_${tag}`);
+}
+
+const LOOSE_REGISTRATION = `import type { RouteConfig } from "@ramonda/router";
+declare module "@ramonda/router" {
+  interface Register {
+    // Any path, and any \`:param\` pattern too — a bare \`RouteConfig\` has no pattern, so
+    // \`params("/players/:id")\` was typed against nothing.
+    routes: RouteConfig<\`/\${string}\` | \`/\${string}:\${string}\`>;
+  }
+}
+export {};
+`;
 
 const units = [];
 
@@ -654,7 +671,7 @@ for (const file of files) {
       return;
     }
     const path = join(work, `${file.replace(/[^\w]/g, "_")}__${index}.tsx`);
-    shaped.text = towardsTheSystem(shaped.text);
+    shaped.text = ownRegistration(towardsTheSystem(shaped.text), path);
     writeFileSync(path, shaped.text);
 
     /**
@@ -808,7 +825,18 @@ const reported = [];
  * failure a stale line-number assertion has — it keeps passing while asserting nothing.
  */
 const used = new Set();
-const usedRules = new Set();
+/**
+ * Per EXAMPLE, not per page. Keyed by the file, a marker counted as used whenever another example on
+ * the same page made the same report — measured on `style-blocks/order.md`, whose second
+ * `expect-report:override-out-of-order` stayed "used" with its example rewritten to report nothing,
+ * because the first one on the page still did.
+ */
+const usedRules = new Map();
+const useRule = (unit, rule) => {
+  const set = usedRules.get(unit) ?? new Set();
+  set.add(rule);
+  usedRules.set(unit, set);
+};
 let groupIndex = 0;
 for (const group of groups.values()) {
   // The globals are generated PER GROUP, so a section's own preamble can claim a name the framework
@@ -825,8 +853,10 @@ for (const group of groups.values()) {
     return path;
   });
 
-  const globalsFile = join(work, `__globals-${groupIndex++}.d.ts`);
+  const globalsFile = join(work, `__globals-${groupIndex}.d.ts`);
   writeFileSync(globalsFile, ramondaGlobals(declaredHere));
+  const registrationFile = join(work, `__register-${groupIndex++}.d.ts`);
+  writeFileSync(registrationFile, LOOSE_REGISTRATION);
 
   /**
    * The CSS rules, which the type check cannot stand in for.
@@ -878,7 +908,7 @@ for (const group of groups.values()) {
       }
       if (allowed !== undefined && allowed.has(finding.rule)) {
         used.add(unit);
-        usedRules.add(`${unit.file}\u0000${finding.rule}`);
+        useRule(unit, finding.rule);
         continue;
       }
 
@@ -896,7 +926,12 @@ for (const group of groups.values()) {
   }
 
   const program = ts.createProgram(
-    [globalsFile, ...ambientFiles, ...group.units.filter((unit) => !unit.fragment).map((u) => u.path)],
+    [
+      globalsFile,
+      registrationFile,
+      ...ambientFiles,
+      ...group.units.filter((unit) => !unit.fragment).map((u) => u.path),
+    ],
     options,
   );
   for (const diagnostic of ts.getPreEmitDiagnostics(program)) {
@@ -963,7 +998,7 @@ for (const group of groups.values()) {
       }
       if (allowed !== undefined && allowed.has(rule)) {
         used.add(unit);
-        usedRules.add(`${unit.file}\u0000${rule}`);
+        useRule(unit, rule);
         continue;
       }
       reported.push({
@@ -1005,7 +1040,7 @@ const stale = units.filter(
     unit.expectReport !== undefined &&
     (unit.expectReport === true
       ? !used.has(unit)
-      : [...unit.expectReport].some((rule) => !usedRules.has(`${unit.file}\u0000${rule}`))),
+      : [...unit.expectReport].some((rule) => !usedRules.get(unit)?.has(rule))),
 );
 
 if (stale.length > 0) {

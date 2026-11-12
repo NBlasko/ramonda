@@ -173,10 +173,11 @@ clearer.
 
 ## Check it works
 
+Run `npm run dev`, open the address it prints, and click the button on the page the scaffolder
+wrote. If the count goes up, you're set. Here is the same counter, live:
+
 ```demo:Counter
 ```
-
-If that counts up, you're set.
 
 ## Next
 

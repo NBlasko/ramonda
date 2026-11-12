@@ -55,8 +55,8 @@ describe("the /server entry's surface", () => {
 
   test("does not re-export the main entry", () => {
     // The two entries are separate on purpose: `./server` is imported by a server file, and
-    // pulling `Router` or `createRouter` through it would put browser code in that graph.
-    for (const name of ["Router", "RouteOutlet", "createRouter"]) {
+    // pulling `Router` or `Link` through it would put browser code in that graph.
+    for (const name of ["Router", "RouteOutlet", "Link", "Navigator"]) {
       expect(api).not.toHaveProperty(name);
     }
   });

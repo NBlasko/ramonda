@@ -13,8 +13,7 @@ export {
 } from "./urlUtils";
 // The module-level `routerStore` / `router` / `updateState` singletons are gone
 // on purpose: a module global is shared across concurrent server renders. The
-// store now lives on the <Router> instance — reach it with `this.use(Navigator)`, taking
-// `Navigator` from `createRouter`.
+// store now lives on the <Router> instance — reach it with `this.use(Navigator)`.
 export type { RouterNavigator } from "./store";
 export {
   matchParams,
@@ -26,28 +25,20 @@ export {
   type RoutePaths,
   type PathOf,
 } from "./match";
-/**
- * `Router`, `RouteOutlet` and `HashLevel` only. `Navigator` and `Link` are reached through `createRouter`, and
- * nowhere else.
- *
- * Those two exist in two versions — the kit casts them so `push`, `replace` and `href` accept only
- * paths in your table — and the untyped one was an equally short import that silently gave up the
- * checking the typed one exists to provide. Not one app in this repository was using `createRouter`
- * when this was measured, which says the wrong door was not chosen so much as walked through.
- *
- * A second NAME for each was tried first and abandoned: it worked for `Link` only because HTML had
- * a word for the raw thing (`Anchor`), and there is no such word for a navigator. Five members
- * would have meant five separate arguments about vocabulary. One door needs none.
- *
- * `Router` and `RouteOutlet` stay because they have exactly ONE version — the kit hands them back
- * unchanged, `typeof Router` — so there is nothing here to pick wrongly. `HashLevel` has one version
- * too, and is not in the kit: a page wrapped in it may come from a package with no route table.
- */
 export { Router, RouteOutlet, HashLevel, type HashLevelProps, type RouteOutletProps } from "./Router";
+/**
+ * `Link`, `Navigator` and `route`, typed to the table the app REGISTERS — see `Register`.
+ *
+ * Each exists once, typed. The untyped `Link` and `Navigator` are not exported: an untyped one was
+ * an equally short import that silently gave up the checking the typed one exists to provide.
+ */
 export {
-  createRouter,
+  Link,
+  Navigator,
+  route,
+  type Register,
   type Href,
+  type BuiltHref,
   type TypedLinkProps,
   type TypedNavigator,
-  type TypedRouterKit,
-} from "./createRouter";
+} from "./registry";

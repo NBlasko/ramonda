@@ -68,6 +68,7 @@ export function agentsFile(mode: Mode, addons: readonly AddOn[]): string {
   const rules = [
     `Event names are the DOM's, in lower case: \`onclick\`, \`oninput\`. (${DOCS}/concepts/events)`,
     "Hand over a method, not a function built in the markup: `onclick={this.save}`, not `onclick={() => this.save()}`. Methods are bound. A handler built per item takes `@memoized`. (`RMD020`)",
+    "A helper that returns markup is a method of the class, typed `RamondaNode` and called as `this.columnHead(key)` — not a function built inside `render()`. (`markup-helper-in-render`)",
     "A hook's props callback does not rebuild a value whose contents stay the same. An object or array built there anew on every run is a changed prop each time: keep it in a `@compute`, a field or a module constant. A function there is a method: `fetch: self.load`. (`RMD022`)",
     `Anything \`render()\` shows that can change is \`@state\`, or a \`@compute\` over state. A plain field does not re-render. (${DOCS}/concepts/state)`,
     "Hooks are built in the order their fields are declared. Declare a hook below every field its callback reads — a field below it is not set yet — and a context consumer below the provider on the same component. (`RMD057`, and `field-read-before-it-is-declared` in `ramonda-check`)",

@@ -1,5 +1,5 @@
 import { Component, Head, state } from "@ramonda/core";
-import { createRoutes, createRouter } from "@ramonda/router";
+import { createRoutes, Link, Navigator, Router, RouteOutlet, route } from "@ramonda/router";
 
 // Each `@@( … )` is a style block: real CSS for one element, compiled to classes at build time.
 // `$color.accent` and the rest are the tokens declared in ramonda.css.ts. The blocks are shared by
@@ -184,8 +184,9 @@ class NotFound extends Component {
 }
 
 // The route table — shared by the client and the server. `createRoutes` remembers the exact
-// paths in its type, and `createRouter` binds `<Link href>` / `route()` to them, so a typo in a
-// link is a compile error. `entry-server.tsx` says which route renders how (static / ISR / per
+// paths in its type, and the registration below binds `<Link href>`, `route()` and `Navigator` to
+// them, so a typo in a link is a compile error — in every file, which imports them from
+// `@ramonda/router` and never from here. `entry-server.tsx` says which route renders how (static / ISR / per
 // request).
 export const routes = createRoutes({
   "/": <HomePage />,
@@ -194,7 +195,11 @@ export const routes = createRoutes({
   "*": <NotFound />,
 });
 
-export const { Router, RouteOutlet, Navigator, Link, route } = createRouter(routes);
+declare module "@ramonda/router" {
+  interface Register {
+    routes: typeof routes;
+  }
+}
 
 /** The app shell: navigation that stays put, and the outlet that swaps as you move. */
 export class App extends Component {

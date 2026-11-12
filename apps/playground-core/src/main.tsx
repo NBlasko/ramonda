@@ -1,7 +1,7 @@
 import { Component, bootstrap, state } from "@ramonda/core";
 import "./exit.css";
 import { Router, RouteOutlet } from "@ramonda/router";
-import { Link, Navigator } from "./routes";
+import { Link, Navigator } from "@ramonda/router";
 import { QueryClientProvider } from "@ramonda/query";
 import { ThemeProvider, ThemedBadge } from "./theme";
 import { routes } from "./routes";

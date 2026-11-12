@@ -80,11 +80,19 @@ export const toServerPath = (file: string): string => {
  * Never throws: a state field can hold a function, a DOM node or something cyclic.
  */
 const MAX_VALUE_LEN = 8000;
+/**
+ * A Map and a Set as their entries for `JSON.stringify`, which otherwise writes every one as `{}` —
+ * a change signature that never changes, and raw text that shows nothing. Found by review.
+ */
+export const entriesOfMapsAndSets = (_key: string, value: unknown): unknown =>
+  value instanceof Map ? { Map: [...value] } : value instanceof Set ? { Set: [...value] } : value;
+
 export const safeStringify = (v: unknown): string => {
   if (typeof v === "function") return "ƒ()";
   let s: string;
   try {
-    s = JSON.stringify(v) ?? String(v);
+    // This string is also the panel's change signature — see `entriesOfMapsAndSets`.
+    s = JSON.stringify(v, entriesOfMapsAndSets) ?? String(v);
   } catch {
     return "[unserializable]";
   }

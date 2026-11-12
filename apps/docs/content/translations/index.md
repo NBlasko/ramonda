@@ -146,10 +146,14 @@ component above the outlet reads it from the path:
 
 ```tsx
 import { Component, Head, compute, createContext } from "@ramonda/core";
-import { createRoutes, createRouter } from "@ramonda/router";
+import { createRoutes, Navigator, Router, RouteOutlet } from "@ramonda/router";
 
 const routes = createRoutes({ "/:lang/matches": <MatchCount count={3} /> });
-const { Router, RouteOutlet, Navigator } = createRouter(routes);
+declare module "@ramonda/router" {
+  interface Register {
+    routes: typeof routes;
+  }
+}
 const [LanguageProvider] = createContext({ locale: "en" as Locale });
 
 class App extends Component {

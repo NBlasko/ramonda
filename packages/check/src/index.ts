@@ -25,6 +25,7 @@ export type {
   FormFieldWithoutWhatTheFormNeedsIssue,
   ResetTheModelDoesNotHearIssue,
   ComputeTakesNoArgumentsIssue,
+  MarkupHelperInRenderIssue,
   ContextIssue,
   DecoratorThatAddsNothingIssue,
   DevGuardAsAnExpressionIssue,

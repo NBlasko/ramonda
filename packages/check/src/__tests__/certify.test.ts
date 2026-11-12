@@ -71,8 +71,10 @@ describe("what a package may claim", () => {
 
     expect(held.complete).toBe(true);
     expect(held.plain).toBe(true);
-    // `current` is the one claim a fixture cannot make: there is no built `dist` to fingerprint.
-    expect(held.current).toBe(false);
+    // This fixture is an APP — it mounts a root — so it is not asked `current`, the claim about a
+    // shipped declaration file; see "a certificate for an app".
+    expect(found.scope).toBe("app");
+    expect(held.current).toBeUndefined();
 
     /**
      * And the HEADER counts the same surface the claims judge.
@@ -150,5 +152,55 @@ describe("the report a publisher reads", () => {
     });
 
     expect(printed.indexOf("missing one")).toBeLessThan(printed.indexOf("held one"));
+  });
+});
+
+/**
+ * An APP is asked only what applies to it. Found by the second trial: `--certify` on an app marked
+ * `✗ current` and advised building `dist/ramonda-graph.json` "from the package that ships the types"
+ * — an app ships no types, and the run read as a failure with nothing the app could do about it.
+ */
+describe("a certificate for an app", () => {
+  test("has no claim about a shipped declaration file", () => {
+    const certificate = certificateFor("holes");
+    expect(certificate.scope).toBe("app");
+    expect(certificate.claims.map((claim) => claim.id)).not.toContain("current");
+  });
+
+  test("while a library — no root mounted — is still asked it", () => {
+    const certificate = certificateFor("compute-arguments");
+    expect(certificate.scope).toBe("library");
+    expect(certificate.claims.map((claim) => claim.id)).toContain("current");
+  });
+
+  // Found by review: only the all-held footer had an app's wording; one missing claim fell back to
+  // "an app installing this", under a header saying nobody installs it.
+  test("and with a claim not made, still speaks of the app itself", () => {
+    const printed = renderCertificate({
+      package: { name: "turniri", version: "0.0.0" },
+      scope: "app",
+      covers: { components: 30, exported: 0 },
+      claims: [
+        {
+          id: "complete",
+          held: false,
+          says: "every component it names, it can follow",
+          against: [{ at: "src/a.tsx:1:1", why: "a hole" }],
+        },
+      ],
+    });
+    expect(printed).toContain("1 claim(s) not made");
+    expect(printed).not.toContain("installing this");
+  });
+
+  test("and does not speak of an app that installs it", () => {
+    const printed = renderCertificate({
+      package: { name: "turniri", version: "0.0.0" },
+      scope: "app",
+      covers: { components: 30, exported: 0 },
+      claims: [{ id: "complete", held: true, says: "every component it names, it can follow", against: [] }],
+    });
+    expect(printed).toContain("Every claim holds");
+    expect(printed).not.toContain("installs this can walk");
   });
 });

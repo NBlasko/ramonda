@@ -1,5 +1,5 @@
 import { Component } from "@ramonda/core";
-import { Link } from "../routes";
+import { Link } from "@ramonda/router";
 
 export class HomePage extends Component {
   render() {

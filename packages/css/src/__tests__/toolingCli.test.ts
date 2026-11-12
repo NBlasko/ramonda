@@ -217,7 +217,17 @@ describe("format", () => {
 
     expect(status).toBe(1);
     expect(output).toContain("are not formatted");
+    // And the command that fixes it, with the same paths — found by the second trial, whose check
+    // stopped on this line and had to work out the command for itself.
+    expect(output).toContain("Run `ramonda-css format src/Card.tsx` to write them.");
     expect(readFileSync(join(root, "src", "Card.tsx"), "utf8")).toBe(before);
+  });
+
+  // Found by review: pasted as printed, an unquoted path with a space formats two paths that are not there.
+  test("the command it suggests quotes a path with a space in it", () => {
+    const root = project({ "My Card.tsx": `const   a =    1;\n${STYLED}` });
+    const { output } = run(root, ["format", "--check", "src/My Card.tsx"]);
+    expect(output).toContain("Run `ramonda-css format 'src/My Card.tsx'` to write them.");
   });
 
   test("and a file already formatted is left exactly as it is", () => {

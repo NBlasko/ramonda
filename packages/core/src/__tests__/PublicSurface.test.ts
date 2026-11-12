@@ -42,6 +42,9 @@ const EXPECTED = [
   // `<option>` needs nothing: it has no choice to make.
   "Select",
   "TextArea",
+  // What a component that wraps one element hands on to it: every prop it does not consume itself.
+  // `{...this.props}` spreads nothing — the proxy has no `ownKeys` — so a wrapper needs this.
+  "forwarded",
   "createContext",
   "createRef",
   "Ref",

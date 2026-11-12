@@ -247,8 +247,15 @@ describe("RMD020 — values built inside render()", () => {
     await getDOM<Table>(<Table />);
 
     expect(reported()).toContain("RMD020");
-    expect(reported()).toContain("each");
     expect(reported()).toContain("loses its identity");
+    /**
+     * And it says WHICH value in words. The second trial read `div[0].list.each` as the row callback —
+     * the thing called for "each" row — and went looking at inline callbacks; it was the items array.
+     * The fix it needed was `@compute` on the getter that builds them, so that is named too.
+     */
+    expect(reported()).toContain("passes `list()` a new array of items on every render");
+    expect(reported()).toContain("`@compute` getter");
+    expect(reported()).not.toContain(".list.each");
   });
 
   test("a stable list `each` is not reported", async () => {

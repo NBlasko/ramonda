@@ -101,6 +101,9 @@ async function renderDev(req, res) {
   } catch (error) {
     // Rewrites the stack to your source, not the transformed module.
     vite.ssrFixStacktrace(error);
+    // Forget what failed, so the next request loads afresh. Measured on Vite 8: an import written
+    // before its file kept failing after the file existed, until a restart.
+    vite.moduleGraph.invalidateAll();
     res.statusCode = 500;
     res.end(`<pre>${escapeHtml(error?.stack ?? error)}</pre>`);
     console.error(error);

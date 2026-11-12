@@ -505,11 +505,38 @@ function compareValue(a: unknown, b: unknown, path: string, depth: number, walk:
   if (kind) report(kind, walk, path, a, b);
 }
 
+/**
+ * The items handed to `list()`, said in words.
+ *
+ * The path names them `….list.each`, and the second trial read "each" as the row callback — the
+ * thing called for each row — and went looking at inline callbacks. It was the array, built in a
+ * plain getter (`get rows() { return xs.map(…) }`), and the fix was `@compute` on that getter.
+ */
+const LIST_ITEMS = /^(.*?)\.?list\.each$/;
+
+function detailOf(kind: Kind, owner: string, path: string): string {
+  const items = kind === "object" ? LIST_ITEMS.exec(path) : null;
+  if (items === null) return DETAIL[kind](owner, path);
+  const inside = items[1] === "" ? "" : ` (inside \`${items[1]}\`)`;
+  return (
+    `<${owner} /> passes \`list()\` a new array of items on every render${inside}, with the same contents.\n` +
+    `Every row loses its identity and the whole list is rebuilt — its rows re-render, and their state and focus go.`
+  );
+}
+
+function fixOf(kind: Kind, path: string): string {
+  if (kind !== "object" || !LIST_ITEMS.test(path)) return FIX[kind];
+  return (
+    "Build the items where they are kept, not in `render()`: a `@compute` getter returns the same array until what it reads changes — " +
+    "`@compute get rows() { return this.props.xs.map(…) }`, and `list(this.rows, …)`. A plain getter builds a new one on every read."
+  );
+}
+
 function report(kind: Kind, walk: Walk, path: string, a: unknown, b: unknown): void {
   const owner = walk.owner;
   const at = walk.at;
   const where = at === undefined ? "" : `\nWritten at ${written(at)}.`;
-  diagnose("RMD020", `${owner}:${path}:${kind}`, `${DETAIL[kind](owner, path)}${where}\n\n${FIX[kind]}`, {
+  diagnose("RMD020", `${owner}:${path}:${kind}`, `${detailOf(kind, owner, path)}${where}\n\n${fixOf(kind, path)}`, {
     first: a,
     second: b,
     ...(at === undefined ? {} : { file: at.fileName, line: at.lineNumber, column: at.columnNumber }),

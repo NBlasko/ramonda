@@ -163,21 +163,30 @@ export function certify(result: AnalyzeResult, root: string, pkg: { name: string
           why: `${site.what} is exempted: ${site.reason}`,
         })),
       },
-      {
-        id: "current",
-        held: graph.describes !== undefined,
-        says: "the graph fingerprints the declaration file it ships",
-        against:
-          graph.describes === undefined
-            ? [
-                {
-                  at: "package.json",
-                  why: "the graph does not say which declaration file it describes, so nothing can tell whether it is stale",
-                  fix: "build the graph from the package that ships the types: `ramonda-check tsconfig.json --graph dist/ramonda-graph.json`",
-                },
-              ]
-            : [],
-      },
+      /**
+       * A PACKAGE's claim only: it is about the declaration file a published package ships beside
+       * its graph. An app ships none, and the second trial read the ✗ it got as a failure it could
+       * not fix — so an app is not asked.
+       */
+      ...(graph.scope === "app"
+        ? []
+        : [
+            {
+              id: "current" as const,
+              held: graph.describes !== undefined,
+              says: "the graph fingerprints the declaration file it ships",
+              against:
+                graph.describes === undefined
+                  ? [
+                      {
+                        at: "package.json",
+                        why: "the graph does not say which declaration file it describes, so nothing can tell whether it is stale",
+                        fix: "build the graph from the package that ships the types: `ramonda-check tsconfig.json --graph dist/ramonda-graph.json`",
+                      },
+                    ]
+                  : [],
+            },
+          ]),
     ],
   };
 }
@@ -252,8 +261,13 @@ export function renderCertificate(certificate: Certificate): string {
   lines.push("");
   lines.push(
     missing.length === 0
-      ? "  Every claim holds. An app that installs this can walk its graph end to end."
-      : `  ${missing.length} claim(s) not made. An app installing this gets a map with blanks in it,\n` +
+      ? certificate.scope === "app"
+        ? "  Every claim holds. Every component this app names can be followed, and nothing was exempted."
+        : "  Every claim holds. An app that installs this can walk its graph end to end."
+      : certificate.scope === "app"
+        ? `  ${missing.length} claim(s) not made. Below each place above, this app's own check judges\n` +
+          "  nothing — the list is meant to get shorter, not to score."
+        : `  ${missing.length} claim(s) not made. An app installing this gets a map with blanks in it,\n` +
           "  and the report above is the list of them — it is meant to get shorter, not to score.",
   );
   return lines.join("\n");

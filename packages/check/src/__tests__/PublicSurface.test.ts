@@ -58,6 +58,7 @@ const EXPECTED_TYPES = [
   "FormFieldWithoutWhatTheFormNeedsIssue",
   "ResetTheModelDoesNotHearIssue",
   "ComputeTakesNoArgumentsIssue",
+  "MarkupHelperInRenderIssue",
   "ContextIssue",
   "DecoratorThatAddsNothingIssue",
   "DevGuardAsAnExpressionIssue",

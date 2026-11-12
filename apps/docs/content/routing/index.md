@@ -11,13 +11,14 @@ Most apps are more than one page — a home screen, a profile, a settings panel.
 **Routing** is showing the right one for the current URL and switching between them
 without a full page reload.
 
-You write a **route table** with `createRoutes`, then `createRouter` hands you the pieces bound
-to it: **`Router`** (tracks the URL), **`RouteOutlet`** (shows the matching page), **`Link`** and
-**`Navigator`** (below), and **`route`** (for `:param` links).
+You write a **route table** with `createRoutes` and register it once. Everything else comes from
+the package: **`Router`** (tracks the URL), **`RouteOutlet`** (shows the matching page), **`Link`**
+and **`Navigator`** (below), and **`route`** (for `:param` links) — and the registration is what
+binds the last three to your table.
 
 ```tsx
 import { Component } from "@ramonda/core";
-import { createRoutes, createRouter } from "@ramonda/router";
+import { createRoutes, Router, RouteOutlet } from "@ramonda/router";
 
 export const routes = createRoutes({
   "/": <Home />,
@@ -25,7 +26,11 @@ export const routes = createRoutes({
   "*": <NotFound />,
 });
 
-export const { Router, RouteOutlet, Navigator, Link, route } = createRouter(routes);
+declare module "@ramonda/router" {
+  interface Register {
+    routes: typeof routes;
+  }
+}
 
 export class App extends Component {
   router = this.use(Router);
@@ -41,10 +46,14 @@ export class App extends Component {
 }
 ```
 
-Put this in one module — `routes.ts` in the examples that follow — and import `Link` / `Navigator` /
-`route` / `routes` from it across your app. Call `createRouter` **once**, there: it is the only
-place `Link` and `Navigator` come from, and binding them to your table is what makes links
-**type-safe** — next.
+Put the table and its registration in one module — `routes.ts` in the examples that follow. Your
+pages import `Link`, `Navigator` and `route` from `@ramonda/router`, never from `routes.ts`, so
+the module holding the table (which imports every page) is not imported back by them. Only the
+component that places the outlet imports `routes`.
+
+**Register exactly once.** Forget it and the first `<Link href>` fails to compile, with the line to
+write in the message. Two apps in one TypeScript program would share the registration, so give
+each app its own `tsconfig.json`.
 
 ```demo:RouteInfo
 ```
@@ -102,12 +111,12 @@ state:
 
 ## Links are type-checked against your routes
 
-Because `createRouter` knows your table, `<Link href>` only accepts a real path — change or
+Because your table is registered, `<Link href>` only accepts a real path — change or
 rename a route and every stale link becomes a **compile error**, not a broken link you find by
 clicking:
 
 ```tsx expect-error
-import { Link, route } from "./routes";
+import { Link, route } from "@ramonda/router";
 
 <Link href="/">Home</Link>                          // ✓
 <Link href="/nope">Home</Link>                       // ✗ not a route
@@ -118,24 +127,40 @@ A static path goes in directly; a `:param` path must be built with `route(...)`,
 params and rejects a wrong one. The same paths type `Navigator.push` / `replace`. More in
 [links](/routing/links).
 
-## The types the kit is made of — `TypedRouterKit`
+## The types, and a component in a package
 
-`createRouter(routes)` returns a `TypedRouterKit`, and every name below exists so that the route
-table's paths reach a type annotation.
+Every name below exists so that the registered table's paths reach a type annotation.
 
 | | |
 |---|---|
+| `Register` | the interface your app registers its table in — once |
+| `Href` | every href the registered table accepts: a path, filled in, with a query or a fragment |
+| `BuiltHref` | what `route(...)` returns — a `:param` path it has filled and checked |
 | `RouteConfig` | what `createRoutes` returns — the compiled table, carrying its literal path keys |
 | `PathOf<C>` | the navigable paths of a config: every declared key except the `"*"` fallback |
-| `TypedLinkProps` | `Link`'s props, with `href` narrowed to those paths |
-| `TypedNavigator` | the `Navigator` hook's type, with `push` and `replace` narrowed the same way |
-| `Href` | a path that `route(...)` has built and checked — a string the kit will accept |
+| `TypedLinkProps` | `Link`'s props, with `href` an `Href` |
+| `TypedNavigator` | the `Navigator` hook's type, with `push` and `replace` taking an `Href` |
 | `RouteParams` | the `:param` values a matched route supplies, as a record of strings |
 | `RouteOutletProps` | `RouteOutlet`'s props |
 
+**`Href` is how a component published in a package takes a link.** The package cannot know the
+app's paths, so it does not write one; it takes one as a prop, typed `Href`, and the app's own
+registered table checks what the app passes:
+
+```tsx
+import { Component } from "@ramonda/core";
+import { type Href, Link } from "@ramonda/router";
+
+export class UserCard extends Component<{ name: string; href: Href }> {
+  render() {
+    return <Link href={this.props.href}>{this.props.name}</Link>;
+  }
+}
+```
+
 **`RouteConfig` carries its paths in a phantom field.** Nothing at runtime holds them: they exist
-only so `createRoutes({ "/": …, "/u/:id": … })` remembers the literal union `"/" | "/u/:id"`, and
-`createRouter` can type a `Link` against it. The field defaults to `string`, which is what lets a
+only so `createRoutes({ "/": …, "/u/:id": … })` remembers the literal union `"/" | "/u/:id"`, and the
+registration can type a `Link` against it. The field defaults to `string`, which is what lets a
 function taking a plain `RouteConfig` still accept a narrower one.
 
 `RouterNavigator` is the untyped shape underneath `TypedNavigator` — the methods themselves, before

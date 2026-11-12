@@ -84,6 +84,22 @@ export interface GraphNode {
 }
 
 /**
+ * Whether a node was declared in ANOTHER package than the one the graph is of.
+ *
+ * Every id starts with the package it is in — `turniri/src/App.tsx#App`, `@ramonda/core/src/base/
+ * Portal.ts#Portal`. A package's fragment brings ALL its declarations into an app's graph, used or
+ * not, so the second trial's `--graph-html` showed 13 "that nothing points at" and every one of them
+ * was the framework's: `Portal`, `TextArea`, `Interval`. That reads exactly like dead code in the app.
+ *
+ * A graph whose ids carry no package at all — one built by hand — has nothing foreign in it.
+ */
+export function fromAnotherPackage(graph: ComponentGraph, id: string): boolean {
+  const own = `${graph.package.name}/`;
+  if (id.startsWith(own)) return false;
+  return graph.nodes.some((node) => node.id.startsWith(own));
+}
+
+/**
  * `kind` is what a walk reads; `via` is how it was written, which only a message needs.
  *
  * Splitting them is what keeps the format still when a new way of naming a component arrives: it

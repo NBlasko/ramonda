@@ -40,6 +40,19 @@ npm create ramonda@latest my-app -- --yes
 npm create ramonda@latest my-app -- --mode ssr --add css,query,testing --no-git
 ```
 
+### Which mode
+
+| The app | Mode | Ships as |
+|---|---|---|
+| Behind a login, nothing for a search engine | `spa` | one folder of files |
+| No server of its own, but pages a search engine reads — data kept in the browser | `ssr`, every route `prerender: true` | one folder: `npm run build:static` |
+| Pages that differ per visitor or per request | `ssr`, those routes rendered per request | a Node server: `npm start` |
+
+The middle row is the one that is easy to miss: `ssr` does not mean a server in production. A route
+whose id exists only in the reader's browser stays one baked page with the id in the query —
+[a path and a query, or a `:param`](/routing/links). See [rendering modes](/ssr/modes) and
+[deploying](/deploying).
+
 ### With no terminal
 
 A script, a CI job or an agent has no terminal to answer a question in. There, every question must
@@ -54,7 +67,7 @@ A folder holding only `.git` counts as empty. Into any other, the scaffolder wri
 - your `.gitignore` is kept, and the lines the project needs that it lacks are added at the end;
 - your `README.md`, `AGENTS.md` and `CLAUDE.md` are kept, and the project's own is written beside each
   as `README.ramonda.md`, `AGENTS.ramonda.md` and `CLAUDE.ramonda.md` — unless yours is already the
-  project's;
+  project's, or, for `CLAUDE.md`, already has a line `@AGENTS.md`, which is all the project's says;
 - any other file of yours that the template also writes — `package.json`, `src/App.tsx` — is replaced,
   and the scaffolder names each one it replaced; one already identical to the project's is not named;
 - every other file is left alone, and is not read. A file of yours under `src` is part of the project
