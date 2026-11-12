@@ -25,6 +25,7 @@ describe("a markup helper built inside render()", () => {
       "Shapes: chip",
       "PerRow: cell",
       "RowsHelper: rowsOf",
+      "Immediately: cell",
     ]);
   });
 
@@ -34,11 +35,12 @@ describe("a markup helper built inside render()", () => {
     ["Fixed", "a helper that returns no markup, and a method — the fix"],
     ["OtherMethod", "a closure in another method is not built on every render"],
     ["InAHandler", "one built inside a click handler is built per click, not per render"],
+    ["Later", "one built in a timer or a promise callback runs later, not with the render"],
   ])("%s is silent — %s", (component) => {
     expect(found().filter((issue) => issue.component === component)).toEqual([]);
   });
 
   test("each is placed at its own declaration", () => {
-    expect(found().map((issue) => issue.line)).toEqual([9, 24, 28, 46, 114]);
+    expect(found().map((issue) => issue.line)).toEqual([9, 24, 28, 46, 114, 160]);
   });
 });

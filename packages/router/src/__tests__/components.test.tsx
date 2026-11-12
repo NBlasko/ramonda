@@ -402,6 +402,50 @@ describe("Link", () => {
     expect(window.location.pathname).toBe("/players/9");
   });
 
+  // Found by review: the app's handler was called bare, so a `{ handleEvent }` object threw and the
+  // click became a full page load, and a `function` handler got no `this`. Called as a listener now.
+  test("calls the app's onclick as a listener: handleEvent objects, and the anchor as `this`", () => {
+    const seen: string[] = [];
+    const { container } = render(
+      <RouterApp>
+        <RouteOutlet
+          routes={createRoutes({
+            "/": (
+              <div>
+                <Link
+                  href="/players/1"
+                  onclick={{
+                    handleEvent(event: Event) {
+                      seen.push("object");
+                      event.preventDefault();
+                    },
+                  }}
+                >
+                  A
+                </Link>
+                <Link
+                  href="/players/2"
+                  onclick={function (this: Element, event: Event) {
+                    seen.push(this.tagName);
+                    event.preventDefault();
+                  }}
+                >
+                  B
+                </Link>
+              </div>
+            ),
+            "/players/:id": <Player />,
+          })}
+        />
+      </RouterApp>,
+    );
+    const [a, b] = Array.from(container.querySelectorAll("a"));
+    fireEvent.click(a, { button: 0 });
+    fireEvent.click(b, { button: 0 });
+    expect(seen).toEqual(["object", "A"]);
+    expect(window.location.pathname).toBe("/");
+  });
+
   // Now that `target` and `download` reach the anchor, the click is the browser's — as the docs say.
   test.each([
     ["target", "_blank"],

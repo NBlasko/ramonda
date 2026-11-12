@@ -5,8 +5,9 @@ import { guardedBy } from "./guard-walk";
  * Whether a site is inside `if (__DEV__)`, and so is not in a production build at all.
  *
  * `__DEV__` is the framework's own contract, documented and relied on everywhere: core, lens, query
- * and form are each built twice, and `ramondaDefine({ __DEV__: "false" })` is what an application's
- * production build passes. Measured in `packages/query/dist/index.prod.js` — the three methods that
+ * and form are each built twice, with `__DEV__` defined false for the production half — a package
+ * build's own define, never an application's: an app's build picks the production half through the
+ * `exports` conditions, and its own development branches follow `import.meta.env.DEV`. Measured in `packages/query/dist/index.prod.js` — the three methods that
  * publish a client to the devtools panel compile to `publishToDevtools(){}republish(){}` and the
  * listener they add does not exist.
  *

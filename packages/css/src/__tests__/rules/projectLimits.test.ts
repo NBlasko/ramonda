@@ -303,7 +303,9 @@ describe("a literal where the project said that kind comes from variables", () =
       (one) => one.rule === "hardcoded-not-allowed",
     );
     // On the FIRST line, the one the trial read.
-    expect(found?.message.split("\n")[0]).toContain("`$size.line` holds it.");
+    expect(found?.message.split("\n")[0]).toContain("`ramonda.css.ts` holds it as `$size.line` — write that.");
+    // Once: found by review, the message used to name it again three lines down.
+    expect(found?.message.match(/\$size\.line/g)).toHaveLength(1);
   });
 
   test("and with no `hardcoded: false` anywhere, every one of these is silent", () => {

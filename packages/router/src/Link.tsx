@@ -4,7 +4,7 @@ import { RouteConsumer } from "./Router";
 import { buildUrl, parseUrlString, sanitizeHref } from "./urlUtils";
 import type { StateUpdater } from "./types";
 
-export interface LinkProps {
+export interface LinkProps extends AnchorAttributes {
   href?: string;
   replace?: boolean;
   /** Scroll to the top after navigating. Default `true` — a link is a real
@@ -20,13 +20,39 @@ export interface LinkProps {
   stateResolver?: StateUpdater;
   className?: string;
   children?: RamondaNode;
-  /**
-   * Anything else an `<a>` takes — `lang`, `hreflang`, `title`, `rel`, `target`, `aria-*`, `data-*` —
-   * passed straight through, as `Select` passes everything to its `<select>`. Found by the second
-   * trial: a language switch could not say `lang="en"`. The same latitude the tag itself has.
-   */
-  // biome-ignore lint/suspicious/noExplicitAny: the same latitude the tag's own type gives
-  [attribute: Lowercase<string>]: any;
+}
+
+/**
+ * What else an `<a>` takes, passed straight through to it — see `forwarded`. Found by the second
+ * trial: a language switch could not say `lang="en"`.
+ *
+ * NAMED rather than any lower-case word, and that is the strictness the rest of the router has. An
+ * index signature over every lower-case name made a misspelt option compile — `scrol={false}`,
+ * `replce` — and land on the anchor as a junk attribute, found by review. `aria-*`, `data-*` and
+ * `on…` stay open, being families rather than names.
+ */
+export interface AnchorAttributes {
+  lang?: string;
+  hreflang?: string;
+  title?: string;
+  rel?: string;
+  target?: string;
+  download?: string | boolean;
+  id?: string;
+  role?: string;
+  tabindex?: number | string;
+  referrerpolicy?: string;
+  ping?: string;
+  type?: string;
+  dir?: string;
+  accesskey?: string;
+  translate?: string;
+  hidden?: boolean;
+  draggable?: boolean;
+  style?: string;
+  [aria: `aria-${string}`]: string | number | boolean | undefined;
+  [data: `data-${string}`]: string | number | boolean | undefined;
+  [event: `on${string}`]: unknown;
 }
 
 /** What this component consumes itself, so `forwarded` hands on everything else. */
@@ -80,8 +106,13 @@ export class Link extends Component<LinkProps> {
     // it against the current URL and navigated to "/evil.com/path".
     // The app's own handler first — analytics, closing a menu — and its `preventDefault()` is a no.
     // Taken off the anchor by `OWN`, so it is called here once rather than overwritten unseen.
-    const own = this.props.onclick as ((event: MouseEvent) => void) | undefined;
-    own?.(e);
+    // Called the way a listener is — a function with the anchor as `this`, or an object's
+    // `handleEvent` — as core calls every `on…` it is handed. Found by review: a bare call threw on an
+    // object and the click became a full page load.
+    const own = this.props.onclick as unknown;
+    if (typeof own === "function") own.call(e.currentTarget, e);
+    else if (typeof (own as EventListenerObject | null)?.handleEvent === "function")
+      (own as EventListenerObject).handleEvent(e);
     if (e.defaultPrevented) return;
 
     const href = this.currentHref;

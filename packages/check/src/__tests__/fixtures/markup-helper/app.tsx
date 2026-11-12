@@ -133,3 +133,34 @@ export class InAHandler extends Component {
     );
   }
 }
+
+/** Silent: in a callback that runs LATER — a timer, a promise. Found by review. */
+export class Later extends Component {
+  shown: unknown = null;
+  ready = Promise.resolve();
+  render() {
+    setTimeout(() => {
+      const toast = () => <b>Saved</b>;
+      this.shown = toast();
+    }, 0);
+    this.ready.then(() => {
+      const note = () => <i>Ready</i>;
+      this.shown = note();
+    });
+    return <p>later</p>;
+  }
+}
+
+/** Reported: inside a function called right there, which runs with the render. */
+export class Immediately extends Component {
+  render() {
+    return (
+      <tr>
+        {(() => {
+          const cell = (key: string) => <td>{key}</td>;
+          return cell("a");
+        })()}
+      </tr>
+    );
+  }
+}

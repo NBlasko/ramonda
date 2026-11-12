@@ -115,16 +115,49 @@ export const markupHelperInRender = {
   },
 } as const satisfies Rule<MarkupHelperInRenderIssue>;
 
+/** Array methods that call their callback right there, while the caller waits. */
+const RUNS_NOW = new Set([
+  "map",
+  "flatMap",
+  "forEach",
+  "filter",
+  "find",
+  "findIndex",
+  "findLast",
+  "some",
+  "every",
+  "reduce",
+  "reduceRight",
+  "toSorted",
+  "sort",
+]);
+
 /**
- * Whether a declaration is built when `render()` runs — directly in it, or in a callback a CALL in it
- * runs, as `list()` and `map()` run a row's. Found by review: one inside a click handler is built per
- * click, not per render, and the report's own sentence was false for it.
+ * Whether a declaration is built when `render()` runs: directly in it, in a row callback `list()` or
+ * an array method runs right there, or in a function called on the spot.
+ *
+ * Found by review, twice. A handler written in the markup runs per click; a callback handed to
+ * `setTimeout` or a promise's `then` runs LATER — "a new closure on every render" was false for
+ * every one of them. And a function called on the spot, `(() => …)()`, does run with the render and
+ * was missed, its parent being the parentheses.
  */
 function runsWithRender(declaration: ts.Node, render: ts.Node): boolean {
   for (let at = declaration.parent; at !== undefined && at !== render; at = at.parent) {
     if (!ts.isFunctionLike(at)) continue;
-    const parent = at.parent;
-    if (!ts.isCallExpression(parent) || !parent.arguments.includes(at as ts.Expression)) return false;
+    let outer: ts.Node = at.parent;
+    let called: ts.Node = at;
+    while (ts.isParenthesizedExpression(outer)) {
+      called = outer;
+      outer = outer.parent;
+    }
+    if (!ts.isCallExpression(outer)) return false;
+    // Called on the spot.
+    if (outer.expression === called) continue;
+    // Handed to a call that runs it now: `list(rows, …)` or `rows.map(…)`.
+    if (!outer.arguments.includes(at as ts.Expression)) return false;
+    const callee = outer.expression;
+    const name = ts.isIdentifier(callee) ? callee.text : ts.isPropertyAccessExpression(callee) ? callee.name.text : "";
+    if (!(name === "list" || (ts.isPropertyAccessExpression(callee) && RUNS_NOW.has(name)))) return false;
   }
   return true;
 }

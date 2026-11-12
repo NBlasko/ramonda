@@ -21,10 +21,10 @@ interface Setting {
   readonly node: ts.Node;
 }
 
-/** Every property a declaration sets: itself, and every longhand when it is a shorthand. */
 /** What a setting the block wrote ITSELF is filed under, so it is never compared with its own kind. */
 const OWN = "this block";
 
+/** Every property a declaration sets: itself, and every longhand when it is a shorthand. */
 const setsOf = (property: string): readonly string[] => [property, ...(SHORTHANDS[property] ?? [])];
 
 /** Whether two declarations set any one property in common — what the merge's warning groups by. */

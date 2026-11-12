@@ -150,6 +150,18 @@ function _typeChecks() {
   void (<Link href={`${route("/u/:id", { id: "x" })}#top`} />);
   void (<Link href={`${route("/u/:id", { id: "x" })}?tab=2#top`} />);
 
+  // The anchor's own attributes go through — and a misspelt option of the link's is still refused.
+  // Found by review: an index signature over every lower-case name had made `scrol` compile.
+  void (
+    <Link href="/about" lang="en" hreflang="en" target="_blank" aria-label="About" data-x="1">
+      About
+    </Link>
+  );
+  // @ts-expect-error — `scrol` is not an option and not an anchor attribute
+  void (<Link href="/about" scrol={false} />);
+  // @ts-expect-error — `replce` neither
+  void (<Link href="/about" replce />);
+
   // @ts-expect-error — "/nope" is not a declared route
   void (<Link href="/nope" />);
 

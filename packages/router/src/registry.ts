@@ -1,5 +1,5 @@
 import type { ComponentClassKind, RamondaNode } from "@ramonda/core";
-import { Link as LinkImpl } from "./Link";
+import { type AnchorAttributes, Link as LinkImpl } from "./Link";
 import { Navigator as NavigatorImpl } from "./Router";
 import type { ParamsOf, PathOf, RouteConfig, RouteParams } from "./match";
 import type { StateUpdater } from "./types";
@@ -73,13 +73,14 @@ type Located<P extends string> = P | `${P}${Search}` | `${P}${Hash}` | `${P}${Se
 export type AnyHref<C extends RouteConfig> = Located<StaticPath<C> | Filled<ParamPath<C>> | BuiltHref>;
 
 /**
- * `<Link>` props — `href` is an `Href` of the registered table.
+ * `<Link>` props — `href` is an `Href` of the registered table; anything else an `<a>` takes passes
+ * through (see `AnchorAttributes`).
  *
  * A path the table names, filled in if it takes parameters, optionally with a query and a
  * fragment; or a `BuiltHref` from `route()`, which is still the way to build one programmatically but
  * no longer the only way to write one.
  */
-export interface TypedLinkProps<P extends string> {
+export interface TypedLinkProps<P extends string> extends AnchorAttributes {
   href?: P;
   replace?: boolean;
   /** Scroll to the top after navigating. Default `true`. */
@@ -88,9 +89,6 @@ export interface TypedLinkProps<P extends string> {
   stateResolver?: StateUpdater;
   className?: string;
   children?: RamondaNode;
-  /** Anything else an `<a>` takes, passed through — see `LinkProps`. */
-  // biome-ignore lint/suspicious/noExplicitAny: the same latitude the tag's own type gives
-  [attribute: Lowercase<string>]: any;
 }
 
 /**
