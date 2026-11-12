@@ -119,6 +119,8 @@ jobs:
       # gate is not the Node CI runs, and in CI those are the same Node, so it could never speak.
       - name: Check the source-only gates
         run: |
+          SELFTEST=planted node scripts/check-executable-bits.mjs
+          node scripts/check-executable-bits.mjs
           node scripts/check-event-spelling.mjs
           node scripts/check-tsconfigs.mjs
           node scripts/check-decorator-duplication.mjs
