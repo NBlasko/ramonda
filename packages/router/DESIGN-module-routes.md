@@ -1,6 +1,6 @@
 # Proposal: route tables a module owns
 
-Status: **approved** 2026-11-13, with every recommendation below (decisions 1–2, review A–C). Not built. Builds on [DESIGN.md](./DESIGN.md), which is built.
+Status: **built** 2026-11-13 (approved the same day, with every recommendation below; decisions 1–2, review A–C). Builds on [DESIGN.md](./DESIGN.md), which is built.
 
 ## The problem
 
@@ -256,4 +256,4 @@ None. Built in this order, each step gated by the full check:
    API change; see review A.
 3. **BUILT.** `ramonda-check`: following a table's parts — names and both arms of a condition — then the condition
    rule (`link-to-a-conditional-route`). A part made by a call is not a feature (see "What this narrows").
-4. The docs' module pages, with a lazy table.
+4. **BUILT.** `/routing/modules`, with a lazy table.
