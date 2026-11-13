@@ -35,8 +35,8 @@ const routes = createRoutes({
 // Registered once, beside the table: every `Link`, `Navigator` and `route()` — each imported from
 // `@ramonda/router` — then takes the paths it names and nothing else.
 declare module "@ramonda/router" {
-  interface Register {
-    routes: typeof routes;
+  interface Routes {
+    app: typeof routes;
   }
 }
 

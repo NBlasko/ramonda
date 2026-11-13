@@ -115,25 +115,103 @@ function compilePattern(pattern: string): {
 }
 
 /**
- * Compiles a routes map into a stable `RouteConfig` — call it ONCE (module
- * scope), then pass the result to <Router>. Two wins: regexes are built a single
- * time (not per render/match), and the stable object identity lets <Router>'s
- * shallow props comparison skip re-rendering when the parent re-renders.
+ * One part of a table: a module's compiled table, a literal one, or `undefined` — the empty part a
+ * condition leaves (`import.meta.env.DEV ? debugRoutes : undefined`).
  */
-export function createRoutes<const T extends Record<string, VNode>>(routes: T): RouteConfig<Extract<keyof T, string>> {
-  const compiled: CompiledRoute[] = [];
-  let fallback: VNode | undefined;
+export type RoutePart = RouteConfig<string> | Record<string, VNode> | undefined;
 
-  for (const [key, vnode] of Object.entries(routes)) {
+/** The paths one part names. A compiled table carries them in its phantom; a literal one as its keys. */
+type PathsOfPart<P> =
+  P extends RouteConfig<infer K> ? K : P extends Record<string, VNode> ? Extract<keyof P, string> : never;
+
+/**
+ * Compiles a routes map into a stable `RouteConfig` — call it ONCE (module scope), then pass the
+ * result to <Router>. Regexes are built a single time, and the stable identity lets <Router>'s
+ * shallow props comparison skip re-rendering when the parent re-renders.
+ *
+ * ## Parts
+ *
+ * `createRoutes(tournamentRoutes, authRoutes, { "/": <Home /> })`: a table assembled from the tables
+ * its modules own and a literal one of its own, matched in the order given — see
+ * `DESIGN-module-routes.md`. One literal table is the one-part case. A spread cannot do this: the
+ * result is COMPILED, so `{ ...tournamentRoutes }` copied `compiled` and `fallback` as if they were
+ * paths.
+ *
+ * ## Refused, when the table is built
+ *
+ * A path two parts both name, a second `"*"`, and a route an earlier pattern matches first — none of
+ * them can ever be meant, and across files nobody sees them. Thrown at module load, so the first dev
+ * server start or test run stops on it and it never ships.
+ */
+export function createRoutes<const T extends readonly RoutePart[]>(...parts: T): RouteConfig<PathsOfPart<T[number]>> {
+  const compiled: (CompiledRoute & { part: number })[] = [];
+  let fallback: VNode | undefined;
+  let fallbackPart = 0;
+  const seen = new Map<string, number>();
+
+  const add = (key: string, vnode: VNode, part: number): void => {
     if (key === "*") {
+      if (fallbackPart !== 0) {
+        throw new Error(
+          `[Ramonda Router] createRoutes: a second "*" — part ${fallbackPart} already has the catch-all, and part ${part} ` +
+            `names another. A table has one; keep it in the app's own part.`,
+        );
+      }
       fallback = vnode;
-      continue;
+      fallbackPart = part;
+      return;
     }
+    const before = seen.get(key);
+    if (before !== undefined) {
+      throw new Error(
+        `[Ramonda Router] createRoutes: "${key}" is in two parts of this table — part ${before} and part ${part}. ` +
+          `The first would always win; keep it in the part that owns it.`,
+      );
+    }
+    seen.set(key, part);
     const { regex, paramNames } = compilePattern(key);
-    compiled.push({ key, regex, paramNames, vnode });
+    compiled.push({ key, regex, paramNames, vnode, part });
+  };
+
+  parts.forEach((part, index) => {
+    if (part === undefined) return;
+    const at = index + 1;
+    if (isCompiled(part)) {
+      for (const route of part.compiled) add(route.key, route.vnode, at);
+      if (part.fallback !== undefined) add("*", part.fallback, at);
+      return;
+    }
+    for (const [key, vnode] of Object.entries(part)) add(key, vnode, at);
+  });
+
+  // A route an earlier pattern matches first is never reached. Every `:param` stands for one
+  // segment, so a sample with one there is matched by the earlier pattern exactly when every real
+  // path of the later one is.
+  for (const [at, route] of compiled.entries()) {
+    const sample = route.key.replace(/:\w+/g, "x");
+    const hidden = compiled.slice(0, at).find((earlier) => earlier.regex.test(sample));
+    if (hidden !== undefined) {
+      throw new Error(
+        `[Ramonda Router] createRoutes: "${route.key}" can never be reached: "${hidden.key}", before it, matches it ` +
+          `first. Put "${route.key}" before "${hidden.key}".`,
+      );
+    }
   }
 
-  return { compiled, fallback };
+  return {
+    compiled: compiled.map((route) => ({
+      key: route.key,
+      regex: route.regex,
+      paramNames: route.paramNames,
+      vnode: route.vnode,
+    })),
+    fallback,
+  };
+}
+
+/** A part that is already a compiled table — a module's — rather than a literal one. */
+function isCompiled(part: RouteConfig<string> | Record<string, VNode>): part is RouteConfig<string> {
+  return Array.isArray((part as RouteConfig<string>).compiled);
 }
 
 /** Matches a pathname against a precompiled config (no regex building here). */

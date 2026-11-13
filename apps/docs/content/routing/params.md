@@ -16,8 +16,8 @@ import { createRoutes, Navigator } from "@ramonda/router";
 // routes.ts — the table, registered once (see /routing)
 const routes = createRoutes({ "/players/:id": <Profile />, "/teams/:teamId": <Team /> });
 declare module "@ramonda/router" {
-  interface Register {
-    routes: typeof routes;
+  interface Routes {
+    app: typeof routes;
   }
 }
 

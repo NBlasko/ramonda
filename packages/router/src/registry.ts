@@ -103,17 +103,23 @@ export interface TypedLinkProps<P extends string> extends AnchorAttributes {
 type NoPropsHookClass<T> = new (runtime: unknown, props: undefined) => T;
 
 /**
- * Where an app registers its route table, ONCE, beside it:
+ * Where route tables are registered, each under a name, beside it:
  *
  * ```ts
- * export const routes = createRoutes({ "/": <Home />, "/u/:id": <Profile /> });
+ * export const routes = createRoutes(tournamentRoutes, { "/": <Home />, "/u/:id": <Profile /> });
  *
  * declare module "@ramonda/router" {
- *   interface Register {
- *     routes: typeof routes;
+ *   interface Routes {
+ *     app: typeof routes;
  *   }
  * }
  * ```
+ *
+ * An app registers its assembled table once. A module lifted into a package registers its own slice
+ * under another name, and the declarations MERGE: in the app every table is registered and any of
+ * their paths is accepted; built alone, the package sees only its own, so its links are checked
+ * against its own routes. The name is why this is keyed — one `routes` property could not hold both.
+ * See `DESIGN-module-routes.md`; measured there, a module alone refuses another module's path.
  *
  * ## Why a registration and not a kit
  *
@@ -127,10 +133,10 @@ type NoPropsHookClass<T> = new (runtime: unknown, props: undefined) => T;
  * Measured before it went in, on generated apps: 200 routes cost 0.36 s of check time against 0.33 s
  * for a kit, 1000 routes 1.54 s against 1.54 s, and a planted bad href was refused in both.
  *
- * One table per TypeScript program: two apps under one `tsconfig` share this interface.
+ * One app per TypeScript program: two apps under one `tsconfig` share this interface.
  */
 // biome-ignore lint/suspicious/noEmptyInterface: an app augments it
-export interface Register {}
+export interface Routes {}
 
 /**
  * What every typed place says when nothing was registered — as a TYPE, so the first `<Link href>`
@@ -141,10 +147,10 @@ export interface Register {}
  * because TypeScript prints a string type in double ones and escapes every one inside it.
  */
 export type Unregistered =
-  "Register your route table: declare module '@ramonda/router' { interface Register { routes: typeof routes } }";
+  "Register your routes: declare module '@ramonda/router' { interface Routes { app: typeof routes } }";
 
-/** The registered table, or `never` when there is none. */
-export type RegisteredRoutes = Register extends { routes: infer R extends RouteConfig } ? R : never;
+/** Every registered table, as one union — or `never` when there is none. */
+export type RegisteredRoutes = Routes[keyof Routes] extends infer R ? (R extends RouteConfig ? R : never) : never;
 
 type IfRegistered<T> = [RegisteredRoutes] extends [never] ? Unregistered : T;
 

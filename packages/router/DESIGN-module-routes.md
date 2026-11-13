@@ -173,8 +173,9 @@ hides, and a prefix nobody can read.
 
 1. **The app registers its assembled table** (`Routes { app: typeof routes }`); a module registers its slice only
    when it is lifted into a package. (2026-11-13)
-2. **A path two parts both name, or a second `"*"`, is refused** by `createRoutes` in development, naming the two
-   parts. A duplicate is never meant, and the catch-all is the app's alone. (2026-11-13)
+2. **A path two parts both name, or a second `"*"`, is refused** by `createRoutes` when the table is built, naming the
+   two parts — in every build, since the router has none for development alone; it is at module load, so the first
+   dev server start or test run stops on it and it never ships. A duplicate is never meant, and the catch-all is the app's alone. (2026-11-13)
 
 ## Review — cases this design meets, 2026-11-13
 
@@ -205,7 +206,7 @@ condition holds routes that exist only under that condition, and a link to one m
 **C. A later path an earlier part's pattern already matches — DECIDED as recommended.** `/tournaments/:id` in the
 tournaments part and `/tournaments/new` in a part after it: the first match wins, so `/tournaments/new` can never
 be reached. Within one literal table the same thing can happen today, but there the two lines sit together; across
-files nobody sees it. Recommended: **refuse it in development beside the duplicates of decision 2** — a static path
+files nobody sees it. Recommended: **refuse it beside the duplicates of decision 2** — a static path
 an earlier pattern matches is unreachable, which is never meant.
 
 **D. Lazy pages — guidance, no change.** A module whose `routes.tsx` imports its pages directly puts the whole
@@ -226,7 +227,7 @@ every path a page renders on (`/routing/nested`), so registering the outer one s
 
 None. Built in this order, each step gated by the full check:
 
-1. `createRoutes(...parts)` and `Routes { [name] }`, with the dev refusals (duplicate path, second `"*"`, a static
+1. **BUILT.** `createRoutes(...parts)` and `Routes { [name] }`, with the refusals (duplicate path, second `"*"`, a static
    path an earlier pattern shadows); templates, docs and apps move to `Routes { app }`.
 2. `defineServer(routes, ...parts)`.
 3. `ramonda-check`: following a table's parts — names, both arms of a condition, a call with a written prefix —

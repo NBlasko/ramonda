@@ -606,15 +606,15 @@ export declare const routes: RouteConfig;
  */
 function ownRegistration(text, path) {
   const tag = path.replace(/[^\w]/g, "_").slice(-40);
-  return text.replace(/\binterface Register\b/g, `interface Register_${tag}`);
+  return text.replace(/\binterface Routes\b/g, `interface Routes_${tag}`);
 }
 
 const LOOSE_REGISTRATION = `import type { RouteConfig } from "@ramonda/router";
 declare module "@ramonda/router" {
-  interface Register {
+  interface Routes {
     // Any path, and any \`:param\` pattern too — a bare \`RouteConfig\` has no pattern, so
-    // \`params("/players/:id")\` was typed against nothing.
-    routes: RouteConfig<\`/\${string}\` | \`/\${string}:\${string}\`>;
+    // \`params("/players/:id")\` was typed against nothing. Its own name, so no example's \`app\` meets it.
+    examples: RouteConfig<\`/\${string}\` | \`/\${string}:\${string}\`>;
   }
 }
 export {};

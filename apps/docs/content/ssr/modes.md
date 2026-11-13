@@ -36,8 +36,8 @@ export const routes = createRoutes({
   "*": <NotFound />,
 });
 declare module "@ramonda/router" {
-  interface Register {
-    routes: typeof routes;
+  interface Routes {
+    app: typeof routes;
   }
 }
 ```
