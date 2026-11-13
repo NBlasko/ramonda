@@ -164,6 +164,8 @@ const PROPERTIES = [
 
 /** A bundler adapter is one function and the shapes of what it is handed. */
 const VITE = ["Bundle", "CssPluginLike", "CssPluginOptions", "HotUpdate", "ramondaCss"];
+/** `@ramonda/css/check`: the check `ramonda-css` runs, as the object `--json` prints — for the MCP server. */
+const CHECK = ["CheckOptions", "CssJsonReport", "JsonFinding", "cssReport"];
 const ESBUILD = ["EsbuildCssPluginLike", "EsbuildCssPluginOptions", "EsbuildLike", "loaderFor", "ramondaCss"];
 
 /**
@@ -191,7 +193,7 @@ describe("public API surface", () => {
   });
 
   /**
-   * The six entries nothing watched. Read from SOURCE, like the types test above — `Object.keys`
+   * The entries nothing watched. Read from SOURCE, like the types test above — `Object.keys`
    * cannot see a type, and `./properties` is nothing but types.
    */
   test.each([
@@ -199,6 +201,7 @@ describe("public API surface", () => {
     ["properties.ts", PROPERTIES],
     ["adapters/vite.ts", VITE],
     ["adapters/esbuild.ts", ESBUILD],
+    ["adapters/checkApi.ts", CHECK],
     ["adapters/prettier.ts", ONE_DEFAULT],
     ["adapters/plugin.cjs.ts", ONE_DEFAULT],
   ])("%s exports exactly what it means to", (file, expected) => {

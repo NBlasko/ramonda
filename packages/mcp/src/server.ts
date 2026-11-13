@@ -1,7 +1,16 @@
 import { existsSync, statSync } from "node:fs";
 import { isAbsolute, join, resolve, sep } from "node:path";
 import { McpServer } from "@modelcontextprotocol/server";
-import { analyzeProject, type DocsAnswer, docsPage, explainPage, type JsonReport, reportOf } from "@ramonda/check";
+import {
+  analyzeProject,
+  type DocsAnswer,
+  docsPage,
+  explainPage,
+  type JsonFinding,
+  type JsonReport,
+  reportOf,
+} from "@ramonda/check";
+import { type TypeCheck, typeCheck } from "./typecheck";
 import * as z from "zod/v4";
 
 /** Where the server is asked about: the app's folder, which the client starts it in. */
@@ -30,8 +39,9 @@ export function createServer(options: ServerOptions = {}): McpServer {
     "check_code",
     {
       description:
-        "Check a file of a Ramonda app BEFORE writing it: the app's own checker reads the code as if it were " +
-        "saved at `path`, together with the rest of the project, and reports what is wrong in that file. " +
+        "Check a file of a Ramonda app BEFORE writing it: the code is read as if it were saved at `path`, with " +
+        "the rest of the project, by what the app's build runs — `ramonda-check` and the type check — and what " +
+        "is wrong in that file is reported. " +
         "Run it on every file you write or change, and fix what it reports before showing the code. " +
         "Nothing is written to disk.",
       inputSchema: z.object({
@@ -44,9 +54,10 @@ export function createServer(options: ServerOptions = {}): McpServer {
       const project = tsconfigAt(cwd, tsconfig);
       if (typeof project !== "string") return project;
       const file = resolve(cwd, path);
-      const report = reportOf(analyzeProject(project, { files: { [file]: code } }));
+      const files = { [file]: code };
+      const report = reportOf(analyzeProject(project, { files }));
       const mine = report.findings.filter((finding) => finding.file !== undefined && same(finding.file, file));
-      return answer({ ...report, ok: !mine.some((finding) => finding.severity === "error"), findings: mine });
+      return answer(report, mine, await typeCheck(project, files, file));
     },
   );
 
@@ -54,8 +65,8 @@ export function createServer(options: ServerOptions = {}): McpServer {
     "check_project",
     {
       description:
-        "Check the whole Ramonda app with its own checker — the same findings `ramonda-check` reports, and the " +
-        "same verdict the app's build will reach.",
+        "Check the whole Ramonda app the way its build does: its own checker, `ramonda-check`, and its type " +
+        "check — `tsc`, or `ramonda-css` in an app with style blocks.",
       inputSchema: z.object({
         tsconfig: z.string().optional().describe("The tsconfig to read the project with. Default: tsconfig.json."),
       }),
@@ -63,7 +74,8 @@ export function createServer(options: ServerOptions = {}): McpServer {
     async ({ tsconfig }) => {
       const project = tsconfigAt(cwd, tsconfig);
       if (typeof project !== "string") return project;
-      return answer(reportOf(analyzeProject(project)));
+      const report = reportOf(analyzeProject(project));
+      return answer(report, report.findings, await typeCheck(project));
     },
   );
 
@@ -98,9 +110,20 @@ export function createServer(options: ServerOptions = {}): McpServer {
 
 type ToolResult = { content: { type: "text"; text: string }[]; isError?: boolean };
 
-/** A report, as the one JSON object `--json` prints — an agent parses it, and a person can read it. */
-function answer(report: JsonReport): ToolResult {
-  return { content: [{ type: "text", text: JSON.stringify(report) }] };
+/**
+ * What the build will say, as one JSON object: `ramonda-check`'s findings, then the type check's —
+ * each named the way its own `--json` names it (`markup-helper-in-render`, `TS2322`, a CSS rule's id).
+ */
+function answer(report: JsonReport, findings: readonly JsonFinding[], types: TypeCheck): ToolResult {
+  const all = [...findings, ...types.findings];
+  const verdict = {
+    tool: "ramonda-mcp",
+    version: report.version,
+    ok: !all.some((finding) => finding.severity === "error"),
+    findings: all,
+    notes: [...report.notes, ...types.notes],
+  };
+  return { content: [{ type: "text", text: JSON.stringify(verdict) }] };
 }
 
 /** A page, or why there is none — as an error result, so an agent does not take the message for a page. */

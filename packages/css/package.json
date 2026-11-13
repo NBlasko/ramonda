@@ -48,6 +48,10 @@
       "types": "./dist/compiler/index.d.ts",
       "import": "./dist/compiler/index.js"
     },
+    "./check": {
+      "types": "./dist/check.d.ts",
+      "import": "./dist/check.js"
+    },
     "./properties": {
       "types": "./dist/properties.d.ts",
       "import": "./dist/properties.js"

@@ -127,7 +127,7 @@ function listOf(pkg, list, atLeast) {
 
 // `@ramonda/css`'s page entry. Its subpaths — the compiler, the config, the plugins — are build tools
 // with pages of their own, and are named on the reference as entry points, not as exports.
-const cssNames = [...listOf("css", "RUNTIME", 8), ...listOf("css", "TYPES", 15)];
+const cssNames = [...listOf("css", "RUNTIME", 8), ...listOf("css", "TYPES", 15), ...listOf("css", "CHECK", 4)];
 
 const expected = [
   ...publicSurfaceOf("core", 20),

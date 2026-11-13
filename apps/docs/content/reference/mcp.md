@@ -12,8 +12,8 @@ app. A coding agent that speaks MCP gets four tools from it:
 
 | tool | what it answers |
 |---|---|
-| `check_code` | What is wrong in one file, **before it is saved** — read with the rest of the project, by the checker your build runs. |
-| `check_project` | What is wrong in the whole app — the verdict your build will reach. |
+| `check_code` | What is wrong in one file, **before it is saved** — read with the rest of the project, by what your build runs: `ramonda-check` and the type check. |
+| `check_project` | What is wrong in the whole app, by the same two. |
 | `docs` | A page of these docs, for the version you have installed. |
 | `explain` | What a diagnostic code (`RMD020`) or a checker rule (`unknown-hook-option`) means. |
 
@@ -41,11 +41,12 @@ start it in the app's folder, or pass the tool a `tsconfig` of its own.
 ## Check before writing
 
 `check_code` takes a path and the whole file as it would be saved. It lays that text over the disk
-for one run of [`ramonda-check`](/reference/check), and answers with the findings in that file:
+and runs what your build runs before it bundles anything — [`ramonda-check`](/reference/check), then
+the type check — and answers with what they found in that file:
 
 ```json
 {
-  "tool": "ramonda-check",
+  "tool": "ramonda-mcp",
   "ok": false,
   "findings": [
     {
@@ -61,8 +62,16 @@ for one run of [`ramonda-check`](/reference/check), and answers with the finding
 }
 ```
 
-It is the object `ramonda-check --json` prints, built by the same code, so the agent is told exactly
-what your build will say. A file the agent checks this way fails nothing later.
+Each finding is named the way its own command's `--json` names it: a rule of `ramonda-check`
+(`markup-helper-in-render`), a TypeScript error (`TS2322`), or a rule of `ramonda-css`. The checker's
+are built by the same code as `ramonda-check --json`, so the agent is told what your build will say.
+
+The type check is the one your `typecheck` script runs. In an app with
+[style blocks](/style-blocks) that is `ramonda-css`, which reads the blocks the compiler cannot, and
+the server asks **your installed copy** of it — so the answer is your build's, version for version.
+Every other app gets `tsc --noEmit`. When the app names `@ramonda/css` and none is installed, the
+answer is `type-check-not-run` and not a pass: a check that did not run must not read as one that
+did.
 
 Tell the agent to use it. One line in its instructions — an `AGENTS.md`, a `CLAUDE.md` — is enough:
 

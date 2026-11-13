@@ -386,6 +386,7 @@ only the compiled values; the compiler, the config and the tools are separate en
 | `@ramonda/css/plugin` | The TypeScript plugin that gives an editor completions and errors inside a block. [Setup](/style-blocks/setup) |
 | `@ramonda/css/prettier` | The Prettier plugin that formats a file with blocks. [Tooling](/style-blocks/tooling) |
 | `@ramonda/css/compiler` | The compiler the plugins run — for a build tool of your own. |
+| `@ramonda/css/check` | `cssReport(tsconfig, options?)`: the check `ramonda-css` runs, as the object `--json` prints — `files` checks code not saved yet, and `only` type-checks just the files it names. `CheckOptions`, `CssJsonReport` and `JsonFinding` are its shapes. The [MCP server](/reference/mcp) calls it. |
 | `@ramonda/css/properties` | `CssBlock` and the property types, for a prop that takes a block. [A block as a prop](/style-blocks/prop) |
 
 **The command, `ramonda-css`** — [Tooling](/style-blocks/tooling)

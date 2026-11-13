@@ -90,9 +90,66 @@ describe("ramonda-mcp", () => {
     expect(result).toMatchObject({ ok: true, findings: [] });
   });
 
+  /**
+   * What the app's BUILD reports, not only what `ramonda-check` does: a generated project's build runs
+   * `tsc --noEmit` after it, so a file that does not compile passed `check_code` while the build failed.
+   */
+  test("check_code reports a type error the way the build's type check does", async () => {
+    const result = report(
+      await client.callTool({
+        name: "check_code",
+        arguments: { path: "count.ts", code: 'export const n: number = "seven";\n' },
+      }),
+    );
+    expect(result.ok).toBe(false);
+    expect(result.findings.map((one) => `${one.code}:${one.line}`)).toEqual(["TS2322:1"]);
+  });
+
+  /**
+   * An app with style blocks type-checks through `ramonda-css`, which reads the blocks `tsc` cannot,
+   * and runs the CSS rules — so `check_code` asks the APP's own copy, as its build does.
+   */
+  test("in an app with style blocks, check_code asks the app's own ramonda-css", async () => {
+    const card = (value: string) =>
+      `const card = <div className={@@(\n  position: ${value};\n)}>card</div>;\nexport default card;\n`;
+    const ask = async (value: string) =>
+      report(
+        await client.callTool({
+          name: "check_code",
+          arguments: { tsconfig: "../styled/tsconfig.json", path: "../styled/Card.tsx", code: card(value) },
+        }),
+      );
+    expect(await ask("static")).toMatchObject({ ok: true, findings: [] });
+    const faulty = await ask("statik");
+    expect(faulty.ok).toBe(false);
+    expect(faulty.findings.map((one) => `${one.code}:${one.line}`)).toEqual(["TS2820:2"]);
+  });
+
+  /** A check that could not run must not read as one that passed. */
+  test("an app naming @ramonda/css with none installed is told its types were not checked", async () => {
+    const away = mkdtempSync(join(tmpdir(), "mcp-no-css-"));
+    try {
+      writeFileSync(
+        join(away, "package.json"),
+        JSON.stringify({ name: "away", dependencies: { "@ramonda/css": "*" } }),
+      );
+      writeFileSync(join(away, "tsconfig.json"), JSON.stringify({ compilerOptions: { noEmit: true }, include: ["."] }));
+      const result = report(
+        await client.callTool({
+          name: "check_code",
+          arguments: { tsconfig: join(away, "tsconfig.json"), path: join(away, "a.ts"), code: "export {};\n" },
+        }),
+      );
+      expect(result.ok).toBe(false);
+      expect(result.findings.map((one) => one.code)).toEqual(["type-check-not-run"]);
+    } finally {
+      rmSync(away, { recursive: true, force: true });
+    }
+  });
+
   test("check_project is the app's own verdict", async () => {
     const result = report(await client.callTool({ name: "check_project", arguments: {} }));
-    expect(result).toMatchObject({ tool: "ramonda-check", ok: true, findings: [] });
+    expect(result).toMatchObject({ tool: "ramonda-mcp", ok: true, findings: [] });
   });
 
   test("docs and explain read the installed version's pages, and name what a slip meant", async () => {

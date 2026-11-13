@@ -1,4 +1,4 @@
-import { dirname, resolve } from "node:path";
+import { dirname, resolve, sep } from "node:path";
 import ts from "typescript";
 import { CssBlockError } from "../compiler/errors";
 import { REPLACED_CODES, SPEAKS_OVER_TYPES } from "../compiler/rules";
@@ -50,6 +50,22 @@ import { type VirtualFile, virtualFile } from "../compiler/virtual";
 export interface CheckOptions {
   /** Where the block shape is imported from. A test points this at a fixture. */
   readonly properties?: string;
+  /**
+   * Files by absolute path, read from here instead of the disk — a new file joins the project, an
+   * existing one is replaced. Nothing is written.
+   *
+   * For the MCP server's `check_code`, which asks about a file an agent has not saved yet. An
+   * import a block makes is still read from the disk: one file is what is being asked about.
+   */
+  readonly files?: Readonly<Record<string, string>>;
+  /**
+   * Type-check only these files, by absolute path. Every file is still read — a block's variables
+   * and a module's types come from the rest — but only these are checked.
+   *
+   * For `check_code`, which asks about one file: the whole program's type check took 6.1 s on the
+   * docs app, on every question an agent asked.
+   */
+  readonly only?: readonly string[];
 }
 
 export interface Finding {
@@ -99,6 +115,11 @@ export function checkProject(tsconfig: string, options: CheckOptions = {}): Repo
   const configPath = resolve(tsconfig);
   const parsed = parseConfig(configPath);
   if ("findings" in parsed) return parsed;
+  // The compiler's spelling of a path — absolute, forward slashes — so a caller's spelling finds it.
+  const inMemory = new Map(
+    Object.entries(options.files ?? {}).map(([path, text]) => [resolve(path).split(sep).join("/"), text]),
+  );
+  const fileNames = [...new Set([...parsed.fileNames, ...inMemory.keys()])];
 
   /**
    * The project's own settings, found from EACH FILE rather than once from beside the tsconfig.
@@ -141,9 +162,9 @@ export function checkProject(tsconfig: string, options: CheckOptions = {}): Repo
   const blockSets = new Set<string>();
   const readsRegistered = new Set<string>();
 
-  for (const fileName of parsed.fileNames) {
+  for (const fileName of fileNames) {
     if (!fileMayHoldABlock(fileName)) continue;
-    const text = ts.sys.readFile(fileName);
+    const text = inMemory.get(fileName) ?? ts.sys.readFile(fileName);
     if (text === undefined || !mayHoldABlock(text)) continue;
 
     try {
@@ -274,16 +295,20 @@ export function checkProject(tsconfig: string, options: CheckOptions = {}): Repo
    * every project needs is a step most projects will not have.
    */
   const settings = findConfig(dirname(configPath));
-  const roots =
-    settings === undefined || parsed.fileNames.includes(settings) ? parsed.fileNames : [...parsed.fileNames, settings];
+  const roots = settings === undefined || fileNames.includes(settings) ? fileNames : [...fileNames, settings];
 
-  const program = ts.createProgram(roots, { ...parsed.options, noEmit: true }, overlaying(parsed, overlays));
+  const program = ts.createProgram(roots, { ...parsed.options, noEmit: true }, overlaying(parsed, overlays, inMemory));
 
   const findings: Finding[] = [];
   /** Setup faults, by message, so a project of any size reports each of them once. */
   const setup = new Map<string, Finding>();
 
-  for (const diagnostic of ts.getPreEmitDiagnostics(program)) {
+  const asked = options.only?.map((path) => program.getSourceFile(resolve(path).split(sep).join("/")));
+  const diagnostics =
+    asked === undefined
+      ? ts.getPreEmitDiagnostics(program)
+      : asked.flatMap((file) => (file === undefined ? [] : ts.getPreEmitDiagnostics(program, file)));
+  for (const diagnostic of diagnostics) {
     const finding = place(diagnostic, configPath, overlays, setup);
     if (finding !== undefined) findings.push(finding);
   }
@@ -339,7 +364,7 @@ export function checkProject(tsconfig: string, options: CheckOptions = {}): Repo
   }
 
   return {
-    files: parsed.fileNames.length,
+    files: fileNames.length,
     styled: overlays.size,
     findings: [
       ...refusals,
@@ -614,10 +639,21 @@ function place(
 function overlaying(
   parsed: ts.ParsedCommandLine,
   overlays: Map<string, { virtual: VirtualFile; source: string }>,
+  inMemory: ReadonlyMap<string, string> = new Map(),
 ): ts.CompilerHost {
   const host = ts.createCompilerHost(parsed.options);
-  const readFromDisk = host.readFile.bind(host);
-  const sourceFromDisk = host.getSourceFile.bind(host);
+  // "The disk" here is the disk with the caller's in-memory files laid over it — see `CheckOptions`.
+  const fromDisk = host.readFile.bind(host);
+  const readFromDisk = (name: string) => inMemory.get(name) ?? fromDisk(name);
+  const fromDiskSource = host.getSourceFile.bind(host);
+  const sourceFromDisk: typeof fromDiskSource = (name, language, onError, shouldCreate) => {
+    const text = inMemory.get(name);
+    return text === undefined
+      ? fromDiskSource(name, language, onError, shouldCreate)
+      : ts.createSourceFile(name, text, language, true);
+  };
+  const exists = host.fileExists.bind(host);
+  host.fileExists = (name) => inMemory.has(name) || exists(name);
 
   host.readFile = (name) => overlays.get(name)?.virtual.code ?? readFromDisk(name);
   host.getSourceFile = (name, language, onError, shouldCreate) => {
