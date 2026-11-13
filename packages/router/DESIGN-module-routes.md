@@ -116,8 +116,6 @@ cannot be otherwise: the compiler sees one program, where `import.meta.env.DEV` 
   table built in a loop already is, and a conditional's arms are both read. Without this, measured above: missed
   faults and a false report on every module's table.
 - **The condition rule** of section 3.
-- **A part made by a call** — `blogRoutes("/news")`, a module mounted under a prefix — is followed into the function
-  to the table it returns, with the prefix put in. See "What this narrows".
 - Later, with the module boundaries (a direction of its own, not in this proposal): a link
   into another module's routes is a crossing that module's public `routes` file has to be imported for.
 
@@ -146,28 +144,36 @@ parts. What narrows is what `ramonda-check` accepts, and the rule for that is th
 > fixes it. It is never the way to a valid design. A design that is valid and refused is a design the framework must
 > support, in a way that can be checked.
 
-So each place this proposal could have refused a valid design supports it instead:
+So each place this proposal could have refused a valid design either supports it, or shows the checkable way the
+same need is met:
 
 - **A table that depends on the app's state** (review B): supported by the condition rule — the link must sit under
   the same condition.
-- **The same module mounted twice**, under two prefixes (`/blog` and `/news`): paths are absolute by default, and a
-  module that is meant to be mounted exports a function of its prefix:
+- **The same module under two addresses** (a blog at `/blog` and at `/news`) is NOT a feature, decided
+  2026-11-13 after measuring it. A function of a prefix cannot be typed — computed keys widen the paths to
+  `string`, measured — and a router helper (`mountAt(prefix, table)`) types the routes but breaks the links INSIDE
+  the module: its post page links to its list, and with two prefixes that link cannot be written, so it would have
+  to be relative and resolved at runtime, which neither the type nor `ramonda-check` can follow. It would trade
+  the checked links this whole design exists for. Reuse is done where large apps do it, at the component level,
+  with an explicit table:
 
   ```tsx
-  export const blogRoutes = <P extends `/${string}`>(prefix: P) =>
-    createRoutes({ [`${prefix}`]: <PostList />, [`${prefix}/:slug`]: <Post /> } as Record<P | `${P}/:slug`, VNode>);
-
-  createRoutes(blogRoutes("/blog"), blogRoutes("/news"), { "/": <Home /> });
+  createRoutes({
+    "/blog": <PostList source="blog" />,
+    "/blog/:slug": <Post source="blog" />,
+    "/news": <PostList source="news" />,
+    "/news/:slug": <Post source="news" />,
+  });
   ```
 
-  A sketch: the cast stands for typing not yet worked out, and a cast is exactly what a type cannot defend — the
-  shape that needs none is measured before step 3 is built. The prefix is in the type, and `ramonda-check` follows
-  the call. Refused only: a prefix that is not written as a
-  string where the call is — then neither the type nor the check knows the paths — with the message pointing at a
-  written prefix. A language prefix needs none of this: `/:lang/tournaments` is a path with a param.
+  The components are shared; what differs — the data source, a title, a permission — arrives by props or a
+  context. Every address is written, found by a search, and checked. A language or a tenant in the address needs
+  none of this: `/:lang/tournaments` and `/org/:orgId/…` are paths with a param. A third-party package whose prefix
+  the app chooses is the one real case left, and it carries the same link problem — a design of its own when such
+  a package exists, not something added ahead of it.
 
-What remains refused is what is never meant: a path two parts both name, a second `"*"`, a route an earlier pattern
-hides, and a prefix nobody can read.
+What remains refused is what is never meant: a path two parts both name, a second `"*"`, and a route an earlier
+pattern hides.
 
 ## Decided
 
@@ -243,6 +249,6 @@ None. Built in this order, each step gated by the full check:
    path an earlier pattern shadows); templates, docs and apps move to `Routes { app }`.
 2. **BUILT** (docs only, `/ssr/modes`). A part's modes as a spread object typed `ServerConfig<typeof part>` — no
    API change; see review A.
-3. `ramonda-check`: following a table's parts — names, both arms of a condition, a call with a written prefix —
-   then the condition rule.
+3. **BUILT.** `ramonda-check`: following a table's parts — names and both arms of a condition — then the condition
+   rule (`link-to-a-conditional-route`). A part made by a call is not a feature (see "What this narrows").
 4. The docs' module pages, with a lazy table.

@@ -177,7 +177,8 @@ for a program — a coding agent above all — that would otherwise read the pro
 
 - `code` is the rule's id, or for a fault the graph answers, the name of that check:
   `missing-provider`, `unresolved-component`, `unreachable-declaration`, `unreachable-route-table`,
-  `params-off-route`, `keys-off-route`, `second-provider`, `render-cycle`, `class-as-child`.
+  `params-off-route`, `keys-off-route`, `link-to-a-conditional-route`, `second-provider`, `render-cycle`,
+  `class-as-child`.
 - `message` is what the text run prints for the finding; `data` is everything the finding records.
 - `ok` is `false` exactly when the run exits 1. `ignored` lists every `ramonda-check-ignore` with its
   reason, and `counts` what the run read.

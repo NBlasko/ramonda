@@ -140,6 +140,28 @@ export const GRAPH_REPORTS = [
   }),
 
   /**
+   * A route that exists only under a condition, linked to from code that is not under it — the
+   * router's `DESIGN-module-routes.md`, section 3. The type cannot say it: the compiler reads one
+   * program, where the condition is a `boolean`, so the route is in the type in every build.
+   */
+  report("linksToConditionalRoutes", {
+    id: "link-to-a-conditional-route",
+    heading: (n) => `${n} link(s) to a route that exists only under a condition`,
+    lines: (link) => {
+      const when = link.negated ? `\`${link.condition}\` is false` : `\`${link.condition}\``;
+      return [
+        `    <${link.component}> links to "${link.href}", and "${link.route}" exists only when ${when} — ` +
+          `this link is not under it, so where it does not hold the link lands on the catch-all.`,
+      ];
+    },
+    advice:
+      `A part under a condition — \`createRoutes(cond ? debugRoutes : undefined, …)\` — holds routes that\n` +
+      `exist only where the condition holds. Put the link under the same condition, the same name or\n` +
+      `expression (\`{cond && <Link …/>}\`, \`if (cond) …\`), or link somewhere every build has. A link\n` +
+      `from the part's own pages needs nothing: they are only rendered where the condition holds.\n`,
+  }),
+
+  /**
    * The runtime throws when this happens. Here it is said before anything renders, on every path the
    * source can produce — including the branch nobody clicked.
    */

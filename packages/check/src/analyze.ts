@@ -229,6 +229,30 @@ const OBJECT_MEMBERS = new Set([
   "constructor",
 ]);
 
+/**
+ * A link to a route that exists only under a condition, from code that is not under it — see the
+ * router's `DESIGN-module-routes.md`, section 3.
+ *
+ * `createRoutes(cond ? debugRoutes : undefined, …)` keeps the part's routes only where `cond` holds.
+ * The compiler reads one program, where `cond` is a `boolean`, so the route is in the type in every
+ * build, and a link to it type-checks where it lands on the catch-all.
+ */
+export interface LinkToConditionalRouteIssue {
+  /** The component or hook the link is written in. */
+  component: string;
+  /** The link as written: a path, a filled pattern (`/admin/${…}`), or the pattern `route()` was given. */
+  href: string;
+  /** The route it reaches. */
+  route: string;
+  /** The condition its part is under, as written. */
+  condition: string;
+  /** Whether the part is the condition's ELSE arm — the route exists where the condition is false. */
+  negated: boolean;
+  file: string;
+  line: number;
+  column: number;
+}
+
 export interface UnsuppliedKeyIssue {
   /** The component or hook that reads. */
   component: string;
@@ -382,6 +406,8 @@ export interface AnalyzeResult {
   paramsOffRoute: ParamsOffRouteIssue[];
   /** A key named at an argument-less `params()` that no route supplies — see `UnsuppliedKeyIssue`. */
   keysOffRoute: UnsuppliedKeyIssue[];
+  /** A link to a route that exists only under a condition, not under it — see `LinkToConditionalRouteIssue`. */
+  linksToConditionalRoutes: LinkToConditionalRouteIssue[];
   /** Rings of mounts nothing on them can skip — see `RenderCycleIssue`. */
   renderCycles: RenderCycleIssue[];
   /** Component classes written among children, where an element was meant — see `ClassAsChildIssue`. */
@@ -760,6 +786,19 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
   const routeTables = new Map<ts.Symbol, RouteView[]>();
   /** Tables another `createRoutes` takes as a part — see `viewsOf`; never stranded on their own. */
   const tablesTakenAsParts = new Set<ts.Symbol>();
+  /** The routes a part under a condition holds, with the condition — see `LinkToConditionalRouteIssue`. */
+  const conditionalRoutes = new Map<string, { condition: string; negated: boolean }>();
+  /** Every link to a route this can read: `<Link href>`, a navigator's `push`/`replace`, `route()`. */
+  const routeLinks: {
+    owner: ComponentNode;
+    href: string;
+    /** What the href is matched against a pattern with: each `${…}` stands for one segment. */
+    sample?: string;
+    /** `route("/admin/:id", …)` names the route itself. */
+    pattern?: string;
+    guards: { condition: string; negated: boolean }[];
+    node: ts.Node;
+  }[] = [];
   /** Which of them some `<RouteOutlet routes={…}>` in this run actually named, and from where. */
   const mountedTables = new Map<ts.Symbol, ComponentNode[]>();
   /**
@@ -1294,6 +1333,7 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
   const renderCycles = endlessRings();
   const paramsOffRoute = readsOffTheRoute(reached, routesAbove, pathTo);
   const keysOffRoute = keysOffTheRoute(reached, routesAbove, pathTo);
+  const linksToConditionalRoutes = linksOffTheirCondition(routesAbove);
 
   return {
     issues,
@@ -1305,6 +1345,7 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
     secondProviders,
     paramsOffRoute,
     keysOffRoute,
+    linksToConditionalRoutes,
     renderCycles,
     classesAsChildren,
     counts: {
@@ -1489,6 +1530,17 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
       while (ts.isParenthesizedExpression(at) || ts.isAsExpression(at) || ts.isSatisfiesExpression(at))
         at = at.expression;
       if (ts.isConditionalExpression(at)) {
+        // Each arm's routes exist only where the condition says — the false arm's where it does not.
+        const { condition, negated } = conditionOf(at.condition);
+        for (const [arm, flipped] of [
+          [at.whenTrue, false],
+          [at.whenFalse, true],
+        ] as const) {
+          for (const view of viewsOfPart(arm)) {
+            if (view.route !== undefined)
+              conditionalRoutes.set(view.route, { condition, negated: negated !== flipped });
+          }
+        }
         take(at.whenTrue);
         take(at.whenFalse);
         return;
@@ -1567,6 +1619,28 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
       if (ts.isSourceFile(at)) return undefined;
     }
     return undefined;
+  }
+
+  /** The views one part of a table holds — `viewsOf`, for a single argument. */
+  function viewsOfPart(part: ts.Expression): RouteView[] {
+    return viewsOf(ts.factory.createCallExpression(ts.factory.createIdentifier("createRoutes"), undefined, [part]));
+  }
+
+  /**
+   * A condition as one name to compare by: whitespace and parentheses dropped, and a leading `!`
+   * turned into the polarity, so `!import.meta.env.DEV` is `import.meta.env.DEV`, negated.
+   */
+  function conditionOf(expression: ts.Expression): { condition: string; negated: boolean } {
+    let at = expression;
+    let negated = false;
+    for (;;) {
+      if (ts.isParenthesizedExpression(at)) at = at.expression;
+      else if (ts.isPrefixUnaryExpression(at) && at.operator === ts.SyntaxKind.ExclamationToken) {
+        negated = !negated;
+        at = at.operand;
+      } else break;
+    }
+    return { condition: at.getText().replace(/\s+/g, ""), negated };
   }
 
   function viewsOf(call: ts.CallExpression, followed = new Set<ts.Node>([call])): RouteView[] {
@@ -1748,6 +1822,76 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
    * A pattern that is not a literal is skipped too — the claim is then a runtime value, and what it
    * names cannot be quoted back to the reader.
    */
+  /**
+   * `<Link href="/debug">`, `this.nav.push("/admin")`, `route("/admin/:id", …)` — a link this can read,
+   * with the conditions it sits under, judged after the walk by `linksOffTheirCondition`.
+   *
+   * Only what is WRITTEN is read: a literal, or a template whose `${…}` each stand for one segment. A
+   * value worked out at runtime names no route this can quote back, and is left alone.
+   */
+  function collectRouteLink(node: ts.Node, cls: ts.ClassDeclaration, self: ComponentNode): void {
+    const written = (value: ts.Expression | undefined): { href: string; sample: string } | undefined => {
+      if (value === undefined) return undefined;
+      const literal = literalStringOf(value);
+      if (literal !== undefined) return { href: literal, sample: literal };
+      if (!ts.isTemplateExpression(value)) return undefined;
+      const parts = [value.head.text, ...value.templateSpans.map((span) => span.literal.text)];
+      return { href: parts.join("${…}"), sample: parts.join("x") };
+    };
+    const add = (at: ts.Node, link: { href: string; sample?: string; pattern?: string }): void => {
+      routeLinks.push({ owner: self, ...link, guards: guardsOf(at, cls), node: at });
+    };
+
+    if ((ts.isJsxSelfClosingElement(node) || ts.isJsxOpeningElement(node)) && knownAs(node.tagName).has("Link")) {
+      const href = node.attributes.properties.find(
+        (one): one is ts.JsxAttribute => ts.isJsxAttribute(one) && one.name.getText() === "href",
+      );
+      const value =
+        href?.initializer === undefined
+          ? undefined
+          : ts.isJsxExpression(href.initializer)
+            ? href.initializer.expression
+            : href.initializer;
+      const link = written(value);
+      if (link) add(node, link);
+      return;
+    }
+    if (!ts.isCallExpression(node)) return;
+    const callee = node.expression;
+    if (
+      ts.isPropertyAccessExpression(callee) &&
+      (callee.name.text === "push" || callee.name.text === "replace") &&
+      navigatorMemberOf(callee.expression, cls) !== undefined
+    ) {
+      const link = written(node.arguments[0]);
+      if (link) add(node, link);
+      return;
+    }
+    if (ts.isIdentifier(callee) && knownAs(callee).has("route")) {
+      const pattern = literalStringOf(node.arguments[0]);
+      if (pattern !== undefined) add(node, { href: pattern, pattern });
+    }
+  }
+
+  /** The conditions a node sits under inside its class: an `if`, a `&&`/`||`, a `? :`. */
+  function guardsOf(node: ts.Node, cls: ts.ClassDeclaration): { condition: string; negated: boolean }[] {
+    const guards: { condition: string; negated: boolean }[] = [];
+    let child: ts.Node = node;
+    for (let at = node.parent; at !== undefined && at !== cls; child = at, at = at.parent) {
+      const under = (condition: ts.Expression, whenTrue: boolean): void => {
+        const read = conditionOf(condition);
+        guards.push({ condition: read.condition, negated: read.negated !== !whenTrue });
+      };
+      if (ts.isIfStatement(at) && child !== at.expression) under(at.expression, child === at.thenStatement);
+      else if (ts.isConditionalExpression(at) && child !== at.condition) under(at.condition, child === at.whenTrue);
+      else if (ts.isBinaryExpression(at) && child === at.right) {
+        if (at.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken) under(at.left, true);
+        if (at.operatorToken.kind === ts.SyntaxKind.BarBarToken) under(at.left, false);
+      }
+    }
+    return guards;
+  }
+
   function collectParamsRead(node: ts.Node, cls: ts.ClassDeclaration, self: ComponentNode): void {
     if (!ts.isCallExpression(node)) return;
     const access = node.expression;
@@ -2625,6 +2769,7 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
       collectCall(node, self);
       collectFactory(node, self);
       collectParamsRead(node, cls, self);
+      collectRouteLink(node, cls, self);
 
       // <RouteOutlet routes={routes} /> — the views mount under the OUTLET, not under the
       // component that renders it. The distinction matters: the outlet is what publishes the
@@ -2958,6 +3103,51 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
    *
    * `wanted` is the CLAIMED keys rather than a pattern's `:names`, and that is the only difference.
    */
+  /**
+   * Each link to a route under a condition, judged: silent when the link sits under the same
+   * condition, the same way round, or when every route its component is rendered by is under it too
+   * — a debug page linking to another debug page. See `LinkToConditionalRouteIssue`.
+   */
+  function linksOffTheirCondition(
+    routesAbove: Map<ComponentNode, Set<string | null | undefined>>,
+  ): LinkToConditionalRouteIssue[] {
+    if (conditionalRoutes.size === 0) return [];
+    type Guard = { condition: string; negated: boolean };
+    const patterns = [...conditionalRoutes.keys()].map((route) => ({
+      route,
+      regex: new RegExp(`^${route.replace(/:\w+/g, "[\\w-]+")}$`),
+    }));
+    const same = (one: Guard, other: Guard) => one.condition === other.condition && one.negated === other.negated;
+
+    const found: LinkToConditionalRouteIssue[] = [];
+    for (const link of routeLinks) {
+      const route =
+        link.pattern !== undefined
+          ? conditionalRoutes.has(link.pattern)
+            ? link.pattern
+            : undefined
+          : patterns.find((one) => one.regex.test(link.sample ?? link.href))?.route;
+      if (route === undefined) continue;
+      const needed = conditionalRoutes.get(route) as Guard;
+      if (link.guards.some((guard) => same(guard, needed))) continue;
+      const above = [...(routesAbove.get(link.owner) ?? [])];
+      const onlyThere = above.every((one) => {
+        const guard = typeof one === "string" ? conditionalRoutes.get(one) : undefined;
+        return guard !== undefined && same(guard, needed);
+      });
+      if (above.length > 0 && onlyThere) continue;
+      found.push({
+        component: link.owner.name,
+        href: link.href,
+        route,
+        condition: needed.condition,
+        negated: needed.negated,
+        ...positionOf(link.node),
+      });
+    }
+    return found.sort((a, b) => (a.file === b.file ? a.line - b.line : a.file < b.file ? -1 : 1));
+  }
+
   function keysOffTheRoute(
     reached: Set<ComponentNode>,
     routesAbove: Map<ComponentNode, Set<string | null | undefined>>,
