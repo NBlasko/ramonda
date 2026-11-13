@@ -1,6 +1,6 @@
 {
   "name": "@ramonda/mcp",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "An MCP server for a Ramonda app — an agent checks the code it is about to write with the app's own checker, and reads the docs of the version that is installed.",
   "license": "MIT",
   "author": "Nikola Blagojević",

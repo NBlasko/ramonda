@@ -1,5 +1,48 @@
 # create-ramonda
 
+## 0.18.0
+
+### Minor Changes
+
+- 20354a7: `@ramonda/mcp`, an MCP server for a Ramonda app. A coding agent checks each file it is about to write with `check_code` — the app's own checker, reading the file as if it were saved, with the rest of the project — and reads the docs of the installed version with `docs` and `explain`. `check_project` gives the verdict the build will reach. Every tool only reads.
+  
+  `@ramonda/check` exports what the server is built on, for any program to use: `analyzeProject(tsconfig, { files })` checks code that is not saved yet, `reportOf(result)` is the object `--json` prints, and `docsPage(page)` and `explainPage(code)` are the pages `docs` and `explain` print.
+  
+  `@ramonda/mcp` runs the checker the app already has — a peer dependency, so the agent and the build reach the same verdict. It needs `@ramonda/check` from this release or later: update the two together.
+  
+  `check_code` and `check_project` run what an app's build runs before it bundles: `ramonda-check`, then the type check — `tsc`, or in an app with style blocks the app's own `ramonda-css`, through the new `@ramonda/css/check` entry (`cssReport(tsconfig, { files, only })`, the object `ramonda-css --json` prints; `only` type-checks just the named files, which took one `check_code` on the docs app from 9.5 s to 4.8 s).
+  
+  `create-ramonda` offers it as the `mcp` add-on: `@ramonda/mcp`, a `.mcp.json` that starts it, and a line in `AGENTS.md` telling the agent to run `check_code` before showing code.
+  
+  `ramonda-check docs` and `ramonda-check explain` read only pages inside the packed docs: a path with `../` read any `.md` file beside or above them.
+- b8dc4a4: The route table is registered once instead of handed to `createRouter`. `createRouter` and `TypedRouterKit` are gone; `Link`, `Navigator` and `route` are imported from `@ramonda/router`, typed against the table an app registers beside it:
+  
+  ```ts
+  export const routes = createRoutes({ "/": <Home />, "/u/:id": <Profile /> });
+  
+  declare module "@ramonda/router" {
+    interface Register {
+      routes: typeof routes;
+    }
+  }
+  ```
+  
+  The kit had to be imported from the module that holds the table, which imports every page, so every page and that module imported each other. A page now imports only the package. Without a registration the first `<Link href>` fails to compile, with the line to write in the message. `Href` is every href the registered table accepts — what a component in a package types an href prop with, so the app's table checks what the app passes. The brand `route()` returns is `BuiltHref`. The SSR templates register their table.
+
+### Patch Changes
+
+- c210b57: The SSR template's dev server recovers on the next request after a failed server load. Vite keeps a failed import in its module graph: measured on Vite 8.3.4 alone, an import written before its file went on failing after the file was created, until the dev server restarted. A failed load now forgets the graph, so the next request loads afresh. An existing project can copy the one line into `renderDev`'s `catch` in `server.mjs`: `vite.moduleGraph.invalidateAll();`.
+- 2a9de6b: New rule, `markup-helper-in-render`: a function that returns markup, built inside `render()` and only called there — `const head = (key) => <th>{key}</th>` called once per column — is reported, with the method to write instead. It is a new closure on every render and a piece of the rendering no subclass, test or devtools panel can reach. A row callback handed to `list()` or `map()`, inline or lifted into a local, is not reported. Found by the second trial; zero findings across this repository's own apps and packages. The scaffolded `AGENTS.md` lists it among the rules that are easy to break.
+- f8156ab: The SSR template's `scripts/prerender.mjs` empties `dist/static` before it bakes. It is the folder's only writer and never emptied it, so a page baked by an earlier build — a route since deleted or renamed, or a file written then — stayed there, and `npm run build:static` put it online. An existing project can copy the one `rm` line into its own script.
+- aa49d65: Template and devtools findings from the second trial:
+  
+  - The SSR template's `scripts/build.mjs` sets `NODE_ENV` to `production` before it asks for its defines. `import.meta.env.DEV` follows `NODE_ENV`, so a shell exporting `NODE_ENV=development` shipped every development branch, the devtools import among them, in the production bundle. An existing project can copy the one line.
+  - The SSR template no longer defines or declares `__DEV__`. Nothing a project installs reads it — every package picks its development or production build through its `exports` conditions — and the installation page already said a project does not need it, while `vite.config.ts` defined it with no word why. A project's own development branch is `import.meta.env.DEV`.
+  - No `CLAUDE.ramonda.md` is written beside a `CLAUDE.md` that already has a line `@AGENTS.md`, which is all the project's says.
+  - With style blocks and Biome both chosen, the README says why `biome.json` leaves `src` out: `npm run lint` and `npm run format` hand it to `ramonda-css`, which runs the project's own Biome over every file in it.
+  - The scaffolded entry calls the devtools badge what it looks like, a round R.
+  - The devtools panel shows what each `@compute` holds under **Computed**, read off its cache and never by running it, and the cache counters under **Cache**, as text rather than as a quoted string that read as the getter's value. A `Map` and a `Set` open into their entries like an array, where a `Map` showed as `Map [object Map]`.
+
 ## 0.17.0
 
 ### Minor Changes
