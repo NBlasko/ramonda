@@ -1,5 +1,31 @@
 # @ramonda/check
 
+## 0.18.0
+
+### Minor Changes
+
+- 2a9de6b: New rule, `markup-helper-in-render`: a function that returns markup, built inside `render()` and only called there — `const head = (key) => <th>{key}</th>` called once per column — is reported, with the method to write instead. It is a new closure on every render and a piece of the rendering no subclass, test or devtools panel can reach. A row callback handed to `list()` or `map()`, inline or lifted into a local, is not reported. Found by the second trial; zero findings across this repository's own apps and packages. The scaffolded `AGENTS.md` lists it among the rules that are easy to break.
+- 20354a7: `@ramonda/mcp`, an MCP server for a Ramonda app. A coding agent checks each file it is about to write with `check_code` — the app's own checker, reading the file as if it were saved, with the rest of the project — and reads the docs of the installed version with `docs` and `explain`. `check_project` gives the verdict the build will reach. Every tool only reads.
+  
+  `@ramonda/check` exports what the server is built on, for any program to use: `analyzeProject(tsconfig, { files })` checks code that is not saved yet, `reportOf(result)` is the object `--json` prints, and `docsPage(page)` and `explainPage(code)` are the pages `docs` and `explain` print.
+  
+  `@ramonda/mcp` runs the checker the app already has — a peer dependency, so the agent and the build reach the same verdict. It needs `@ramonda/check` from this release or later: update the two together.
+  
+  `check_code` and `check_project` run what an app's build runs before it bundles: `ramonda-check`, then the type check — `tsc`, or in an app with style blocks the app's own `ramonda-css`, through the new `@ramonda/css/check` entry (`cssReport(tsconfig, { files, only })`, the object `ramonda-css --json` prints; `only` type-checks just the named files, which took one `check_code` on the docs app from 9.5 s to 4.8 s).
+  
+  `create-ramonda` offers it as the `mcp` add-on: `@ramonda/mcp`, a `.mcp.json` that starts it, and a line in `AGENTS.md` telling the agent to run `check_code` before showing code.
+  
+  `ramonda-check docs` and `ramonda-check explain` read only pages inside the packed docs: a path with `../` read any `.md` file beside or above them.
+
+### Patch Changes
+
+- 2a9de6b: `--certify` and `--graph-html` speak about an app as an app. Found by the second trial, on a finished app with nothing wrong in it:
+  
+  - `--certify` no longer asks an app the `current` claim — whether the graph fingerprints the declaration file it ships. An app ships none, and the ✗ read as a failure the app could not fix.
+  - `--graph-html` counts only the project's own declarations as "nothing points at", and draws what a package brings and the app does not use — `Portal`, `TextArea`, `Interval` — in a band of its own, "from packages, not used by this app". All 13 the trial saw were the framework's. A root called twice in one file is labelled by its call, not `renderStatic$2`.
+- b8dc4a4: A component or a hook under another name is followed through a cast: `const Link = LinkImpl as unknown as …` used as `<Link />`, and `const Hook = Counter as unknown as typeof Counter` used as `this.use(Hook)`, resolve to the class instead of being reported as a hole. `this.use(Named)` with `const Named = Counter` is followed too, as a tag already was. A cast changes a type, never which class the value is, and it is how `@ramonda/router` exports `Link` and `Navigator`.
+- e704998: `ramonda-check` walks the component tree once per arrangement instead of once per path. A tree where components mount the same children from many places had every path walked: the documentation site, at 368 components, took 9.5 s to check, and now takes 3.2 s. A build runs the check first, so every build paid it. The findings, the graph and `--certify` are unchanged — compared byte for byte on every app in this repository.
+
 ## 0.17.0
 
 ### Minor Changes
