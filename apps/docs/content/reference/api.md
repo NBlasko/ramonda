@@ -29,7 +29,7 @@ Everything every package exports. Each entry links to the page that explains it.
 | `@ramonda/server` | A DOM for a server render, and the document it goes into. [Server rendering](/ssr/server) | always with SSR |
 | `@ramonda/testing-library` | Rendering and querying components in tests. [Testing](/testing) | `testing` |
 | `@ramonda/devtools` | The development panel. [Devtools](/devtools) | `devtools`, on by default |
-| `@ramonda/mcp` | An MCP server: a coding agent checks its code with your checker and reads these docs. [The MCP server](/reference/mcp) | — install it |
+| `@ramonda/mcp` | An MCP server: a coding agent checks its code with your checks and reads these docs. [The MCP server](/reference/mcp) | `mcp` |
 | `create-ramonda` | The scaffolder that starts a project. [create-ramonda](/reference/create-ramonda) | — you run it |
 
 Where the last column has a word, it is the one [`--add`](/reference/create-ramonda) takes. A

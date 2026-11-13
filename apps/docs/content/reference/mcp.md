@@ -25,7 +25,8 @@ Every tool only reads. Nothing is written to disk, and nothing of your app is ru
 -D @ramonda/mcp
 ```
 
-Then tell your agent how to start it. Most clients read a `.mcp.json` in the project's folder:
+A project made by `create-ramonda` with the `mcp` add-on has all of this already. Otherwise, tell
+your agent how to start it. Most clients read a `.mcp.json` in the project's folder:
 
 ```json
 {
