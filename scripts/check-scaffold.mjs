@@ -43,6 +43,7 @@ import {
   existsSync,
   symlinkSync,
 } from "node:fs";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -117,6 +118,8 @@ const PLANTED = {
   dev: { where: mode === "spa" ? "src/main.tsx" : "src/entry-client.tsx", expect: "the dev server could not resolve" },
   // The devtools import behind a guard no build can fold — true in every browser, so the panel ships.
   devtools: { where: mode === "spa" ? "src/main.tsx" : "src/entry-client.tsx", expect: "ships the devtools panel" },
+  // A `.mcp.json` naming a command the project does not have, so an agent's client cannot start it.
+  mcp: { where: ".mcp.json", expect: "the MCP server the project names did not answer" },
 };
 if (selftest !== undefined && PLANTED[selftest] === undefined) {
   console.error(`[scaffold] SELFTEST=${selftest} is not one of: ${Object.keys(PLANTED).join(", ")}`);
@@ -124,7 +127,7 @@ if (selftest !== undefined && PLANTED[selftest] === undefined) {
 }
 
 /** Everything a generated project resolves to this workspace rather than to npm. */
-const FIRST_PARTY = ["core", "router", "server", "check", "build", "css", "testing-library", "devtools"];
+const FIRST_PARTY = ["core", "router", "server", "check", "build", "css", "testing-library", "devtools", "mcp"];
 
 /**
  * `@ramonda/css` is not in either template, and that is right — it is a separate package a project
@@ -191,6 +194,52 @@ function addStyleBlocks(app) {
   if (pkg.scripts?.typecheck !== "tsc --noEmit") fail("the generated project has no `typecheck` script to move");
   pkg.scripts.typecheck = "ramonda-css";
   writeFileSync(manifest, `${JSON.stringify(pkg, null, 2)}\n`);
+}
+
+/**
+ * The project's MCP server, asked through the protocol's own client — the one `@ramonda/mcp` tests
+ * with, from its devDependencies here, since the generated project has no reason to install a client.
+ */
+async function mcpAnswers() {
+  const config = JSON.parse(readFileSync(join(app, ".mcp.json"), "utf8")).mcpServers?.ramonda;
+  if (config === undefined) fail("the generated .mcp.json names no `ramonda` server");
+  const from = createRequire(join(repo, "packages", "mcp", "package.json"));
+  const { Client } = from("@modelcontextprotocol/client");
+  const { StdioClientTransport, getDefaultEnvironment } = from("@modelcontextprotocol/client/stdio");
+  const client = new Client({ name: "check-scaffold", version: "1.0.0" });
+  const ask = async (path, code) => {
+    const result = await client.callTool({ name: "check_code", arguments: { path, code } });
+    return JSON.parse(result.content.map((one) => one.text).join(""));
+  };
+  try {
+    await Promise.race([
+      client.connect(
+        new StdioClientTransport({
+          command: config.command,
+          args: config.args,
+          cwd: app,
+          env: getDefaultEnvironment(),
+          stderr: "pipe",
+        }),
+      ),
+      new Promise((_, timedOut) => setTimeout(() => timedOut(new Error("no answer in 60 s")), 60_000)),
+    ]);
+  } catch (error) {
+    fail("the MCP server the project names did not answer", String(error));
+  }
+  try {
+    const page = join("src", "App.tsx");
+    const clean = await ask(page, readFileSync(join(app, page), "utf8"));
+    if (clean.tool !== "ramonda-mcp" || clean.ok !== true) {
+      fail("the MCP server reported the project's own page as faulty", JSON.stringify(clean, null, 2));
+    }
+    const planted = await ask(join("src", "mcp-probe.ts"), 'export const n: number = "seven";\n');
+    if (planted.ok !== false || !planted.findings.some((one) => one.code === "TS2322")) {
+      fail("the MCP server did not report a type error in a file not yet saved", JSON.stringify(planted, null, 2));
+    }
+  } finally {
+    await client.close();
+  }
 }
 
 /** The stylesheets a baked page links, read off the disk — failing on a link to nothing. */
@@ -581,7 +630,7 @@ try {
   if (!existsSync(cli)) fail("create-ramonda is not built — run `pnpm --filter create-ramonda build` first");
   const scaffolder = `
     import { scaffold } from ${JSON.stringify(cli)};
-    scaffold({ targetDir: ${JSON.stringify(app)}, name: "scaffold-check", mode: ${JSON.stringify(mode)}, addons: ${withAddon ? '["css", "testing", "biome", "devtools"]' : "[]"} });
+    scaffold({ targetDir: ${JSON.stringify(app)}, name: "scaffold-check", mode: ${JSON.stringify(mode)}, addons: ${withAddon ? '["css", "testing", "biome", "devtools", "mcp"]' : "[]"} });
   `;
   run(process.execPath, ["--input-type=module", "-e", scaffolder]);
 
@@ -605,6 +654,15 @@ try {
       process.exit(2);
     }
     writeFileSync(file, broken);
+  } else if (selftest === "mcp") {
+    if (!withAddon) {
+      console.error("[scaffold] SELFTEST=mcp needs the `css` run, which is the one with the mcp add-on");
+      process.exit(2);
+    }
+    // A local path that is not there, never a package name: `npx` would go to the registry for one.
+    // Laid out as the project's formatter wants, so it is the server that fails and not `format:check`.
+    const file = join(app, ".mcp.json");
+    writeFileSync(file, readFileSync(file, "utf8").replace('["ramonda-mcp"]', '["./node_modules/.bin/not-there"]'));
   } else if (selftest !== undefined) {
     const file = join(app, PLANTED[selftest].where);
     const source = readFileSync(file, "utf8");
@@ -720,6 +778,14 @@ try {
         fail(`the generated project's own \`${what}\` failed`, outputOf(error));
       }
     }
+  }
+
+  // The MCP server, started the way an agent's client starts it: the command `.mcp.json` names, in the
+  // project's folder. Asked about a file twice — as written, and with a type error planted — because a
+  // server that answers "ok" to everything would pass the first question alone.
+  if (withAddon) {
+    await mcpAnswers();
+    checks.push("an MCP server that starts from .mcp.json and checks a file before it is saved");
   }
 
   /* ── 5. what the build EMITTED, not just that it exited 0 ─────────────────────────────────── */

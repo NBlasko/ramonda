@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 import { existsSync, readFileSync, statSync, writeSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join, relative, resolve } from "node:path";
 import ts from "typescript";
 import { checkProject } from "./check";
+import { type JsonFinding, jsonOf, version } from "./report";
 import { withoutItsApi } from "./typescriptApi";
 import { NARROW, explain } from "../config/codegen";
 import { PRIMITIVE } from "../compiler/keywords.generated";
@@ -63,26 +63,6 @@ const argv = process.argv.slice(2);
  */
 const json = argv.includes("--json");
 
-/** This package's version, from its own `package.json` — found by walking up, so source and build agree. */
-function version(): string {
-  for (let at = dirname(fileURLToPath(import.meta.url)); dirname(at) !== at; at = dirname(at)) {
-    const file = join(at, "package.json");
-    if (!existsSync(file)) continue;
-    const pkg = JSON.parse(readFileSync(file, "utf8")) as { name?: string; version: string };
-    if (pkg.name === "@ramonda/css") return pkg.version;
-  }
-  return "unknown";
-}
-
-interface JsonFinding {
-  code: string;
-  severity: "error";
-  file: string;
-  line?: number;
-  column?: number;
-  message: string;
-}
-
 /**
  * All of `text` to stdout before returning. A write to a PIPE is asynchronous and `process.exit` does
  * not wait for it — see the formatter's note below, where it was first measured. `EAGAIN` is a full
@@ -114,7 +94,6 @@ function answer(findings: JsonFinding[], more: Record<string, unknown>): never {
 }
 
 /** A number is TypeScript's; a name is one of our own CSS rules — the text run says it the same way. */
-const codeOf = (code: number | string): string => (typeof code === "number" ? `TS${code}` : code);
 
 /** Relative to where the command was run, which is how a person reads their own tree. */
 const where = (file: string) => relative(process.cwd(), file) || file;
@@ -210,22 +189,9 @@ if (!tsconfig.endsWith(".json")) {
 const report = said(() => checkProject(tsconfig));
 
 if (json) {
-  answer(
-    report.findings.map((finding) => ({
-      // A block that could not be read is code 0, and the text run calls it a refusal.
-      code: report.refusals.includes(finding) ? "unreadable-block" : codeOf(finding.code),
-      severity: "error",
-      file: finding.file,
-      line: finding.line,
-      column: finding.column,
-      message: report.refusals.includes(finding) ? finding.message.replace(/^.*?:\d+:\d+\s+/, "") : finding.message,
-    })),
-    {
-      files: report.files,
-      styled: report.styled,
-      ignored: report.exempted.map((one) => ({ file: one.file, line: one.line, reason: one.reason })),
-    },
-  );
+  const built = jsonOf(report);
+  printWhole(`${JSON.stringify(built)}\n`);
+  process.exit(built.ok ? 0 : 1);
 }
 
 /**

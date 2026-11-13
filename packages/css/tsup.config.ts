@@ -50,6 +50,7 @@ export default defineConfig([
       "compiler/index": "src/compiler/index.ts",
       properties: "src/properties.ts",
       cli: "src/adapters/cli.ts",
+      check: "src/adapters/checkApi.ts",
       vite: "src/adapters/vite.ts",
       esbuild: "src/adapters/esbuild.ts",
       plugin: "src/adapters/plugin.ts",

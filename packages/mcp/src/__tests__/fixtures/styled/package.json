@@ -1,0 +1,8 @@
+{
+  "name": "styled-app",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@ramonda/css": "*"
+  }
+}

@@ -1,6 +1,6 @@
 {
   "name": "@ramonda/css",
-  "version": "0.13.0",
+  "version": "0.14.0",
   "description": "A style block written in real CSS beside the markup, compiled to classes before the build.",
   "license": "MIT",
   "author": "Nikola Blagojević",
@@ -47,6 +47,10 @@
     "./compiler": {
       "types": "./dist/compiler/index.d.ts",
       "import": "./dist/compiler/index.js"
+    },
+    "./check": {
+      "types": "./dist/check.d.ts",
+      "import": "./dist/check.js"
     },
     "./properties": {
       "types": "./dist/properties.d.ts",

@@ -502,6 +502,42 @@ It also keeps the checker looking at exactly what your type-check looked at, whi
 tsconfig cannot promise. `notes` is what the run wants to say about the program it was given — a
 graph fragment it refused, a package whose declarations it could not read.
 
+### Code that is not saved yet
+
+`files` lays text over the disk for one run: a new path joins the project, an existing one is read
+from here instead. Nothing is written.
+
+```ts
+import { analyzeProject, reportOf } from "@ramonda/check";
+
+const draft = `import { Component } from "@ramonda/core";
+export class Draft extends Component {
+  render() {
+    return <p>draft</p>;
+  }
+}
+`;
+const report = reportOf(analyzeProject("tsconfig.json", { files: { "/app/src/Draft.tsx": draft } }));
+const mine = report.findings.filter((finding) => finding.file?.endsWith("Draft.tsx"));
+```
+
+`reportOf` is the object `--json` prints, built by the same function, so a program reading it and a
+build reading the command are told the same thing.
+
+### `docsPage(page?)` and `explainPage(code)`
+
+The pages `ramonda-check docs` and `ramonda-check explain` print, as values:
+
+```ts
+import { docsPage, explainPage } from "@ramonda/check";
+
+const page = explainPage("RMD020");
+console.log(page.found ? page.text : page.message);
+```
+
+When the page is not there, `meant` lists the names close to what was asked. `online` is set when
+this install carries no docs at all, to the same page on the site.
+
 ### `ruleCatalogue()`
 
 Every rule, as the data its reports are built from.

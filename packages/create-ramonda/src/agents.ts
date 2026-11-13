@@ -94,6 +94,12 @@ export function agentsFile(mode: Mode, addons: readonly AddOn[]): string {
     "## Before a change is done",
     "",
     `Run \`npm run check\`. It runs ${runs}. A change is done when it passes.`,
+    ...(has("mcp")
+      ? [
+          "",
+          "Before showing any code, run the `check_code` tool of the `ramonda` MCP server (`.mcp.json` starts it) on every file you wrote or changed, and fix what it reports. It asks what `npm run build` would say about that one file — the checker and the type check — before the file is even saved.",
+        ]
+      : []),
     "",
     "## Diagnostics are codes",
     "",

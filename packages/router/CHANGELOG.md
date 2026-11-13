@@ -1,5 +1,28 @@
 # @ramonda/router
 
+## 0.14.0
+
+### Minor Changes
+
+- c210b57: `<Link>` passes every attribute it does not consume to its anchor — `lang`, `hreflang`, `title`, `rel`, `target`, `aria-*`, `data-*` — where the type used to refuse them. Found by the second trial: a language switch could not say `lang="en"`. An `onclick` on a `Link` runs before it navigates, and `preventDefault()` in it stops the navigation; a link with `target` (other than `_self`) or `download` is left to the browser.
+  
+  `@ramonda/core` exports `forwarded(this, consumed)`, which `Select` and `Link` are built on: every prop a component does not consume, to spread onto the one element it wraps. `{...this.props}` spreads nothing, because props are read key by key.
+  
+  The router now needs `@ramonda/core` 0.29 or later, for `forwarded`: update the two together. A project made by `create-ramonda` gets them together already.
+- b8dc4a4: The route table is registered once instead of handed to `createRouter`. `createRouter` and `TypedRouterKit` are gone; `Link`, `Navigator` and `route` are imported from `@ramonda/router`, typed against the table an app registers beside it:
+  
+  ```ts
+  export const routes = createRoutes({ "/": <Home />, "/u/:id": <Profile /> });
+  
+  declare module "@ramonda/router" {
+    interface Register {
+      routes: typeof routes;
+    }
+  }
+  ```
+  
+  The kit had to be imported from the module that holds the table, which imports every page, so every page and that module imported each other. A page now imports only the package. Without a registration the first `<Link href>` fails to compile, with the line to write in the message. `Href` is every href the registered table accepts — what a component in a package types an href prop with, so the app's table checks what the app passes. The brand `route()` returns is `BuiltHref`. The SSR templates register their table.
+
 ## 0.13.0
 
 ### Minor Changes

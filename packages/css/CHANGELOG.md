@@ -1,5 +1,26 @@
 # @ramonda/css
 
+## 0.14.0
+
+### Minor Changes
+
+- 20354a7: `@ramonda/mcp`, an MCP server for a Ramonda app. A coding agent checks each file it is about to write with `check_code` — the app's own checker, reading the file as if it were saved, with the rest of the project — and reads the docs of the installed version with `docs` and `explain`. `check_project` gives the verdict the build will reach. Every tool only reads.
+  
+  `@ramonda/check` exports what the server is built on, for any program to use: `analyzeProject(tsconfig, { files })` checks code that is not saved yet, `reportOf(result)` is the object `--json` prints, and `docsPage(page)` and `explainPage(code)` are the pages `docs` and `explain` print.
+  
+  `@ramonda/mcp` runs the checker the app already has — a peer dependency, so the agent and the build reach the same verdict. It needs `@ramonda/check` from this release or later: update the two together.
+  
+  `check_code` and `check_project` run what an app's build runs before it bundles: `ramonda-check`, then the type check — `tsc`, or in an app with style blocks the app's own `ramonda-css`, through the new `@ramonda/css/check` entry (`cssReport(tsconfig, { files, only })`, the object `ramonda-css --json` prints; `only` type-checks just the named files, which took one `check_code` on the docs app from 9.5 s to 4.8 s).
+  
+  `create-ramonda` offers it as the `mcp` add-on: `@ramonda/mcp`, a `.mcp.json` that starts it, and a line in `AGENTS.md` telling the agent to run `check_code` before showing code.
+  
+  `ramonda-check docs` and `ramonda-check explain` read only pages inside the packed docs: a path with `../` read any `.md` file beside or above them.
+- f8156ab: `override-out-of-order` follows a spread and a `mergeClassNames` call across blocks and files. A declaration written to override one that a spread brought under a stronger condition — `...$(card); border-top-color: blue;` where `card` has `@media print { border: none; }` — will not win where both apply, because the stylesheet emits the stronger condition last. It used to be only a development warning, printed during a build with no file, no line and the property's short form (`bc`); `ramonda-css` and the editor now report it at the declaration, and it fails the check like every other rule. The development warning stays for what the check cannot follow — a block that arrives as a prop or is chosen at run time — and names the property as written.
+
+### Patch Changes
+
+- 2a9de6b: Two messages say the fix where it is read. `ramonda-css format --check` ends with the command that writes the files it lists, with the same paths. `hardcoded-not-allowed` names the token that already holds the value on its first line — `` `1px` is a length written out, and this project takes them only from its own tokens. `ramonda.css.ts` holds it as `$size.line` — write that. `` — where it used to be three lines down, below what a terminal shows beside the place.
+
 ## 0.13.0
 
 ### Minor Changes

@@ -25,13 +25,17 @@ afterEach(() => {
 
 /** A project with one component rendering `markup`, against the framework stub the fixtures use. */
 function project(markup: string): string {
+  return projectOf(
+    `import { Component } from "@ramonda/core";\n\nexport class Card extends Component {\n  go() {}\n  render() {\n    return (\n      <div>\n${markup}\n      </div>\n    );\n  }\n}\n`,
+  );
+}
+
+/** A project whose one source file is `source`. */
+function projectOf(source: string): string {
   const root = mkdtempSync(join(tmpdir(), "ramonda-check-linear-"));
   projects.push(root);
   mkdirSync(join(root, "src"), { recursive: true });
-  writeFileSync(
-    join(root, "src", "app.tsx"),
-    `import { Component } from "@ramonda/core";\n\nexport class Card extends Component {\n  go() {}\n  render() {\n    return (\n      <div>\n${markup}\n      </div>\n    );\n  }\n}\n`,
-  );
+  writeFileSync(join(root, "src", "app.tsx"), source);
   writeFileSync(
     join(root, "tsconfig.json"),
     JSON.stringify({
@@ -78,5 +82,40 @@ describe("read in linear time", () => {
     const short = took(markup(false));
     const long = took(markup(true));
     expect(long - short).toBeLessThan(500);
+  });
+});
+
+/**
+ * The component tree walked in time that grows with its ARRANGEMENTS, not with its paths.
+ *
+ * A ladder: every rung mounts both components of the next, so `depth` rungs are 2^depth paths to the
+ * bottom and only 2·depth arrangements. The context walk followed every path, and `apps/docs` — 368
+ * components — took 9.5 s to check, 6.2 of them in that walk; in August, at 149 components, the whole
+ * run was 0.68 s. Found measuring the MCP server's warm check. A build runs `ramonda-check` first, so
+ * every build paid it.
+ */
+describe("the component tree, walked once per arrangement", () => {
+  const ladder = (depth: number) => {
+    const rung = (at: number) => (at === depth ? "<p />" : `<div><R${at + 1}a /><R${at + 1}b /></div>`);
+    const classes = Array.from({ length: depth + 1 }, (_, at) =>
+      ["a", "b"]
+        .map(
+          (side) => `export class R${at}${side} extends Component {\n  render() {\n    return ${rung(at)};\n  }\n}\n`,
+        )
+        .join(""),
+    ).join("");
+    return `import { Component, bootstrap } from "@ramonda/core";\n\n${classes}\nclass App extends Component {\n  render() {\n    return <div><R0a /><R0b /></div>;\n  }\n}\nbootstrap(<App />, null);\n`;
+  };
+  const took = (depth: number) => {
+    const tsconfig = projectOf(ladder(depth));
+    const started = performance.now();
+    analyzeProject(tsconfig);
+    return performance.now() - started;
+  };
+
+  test("a ladder with 2^22 paths to its bottom costs about what one of two rungs does", () => {
+    const short = took(2);
+    const long = took(22);
+    expect(long - short).toBeLessThan(1000);
   });
 });

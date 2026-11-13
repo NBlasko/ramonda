@@ -78,7 +78,7 @@ afterAll(() => {
 
 describe("first-party versions", () => {
   test("every @ramonda range matches that package's workspace version", () => {
-    const { pkg } = make("ssr", ["router", "query", "form", "lens", "devtools", "testing", "biome"]);
+    const { pkg } = make("ssr", ["router", "query", "form", "lens", "devtools", "testing", "biome", "mcp"]);
     const all = { ...pkg.dependencies, ...pkg.devDependencies };
 
     /**
@@ -95,6 +95,7 @@ describe("first-party versions", () => {
       ["@ramonda/lens", "lens"],
       ["@ramonda/devtools", "devtools"],
       ["@ramonda/testing-library", "testing-library"],
+      ["@ramonda/mcp", "mcp"],
     ] as const) {
       expect(all[name], `${name} is not in the generated package.json`).toBeDefined();
       expect(all[name], `${name} must track the workspace`).toBe(`~${workspaceVersion(folder)}`);
@@ -104,6 +105,28 @@ describe("first-party versions", () => {
   test("a tilde, not a caret, because a caret on 0.0.z pins that exact patch", () => {
     const { pkg } = make("spa", ["router"]);
     expect(pkg.dependencies["@ramonda/router"]!.startsWith("~")).toBe(true);
+  });
+});
+
+/**
+ * The `mcp` add-on: the server a coding agent starts, and the line that tells the agent to use it.
+ * Off unless chosen — a project nobody writes with an agent has no use for either.
+ */
+describe("the mcp add-on", () => {
+  test("installs the server, tells a client how to start it, and tells the agent to check before showing code", () => {
+    const { pkg, read } = make("spa", ["mcp"]);
+    expect(pkg.devDependencies["@ramonda/mcp"]).toBe(`~${workspaceVersion("mcp")}`);
+    expect(JSON.parse(read(".mcp.json"))).toEqual({
+      mcpServers: { ramonda: { command: "npx", args: ["ramonda-mcp"] } },
+    });
+    expect(read("AGENTS.md")).toContain("`check_code`");
+  });
+
+  test("without it there is no server, no .mcp.json and no line about one", () => {
+    const { pkg, dir, read } = make("spa", []);
+    expect(pkg.devDependencies["@ramonda/mcp"]).toBeUndefined();
+    expect(readdirSync(dir)).not.toContain(".mcp.json");
+    expect(read("AGENTS.md")).not.toContain("check_code");
   });
 });
 

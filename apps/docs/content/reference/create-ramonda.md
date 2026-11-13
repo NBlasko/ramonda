@@ -99,6 +99,7 @@ The word in the first column is what `--add` takes.
 | `lens` | `@ramonda/lens` | [Immutable updates](/lens) to nested state |
 | `testing` | vitest, `@ramonda/testing-library` and jsdom | [Testing](/testing), with one test to start from |
 | `devtools` | `@ramonda/devtools` | [The panel](/devtools), in development only. A tab for each of `query` and `form` you also chose |
+| `mcp` | `@ramonda/mcp` | [The MCP server](/reference/mcp): a coding agent checks each file with this project's own checks before it is saved |
 | `biome` | `@biomejs/biome` | Lint and format |
 
 Whatever you choose, every project also gets `@ramonda/core`, [`@ramonda/build`](/reference/build)
@@ -166,7 +167,7 @@ what it points at. The build empties `dist/client` first, so anything else put t
 the next build: keep your own files in `public/`.
 
 And per add-on: `ramonda.css.ts` and `css-system/` with `css`; `vitest.config.ts` and
-`src/App.test.tsx` with `testing`; `biome.json` with `biome`. With `devtools`, the entry imports the
+`src/App.test.tsx` with `testing`; `.mcp.json` with `mcp`, and a line in `AGENTS.md` telling the agent to run `check_code`; `biome.json` with `biome`. With `devtools`, the entry imports the
 panel inside `if (import.meta.env.DEV)`, so a production build leaves it out.
 
 ## Next

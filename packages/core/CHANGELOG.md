@@ -1,5 +1,28 @@
 # @ramonda/core
 
+## 0.29.0
+
+### Minor Changes
+
+- c210b57: `<Link>` passes every attribute it does not consume to its anchor — `lang`, `hreflang`, `title`, `rel`, `target`, `aria-*`, `data-*` — where the type used to refuse them. Found by the second trial: a language switch could not say `lang="en"`. An `onclick` on a `Link` runs before it navigates, and `preventDefault()` in it stops the navigation; a link with `target` (other than `_self`) or `download` is left to the browser.
+  
+  `@ramonda/core` exports `forwarded(this, consumed)`, which `Select` and `Link` are built on: every prop a component does not consume, to spread onto the one element it wraps. `{...this.props}` spreads nothing, because props are read key by key.
+  
+  The router now needs `@ramonda/core` 0.29 or later, for `forwarded`: update the two together. A project made by `create-ramonda` gets them together already.
+
+### Patch Changes
+
+- f8156ab: `Head` keeps two `<link>`s that share `rel` and `href` but differ in `hreflang` or `sizes`. The language alternates of a page are one link per language plus `hreflang="x-default"`, which points at the same address as the default language's page; the two used to collapse into one, and the page lost a language with no message. An icon in several sizes from one file is kept whole the same way.
+- 2a9de6b: RMD020 says it in words when the value rebuilt on every render is the array of items handed to `list()`: "passes `list()` a new array of items on every render", with the fix — a `@compute` getter — instead of a path ending `.list.each`, which read as the row callback.
+- aa49d65: Template and devtools findings from the second trial:
+  
+  - The SSR template's `scripts/build.mjs` sets `NODE_ENV` to `production` before it asks for its defines. `import.meta.env.DEV` follows `NODE_ENV`, so a shell exporting `NODE_ENV=development` shipped every development branch, the devtools import among them, in the production bundle. An existing project can copy the one line.
+  - The SSR template no longer defines or declares `__DEV__`. Nothing a project installs reads it — every package picks its development or production build through its `exports` conditions — and the installation page already said a project does not need it, while `vite.config.ts` defined it with no word why. A project's own development branch is `import.meta.env.DEV`.
+  - No `CLAUDE.ramonda.md` is written beside a `CLAUDE.md` that already has a line `@AGENTS.md`, which is all the project's says.
+  - With style blocks and Biome both chosen, the README says why `biome.json` leaves `src` out: `npm run lint` and `npm run format` hand it to `ramonda-css`, which runs the project's own Biome over every file in it.
+  - The scaffolded entry calls the devtools badge what it looks like, a round R.
+  - The devtools panel shows what each `@compute` holds under **Computed**, read off its cache and never by running it, and the cache counters under **Cache**, as text rather than as a quoted string that read as the getter's value. A `Map` and a `Set` open into their entries like an array, where a `Map` showed as `Map [object Map]`.
+
 ## 0.28.0
 
 ### Minor Changes

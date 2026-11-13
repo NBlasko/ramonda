@@ -54,6 +54,17 @@ declare const __RAMONDA_RANGES__: Record<string, string>;
  * do not share a version line, and pinning them as if they did is exactly what broke a fresh
  * project's install.
  */
+/** What an agent's client reads to start the server — `@ramonda/mcp`'s `ramonda-mcp`, in this folder. */
+const MCP_FILE = `{
+  "mcpServers": {
+    "ramonda": {
+      "command": "npx",
+      "args": ["ramonda-mcp"]
+    }
+  }
+}
+`;
+
 function ramonda(name: string): string {
   const range = __RAMONDA_RANGES__[name];
   if (!range) throw new Error(`[create-ramonda] no version known for ${name} — see tsup.config.ts`);
@@ -536,6 +547,13 @@ function writeProject({ targetDir, name, mode, addons }: ScaffoldOptions): void 
   if (addons.includes("devtools")) {
     deps.devDependencies["@ramonda/devtools"] = ramonda("@ramonda/devtools");
     importDevtools(targetDir, mode, addons);
+  }
+  // A tool the agent's client starts, so a devDependency, and the file such a client reads to start it.
+  if (addons.includes("mcp")) {
+    deps.devDependencies["@ramonda/mcp"] = ramonda("@ramonda/mcp");
+    // Written out rather than `JSON.stringify`-ed: that puts `args` on three lines, and the project's
+    // own `format:check` refused the file it had just been given.
+    writeFileSync(join(targetDir, ".mcp.json"), MCP_FILE);
   }
 
   if (mode === "spa") {
