@@ -66,6 +66,20 @@ describe("createRoutes refuses what can never be meant", () => {
    * route whose segment WAS that value claimed to hide it. `/:p/a` is reached by `/y/a`; `/x/a` hides
    * one of its addresses, not all of them.
    */
+  /**
+   * Review round 2: comparing segments as text missed a param written INSIDE a segment —
+   * `:name.json` matches `a.json` at runtime, so the later route is never reached.
+   */
+  test("a param inside a segment hides what it matches, in any segment", () => {
+    expect(() => createRoutes({ "/files/:name.json": view("any"), "/files/a.json": view("a") })).toThrow(
+      /"\/files\/a\.json" can never be reached: "\/files\/:name\.json"/,
+    );
+    expect(() => createRoutes({ "/file-:id": view("any"), "/file-7": view("seven") })).toThrow(
+      /"\/file-7" can never be reached: "\/file-:id"/,
+    );
+    expect(() => createRoutes({ "/files/:name.json": view("any"), "/files/a.txt": view("a") })).not.toThrow();
+  });
+
   test("a fixed path hides only itself, whatever a sample would have said", () => {
     expect(() => createRoutes({ "/x/a": view("one"), "/:p/a": view("two") })).not.toThrow();
   });
@@ -81,8 +95,28 @@ describe("a large table is built in time that grows with its size", () => {
   test("3000 routes, half of them patterns", () => {
     const table: Record<string, ReturnType<typeof view>> = {};
     for (let i = 0; i < 3000; i++) table[i % 2 ? `/section${i}/:id/detail` : `/page${i}`] = view("x");
-    const started = performance.now();
-    createRoutes(table);
-    expect(performance.now() - started).toBeLessThan(100);
+    expect(fastestOf(3, () => createRoutes(table))).toBeLessThan(100);
+  });
+
+  /** Every route behind a language param — the shape of an app in several languages. Review round 2. */
+  test("3000 routes that all start with a param", () => {
+    const table: Record<string, ReturnType<typeof view>> = {};
+    for (let i = 0; i < 3000; i++) table[i % 2 ? `/:lang/section${i}/:id` : `/:lang/page${i}`] = view("x");
+    expect(fastestOf(3, () => createRoutes(table))).toBeLessThan(100);
   });
 });
+
+/**
+ * The fastest of a few runs. A single timing inside the full gate, beside every other package's
+ * tests, read 108 ms for what takes 7 ms alone; the quadratic version this guards against took
+ * 290 ms and 811 ms, so the fastest run still tells the two apart and a busy machine does not.
+ */
+function fastestOf(runs: number, work: () => void): number {
+  let fastest = Number.POSITIVE_INFINITY;
+  for (let at = 0; at < runs; at++) {
+    const started = performance.now();
+    work();
+    fastest = Math.min(fastest, performance.now() - started);
+  }
+  return fastest;
+}

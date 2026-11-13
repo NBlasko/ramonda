@@ -20,7 +20,7 @@ describe("a link to a route that exists only under a condition", () => {
   test("is reported where it is not under that condition, with the condition it needs", () => {
     expect(
       run().linksToConditionalRoutes.map(
-        (issue) => `${issue.component}:${issue.line} ${issue.href} needs ${issue.negated ? "!" : ""}${issue.condition}`,
+        (issue) => `${issue.component}:${issue.line} ${issue.href} needs ${issue.condition}`,
       ),
     ).toEqual([
       "NavBar:24 /admin needs features.admin",
@@ -30,6 +30,22 @@ describe("a link to a route that exists only under a condition", () => {
       "NavBar:40 /admin/:id needs features.admin",
       "WithQuery:68 /debug?tab=cache needs import.meta.env.DEV",
       "WithQuery:69 /debug#top needs import.meta.env.DEV",
+    ]);
+  });
+});
+
+/**
+ * Review round 2: a part under a condition, inside a part under another. The route exists only where
+ * BOTH hold, and the outer condition used to overwrite the inner one, so a link under the outer alone
+ * was silent.
+ */
+describe("a route behind two conditions", () => {
+  test("needs both, and a link under one of them is reported", () => {
+    const found = analyzeProject(
+      join(here, "fixtures", "conditional-routes-nested", "tsconfig.json"),
+    ).linksToConditionalRoutes;
+    expect(found.map((issue) => `${issue.component}:${issue.line} ${issue.href} needs ${issue.condition}`)).toEqual([
+      "Nav:21 /debug/admin needs features.admin && import.meta.env.DEV",
     ]);
   });
 });

@@ -189,15 +189,28 @@ export function createRoutes<const T extends readonly RoutePart[]>(...parts: T):
   // and only against earlier routes that COULD hide it: the same number of segments, and a first
   // segment that is the same or a param. Every route against every earlier one took 293 ms for 3000
   // routes, at module load, in production.
-  const earlier = new Map<string, CompiledRoute[]>();
-  const bucket = (count: number, first: string) => `${count}|${first}`;
+  // Indexed so a route is tried only against earlier routes that could hide it: the same number of
+  // segments and, at the later route's first fixed segment, the same text or a param. Every route
+  // against every earlier one was 293 ms for 3000 routes, and a table where every route starts with
+  // `/:lang` was 811 ms — at module load, in production.
+  const bySegment = new Map<string, CompiledRoute[]>();
+  const paramAt = new Map<string, CompiledRoute[]>();
+  const sameLength = new Map<number, CompiledRoute[]>();
+  const into = (map: Map<string, CompiledRoute[]>, key: string, route: CompiledRoute) => {
+    const list = map.get(key);
+    if (list) list.push(route);
+    else map.set(key, [route]);
+  };
   for (const route of compiled) {
     const segments = route.key.split("/");
-    const first = segments[1] ?? "";
-    const candidates = [
-      ...(earlier.get(bucket(segments.length, WHOLE_PARAM.test(first) ? "" : first)) ?? []),
-      ...(WHOLE_PARAM.test(first) ? [] : (earlier.get(bucket(segments.length, "")) ?? [])),
-    ];
+    const fixed = segments.findIndex((segment, at) => at > 0 && !segment.includes(":"));
+    const candidates =
+      fixed === -1
+        ? (sameLength.get(segments.length) ?? [])
+        : [
+            ...(bySegment.get(`${segments.length}|${fixed}|${segments[fixed]}`) ?? []),
+            ...(paramAt.get(`${segments.length}|${fixed}`) ?? []),
+          ];
     const hidden = candidates.find((one) => hides(one.key, route.key));
     if (hidden !== undefined) {
       throw new Error(
@@ -205,10 +218,17 @@ export function createRoutes<const T extends readonly RoutePart[]>(...parts: T):
           `first. Put "${route.key}" before "${hidden.key}".`,
       );
     }
-    const key = bucket(segments.length, WHOLE_PARAM.test(first) ? "" : first);
-    const list = earlier.get(key);
+    segments.forEach((segment, at) => {
+      if (at === 0) return;
+      into(
+        segment.includes(":") ? paramAt : bySegment,
+        segment.includes(":") ? `${segments.length}|${at}` : `${segments.length}|${at}|${segment}`,
+        route,
+      );
+    });
+    const list = sameLength.get(segments.length);
     if (list) list.push(route);
-    else earlier.set(key, [route]);
+    else sameLength.set(segments.length, [route]);
   }
 
   return {
@@ -237,8 +257,17 @@ function hides(earlier: string, later: string): boolean {
   return a.every((segment, at) => {
     const other = b[at];
     if (WHOLE_PARAM.test(segment)) return WHOLE_PARAM.test(other) || /^[\w-]+$/.test(other);
+    // A param inside a segment — `:name.json` — matches what the router's own regex for it matches.
+    // Found by review: compared as text, `/files/:name.json` did not hide `/files/a.json`.
+    if (segment.includes(":") && !other.includes(":")) return segmentPattern(segment).test(other);
     return segment === other;
   });
+}
+
+/** One segment as the router matches it: each `:param` is `[\w-]+`, everything else literal. */
+function segmentPattern(segment: string): RegExp {
+  const parts = segment.split(/:\w+/).map((literal) => literal.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  return new RegExp(`^${parts.join("[\\w-]+")}$`);
 }
 
 /** A part that is already a compiled table — a module's — rather than a literal one. */

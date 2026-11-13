@@ -244,10 +244,11 @@ export interface LinkToConditionalRouteIssue {
   href: string;
   /** The route it reaches. */
   route: string;
-  /** The condition its part is under, as written. */
+  /**
+   * Every condition the route needs, as one expression — `import.meta.env.DEV`, `!features.beta`, or
+   * `features.admin && import.meta.env.DEV` for a part inside a part, which needs both.
+   */
   condition: string;
-  /** Whether the part is the condition's ELSE arm — the route exists where the condition is false. */
-  negated: boolean;
   file: string;
   line: number;
   column: number;
@@ -787,7 +788,7 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
   /** Tables another `createRoutes` takes as a part — see `viewsOf`; never stranded on their own. */
   const tablesTakenAsParts = new Set<ts.Symbol>();
   /** The routes a part under a condition holds, with the condition — see `LinkToConditionalRouteIssue`. */
-  const conditionalRoutes = new Map<string, { condition: string; negated: boolean }>();
+  const conditionalRoutes = new Map<string, { condition: string; negated: boolean }[]>();
   /** Every link to a route this can read: `<Link href>`, a navigator's `push`/`replace`, `route()`. */
   const routeLinks: {
     owner: ComponentNode;
@@ -1536,9 +1537,15 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
           [at.whenTrue, false],
           [at.whenFalse, true],
         ] as const) {
+          // A part inside a part needs both conditions — found by review, the outer one used to replace
+          // the inner one, and a link under the outer alone was silent.
           for (const view of viewsOfPart(arm)) {
-            if (view.route !== undefined)
-              conditionalRoutes.set(view.route, { condition, negated: negated !== flipped });
+            if (view.route === undefined) continue;
+            const needs = conditionalRoutes.get(view.route) ?? [];
+            const guard = { condition, negated: negated !== flipped };
+            if (!needs.some((one) => one.condition === guard.condition && one.negated === guard.negated))
+              needs.push(guard);
+            conditionalRoutes.set(view.route, needs);
           }
         }
         take(at.whenTrue);
@@ -1899,7 +1906,16 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
     let child: ts.Node = node;
     for (let at = node.parent; at !== undefined && at !== cls; child = at, at = at.parent) {
       const under = (condition: ts.Expression, whenTrue: boolean): void => {
-        const read = conditionOf(condition);
+        // `a && b && <Link />` is under `a` and under `b` — found by review, the chain was read as one
+        // condition and matched none.
+        let at = condition;
+        while (ts.isParenthesizedExpression(at)) at = at.expression;
+        if (whenTrue && ts.isBinaryExpression(at) && at.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken) {
+          under(at.left, true);
+          under(at.right, true);
+          return;
+        }
+        const read = conditionOf(at);
         guards.push({ condition: read.condition, negated: read.negated !== !whenTrue });
       };
       if (ts.isIfStatement(at) && child !== at.expression) under(at.expression, child === at.thenStatement);
@@ -3149,20 +3165,23 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
           : // A query and a fragment do not change which route a link reaches — found by review.
             patterns.find((one) => one.regex.test((link.sample ?? link.href).replace(/[?#].*$/, "")))?.route;
       if (route === undefined) continue;
-      const needed = conditionalRoutes.get(route) as Guard;
-      if (link.guards.some((guard) => same(guard, needed))) continue;
+      const needed = conditionalRoutes.get(route) as Guard[];
+      const covered = (have: readonly Guard[]) => needed.every((need) => have.some((one) => same(one, need)));
+      if (covered(link.guards)) continue;
       const above = [...(routesAbove.get(link.owner) ?? [])];
       const onlyThere = above.every((one) => {
-        const guard = typeof one === "string" ? conditionalRoutes.get(one) : undefined;
-        return guard !== undefined && same(guard, needed);
+        const guards = typeof one === "string" ? conditionalRoutes.get(one) : undefined;
+        return guards !== undefined && covered(guards);
       });
       if (above.length > 0 && onlyThere) continue;
       found.push({
         component: link.owner.name,
         href: link.href,
         route,
-        condition: needed.condition,
-        negated: needed.negated,
+        condition: needed
+          .map((one) => `${one.negated ? "!" : ""}${one.condition}`)
+          .sort()
+          .join(" && "),
         ...positionOf(link.node),
       });
     }

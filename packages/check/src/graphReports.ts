@@ -147,13 +147,10 @@ export const GRAPH_REPORTS = [
   report("linksToConditionalRoutes", {
     id: "link-to-a-conditional-route",
     heading: (n) => `${n} link(s) to a route that exists only under a condition`,
-    lines: (link) => {
-      const when = link.negated ? `\`${link.condition}\` is false` : `\`${link.condition}\``;
-      return [
-        `    <${link.component}> links to "${link.href}", and "${link.route}" exists only when ${when} — ` +
-          `this link is not under it, so where it does not hold the link lands on the catch-all.`,
-      ];
-    },
+    lines: (link) => [
+      `    <${link.component}> links to "${link.href}", and "${link.route}" exists only when \`${link.condition}\` — ` +
+        `this link is not under it, so where it does not hold the link lands on the catch-all.`,
+    ],
     advice:
       `A part under a condition — \`createRoutes(cond ? debugRoutes : undefined, …)\` — holds routes that\n` +
       `exist only where the condition holds. Put the link under the same condition, the same name or\n` +
