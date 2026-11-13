@@ -184,51 +184,13 @@ export function createRoutes<const T extends readonly RoutePart[]>(...parts: T):
     for (const [key, vnode] of Object.entries(part)) add(key, vnode, at);
   });
 
-  // A route an earlier one matches first is never reached. Compared segment by segment, never by
-  // trying a sample value — found by review, `/x/a` claimed to hide `/:p/a`, which `/y/a` reaches —
-  // and only against earlier routes that COULD hide it: the same number of segments, and a first
-  // segment that is the same or a param. Every route against every earlier one took 293 ms for 3000
-  // routes, at module load, in production.
-  // Indexed so a route is tried only against earlier routes that could hide it: the same number of
-  // segments and, at the later route's first fixed segment, the same text or a param. Every route
-  // against every earlier one was 293 ms for 3000 routes, and a table where every route starts with
-  // `/:lang` was 811 ms — at module load, in production.
-  const bySegment = new Map<string, CompiledRoute[]>();
-  const paramAt = new Map<string, CompiledRoute[]>();
-  const sameLength = new Map<number, CompiledRoute[]>();
-  const into = (map: Map<string, CompiledRoute[]>, key: string, route: CompiledRoute) => {
-    const list = map.get(key);
-    if (list) list.push(route);
-    else map.set(key, [route]);
-  };
-  for (const route of compiled) {
-    const segments = route.key.split("/");
-    const fixed = segments.findIndex((segment, at) => at > 0 && !segment.includes(":"));
-    const candidates =
-      fixed === -1
-        ? (sameLength.get(segments.length) ?? [])
-        : [
-            ...(bySegment.get(`${segments.length}|${fixed}|${segments[fixed]}`) ?? []),
-            ...(paramAt.get(`${segments.length}|${fixed}`) ?? []),
-          ];
-    const hidden = candidates.find((one) => hides(one.key, route.key));
-    if (hidden !== undefined) {
-      throw new Error(
-        `[Ramonda Router] createRoutes: "${route.key}" can never be reached: "${hidden.key}", before it, matches it ` +
-          `first. Put "${route.key}" before "${hidden.key}".`,
-      );
-    }
-    segments.forEach((segment, at) => {
-      if (at === 0) return;
-      into(
-        segment.includes(":") ? paramAt : bySegment,
-        segment.includes(":") ? `${segments.length}|${at}` : `${segments.length}|${at}|${segment}`,
-        route,
-      );
-    });
-    const list = sameLength.get(segments.length);
-    if (list) list.push(route);
-    else sameLength.set(segments.length, [route]);
+  const hidden = hiddenRoute(compiled);
+  if (hidden !== undefined) {
+    const [route, earlier] = hidden;
+    throw new Error(
+      `[Ramonda Router] createRoutes: "${route.key}" can never be reached: "${earlier.key}", before it, matches it ` +
+        `first. Put "${route.key}" before "${earlier.key}".`,
+    );
   }
 
   return {
@@ -242,6 +204,50 @@ export function createRoutes<const T extends readonly RoutePart[]>(...parts: T):
   };
 }
 
+/**
+ * The first route an earlier one matches first, and that earlier one — a route never reached.
+ *
+ * Compared segment by segment, never by trying a sample value (found by review: `/x/a` claimed to
+ * hide `/:p/a`, which `/y/a` reaches), and indexed so a route is tried only against earlier routes
+ * that could hide it: the same number of segments and, at the later route's first fixed segment, the
+ * same text or a param. Every route against every earlier one was 293 ms for 3000 routes, and a table
+ * where every route starts with `/:lang` was 811 ms — at module load, in production. `compare` is
+ * `hides`; a test passes its own to count how many pairs are tried.
+ */
+export function hiddenRoute<R extends { key: string }>(
+  routes: readonly R[],
+  compare: (earlier: string, later: string) => boolean = hides,
+): [route: R, earlier: R] | undefined {
+  const bySegment = new Map<string, R[]>();
+  const paramAt = new Map<string, R[]>();
+  const sameLength = new Map<number, R[]>();
+  const into = <K>(map: Map<K, R[]>, key: K, route: R) => {
+    const list = map.get(key);
+    if (list) list.push(route);
+    else map.set(key, [route]);
+  };
+  for (const route of routes) {
+    const segments = route.key.split("/");
+    const fixed = segments.findIndex((segment, at) => at > 0 && !segment.includes(":"));
+    const candidates =
+      fixed === -1
+        ? (sameLength.get(segments.length) ?? [])
+        : [
+            ...(bySegment.get(`${segments.length}|${fixed}|${segments[fixed]}`) ?? []),
+            ...(paramAt.get(`${segments.length}|${fixed}`) ?? []),
+          ];
+    const earlier = candidates.find((one) => compare(one.key, route.key));
+    if (earlier !== undefined) return [route, earlier];
+    segments.forEach((segment, at) => {
+      if (at === 0) return;
+      if (segment.includes(":")) into(paramAt, `${segments.length}|${at}`, route);
+      else into(bySegment, `${segments.length}|${at}|${segment}`, route);
+    });
+    into(sameLength, segments.length, route);
+  }
+  return undefined;
+}
+
 /** A segment that is one `:param` and nothing else — it matches any one segment `[\w-]+` can. */
 const WHOLE_PARAM = /^:\w+$/;
 
@@ -250,7 +256,7 @@ const WHOLE_PARAM = /^:\w+$/;
  * any segment its `[\w-]+` can (a param of the later route, or a literal of those characters); any
  * other segment must be written the same. Both are anchored, so the counts must agree.
  */
-function hides(earlier: string, later: string): boolean {
+export function hides(earlier: string, later: string): boolean {
   const a = earlier.split("/");
   const b = later.split("/");
   if (a.length !== b.length) return false;
