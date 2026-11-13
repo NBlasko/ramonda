@@ -14,7 +14,17 @@ import { RULES } from "../rules";
  * The docs' `check-api-coverage.mjs` reads these lists too, so a new export has to be acknowledged
  * twice: once as API here, once as a row on /reference/api.
  */
-const EXPECTED = ["analyzeProgram", "analyzeProject", "diffGraphs", "refuseToDiff", "ruleCatalogue", "splitOf"];
+const EXPECTED = [
+  "analyzeProgram",
+  "analyzeProject",
+  "diffGraphs",
+  "docsPage",
+  "explainPage",
+  "refuseToDiff",
+  "reportOf",
+  "ruleCatalogue",
+  "splitOf",
+];
 
 /**
  * The TYPES, which `Object.keys` cannot see because types are erased.
@@ -25,7 +35,11 @@ const EXPECTED = ["analyzeProgram", "analyzeProject", "diffGraphs", "refuseToDif
  */
 const EXPECTED_TYPES = [
   "AccessKeyIssue",
+  "AnalyzeOptions",
   "AnalyzeResult",
+  "DocsAnswer",
+  "JsonFinding",
+  "JsonReport",
   "AriaHiddenOnFocusableIssue",
   "PresentationRoleOnFocusableIssue",
   "AriaStateWithNoRoleIssue",

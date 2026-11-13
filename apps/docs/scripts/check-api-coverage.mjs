@@ -127,7 +127,7 @@ function listOf(pkg, list, atLeast) {
 
 // `@ramonda/css`'s page entry. Its subpaths — the compiler, the config, the plugins — are build tools
 // with pages of their own, and are named on the reference as entry points, not as exports.
-const cssNames = [...listOf("css", "RUNTIME", 8), ...listOf("css", "TYPES", 15)];
+const cssNames = [...listOf("css", "RUNTIME", 8), ...listOf("css", "TYPES", 15), ...listOf("css", "CHECK", 4)];
 
 const expected = [
   ...publicSurfaceOf("core", 20),
@@ -159,6 +159,9 @@ const expected = [
   // looking, which is the whole argument for this file.
   ...publicSurfaceOf("check", 5),
   ...publicTypesOf("check", 30),
+  // The MCP server's entry: `createServer`, for a host that serves it some other way than stdio.
+  ...publicSurfaceOf("mcp", 1),
+  ...publicTypesOf("mcp", 1),
   // The four packages that declared no surface at all, and were therefore invisible HERE as well:
   // this script reads `PublicSurface.test.ts`, so a package without one contributed nothing to the
   // expected list and its exports could be — and were — undocumented with the build staying green.

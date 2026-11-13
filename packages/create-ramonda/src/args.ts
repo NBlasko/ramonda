@@ -1,10 +1,20 @@
 import { parseArgs } from "node:util";
 
 export type Mode = "spa" | "ssr";
-export type AddOn = "css" | "router" | "query" | "form" | "lens" | "testing" | "devtools" | "biome";
+export type AddOn = "css" | "router" | "query" | "form" | "lens" | "testing" | "devtools" | "mcp" | "biome";
 
 export const MODES: readonly Mode[] = ["spa", "ssr"];
-export const ADD_ONS: readonly AddOn[] = ["css", "router", "query", "form", "lens", "testing", "devtools", "biome"];
+export const ADD_ONS: readonly AddOn[] = [
+  "css",
+  "router",
+  "query",
+  "form",
+  "lens",
+  "testing",
+  "devtools",
+  "mcp",
+  "biome",
+];
 
 /**
  * Each add-on, described once. `--help`, the multi-select and the generated README all read this, so
@@ -43,6 +53,13 @@ export const ADD_ON_INFO: Readonly<
     hint: "the dev inspector, with a tab per package you picked",
     start: "Press Alt+D in development.",
     page: "devtools",
+  },
+  mcp: {
+    label: "MCP server",
+    adds: "@ramonda/mcp",
+    hint: "a coding agent checks its code with this app's own checks",
+    start: "`.mcp.json` starts it for an agent that reads one, and `AGENTS.md` tells the agent to use it.",
+    page: "reference/mcp",
   },
   biome: {
     label: "Biome",

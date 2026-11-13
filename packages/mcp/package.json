@@ -1,0 +1,69 @@
+{
+  "name": "@ramonda/mcp",
+  "version": "0.0.0",
+  "description": "An MCP server for a Ramonda app — an agent checks the code it is about to write with the app's own checker, and reads the docs of the version that is installed.",
+  "license": "MIT",
+  "author": "Nikola Blagojević",
+  "homepage": "https://ramonda.dev/reference/mcp",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/NBlasko/ramonda.git",
+    "directory": "packages/mcp"
+  },
+  "bugs": {
+    "url": "https://github.com/NBlasko/ramonda/issues"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "keywords": [
+    "ramonda",
+    "mcp",
+    "model-context-protocol",
+    "ai",
+    "agent",
+    "static-analysis"
+  ],
+  "type": "module",
+  "bin": {
+    "ramonda-mcp": "./bin.mjs"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "bin.mjs",
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "check-types": "tsc --noEmit",
+    "lint": "oxlint",
+    "format": "biome format --write src"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "^2.4.0",
+    "zod": "^4.2.0"
+  },
+  "peerDependencies": {
+    "@ramonda/check": ">=0.1.0 <1.0.0",
+    "typescript": ">=5.0.0 <7"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/client": "^2.4.0",
+    "@ramonda/check": "workspace:*",
+    "@ramonda/css": "workspace:*",
+    "@types/node": "^26.6.5",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.3"
+  }
+}
