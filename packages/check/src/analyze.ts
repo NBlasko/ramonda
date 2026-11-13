@@ -1633,14 +1633,34 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
   function conditionOf(expression: ts.Expression): { condition: string; negated: boolean } {
     let at = expression;
     let negated = false;
-    for (;;) {
+    for (let hops = 0; ; ) {
       if (ts.isParenthesizedExpression(at)) at = at.expression;
       else if (ts.isPrefixUnaryExpression(at) && at.operator === ts.SyntaxKind.ExclamationToken) {
         negated = !negated;
         at = at.operand;
+      } else if (ts.isIdentifier(at) && hops < 20) {
+        // `const isAdmin = features.admin` and `if (isAdmin)` are one condition. Found reviewing the
+        // rule's design: compared as text, a guard written through a name was told it was missing.
+        const declaration = resolve(at)?.declarations?.[0];
+        const list = declaration?.parent;
+        if (
+          declaration === undefined ||
+          !ts.isVariableDeclaration(declaration) ||
+          declaration.initializer === undefined ||
+          list === undefined ||
+          !ts.isVariableDeclarationList(list) ||
+          (list.flags & ts.NodeFlags.Const) === 0
+        )
+          break;
+        at = declaration.initializer;
+        hops++;
       } else break;
     }
-    return { condition: at.getText().replace(/\s+/g, ""), negated };
+    const text = at.getText().replace(/\s+/g, "");
+    // `import.meta.env.PROD` is `!import.meta.env.DEV`: the build that is not production is the
+    // development one. Two spellings of one condition, compared as one.
+    if (text === "import.meta.env.PROD") return { condition: "import.meta.env.DEV", negated: !negated };
+    return { condition: text, negated };
   }
 
   function viewsOf(call: ts.CallExpression, followed = new Set<ts.Node>([call])): RouteView[] {

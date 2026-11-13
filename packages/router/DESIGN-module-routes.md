@@ -108,7 +108,12 @@ cannot be otherwise: the compiler sees one program, where `import.meta.env.DEV` 
   error: *"/debug exists only in development, and this link is in code a production build keeps — put it under
   `if (import.meta.env.DEV)`, or link somewhere every build has."*
 - the debug pages' own links, and links under the same condition — the same name, or the same expression — are
-  silent.
+  silent. A `const` holding the condition is followed (`const isAdmin = features.admin`), and
+  `import.meta.env.PROD` is read as `!import.meta.env.DEV` — both found reviewing this design, as valid code the
+  rule would have reported;
+- the condition is read where the link is WRITTEN: a guard around the call to a method that holds the link is not
+  followed. The checkable way is the condition at the link, or the link in the part's own pages — the message says
+  so.
 
 ### 4. What `ramonda-check` learns
 

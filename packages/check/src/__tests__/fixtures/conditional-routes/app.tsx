@@ -43,11 +43,29 @@ class NavBar extends Component {
   }
 }
 
+/** The condition is the SAME one, written another way — every link here is silent. */
+const isAdmin = features.admin;
+
+class SameCondition extends Component {
+  nav = this.use(Navigator);
+
+  goAdmin() {
+    // A `const` holding the condition, one hop away.
+    if (isAdmin) this.nav.push("/admin");
+  }
+
+  render() {
+    // `PROD` is `!DEV`: the build that is not production is the development one.
+    return <aside>{!import.meta.env.PROD && <Link href="/debug">debug</Link>}</aside>;
+  }
+}
+
 class App extends Component {
   render() {
     return (
       <main>
         <NavBar />
+        <SameCondition />
         <RouteOutlet routes={routes} />
       </main>
     );
