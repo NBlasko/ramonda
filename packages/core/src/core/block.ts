@@ -85,9 +85,10 @@ export interface Template {
   /** Both kinds of child hole, for a comparison that asks of each hole whether it holds children. */
   readonly childHoles: ReadonlySet<number>;
   /**
-   * Built on first use, where a `document` exists, and cloned for each block. On a server that renders
-   * each request into a document of its own, it is the first one's: a clone is adopted by the document
-   * it is put into, and what the cache keeps alive is one document per template, not one per request.
+   * Built on first use, in an inert document — a `<template>`'s — and imported into the page's for each
+   * block. Inert, so building it constructs no custom element and loads no image: those happen once, for
+   * the copy the page shows, as they do for an element `jsx()` builds. Imported rather than cloned, so the
+   * copy belongs to the document it is put into from the start and nothing is adopted when it goes in.
    */
   root?: Element;
 }
@@ -114,6 +115,32 @@ interface BlockState {
 
 export type BlockVNode = VNodeString & { [BLOCK]: BlockData };
 
+/**
+ * The template's own parent and child pairs, checked against HTML's nesting rules (RMD028) each time a
+ * block is built or adopted — as the diff checks every element it builds — so a page hydrated without
+ * building a single block, or a run after the diagnostics were reset, still hears of one. Read off the
+ * description, which is all the check needs: the names.
+ */
+function checkTemplateNesting(node: TemplateNode): void {
+  const parent = { nodeType: 1, nodeName: nodeNameOf(node.t) } as unknown as Node;
+  for (const child of node.c ?? []) {
+    if (typeof child === "string") continue;
+    checkNesting(parent, { nodeType: 1, nodeName: nodeNameOf(child.t) } as unknown as Node);
+    checkTemplateNesting(child);
+  }
+}
+
+/** A tag's `nodeName` as the DOM gives it: an HTML one upper case, an SVG one as written. */
+function nodeNameOf(tag: string): string {
+  return svgElements.has(tag) ? tag : tag.toUpperCase();
+}
+
+/** Whether `element` holds one text node and nothing else — the node a text hole writes straight into. */
+function loneText(element: Element): boolean {
+  const only = element.firstChild;
+  return only !== null && only.nodeType === 3 && only.nextSibling === null;
+}
+
 /** Defines a template from its description. Called once per JSX tree, where the module is loaded. */
 export function template(description: TemplateNode): Template {
   const sites: Site[] = [];
@@ -132,8 +159,7 @@ export function template(description: TemplateNode): Template {
     });
   };
   walk(description, []);
-  // A `nodeName` as the DOM gives it: an HTML tag upper case, an SVG one as written.
-  const rootName = svgElements.has(description.t) ? description.t : description.t.toUpperCase();
+  const rootName = nodeNameOf(description.t);
   const childHoles = new Set([...loneHoles, ...childrenHoles]);
   return { description, rootName, sites, loneHoles, childrenHoles, childHoles };
 }
@@ -166,30 +192,32 @@ export function block(template: Template, values: unknown[], key?: string | numb
   } as unknown as BlockVNode;
 }
 
-function build(node: TemplateNode): Element {
+function build(node: TemplateNode, inert: Document): Element {
   const element = svgElements.has(node.t)
-    ? document.createElementNS("http://www.w3.org/2000/svg", node.t)
-    : document.createElement(node.t);
+    ? inert.createElementNS("http://www.w3.org/2000/svg", node.t)
+    : inert.createElement(node.t);
   if (node.a !== undefined) for (const name in node.a) element.setAttribute(name, node.a[name]);
   if (node.c !== undefined) {
     for (const child of node.c) {
       if (typeof child === "string") {
-        element.appendChild(document.createTextNode(child));
+        element.appendChild(inert.createTextNode(child));
         continue;
       }
-      const built = build(child);
-      // The template's own pairs, checked once, where they are made — the diff checks only what it builds.
-      if (__DEV__) checkNesting(element, built);
-      element.appendChild(built);
+      element.appendChild(build(child, inert));
     }
   }
   // The text node a string or number in the child hole is written into.
-  if (node.h !== undefined) element.appendChild(document.createTextNode(""));
+  if (node.h !== undefined) element.appendChild(inert.createTextNode(""));
   return element;
 }
 
 function rootOf(template: Template): Element {
-  if (template.root === undefined) template.root = build(template.description);
+  if (template.root === undefined) {
+    // A server DOM with no inert document of its own (linkedom's `<template>` shares the page's) builds in
+    // the page's: it constructs no custom element and loads no image either way.
+    const inert = (document.createElement("template") as HTMLTemplateElement).content?.ownerDocument ?? document;
+    template.root = build(template.description, inert);
+  }
   return template.root;
 }
 
@@ -245,8 +273,14 @@ function attributeChanged(name: string, next: unknown, previous: unknown, always
  */
 function sameChildren(next: unknown, previous: unknown): boolean {
   if (!Array.isArray(next) || !Array.isArray(previous) || next.length !== previous.length) return next === previous;
-  for (let i = 0; i < next.length; i++) if (next[i] !== previous[i]) return false;
-  return !holdsARegion(next);
+  let markup = false;
+  for (let i = 0; i < next.length; i++) {
+    if (next[i] !== previous[i]) return false;
+    if (typeof next[i] === "object" && next[i] !== null) markup = true;
+  }
+  // Only markup can hold a region: `{cond && <b />}` while it is false is `[false]`, a fresh array every
+  // render, and asking the region cache about it would file away an array that dies with the render.
+  return !markup || !holdsARegion(next);
 }
 
 /** A child hole (`h`): a string or a number into the text node it holds, anything else as children. */
@@ -267,10 +301,7 @@ function writeChild(
   state.texts[siteIndex] = undefined;
   diffChildrenOf(element, isText(value) ? [String(value)] : (value as unknown[]), owner, false);
   // Back to a lone text node: the next string goes straight into it again.
-  const only = element.firstChild;
-  if (isText(value) && only !== null && only.nodeType === 3 && only.nextSibling === null) {
-    state.texts[siteIndex] = only as Text;
-  }
+  if (isText(value) && loneText(element)) state.texts[siteIndex] = element.firstChild as Text;
 }
 
 /** Whether hydration left this site unsettled (see `BlockState.unsettled`) — answered once, then cleared. */
@@ -333,7 +364,8 @@ export function applyBlock(vnode: BlockVNode, existing: Element | undefined, own
   const known = blockStateOf(existing);
 
   if (existing === undefined || known === undefined || known.template !== template) {
-    const root = rootOf(template).cloneNode(true) as Element;
+    if (__DEV__) checkTemplateNesting(template.description);
+    const root = document.importNode(rootOf(template), true);
     const sites = template.sites;
     const elements: Element[] = new Array(sites.length);
     const { texts } = stampRoot(root, vnode, elements);
@@ -393,8 +425,7 @@ function matches(
   all: (readonly [Element, TemplateNode])[],
   miss: BlockMiss,
 ): boolean {
-  const svg = svgElements.has(node.t);
-  if (element.nodeType !== 1 || element.nodeName !== (svg ? node.t : node.t.toUpperCase())) {
+  if (element.nodeType !== 1 || element.nodeName !== nodeNameOf(node.t)) {
     if (__DEV__) missed(miss, `<${node.t}>`, element);
     return false;
   }
@@ -473,6 +504,7 @@ export function adoptBlock(
   const sites = template.sites;
   const elements: Element[] = [];
   const all: (readonly [Element, TemplateNode])[] = [];
+  if (__DEV__) checkTemplateNesting(template.description);
   if (!matches(template.description, root, elements, all, miss)) return false;
   // What only the server wrote — an attribute no template part or hole names, the exposed request's
   // stamp among them — goes, as it does from an element the attribute diff adopts.
@@ -502,8 +534,7 @@ export function adoptBlock(
       if (adopt.children(isText(value) ? [String(value)] : (value as unknown[]), element)) left(i);
       // Only while it IS the only child: what the server sent beyond it, left by a mismatch, goes on the
       // first update (`unsettled`).
-      const only = element.firstChild;
-      if (isText(value) && only !== null && only.nodeType === 3 && only.nextSibling === null) texts[i] = only as Text;
+      if (isText(value) && loneText(element)) texts[i] = element.firstChild as Text;
     }
     if (site.k !== undefined && adopt.children(values[site.k] as unknown[], element)) left(i);
   }
@@ -544,7 +575,7 @@ export function viewOf(vnode: BlockVNode): BlockView {
     if (node.h !== undefined)
       children = isText(values[node.h]) ? [String(values[node.h])] : (values[node.h] as unknown[]);
     if (node.k !== undefined) children = values[node.k] as unknown[];
-    const seen: BlockView = { name: node.t.toUpperCase(), attributes, children };
+    const seen: BlockView = { name: nodeNameOf(node.t), attributes, children };
     // Where it was written, as an element `jsxDEV` built carries it — so RMD020 names the line here too.
     if (__DEV__ && file !== undefined && node.l !== undefined) {
       (seen as { [SOURCE]?: Source })[SOURCE] = { fileName: file, lineNumber: node.l[0], columnNumber: node.l[1] };

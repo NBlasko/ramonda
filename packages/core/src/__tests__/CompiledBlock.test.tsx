@@ -8,6 +8,7 @@ import { flushSync } from "../testing";
 import { componentAt } from "../core/DiffAndMerge";
 import * as diffAndMerge from "../core/DiffAndMerge";
 import { resetDiagnostics } from "../debug/diagnostics";
+import { viewOf, type BlockVNode } from "../core/block";
 import * as attribute from "../core/Attribute";
 
 /**
@@ -885,6 +886,151 @@ describe("an update of a block that threw halfway", () => {
     await app.settle();
     const span = app.container.querySelector("span") as HTMLElement;
     expect({ threw, title: span.title, text: span.textContent }).toEqual({ threw: true, title: "x", text: "one" });
+  });
+});
+
+describe("a block as the render-stability check reads it", () => {
+  test("names each element as the DOM does: an HTML tag upper case, an SVG one as written", () => {
+    const GRADIENT = __template({
+      t: "svg",
+      c: [
+        { t: "linearGradient", d: [["id", 0]] },
+        { t: "p", c: ["x"] },
+      ],
+    });
+    const view = viewOf(__block(GRADIENT, ["g"]) as BlockVNode);
+    expect([view.name, ...view.children.map((child) => (child as { name: string }).name)]).toEqual([
+      "svg",
+      "linearGradient",
+      "P",
+    ]);
+  });
+});
+
+/** `<div><li>x</li></div>`: an `<li>` the parser keeps where HTML says it does not belong. */
+const STRAY_ITEM = __template({ t: "div", c: [{ t: "li", c: ["x"] }] });
+
+describe("a template's own nesting, in development", () => {
+  const codes = (records: { code: string }[]) => records.filter((record) => record.code === "RMD028").length;
+  const collecting = () => {
+    const records: { code: string }[] = [];
+    globalThis.__RAMONDA_DIAGNOSTICS__ = (record) => records.push(record);
+    resetDiagnostics();
+    return records;
+  };
+
+  test("is reported on a page that hydrates without building a block", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    class Card extends Component {
+      render() {
+        return <main>{__block(STRAY_ITEM, [])}</main>;
+      }
+    }
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    container.innerHTML = await renderToString(<Card />);
+    const records = collecting();
+    try {
+      hydrateRoot(<Card />, container);
+      await Promise.resolve();
+      await Promise.resolve();
+    } finally {
+      globalThis.__RAMONDA_DIAGNOSTICS__ = undefined;
+      container.remove();
+      vi.restoreAllMocks();
+    }
+    expect(codes(records)).toBe(1);
+  });
+
+  test("is reported again after the diagnostics are reset, as an element the diff builds is", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    class Card extends Component {
+      render() {
+        return <main>{__block(STRAY_ITEM, [])}</main>;
+      }
+    }
+    const seen: number[] = [];
+    try {
+      for (let i = 0; i < 2; i++) {
+        const records = collecting();
+        const app = await getDOM<Card>(<Card />);
+        await app.settle();
+        seen.push(codes(records));
+      }
+    } finally {
+      globalThis.__RAMONDA_DIAGNOSTICS__ = undefined;
+      vi.restoreAllMocks();
+    }
+    expect(seen).toEqual([1, 1]);
+  });
+});
+
+describe("a hole holding nothing, render after render", () => {
+  test("is the same nothing, and no region is looked for in it", async () => {
+    class Cell extends Component {
+      @state count = 0;
+      render() {
+        return <div data-count={this.count}>{__block(LONE, [false])}</div>;
+      }
+    }
+    const app = await getDOM<Cell>(<Cell />);
+    await app.settle();
+    const asked = vi.spyOn(diffAndMerge, "holdsARegion");
+    app.instance.count = 1;
+    await app.settle();
+    const calls = asked.mock.calls.length;
+    asked.mockRestore();
+    expect({ calls, html: (app.container.querySelector("p") as HTMLElement).outerHTML }).toEqual({
+      calls: 0,
+      html: "<p></p>",
+    });
+  });
+});
+
+describe("a block's element, while its holes are written", () => {
+  test("is the page's document's already — what a ref is handed is never moved between documents", async () => {
+    const seen: boolean[] = [];
+    const ref = {
+      current: null as unknown,
+      setCurrent(element: Element | null) {
+        if (element !== null) seen.push(element.ownerDocument === document);
+        this.current = element;
+      },
+    };
+    const HELD = __template({ t: "div", d: [["ref", 0]], c: ["x"] });
+    class Holder extends Component {
+      render() {
+        return <main>{__block(HELD, [ref])}</main>;
+      }
+    }
+    const app = await getDOM<Holder>(<Holder />);
+    await app.settle();
+    expect(seen[0]).toBe(true);
+  });
+});
+
+describe("a template holding a custom element", () => {
+  test("constructs it once for each copy the page shows — the template's own is not one", async () => {
+    let constructed = 0;
+    class CountedWidget extends HTMLElement {
+      constructor() {
+        super();
+        constructed++;
+      }
+    }
+    customElements.define("counted-widget", CountedWidget);
+    const WIDGET = __template({ t: "section", c: [{ t: "counted-widget" }] });
+    class Panel extends Component {
+      render() {
+        return <main>{__block(WIDGET, [])}</main>;
+      }
+    }
+    const app = await getDOM<Panel>(<Panel />);
+    await app.settle();
+    const widget = app.container.querySelector("counted-widget");
+    expect({ constructed, upgraded: widget instanceof CountedWidget }).toEqual({ constructed: 1, upgraded: true });
   });
 });
 

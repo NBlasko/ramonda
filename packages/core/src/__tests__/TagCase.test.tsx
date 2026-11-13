@@ -18,19 +18,26 @@ import { getDOM } from "../test/setup";
 const createdTags: string[] = [];
 const createdNS: [string, string][] = [];
 
+/**
+ * Both documents an element is made in: the page's, and the inert one a compiled template's root is built
+ * in — a `<template>`'s, asked for before the page's is watched.
+ */
 function watchCreation(): void {
-  const element = document.createElement.bind(document);
-  const elementNS = document.createElementNS.bind(document);
+  const inert = document.createElement("template").content.ownerDocument;
+  for (const owner of new Set([document, inert])) {
+    const element = owner.createElement.bind(owner);
+    const elementNS = owner.createElementNS.bind(owner);
 
-  vi.spyOn(document, "createElement").mockImplementation(((tag: string, ...rest: unknown[]) => {
-    createdTags.push(tag);
-    return element(tag, ...(rest as []));
-  }) as typeof document.createElement);
+    vi.spyOn(owner, "createElement").mockImplementation(((tag: string, ...rest: unknown[]) => {
+      createdTags.push(tag);
+      return element(tag, ...(rest as []));
+    }) as typeof document.createElement);
 
-  vi.spyOn(document, "createElementNS").mockImplementation(((ns: string, tag: string, ...rest: unknown[]) => {
-    createdNS.push([ns, tag]);
-    return elementNS(ns, tag, ...(rest as []));
-  }) as typeof document.createElementNS);
+    vi.spyOn(owner, "createElementNS").mockImplementation(((ns: string, tag: string, ...rest: unknown[]) => {
+      createdNS.push([ns, tag]);
+      return elementNS(ns, tag, ...(rest as []));
+    }) as typeof document.createElementNS);
+  }
 }
 
 afterEach(() => {

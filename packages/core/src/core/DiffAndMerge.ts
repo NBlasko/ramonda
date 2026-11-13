@@ -607,7 +607,7 @@ function executeChangesOnStringNode(
   placeholderComponent: MaybeComponent,
   maybeenhancedNode: MaybeEnhancedNode | EnhancedChildNode,
 ) {
-  // PROTOTYPE: a compiled block — see `core/block.ts`.
+  // A compiled block, which `@ramonda/build` writes for a tree of host elements — see `core/block.ts`.
   if (blockOf(vnode) !== undefined) {
     return applyBlock(vnode as BlockVNode, maybeenhancedNode as Element | undefined, placeholderComponent);
   }
@@ -2186,8 +2186,8 @@ function areSimilarNodes(enhancedNode: EnhancedNode | EnhancedChildNode, virtual
    * live instance with no teardown. There is no host element to be confused for a `<span>` now, and
    * a component that stops being rendered loses its region — which is what runs its `@destroyed`.
    */
-  // PROTOTYPE: a block matches only a node cloned from the same template, and a node cloned from one only
-  // a block of it.
+  // A block matches only a node cloned from the same template, and a node cloned from one only a block of
+  // it.
   const vBlock = blockOf(virtualNode);
   const eBlock = blockStateOf(enhancedNode);
   if (vBlock !== undefined || eBlock !== undefined) return vBlock?.template === eBlock?.template;

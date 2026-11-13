@@ -97,6 +97,6 @@ export function Fragment(): never {
   );
 }
 
-// PROTOTYPE: what a JSX compiler would emit for an element tree whose shape never changes — here, beside
-// `jsx`, because only a compiler calls it. See `core/block.ts`.
+// What `@ramonda/build`'s JSX compiler writes for an element tree whose shape never changes — here, beside
+// `jsx`, because only the compiler calls it. See `core/block.ts`.
 export { template as __template, block as __block } from "./core/block";
