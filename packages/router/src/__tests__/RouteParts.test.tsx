@@ -97,26 +97,36 @@ describe("createRoutes refuses what can never be meant", () => {
  * square of the table. Found by review: every route was tried against every earlier one — 3000 routes
  * took 293 ms on every page load. A route can only be hidden by one with as many segments whose first
  * segment is the same or a param, so only those are tried.
+ *
+ * Asked as a RATIO, not a time: a table ten times larger must take about ten times as long, not a
+ * hundred. Measured: 13–16 here, and 108–111 with every route tried against every earlier one. A
+ * fixed limit in milliseconds failed on CI — 120 ms for what takes 7 ms locally — because it measured
+ * the machine; a ratio measures the growth, which is the claim.
  */
 describe("a large table is built in time that grows with its size", () => {
-  test("3000 routes, half of them patterns", () => {
-    const table: Record<string, ReturnType<typeof view>> = {};
-    for (let i = 0; i < 3000; i++) table[i % 2 ? `/section${i}/:id/detail` : `/page${i}`] = view("x");
-    expect(fastestOf(3, () => createRoutes(table))).toBeLessThan(100);
+  const table = (size: number, path: (i: number) => string) => {
+    const routes: Record<string, ReturnType<typeof view>> = {};
+    for (let i = 0; i < size; i++) routes[path(i)] = view("x");
+    return routes;
+  };
+  const growth = (path: (i: number) => string) => {
+    const small = table(2000, path);
+    const large = table(20000, path);
+    return fastestOf(3, () => createRoutes(large)) / fastestOf(3, () => createRoutes(small));
+  };
+
+  test("ten times the routes, half of them patterns", () => {
+    expect(growth((i) => (i % 2 ? `/section${i}/:id/detail` : `/page${i}`))).toBeLessThan(40);
   });
 
   /** Every route behind a language param — the shape of an app in several languages. Review round 2. */
-  test("3000 routes that all start with a param", () => {
-    const table: Record<string, ReturnType<typeof view>> = {};
-    for (let i = 0; i < 3000; i++) table[i % 2 ? `/:lang/section${i}/:id` : `/:lang/page${i}`] = view("x");
-    expect(fastestOf(3, () => createRoutes(table))).toBeLessThan(100);
+  test("ten times the routes, all starting with a param", () => {
+    expect(growth((i) => (i % 2 ? `/:lang/section${i}/:id` : `/:lang/page${i}`))).toBeLessThan(40);
   });
 });
 
 /**
- * The fastest of a few runs. A single timing inside the full gate, beside every other package's
- * tests, read 108 ms for what takes 7 ms alone; the quadratic version this guards against took
- * 290 ms and 811 ms, so the fastest run still tells the two apart and a busy machine does not.
+ * The fastest of a few runs, so one pause for garbage collection does not decide the result.
  */
 function fastestOf(runs: number, work: () => void): number {
   let fastest = Number.POSITIVE_INFINITY;
