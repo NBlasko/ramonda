@@ -758,6 +758,8 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
    * only place the route's `:params` are written down, and it is thrown away everywhere else.
    */
   const routeTables = new Map<ts.Symbol, RouteView[]>();
+  /** Tables another `createRoutes` takes as a part — see `viewsOf`; never stranded on their own. */
+  const tablesTakenAsParts = new Set<ts.Symbol>();
   /** Which of them some `<RouteOutlet routes={…}>` in this run actually named, and from where. */
   const mountedTables = new Map<ts.Symbol, ComponentNode[]>();
   /**
@@ -1481,6 +1483,21 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
     const symbol = node.name && ts.isIdentifier(node.name) ? checker.getSymbolAtLocation(node.name) : undefined;
     if (!symbol) return;
     routeTables.set(symbol, viewsOf(node.initializer));
+    // A table another table takes as a part is reached through that one, and judged there.
+    const take = (argument: ts.Expression): void => {
+      let at = argument;
+      while (ts.isParenthesizedExpression(at) || ts.isAsExpression(at) || ts.isSatisfiesExpression(at))
+        at = at.expression;
+      if (ts.isConditionalExpression(at)) {
+        take(at.whenTrue);
+        take(at.whenFalse);
+        return;
+      }
+      if (!ts.isIdentifier(at)) return;
+      const part = resolve(at);
+      if (part) tablesTakenAsParts.add(part);
+    };
+    for (const argument of node.initializer.arguments) take(argument);
   }
 
   /**
@@ -1552,7 +1569,7 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
     return undefined;
   }
 
-  function viewsOf(call: ts.CallExpression): RouteView[] {
+  function viewsOf(call: ts.CallExpression, followed = new Set<ts.Node>([call])): RouteView[] {
     const found: RouteView[] = [];
     const take = (node: ts.Node): void => {
       const route = routeKeyOf(node);
@@ -1571,25 +1588,52 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
       });
     };
 
-    const table = call.arguments[0];
-    if (!table) return found;
-    if (!ts.isIdentifier(table)) {
-      scan(call);
-      return found;
-    }
-
-    const declaration = resolve(table)?.declarations?.[0];
-    if (declaration && ts.isVariableDeclaration(declaration) && declaration.initializer) scan(declaration);
-    const file = declaration?.getSourceFile();
-    if (file) {
-      ts.forEachChild(file, function walk(n) {
-        if (ts.isBinaryExpression(n) && n.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
-          const target = n.left;
-          if (ts.isElementAccessExpression(target) && target.expression.getText() === table.text) scan(n);
-        }
-        ts.forEachChild(n, walk);
-      });
-    }
+    /**
+     * Every argument is a PART — `createRoutes(tournamentRoutes, cond ? debugRoutes : undefined, { … })`,
+     * see the router's `DESIGN-module-routes.md`. Read before it was: only the first argument, so a
+     * page behind a condition's part was judged on no route at all.
+     *
+     * - a name holding another `createRoutes` is that table's parts, recursively;
+     * - a condition is BOTH arms — which one a build keeps is not this reading's question;
+     * - `undefined` adds nothing;
+     * - any other name is a table written into one binding, a loop's for one — followed as before.
+     */
+    const part = (argument: ts.Expression): void => {
+      let node = argument;
+      while (ts.isParenthesizedExpression(node) || ts.isAsExpression(node) || ts.isSatisfiesExpression(node))
+        node = node.expression;
+      if (ts.isConditionalExpression(node)) {
+        part(node.whenTrue);
+        part(node.whenFalse);
+        return;
+      }
+      if (!ts.isIdentifier(node)) {
+        scan(node);
+        return;
+      }
+      if (node.text === "undefined") return;
+      const declaration = resolve(node)?.declarations?.[0];
+      const initializer = declaration && ts.isVariableDeclaration(declaration) ? declaration.initializer : undefined;
+      if (initializer && ts.isCallExpression(initializer) && callsRouteFactory(initializer)) {
+        if (followed.has(initializer)) return;
+        followed.add(initializer);
+        found.push(...viewsOf(initializer, followed));
+        return;
+      }
+      if (initializer) scan(declaration as ts.Node);
+      const file = declaration?.getSourceFile();
+      const name = node.text;
+      if (file) {
+        ts.forEachChild(file, function walk(n) {
+          if (ts.isBinaryExpression(n) && n.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+            const target = n.left;
+            if (ts.isElementAccessExpression(target) && target.expression.getText() === name) scan(n);
+          }
+          ts.forEachChild(n, walk);
+        });
+      }
+    };
+    for (const argument of call.arguments) part(argument);
     return found;
   }
 
@@ -2822,7 +2866,7 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
     if (anOutletSpreadsUnread) return [];
     const found: UnreachableRouteIssue[] = [];
     for (const [symbol, views] of routeTables) {
-      if (views.length === 0) continue;
+      if (views.length === 0 || tablesTakenAsParts.has(symbol)) continue;
       const outlets = mountedTables.get(symbol) ?? [];
       const why =
         outlets.length === 0 ? "unmounted" : outlets.some((outlet) => reached.has(outlet)) ? undefined : "stranded";
