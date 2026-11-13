@@ -6,6 +6,10 @@ declare global {
   // shape is not what these pages teach, and a type written here would only be a second, wrong copy
   // of one that lives in the app.
 
+  class Player extends Component<any> {
+    [key: string]: any;
+    render(): any;
+  }
   class About extends Component<any> {
     [key: string]: any;
     render(): any;

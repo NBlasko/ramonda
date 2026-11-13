@@ -192,13 +192,13 @@ what it passes into one. One field today, `label`, which devtools adds to the ho
 | `Navigator` | `pathname` · `params<T>()` · `searchParams` · `hashParams` · `push` · `replace` · `updateSearchParams` · `updateHashParams` · `back` · `forward`. [Reading the URL](/routing/params) |
 | `Link` | A real `<a href>` that intercepts a plain left click. [Links](/routing/links) |
 | `createRoutes(map)` | Compiles a route table once, capturing its paths in the type. Call it at module scope. |
-| `interface Register` | Where an app registers its table once — `declare module "@ramonda/router" { interface Register { routes: typeof routes } }` — so `Link`, `Navigator` and `route` are type-checked against it. [Setup](/routing) |
+| `interface Routes` | Where an app registers its table once, under `app` — `declare module "@ramonda/router" { interface Routes { app: typeof routes } }` — so `Link`, `Navigator` and `route` are type-checked against it. [Setup](/routing) |
 | `route(pattern, params)` | Builds a `:param` href — the only way to make one; params are typed. [Links](/routing/links) |
 | `routePaths(config, extra?)` | `{ paths, needsData }` for a static build. [Static builds](/ssr/static) |
 | `matchParams` · `matchCompiled` | Matching, for tooling. |
 | `parseUrlString` · `buildUrl` · `sanitizeHref` | URL helpers. |
 
-Types: `Register` · `RouteConfig` · `PathOf` · `Href` · `BuiltHref` · `TypedLinkProps` · `TypedNavigator` ·
+Types: `Routes` · `RoutePart` · `RouteConfig` · `PathOf` · `Href` · `BuiltHref` · `TypedLinkProps` · `TypedNavigator` ·
 `RouteParams` · `RoutePaths` · `RouterState` · `RouterNavigator` · `NavigateOptions` ·
 `PartialNavigateOptions` · `SearchParamsUpdater` · `HashParamsUpdater` · `StateUpdater` ·
 `RouteOutletProps` · `HashLevelProps` · `LinkProps`

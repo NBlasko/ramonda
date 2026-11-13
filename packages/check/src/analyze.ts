@@ -229,6 +229,31 @@ const OBJECT_MEMBERS = new Set([
   "constructor",
 ]);
 
+/**
+ * A link to a route that exists only under a condition, from code that is not under it — see the
+ * router's `DESIGN-module-routes.md`, section 3.
+ *
+ * `createRoutes(cond ? debugRoutes : undefined, …)` keeps the part's routes only where `cond` holds.
+ * The compiler reads one program, where `cond` is a `boolean`, so the route is in the type in every
+ * build, and a link to it type-checks where it lands on the catch-all.
+ */
+export interface LinkToConditionalRouteIssue {
+  /** The component or hook the link is written in. */
+  component: string;
+  /** The link as written: a path, a filled pattern (`/admin/${…}`), or the pattern `route()` was given. */
+  href: string;
+  /** The route it reaches. */
+  route: string;
+  /**
+   * Every condition the route needs, as one expression — `import.meta.env.DEV`, `!features.beta`, or
+   * `features.admin && import.meta.env.DEV` for a part inside a part, which needs both.
+   */
+  condition: string;
+  file: string;
+  line: number;
+  column: number;
+}
+
 export interface UnsuppliedKeyIssue {
   /** The component or hook that reads. */
   component: string;
@@ -382,6 +407,8 @@ export interface AnalyzeResult {
   paramsOffRoute: ParamsOffRouteIssue[];
   /** A key named at an argument-less `params()` that no route supplies — see `UnsuppliedKeyIssue`. */
   keysOffRoute: UnsuppliedKeyIssue[];
+  /** A link to a route that exists only under a condition, not under it — see `LinkToConditionalRouteIssue`. */
+  linksToConditionalRoutes: LinkToConditionalRouteIssue[];
   /** Rings of mounts nothing on them can skip — see `RenderCycleIssue`. */
   renderCycles: RenderCycleIssue[];
   /** Component classes written among children, where an element was meant — see `ClassAsChildIssue`. */
@@ -758,6 +785,21 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
    * only place the route's `:params` are written down, and it is thrown away everywhere else.
    */
   const routeTables = new Map<ts.Symbol, RouteView[]>();
+  /** Tables another `createRoutes` takes as a part — see `viewsOf`; never stranded on their own. */
+  const tablesTakenAsParts = new Set<ts.Symbol>();
+  /** The routes a part under a condition holds, with the condition — see `LinkToConditionalRouteIssue`. */
+  const conditionalRoutes = new Map<string, { condition: string; negated: boolean }[]>();
+  /** Every link to a route this can read: `<Link href>`, a navigator's `push`/`replace`, `route()`. */
+  const routeLinks: {
+    owner: ComponentNode;
+    href: string;
+    /** What the href is matched against a pattern with: each `${…}` stands for one segment. */
+    sample?: string;
+    /** `route("/admin/:id", …)` names the route itself. */
+    pattern?: string;
+    guards: { condition: string; negated: boolean }[];
+    node: ts.Node;
+  }[] = [];
   /** Which of them some `<RouteOutlet routes={…}>` in this run actually named, and from where. */
   const mountedTables = new Map<ts.Symbol, ComponentNode[]>();
   /**
@@ -1292,6 +1334,7 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
   const renderCycles = endlessRings();
   const paramsOffRoute = readsOffTheRoute(reached, routesAbove, pathTo);
   const keysOffRoute = keysOffTheRoute(reached, routesAbove, pathTo);
+  const linksToConditionalRoutes = linksOffTheirCondition(routesAbove);
 
   return {
     issues,
@@ -1303,6 +1346,7 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
     secondProviders,
     paramsOffRoute,
     keysOffRoute,
+    linksToConditionalRoutes,
     renderCycles,
     classesAsChildren,
     counts: {
@@ -1481,6 +1525,38 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
     const symbol = node.name && ts.isIdentifier(node.name) ? checker.getSymbolAtLocation(node.name) : undefined;
     if (!symbol) return;
     routeTables.set(symbol, viewsOf(node.initializer));
+    // A table another table takes as a part is reached through that one, and judged there.
+    const take = (argument: ts.Expression): void => {
+      let at = argument;
+      while (ts.isParenthesizedExpression(at) || ts.isAsExpression(at) || ts.isSatisfiesExpression(at))
+        at = at.expression;
+      if (ts.isConditionalExpression(at)) {
+        // Each arm's routes exist only where the condition says — the false arm's where it does not.
+        const { condition, negated } = conditionOf(at.condition);
+        for (const [arm, flipped] of [
+          [at.whenTrue, false],
+          [at.whenFalse, true],
+        ] as const) {
+          // A part inside a part needs both conditions — found by review, the outer one used to replace
+          // the inner one, and a link under the outer alone was silent.
+          for (const view of viewsOfPart(arm)) {
+            if (view.route === undefined) continue;
+            const needs = conditionalRoutes.get(view.route) ?? [];
+            const guard = { condition, negated: negated !== flipped };
+            if (!needs.some((one) => one.condition === guard.condition && one.negated === guard.negated))
+              needs.push(guard);
+            conditionalRoutes.set(view.route, needs);
+          }
+        }
+        take(at.whenTrue);
+        take(at.whenFalse);
+        return;
+      }
+      if (!ts.isIdentifier(at)) return;
+      const part = resolve(at);
+      if (part) tablesTakenAsParts.add(part);
+    };
+    for (const argument of node.initializer.arguments) take(argument);
   }
 
   /**
@@ -1552,7 +1628,49 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
     return undefined;
   }
 
-  function viewsOf(call: ts.CallExpression): RouteView[] {
+  /** The views one part of a table holds — `viewsOf`, for a single argument. */
+  function viewsOfPart(part: ts.Expression): RouteView[] {
+    return viewsOf(ts.factory.createCallExpression(ts.factory.createIdentifier("createRoutes"), undefined, [part]));
+  }
+
+  /**
+   * A condition as one name to compare by: whitespace and parentheses dropped, and a leading `!`
+   * turned into the polarity, so `!import.meta.env.DEV` is `import.meta.env.DEV`, negated.
+   */
+  function conditionOf(expression: ts.Expression): { condition: string; negated: boolean } {
+    let at = expression;
+    let negated = false;
+    for (let hops = 0; ; ) {
+      if (ts.isParenthesizedExpression(at)) at = at.expression;
+      else if (ts.isPrefixUnaryExpression(at) && at.operator === ts.SyntaxKind.ExclamationToken) {
+        negated = !negated;
+        at = at.operand;
+      } else if (ts.isIdentifier(at) && hops < 20) {
+        // `const isAdmin = features.admin` and `if (isAdmin)` are one condition. Found reviewing the
+        // rule's design: compared as text, a guard written through a name was told it was missing.
+        const declaration = resolve(at)?.declarations?.[0];
+        const list = declaration?.parent;
+        if (
+          declaration === undefined ||
+          !ts.isVariableDeclaration(declaration) ||
+          declaration.initializer === undefined ||
+          list === undefined ||
+          !ts.isVariableDeclarationList(list) ||
+          (list.flags & ts.NodeFlags.Const) === 0
+        )
+          break;
+        at = declaration.initializer;
+        hops++;
+      } else break;
+    }
+    const text = at.getText().replace(/\s+/g, "");
+    // `import.meta.env.PROD` is `!import.meta.env.DEV`: the build that is not production is the
+    // development one. Two spellings of one condition, compared as one.
+    if (text === "import.meta.env.PROD") return { condition: "import.meta.env.DEV", negated: !negated };
+    return { condition: text, negated };
+  }
+
+  function viewsOf(call: ts.CallExpression, followed = new Set<ts.Node>([call])): RouteView[] {
     const found: RouteView[] = [];
     const take = (node: ts.Node): void => {
       const route = routeKeyOf(node);
@@ -1571,25 +1689,52 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
       });
     };
 
-    const table = call.arguments[0];
-    if (!table) return found;
-    if (!ts.isIdentifier(table)) {
-      scan(call);
-      return found;
-    }
-
-    const declaration = resolve(table)?.declarations?.[0];
-    if (declaration && ts.isVariableDeclaration(declaration) && declaration.initializer) scan(declaration);
-    const file = declaration?.getSourceFile();
-    if (file) {
-      ts.forEachChild(file, function walk(n) {
-        if (ts.isBinaryExpression(n) && n.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
-          const target = n.left;
-          if (ts.isElementAccessExpression(target) && target.expression.getText() === table.text) scan(n);
-        }
-        ts.forEachChild(n, walk);
-      });
-    }
+    /**
+     * Every argument is a PART — `createRoutes(tournamentRoutes, cond ? debugRoutes : undefined, { … })`,
+     * see the router's `DESIGN-module-routes.md`. Read before it was: only the first argument, so a
+     * page behind a condition's part was judged on no route at all.
+     *
+     * - a name holding another `createRoutes` is that table's parts, recursively;
+     * - a condition is BOTH arms — which one a build keeps is not this reading's question;
+     * - `undefined` adds nothing;
+     * - any other name is a table written into one binding, a loop's for one — followed as before.
+     */
+    const part = (argument: ts.Expression): void => {
+      let node = argument;
+      while (ts.isParenthesizedExpression(node) || ts.isAsExpression(node) || ts.isSatisfiesExpression(node))
+        node = node.expression;
+      if (ts.isConditionalExpression(node)) {
+        part(node.whenTrue);
+        part(node.whenFalse);
+        return;
+      }
+      if (!ts.isIdentifier(node)) {
+        scan(node);
+        return;
+      }
+      if (node.text === "undefined") return;
+      const declaration = resolve(node)?.declarations?.[0];
+      const initializer = declaration && ts.isVariableDeclaration(declaration) ? declaration.initializer : undefined;
+      if (initializer && ts.isCallExpression(initializer) && callsRouteFactory(initializer)) {
+        if (followed.has(initializer)) return;
+        followed.add(initializer);
+        found.push(...viewsOf(initializer, followed));
+        return;
+      }
+      if (initializer) scan(declaration as ts.Node);
+      const file = declaration?.getSourceFile();
+      const name = node.text;
+      if (file) {
+        ts.forEachChild(file, function walk(n) {
+          if (ts.isBinaryExpression(n) && n.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+            const target = n.left;
+            if (ts.isElementAccessExpression(target) && target.expression.getText() === name) scan(n);
+          }
+          ts.forEachChild(n, walk);
+        });
+      }
+    };
+    for (const argument of call.arguments) part(argument);
     return found;
   }
 
@@ -1704,6 +1849,104 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
    * A pattern that is not a literal is skipped too — the claim is then a runtime value, and what it
    * names cannot be quoted back to the reader.
    */
+  /**
+   * `<Link href="/debug">`, `this.nav.push("/admin")`, `route("/admin/:id", …)` — a link this can read,
+   * with the conditions it sits under, judged after the walk by `linksOffTheirCondition`.
+   *
+   * Only what is WRITTEN is read: a literal, or a template whose `${…}` each stand for one segment. A
+   * value worked out at runtime names no route this can quote back, and is left alone.
+   */
+  function collectRouteLink(node: ts.Node, cls: ts.ClassDeclaration, self: ComponentNode): void {
+    const written = (value: ts.Expression | undefined): { href: string; sample: string } | undefined => {
+      if (value === undefined) return undefined;
+      const literal = literalStringOf(value);
+      if (literal !== undefined) return { href: literal, sample: literal };
+      if (!ts.isTemplateExpression(value)) return undefined;
+      const parts = [value.head.text, ...value.templateSpans.map((span) => span.literal.text)];
+      return { href: parts.join("${…}"), sample: parts.join("x") };
+    };
+    const add = (at: ts.Node, link: { href: string; sample?: string; pattern?: string }): void => {
+      routeLinks.push({ owner: self, ...link, guards: guardsOf(at, cls), node: at });
+    };
+
+    if ((ts.isJsxSelfClosingElement(node) || ts.isJsxOpeningElement(node)) && knownAs(node.tagName).has("Link")) {
+      const href = node.attributes.properties.find(
+        (one): one is ts.JsxAttribute => ts.isJsxAttribute(one) && one.name.getText() === "href",
+      );
+      const value =
+        href?.initializer === undefined
+          ? undefined
+          : ts.isJsxExpression(href.initializer)
+            ? href.initializer.expression
+            : href.initializer;
+      const link = written(value);
+      if (link) add(node, link);
+      return;
+    }
+    if (!ts.isCallExpression(node)) return;
+    const callee = node.expression;
+    if (
+      ts.isPropertyAccessExpression(callee) &&
+      (callee.name.text === "push" || callee.name.text === "replace") &&
+      navigatorMemberOf(callee.expression, cls) !== undefined
+    ) {
+      const link = written(node.arguments[0]);
+      if (link) add(node, link);
+      return;
+    }
+    if (ts.isIdentifier(callee) && knownAs(callee).has("route")) {
+      const pattern = literalStringOf(node.arguments[0]);
+      if (pattern !== undefined) add(node, { href: pattern, pattern });
+    }
+  }
+
+  /** Whether a statement always leaves its function: a `return` or a `throw`, alone or last in a block. */
+  function exits(statement: ts.Statement): boolean {
+    if (ts.isReturnStatement(statement) || ts.isThrowStatement(statement)) return true;
+    if (ts.isBlock(statement)) {
+      const last = statement.statements.at(-1);
+      return last !== undefined && exits(last);
+    }
+    return false;
+  }
+
+  /** The conditions a node sits under inside its class: an `if`, a `&&`/`||`, a `? :`, an early return. */
+  function guardsOf(node: ts.Node, cls: ts.ClassDeclaration): { condition: string; negated: boolean }[] {
+    const guards: { condition: string; negated: boolean }[] = [];
+    let child: ts.Node = node;
+    for (let at = node.parent; at !== undefined && at !== cls; child = at, at = at.parent) {
+      const under = (condition: ts.Expression, whenTrue: boolean): void => {
+        // `a && b && <Link />` is under `a` and under `b` — found by review, the chain was read as one
+        // condition and matched none.
+        let at = condition;
+        while (ts.isParenthesizedExpression(at)) at = at.expression;
+        if (whenTrue && ts.isBinaryExpression(at) && at.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken) {
+          under(at.left, true);
+          under(at.right, true);
+          return;
+        }
+        const read = conditionOf(at);
+        guards.push({ condition: read.condition, negated: read.negated !== !whenTrue });
+      };
+      // `if (!cond) return …;` above, in the same block: everything after it runs only under `cond`.
+      // Found by review — the commonest way to write a debug-only render, and it was reported.
+      if (ts.isBlock(at) || ts.isSourceFile(at) || ts.isCaseClause(at) || ts.isDefaultClause(at)) {
+        for (const earlier of at.statements) {
+          if (earlier === child) break;
+          if (ts.isIfStatement(earlier) && earlier.elseStatement === undefined && exits(earlier.thenStatement))
+            under(earlier.expression, false);
+        }
+      }
+      if (ts.isIfStatement(at) && child !== at.expression) under(at.expression, child === at.thenStatement);
+      else if (ts.isConditionalExpression(at) && child !== at.condition) under(at.condition, child === at.whenTrue);
+      else if (ts.isBinaryExpression(at) && child === at.right) {
+        if (at.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken) under(at.left, true);
+        if (at.operatorToken.kind === ts.SyntaxKind.BarBarToken) under(at.left, false);
+      }
+    }
+    return guards;
+  }
+
   function collectParamsRead(node: ts.Node, cls: ts.ClassDeclaration, self: ComponentNode): void {
     if (!ts.isCallExpression(node)) return;
     const access = node.expression;
@@ -2581,6 +2824,7 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
       collectCall(node, self);
       collectFactory(node, self);
       collectParamsRead(node, cls, self);
+      collectRouteLink(node, cls, self);
 
       // <RouteOutlet routes={routes} /> — the views mount under the OUTLET, not under the
       // component that renders it. The distinction matters: the outlet is what publishes the
@@ -2822,7 +3066,7 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
     if (anOutletSpreadsUnread) return [];
     const found: UnreachableRouteIssue[] = [];
     for (const [symbol, views] of routeTables) {
-      if (views.length === 0) continue;
+      if (views.length === 0 || tablesTakenAsParts.has(symbol)) continue;
       const outlets = mountedTables.get(symbol) ?? [];
       const why =
         outlets.length === 0 ? "unmounted" : outlets.some((outlet) => reached.has(outlet)) ? undefined : "stranded";
@@ -2914,6 +3158,55 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
    *
    * `wanted` is the CLAIMED keys rather than a pattern's `:names`, and that is the only difference.
    */
+  /**
+   * Each link to a route under a condition, judged: silent when the link sits under the same
+   * condition, the same way round, or when every route its component is rendered by is under it too
+   * — a debug page linking to another debug page. See `LinkToConditionalRouteIssue`.
+   */
+  function linksOffTheirCondition(
+    routesAbove: Map<ComponentNode, Set<string | null | undefined>>,
+  ): LinkToConditionalRouteIssue[] {
+    if (conditionalRoutes.size === 0) return [];
+    type Guard = { condition: string; negated: boolean };
+    const patterns = [...conditionalRoutes.keys()].map((route) => ({
+      route,
+      regex: new RegExp(`^${route.replace(/:\w+/g, "[\\w-]+")}$`),
+    }));
+    const same = (one: Guard, other: Guard) => one.condition === other.condition && one.negated === other.negated;
+
+    const found: LinkToConditionalRouteIssue[] = [];
+    for (const link of routeLinks) {
+      const route =
+        link.pattern !== undefined
+          ? conditionalRoutes.has(link.pattern)
+            ? link.pattern
+            : undefined
+          : // A query and a fragment do not change which route a link reaches — found by review.
+            patterns.find((one) => one.regex.test((link.sample ?? link.href).replace(/[?#].*$/, "")))?.route;
+      if (route === undefined) continue;
+      const needed = conditionalRoutes.get(route) as Guard[];
+      const covered = (have: readonly Guard[]) => needed.every((need) => have.some((one) => same(one, need)));
+      if (covered(link.guards)) continue;
+      const above = [...(routesAbove.get(link.owner) ?? [])];
+      const onlyThere = above.every((one) => {
+        const guards = typeof one === "string" ? conditionalRoutes.get(one) : undefined;
+        return guards !== undefined && covered(guards);
+      });
+      if (above.length > 0 && onlyThere) continue;
+      found.push({
+        component: link.owner.name,
+        href: link.href,
+        route,
+        condition: needed
+          .map((one) => `${one.negated ? "!" : ""}${one.condition}`)
+          .sort()
+          .join(" && "),
+        ...positionOf(link.node),
+      });
+    }
+    return found.sort((a, b) => (a.file === b.file ? a.line - b.line : a.file < b.file ? -1 : 1));
+  }
+
   function keysOffTheRoute(
     reached: Set<ComponentNode>,
     routesAbove: Map<ComponentNode, Set<string | null | undefined>>,

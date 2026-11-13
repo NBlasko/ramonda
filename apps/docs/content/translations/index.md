@@ -150,8 +150,8 @@ import { createRoutes, Navigator, Router, RouteOutlet } from "@ramonda/router";
 
 const routes = createRoutes({ "/:lang/matches": <MatchCount count={3} /> });
 declare module "@ramonda/router" {
-  interface Register {
-    routes: typeof routes;
+  interface Routes {
+    app: typeof routes;
   }
 }
 const [LanguageProvider] = createContext({ locale: "en" as Locale });

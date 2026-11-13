@@ -59,8 +59,8 @@ import { Home } from "./Home";
 export const routes = createRoutes({ "/": <Home />, "/about": <Home />, "/users/:id": <Home /> });
 `;
 const REGISTER = `declare module "@ramonda/router" {
-  interface Register {
-    routes: typeof routes;
+  interface Routes {
+    app: typeof routes;
   }
 }
 `;
@@ -83,7 +83,7 @@ export class Home extends Component {
     });
     expect(errors).toHaveLength(1);
     expect(errors[0]).toMatch(/^Home\.tsx: /);
-    expect(errors[0]).toContain("declare module '@ramonda/router' { interface Register { routes: typeof routes } }");
+    expect(errors[0]).toContain("declare module '@ramonda/router' { interface Routes { app: typeof routes } }");
     expect(errors[0]).not.toContain("\\");
   });
 
@@ -129,6 +129,59 @@ export class Home extends Component {
     });
     expect(errors).toHaveLength(1);
     expect(errors[0]).toContain(`'"/missing"'`);
+  });
+
+  /**
+   * Tables under two names merge: the app's assembled table, and a module lifted into a package that
+   * registers its own slice — `DESIGN-module-routes.md`. A path in both is one path, twice.
+   */
+  test("two registered tables merge, and either one's paths are accepted", () => {
+    const errors = errorsOf({
+      "routes.tsx": TABLE + REGISTER,
+      "tournaments.tsx": `import { createRoutes } from "@ramonda/router";
+import { Home } from "./Home";
+export const tournamentRoutes = createRoutes({ "/tournaments/:id": <Home /> });
+declare module "@ramonda/router" {
+  interface Routes {
+    tournaments: typeof tournamentRoutes;
+  }
+}
+`,
+      "Home.tsx": `import { Component } from "@ramonda/core";
+import { Link } from "@ramonda/router";
+export class Home extends Component {
+  render() { return <div><Link href="/about">a</Link><Link href="/tournaments/7">t</Link><Link href="/nope">x</Link></div>; }
+}
+`,
+    });
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain(`'"/nope"'`);
+  });
+
+  /**
+   * The point of a module's own registration: built ALONE, as a package, its links are checked against
+   * its own routes, and a path of the app's or another module's is refused.
+   */
+  test("a module built alone checks its links against its own slice only", () => {
+    const errors = errorsOf({
+      "tournaments.tsx": `import { createRoutes } from "@ramonda/router";
+import { Page } from "./Page";
+export const tournamentRoutes = createRoutes({ "/tournaments": <Page />, "/tournaments/:id": <Page /> });
+declare module "@ramonda/router" {
+  interface Routes {
+    tournaments: typeof tournamentRoutes;
+  }
+}
+`,
+      "Page.tsx": `import { Component } from "@ramonda/core";
+import { Link } from "@ramonda/router";
+export class Page extends Component {
+  render() { return <div><Link href="/tournaments/7">t</Link><Link href="/about">a</Link></div>; }
+}
+`,
+    });
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain(`'"/about"'`);
   });
 
   /**

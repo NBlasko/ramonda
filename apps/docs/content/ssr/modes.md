@@ -36,8 +36,8 @@ export const routes = createRoutes({
   "*": <NotFound />,
 });
 declare module "@ramonda/router" {
-  interface Register {
-    routes: typeof routes;
+  interface Routes {
+    app: typeof routes;
   }
 }
 ```
@@ -82,6 +82,39 @@ defineServer(routes, {
 So the route table is the single source of truth, and both its registration (which types your
 `<Link href>`) and `defineServer` (which types this config) are checked against it. You never
 maintain two lists by hand. (The `"*"` fallback is not a real destination, so it needs no entry.)
+
+### A table from parts keeps its modes beside it
+
+When the table is [put together from parts](/routing#a-table-from-parts), a part's modes belong with
+it: whether a page is baked is a fact about that page and its data. Write them next to the part, in a
+server-only file, typed by the part's own table — and spread them into the app's config:
+
+```tsx
+// server/players.ts  (SERVER ONLY)
+import type { ServerConfig } from "@ramonda/router/server";
+import { createRoutes } from "@ramonda/router";
+
+export const playerRoutes = createRoutes({ "/players": <Home />, "/players/:id": <Player /> });
+
+export const playerModes = {
+  "/players": { prerender: true },
+  "/players/:id": {},
+} satisfies ServerConfig<typeof playerRoutes>;
+```
+
+```tsx
+// server/routes.ts  (SERVER ONLY)
+import { playerModes } from "./players";
+
+export const server = defineServer(routes, {
+  ...playerModes,
+  "/": { prerender: true },
+});
+```
+
+The config is still exhaustive over the whole table: a part's route the spread does not bring is a
+type error in `server/routes.ts`, and `satisfies` refuses a mode for a path the part does not have.
+A spread works here and not in `createRoutes`, because this is a plain object and a table is compiled.
 
 ## Default is dynamic
 
