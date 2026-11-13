@@ -127,14 +127,17 @@ The refusals follow: `oxc: false`, and an `oxc.jsx` that is not the automatic ru
 
 ## esbuild
 
-For a build you call yourself, spread the options in:
+For a build you call yourself, spread the options in and add the plugin. The options are the transform's
+settings; the plugin compiles the JSX, as `ramonda()` does on Vite, so a production build runs the same code
+as the dev server:
 
 ```ts
 import { build } from "esbuild";
-import { ramondaOptions } from "@ramonda/build/esbuild";
+import { ramonda, ramondaOptions } from "@ramonda/build/esbuild";
 
 await build({
   ...ramondaOptions,
+  plugins: [ramonda()],
   entryPoints: ["src/entry-client.tsx"],
   bundle: true,
   format: "esm",
@@ -142,8 +145,10 @@ await build({
 });
 ```
 
+The options spread on their own build the JSX as `jsx()` calls, as `ramonda({ compile: false })` does.
+
 For a build assembled somewhere you cannot reach — a tool that calls esbuild for you and takes
-plugins — there is the plugin form, which fills in whatever the build did not set:
+plugins — the plugin alone fills in whatever the build did not set, and compiles the JSX:
 
 ```ts
 import { build } from "esbuild";

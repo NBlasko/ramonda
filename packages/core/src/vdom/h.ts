@@ -303,8 +303,7 @@ export function createVNode(
       svgAttributes[IS_SVG] = true;
       return createRamonda(name, svgAttributes, parsedChildren);
     }
-    const upperCaseName = name.toUpperCase();
-    return createRamonda(upperCaseName, attributes, parsedChildren);
+    return createRamonda(nodeNameOf(name), attributes, parsedChildren);
   }
 
   // 2. Classes (components) — each becomes one vnode; what it draws is its render's business.
@@ -377,4 +376,13 @@ export function createVNode(
   }
 
   return createRamonda(FALLBACK_TAG, {}, []);
+}
+
+/**
+ * A tag's `nodeName` as the DOM gives it — an HTML one upper case, an SVG one as written — and so the
+ * `name` of its vnode. A compiled template's elements are named by the same rule (`core/block.ts`), so
+ * the two paths compare one spelling.
+ */
+export function nodeNameOf(tag: string): string {
+  return svgElements.has(tag) ? tag : tag.toUpperCase();
 }

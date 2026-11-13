@@ -78,14 +78,16 @@ export default defineConfig({ plugins: [ramonda()] });
 
 ## esbuild
 
-For a build you call yourself, spread the options:
+For a build you call yourself, spread the options and add the plugin, which compiles the JSX as `ramonda()`
+does on Vite:
 
 ```ts
 import { build } from "esbuild";
-import { ramondaOptions } from "@ramonda/build/esbuild";
+import { ramonda, ramondaOptions } from "@ramonda/build/esbuild";
 
 await build({
   ...ramondaOptions,
+  plugins: [ramonda()],
   entryPoints: ["src/entry-client.tsx"],
   bundle: true,
   format: "esm",
@@ -93,13 +95,8 @@ await build({
 });
 ```
 
-For a build assembled somewhere you cannot reach, there is a plugin:
-
-```ts
-import { ramonda } from "@ramonda/build/esbuild";
-```
-
-It fills in whatever the build did not set.
+The options spread on their own build the JSX as `jsx()` calls. For a build assembled somewhere you cannot
+reach, the plugin alone fills in whatever the build did not set, and compiles the JSX.
 
 ## It refuses rather than corrects
 

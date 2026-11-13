@@ -8,7 +8,8 @@ import { flushSync } from "../testing";
 import { componentAt } from "../core/DiffAndMerge";
 import * as diffAndMerge from "../core/DiffAndMerge";
 import { resetDiagnostics } from "../debug/diagnostics";
-import { viewOf, type BlockVNode } from "../core/block";
+import * as domNesting from "../debug/domNesting";
+import { applyBlock, viewOf, type BlockVNode } from "../core/block";
 import * as attribute from "../core/Attribute";
 
 /**
@@ -919,28 +920,70 @@ describe("a template's own nesting, in development", () => {
     return records;
   };
 
-  test("is reported on a page that hydrates without building a block", async () => {
+  test("is not reported on a page that only hydrates, as the jsx() path's is not: the server said it", async () => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
     vi.spyOn(console, "log").mockImplementation(() => {});
+    let compiled = true;
     class Card extends Component {
       render() {
-        return <main>{__block(STRAY_ITEM, [])}</main>;
+        return (
+          <main>
+            {compiled ? (
+              __block(STRAY_ITEM, [])
+            ) : (
+              <div>
+                <li>x</li>
+              </div>
+            )}
+          </main>
+        );
       }
     }
-    const container = document.createElement("div");
-    document.body.appendChild(container);
-    container.innerHTML = await renderToString(<Card />);
-    const records = collecting();
+    const seen: number[] = [];
     try {
-      hydrateRoot(<Card />, container);
-      await Promise.resolve();
-      await Promise.resolve();
+      for (const path of [true, false]) {
+        compiled = path;
+        const container = document.createElement("div");
+        document.body.appendChild(container);
+        container.innerHTML = await renderToString(<Card />);
+        const records = collecting();
+        hydrateRoot(<Card />, container);
+        await Promise.resolve();
+        await Promise.resolve();
+        seen.push(codes(records));
+        container.remove();
+      }
     } finally {
       globalThis.__RAMONDA_DIAGNOSTICS__ = undefined;
-      container.remove();
       vi.restoreAllMocks();
     }
-    expect(codes(records)).toBe(1);
+    expect(seen).toEqual([0, 0]);
+  });
+
+  test("is checked once for a template, however many blocks are built from it", async () => {
+    const asked = vi.spyOn(domNesting, "checkTagNesting");
+    class Rows extends Component {
+      render() {
+        return (
+          <main>
+            {__block(STRAY_ITEM, [])}
+            {__block(STRAY_ITEM, [])}
+            {__block(STRAY_ITEM, [])}
+          </main>
+        );
+      }
+    }
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    resetDiagnostics();
+    try {
+      const app = await getDOM<Rows>(<Rows />);
+      await app.settle();
+    } finally {
+      vi.restoreAllMocks();
+    }
+    // `<div>` > `<li>`: one pair, asked once.
+    expect(asked.mock.calls).toEqual([["DIV", "LI"]]);
   });
 
   test("is reported again after the diagnostics are reset, as an element the diff builds is", async () => {
@@ -1008,6 +1051,28 @@ describe("a block's element, while its holes are written", () => {
     const app = await getDOM<Holder>(<Holder />);
     await app.settle();
     expect(seen[0]).toBe(true);
+  });
+});
+
+describe("a template used in more than one document", () => {
+  test("builds its root in each one's inert document, so no document keeps another's alive", () => {
+    const CARD = __template({ t: "article", a: { id: "card" }, c: ["x"] });
+    const first = applyBlock(__block(CARD, []) as BlockVNode, undefined, undefined);
+    const other = document.implementation.createHTMLDocument("");
+    vi.stubGlobal("document", other);
+    let second: Element;
+    try {
+      second = applyBlock(__block(CARD, []) as BlockVNode, undefined, undefined);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    expect({
+      first: first.ownerDocument === document,
+      second: second.ownerDocument === other,
+      roots: [document, other]
+        .map((page) => page.createElement("template").content.ownerDocument)
+        .every((inert) => CARD.roots.has(inert)),
+    }).toEqual({ first: true, second: true, roots: true });
   });
 });
 

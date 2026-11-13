@@ -125,12 +125,13 @@ function damage(parent: string, child: string): string {
  * in a development build and nothing at all in production.
  */
 export function checkNesting(parent: Node, child: Node): void {
-  const parentTag = parent.nodeName;
-  const childTag = child.nodeName;
-
   // Only element nodes have a nesting rule.
   if (parent.nodeType !== 1 || child.nodeType !== 1) return;
+  checkTagNesting(parent.nodeName, child.nodeName);
+}
 
+/** The same rules, asked of two elements' `nodeName`s — what a compiled template's description holds. */
+export function checkTagNesting(parentTag: string, childTag: string): void {
   const rule = ONLY_INSIDE[childTag];
   if (rule) {
     if (rule.parents.includes(parentTag)) return;

@@ -572,6 +572,13 @@ function reportable(data: unknown): Record<string, unknown> | undefined {
 /** Test-only: lets each test observe a diagnostic that a previous one deduped. */
 export function resetDiagnostics(): void {
   reported.clear();
+  diagnosticsGeneration++;
 }
+
+/**
+ * How many times the reported set has been cleared. A check that runs once per thing — a compiled
+ * template's nesting — runs again when it changes, so a report dropped as already said is said again.
+ */
+export let diagnosticsGeneration = 0;
 
 if (__DEV__) (globalThis.__RAMONDA_DIAGNOSTICS_RESET__ ??= new Set()).add(resetDiagnostics);

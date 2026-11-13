@@ -34,9 +34,10 @@ import {
   writeHoleAttributes,
 } from "./Attribute";
 import { diffChildrenOf, holdsARegion } from "./DiffAndMerge";
-import { normalizeChildren } from "../vdom/h";
+import { nodeNameOf, normalizeChildren } from "../vdom/h";
 import { COMPONENT_RUNTIME } from "./runtime";
-import { checkNesting } from "../debug/domNesting";
+import { checkTagNesting } from "../debug/domNesting";
+import { diagnosticsGeneration } from "../debug/diagnostics";
 import { SOURCE, type Source } from "../debug/source";
 import type { MaybeComponent, VNodeString } from "../types/vdom";
 
@@ -85,12 +86,18 @@ export interface Template {
   /** Both kinds of child hole, for a comparison that asks of each hole whether it holds children. */
   readonly childHoles: ReadonlySet<number>;
   /**
-   * Built on first use, in an inert document — a `<template>`'s — and imported into the page's for each
-   * block. Inert, so building it constructs no custom element and loads no image: those happen once, for
-   * the copy the page shows, as they do for an element `jsx()` builds. Imported rather than cloned, so the
-   * copy belongs to the document it is put into from the start and nothing is adopted when it goes in.
+   * The root, built on first use in each inert document — a `<template>`'s — and imported into the page's
+   * for each block. Inert, so building it constructs no custom element and loads no image: those happen
+   * once, for the copy the page shows, as they do for an element `jsx()` builds. Imported rather than
+   * cloned, so the copy belongs to the document it is put into from the start and nothing is adopted when
+   * it goes in.
+   *
+   * Kept per document, weakly: a server DOM whose `<template>` shares the page's document (linkedom) builds
+   * one per request document, and lets it go with that document rather than keeping it alive.
    */
-  root?: Element;
+  readonly roots: WeakMap<Document, Element>;
+  /** In development: the diagnostics generation this template's nesting was last checked in. */
+  nestingChecked?: number;
 }
 
 interface BlockData {
@@ -116,23 +123,21 @@ interface BlockState {
 export type BlockVNode = VNodeString & { [BLOCK]: BlockData };
 
 /**
- * The template's own parent and child pairs, checked against HTML's nesting rules (RMD028) each time a
- * block is built or adopted — as the diff checks every element it builds — so a page hydrated without
- * building a single block, or a run after the diagnostics were reset, still hears of one. Read off the
- * description, which is all the check needs: the names.
+ * The template's own parent and child pairs, checked against HTML's nesting rules (RMD028) where a block
+ * is built — as the diff checks every element it builds — once per template, and again after the
+ * diagnostics were reset. Read off the description, which is all the check needs: the names.
  */
-function checkTemplateNesting(node: TemplateNode): void {
-  const parent = { nodeType: 1, nodeName: nodeNameOf(node.t) } as unknown as Node;
-  for (const child of node.c ?? []) {
-    if (typeof child === "string") continue;
-    checkNesting(parent, { nodeType: 1, nodeName: nodeNameOf(child.t) } as unknown as Node);
-    checkTemplateNesting(child);
-  }
-}
-
-/** A tag's `nodeName` as the DOM gives it: an HTML one upper case, an SVG one as written. */
-function nodeNameOf(tag: string): string {
-  return svgElements.has(tag) ? tag : tag.toUpperCase();
+function checkTemplateNesting(template: Template): void {
+  if (template.nestingChecked === diagnosticsGeneration) return;
+  template.nestingChecked = diagnosticsGeneration;
+  const walk = (node: TemplateNode): void => {
+    for (const child of node.c ?? []) {
+      if (typeof child === "string") continue;
+      checkTagNesting(nodeNameOf(node.t), nodeNameOf(child.t));
+      walk(child);
+    }
+  };
+  walk(template.description);
 }
 
 /** Whether `element` holds one text node and nothing else — the node a text hole writes straight into. */
@@ -161,7 +166,7 @@ export function template(description: TemplateNode): Template {
   walk(description, []);
   const rootName = nodeNameOf(description.t);
   const childHoles = new Set([...loneHoles, ...childrenHoles]);
-  return { description, rootName, sites, loneHoles, childrenHoles, childHoles };
+  return { description, rootName, sites, loneHoles, childrenHoles, childHoles, roots: new WeakMap() };
 }
 
 /**
@@ -212,13 +217,25 @@ function build(node: TemplateNode, inert: Document): Element {
 }
 
 function rootOf(template: Template): Element {
-  if (template.root === undefined) {
-    // A server DOM with no inert document of its own (linkedom's `<template>` shares the page's) builds in
-    // the page's: it constructs no custom element and loads no image either way.
-    const inert = (document.createElement("template") as HTMLTemplateElement).content?.ownerDocument ?? document;
-    template.root = build(template.description, inert);
+  const inert = inertDocument();
+  let root = template.roots.get(inert);
+  if (root === undefined) {
+    root = build(template.description, inert);
+    template.roots.set(inert, root);
   }
-  return template.root;
+  return root;
+}
+
+/** Each page document's inert one, found once: a `<template>`'s, or the page's where it has none of its own. */
+const inertDocuments = new WeakMap<Document, Document>();
+
+function inertDocument(): Document {
+  let inert = inertDocuments.get(document);
+  if (inert === undefined) {
+    inert = (document.createElement("template") as HTMLTemplateElement).content?.ownerDocument ?? document;
+    inertDocuments.set(document, inert);
+  }
+  return inert;
 }
 
 function resolve(root: Element, path: readonly number[]): Element {
@@ -364,7 +381,7 @@ export function applyBlock(vnode: BlockVNode, existing: Element | undefined, own
   const known = blockStateOf(existing);
 
   if (existing === undefined || known === undefined || known.template !== template) {
-    if (__DEV__) checkTemplateNesting(template.description);
+    if (__DEV__) checkTemplateNesting(template);
     const root = document.importNode(rootOf(template), true);
     const sites = template.sites;
     const elements: Element[] = new Array(sites.length);
@@ -504,7 +521,6 @@ export function adoptBlock(
   const sites = template.sites;
   const elements: Element[] = [];
   const all: (readonly [Element, TemplateNode])[] = [];
-  if (__DEV__) checkTemplateNesting(template.description);
   if (!matches(template.description, root, elements, all, miss)) return false;
   // What only the server wrote — an attribute no template part or hole names, the exposed request's
   // stamp among them — goes, as it does from an element the attribute diff adopts.
