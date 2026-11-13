@@ -303,7 +303,8 @@ export function createVNode(
       svgAttributes[IS_SVG] = true;
       return createRamonda(name, svgAttributes, parsedChildren);
     }
-    return createRamonda(nodeNameOf(name), attributes, parsedChildren);
+    // `nodeNameOf`'s rule, with the SVG half already answered above.
+    return createRamonda(name.toUpperCase(), attributes, parsedChildren);
   }
 
   // 2. Classes (components) — each becomes one vnode; what it draws is its render's business.

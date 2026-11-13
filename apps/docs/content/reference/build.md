@@ -72,9 +72,10 @@ row(row: Row) {
 Here the template is the `<tr>` and its cells with their classes, and each render computes three values:
 the row's class, its id and its label. Your `render()` and the JSX in it read exactly as before.
 
-Components, fragments, elements with a spread (`{...props}`) and an element that writes one attribute
-twice (`for` beside `htmlFor`) are compiled the ordinary way, and an
-element inside them is a template of its own. Each JSX tree is its own template, so the two branches of
+These are compiled the ordinary way, and an element inside them is a template of its own: a component, a
+fragment, an element with a spread (`{...props}`), a namespaced tag or attribute (`xlink:href`), a `class`
+attribute (write `className`), a `children` attribute, a `key` below a tree's root, an element that writes
+one attribute twice (`for` beside `htmlFor`), and text or an attribute holding an entity (`&amp;`). Each JSX tree is its own template, so the two branches of
 `cond ? <input className="a" /> : <input className="b" />` are two elements: switching builds the other one,
 and focus, the caret and an open `<details>` stay with the one that went. One element whose attribute
 changes — `<input className={cond ? "a" : "b"} />` — is the same element throughout. `ramonda({ compile: false })` builds the app without the

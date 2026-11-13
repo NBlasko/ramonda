@@ -96,6 +96,8 @@ export interface Template {
    * one per request document, and lets it go with that document rather than keeping it alive.
    */
   readonly roots: WeakMap<Document, Element>;
+  /** In development: the static parent and child `nodeName`s, two by two, that RMD028 is asked about. */
+  readonly nesting?: readonly string[];
   /** In development: the diagnostics generation this template's nesting was last checked in. */
   nestingChecked?: number;
 }
@@ -130,14 +132,8 @@ export type BlockVNode = VNodeString & { [BLOCK]: BlockData };
 function checkTemplateNesting(template: Template): void {
   if (template.nestingChecked === diagnosticsGeneration) return;
   template.nestingChecked = diagnosticsGeneration;
-  const walk = (node: TemplateNode): void => {
-    for (const child of node.c ?? []) {
-      if (typeof child === "string") continue;
-      checkTagNesting(nodeNameOf(node.t), nodeNameOf(child.t));
-      walk(child);
-    }
-  };
-  walk(template.description);
+  const pairs = template.nesting as readonly string[];
+  for (let i = 0; i < pairs.length; i += 2) checkTagNesting(pairs[i], pairs[i + 1]);
 }
 
 /** Whether `element` holds one text node and nothing else — the node a text hole writes straight into. */
@@ -151,6 +147,7 @@ export function template(description: TemplateNode): Template {
   const sites: Site[] = [];
   const loneHoles: number[] = [];
   const childrenHoles: number[] = [];
+  const nesting: string[] | undefined = __DEV__ ? [] : undefined;
   const walk = (node: TemplateNode, path: number[]): void => {
     if (node.d !== undefined || node.h !== undefined || node.k !== undefined) {
       const svg = svgElements.has(node.t);
@@ -160,13 +157,15 @@ export function template(description: TemplateNode): Template {
     if (node.h !== undefined) loneHoles.push(node.h);
     if (node.k !== undefined) childrenHoles.push(node.k);
     node.c?.forEach((child, index) => {
-      if (typeof child !== "string") walk(child, [...path, index]);
+      if (typeof child === "string") return;
+      nesting?.push(nodeNameOf(node.t), nodeNameOf(child.t));
+      walk(child, [...path, index]);
     });
   };
   walk(description, []);
   const rootName = nodeNameOf(description.t);
   const childHoles = new Set([...loneHoles, ...childrenHoles]);
-  return { description, rootName, sites, loneHoles, childrenHoles, childHoles, roots: new WeakMap() };
+  return { description, rootName, sites, loneHoles, childrenHoles, childHoles, roots: new WeakMap(), nesting };
 }
 
 /**

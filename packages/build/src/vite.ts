@@ -252,17 +252,19 @@ export function ramonda(options: RamondaOptions = {}): [VitePluginLike, CompileP
     },
   };
 
+  /** A development build: the compiled templates say where each element was written, as `jsxDEV` is told. */
+  let sources = false;
+
   /**
    * The JSX compiler. It reads the source as Vite read it — which keeps to `server.fs.allow` — ahead of
    * the transform that compiles JSX to `jsx()` calls: a `pre` plugin's transform runs before every plain
    * plugin's. It is not `order: "pre"` itself, so that a transform which is — `@ramonda/css`'s, which
-   * rewrites syntax no parser reads — has run first, whatever order the plugins are listed in. A module with a query is Vite's own (`?raw`, `?url`), one in
-   * `node_modules` was built by somebody else, and one whose id starts with `\0` is another plugin's. The
-   * compiler — the parser with it — is imported on the first module it compiles: a build with
-   * `compile: false` never loads it.
+   * rewrites syntax no parser reads — has run first, whatever order the plugins are listed in.
+   *
+   * A module with a query is Vite's own (`?raw`, `?url`), one in `node_modules` was built by somebody
+   * else, and one whose id starts with `\0` is another plugin's. The compiler — the parser with it — is
+   * imported on the first module it compiles: a build with `compile: false` never loads it.
    */
-  /** A development build: the compiled templates say where each element was written, as `jsxDEV` is told. */
-  let sources = false;
   const compiler: CompilePluginLike = {
     name: "ramonda:compile",
     enforce: "pre",

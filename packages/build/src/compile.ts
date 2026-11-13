@@ -20,8 +20,9 @@
  *
  * A component, a fragment, an element with a spread (`{...props}`, whose attributes are not known here), a
  * namespaced tag or attribute, a `class` attribute (the runtime reports it and renames it), a `children`
- * attribute (JSX's way to give an element its children), a `key` below
- * the root, and text or an attribute holding an entity (`&amp;`), which the transform after this decodes.
+ * attribute (JSX's way to give an element its children), a `key` below the root, an element that writes
+ * one attribute twice (`for` beside `htmlFor`), and text or an attribute holding an entity (`&amp;`), which
+ * the transform after this decodes.
  * A host element inside one of these is still compiled, as a block of its own.
  *
  * ## The source stays where it was
