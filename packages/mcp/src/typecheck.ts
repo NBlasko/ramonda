@@ -68,8 +68,13 @@ export async function typeCheck(
   only?: string,
 ): Promise<TypeCheck> {
   const manifest = appManifest(tsconfig);
+  /**
+   * What is said about the asked file — and what belongs to no file, or to the tsconfig. Found by
+   * review: a `types` entry that is not installed fails the whole check with no file to point at, the
+   * build stopped on it, and keeping only the asked file's findings answered ok.
+   */
   const mine = (file: string | undefined) =>
-    only === undefined || (file !== undefined && spelled(file) === spelled(only));
+    only === undefined || file === undefined || spelled(file) === spelled(only) || spelled(file) === spelled(tsconfig);
 
   if (usesStyleBlocks(manifest)) {
     const entry = cssCheckFrom(dirname(manifest as string));

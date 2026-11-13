@@ -101,6 +101,23 @@ describe("the docs, read by a program", () => {
     expect(explainPage("RMD02")).toMatchObject({ found: false, meant: ["RMD020"] });
   });
 
+  /**
+   * Found by review: a page's path was joined to the docs folder as written, so `../` walked out of
+   * it — and through the MCP server an agent chooses that path, from whatever it last read.
+   */
+  test("a path that leaves the docs folder reads nothing outside it", () => {
+    packed();
+    const docs = process.env.RAMONDA_CHECK_DOCS as string;
+    writeFileSync(join(dirname(docs), "outside.md"), "# not a page\n");
+    try {
+      const name = `../outside`;
+      expect(docsPage(name).found).toBe(false);
+      expect(explainPage(`../../outside`).found).toBe(false);
+    } finally {
+      rmSync(join(dirname(docs), "outside.md"), { force: true });
+    }
+  });
+
   test("with no docs packed, it says so and where the page is online", () => {
     process.env.RAMONDA_CHECK_DOCS = join(tmpdir(), "no-such-docs-folder");
     expect(docsPage("forms/fields")).toMatchObject({ found: false, online: "https://ramonda.dev/forms/fields" });

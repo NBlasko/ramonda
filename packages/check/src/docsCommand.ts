@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { join, relative } from "node:path";
+import { join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { printWhole } from "./print";
 
@@ -77,6 +77,17 @@ function notPacked(online: string): DocsAnswer {
   };
 }
 
+/**
+ * The page file for a path, or `undefined` when the path leaves the docs folder.
+ *
+ * Found by review: the path was joined as written, so `../` read any `.md` beside or above the docs —
+ * and through the MCP server the path is an agent's, taken from whatever it last read.
+ */
+function pageFile(dir: string, path: string): string | undefined {
+  const file = resolve(dir, `${path}.md`);
+  return file.startsWith(resolve(dir) + sep) ? file : undefined;
+}
+
 /** A diagnostic code (`RMD020`, `rmq001`) or a checker rule (`unknown-hook-option`), explained. */
 export function explainPage(asked: string): DocsAnswer {
   const code = /^rm[dqfl]\d+$/i.test(asked);
@@ -84,8 +95,8 @@ export function explainPage(asked: string): DocsAnswer {
   const dir = docsDir();
   if (!existsSync(join(dir, "llms.txt"))) return notPacked(`${SITE}/${path}`);
 
-  const file = join(dir, `${path}.md`);
-  if (existsSync(file)) return { found: true, text: readFileSync(file, "utf8") };
+  const file = pageFile(dir, path);
+  if (file !== undefined && existsSync(file)) return { found: true, text: readFileSync(file, "utf8") };
   const family = code ? "reference/diagnostics/" : "rules/";
   const known = pagesIn(dir)
     .filter((page) => page.startsWith(family))
@@ -113,8 +124,8 @@ export function docsPage(asked?: string): DocsAnswer {
     .replace(/^\/+/, "")
     .replace(/\.md$/, "")
     .replace(/\/$/, "");
-  const file = join(dir, `${path === "" ? "index" : path}.md`);
-  if (existsSync(file)) return { found: true, text: readFileSync(file, "utf8") };
+  const file = pageFile(dir, path === "" ? "index" : path);
+  if (file !== undefined && existsSync(file)) return { found: true, text: readFileSync(file, "utf8") };
   const meant = closest(path, pagesIn(dir));
   return {
     found: false,

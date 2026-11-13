@@ -147,6 +147,33 @@ describe("ramonda-mcp", () => {
     }
   });
 
+  /**
+   * Found by review: asked about one file, the answer kept only findings IN that file, and a type
+   * check that fails for the whole project — a `types` entry that is not installed — has none. The
+   * build stopped on it, and `check_code` said ok.
+   */
+  test("check_code keeps an error that belongs to no file — the build stops on it too", async () => {
+    const away = mkdtempSync(join(tmpdir(), "mcp-global-"));
+    try {
+      writeFileSync(join(away, "package.json"), JSON.stringify({ name: "away" }));
+      writeFileSync(
+        join(away, "tsconfig.json"),
+        JSON.stringify({ compilerOptions: { noEmit: true, types: ["not-a-package"] }, include: ["."] }),
+      );
+      writeFileSync(join(away, "b.ts"), "export const b = 1;\n");
+      const result = report(
+        await client.callTool({
+          name: "check_code",
+          arguments: { tsconfig: join(away, "tsconfig.json"), path: join(away, "a.ts"), code: "export {};\n" },
+        }),
+      );
+      expect(result.ok).toBe(false);
+      expect(result.findings.map((one) => one.code)).toContain("TS2688");
+    } finally {
+      rmSync(away, { recursive: true, force: true });
+    }
+  });
+
   test("check_project is the app's own verdict", async () => {
     const result = report(await client.callTool({ name: "check_project", arguments: {} }));
     expect(result).toMatchObject({ tool: "ramonda-mcp", ok: true, findings: [] });
