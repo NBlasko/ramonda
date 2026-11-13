@@ -189,11 +189,23 @@ required). With modules, the app's `entry-server.tsx` lists every module's paths
   modes stay behind in the app;
 - `PRERENDER_PATHS`, the concrete pages of a `:param` route, are the module's data too.
 
-Recommended: **`defineServer` takes parts the way `createRoutes` does.** A module's server file —
-`src/modules/tournaments/server.ts`, server-only as `defineServer`'s own guard already requires — exports its
-slice's modes, typed by its own table; the app assembles them:
-`defineServer(routes, tournamentServer, { "/": { prerender: true } })`. The type still demands every path, now
-from the union of the parts. The alternative is to leave the modes in the app and accept the cross-boundary edit.
+REVISED 2026-11-13, before it was built: **`defineServer` does not change.** Taking parts as arguments would
+have collided with its third argument, the options (`{ defaultMode }`), and it is not needed: a server config is a
+plain object keyed by path, not a compiled table, so a spread works here. A part's modes are written beside the
+part, in a server-only file, typed by the part's own table, and spread into the app's config:
+
+```ts
+export const tournamentModes = {
+  "/tournaments": { prerender: true },
+  "/tournaments/:id": {},
+} satisfies ServerConfig<typeof tournamentRoutes>;
+
+defineServer(routes, { ...tournamentModes, "/": { prerender: true } });
+```
+
+Measured: the complete config is accepted; a path the spread does not bring is refused (TS2345); a mode for a path
+the part does not have is refused by `satisfies` (TS2353). `ramonda-check` does not read server modes at all, so
+the spread is no blind spot for it. The module owns its pages' modes, which was the point.
 
 **B. A part under a condition the build cannot fold — REVISED 2026-11-13: supported, not refused.**
 `features.admin ? adminRoutes : undefined`, a tenant's configuration read at startup, a flag: these are real
@@ -229,7 +241,8 @@ None. Built in this order, each step gated by the full check:
 
 1. **BUILT.** `createRoutes(...parts)` and `Routes { [name] }`, with the refusals (duplicate path, second `"*"`, a static
    path an earlier pattern shadows); templates, docs and apps move to `Routes { app }`.
-2. `defineServer(routes, ...parts)`.
+2. **BUILT** (docs only, `/ssr/modes`). A part's modes as a spread object typed `ServerConfig<typeof part>` — no
+   API change; see review A.
 3. `ramonda-check`: following a table's parts — names, both arms of a condition, a call with a written prefix —
    then the condition rule.
 4. The docs' module pages, with a lazy table.
