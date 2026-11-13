@@ -80,6 +80,13 @@ describe("createRoutes refuses what can never be meant", () => {
     expect(() => createRoutes({ "/files/:name.json": view("any"), "/files/a.txt": view("a") })).not.toThrow();
   });
 
+  /** Review round 3: a whole-param segment matches every value a param inside a later segment can take. */
+  test("a whole param hides a later segment with a param inside it", () => {
+    expect(() => createRoutes({ "/:page": view("any"), "/file-:id": view("file") })).toThrow(
+      /"\/file-:id" can never be reached: "\/:page"/,
+    );
+  });
+
   test("a fixed path hides only itself, whatever a sample would have said", () => {
     expect(() => createRoutes({ "/x/a": view("one"), "/:p/a": view("two") })).not.toThrow();
   });

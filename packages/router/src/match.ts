@@ -256,7 +256,9 @@ function hides(earlier: string, later: string): boolean {
   if (a.length !== b.length) return false;
   return a.every((segment, at) => {
     const other = b[at];
-    if (WHOLE_PARAM.test(segment)) return WHOLE_PARAM.test(other) || /^[\w-]+$/.test(other);
+    // A whole param takes any segment of `[\w-]` — a later param's values are of those too, so a
+    // segment like `file-:id` is all of them. Found by review: it was only matched as written.
+    if (WHOLE_PARAM.test(segment)) return /^[\w-]+$/.test(other.replace(/:\w+/g, "x"));
     // A param inside a segment — `:name.json` — matches what the router's own regex for it matches.
     // Found by review: compared as text, `/files/:name.json` did not hide `/files/a.json`.
     if (segment.includes(":") && !other.includes(":")) return segmentPattern(segment).test(other);

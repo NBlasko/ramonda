@@ -110,7 +110,8 @@ cannot be otherwise: the compiler sees one program, where `import.meta.env.DEV` 
 - the debug pages' own links, and links under the same condition — the same name, or the same expression — are
   silent. A `const` holding the condition is followed (`const isAdmin = features.admin`), and
   `import.meta.env.PROD` is read as `!import.meta.env.DEV` — both found reviewing this design, as valid code the
-  rule would have reported;
+  rule would have reported. So is an early return: after `if (!cond) return …;`, the rest of the block is under
+  `cond`, and a chain `a && b && <Link />` is under both;
 - the condition is read where the link is WRITTEN: a guard around the call to a method that holds the link is not
   followed. The checkable way is the condition at the link, or the link in the part's own pages — the message says
   so.

@@ -40,12 +40,13 @@ describe("a link to a route that exists only under a condition", () => {
  * was silent.
  */
 describe("a route behind two conditions", () => {
-  test("needs both, and a link under one of them is reported", () => {
+  test("needs both, and a link under one of them is reported — an early return counts as a condition", () => {
     const found = analyzeProject(
       join(here, "fixtures", "conditional-routes-nested", "tsconfig.json"),
     ).linksToConditionalRoutes;
     expect(found.map((issue) => `${issue.component}:${issue.line} ${issue.href} needs ${issue.condition}`)).toEqual([
       "Nav:21 /debug/admin needs features.admin && import.meta.env.DEV",
+      "EarlyOutBackwards:43 /debug needs import.meta.env.DEV",
     ]);
   });
 });

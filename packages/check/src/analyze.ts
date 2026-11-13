@@ -1900,7 +1900,17 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
     }
   }
 
-  /** The conditions a node sits under inside its class: an `if`, a `&&`/`||`, a `? :`. */
+  /** Whether a statement always leaves its function: a `return` or a `throw`, alone or last in a block. */
+  function exits(statement: ts.Statement): boolean {
+    if (ts.isReturnStatement(statement) || ts.isThrowStatement(statement)) return true;
+    if (ts.isBlock(statement)) {
+      const last = statement.statements.at(-1);
+      return last !== undefined && exits(last);
+    }
+    return false;
+  }
+
+  /** The conditions a node sits under inside its class: an `if`, a `&&`/`||`, a `? :`, an early return. */
   function guardsOf(node: ts.Node, cls: ts.ClassDeclaration): { condition: string; negated: boolean }[] {
     const guards: { condition: string; negated: boolean }[] = [];
     let child: ts.Node = node;
@@ -1918,6 +1928,15 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
         const read = conditionOf(at);
         guards.push({ condition: read.condition, negated: read.negated !== !whenTrue });
       };
+      // `if (!cond) return …;` above, in the same block: everything after it runs only under `cond`.
+      // Found by review — the commonest way to write a debug-only render, and it was reported.
+      if (ts.isBlock(at) || ts.isSourceFile(at) || ts.isCaseClause(at) || ts.isDefaultClause(at)) {
+        for (const earlier of at.statements) {
+          if (earlier === child) break;
+          if (ts.isIfStatement(earlier) && earlier.elseStatement === undefined && exits(earlier.thenStatement))
+            under(earlier.expression, false);
+        }
+      }
       if (ts.isIfStatement(at) && child !== at.expression) under(at.expression, child === at.thenStatement);
       else if (ts.isConditionalExpression(at) && child !== at.condition) under(at.condition, child === at.whenTrue);
       else if (ts.isBinaryExpression(at) && child === at.right) {

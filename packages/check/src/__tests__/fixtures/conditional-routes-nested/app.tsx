@@ -28,11 +28,29 @@ class Nav extends Component {
   }
 }
 
+/** Silent: everything after `if (!cond) return` is under `cond`. Review round 3. */
+class EarlyOut extends Component {
+  render() {
+    if (!import.meta.env.DEV) return null;
+    return <Link href="/debug">debug</Link>;
+  }
+}
+
+/** REPORTED: the early return is the other way round, so what follows is NOT under it. */
+class EarlyOutBackwards extends Component {
+  render() {
+    if (import.meta.env.DEV) return null;
+    return <Link href="/debug">debug</Link>;
+  }
+}
+
 class App extends Component {
   render() {
     return (
       <main>
         <Nav />
+        <EarlyOut />
+        <EarlyOutBackwards />
         <RouteOutlet routes={routes} />
       </main>
     );

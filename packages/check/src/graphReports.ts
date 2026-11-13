@@ -154,9 +154,9 @@ export const GRAPH_REPORTS = [
     advice:
       `A part under a condition — \`createRoutes(cond ? debugRoutes : undefined, …)\` — holds routes that\n` +
       `exist only where the condition holds. Put the link under the same condition, the same name or\n` +
-      `expression (\`{cond && <Link …/>}\`, \`if (cond) …\`, a \`const\` holding it), or link somewhere every\n` +
-      `build has. A link from the part's own pages needs nothing: they are only rendered where the\n` +
-      `condition holds.\n\n` +
+      `expression — \`{cond && <Link …/>}\`, \`if (cond) …\`, \`if (!cond) return\` above it, a \`const\`\n` +
+      `holding it — or link somewhere every build has. A link from the part's own pages needs nothing:\n` +
+      `they are only rendered where the condition holds.\n\n` +
       `The condition is read where the link is WRITTEN. A guard around the call to a method that holds\n` +
       `the link is not seen — put the condition at the link, or move the link into the part's pages.\n`,
   }),
