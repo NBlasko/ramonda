@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { build as esbuild, type Plugin } from "esbuild";
+import { build as esbuild, type Plugin, transformSync } from "esbuild";
 import { createServer } from "vite";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -194,6 +194,51 @@ describe("a literal written as a hole", () => {
   test("and the elements inside it are still compiled", () => {
     const { code } = compile(`const e = <div title="a" title={t}><p>{x}</p></div>;`);
     expect(code).toBe(`const e = <div title="a" title={t}>{__ramondaBlock(__ramondaT0, [x])}</div>;`);
+  });
+});
+
+describe("text, cleaned as the JSX transforms clean it", () => {
+  /** The text esbuild's own JSX transform gives `<p>…</p>`'s one child, or `undefined` for none. */
+  const esbuildText = (inner: string): string | undefined => {
+    const out = transformSync(`const a = <p>${inner}</p>;`, { loader: "jsx", jsx: "automatic" }).code;
+    const children = /children: ("(?:[^"\\]|\\.)*")/.exec(out);
+    // A JavaScript string — esbuild leaves a tab in it as a tab, which JSON does not allow.
+    return children === null ? undefined : (new Function(`return ${children[1]};`)() as string);
+  };
+  /** The text the compiler bakes for the same `<p>`, or `undefined` for none. */
+  const compiledText = (inner: string): string | undefined => {
+    const template = compileJsx(`const a = <p>${inner}</p>;`, "page.tsx")?.templates[0];
+    const children = template === undefined ? null : /c: \[("(?:[^"\\]|\\.)*")\]/.exec(template);
+    return children === null ? undefined : (JSON.parse(children[1]) as string);
+  };
+
+  test.each([
+    ["a tab inside a line", "a\tb"],
+    ["a non-breaking space where a line begins", "\n  \u00a0Total\n"],
+    ["a non-breaking space where a line ends", "\n  Total:\u00a0\n  more\n"],
+    ["a line separator", "a\u2028   b"],
+    ["a vertical tab and a byte-order mark at the edges", "\n\u000b  x \ufeff\n"],
+    ["spaces on a single line", "  a  "],
+    ["blank lines between two", "\n  one\n\n  two  \n"],
+  ])("as esbuild does: %s", (_name, inner) => {
+    expect(compiledText(inner)).toBe(esbuildText(inner));
+  });
+
+  test("as esbuild does, over every mix of whitespace and line breaks", () => {
+    const pieces = [" ", "\t", "\n", "\r\n", "\r", "\u00a0", "\u2028", "\u3000", "a", "b"];
+    let seed = 7;
+    const next = (): number => {
+      seed = (seed * 1103515245 + 12345) % 2147483648;
+      return seed;
+    };
+    const differ: string[] = [];
+    for (let run = 0; run < 400; run++) {
+      let inner = "x";
+      for (let k = next() % 8; k > 0; k--) inner += pieces[next() % pieces.length];
+      inner += "y";
+      if (compiledText(inner) !== esbuildText(inner)) differ.push(JSON.stringify(inner));
+    }
+    expect(differ).toEqual([]);
   });
 });
 

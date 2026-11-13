@@ -22,7 +22,6 @@ import {
 import { queueBeforeTheMounts } from "./commit";
 type NodeAttributes = Record<string, any>;
 
-/** What an element built this pass already carries: nothing. Read, never written. */
 /**
  * An attribute record this file builds itself, from a page or from holes: with no prototype, so an
  * attribute named `__proto__`, `constructor` or `hasOwnProperty` is an entry like any other. A record an
@@ -32,6 +31,7 @@ export function record(): NodeAttributes {
   return Object.create(null) as NodeAttributes;
 }
 
+/** What an element built this pass already carries: nothing. Read, never written. */
 const NONE: NodeAttributes = Object.freeze(record());
 
 /**

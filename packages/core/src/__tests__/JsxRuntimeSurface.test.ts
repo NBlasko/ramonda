@@ -18,8 +18,8 @@ import * as runtime from "../jsx-runtime";
  */
 /**
  * `__template` and `__block` are what Ramonda's own compiler writes for an element tree whose shape never
- * changes — a prototype for now (see `core/block.ts`); only the production entry carries them, because
- * the compiler imports from it in every build.
+ * changes (see `core/block.ts`); only the production entry carries them, because the compiler imports
+ * from it in every build — removing either fails every compiled app at import.
  */
 const RUNTIME = ["Fragment", "__block", "__template", "jsx", "jsxs"];
 

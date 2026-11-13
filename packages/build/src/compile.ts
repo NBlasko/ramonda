@@ -21,7 +21,7 @@
  * A component, a fragment, an element with a spread (`{...props}`, whose attributes are not known here), a
  * namespaced tag or attribute, a `class` attribute (the runtime reports it and renames it), a `children`
  * attribute (JSX's way to give an element its children), a `key` below the root, an element that writes
- * one attribute twice (`for` beside `htmlFor`), and text or an attribute with an `&` in it, which may begin
+ * one attribute twice (`for` beside `htmlFor`), a `__proto__` attribute (an object literal's prototype), and text or an attribute with an `&` in it, which may begin
  * an entity (`&amp;`) that only the transform after this decodes.
  * A host element inside one of these is still compiled, as a block of its own.
  *
@@ -205,20 +205,23 @@ function outermostJsx(root: Node): { node: Node; later: boolean }[] {
   return found.sort((a, b) => a.node.start - b.node.start);
 }
 
-/** The text JSX makes of a text child: lines trimmed where they meet, blank lines gone. */
+/**
+ * The text JSX makes of a text child, as esbuild and Oxc make it — the transforms `jsx()` runs through, so
+ * a compiled tree and an uncompiled one hold the same text: split into lines at every line terminator
+ * (`\r`, `\n`, U+2028, U+2029), whitespace taken off where a line meets the next — every JavaScript
+ * whitespace, a non-breaking space among them — blank lines dropped, and what is left joined by one space.
+ * A tab inside a line stays a tab.
+ */
 function cleanText(raw: string): string | undefined {
-  const lines = raw.split(/\r\n|\n|\r/);
-  let last = 0;
-  for (let i = 0; i < lines.length; i++) if (/[^ \t]/.test(lines[i])) last = i;
+  const lines = raw.split(/\r\n|[\n\r\u2028\u2029]/);
   let text = "";
   for (let i = 0; i < lines.length; i++) {
-    let line = lines[i].replace(/\t/g, " ");
-    if (i !== 0) line = line.replace(/^[ ]+/, "");
-    if (i !== lines.length - 1) line = line.replace(/[ ]+$/, "");
-    if (line) {
-      if (i !== last) line += " ";
-      text += line;
-    }
+    let line = lines[i];
+    if (i !== 0) line = line.replace(/^\s+/, "");
+    if (i !== lines.length - 1) line = line.replace(/\s+$/, "");
+    if (line === "") continue;
+    if (text !== "") text += " ";
+    text += line;
   }
   return text === "" ? undefined : text;
 }
