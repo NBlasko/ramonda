@@ -650,12 +650,35 @@ describe("an attribute named like an object's own member, on a served page", () 
     const served = container.querySelector("#home") as HTMLElement;
     served.setAttribute("constructor", "x");
     served.setAttribute("tostring", "y");
+    served.setAttribute("__proto__", "z");
     hydrateRoot(<Home />, container);
     await Promise.resolve();
     await Promise.resolve();
     const after = { kept: container.querySelector("#home") === served, html: served.outerHTML };
     container.remove();
     expect(after).toEqual({ kept: true, html: '<div id="home">home</div>' });
+  });
+
+  test.each([
+    ["a block's hole", true],
+    ["an element `jsx()` built", false],
+  ])("named `hasOwnProperty`, is written and updated like any attribute, in %s", async (_name, compiled) => {
+    const OWN = __template({ t: "div", d: [["hasOwnProperty", 0]], c: ["x"] });
+    class Odd extends Component {
+      @state value = "a";
+      render() {
+        return (
+          <main>
+            {compiled ? __block(OWN, [this.value]) : jsx("div", { hasOwnProperty: this.value, children: "x" } as never)}
+          </main>
+        );
+      }
+    }
+    const app = await getDOM<Odd>(<Odd />);
+    await app.settle();
+    app.instance.value = "b";
+    await app.settle();
+    expect((app.container.querySelector("div") as HTMLElement).getAttribute("hasownproperty")).toBe("b");
   });
 
   test("is compared on hydration, and a difference in it reported, as any attribute is", async () => {

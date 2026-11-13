@@ -275,6 +275,9 @@ function templatable(element: JSXElement, root: boolean): boolean {
     const name = attributeName(attribute);
     // `children` is JSX's own: the element's children, never an attribute of that name.
     if (name === undefined || name === "class" || name === "children") return false;
+    // `__proto__` in an object literal sets the prototype rather than an entry — in a template's baked
+    // attributes as in the props `jsx()` is handed — so it is left to `jsx()`, where it already does that.
+    if (name === "__proto__") return false;
     if (name === "key" && !root) return false;
     // One attribute written twice — `for` and `htmlFor`, `tabIndex` and `tabindex`, or a name repeated in a
     // `.jsx` file — is left to `jsx()`, which writes them as it always has: one hole per attribute is what

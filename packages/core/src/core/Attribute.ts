@@ -23,7 +23,16 @@ import { queueBeforeTheMounts } from "./commit";
 type NodeAttributes = Record<string, any>;
 
 /** What an element built this pass already carries: nothing. Read, never written. */
-const NONE: NodeAttributes = Object.freeze({});
+/**
+ * An attribute record this file builds itself, from a page or from holes: with no prototype, so an
+ * attribute named `__proto__`, `constructor` or `hasOwnProperty` is an entry like any other. A record an
+ * author built — the props of an element — is read by its own properties instead.
+ */
+export function record(): NodeAttributes {
+  return Object.create(null) as NodeAttributes;
+}
+
+const NONE: NodeAttributes = Object.freeze(record());
 
 /**
  * What the diff wrote on an element last pass — the attributes it is compared with on the next.
@@ -109,7 +118,7 @@ export function writeHoleAttributes(
     const svg = (enhancedNode as EnhancedHTMLNode)[IS_SVG] === true;
     const holeOf = new Map<string, string>();
     for (const name in rawNextAttributes) holeOf.set(attributeWrittenBy(name, svg), name);
-    const written: NodeAttributes = {};
+    const written: NodeAttributes = record();
     for (const [name, value] of Object.entries(getAllFromNode(enhancedNode as EnhancedHTMLNode))) {
       const hole = holeOf.get(attributeWrittenBy(name, svg));
       if (hole !== undefined) written[hole] = value;
@@ -246,7 +255,7 @@ function toDashed(name: string): string {
 function objectStyleToString(styleObject: Record<string, string>): string {
   let styleString = "";
   for (const key in styleObject) {
-    if (styleObject.hasOwnProperty(key)) {
+    if (Object.hasOwn(styleObject, key)) {
       const value = styleObject[key];
       // A declaration with no value is not a declaration; emitting `key:;` would
       // make the browser drop it, and on some engines the whole rule with it.
@@ -363,7 +372,7 @@ function attachNextOnenhancedNode(
   onServer: boolean,
 ) {
   for (const name in nextAttributes) {
-    if (!nextAttributes.hasOwnProperty(name)) continue;
+    if (!Object.hasOwn(nextAttributes, name)) continue;
     const nextAttribute = nextAttributes[name];
 
     if (isInvisibleOnScreen(nextAttribute, name)) {
@@ -670,7 +679,7 @@ function formPropertyDiverged(enhancedNode: EnhancedHTMLNode, name: string, next
 }
 
 function getAllFromNode(enhancedNode: EnhancedHTMLNode): Record<string, any> {
-  const nodeAttributes: Record<string, any> = {};
+  const nodeAttributes: Record<string, any> = record();
 
   /**
    * Handed back under the name the JSX WROTE, which is why `_listeners` is keyed by it.
@@ -769,7 +778,7 @@ function removePreviousFromenhancedNode(
 export function dropServerOnly(element: Element, next: NodeAttributes, svg: boolean): void {
   const named = new Set<string>();
   for (const name in next) named.add(attributeWrittenBy(name, svg));
-  const page: NodeAttributes = {};
+  const page: NodeAttributes = record();
   for (const attribute of Array.from(element.attributes)) {
     if (!named.has(attributeWrittenBy(attribute.name, svg))) {
       page[ALIASED_BACK[attribute.name] ?? attribute.name] = attribute.value;

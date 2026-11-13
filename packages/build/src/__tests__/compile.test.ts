@@ -183,9 +183,13 @@ describe("a literal written as a hole", () => {
     ["a name written twice", `<div title="a" title={t}>x</div>`],
     ["`htmlFor` and `for`", `<label htmlFor="a" for={b}>x</label>`],
     ["`tabIndex` and `tabindex`", `<div tabIndex="1" tabindex={b}>x</div>`],
-  ])("an element writing one attribute twice — %s — is left to `jsx()`", (_name, element) => {
-    expect(compileJsx(`const e = ${element};`, "page.tsx")).toBeUndefined();
-  });
+    ["`__proto__`, which an object literal takes as its prototype", `<div __proto__="x">y</div>`],
+  ])(
+    "an element writing one attribute twice, or one no object can hold — %s — is left to `jsx()`",
+    (_name, element) => {
+      expect(compileJsx(`const e = ${element};`, "page.tsx")).toBeUndefined();
+    },
+  );
 
   test("and the elements inside it are still compiled", () => {
     const { code } = compile(`const e = <div title="a" title={t}><p>{x}</p></div>;`);

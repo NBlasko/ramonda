@@ -31,6 +31,7 @@ import {
   applyChangesOnAttributes,
   changedInPlace,
   dropServerOnly,
+  record,
   writeHoleAttributes,
 } from "./Attribute";
 import { diffChildrenOf, holdsARegion } from "./DiffAndMerge";
@@ -253,7 +254,7 @@ function isText(value: unknown): value is string | number {
 
 /** The attributes one site's holes say now, as the attribute diff takes them. */
 function attributesOf(site: Site, values: readonly unknown[]): Record<string, unknown> {
-  return holesInto({}, site.d as readonly (readonly [string, number])[], values);
+  return holesInto(record(), site.d as readonly (readonly [string, number])[], values);
 }
 
 /** Each attribute hole's value, under its name, into `into`. */
@@ -424,7 +425,7 @@ export function applyBlock(vnode: BlockVNode, existing: Element | undefined, own
 
 /** What `element`'s template node writes: its baked attributes, and each hole's value. */
 function writtenBy(node: TemplateNode, values: readonly unknown[]): Record<string, unknown> {
-  return holesInto({ ...node.a }, node.d ?? [], values);
+  return holesInto(Object.assign(record(), node.a), node.d ?? [], values);
 }
 
 /**
@@ -581,7 +582,7 @@ export function viewOf(vnode: BlockVNode): BlockView {
   const { template, values } = vnode[BLOCK];
   const file = template.description.f;
   const view = (node: TemplateNode, root: boolean): BlockView => {
-    const attributes: Record<string, unknown> = { ...node.a };
+    const attributes: Record<string, unknown> = Object.assign(record(), node.a);
     if (root && vnode.attributes.key != null) attributes.key = vnode.attributes.key;
     if (node.d !== undefined) for (const [name, index] of node.d) attributes[name] = values[index];
     let children: unknown[] = [];
