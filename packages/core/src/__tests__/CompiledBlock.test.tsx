@@ -1,7 +1,7 @@
 import { describe, test, expect, vi } from "vitest";
 import { getDOM } from "../test/setup";
 import { Component, state, list, memoized } from "../index";
-import { __template, __block } from "../jsx-runtime";
+import { __template, __block, jsx } from "../jsx-runtime";
 import { renderToString } from "../hydration/ssr";
 import { hydrateRoot } from "../hydration/hydrate";
 import { flushSync } from "../testing";
@@ -634,6 +634,57 @@ describe("a served block's static elements", () => {
     container.remove();
     // Only the element with a hole: the list and its two static items are skipped.
     expect(elements).toEqual(["three"]);
+  });
+});
+
+describe("an attribute named like an object's own member, on a served page", () => {
+  test("is dropped from a block's element like any attribute only the server wrote, and hydration goes on", async () => {
+    class Home extends Component {
+      render() {
+        return <main>{__block(HOME, [])}</main>;
+      }
+    }
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    container.innerHTML = await renderToString(<Home />);
+    const served = container.querySelector("#home") as HTMLElement;
+    served.setAttribute("constructor", "x");
+    served.setAttribute("tostring", "y");
+    hydrateRoot(<Home />, container);
+    await Promise.resolve();
+    await Promise.resolve();
+    const after = { kept: container.querySelector("#home") === served, html: served.outerHTML };
+    container.remove();
+    expect(after).toEqual({ kept: true, html: '<div id="home">home</div>' });
+  });
+
+  test("is compared on hydration, and a difference in it reported, as any attribute is", async () => {
+    const records: { code: string; message: string }[] = [];
+    globalThis.__RAMONDA_DIAGNOSTICS__ = (record) => records.push(record);
+    resetDiagnostics();
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    let value = "server";
+    class Widget extends Component {
+      render() {
+        // Through `jsx()` itself: the types refuse the name in JSX, and the served page is what has it.
+        return <main>{jsx("div", { constructor: value, children: "x" } as never)}</main>;
+      }
+    }
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    try {
+      container.innerHTML = await renderToString(<Widget />);
+      value = "client";
+      hydrateRoot(<Widget />, container);
+      await Promise.resolve();
+      await Promise.resolve();
+    } finally {
+      globalThis.__RAMONDA_DIAGNOSTICS__ = undefined;
+      vi.restoreAllMocks();
+      container.remove();
+    }
+    expect(records.some((record) => record.code === "RMD007" && record.message.includes("constructor"))).toBe(true);
   });
 });
 

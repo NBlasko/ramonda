@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { BOOLEAN_ATTRIBUTES, keptInAProperty, propertyOnlyNames, svgElements } from "../index";
+import { BOOLEAN_ATTRIBUTES, attributeWrittenBy, keptInAProperty, propertyOnlyNames, svgElements } from "../index";
 
 /**
  * The facts `@ramonda/core` and `@ramonda/check` have to agree on, tested where they live.
@@ -145,5 +145,11 @@ describe("what is deliberately not a boolean attribute", () => {
   test("no aria-* and no data-* is in the set", () => {
     const leaked = [...BOOLEAN_ATTRIBUTES].filter((name) => name.startsWith("aria-") || name.startsWith("data-"));
     expect(leaked).toEqual([]);
+  });
+});
+
+describe("a JSX name that is also a name on every object", () => {
+  test.each(["constructor", "toString", "__proto__", "valueOf"])("`%s` writes itself, on HTML and on SVG", (name) => {
+    expect([attributeWrittenBy(name, false), attributeWrittenBy(name, true)]).toEqual([name.toLowerCase(), name]);
   });
 });

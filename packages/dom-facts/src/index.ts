@@ -233,7 +233,18 @@ export const UNEDITED_INPUT_TYPES: ReadonlySet<string> = new Set([
  * JavaScript: `className` is written as `class`, and `htmlFor` as `for`. `@ramonda/core` reads them back
  * under the JSX name, and `@ramonda/build` writes the attribute's name into a template.
  */
-export const ATTRIBUTE_OF_PROPERTY: Readonly<Record<string, string>> = { className: "class", htmlFor: "for" };
+export const ATTRIBUTE_OF_PROPERTY: Readonly<Record<string, string>> = noPrototype({
+  className: "class",
+  htmlFor: "for",
+});
+
+/**
+ * A lookup table with no prototype: a JSX name is any word an author or a served page writes, and on a plain
+ * object `constructor`, `toString` or `__proto__` would find `Object`'s members instead of nothing.
+ */
+function noPrototype<T extends Record<string, string>>(entries: T): Readonly<T> {
+  return Object.freeze(Object.assign(Object.create(null) as T, entries));
+}
 
 /**
  * The attribute a JSX name writes, as the element holds it: the alias above, folded on an HTML element —

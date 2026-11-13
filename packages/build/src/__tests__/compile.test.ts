@@ -248,6 +248,20 @@ describe("what is left to the transform after this one", () => {
     expect([compileJsx(`const a = 1 < 2;`, "a.tsx"), compileJsx(broken, "a.tsx")]).toEqual([undefined, undefined]);
   });
 
+  test.each([
+    [
+      "an HTML element",
+      `<div constructor="x" toString="y">hi</div>`,
+      `{ t: "div", a: { "constructor": "x", "toString": "y" }, c: ["hi"] }`,
+    ],
+    ["an SVG element", `<svg constructor="a" />`, `{ t: "svg", a: { "constructor": "a" } }`],
+  ])(
+    "an attribute named like an object's own member, on %s, is an attribute like any other",
+    (_name, element, description) => {
+      expect(compileJsx(`const e = ${element};`, "page.tsx")?.templates).toEqual([description]);
+    },
+  );
+
   test("a module that is not JSX is not read", () => {
     expect(compileJsx(`const a = <div />;`, "a.ts")).toBeUndefined();
   });

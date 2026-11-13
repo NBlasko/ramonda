@@ -583,9 +583,13 @@ function setNextOnenhancedNode(enhancedNode: EnhancedHTMLNode, name: string, val
   enhancedNode.setAttribute(name, value);
 }
 
-/** The DOM's name for each attribute the JSX spells differently — read back the way it was written. */
-const ALIASED_BACK: Readonly<Record<string, string>> = Object.fromEntries(
-  Object.entries(ATTRIBUTE_OF_PROPERTY).map(([property, attribute]) => [attribute, property]),
+/**
+ * The DOM's name for each attribute the JSX spells differently — read back the way it was written. With no
+ * prototype, as `ATTRIBUTE_OF_PROPERTY` has none: a page's attribute may be named `constructor`.
+ */
+const ALIASED_BACK: Readonly<Record<string, string>> = Object.assign(
+  Object.create(null) as Record<string, string>,
+  Object.fromEntries(Object.entries(ATTRIBUTE_OF_PROPERTY).map(([property, attribute]) => [attribute, property])),
 );
 
 function removeByQualifiedName(enhancedNode: EnhancedHTMLNode, name: string) {
@@ -721,7 +725,8 @@ function removePreviousFromenhancedNode(
   nextAttributes: NodeAttributes,
 ) {
   for (const name in previousAttributes) {
-    const nextAttribute = nextAttributes[name];
+    // Its own: a page's attribute may be named `constructor`, which every object answers otherwise.
+    const nextAttribute = Object.hasOwn(nextAttributes, name) ? nextAttributes[name] : undefined;
 
     if (!isInvisibleOnScreen(nextAttribute, name)) continue;
     // Nothing was written for it last pass either — a record keeps a name it held as `undefined` or
