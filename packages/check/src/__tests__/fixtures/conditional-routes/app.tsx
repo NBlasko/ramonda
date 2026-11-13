@@ -60,12 +60,25 @@ class SameCondition extends Component {
   }
 }
 
+/** REPORTED, both: a query and a fragment do not change which route a link reaches. Found by review. */
+class WithQuery extends Component {
+  render() {
+    return (
+      <p>
+        <Link href="/debug?tab=cache">query</Link>
+        <Link href="/debug#top">fragment</Link>
+      </p>
+    );
+  }
+}
+
 class App extends Component {
   render() {
     return (
       <main>
         <NavBar />
         <SameCondition />
+        <WithQuery />
         <RouteOutlet routes={routes} />
       </main>
     );

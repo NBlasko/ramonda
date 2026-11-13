@@ -3146,7 +3146,8 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
           ? conditionalRoutes.has(link.pattern)
             ? link.pattern
             : undefined
-          : patterns.find((one) => one.regex.test(link.sample ?? link.href))?.route;
+          : // A query and a fragment do not change which route a link reaches — found by review.
+            patterns.find((one) => one.regex.test((link.sample ?? link.href).replace(/[?#].*$/, "")))?.route;
       if (route === undefined) continue;
       const needed = conditionalRoutes.get(route) as Guard;
       if (link.guards.some((guard) => same(guard, needed))) continue;

@@ -60,4 +60,29 @@ describe("createRoutes refuses what can never be meant", () => {
     expect(() => createRoutes({ "/tournaments/new": view("new") }, { "/tournaments/:id": view("one") })).not.toThrow();
     expect(() => createRoutes({ "/u/:id": view("one"), "/u/:id/edit": view("edit") })).not.toThrow();
   });
+
+  /**
+   * Found by review: a pattern was tried with each `:param` replaced by a sample value, so an earlier
+   * route whose segment WAS that value claimed to hide it. `/:p/a` is reached by `/y/a`; `/x/a` hides
+   * one of its addresses, not all of them.
+   */
+  test("a fixed path hides only itself, whatever a sample would have said", () => {
+    expect(() => createRoutes({ "/x/a": view("one"), "/:p/a": view("two") })).not.toThrow();
+  });
+});
+
+/**
+ * The refusal of a hidden route runs at module load, in production too, so it may not grow with the
+ * square of the table. Found by review: every route was tried against every earlier one — 3000 routes
+ * took 293 ms on every page load. A route can only be hidden by one with as many segments whose first
+ * segment is the same or a param, so only those are tried.
+ */
+describe("a large table is built in time that grows with its size", () => {
+  test("3000 routes, half of them patterns", () => {
+    const table: Record<string, ReturnType<typeof view>> = {};
+    for (let i = 0; i < 3000; i++) table[i % 2 ? `/section${i}/:id/detail` : `/page${i}`] = view("x");
+    const started = performance.now();
+    createRoutes(table);
+    expect(performance.now() - started).toBeLessThan(100);
+  });
 });

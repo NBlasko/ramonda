@@ -28,6 +28,8 @@ describe("a link to a route that exists only under a condition", () => {
       "NavBar:36 /debug/cache needs import.meta.env.DEV",
       "NavBar:38 /admin/${…} needs features.admin",
       "NavBar:40 /admin/:id needs features.admin",
+      "WithQuery:68 /debug?tab=cache needs import.meta.env.DEV",
+      "WithQuery:69 /debug#top needs import.meta.env.DEV",
     ]);
   });
 });

@@ -184,18 +184,31 @@ export function createRoutes<const T extends readonly RoutePart[]>(...parts: T):
     for (const [key, vnode] of Object.entries(part)) add(key, vnode, at);
   });
 
-  // A route an earlier pattern matches first is never reached. Every `:param` stands for one
-  // segment, so a sample with one there is matched by the earlier pattern exactly when every real
-  // path of the later one is.
-  for (const [at, route] of compiled.entries()) {
-    const sample = route.key.replace(/:\w+/g, "x");
-    const hidden = compiled.slice(0, at).find((earlier) => earlier.regex.test(sample));
+  // A route an earlier one matches first is never reached. Compared segment by segment, never by
+  // trying a sample value — found by review, `/x/a` claimed to hide `/:p/a`, which `/y/a` reaches —
+  // and only against earlier routes that COULD hide it: the same number of segments, and a first
+  // segment that is the same or a param. Every route against every earlier one took 293 ms for 3000
+  // routes, at module load, in production.
+  const earlier = new Map<string, CompiledRoute[]>();
+  const bucket = (count: number, first: string) => `${count}|${first}`;
+  for (const route of compiled) {
+    const segments = route.key.split("/");
+    const first = segments[1] ?? "";
+    const candidates = [
+      ...(earlier.get(bucket(segments.length, WHOLE_PARAM.test(first) ? "" : first)) ?? []),
+      ...(WHOLE_PARAM.test(first) ? [] : (earlier.get(bucket(segments.length, "")) ?? [])),
+    ];
+    const hidden = candidates.find((one) => hides(one.key, route.key));
     if (hidden !== undefined) {
       throw new Error(
         `[Ramonda Router] createRoutes: "${route.key}" can never be reached: "${hidden.key}", before it, matches it ` +
           `first. Put "${route.key}" before "${hidden.key}".`,
       );
     }
+    const key = bucket(segments.length, WHOLE_PARAM.test(first) ? "" : first);
+    const list = earlier.get(key);
+    if (list) list.push(route);
+    else earlier.set(key, [route]);
   }
 
   return {
@@ -207,6 +220,25 @@ export function createRoutes<const T extends readonly RoutePart[]>(...parts: T):
     })),
     fallback,
   };
+}
+
+/** A segment that is one `:param` and nothing else — it matches any one segment `[\w-]+` can. */
+const WHOLE_PARAM = /^:\w+$/;
+
+/**
+ * Whether `earlier` matches every path `later` does. Segment by segment: a whole-param segment takes
+ * any segment its `[\w-]+` can (a param of the later route, or a literal of those characters); any
+ * other segment must be written the same. Both are anchored, so the counts must agree.
+ */
+function hides(earlier: string, later: string): boolean {
+  const a = earlier.split("/");
+  const b = later.split("/");
+  if (a.length !== b.length) return false;
+  return a.every((segment, at) => {
+    const other = b[at];
+    if (WHOLE_PARAM.test(segment)) return WHOLE_PARAM.test(other) || /^[\w-]+$/.test(other);
+    return segment === other;
+  });
 }
 
 /** A part that is already a compiled table — a module's — rather than a literal one. */
