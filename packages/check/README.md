@@ -203,7 +203,7 @@ differs, and pointing a reader at the wrong thing is worse than pointing them at
 
 | declared twice | what happens | what the report says |
 |---|---|---|
-| `@catchError` · `@ShouldUpdateOnPropsChange` | one wins, the rest are dead code (`RMD032`, `RMD040`) | **which** one is live |
+| `@catchError` | one wins, the rest are dead code (`RMD032`) | **which** one is live |
 | `@StableProps` | both apply; the result is the union (`RMD046`) | nothing is lost, write it as one call |
 | `@state` · `@compute` · `@persist` · `@memoized` | nothing at all | delete the extras |
 
@@ -446,19 +446,19 @@ The constraint is not this tool's to impose. **A bundler can only split what it 
 statically** — whatever this cannot resolve, a bundler could not have code-split either, so the
 shape was already trouble for another reason.
 
-When the source is right and this is the one that cannot see it, write the reason on the line:
+When the source is right and this is the one that cannot see it, that is a fault of this tool —
+report it — and until it is fixed, write the reason on the line of the tag:
 
 ```tsx
-class Row extends Component {
+declare const pages: Record<string, typeof Component>;
+
+class Page extends Component {
   render() {
-    return <li>row</li>;
+    const Chosen = pages["/"];
+    // ramonda-check-ignore the table is keyed at run time; this tool cannot read one yet
+    return <Chosen />;
   }
 }
-
-const rows = { "/": Row };
-
-// ramonda-check-ignore the table is keyed at run time, and every value is a component
-const Chosen = rows["/"];
 ```
 
 **Line-scoped, never file-scoped**, and the reason is mandatory — a directive with nothing after it
@@ -501,15 +501,15 @@ mounts is written in its body.
 
 ## Where a tree starts
 
-`bootstrap` and `hydrateRoot` in the browser, `renderToString`, `renderPage` and `renderStatic` on
-the server. All five are handed a component and render it, so all five are roots.
+`bootstrap` and `hydrateRoot` in the browser, `renderPage` and `renderStatic` on the server. All four
+are handed a component and render it, so all four are roots.
 
-**An app entered only from a server is judged like any other**, and leaving the server's three out
-made it pass in silence. The same file, one line different:
+**An app entered only from a server is judged like any other**, and leaving the server's out made it
+pass in silence. The same file, one line different:
 
 ```
 bootstrap(<App />, null)     <Reader> consumes "Theme" — nothing provides it on this path
-renderToString(<App />)      0 root(s) — every consumer has a provider above it
+renderPage(<App />)          0 root(s) — every consumer has a provider above it
 ```
 
 The second sentence was never checked. With no root the walk has nowhere to start, the project is

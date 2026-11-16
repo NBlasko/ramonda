@@ -405,10 +405,10 @@ export const lensPathThroughAGap = {
 
   report: {
     /**
-     * A WARNING, and not because the fault is mild — `RML001` is an `error` and now throws in
-     * development. It fails the run like every rule — and where a hop really is guaranteed by
-     * something the types cannot see, `ramonda-check-ignore` with that reason on the line is what
-     * says so, recorded rather than hidden.
+     * An error, as `RML001` is, which throws in development. Where a hop really is guaranteed by
+     * something the types cannot see, the types are what is wrong: narrow before the write (`if
+     * (state.profile) …`) or annotate it as always there. An ignore is for a fault being fixed, never
+     * the way to say a path is safe.
      */
     severity: "error",
     reportedWhen:

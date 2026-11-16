@@ -177,7 +177,8 @@ for a program — a coding agent above all — that would otherwise read the pro
 
 - `code` is the rule's id, or for a fault the graph answers, the name of that check:
   `missing-provider`, `unresolved-component`, `unreachable-declaration`, `unreachable-route-table`,
-  `params-off-route`, `keys-off-route`, `second-provider`, `render-cycle`, `class-as-child`.
+  `params-off-route`, `keys-off-route`, `link-to-a-conditional-route`, `second-provider`, `render-cycle`,
+  `class-as-child`, `ignore-that-silences-nothing`.
 - `message` is what the text run prints for the finding; `data` is everything the finding records.
 - `ok` is `false` exactly when the run exits 1. `ignored` lists every `ramonda-check-ignore` with its
   reason, and `counts` what the run read.
@@ -235,7 +236,7 @@ so a rule cannot be added without appearing here.
 | [`browser-url`](/rules/browser-url) | a component reads `window.location` in a project whose router already holds the answer |
 | [`dom-writes`](/rules/dom-writes) | a component writes the document — `document.body.classList.add(…)` and its family — where `render()` could have said it |
 | [`field-set-by-an-event`](/rules/field-set-by-an-event) | a component's commit work — `@mounted`, `@updated`, `render()` and the rest — sends a field an edit: dispatches `input` or `change`, clicks a checkbox, or writes its `value`, where state says what it shows — also [`RMD062`](/reference/diagnostics/rmd062) |
-| [`duplicate-decorators`](/rules/duplicate-decorators) | a single-use decorator is written twice: `@catchError`, `@ShouldUpdateOnPropsChange` or `@StableProps` — also [`RMD032`](/reference/diagnostics/rmd032), [`RMD040`](/reference/diagnostics/rmd040), [`RMD046`](/reference/diagnostics/rmd046), [`RMD050`](/reference/diagnostics/rmd050) |
+| [`duplicate-decorators`](/rules/duplicate-decorators) | a single-use decorator is written twice: `@catchError` or `@StableProps` — also [`RMD032`](/reference/diagnostics/rmd032), [`RMD046`](/reference/diagnostics/rmd046), [`RMD050`](/reference/diagnostics/rmd050) |
 | [`unwatched-fields`](/rules/unwatched-fields) | a component reads a form field it does not watch, so it never re-renders when that field changes |
 | [`watch-of-a-prop-that-is-not-there`](/rules/watch-of-a-prop-that-is-not-there) | a `@watchProp` selector names something the component's props type does not declare, so the method never runs |
 | [`persist-of-a-lossy-value`](/rules/persist-of-a-lossy-value) | a `@persist` field holds a `Map`, a `Set`, a `Date`, a function or a class instance, none of which JSON carries — also [`RMD033`](/reference/diagnostics/rmd033) |
@@ -328,11 +329,11 @@ There is no warning level. A rule reports a fault or it does not, and a reported
 command — because a warning that never fails anything is read once and then not read at all, while
 a refusal is dealt with.
 
-Which only works because there is somewhere to put "I know, and it is right here":
+Which only works because there is somewhere to put "I know, and it is being fixed":
 
 ```tsx
-// ramonda-check-ignore this div is a backdrop; the real exit is the button beside it
-<div className="scrim" onclick={this.close} />
+// ramonda-check-ignore the menu becomes a <button> in the nav rewrite (#88)
+<div className="menu" onclick={this.open}>Menu</div>
 ```
 
 **It goes on the line the report names, or on the line above it** — which is the element or the
@@ -344,6 +345,11 @@ on its way out, so there is no list of rules that honour it and none that quietl
 **A reason is mandatory.** `// ramonda-check-ignore` with nothing after it silences nothing and is
 itself reported: an empty directive would be the quietest way to switch a rule off, and the quiet
 is the whole problem.
+
+**It goes when the fault does.** An ignore on a line where nothing is reported is itself reported,
+as `ignore-that-silences-nothing` — left behind, it would silence whatever is written on that line
+next. And it is never the way to a design that is right: where a rule refuses one, the rule is the
+fault — a bug in this tool, to report and to fix.
 
 **It records rather than silences.** Every annotated site is listed on every run, with the words
 its author wrote:
@@ -573,7 +579,7 @@ $ ramonda-check tsconfig.json --graph-html app.html
 
 One self-contained file — open it, no server and no network. Rows are distance from the roots, so
 what mounts something is read by going up. A **root** is a call rather than a declaration, so it is
-labelled by the call: `hydrateRoot`, `renderToString`. A dashed edge is a render that may never
+labelled by the call: `hydrateRoot`, `renderPage`. A dashed edge is a render that may never
 happen, which is a distinction the graph makes and nothing else shows you. And whatever no root
 reaches gets a band of its own rather than being drawn beside the roots, because "nothing mounts
 this" and "this is an entry point" are the opposite of each other.
@@ -764,19 +770,15 @@ There is no chunk. The module is pulled into the caller's chunk, or left out of 
 and looked for at run time — which works on a dev server, where the source is served as it sits, and
 404s in production, where nothing emitted it. The build says nothing either way.
 
-If it is deliberate, say so and the report stops. Either the bundler's own marker, which you
-probably already need for the build to be quiet:
+If it is deliberate — an optional package, loaded only when it is installed — say so with the
+bundler's own marker, which you need for the build to be quiet anyway, and the report stops:
 
 ```ts
 const load = () => import(/* @vite-ignore */ specifier);
 ```
 
-or this package's annotation, which also keeps the reason where the next reader will find it:
-
-```ts
-// ramonda-check-ignore the panel's specifier is built, so the build cannot follow it
-const load = () => import(specifier);
-```
+That is the one spelling. A `ramonda-check-ignore` here would be a second way to say the same thing,
+and an ignore is for a fault being fixed.
 
 Measured across this repository when the rule was written: 88 dynamic imports with a literal path
 and 3 without, every one of the three already marked. A rule that reported those would have opened

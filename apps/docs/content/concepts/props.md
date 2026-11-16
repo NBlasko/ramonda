@@ -65,23 +65,11 @@ always changes what the component shows. It does not matter which props `render(
 actually reads; a change to any of them re-renders.
 
 The comparison is shallow — each prop by `===` — so passing the same values again
-costs nothing, and re-renders only when something really changed. Three ways to go
+costs nothing, and re-renders only when something really changed. Two ways to go
 finer when you need to:
 
 - To pass an **object or an array written in the JSX**, declare it a value with
   `@StableProps` — see below.
-- To **ignore a change that really happened**, gate it with
-  [`@ShouldUpdateOnPropsChange`](/reference/api). That is a narrower thing than it
-  sounds, and narrower than it used to be: a prop merely REBUILT with the same
-  contents is `@StableProps`' job above, and this one is for the case where the
-  contents genuinely moved and you still do not want the update. Refusing it
-  **drops it whole**: the props are not taken either, so a later render caused by
-  this component's own state still shows the props it last accepted, until the
-  parent sends an update the rule agrees to.
-
-  It takes a predicate rather than names, which is why it is the last thing to
-  reach for: a rule can be wrong in the direction that matters — a component that
-  stops rendering when it should — and nothing will report it.
 - To **react to one specific prop** — recompute a total, refetch when an `id`
   changes — read it inside a [`@compute`](/concepts/compute), a `@watchProp` (below),
   or an [a subscription](/concepts/subscriptions); those *do* track the individual props they
@@ -114,9 +102,9 @@ class the framework hands you rather than one you wrote: `createContext(defaults
 
 **Why the receiving component declares it, and not the call site.** Whether a prop is a value or an
 identity is that component's knowledge, and declaring it once settles every call site. It is also
-why this takes NAMES rather than a rule: `@ShouldUpdateOnPropsChange` takes a predicate, and a
-predicate is a thing an app can get wrong in the direction that matters — a component that stops
-rendering when it should. The worst a wrong name here can do is fail to type-check.
+why this takes NAMES rather than a rule: a predicate is a thing an app can get wrong in the direction
+that matters — a component that stops rendering when it should — and nothing can check it. The worst a
+wrong name here can do is fail to type-check.
 
 **A function is not settled by it.** Two closures with the same body are not equal by any
 comparison that is safe to make, so a listed function prop is left exactly as it came. Pass a bound
@@ -211,4 +199,4 @@ export class Panel extends Component<{ children?: RamondaNode }> {
 ## Next
 
 - [Lifecycle](/concepts/lifecycle) — `@created`, `@mounted`, `@destroyed`, and their order.
-- [The decorator table](/reference/decorators) — `@watchProp` works on a hook; `@ShouldUpdateOnPropsChange` does not.
+- [The decorator table](/reference/decorators) — `@watchProp` works on a hook; `@catchError` does not.

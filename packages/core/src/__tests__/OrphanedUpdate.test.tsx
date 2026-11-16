@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { getDOM, instanceOf } from "../test/setup";
-import { Component, state, Ref, bootstrap, unmount } from "../index";
+import { Component, state, createRef, bootstrap, unmount } from "../index";
 import { resetDiagnostics } from "../debug/diagnostics";
 import { created } from "../base/decorators";
 import { Portal } from "../base/Portal";
@@ -57,7 +57,7 @@ class Widget extends Component {
 describe("RMD016: updating an orphaned tree", () => {
   test("reports when a library clears a subtree it was handed", async () => {
     class App extends Component {
-      slot = new Ref<HTMLElement>();
+      slot = createRef<HTMLElement>();
       widget?: Widget;
       render() {
         return (

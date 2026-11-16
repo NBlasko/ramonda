@@ -42,10 +42,9 @@ already had. Nothing downstream sees a change, and the call site keeps writing t
 That a query key is a value — `["user", 7]` built again is the same question — is the **hook's**
 knowledge. Declaring it once settles every call site instead of asking each one to know.
 
-It takes **names**, not a predicate, and that is deliberate:
-[`@ShouldUpdateOnPropsChange`](/reference/decorators/ShouldUpdateOnPropsChange) takes a rule an app
-can get wrong in the direction that matters — a component that stops rendering when it should. The
-worst a wrong name here can do is fail to type-check.
+It takes **names**, not a predicate, and that is deliberate: a rule an app writes can be wrong in the
+direction that matters — a component that stops rendering when it should — and nothing can check it.
+The worst a wrong name here can do is fail to type-check.
 
 **The names are checked** against the props of whatever it is on, with no type argument to write:
 `@StableProps("kye")` is a compile error that names `"kye"`.

@@ -1,4 +1,4 @@
-import { Component, Select, bootstrap, hydrateRoot, renderToString, state, unmount } from "@ramonda/core";
+import { Component, Select, bootstrap, hydrateRoot, renderPage, state, unmount } from "@ramonda/core";
 
 /**
  * Every case of a `defaultValue` select, run in this browser — the table core's
@@ -125,7 +125,7 @@ async function run(origin: Origin, kind: Kind, pick: Pick, then: Then): Promise<
   if (origin === "built") {
     bootstrap(<Harness kind={kind} />, container);
   } else {
-    container.innerHTML = await renderToString(<Harness kind={kind} />);
+    container.innerHTML = (await renderPage(<Harness kind={kind} />)).body;
     if (pick === "before") choose(container.querySelector("select") as HTMLSelectElement);
     hydrateRoot(<Harness kind={kind} />, container);
   }

@@ -6,18 +6,15 @@ import type { Rule } from "./rule";
 /**
  * A decorator that answers a question with ONE answer, declared more than once on the same class.
  *
- * `@catchError` ("who handles an error from below?"),
- * `@ShouldUpdateOnPropsChange` ("take these props?") and `@StableProps` are each single. Declared
+ * `@catchError` ("who handles an error from below?") and `@StableProps` are each single. Declared
  * twice, one of them wins and the others never run — silently, and the one being read may be the dead
- * one. The framework reports what it can at runtime (RMD032 for `@catchError`, RMD040 for
- * `@ShouldUpdateOnPropsChange`), but only once the class is reached; a class behind a condition nobody
- * clicked ships with the fault.
+ * one. The framework reports what it can at runtime (RMD032 for `@catchError`), but only once the class
+ * is reached; a class behind a condition nobody clicked ships with the fault.
  *
  * **Which one wins depends on the KIND of decorator, and the two are opposite.** One rule underneath
  * both: the last declaration APPLIED is the one that stands. A member decorator initialises
  * top-to-bottom, so the LOWEST is applied last and wins. A class decorator is applied bottom-up, so the
- * HIGHEST wins. Measured in core, in `CatchErrorDecorator.test.tsx` and `PropsGateInheritance.test.tsx`
- * — which is why `kind` is on this issue: without it a report cannot name the declaration that is
+ * HIGHEST wins. Measured in core, in `CatchErrorDecorator.test.tsx` — which is why `kind` is on this issue: without it a report cannot name the declaration that is
  * actually in effect, and naming the wrong one sends a reader to delete the line that works.
  *
  * A SUBCLASS declaring its own is not this. That is an override — the way a role is specialised —
@@ -34,8 +31,7 @@ export interface DuplicateDecoratorIssue {
    * Where the decorator sits, which decides which of the duplicates is in effect — see above.
    *
    * Taken from the node it was found on rather than from a table of names, so it stays true when a
-   * decorator changes form (`@ShouldUpdateOnPropsChange` was a member decorator before it was a class
-   * one). A pair split across both kinds cannot arise: a decorator's own type refuses the position it
+   * decorator changes form. A pair split across both kinds cannot arise: a decorator's own type refuses the position it
    * was not written for.
    */
   kind: "class" | "member";
@@ -45,8 +41,8 @@ export interface DuplicateDecoratorIssue {
    * Three, one per behaviour core actually has, because the advice differs for each and naming the wrong
    * one sends a reader somewhere there is nothing to find:
    *
-   * - `displaces` — one wins and the rest are dead code (`@catchError` RMD032,
-   *   `@ShouldUpdateOnPropsChange` RMD040). The reader needs to know WHICH is live.
+   * - `displaces` — one wins and the rest are dead code (`@catchError` RMD032). The reader needs to
+   *   know WHICH is live.
    * - `merges` — both take effect and the result is the union (`@StableProps`, RMD046). Nothing is lost;
    *   the spelling is redundant.
    * - `redundant` — the second changes nothing at all (`@state`, `@compute`, `@persist`,
@@ -79,8 +75,8 @@ export interface DuplicateDecoratorIssue {
  * A single map says the same thing once and is directly comparable to core's.
  *
  * The three words are the three pieces of advice, and telling them apart is the point:
- * - `displaces` — one wins and the rest are dead code (`@catchError` RMD032,
- *   `@ShouldUpdateOnPropsChange` RMD040). The reader needs to know WHICH is live.
+ * - `displaces` — one wins and the rest are dead code (`@catchError` RMD032). The reader needs to know
+ *   WHICH is live.
  * - `merges` — both take effect and the result is the union (`@StableProps`, RMD046). It names a set
  *   and already merges along the class chain, so nothing is lost; the spelling is redundant.
  * - `redundant` — the second changes nothing at all (`@state`, `@compute`, `@persist`, `@memoized`,
@@ -92,7 +88,6 @@ export interface DuplicateDecoratorIssue {
  */
 const EFFECT: Record<string, DuplicateDecoratorIssue["effect"]> = {
   catchError: "displaces",
-  ShouldUpdateOnPropsChange: "displaces",
   StableProps: "merges",
   state: "redundant",
   compute: "redundant",
@@ -149,15 +144,14 @@ export const duplicateDecorators = {
 
   report: {
     severity: "error",
-    reportedWhen:
-      "a single-use decorator is written twice: `@catchError`, " + "`@ShouldUpdateOnPropsChange` or `@StableProps`",
+    reportedWhen: "a single-use decorator is written twice: `@catchError` or `@StableProps`",
     // A code per decorator, because what the framework does about it differs:
     // throws, the middle two silently pick a winner, `@StableProps` merges. This rule reports the
     // source of all four, and said so only in prose until the field could hold a list.
     // `RMD050` too, for the member-level half: the same decorator written twice on one member.
     // `decorator-that-adds-nothing` answers the other half of that code — two DIFFERENT decorators
     // giving one member the same thing — and the pair is deliberate.
-    alsoReportedAs: ["RMD032", "RMD040", "RMD046", "RMD050"],
+    alsoReportedAs: ["RMD032", "RMD046", "RMD050"],
     heading: (found) => `${found.length} class(es) declaring a single-use decorator twice:`,
     lines: (issue) => {
       // The member is named for a `redundant` report, because that count is per member: without it,

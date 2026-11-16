@@ -1,6 +1,6 @@
 import { PROPERTY_GRAMMAR, TYPE_GRAMMAR } from "./grammars.generated";
 import { UNIT_TYPE } from "./keywords.generated";
-import { matchValue } from "./matchValue";
+import { matchValue, readingsBegun } from "./matchValue";
 import { remember } from "./remember";
 import { withoutImportant } from "./rules/shared";
 import { parseValueSyntax, type Term } from "./valueSyntax";
@@ -516,6 +516,18 @@ function readAgainstGrammar(property: string, value: string): boolean | undefine
     if (error instanceof OverBudget) return undefined;
     throw error;
   }
+}
+
+/**
+ * How many readings the matcher begins for one value, never from memory — the cost of a reading as a
+ * COUNT. A test that timed it failed under a loaded gate and passed alone, because a time measures the
+ * machine as much as the matcher. Not the budget's unit: the budget counts calls of `accepts`, and
+ * the any-order pruning saves readings, not those.
+ */
+export function stepsToRead(property: string, value: string): number {
+  const before = readingsBegun();
+  readAgainstGrammar(property, value);
+  return readingsBegun() - before;
 }
 
 /**

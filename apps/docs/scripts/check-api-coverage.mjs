@@ -125,9 +125,15 @@ function listOf(pkg, list, atLeast) {
   return names;
 }
 
-// `@ramonda/css`'s page entry. Its subpaths — the compiler, the config, the plugins — are build tools
-// with pages of their own, and are named on the reference as entry points, not as exports.
-const cssNames = [...listOf("css", "RUNTIME", 8), ...listOf("css", "TYPES", 15), ...listOf("css", "CHECK", 4)];
+// `@ramonda/css`'s page entry, and `@ramonda/css/compiled` — what compiled code imports, which the
+// reference names in a table of its own. The other subpaths — the compiler, the config, the plugins —
+// are build tools with pages of their own, and are named on the reference as entry points.
+const cssNames = [
+  ...listOf("css", "RUNTIME", 3),
+  ...listOf("css", "COMPILED", 6),
+  ...listOf("css", "TYPES", 15),
+  ...listOf("css", "CHECK", 4),
+];
 
 const expected = [
   ...publicSurfaceOf("core", 20),

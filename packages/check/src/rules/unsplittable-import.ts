@@ -102,8 +102,9 @@ export const unsplittableImport = {
       "in dev, where the server serves source, and 404s in production, where nothing emitted it.\n\n" +
       'Write the path as a plain string: `import("./feature/heavy.js")`. For one of several, a\n' +
       "literal per branch splits each of them; a variable splits none.\n\n" +
-      "If it is deliberate, say so and this stops reporting it — either the bundler's own marker,\n" +
-      "`import(/* @vite-ignore */ name)`, or `// ramonda-check-ignore why` on the line above.\n\n",
+      "If it is deliberate — an optional package, loaded only when it is installed — say so with\n" +
+      "the bundler's own marker, `import(/* @vite-ignore */ name)`. It tells the bundler as well, and\n" +
+      "this stops reporting it.\n\n",
   },
 
   read(file) {

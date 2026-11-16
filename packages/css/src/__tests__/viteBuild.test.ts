@@ -102,7 +102,7 @@ function project(card: string, entry: string, assets: Record<string, string> = {
       `  logLevel: "warn",\n` +
       // The runtime points at `dist`, so the probe needs no `node_modules` entry for the package
       // itself — the same option a wrapper for another JSX library uses.
-      `  plugins: [ramondaCss({ runtime: ${JSON.stringify(join(PACKAGE, "dist", "index.js"))} })],\n` +
+      `  plugins: [ramondaCss({ runtime: ${JSON.stringify(join(PACKAGE, "dist", "compiled.js"))} })],\n` +
       `  esbuild: { jsx: "automatic", jsxImportSource: ${JSON.stringify(join(root, "src", "jsx"))} },\n` +
       `  build: { outDir: "out", manifest: true, rollupOptions: { input: "src/main.ts" } },\n` +
       `};\n`,

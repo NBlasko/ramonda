@@ -51,13 +51,14 @@ const EXPECTED_TYPES = [
   "NavigateOptions",
   "PartialNavigateOptions",
   "PathOf",
-  "Register",
   "RouteConfig",
   "RouteOutletProps",
   "RouteParams",
+  "RoutePart",
   "RoutePaths",
   "RouterNavigator",
   "RouterState",
+  "Routes",
   "SearchParamsUpdater",
   "StateUpdater",
   "TypedLinkProps",
@@ -66,7 +67,7 @@ const EXPECTED_TYPES = [
 
 /**
  * The internals a consumer must not reach. `createRouter` is gone: a kit imported from the module that
- * holds the table made every page and that module import each other — see `Register`.
+ * holds the table made every page and that module import each other — see `Routes`.
  */
 const FORBIDDEN = ["createRouter", "RouteHook", "store", "compile", "SPECS", "report"];
 
@@ -106,13 +107,14 @@ import type {
   NavigateOptions,
   PartialNavigateOptions,
   PathOf,
-  Register,
   RouteConfig,
+  RoutePart,
   RouteOutletProps,
   RouteParams,
   RoutePaths,
   RouterNavigator,
   RouterState,
+  Routes,
   SearchParamsUpdater,
   StateUpdater,
   TypedLinkProps,
@@ -127,13 +129,14 @@ type _Surface = [
   NavigateOptions,
   PartialNavigateOptions,
   PathOf<RouteConfig>,
-  Register,
   RouteConfig,
+  RoutePart,
   RouteOutletProps,
   RouteParams,
   RoutePaths,
   RouterNavigator,
   RouterState,
+  Routes,
   SearchParamsUpdater,
   StateUpdater,
   TypedLinkProps<"/">,

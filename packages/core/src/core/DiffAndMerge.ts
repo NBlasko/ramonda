@@ -37,7 +37,6 @@ import {
   CHILD_RECORD,
   ORIGIN_SYM,
   REF_SYM,
-  PROPS_GATE,
   STABLE_PROPS,
 } from "../helpers/constants";
 import { generateRenderOutput } from "../helpers/generateRenderOutput";
@@ -68,8 +67,6 @@ import { lintChildKeys } from "../debug/lintChildren";
 import { timerOwner } from "../debug/timerGuard";
 import type { Runtime } from "./runtime";
 import { inputRemoved } from "./field";
-
-type PropsGate = (self: unknown, previous: unknown, next: unknown) => boolean;
 
 /**
  * Brings one ELEMENT into line with its vnode. Components do not come through here.
@@ -1855,12 +1852,7 @@ function updateComponentRegion(region: ComponentRegion, vnode: VNodeComponent): 
   // `helpers/settleMarkup.ts`.
   const nextProps = settleProps(vnode.attributes ?? {}, componentRuntime.rawProps, declaredStable);
 
-  // Read off the CLASS, so a subclass inherits its base's rule through the static
-  // chain and shadows it by declaring its own. See @ShouldUpdateOnPropsChange.
-  const decide = (component.constructor as { [PROPS_GATE]?: PropsGate })[PROPS_GATE];
-  const takeProps = decide
-    ? decide(component, componentRuntime.rawProps, nextProps)
-    : !arePropsBagsEqual(componentRuntime.rawProps, nextProps);
+  const takeProps = !arePropsBagsEqual(componentRuntime.rawProps, nextProps);
 
   if (takeProps) {
     const prevRaw = componentRuntime.rawProps;

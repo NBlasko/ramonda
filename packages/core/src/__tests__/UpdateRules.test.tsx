@@ -1,8 +1,7 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { getDOM, findOne } from "../test/setup";
-import { state, updated, ShouldUpdateOnPropsChange } from "../base/decorators";
+import { state, updated } from "../base/decorators";
 import { Component } from "../base/Component";
-import { Hook } from "../base/Hook";
 import { resetDiagnostics } from "../debug/diagnostics";
 
 function captureDiagnostics() {
@@ -270,105 +269,6 @@ describe("update rules", () => {
       expect(captured.codes).toEqual([]);
       expect(app.container.querySelector("span")!.textContent).toBe("1:1");
     });
-  });
-});
-
-describe("@ShouldUpdateOnPropsChange", () => {
-  test("drops the incoming props when it returns false", async () => {
-    const renders: string[] = [];
-
-    @ShouldUpdateOnPropsChange((_self, previous, next) => previous.id !== next.id)
-    class Row extends Component<{ id: string; noise: number }> {
-      render() {
-        renders.push(`${this.props.id}/${this.props.noise}`);
-        return (
-          <div>
-            <p>{this.props.id}</p>
-          </div>
-        );
-      }
-    }
-
-    class Board extends Component {
-      @state id = "a";
-      @state noise = 0;
-      render() {
-        return (
-          <div>
-            <Row id={this.id} noise={this.noise} />
-          </div>
-        );
-      }
-    }
-
-    const { instance, settle } = await getDOM<Board>(<Board />);
-    expect(renders).toEqual(["a/0"]);
-
-    instance.noise = 1;
-    await settle();
-    // The predicate said no, so the whole update was dropped — no render, and the
-    // new `noise` was not even applied (the next accepted update carries it).
-    expect(renders).toEqual(["a/0"]);
-
-    instance.id = "b";
-    await settle();
-    expect(renders.at(-1)).toBe("b/1");
-  });
-
-  test("a plain method by that name has no framework meaning", async () => {
-    const renders: string[] = [];
-
-    class Row extends Component<{ n: number }> {
-      // Before this was a decorator, defining this would have silently taken
-      // control of the component's re-rendering.
-      shouldUpdateOnPropsChange() {
-        return false;
-      }
-      render() {
-        renders.push(String(this.props.n));
-        return (
-          <div>
-            <p>{this.props.n}</p>
-          </div>
-        );
-      }
-    }
-
-    class Board extends Component {
-      @state n = 0;
-      render() {
-        return (
-          <div>
-            <Row n={this.n} />
-          </div>
-        );
-      }
-    }
-
-    const { instance, settle } = await getDOM<Board>(<Board />);
-    instance.n = 1;
-    await settle();
-
-    // It rendered: the method is just a method.
-    expect(renders).toEqual(["0", "1"]);
-  });
-
-  test("throws at class-definition time when placed on a hook", () => {
-    // Sooner than it used to: as a method decorator the throw waited for the first
-    // instance, so a hook nobody had rendered yet looked fine. A class decorator runs
-    // when the class is defined, which is the moment the mistake was made.
-    expect(() => {
-      // @ts-expect-error TypeScript refuses it first: the decorator asks for a class
-      // branded `__isComponent`, which a Hook is not. The throw is what an untyped
-      // build gets, and is what this test is about.
-      @ShouldUpdateOnPropsChange(() => true)
-      class BadHook extends Hook {
-        nope() {
-          return true;
-        }
-      }
-      return BadHook;
-    }).toThrow(/@ShouldUpdateOnPropsChange is for components, not hooks/);
   });
 });
 

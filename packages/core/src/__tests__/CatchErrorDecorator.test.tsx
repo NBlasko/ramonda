@@ -14,7 +14,7 @@ import { resetDiagnostics } from "../debug/diagnostics";
  * that defined a method called `catchError` for its own reasons silently became
  * an error boundary and swallowed its subtree's failures — the exact footgun the
  * framework removes everywhere else with a decorator, and the reason
- * `@deferHydration`, `@ShouldUpdateOnPropsChange` and `@StableProps` all exist in
+ * `@deferHydration` and `@StableProps` both exist in
  * the form they do ("a framework that reserves a name on every class changes
  * behaviour silently").
  *
@@ -200,7 +200,7 @@ describe("@catchError", () => {
 
   /**
    * Which of the two is in effect, measured — because `RMD032`'s advice names it and the answer is the
-   * OPPOSITE of the one for `@ShouldUpdateOnPropsChange` (see `PropsGateInheritance.test.tsx`).
+   * opposite of the one a CLASS decorator would have.
    *
    * One rule underneath both: the last declaration APPLIED wins. `@catchError` is a member decorator,
    * and members initialise top-to-bottom, so the LOWEST is the last to write and the one that gets the
@@ -316,10 +316,9 @@ describe("@catchError", () => {
     }
 
     // At FIRST INSTANCE, not at class definition: a method decorator registers
-    // from `addInitializer`, which runs per instance. `@ShouldUpdateOnPropsChange`
-    // reports the same class of mistake when the CLASS is defined, because it is a
-    // class decorator — the difference is inherent to the two kinds, and worth
-    // knowing rather than being surprised by.
+    // from `addInitializer`, which runs per instance. A class decorator would report
+    // the same class of mistake when the CLASS is defined — the difference is inherent
+    // to the two kinds, and worth knowing rather than being surprised by.
     await expect(getDOM(<Owner />)).rejects.toThrow(/@catchError is for components, not hooks/);
   });
 

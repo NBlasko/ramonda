@@ -140,6 +140,28 @@ export const GRAPH_REPORTS = [
   }),
 
   /**
+   * A route that exists only under a condition, linked to from code that is not under it — the
+   * router's `DESIGN-module-routes.md`, section 3. The type cannot say it: the compiler reads one
+   * program, where the condition is a `boolean`, so the route is in the type in every build.
+   */
+  report("linksToConditionalRoutes", {
+    id: "link-to-a-conditional-route",
+    heading: (n) => `${n} link(s) to a route that exists only under a condition`,
+    lines: (link) => [
+      `    <${link.component}> links to "${link.href}", and "${link.route}" exists only when \`${link.condition}\` — ` +
+        `this link is not under it, so where it does not hold the link lands on the catch-all.`,
+    ],
+    advice:
+      `A part under a condition — \`createRoutes(cond ? debugRoutes : undefined, …)\` — holds routes that\n` +
+      `exist only where the condition holds. Put the link under the same condition, the same name or\n` +
+      `expression — \`{cond && <Link …/>}\`, \`if (cond) …\`, \`if (!cond) return\` above it, a \`const\`\n` +
+      `holding it — or link somewhere every build has. A link from the part's own pages needs nothing:\n` +
+      `they are only rendered where the condition holds.\n\n` +
+      `The condition is read where the link is WRITTEN. A guard around the call to a method that holds\n` +
+      `the link is not seen — put the condition at the link, or move the link into the part's pages.\n`,
+  }),
+
+  /**
    * The runtime throws when this happens. Here it is said before anything renders, on every path the
    * source can produce — including the branch nobody clicked.
    */
@@ -182,6 +204,21 @@ export const GRAPH_REPORTS = [
       `A class among children is dropped, and nothing reports it at run time — the check for an\n` +
       `object that is not markup never sees it, because a class is a function. Handing a component\n` +
       `OVER is an attribute: \`<Slot view={Named} />\` is a binding, not a child.\n`,
+  }),
+
+  /**
+   * An ignore that silences nothing. An ignore is for a fault being fixed, so it has to go when the
+   * fault does; left behind, it silences whatever is written on that line next, and no run listed it.
+   */
+  report("staleIgnores", {
+    id: "ignore-that-silences-nothing",
+    heading: (n) => `${n} \`ramonda-check-ignore\`(s) on a line where nothing is reported`,
+    lines: (stale) => [`    "${stale.reason}" — nothing on this line or the next is reported. Delete it.`],
+    advice:
+      `An ignore is for a fault being fixed — a bug in this tool until it is fixed, or your own until\n` +
+      `you fix it. When the fault goes, the ignore goes with it: left behind, it silences whatever is\n` +
+      `written on that line next. And a design that is valid needs none — if a rule refuses one, that\n` +
+      `rule is the fault.\n`,
   }),
 
   report("issues", {

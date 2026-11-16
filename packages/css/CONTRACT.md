@@ -34,7 +34,7 @@ One hoisted constant at module scope, or a merge at the site when the render dec
 )>
 
                                        emitted
-import { mergeClassNames as _merge, pick as _pick, shorthands as _clears } from "@ramonda/css";
+import { mergeClassNames as _merge, pick as _pick, shorthands as _clears } from "@ramonda/css/compiled";
 _clears({"bl":["blc","bls","blw"]});
 
 <div className={_merge("r-disp-flex", _pick(this.tone, {"loud":"r-bl-4px_solid_#10b981"}, "r-bl-4px_solid_#64748b"))}>

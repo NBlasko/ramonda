@@ -223,7 +223,6 @@ describe("single-use decorators declared twice", () => {
   test("reports a method decorator and a class decorator, once each", () => {
     expect(found().map((d) => `${d.component}.@${d.decorator}x${d.count}`)).toEqual([
       "Twice.@catchError x2".replace(" ", ""),
-      "GatedTwice.@ShouldUpdateOnPropsChange x2".replace(" ", ""),
       "RedundantTwice.@state x2".replace(" ", ""),
       "RedundantTwice.@compute x2".replace(" ", ""),
       "StableTwice.@StableProps x2".replace(" ", ""),
@@ -234,7 +233,7 @@ describe("single-use decorators declared twice", () => {
    * Two faults share this report and they need different advice.
    *
    * Four, one per behaviour core actually has, each measured there rather than assumed here:
-   * `@catchError` and `@ShouldUpdateOnPropsChange` DISPLACE (one wins,
+   * `@catchError` DISPLACES (one wins,
    * the rest are dead code), `@StableProps` MERGES (both take effect, RMD046), and `@state`/`@compute`
    * are REDUNDANT (a doubled `@state` renders once per write with the right value). Saying "one of them
    * never runs" is true of exactly one of the four, and sends a reader after a difference that is not
@@ -243,7 +242,6 @@ describe("single-use decorators declared twice", () => {
   test("each report says what the second declaration does", () => {
     expect(found().map((d) => `${d.decorator}:${d.effect}`)).toEqual([
       "catchError:displaces",
-      "ShouldUpdateOnPropsChange:displaces",
       "state:redundant",
       "compute:redundant",
       "StableProps:merges",
@@ -258,16 +256,15 @@ describe("single-use decorators declared twice", () => {
   /**
    * The kind is what decides which of the duplicates is in effect, and the two are opposite: a member
    * decorator initialises top-to-bottom so the lowest wins, a class decorator applies bottom-up so the
-   * highest does. Measured in core (`CatchErrorDecorator.test.tsx`, `PropsGateInheritance.test.tsx`);
-   * carried here so the CLI can name the right declaration instead of guessing one for both.
+   * highest does. Measured in core (`CatchErrorDecorator.test.tsx`); carried here so the CLI can name
+   * the right declaration instead of guessing one for both.
    *
-   * Read off the NODE the decorator was found on, not from a table of names — `@ShouldUpdateOnPropsChange`
-   * was a member decorator before it was a class one, and a table would still be saying so.
+   * Read off the NODE the decorator was found on, not from a table of names — a decorator can change
+   * form, and a table would still be saying what it was.
    */
   test("each report says where the decorator sits", () => {
     expect(found().map((d) => `${d.decorator}:${d.kind}`)).toEqual([
       "catchError:member",
-      "ShouldUpdateOnPropsChange:class",
       "state:member",
       "compute:member",
       "StableProps:class",

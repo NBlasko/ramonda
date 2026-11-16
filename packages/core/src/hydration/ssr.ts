@@ -273,12 +273,12 @@ export interface ServerRequestInit {
   values?: Iterable<readonly [RequestKey<unknown>, unknown]>;
 }
 
-export interface RenderToStringOptions {
+export interface RenderPageOptions {
   /** When present, this render is per-request: `requestContext()` reads return these values. */
   request?: ServerRequestInit;
 }
 
-export async function renderToString(vnode: ComponentChild, opts?: RenderToStringOptions): Promise<string> {
+export async function renderToString(vnode: ComponentChild, opts?: RenderPageOptions): Promise<string> {
   // One page, one numbering. Every render of a page goes through here, and the head and the portal
   // targets are marked afterwards from the same counter — so a marker's number is where it sits in
   // the page rather than where the process happened to be.
@@ -380,9 +380,10 @@ export interface StaticRender {
    */
   title?: string;
   head?: string;
-  /** `<html lang>` and `<html dir>`, as `renderPage` returns them. */
+  /** `<html lang>`, `<html dir>` and `<html data-*>`, as `renderPage` returns them. */
   lang?: string;
   dir?: string;
+  data?: Record<string, string>;
   /**
    * Set when the render touched per-request data (a cookie, a header, a seeded value), naming
    * the field. The route CANNOT be prerendered — bake it and one visitor's data would be served
@@ -451,6 +452,8 @@ export interface RenderedPage {
   lang?: string;
   /** `<html dir>`, by the same rule. */
   dir?: string;
+  /** `<html data-*>` by the same rule, keyed as `Head`'s `data` names them: `{ theme: "dark" }`. */
+  data?: Record<string, string>;
   /**
    * What each NAMED portal target collected, by name — the blocks belonging in a
    * container outside the app's root.
@@ -489,7 +492,7 @@ export interface RenderedPage {
  * empty and the title already restored. An earlier version of this comment
  * claimed the before-reset was what covered that case. It is not.
  */
-export async function renderPage(vnode: ComponentChild, opts?: RenderToStringOptions): Promise<RenderedPage> {
+export async function renderPage(vnode: ComponentChild, opts?: RenderPageOptions): Promise<RenderedPage> {
   return inTurn(async () => {
     resetHead();
     resetPortalTargets();
@@ -584,7 +587,13 @@ const MANAGED_HEAD = `[${PORTAL_ATTR}]`;
  * a pair of anchors (the anchors included, because the client hydrates against
  * them), and outside a block, the elements `Head` marked.
  */
-function collectHead(): { title: string; head: string; lang?: string; dir?: string } {
+function collectHead(): {
+  title: string;
+  head: string;
+  lang?: string;
+  dir?: string;
+  data?: Record<string, string>;
+} {
   /**
    * Marked BEFORE anything is read, and before the block is paired.
    *

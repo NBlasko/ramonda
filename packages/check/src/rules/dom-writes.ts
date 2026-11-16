@@ -176,6 +176,9 @@ export const domWrites = {
       "goes away, and remembered by whoever adds the next handler that touches it. Say it in\n" +
       "`render()` and let the stylesheet read it — `html:has(.drawer-open)` reaches the document\n" +
       "from a class a descendant renders, so even the page itself can be styled from state.\n\n" +
+      "A value that belongs ON `<html>` — a theme — is `Head`'s `data`, set on the server and the\n" +
+      "client and handed back when the page goes away:\n\n" +
+      '    `this.use(Head, (self) => ({ data: { theme: self.theme } }))`  →  `<html data-theme="dark">`\n\n' +
       "A COMMAND is not this and is not reported: `scrollIntoView()`, `focus()`, `select()` and\n" +
       "`getBoundingClientRect()` have no declarative form. Nor is an element you created yourself,\n" +
       "or one held in a `ref` — that one is your own.\n\n",

@@ -61,6 +61,16 @@ export interface HeadOptions {
    * `string`, and the error lands on `this.use` rather than on the option.
    */
   dir?: "ltr" | "rtl" | "auto" | (string & {});
+  /**
+   * `data-*` on `<html>` — a theme above all: `data: { theme: self.theme }` is `<html data-theme="dark">`,
+   * which `[data-theme="dark"]` selects, and every block on the page sits under it.
+   *
+   * Each key is written as it appears after `data-`, the way a selector names it: `colorScheme` is
+   * refused, because HTML lowercases it to `data-colorscheme` and no `[data-color-scheme]` would match.
+   * Per key, `lang`'s rules: the deeper `Head` wins, `undefined` says nothing, and a page that goes away
+   * hands back what `<html>` had. Only `data-*`: a `class` on `<html>` would be a second way to say it.
+   */
+  data?: Readonly<Record<string, string | undefined>>;
 }
 
 /**
@@ -81,7 +91,7 @@ export interface HeadOptions {
  * ## Why a hook
  *
  * A decorator would fix the values at class-definition time, so a title could
- * never contain anything the page computed. An option on `renderToString` would
+ * never contain anything the page computed. An option on `renderPage` would
  * only let the TOP of the tree speak, and the component that knows the title is
  * the leaf — the route, not the shell.
  *
@@ -150,11 +160,12 @@ export interface HeadOptions {
  * Reactive: pass a callback (`this.use(Head, () => ({ title: this.pageTitle }))`)
  * and the head follows the value.
  *
- * `meta` and `link` are declared VALUES: a call site writes them as an array literal inside the
+ * `meta`, `link` and `data` are declared VALUES: a call site writes them as a literal inside the
  * callback, so a fresh one arrives on every evaluation and every prop is a signal comparing by
- * reference. Without this the head republished on every render of the owner, whatever it changed.
+ * reference. Without this the head republished on every render of the owner, whatever it changed —
+ * `data` was left out when it was added, and rewrote `<html>` on every one until review found it.
  */
-@StableProps("meta", "link")
+@StableProps("meta", "link", "data")
 export class Head extends Hook<HeadOptions> {
   /** This hook's node in the tree, and the proof it has published — see `publish`. */
   private node: HeadNode | undefined;
@@ -277,6 +288,7 @@ export class Head extends Hook<HeadOptions> {
     (props) => props.link,
     (props) => props.lang,
     (props) => props.dir,
+    (props) => props.data,
   )
   republishOnChange(): void {
     if (this.node === undefined || this.registry === undefined) return;
@@ -318,8 +330,9 @@ export class Head extends Hook<HeadOptions> {
    * particular page happens to set.
    */
   private readOptions(): HeadOptions {
-    const { title, description, meta, link, lang, dir } = this.props;
-    return { title, description, meta, link, lang, dir };
+    const { title, description, meta, link, lang, dir, data } = this.props;
+    if (data !== undefined) assertDataKeys(data);
+    return { title, description, meta, link, lang, dir, data };
   }
 }
 
@@ -401,15 +414,35 @@ interface HeadRegistry {
    */
   appliedTitle: string | undefined;
   /**
-   * `lang` and `dir` on `<html>`: what each was before any `Head` spoke (`null` for absent), and what
-   * the registry last wrote. The title's two fields, once per attribute, for the same two reasons.
+   * The attributes of `<html>` a `Head` has spoken for — `lang`, `dir`, and each `data-*` — by name:
+   * what each was before any `Head` spoke (`null` for absent), and what the registry last wrote. The
+   * title's two fields, once per attribute, for the same two reasons. A slot is made the first time a
+   * `Head` names the attribute, which is when its original is still the document's own.
    */
-  root: Record<RootAttribute, { original: string | null; applied: string | undefined }>;
+  root: Map<string, { original: string | null; applied: string | undefined }>;
 }
 
-/** The attributes of `<html>` a `Head` may set. */
+/** The attributes of `<html>` a `Head` sets by name; `data-*` are named by the `data` option. */
 const ROOT_ATTRIBUTES = ["lang", "dir"] as const;
-type RootAttribute = (typeof ROOT_ATTRIBUTES)[number];
+
+/** What may follow `data-`: lowercase, because HTML lowercases an attribute name and a selector would miss it. */
+const DATA_KEY = /^[a-z0-9_.-]+$/;
+
+/**
+ * Refuses a `data` key no selector could match, while the options are READ — in the render, where a
+ * throw stops the page — rather than when they are applied after the commit, where a throw is only
+ * logged and the attribute is quietly written somewhere nothing reads.
+ */
+function assertDataKeys(data: Readonly<Record<string, string | undefined>>): void {
+  for (const key of Object.keys(data)) {
+    if (DATA_KEY.test(key)) continue;
+    const spelled = key.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
+    throw new Error(
+      `[Ramonda] Head: \`${key}\` in \`data\` is not the name of a data attribute — HTML lowercases it, and no ` +
+        `selector written as \`[data-${spelled}]\` would match. Write the key as it follows \`data-\`: \`"${spelled}"\`.`,
+    );
+  }
+}
 
 /**
  * Keyed by the document rather than kept in module scope — the distinction the
@@ -428,10 +461,7 @@ function registryForDocument(): HeadRegistry {
       adopted: new Map(),
       originalTitle: document.title,
       appliedTitle: undefined,
-      root: {
-        lang: { original: document.documentElement.getAttribute("lang"), applied: undefined },
-        dir: { original: document.documentElement.getAttribute("dir"), applied: undefined },
-      },
+      root: new Map(),
     };
     registries.set(document, registry);
   }
@@ -452,8 +482,7 @@ export function resetHeadRegistry(): void {
   // one's language. Only what a `Head` wrote: app code that sets `documentElement.lang` itself on the
   // server is writing to a shared DOM like any other direct write, and is the app's to undo.
   if (registry !== undefined) {
-    for (const name of ROOT_ATTRIBUTES) {
-      const { original, applied } = registry.root[name];
+    for (const [name, { original, applied }] of registry.root) {
       // Whatever wrote it since, unlike `applyRegistry`: this is a request boundary, never a page in
       // a browser, and what is left on `<html>` here is the next request's. Measured with the
       // page-going-away guard in its place: one request's language served to the next.
@@ -567,19 +596,22 @@ function flatten(options: HeadOptions): { title: string | undefined; tags: Map<s
 function resolve(roots: Set<HeadNode>): {
   title: string | undefined;
   tags: Map<string, ResolvedTag>;
-  root: Partial<Record<RootAttribute, string>>;
+  root: Map<string, string>;
 } {
   let title: string | undefined;
   const tags = new Map<string, ResolvedTag>();
   // Per attribute, as the title is: the deeper one wins, and one that says nothing leaves it alone.
-  const root: Partial<Record<RootAttribute, string>> = {};
+  const root = new Map<string, string>();
 
   const visit = (node: HeadNode): void => {
     const flat = flatten(node.options);
     if (flat.title !== undefined) title = flat.title;
     for (const name of ROOT_ATTRIBUTES) {
       const value = node.options[name];
-      if (value !== undefined) root[name] = value;
+      if (value !== undefined) root.set(name, value);
+    }
+    for (const [key, value] of Object.entries(node.options.data ?? {})) {
+      if (value !== undefined) root.set(`data-${key}`, value);
     }
     for (const [selector, tag] of flat.tags) tags.set(selector, tag);
     for (const child of node.children) visit(child);
@@ -797,10 +829,14 @@ function applyRegistry(registry: HeadRegistry): void {
     registry.appliedTitle = undefined;
   }
 
-  // `lang` and `dir` by the title's rule: claimed always, given back only while still ours.
-  for (const name of ROOT_ATTRIBUTES) {
-    const slot = registry.root[name];
-    const value = root[name];
+  // `<html>`'s attributes by the title's rule: claimed always, given back only while still ours.
+  for (const name of root.keys()) {
+    if (!registry.root.has(name)) {
+      registry.root.set(name, { original: document.documentElement.getAttribute(name), applied: undefined });
+    }
+  }
+  for (const [name, slot] of registry.root) {
+    const value = root.get(name);
     if (value !== undefined) {
       document.documentElement.setAttribute(name, value);
       slot.applied = value;
@@ -811,7 +847,7 @@ function applyRegistry(registry: HeadRegistry): void {
   }
 }
 
-function restoreRootAttribute(name: RootAttribute, original: string | null): void {
+function restoreRootAttribute(name: string, original: string | null): void {
   if (original === null) document.documentElement.removeAttribute(name);
   else document.documentElement.setAttribute(name, original);
 }
@@ -820,13 +856,14 @@ function restoreRootAttribute(name: RootAttribute, original: string | null): voi
  * What the tree's `Head`s set on `<html>` — and only that: an attribute the document had of its own is
  * not reported, so a server shell's `lang` is never mistaken for the page's. Read by `renderPage`.
  */
-export function rootAttributes(): { lang?: string; dir?: string } {
+export function rootAttributes(): { lang?: string; dir?: string; data?: Record<string, string> } {
   const registry = registries.get(document);
   if (registry === undefined) return {};
-  const out: { lang?: string; dir?: string } = {};
-  for (const name of ROOT_ATTRIBUTES) {
-    const applied = registry.root[name].applied;
-    if (applied !== undefined) out[name] = applied;
+  const out: { lang?: string; dir?: string; data?: Record<string, string> } = {};
+  for (const [name, { applied }] of registry.root) {
+    if (applied === undefined) continue;
+    if (name === "lang" || name === "dir") out[name] = applied;
+    else (out.data ??= {})[name.slice("data-".length)] = applied;
   }
   return out;
 }

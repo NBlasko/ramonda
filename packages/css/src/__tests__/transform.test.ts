@@ -87,7 +87,7 @@ describe("what a block becomes", () => {
   test("the import is hoisted above everything, and every block with it", () => {
     const out = emit(`const a = <div className={@@( color: red; )}>y</div>;\n`);
 
-    expect(out?.code.split("\n")[0]).toBe(`import { mergeClassNames as _merge } from "@ramonda/css";`);
+    expect(out?.code.split("\n")[0]).toBe(`import { mergeClassNames as _merge } from "@ramonda/css/compiled";`);
     expect(out?.code).toMatch(/const _s0 = _merge\("r-c-red"\);/);
     expect(out?.code).toContain("className={_s0}");
   });
@@ -389,7 +389,7 @@ describe("the prologue's place in the file", () => {
 
     expect(lines[0]).toBe(`"use client";`);
     expect(lines[1]).toBe(`"use strict";`);
-    expect(lines[2]).toBe(`import { mergeClassNames as _merge } from "@ramonda/css";`);
+    expect(lines[2]).toBe(`import { mergeClassNames as _merge } from "@ramonda/css/compiled";`);
   });
 
   test("a blank line above a directive does not stop it being one", () => {
@@ -413,13 +413,13 @@ describe("the prologue's place in the file", () => {
   test("a directive on the same line as real code is not one", () => {
     const result = emit(`"use client"; const a = <div className={@@( color: red; )}>x</div>;\n`);
 
-    expect(result?.code.split("\n")[0]).toBe(`import { mergeClassNames as _merge } from "@ramonda/css";`);
+    expect(result?.code.split("\n")[0]).toBe(`import { mergeClassNames as _merge } from "@ramonda/css/compiled";`);
   });
 
   test("a string with no closing quote is not a directive", () => {
     const result = emit(`"use client\nconst a = <div className={@@( color: red; )}>x</div>;\n`);
 
-    expect(result?.code.split("\n")[0]).toBe(`import { mergeClassNames as _merge } from "@ramonda/css";`);
+    expect(result?.code.split("\n")[0]).toBe(`import { mergeClassNames as _merge } from "@ramonda/css/compiled";`);
   });
 
   test("a CRLF file keeps its directive", () => {
@@ -450,7 +450,7 @@ const a = <div className={@@( color: red; )}>x</div>;
     const lines = result?.code.split("\n") ?? [];
 
     expect(lines[0]).toBe(comment);
-    expect(lines[1]).toBe(`import { mergeClassNames as _merge } from "@ramonda/css";`);
+    expect(lines[1]).toBe(`import { mergeClassNames as _merge } from "@ramonda/css/compiled";`);
   });
 
   test("and below one that follows a directive, which is where both rules meet", () => {
@@ -464,7 +464,7 @@ const a = <div className={@@( color: red; )}>x</div>;
 
     expect(lines[0]).toBe(`"use client";`);
     expect(lines[1]).toBe(`/** @jsxImportSource preact */`);
-    expect(lines[2]).toBe(`import { mergeClassNames as _merge } from "@ramonda/css";`);
+    expect(lines[2]).toBe(`import { mergeClassNames as _merge } from "@ramonda/css/compiled";`);
   });
 
   test("a comment above a directive does not stop it being one", () => {
@@ -476,7 +476,7 @@ const a = <div className={@@( color: red; )}>x</div>;
   test("a string that is not a directive is left where it is", () => {
     const result = emit(`const s = "x";\nconst a = <div className={@@( color: red; )}>x</div>;\n`);
 
-    expect(result?.code.split("\n")[0]).toBe(`import { mergeClassNames as _merge } from "@ramonda/css";`);
+    expect(result?.code.split("\n")[0]).toBe(`import { mergeClassNames as _merge } from "@ramonda/css/compiled";`);
   });
 
   test("the runtime it imports from can be pointed somewhere else", () => {

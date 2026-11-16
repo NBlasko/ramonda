@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { analyzeProject } from "../analyze";
+import { domWrites } from "../rules/dom-writes";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const run = () => analyzeProject(join(here, "fixtures", "dom-writes", "tsconfig.json"));
@@ -78,4 +79,13 @@ describe("a component writing the document instead of rendering it", () => {
     expect(result.issues).toEqual([]);
     expect(result.unresolved).toEqual([]);
   });
+});
+
+/**
+ * A theme on `<html>` was the one write the advice had no answer for: `:has()` selects on a class but
+ * cannot carry a value, and the docs showed a `ramonda-check-ignore` instead — an ignore for a valid
+ * design. `Head` sets `data-*` on `<html>` now, and the advice says so.
+ */
+test("the advice names Head's data for a value that belongs on <html>", () => {
+  expect(domWrites.report.advice).toContain("`this.use(Head, (self) => ({ data: { theme: self.theme } }))`");
 });

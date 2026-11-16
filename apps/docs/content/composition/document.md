@@ -1,6 +1,6 @@
 ---
 title: Reaching the document
-description: How a component affects the page outside its own subtree — a class it already renders, the Head hook, a Portal — and the one case that has no answer yet.
+description: How a component affects the page outside its own subtree — a class it already renders, the Head hook, a Portal, a theme on <html>.
 section: Composition
 order: 56
 ---
@@ -82,44 +82,20 @@ way as the title, on the server and the client:
 this.use(Head, (self: App) => ({ lang: self.locale }));
 ```
 
-## Any other value on `<html>` or `<body>` → no answer yet
+## A theme on `<html>` → `Head`'s `data`
 
-`data-theme="dark"`, `style="--accent: #c33"`.
-
-`:has()` selects on a class but cannot carry a value, so the first answer does not stretch to cover
-this. [`renderDocument`](/reference/api) takes `bodyClass`, but it is static and server-only — one
-value for the whole build, not one a component can change.
-
-So this case has no declarative answer today, and rather than leave that implied: **nothing in the
-Ramonda repository sets any other attribute on `<html>` or `<body>` from a component.** It is a hole
-in the design, not one anybody has fallen into.
-
-If you need it now, an imperative write in `@mounted` with its undo in `@destroyed` is what there
-is. [`ramonda-check`](/reference/check) reports it as
-[`dom-writes`](/rules/dom-writes) and **fails the run**, like every rule.
-
-Say which of the cases above did not fit, on the line, and the run goes green with the reason
-recorded rather than hidden:
+`data-theme="dark"`, `data-density="compact"` — set by [`Head`](/ssr/head#a-theme-on-html-data), on
+the server and the client, by `lang`'s rules:
 
 ```tsx
-@mounted paint(): void {
-  // ramonda-check-ignore the theme class belongs on <html>, which no component owns
-  document.body.classList.add("dark");
-}
+this.use(Head, (self: App) => ({ data: { theme: self.theme } }));
 ```
 
-If it is ever built, it will follow the rules `lang` already follows in `Head`: the last mount wins,
-the value is restored on `@destroyed`, and the server and the client share one path.
-
-Not code you can write today — a sketch, deliberately unhighlighted so it cannot be mistaken for
-something to copy:
-
-```
-this.use(Shell, (self: App) => ({
-  html: { lang: self.locale, "data-theme": self.theme },
-  body: { class: self.dense ? "dense" : "" },
-}));
-```
+`<html>` takes `data-*` and nothing else from a component. A class there would be a second way to
+say the same thing; `<body>` and an inline `style` on either have no case yet that a `data-*` on
+`<html>` and a selector do not cover. A write of your own in `@mounted` —
+`document.body.classList.add("dark")` — is reported as [`dom-writes`](/rules/dom-writes), and the
+answer is `data`, not an ignore.
 
 ## A command is not any of this
 

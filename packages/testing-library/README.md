@@ -109,7 +109,7 @@ const result = render(<Card title="a" />, options?);
 ### `hydrate` — testing SSR output
 
 ```tsx
-const html = await renderToString(<App />);
+const { body: html } = await renderPage(<App />);
 
 const { getByText } = render(<App />, { hydrate: html });
 ```

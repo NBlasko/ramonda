@@ -730,7 +730,7 @@ describe("@StableProps is type-checked at the decoration site", () => {
   /**
    * A COMPONENT takes it too, and the names are checked against ITS props.
    *
-   * It used to throw here and point at `@ShouldUpdateOnPropsChange` instead. That decorator takes a
+   * It used to throw here and point at `@ShouldUpdateOnPropsChange` instead, since removed. That took a
    * PREDICATE, which is a thing an app can get wrong in the direction that matters — a component
    * that stops rendering when it should. This takes names, so the worst a mistake can do is fail to
    * type-check.

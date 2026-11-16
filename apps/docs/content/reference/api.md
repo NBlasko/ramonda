@@ -45,7 +45,7 @@ package not added at the start is installed like any other, later.
 |---|---|
 | `Component<P>` | The base class. Extend it and implement [`render()`](/concepts/components). |
 | `Hook<O>` | State and lifecycle with [no element](/hooks). |
-| `Ref<T>` / `createRef<T>()` | Holds a real DOM node. [Refs](/concepts/refs) |
+| `createRef<T>()` | Makes a ref, typed `Ref<T>`, that holds a real DOM node. [Refs](/concepts/refs) |
 | `SAME_ITEM` | The option for a lens `set` that replaces a list item with the same item rebuilt, so it keeps its element and its component. [Lens](/lens#editing-an-item-and-replacing-one) |
 | `merge(previous, next, identity?)` | Keeps the previous value where the new one equals it, so a refetch is not a change. With `identity`, rows are paired across a reorder or a resize and a changed row keeps its identity. [Lists](/lists#refetched-data-and-objects-that-are-re-created) |
 | `list<T>(each, render)` | Renders a list, minting identity from the items. `render` is a function taking one item. [Lists](/lists) |
@@ -75,22 +75,21 @@ package not added at the start is installed like any other, later.
 
 | | |
 |---|---|
-| `renderToString(vnode, opts?)` | An app → HTML, awaiting async lifecycle. `opts.request` makes it a per-request render so `requestContext()` returns real values. [Details](/ssr/render) |
-| `renderPage(vnode)` | The same, plus `{ title, head, lang, dir }`. [Head](/ssr/head) |
+| `renderPage(vnode, opts?)` | An app → `{ body, title, head, lang, dir, data, portals }`, awaiting async lifecycle. `opts.request` makes it a per-request render so `requestContext()` returns real values. [Details](/ssr/render) |
 | `renderStatic(vnode, url)` | A build-time render with the request context poisoned — returns `{ html }` to bake or `{ blockedBy }` if the route read per-request data. |
 | `renderDocument(page, options?)` | Wraps a rendered page in a complete document. [Static builds](/ssr/static) |
 | `hydrateRoot(vnode, element)` | Adopts the server's DOM instead of rebuilding it. |
-| `ServerRedirect` | Thrown by `renderToString` when a render asks to redirect; catch it and answer with a 302. [Guards](/routing/server) |
+| `ServerRedirect` | Thrown by `renderPage` when a render asks to redirect; catch it and answer with a 302. [Guards](/routing/server) |
 | `captureServerRedirect()` | Low-level hook to record a server redirect for the current render. [Guards](/routing/server) |
 | `requestContext()` | Per-request data — `url`, `cookies`, `headers`, `get(key)`. Read it **synchronously**: on the server the scope is cleared before the render's first `await` ([RMD053](/reference/diagnostics/rmd053)). Per-request reads throw during a static build (that guards prerendering). |
 | `requestKey<T>(label)` | Declares a typed per-request slot for `requestContext().get`. |
-| `seedRequest(key, value)` | Server-only: fills a slot for the render already under way. Values known beforehand go to `renderToString` as `request.values`, keyed by the key itself. [Details](/ssr/request) |
+| `seedRequest(key, value)` | Server-only: fills a slot for the render already under way. Values known beforehand go to `renderPage` as `request.values`, keyed by the key itself. [Details](/ssr/request) |
 | `RequestReadDuringBuild` | Thrown when per-request data is read during a static build — the route cannot be prerendered. |
 
 `ServerRequestInit.values` takes pairs of KEY and value — an array literal is the natural spelling,
 since `new Map([…])` cannot infer a heterogeneous one. A label is never written twice.
 
-The types beside them: `RenderToStringOptions` and `ServerRequestInit` are what `renderToString` takes,
+The types beside them: `RenderPageOptions` and `ServerRequestInit` are what `renderPage` takes,
 `StaticRender` is what `renderStatic` returns (`{ html }` or `{ blockedBy }`), and the per-request family
 is `RequestContext` with `RequestCookies`, `RequestMode`, plus `RequestKey<T>` and `RequestKeyOptions`
 for a declared slot.
@@ -130,7 +129,6 @@ anyway under a server DOM shim.
 | | |
 |---|---|
 | [`@watchProp(selector)`](/reference/decorators/watchProp) | Runs when one prop changes, **before** the render. [Props](/concepts/props) |
-| [`@ShouldUpdateOnPropsChange`](/reference/decorators/ShouldUpdateOnPropsChange) | A CLASS decorator taking `(self, previous, next) => boolean`: gates whether new props from the parent are taken up (their signals update + a render). For ignoring a change that really happened — a prop merely rebuilt with equal contents is `@StableProps`' job. Components only. |
 | [`@deferHydration`](/reference/decorators/deferHydration) | Keeps the server's markup while a promise settles. [Async on the server](/ssr/async) |
 | [`@catchError`](/reference/decorators/catchError) | Declares the method that handles an error thrown anywhere below this component. Return `false` to decline it and let the next one above take over. Components only; one per class ([RMD032](/reference/diagnostics/rmd032)). |
 
@@ -169,7 +167,7 @@ All 41, grouped by what they belong to. The server and per-request ones are expl
 
 **Lifecycle** — `LifecycleOptions` · `RenderEnv`
 
-**Server rendering** — `RenderedPage` · `DocumentOptions` · `RenderToStringOptions` ·
+**Server rendering** — `RenderedPage` · `DocumentOptions` · `RenderPageOptions` ·
 `ServerRequestInit` · `StaticRender` · `RequestContext` · `RequestCookies` · `RequestKey` ·
 `RequestKeyOptions` · `RequestMode`
 
@@ -192,13 +190,13 @@ what it passes into one. One field today, `label`, which devtools adds to the ho
 | `Navigator` | `pathname` · `params<T>()` · `searchParams` · `hashParams` · `push` · `replace` · `updateSearchParams` · `updateHashParams` · `back` · `forward`. [Reading the URL](/routing/params) |
 | `Link` | A real `<a href>` that intercepts a plain left click. [Links](/routing/links) |
 | `createRoutes(map)` | Compiles a route table once, capturing its paths in the type. Call it at module scope. |
-| `interface Register` | Where an app registers its table once — `declare module "@ramonda/router" { interface Register { routes: typeof routes } }` — so `Link`, `Navigator` and `route` are type-checked against it. [Setup](/routing) |
+| `interface Routes` | Where an app registers its table once, under `app` — `declare module "@ramonda/router" { interface Routes { app: typeof routes } }` — so `Link`, `Navigator` and `route` are type-checked against it. [Setup](/routing) |
 | `route(pattern, params)` | Builds a `:param` href — the only way to make one; params are typed. [Links](/routing/links) |
 | `routePaths(config, extra?)` | `{ paths, needsData }` for a static build. [Static builds](/ssr/static) |
 | `matchParams` · `matchCompiled` | Matching, for tooling. |
 | `parseUrlString` · `buildUrl` · `sanitizeHref` | URL helpers. |
 
-Types: `Register` · `RouteConfig` · `PathOf` · `Href` · `BuiltHref` · `TypedLinkProps` · `TypedNavigator` ·
+Types: `Routes` · `RoutePart` · `RouteConfig` · `PathOf` · `Href` · `BuiltHref` · `TypedLinkProps` · `TypedNavigator` ·
 `RouteParams` · `RoutePaths` · `RouterState` · `RouterNavigator` · `NavigateOptions` ·
 `PartialNavigateOptions` · `SearchParamsUpdater` · `HashParamsUpdater` · `StateUpdater` ·
 `RouteOutletProps` · `HashLevelProps` · `LinkProps`
@@ -366,7 +364,7 @@ only the compiled values; the compiler, the config and the tools are separate en
 | `CssUnit` | Every unit CSS has. `CssLengthUnit`, `CssAngleUnit`, `CssTimeUnit`, `CssFrequencyUnit` and `CssResolutionUnit` are one family each. |
 | `CssColor` | A colour value. `CssColorKeyword` is its named colours. |
 
-**Called by compiled code** — the build writes these calls, and nothing else needs them
+**Called by compiled code** — from `@ramonda/css/compiled`. The build writes these calls, and nothing else needs them
 
 | | |
 |---|---|
@@ -409,7 +407,7 @@ those are `@ramonda/router/server`. [Server rendering](/ssr/server)
 | `installDom(url)` | Installs a DOM and the globals a render reads, and hands back a `DomHandle`. [The whole loop](/ssr/server#installdom-url-and-the-domhandle-it-returns) |
 | `installWindow(dom, options?)` | The globals only, for a DOM you brought yourself — a jsdom, or one document reused across a prerender. `navigation: "dom"` takes that DOM's own `location` and `history` instead of building them from `url`. |
 | `DomHandle` | What `installDom` hands back: a `close()` that shuts the render down without the caller knowing what built it. |
-| `fillDocument(document)` | Puts the rendered html, title, head, `lang`/`dir` and portal targets into the shell. [Filling the shell](/ssr/server#filldocument-document-the-document-it-takes) |
+| `fillDocument(document)` | Puts the rendered html, title, head, `lang`/`dir`/`data` and portal targets into the shell. [Filling the shell](/ssr/server#filldocument-document-the-document-it-takes) |
 | `Document` | The shape `fillDocument` takes — the shell with `<!--ssr-->` where the app goes, and optionally `<!--head-->` and `<!--portals-->`. |
 | `escapeHtml(value)` | Escapes a value for markup. What keeps an app's own title out of the parser. |
 | `PORTAL_TARGET_ATTR` | The attribute a shell puts on a portal container, so a target exists on the server too. [Portal](/composition/portal) |

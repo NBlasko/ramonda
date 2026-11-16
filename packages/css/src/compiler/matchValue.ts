@@ -55,6 +55,15 @@ function mayBeAbsent(term: Term): boolean {
  * everything and the rest are never built. `||` over five components is 325 orders, and `animation`
  * has eight.
  */
+/**
+ * How many readings have been begun, over the life of the module — the matcher's work as a COUNT.
+ * Read as a difference by `stepsToRead`, for a test that timing made flaky.
+ */
+let begun = 0;
+export function readingsBegun(): number {
+  return begun;
+}
+
 function* readings(
   term: Term,
   tokens: readonly string[],
@@ -62,6 +71,7 @@ function* readings(
   accepts: Accepts,
   starts: Starts,
 ): Generator<Reading> {
+  begun++;
   // `#?` is optional AND repeated: the `?` lets it take nothing, whatever the repeat's own minimum.
   const min = term.optional === true ? 0 : (term.repeat?.min ?? 1);
   /**

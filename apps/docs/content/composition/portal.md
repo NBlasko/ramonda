@@ -188,7 +188,7 @@ If you assemble your own shell, mark where they go and `fillDocument` fills it:
 ```
 
 ```js
-res.end(fillDocument({ template, html, title, head, lang, dir, portals }));
+res.end(fillDocument({ template, html, title, head, lang, dir, data, portals }));
 ```
 
 A shell that collected blocks and has no `<!--portals-->` is refused, naming the targets. That

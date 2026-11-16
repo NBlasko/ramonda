@@ -32,7 +32,7 @@ empties first — keep your own files in `public/`, not there.
 ## How rendering modes work
 
 `src/App.tsx` is a routed app: `createRoutes` holds the table, and registering it
-(`interface Register`) type-checks every `<Link href>` against your routes. `src/entry-server.tsx` says **how each route
+(`interface Routes`) type-checks every `<Link href>` against your routes. `src/entry-server.tsx` says **how each route
 renders**, and the build refuses to bake anything unsafe:
 
 ```ts
@@ -45,7 +45,7 @@ defineServer(routes, {
 
 - **static** pages are written to `dist/static/` by `npm run build` and served as files.
 - **ISR** pages are cached and refreshed in the background when stale.
-- **dynamic** pages render on each request via `renderToString({ request })`.
+- **dynamic** pages render on each request via `renderPage(<App />, { request })`.
 
 A route can read per-request data (cookies, headers, a signed-in user) with
 `requestContext()`. If a route marked `prerender` reads the request, the **build fails

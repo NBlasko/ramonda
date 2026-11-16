@@ -33,7 +33,6 @@ const EXPECTED = [
   // The ready-made option for a lens `set` that replaces a row with the same
   // row rebuilt — so an app never has to name the symbol behind it.
   "SAME_ITEM",
-  "ShouldUpdateOnPropsChange",
   "StableProps",
   "AsyncLoad",
   "ErrorBoundary",
@@ -46,8 +45,9 @@ const EXPECTED = [
   // `{...this.props}` spreads nothing — the proxy has no `ownKeys` — so a wrapper needs this.
   "forwarded",
   "createContext",
+  // The one way to make a ref. `Ref` is a TYPE only: a constructible class was a second way, and
+  // `new Ref()` skipped both createRef's dev report and the checker's rule, which reads createRef.
   "createRef",
-  "Ref",
   "Head",
   // The scheduled calls an app STARTS, where `@interval`/`@timeout` are the ones a mount starts.
   "Timeout",
@@ -65,8 +65,8 @@ const EXPECTED = [
   // Compiled JSX never calls it: that goes through `@ramonda/core/jsx-runtime`, which the compiler
   // imports itself. The name is deliberately one nobody reaches for by habit.
   "__h",
-  // server rendering
-  "renderToString",
+  // server rendering. `renderToString` is not here: it returned the body alone, which `renderPage`
+  // returns beside the title, the head, `lang` and the portals, so it was a second way that lost them.
   "renderPage",
   "renderStatic",
   "renderDocument",
@@ -159,10 +159,11 @@ const EXPECTED_TYPES = [
   "PortalProps",
   "PortalTarget",
   "RamondaNode",
+  "Ref",
   "RefCallback",
   "RefTarget",
   "RenderEnv",
-  "RenderToStringOptions",
+  "RenderPageOptions",
   "RenderedPage",
   "RequestContext",
   "RequestCookies",
@@ -240,7 +241,7 @@ import type {
   RefCallback,
   RefTarget,
   RenderEnv,
-  RenderToStringOptions,
+  RenderPageOptions,
   RenderedPage,
   RequestContext,
   RequestCookies,
@@ -277,7 +278,7 @@ export type __Published = [
   RefCallback<Element>,
   RefTarget<Element>,
   RenderEnv,
-  RenderToStringOptions,
+  RenderPageOptions,
   RenderedPage,
   RequestContext,
   RequestCookies,

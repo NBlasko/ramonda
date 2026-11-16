@@ -1,6 +1,6 @@
 import { Component, bootstrap, persist, state, state as reactive } from "@ramonda/core";
 import * as core from "@ramonda/core";
-import { ShouldUpdateOnPropsChange as asGate } from "@ramonda/core";
+import { StableProps as asStable } from "@ramonda/core";
 import { persist as ourOwn } from "./own";
 import { OursUnderItsOwnName } from "./ours";
 
@@ -45,18 +45,18 @@ class OwnDecorator extends Component {
 }
 
 /** ✗ A single-use class decorator twice — the sibling rule's report, through a NAMESPACE. */
-@core.ShouldUpdateOnPropsChange(() => true)
-@core.ShouldUpdateOnPropsChange(() => false)
-class GateTwiceNamespaced extends Component {
+@core.StableProps("a")
+@core.StableProps("b")
+class GateTwiceNamespaced extends Component<{ a?: object; b?: object }> {
   render() {
     return null;
   }
 }
 
 /** ✗ And with core's own decorator under an alias. */
-@asGate(() => true)
-@asGate(() => false)
-class GateTwiceAliased extends Component {
+@asStable("a")
+@asStable("b")
+class GateTwiceAliased extends Component<{ a?: object; b?: object }> {
   render() {
     return null;
   }

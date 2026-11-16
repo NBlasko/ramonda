@@ -22,13 +22,7 @@ import { bindInstanceMethods } from "../helpers/bindMethods";
  */
 const lifecycles = new Set(["render"]);
 
-// A prop-update gate used to be a method the framework looked up BY NAME, which
-// meant the name was reserved on every component whether or not the author knew it.
-// It is now the `@ShouldUpdateOnPropsChange` decorator, so the method can be called
-// anything and a class that happens to define a method by that name for its own
-// reasons is just a class with a method.
-//
-// `render` is the one name still reserved, and it is a different case: it is
+// `render` is the one name the framework reserves, and it is a safe one to reserve: it is
 // `abstract`, so TypeScript requires exactly one of it with exactly one
 // signature. You cannot define it for some other purpose without the compiler
 // objecting — the collision this list exists to prevent is not reachable. Moving

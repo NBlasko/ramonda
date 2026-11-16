@@ -28,7 +28,7 @@ class UserCard extends Component<{ id: string }> {
 }
 ```
 
-`renderToString` on that produces the name, not a spinner.
+`renderPage` on that produces the name, not a spinner.
 
 ## How it works, and why there is no API for it
 
@@ -123,7 +123,7 @@ prefetching in a route handler, sending one payload instead of one per observer 
 // server
 const client = new QueryClient();
 await client.prefetch(["todos"], loadTodos);
-const html = await renderToString(<App client={client} />);
+const { body: html } = await renderPage(<App client={client} />);
 const payload = JSON.stringify(client.dehydrate());
 ```
 
