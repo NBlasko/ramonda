@@ -190,8 +190,9 @@ export const rowReadsAPlainField = {
       "answer for them. Pass the values rather than the component, which is better code anyway: a\n" +
       "function taking the whole component can read anything. If it needs several, group them in a\n" +
       "method or a `@compute` on the class — that stays inside what this can follow.\n\n" +
-      "If a stale value is what you want, say so and it goes quiet:\n\n" +
-      "    // ramonda-check-ignore a hover count, stale until the row rebuilds is fine\n",
+      "A stale value is not one to want: the row shows it until something unrelated rebuilds that\n" +
+      "row, which nobody reading the code can predict. A value the row should show is `@state`, or it\n" +
+      "belongs to the row's own data — a field of the item, which the row is rebuilt for when it changes.\n",
   },
 
   read(file, context) {
