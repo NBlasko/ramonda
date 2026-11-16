@@ -75,7 +75,8 @@ the row's class, its id and its label. Your `render()` and the JSX in it read ex
 These are compiled the ordinary way, and an element inside them is a template of its own: a component, a
 fragment, an element with a spread (`{...props}`), a namespaced tag or attribute (`xlink:href`), a `class`
 attribute (write `className`), a `children` attribute, a `key` below a tree's root, an element that writes
-one attribute twice (`for` beside `htmlFor`), a `__proto__` attribute, and text or an attribute with an `&` in it, which may begin an
+one attribute twice (`for` beside `htmlFor`), a `__proto__` attribute, a `<this>` tag, text holding a
+next-line character (U+0085) or a zero-width space (U+200B), which esbuild and Oxc clean differently, and text or an attribute with an `&` in it, which may begin an
 entity (`&amp;`) that only the JSX transform decodes. Each JSX tree is its own template, so the two branches of
 `cond ? <input className="a" /> : <input className="b" />` are two elements: switching builds the other one,
 and focus, the caret and an open `<details>` stay with the one that went. One element whose attribute

@@ -360,6 +360,10 @@ describe("what is left to the transform after this one", () => {
     },
   );
 
+  test('`<this>` — the `this` expression to Oxc, the string "this" to esbuild — is left to `jsx()`', () => {
+    expect(compileJsx(`class A { r() { return <this>x</this>; } }`, "a.tsx")).toBeUndefined();
+  });
+
   test("a module that is not JSX is not read", () => {
     expect(compileJsx(`const a = <div />;`, "a.ts")).toBeUndefined();
   });
@@ -413,6 +417,20 @@ describe("where the templates go", () => {
   test("after a `#!` line, which has to stay the first", () => {
     const { full } = compile(`#!/usr/bin/env node\nconst top = <i>x</i>;\n`);
     expect(full.startsWith(`#!/usr/bin/env node\n\nimport { __template`)).toBe(true);
+  });
+
+  test.each([
+    ["CR", "\r"],
+    ["CRLF", "\r\n"],
+    ["a line separator", "\u2028"],
+    ["a paragraph separator", "\u2029"],
+  ])("after a `#!` line ended by %s, and nowhere later in the module", (_name, end) => {
+    const source = `#!/usr/bin/env node${end}const a = <p>x</p>;${end}const s = \`a\nb\`;`;
+    const { full } = compile(source);
+    expect({
+      first: full.startsWith(`#!/usr/bin/env node${end}\nimport { __template`),
+      literal: full.includes("const s = `a\nb`;"),
+    }).toEqual({ first: true, literal: true });
   });
 
   test("at the start of a module with neither", () => {

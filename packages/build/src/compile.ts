@@ -21,8 +21,9 @@
  * A component, a fragment, an element with a spread (`{...props}`, whose attributes are not known here), a
  * namespaced tag or attribute, a `class` attribute (the runtime reports it and renames it), a `children`
  * attribute (JSX's way to give an element its children), a `key` below the root, an element that writes
- * one attribute twice (`for` beside `htmlFor`), a `__proto__` attribute (an object literal's prototype), and text or an attribute with an `&` in it, which may begin
- * an entity (`&amp;`) that only the transform after this decodes.
+ * one attribute twice (`for` beside `htmlFor`), a `__proto__` attribute (an object literal's prototype), a
+ * `<this>` tag, text holding U+0085 or U+200B (which esbuild and Oxc clean differently), and text or an
+ * attribute with an `&` in it, which may begin an entity (`&amp;`) that only the transform after this decodes.
  * A host element inside one of these is still compiled, as a block of its own.
  *
  * ## The source stays where it was
@@ -107,7 +108,7 @@ export function compileJsx(code: string, id: string, options: CompileOptions = {
   const body = (parsed.program as unknown as { body: Node[] }).body;
   // After the imports and the directives, and before any code that may build a block while the module
   // loads — and never ahead of a `#!` line, which has to stay the first.
-  let at = code.startsWith("#!") ? code.indexOf("\n") + 1 || code.length : 0;
+  let at = afterHashbang(code, parsed.program as unknown as { hashbang?: { end: number } | null });
   for (const statement of body) {
     if (statement.type === "ImportDeclaration") at = statement.end;
     else if (
@@ -238,7 +239,20 @@ function hostTag(element: JSXElement): string | undefined {
   const name = element.openingElement.name;
   if (name.type !== "JSXIdentifier") return undefined;
   const tag = name.name as string;
+  // `<this>` is the `this` expression to Oxc and the string "this" to esbuild: left to whichever runs.
+  if (tag === "this") return undefined;
   return /^[a-z]/.test(tag) ? tag : undefined;
+}
+
+/**
+ * Where a module's first line ends when it is a `#!` line, which has to stay the first: past the line
+ * terminator that ends it — any JavaScript knows, `\r\n` as one — as the parser found it.
+ */
+function afterHashbang(code: string, program: { hashbang?: { end: number } | null }): number {
+  const end = program.hashbang?.end;
+  if (end === undefined) return 0;
+  if (code.startsWith("\r\n", end)) return end + 2;
+  return /[\n\r\u2028\u2029]/.test(code.charAt(end)) ? end + 1 : end;
 }
 
 function attributeName(attribute: Node): string | undefined {
