@@ -115,25 +115,172 @@ function compilePattern(pattern: string): {
 }
 
 /**
- * Compiles a routes map into a stable `RouteConfig` — call it ONCE (module
- * scope), then pass the result to <Router>. Two wins: regexes are built a single
- * time (not per render/match), and the stable object identity lets <Router>'s
- * shallow props comparison skip re-rendering when the parent re-renders.
+ * One part of a table: a module's compiled table, a literal one, or `undefined` — the empty part a
+ * condition leaves (`import.meta.env.DEV ? debugRoutes : undefined`).
  */
-export function createRoutes<const T extends Record<string, VNode>>(routes: T): RouteConfig<Extract<keyof T, string>> {
-  const compiled: CompiledRoute[] = [];
-  let fallback: VNode | undefined;
+export type RoutePart = RouteConfig<string> | Record<string, VNode> | undefined;
 
-  for (const [key, vnode] of Object.entries(routes)) {
+/** The paths one part names. A compiled table carries them in its phantom; a literal one as its keys. */
+type PathsOfPart<P> =
+  P extends RouteConfig<infer K> ? K : P extends Record<string, VNode> ? Extract<keyof P, string> : never;
+
+/**
+ * Compiles a routes map into a stable `RouteConfig` — call it ONCE (module scope), then pass the
+ * result to <Router>. Regexes are built a single time, and the stable identity lets <Router>'s
+ * shallow props comparison skip re-rendering when the parent re-renders.
+ *
+ * ## Parts
+ *
+ * `createRoutes(tournamentRoutes, authRoutes, { "/": <Home /> })`: a table assembled from the tables
+ * its modules own and a literal one of its own, matched in the order given — see
+ * `DESIGN-module-routes.md`. One literal table is the one-part case. A spread cannot do this: the
+ * result is COMPILED, so `{ ...tournamentRoutes }` copied `compiled` and `fallback` as if they were
+ * paths.
+ *
+ * ## Refused, when the table is built
+ *
+ * A path two parts both name, a second `"*"`, and a route an earlier pattern matches first — none of
+ * them can ever be meant, and across files nobody sees them. Thrown at module load, so the first dev
+ * server start or test run stops on it and it never ships.
+ */
+export function createRoutes<const T extends readonly RoutePart[]>(...parts: T): RouteConfig<PathsOfPart<T[number]>> {
+  const compiled: (CompiledRoute & { part: number })[] = [];
+  let fallback: VNode | undefined;
+  let fallbackPart = 0;
+  const seen = new Map<string, number>();
+
+  const add = (key: string, vnode: VNode, part: number): void => {
     if (key === "*") {
+      if (fallbackPart !== 0) {
+        throw new Error(
+          `[Ramonda Router] createRoutes: a second "*" — part ${fallbackPart} already has the catch-all, and part ${part} ` +
+            `names another. A table has one; keep it in the app's own part.`,
+        );
+      }
       fallback = vnode;
-      continue;
+      fallbackPart = part;
+      return;
     }
+    const before = seen.get(key);
+    if (before !== undefined) {
+      throw new Error(
+        `[Ramonda Router] createRoutes: "${key}" is in two parts of this table — part ${before} and part ${part}. ` +
+          `The first would always win; keep it in the part that owns it.`,
+      );
+    }
+    seen.set(key, part);
     const { regex, paramNames } = compilePattern(key);
-    compiled.push({ key, regex, paramNames, vnode });
+    compiled.push({ key, regex, paramNames, vnode, part });
+  };
+
+  parts.forEach((part, index) => {
+    if (part === undefined) return;
+    const at = index + 1;
+    if (isCompiled(part)) {
+      for (const route of part.compiled) add(route.key, route.vnode, at);
+      if (part.fallback !== undefined) add("*", part.fallback, at);
+      return;
+    }
+    for (const [key, vnode] of Object.entries(part)) add(key, vnode, at);
+  });
+
+  const hidden = hiddenRoute(compiled);
+  if (hidden !== undefined) {
+    const [route, earlier] = hidden;
+    throw new Error(
+      `[Ramonda Router] createRoutes: "${route.key}" can never be reached: "${earlier.key}", before it, matches it ` +
+        `first. Put "${route.key}" before "${earlier.key}".`,
+    );
   }
 
-  return { compiled, fallback };
+  return {
+    compiled: compiled.map((route) => ({
+      key: route.key,
+      regex: route.regex,
+      paramNames: route.paramNames,
+      vnode: route.vnode,
+    })),
+    fallback,
+  };
+}
+
+/**
+ * The first route an earlier one matches first, and that earlier one — a route never reached.
+ *
+ * Compared segment by segment, never by trying a sample value (found by review: `/x/a` claimed to
+ * hide `/:p/a`, which `/y/a` reaches), and indexed so a route is tried only against earlier routes
+ * that could hide it: the same number of segments and, at the later route's first fixed segment, the
+ * same text or a param. Every route against every earlier one was 293 ms for 3000 routes, and a table
+ * where every route starts with `/:lang` was 811 ms — at module load, in production. `compare` is
+ * `hides`; a test passes its own to count how many pairs are tried.
+ */
+export function hiddenRoute<R extends { key: string }>(
+  routes: readonly R[],
+  compare: (earlier: string, later: string) => boolean = hides,
+): [route: R, earlier: R] | undefined {
+  const bySegment = new Map<string, R[]>();
+  const paramAt = new Map<string, R[]>();
+  const sameLength = new Map<number, R[]>();
+  const into = <K>(map: Map<K, R[]>, key: K, route: R) => {
+    const list = map.get(key);
+    if (list) list.push(route);
+    else map.set(key, [route]);
+  };
+  for (const route of routes) {
+    const segments = route.key.split("/");
+    const fixed = segments.findIndex((segment, at) => at > 0 && !segment.includes(":"));
+    const candidates =
+      fixed === -1
+        ? (sameLength.get(segments.length) ?? [])
+        : [
+            ...(bySegment.get(`${segments.length}|${fixed}|${segments[fixed]}`) ?? []),
+            ...(paramAt.get(`${segments.length}|${fixed}`) ?? []),
+          ];
+    const earlier = candidates.find((one) => compare(one.key, route.key));
+    if (earlier !== undefined) return [route, earlier];
+    segments.forEach((segment, at) => {
+      if (at === 0) return;
+      if (segment.includes(":")) into(paramAt, `${segments.length}|${at}`, route);
+      else into(bySegment, `${segments.length}|${at}|${segment}`, route);
+    });
+    into(sameLength, segments.length, route);
+  }
+  return undefined;
+}
+
+/** A segment that is one `:param` and nothing else — it matches any one segment `[\w-]+` can. */
+const WHOLE_PARAM = /^:\w+$/;
+
+/**
+ * Whether `earlier` matches every path `later` does. Segment by segment: a whole-param segment takes
+ * any segment its `[\w-]+` can (a param of the later route, or a literal of those characters); any
+ * other segment must be written the same. Both are anchored, so the counts must agree.
+ */
+export function hides(earlier: string, later: string): boolean {
+  const a = earlier.split("/");
+  const b = later.split("/");
+  if (a.length !== b.length) return false;
+  return a.every((segment, at) => {
+    const other = b[at];
+    // A whole param takes any segment of `[\w-]` — a later param's values are of those too, so a
+    // segment like `file-:id` is all of them. Found by review: it was only matched as written.
+    if (WHOLE_PARAM.test(segment)) return /^[\w-]+$/.test(other.replace(/:\w+/g, "x"));
+    // A param inside a segment — `:name.json` — matches what the router's own regex for it matches.
+    // Found by review: compared as text, `/files/:name.json` did not hide `/files/a.json`.
+    if (segment.includes(":") && !other.includes(":")) return segmentPattern(segment).test(other);
+    return segment === other;
+  });
+}
+
+/** One segment as the router matches it: each `:param` is `[\w-]+`, everything else literal. */
+function segmentPattern(segment: string): RegExp {
+  const parts = segment.split(/:\w+/).map((literal) => literal.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  return new RegExp(`^${parts.join("[\\w-]+")}$`);
+}
+
+/** A part that is already a compiled table — a module's — rather than a literal one. */
+function isCompiled(part: RouteConfig<string> | Record<string, VNode>): part is RouteConfig<string> {
+  return Array.isArray((part as RouteConfig<string>).compiled);
 }
 
 /** Matches a pathname against a precompiled config (no regex building here). */

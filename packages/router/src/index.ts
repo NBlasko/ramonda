@@ -21,13 +21,14 @@ export {
   matchCompiled,
   routePaths,
   type RouteConfig,
+  type RoutePart,
   type RouteParams,
   type RoutePaths,
   type PathOf,
 } from "./match";
 export { Router, RouteOutlet, HashLevel, type HashLevelProps, type RouteOutletProps } from "./Router";
 /**
- * `Link`, `Navigator` and `route`, typed to the table the app REGISTERS — see `Register`.
+ * `Link`, `Navigator` and `route`, typed to the tables the app REGISTERS — see `Routes`.
  *
  * Each exists once, typed. The untyped `Link` and `Navigator` are not exported: an untyped one was
  * an equally short import that silently gave up the checking the typed one exists to provide.
@@ -36,7 +37,7 @@ export {
   Link,
   Navigator,
   route,
-  type Register,
+  type Routes,
   type Href,
   type BuiltHref,
   type TypedLinkProps,

@@ -45,8 +45,8 @@ const routes = createRoutes({
  * happens WITHOUT one is a different program: see `Registration.test.ts`.
  */
 declare module "../registry" {
-  interface Register {
-    routes: typeof routes;
+  interface Routes {
+    app: typeof routes;
   }
 }
 

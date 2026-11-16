@@ -27,8 +27,8 @@ export const routes = createRoutes({
 });
 
 declare module "@ramonda/router" {
-  interface Register {
-    routes: typeof routes;
+  interface Routes {
+    app: typeof routes;
   }
 }
 
@@ -51,7 +51,7 @@ pages import `Link`, `Navigator` and `route` from `@ramonda/router`, never from 
 the module holding the table (which imports every page) is not imported back by them. Only the
 component that places the outlet imports `routes`.
 
-**Register exactly once.** Forget it and the first `<Link href>` fails to compile, with the line to
+**Register the table once, under `app`.** Forget it and the first `<Link href>` fails to compile, with the line to
 write in the message. Two apps in one TypeScript program would share the registration, so give
 each app its own `tsconfig.json`.
 
@@ -91,6 +91,37 @@ The router is a separate package, beside `@ramonda/core`:
 
 Call it **once**, at the top of a module — not inside `render()` — so the patterns
 are compiled a single time.
+
+### A table from parts
+
+A table can also be put together from other tables — a feature's routes, kept beside its pages, and
+the app's own:
+
+```tsx
+import { createRoutes } from "@ramonda/router";
+
+const playerRoutes = createRoutes({
+  "/players": <Home />,
+  "/players/:id": <Player />,
+});
+
+export const routes = createRoutes(playerRoutes, {
+  "/": <Home />,
+  "*": <NotFound />,
+});
+```
+
+The parts are matched in the order they are given. A part may be `undefined`, which adds nothing —
+what `import.meta.env.DEV ? debugRoutes : undefined` leaves in a production build. A spread does not
+work here: a table `createRoutes` made is already compiled, so `{ ...playerRoutes }` would copy its
+insides rather than its paths, and the compiler refuses it.
+
+Refused when the table is built, so the first dev server start stops on it:
+
+- a path two parts both name;
+- a second `"*"`;
+- a route an earlier pattern matches first — `"/players/new"` after `"/players/:id"` can never be
+  reached. Put the fixed path first.
 
 ## `Router` is a hook; `RouteOutlet` is where the page goes
 
@@ -133,7 +164,7 @@ Every name below exists so that the registered table's paths reach a type annota
 
 | | |
 |---|---|
-| `Register` | the interface your app registers its table in — once |
+| `Routes` | the interface your app registers its table in, under `app` — once |
 | `Href` | every href the registered table accepts: a path, filled in, with a query or a fragment |
 | `BuiltHref` | what `route(...)` returns — a `:param` path it has filled and checked |
 | `RouteConfig` | what `createRoutes` returns — the compiled table, carrying its literal path keys |
