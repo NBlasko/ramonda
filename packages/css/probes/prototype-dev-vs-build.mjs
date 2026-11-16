@@ -107,7 +107,7 @@ writeFileSync(
   `import { ramondaCss } from ${JSON.stringify(join(HERE, "dist", "vite.js"))};\n` +
     `export default {\n` +
     `  logLevel: "warn",\n` +
-    `  plugins: [ramondaCss({ runtime: ${JSON.stringify(join(HERE, "dist", "index.js"))} })],\n` +
+    `  plugins: [ramondaCss({ runtime: ${JSON.stringify(join(HERE, "dist", "compiled.js"))} })],\n` +
     `  esbuild: { jsx: "automatic", jsxImportSource: ${JSON.stringify(join(root, "src", "jsx"))} },\n` +
     `  build: { outDir: "out" },\n` +
     `};\n`,

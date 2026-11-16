@@ -47,6 +47,7 @@ export default defineConfig([
      */
     entry: {
       index: "src/index.ts",
+      compiled: "src/compiled.ts",
       "compiler/index": "src/compiler/index.ts",
       properties: "src/properties.ts",
       cli: "src/adapters/cli.ts",
@@ -78,7 +79,9 @@ export default defineConfig([
     outDir: "dist",
   },
   {
-    entry: ["src/index.ts"],
+    // Both entries in ONE build, so they share the merge module: `mergeClassNames` reads what
+    // `shorthands` registered, and two copies would merge without clearing.
+    entry: ["src/index.ts", "src/compiled.ts"],
     format: ["esm"],
     target: "es2022",
     minify: true,

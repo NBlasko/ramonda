@@ -24,30 +24,28 @@ import * as api from "../index";
  * decided, and the call site is where it happens.
  */
 const RUNTIME = [
-  /**
-   * What a module REGISTERS, which is the half a class string cannot carry.
-   *
-   * `shorthands` is what a `padding` needs to clear a caller's `padding-left`, and it ships because
-   * clearing is what a merge does. `conditionsOf` and `namesOf` are read only by the development
-   * warning, and the emitted call is guarded so a production bundle drops both.
-   */
-  "conditionsOf",
   "mergeClassNames",
-  "namesOf",
-  /**
-   * What a `match` chooses between at run time. The compiler emits the call and the table, so this
-   * is here for the same reason `mergeClassNames` is: the emitted module imports it by name, and a name a
-   * build imports is part of the surface whether anybody writes it themselves or not.
-   */
-  "pick",
   // A token OUTSIDE a block: setting one for a runtime theme, and reading one back.
   // Inside a block `$` is compiled away, so these are the only two that ever ship.
   "read",
-  "shorthands",
   "toStyle",
-  // What a development build's emitted code calls for a spread when source marks are on.
-  "withoutSourceMarks",
 ];
+
+/**
+ * `@ramonda/css/compiled` — what the compiler's EMITTED code imports, and nothing an author writes.
+ *
+ * These were on the runtime entry, beside what an author calls, so `pick` and `shorthands` were a
+ * second way to do what a `match` and a block already do — and nothing checks a hand-written call.
+ * A separate entry keeps them importable by the build and out of the list an author reads.
+ *
+ * `shorthands` is what a `padding` needs to clear a caller's `padding-left`, and it ships because
+ * clearing is what a merge does. `conditionsOf` and `namesOf` are read only by the development
+ * warning, and the emitted call is guarded so a production bundle drops both. `pick` chooses a
+ * `match` arm at run time; `withoutSourceMarks` is what a development build calls for a spread.
+ * `mergeClassNames` is here too, because emitted code imports everything from one place — and it
+ * must be the SAME function the runtime entry exports, since it reads what `shorthands` registered.
+ */
+const COMPILED = ["conditionsOf", "mergeClassNames", "namesOf", "pick", "shorthands", "withoutSourceMarks"];
 
 /**
  * The TYPES the runtime entry exports, which `Object.keys` cannot see.
@@ -197,6 +195,7 @@ describe("public API surface", () => {
    * cannot see a type, and `./properties` is nothing but types.
    */
   test.each([
+    ["compiled.ts", COMPILED],
     ["config/entry.ts", CONFIG],
     ["properties.ts", PROPERTIES],
     ["adapters/vite.ts", VITE],

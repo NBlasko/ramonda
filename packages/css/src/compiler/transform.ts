@@ -1010,7 +1010,7 @@ export function transform(source: string, options: TransformOptions = {}): Trans
         `${shorthandsUsed.size > 0 ? `, shorthands as ${clearing}` : ""}` +
         `${conditionsUsed.size > 0 ? `, conditionsOf as ${conditions}` : ""}` +
         `${namesUsed.size > 0 ? `, namesOf as ${naming}` : ""}` +
-        ` } from ${JSON.stringify(options.runtime ?? "@ramonda/css")};\n` +
+        ` } from ${JSON.stringify(options.runtime ?? "@ramonda/css/compiled")};\n` +
         /**
          * What a class string cannot carry, registered by the module that needs it.
          *
