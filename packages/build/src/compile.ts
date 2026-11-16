@@ -38,6 +38,7 @@ import MagicString from "magic-string";
 import { ATTRIBUTE_OF_PROPERTY, BOOLEAN_ATTRIBUTES, attributeWrittenBy, svgElements } from "@ramonda/dom-facts";
 
 const RUNTIME = "@ramonda/core/jsx-runtime";
+const DEV_RUNTIME = "@ramonda/core/jsx-dev-runtime";
 const TEMPLATE = "__ramondaTemplate";
 const BLOCK = "__ramondaBlock";
 
@@ -84,11 +85,13 @@ export interface Compiled {
 /** How to compile a module. */
 export interface CompileOptions {
   /**
-   * Write where each element was written — the file once, and each element's line and column — into its
-   * template, as the development JSX transform hands `jsxDEV` the place of every tag, so a diagnostic can
-   * name the line (RMD020). For a development build only: a production bundle carries no file paths.
+   * A development build: write where each element was written — the file once, and each element's line
+   * and column — into its template, as the development JSX transform hands `jsxDEV` the place of every
+   * tag, so a diagnostic can name the line (RMD020); and import the runtime from
+   * `@ramonda/core/jsx-dev-runtime`, the module that transform imports and the dev server's dependency scan
+   * already pre-bundles. A production bundle carries no file paths and imports `jsx-runtime`.
    */
-  sources?: boolean;
+  development?: boolean;
 }
 
 /** Compiles the JSX in one module. `undefined` when there is nothing to compile, or it does not parse. */
@@ -101,7 +104,8 @@ export function compileJsx(code: string, id: string, options: CompileOptions = {
   if (parsed.errors.length > 0) return undefined;
 
   const out = new MagicString(code);
-  const compiler = new Compiler(out, options.sources === true ? placesIn(code, id) : undefined);
+  const development = options.development === true;
+  const compiler = new Compiler(out, development ? placesIn(code, id) : undefined);
   compiler.expression(parsed.program as unknown as Node);
   if (compiler.templates.length === 0) return undefined;
 
@@ -121,7 +125,8 @@ export function compileJsx(code: string, id: string, options: CompileOptions = {
   }
   // A `var` for each template made where first used; one made where the module is evaluated needs none.
   const names = compiler.kept.length > 0 ? `var ${compiler.kept.join(", ")};\n` : "";
-  out.appendLeft(at, `\nimport { __template as ${TEMPLATE}, __block as ${BLOCK} } from "${RUNTIME}";\n${names}`);
+  const runtime = development ? DEV_RUNTIME : RUNTIME;
+  out.appendLeft(at, `\nimport { __template as ${TEMPLATE}, __block as ${BLOCK} } from "${runtime}";\n${names}`);
   return {
     code: out.toString(),
     // A mapping per word rather than per character: a breakpoint and a stack frame land on a token either
@@ -337,7 +342,7 @@ class Compiler {
   readonly kept: string[] = [];
   private readonly out: MagicString;
 
-  /** Where each element was written, when the build asks for it — see `CompileOptions.sources`. */
+  /** Where each element was written, in a development build — see `CompileOptions.development`. */
   private readonly places: Places | undefined;
 
   constructor(out: MagicString, places: Places | undefined) {

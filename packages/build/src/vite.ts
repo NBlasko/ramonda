@@ -252,8 +252,12 @@ export function ramonda(options: RamondaOptions = {}): [VitePluginLike, CompileP
     },
   };
 
-  /** A development build: the compiled templates say where each element was written, as `jsxDEV` is told. */
-  let sources = false;
+  /**
+   * A development build, as Vite decides it: the compiled templates say where each element was written, as
+   * `jsxDEV` is told, and import the runtime from `jsx-dev-runtime` — the module the dev server's dependency
+   * scan already pre-bundles, so the first page is not re-bundled and reloaded for a late discovery.
+   */
+  let development = false;
 
   /**
    * The JSX compiler. It reads the source as Vite read it — which keeps to `server.fs.allow` — ahead of
@@ -269,14 +273,14 @@ export function ramonda(options: RamondaOptions = {}): [VitePluginLike, CompileP
     name: "ramonda:compile",
     enforce: "pre",
     configResolved(config) {
-      sources = config.isProduction === false;
+      development = config.isProduction === false;
     },
     transform: {
       async handler(code, id) {
         if (!compile || id.startsWith("\0") || id.includes("?") || !JSX_SCRIPT.test(id)) return null;
         if (id.includes("/node_modules/")) return null;
         const { compileJsx } = await import("./compile");
-        const compiled = compileJsx(code, id, { sources });
+        const compiled = compileJsx(code, id, { development });
         return compiled === undefined ? null : { code: compiled.code, map: compiled.map };
       },
     },

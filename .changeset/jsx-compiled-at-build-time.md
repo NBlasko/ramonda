@@ -19,6 +19,7 @@ were written, so RMD020 names the file, line and column of a compiled element as
 On Vite, `ramonda()` returns two plugins — its settings, and the compiler, `ramonda:compile`, which
 compiles the source Vite read, inside `server.fs.allow`, after `@ramonda/css`'s transform and before the
 JSX transform. `plugins: [ramonda()]`
-holds both. Each JSX tree is its own template, so two branches of a condition are two elements, and
+holds both. In development compiled modules import from `@ramonda/core/jsx-dev-runtime`, as the JSX transform's
+own output does, so the dev server has pre-bundled what they need before the first page. Each JSX tree is its own template, so two branches of a condition are two elements, and
 switching builds the other — one element with a changing attribute stays the same element. An element written where the module is evaluated — an icon kept in a constant — is made there,
 with calls a bundler may leave out, so one that nothing imports is not in the bundle.

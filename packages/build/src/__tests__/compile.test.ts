@@ -654,7 +654,7 @@ function originalPosition(
 describe("where each element was written, for a development build", () => {
   test("the file on the root, and every element's line and column, counted from 1 as `jsxDEV`'s are", () => {
     const source = `const v = (\n  <section>\n    <p>x</p>\n    <button onclick={go}>save</button>\n  </section>\n);\n`;
-    const out = compileJsx(source, "/app/src/page.tsx", { sources: true });
+    const out = compileJsx(source, "/app/src/page.tsx", { development: true });
     expect(out?.templates).toEqual([
       `{ t: "section", f: "/app/src/page.tsx", l: [2, 3], c: [{ t: "p", l: [3, 5], c: ["x"] }, { t: "button", l: [4, 5], d: [["onclick", 0]], c: ["save"] }] }`,
     ]);
@@ -675,10 +675,20 @@ describe("where each element was written, for a development build", () => {
     const fromOxc = place(
       oxc().transformSync("a.jsx", source, { jsx: { runtime: "automatic", development: true } }).code,
     );
-    const compiled = /l: \[(\d+), (\d+)\]/.exec(compileJsx(source, "a.jsx", { sources: true })?.templates[0] ?? "");
+    const compiled = /l: \[(\d+), (\d+)\]/.exec(compileJsx(source, "a.jsx", { development: true })?.templates[0] ?? "");
     expect({ esbuild: fromEsbuild, oxc: fromOxc }).toEqual({
       esbuild: `${compiled?.[1]}:${compiled?.[2]}`,
       oxc: `${compiled?.[1]}:${compiled?.[2]}`,
+    });
+  });
+
+  test("and the runtime from `jsx-dev-runtime`, the module the dev server already pre-bundles; a production one from `jsx-runtime`", () => {
+    const source = `const p = <p>{x}</p>;`;
+    const from = (development: boolean): string | undefined =>
+      /from "(@ramonda\/core\/[^"]+)"/.exec(compileJsx(source, "/app/src/page.tsx", { development })?.code ?? "")?.[1];
+    expect({ development: from(true), production: from(false) }).toEqual({
+      development: "@ramonda/core/jsx-dev-runtime",
+      production: "@ramonda/core/jsx-runtime",
     });
   });
 

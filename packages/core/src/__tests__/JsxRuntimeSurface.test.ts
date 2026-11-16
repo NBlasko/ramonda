@@ -18,13 +18,14 @@ import * as runtime from "../jsx-runtime";
  */
 /**
  * `__template` and `__block` are what Ramonda's own compiler writes for an element tree whose shape never
- * changes (see `core/block.ts`); only the production entry carries them, because the compiler imports
- * from it in every build — removing either fails every compiled app at import.
+ * changes (see `core/block.ts`). Both entries carry them: a production build's compiled modules import
+ * from `jsx-runtime`, a development build's from `jsx-dev-runtime` — removing either fails every compiled
+ * app at import.
  */
 const RUNTIME = ["Fragment", "__block", "__template", "jsx", "jsxs"];
 
 /** `jsxDEV` takes the source location the production one has no argument for. */
-const DEV = ["Fragment", "jsxDEV"];
+const DEV = ["Fragment", "__block", "__template", "jsxDEV"];
 
 describe("the JSX runtime entries", () => {
   test("`jsx-runtime` exports exactly what the transform imports", () => {
@@ -42,5 +43,14 @@ describe("the JSX runtime entries", () => {
    */
   test("and `Fragment` is one value, not two", () => {
     expect(dev.Fragment).toBe(runtime.Fragment);
+  });
+
+  /**
+   * The same for the compiler's two: a block made by one entry's `__block` carries that module's `BLOCK`
+   * symbol, and a copy that differed would be read by the diff as an ordinary element.
+   */
+  test("and `__template` and `__block` are each one value, not two", () => {
+    expect([dev.__template, dev.__block]).toEqual([runtime.__template, runtime.__block]);
+    expect(dev.__block).toBe(runtime.__block);
   });
 });

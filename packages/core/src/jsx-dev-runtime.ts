@@ -3,6 +3,10 @@ import { SOURCE, type Source } from "./debug/source";
 import type { VNode } from "./types/vdom";
 
 export { Fragment } from "./jsx-runtime";
+// What the JSX compiler writes, here too: a development build's compiled modules import from this entry — the
+// one the dev server's dependency scan already finds, through `jsxDEV` — and it is the same `core/block`
+// either way, so one copy of the runtime serves both.
+export { __template, __block } from "./jsx-runtime";
 
 type Props = Record<string, unknown> & { children?: unknown };
 
