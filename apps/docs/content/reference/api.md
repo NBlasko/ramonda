@@ -45,7 +45,7 @@ package not added at the start is installed like any other, later.
 |---|---|
 | `Component<P>` | The base class. Extend it and implement [`render()`](/concepts/components). |
 | `Hook<O>` | State and lifecycle with [no element](/hooks). |
-| `Ref<T>` / `createRef<T>()` | Holds a real DOM node. [Refs](/concepts/refs) |
+| `createRef<T>()` | Makes a ref, typed `Ref<T>`, that holds a real DOM node. [Refs](/concepts/refs) |
 | `SAME_ITEM` | The option for a lens `set` that replaces a list item with the same item rebuilt, so it keeps its element and its component. [Lens](/lens#editing-an-item-and-replacing-one) |
 | `merge(previous, next, identity?)` | Keeps the previous value where the new one equals it, so a refetch is not a change. With `identity`, rows are paired across a reorder or a resize and a changed row keeps its identity. [Lists](/lists#refetched-data-and-objects-that-are-re-created) |
 | `list<T>(each, render)` | Renders a list, minting identity from the items. `render` is a function taking one item. [Lists](/lists) |

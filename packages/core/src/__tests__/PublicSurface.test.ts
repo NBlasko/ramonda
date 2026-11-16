@@ -46,8 +46,9 @@ const EXPECTED = [
   // `{...this.props}` spreads nothing — the proxy has no `ownKeys` — so a wrapper needs this.
   "forwarded",
   "createContext",
+  // The one way to make a ref. `Ref` is a TYPE only: a constructible class was a second way, and
+  // `new Ref()` skipped both createRef's dev report and the checker's rule, which reads createRef.
   "createRef",
-  "Ref",
   "Head",
   // The scheduled calls an app STARTS, where `@interval`/`@timeout` are the ones a mount starts.
   "Timeout",
@@ -159,6 +160,7 @@ const EXPECTED_TYPES = [
   "PortalProps",
   "PortalTarget",
   "RamondaNode",
+  "Ref",
   "RefCallback",
   "RefTarget",
   "RenderEnv",
