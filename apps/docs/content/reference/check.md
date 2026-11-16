@@ -178,7 +178,7 @@ for a program — a coding agent above all — that would otherwise read the pro
 - `code` is the rule's id, or for a fault the graph answers, the name of that check:
   `missing-provider`, `unresolved-component`, `unreachable-declaration`, `unreachable-route-table`,
   `params-off-route`, `keys-off-route`, `link-to-a-conditional-route`, `second-provider`, `render-cycle`,
-  `class-as-child`.
+  `class-as-child`, `ignore-that-silences-nothing`.
 - `message` is what the text run prints for the finding; `data` is everything the finding records.
 - `ok` is `false` exactly when the run exits 1. `ignored` lists every `ramonda-check-ignore` with its
   reason, and `counts` what the run read.
@@ -329,11 +329,11 @@ There is no warning level. A rule reports a fault or it does not, and a reported
 command — because a warning that never fails anything is read once and then not read at all, while
 a refusal is dealt with.
 
-Which only works because there is somewhere to put "I know, and it is right here":
+Which only works because there is somewhere to put "I know, and it is being fixed":
 
 ```tsx
-// ramonda-check-ignore this div is a backdrop; the real exit is the button beside it
-<div className="scrim" onclick={this.close} />
+// ramonda-check-ignore the menu becomes a <button> in the nav rewrite (#88)
+<div className="menu" onclick={this.open}>Menu</div>
 ```
 
 **It goes on the line the report names, or on the line above it** — which is the element or the
@@ -345,6 +345,11 @@ on its way out, so there is no list of rules that honour it and none that quietl
 **A reason is mandatory.** `// ramonda-check-ignore` with nothing after it silences nothing and is
 itself reported: an empty directive would be the quietest way to switch a rule off, and the quiet
 is the whole problem.
+
+**It goes when the fault does.** An ignore on a line where nothing is reported is itself reported,
+as `ignore-that-silences-nothing` — left behind, it would silence whatever is written on that line
+next. And it is never the way to a design that is right: where a rule refuses one, the rule is the
+fault — a bug in this tool, to report and to fix.
 
 **It records rather than silences.** Every annotated site is listed on every run, with the words
 its author wrote:

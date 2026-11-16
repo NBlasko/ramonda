@@ -109,6 +109,21 @@ export interface UnresolvedIssue {
  * site is listed on every run, so the count cannot grow unnoticed — the escape hatch is a record,
  * not a silence.
  */
+/**
+ * A `ramonda-check-ignore` on a line where nothing is reported, so it silences nothing.
+ *
+ * An ignore is for a fault being fixed, and it has to go when the fault does: left behind, it silences
+ * whatever is written on that line next, and the run never listed it — `annotated` holds only the
+ * ignores that matched a report.
+ */
+export interface StaleIgnore {
+  /** The words written after it. */
+  reason: string;
+  file: string;
+  line: number;
+  column: number;
+}
+
 export interface AnnotatedSite {
   what: string;
   /** The author's own words. A directive without them is refused. */
@@ -397,6 +412,8 @@ export interface AnalyzeResult {
   unresolved: UnresolvedIssue[];
   /** Places where the author has written down why one cannot be followed — see `AnnotatedSite`. */
   annotated: AnnotatedSite[];
+  /** Ignores on a line where nothing is reported — see `StaleIgnore`. */
+  staleIgnores: StaleIgnore[];
   /** Declarations no root reaches — see `UnreachableIssue`. */
   unreachable: UnreachableIssue[];
   /** Route tables whose views can never appear — see `UnreachableRouteIssue`. */
@@ -836,6 +853,8 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
   })[] = [];
   const classesAsChildren: ClassAsChildIssue[] = [];
   const annotated: AnnotatedSite[] = [];
+  /** `file:line` (from zero) of every directive a report asked about — the rest silence nothing. */
+  const usedDirectives = new Set<string>();
   const roots = new Set<ComponentNode>();
   /** Package root → what its fragment contributed, or `null` for one that has none. */
   const splicedPackages = new Map<string, SplicedPackage | null>();
@@ -1053,9 +1072,12 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
   function directiveOnLine(fileName: string, text: string, line: number): string | undefined {
     const lines = fileLines.get(fileName) ?? text.split("\n");
     fileLines.set(fileName, lines);
-    for (const candidate of [lines[line], lines[line - 1]]) {
+    for (const at of [line, line - 1]) {
+      const candidate = lines[at];
       const found = candidate === undefined ? null : /ramonda-check-ignore\b:?(.*)$/.exec(candidate);
       if (!found) continue;
+      // Asked for a report on this line, so the directive is doing its job — see `staleIgnoresIn`.
+      usedDirectives.add(`${fileName}:${at}`);
       // The comment's own closing delimiter is not part of the reason: JSX writes one, and a block
       // comment writes one. Left in, an EMPTY directive read as a reason.
       //
@@ -1335,12 +1357,15 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
   const paramsOffRoute = readsOffTheRoute(reached, routesAbove, pathTo);
   const keysOffRoute = keysOffTheRoute(reached, routesAbove, pathTo);
   const linksToConditionalRoutes = linksOffTheirCondition(routesAbove);
+  // Last: every report has asked for its directive by now, the graph's unresolved tags included.
+  const staleIgnores = sources.flatMap((source) => staleIgnoresIn(source, usedDirectives));
 
   return {
     issues,
     findings,
     unresolved,
     annotated,
+    staleIgnores,
     unreachable,
     unreachableRoutes,
     secondProviders,
@@ -4771,4 +4796,50 @@ export function createProgram(
     options: { ...parsed.options, noLib: false, lib: ["lib.esnext.d.ts"], types: [] },
   });
   return { program, notes };
+}
+
+/**
+ * Each directive in a file that no report asked about. A directive is the words in a COMMENT: the
+ * same words in a string or in JSX text are content, so the innermost node at the match decides.
+ */
+function staleIgnoresIn(source: ts.SourceFile, used: ReadonlySet<string>): StaleIgnore[] {
+  const stale: StaleIgnore[] = [];
+  const lines = source.text.split("\n");
+  let offset = 0;
+  lines.forEach((text, index) => {
+    const found = /(?:\/\/|\/\*).*?ramonda-check-ignore\b:?(.*)$/.exec(text);
+    const start = offset;
+    offset += text.length + 1;
+    if (found === null || used.has(`${source.fileName}:${index}`)) return;
+    const at = start + found.index;
+    if (insideContent(source, at)) return;
+    stale.push({
+      reason: found[1].replace(/\*\/\s*(?:\}\s*)?$/, "").trim(),
+      file: source.fileName,
+      line: index + 1,
+      column: found.index + 1,
+    });
+  });
+  return stale;
+}
+
+/** Whether a position falls in a string, a template or JSX text — content, not a comment. */
+function insideContent(source: ts.SourceFile, position: number): boolean {
+  let inside = false;
+  const visit = (node: ts.Node): void => {
+    if (inside || position < node.getStart(source) || position >= node.getEnd()) return;
+    if (
+      ts.isStringLiteralLike(node) ||
+      ts.isTemplateHead(node) ||
+      ts.isTemplateMiddle(node) ||
+      ts.isTemplateTail(node) ||
+      node.kind === ts.SyntaxKind.JsxText
+    ) {
+      inside = true;
+      return;
+    }
+    ts.forEachChild(node, visit);
+  };
+  ts.forEachChild(source, visit);
+  return inside;
 }

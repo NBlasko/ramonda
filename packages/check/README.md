@@ -446,19 +446,19 @@ The constraint is not this tool's to impose. **A bundler can only split what it 
 statically** — whatever this cannot resolve, a bundler could not have code-split either, so the
 shape was already trouble for another reason.
 
-When the source is right and this is the one that cannot see it, write the reason on the line:
+When the source is right and this is the one that cannot see it, that is a fault of this tool —
+report it — and until it is fixed, write the reason on the line of the tag:
 
 ```tsx
-class Row extends Component {
+declare const pages: Record<string, typeof Component>;
+
+class Page extends Component {
   render() {
-    return <li>row</li>;
+    const Chosen = pages["/"];
+    // ramonda-check-ignore the table is keyed at run time; this tool cannot read one yet
+    return <Chosen />;
   }
 }
-
-const rows = { "/": Row };
-
-// ramonda-check-ignore the table is keyed at run time, and every value is a component
-const Chosen = rows["/"];
 ```
 
 **Line-scoped, never file-scoped**, and the reason is mandatory — a directive with nothing after it

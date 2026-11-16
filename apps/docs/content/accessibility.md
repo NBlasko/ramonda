@@ -106,17 +106,21 @@ That is deliberate, and the reason is what a warning actually does: it is read o
 read at all. Thirty-five of them printing under a passing build is thirty-five things nobody has to
 decide about.
 
-**Where a rule is wrong about your markup, say so on the line:**
+**While a fault is on its way out, say so on the line:**
 
 ```tsx
-// ramonda-check-ignore this div is a backdrop; the real exit is the button beside it
-<div className="scrim" onclick={this.close} />
+// ramonda-check-ignore the menu becomes a <button> in the nav rewrite (#88)
+<div className="menu" onclick={this.open}>Menu</div>
 ```
 
 The reason is **mandatory** — an empty directive is itself reported — and every annotated site is
-printed back on every run with the words its author wrote. So an exception is a decision somebody
-made and can be asked about, which is more than a warning ever was. See
+printed back on every run with the words its author wrote. When the fault is fixed the ignore goes
+with it: one on a line where nothing is reported is an error of its own. See
 [how to say "not here"](/reference/check#every-rule-fails-the-run-and-how-to-say-not-here).
+
+**An ignore is for a fault being fixed, never for markup that is right.** An empty backdrop's
+`onclick` is not reported in the first place — it is a hit area beside the real exits, not a control.
+Where a rule refuses markup that is right, the rule is the fault, and it is ours to fix.
 
 ## What it cannot see
 
