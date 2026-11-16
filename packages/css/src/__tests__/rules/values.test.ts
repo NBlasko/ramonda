@@ -1475,23 +1475,21 @@ test("a value seen before is not read again", async () => {
 /**
  * A grammar of parts in any order does not try what cannot begin at the token. `background`'s eight
  * components made each new value cost 0.45 ms, seven times a `border`; pruning made it under twice.
- * Asked as a RATIO in one run, so a slower machine slows both sides alike.
+ *
+ * Asked as READINGS the matcher begins, not as time. Timed — even as a ratio of two timings in one
+ * run — it failed under a loaded gate and passed alone: a time measures the machine. Measured on these
+ * 200 values: 2200 readings for `background` against 2400 for `border`, and 10000 with the pruning
+ * taken out. Not the budget's unit, calls of `accepts`: those were 8600 with and without it.
  */
 test("a new background costs about what a new border does", async () => {
-  const { valueMatchesGrammar } = await import("../../compiler/validateValue");
-  const colours = (salt: number) =>
-    Array.from({ length: 200 }, (_, one) => `#${((one + salt) * 4099).toString(16).padStart(6, "0").slice(-6)}`);
-  const time = (property: string, values: string[]) => {
-    const started = performance.now();
-    for (const value of values) valueMatchesGrammar(property, property === "border" ? `1px solid ${value}` : value);
-    return performance.now() - started;
-  };
-  valueMatchesGrammar("background", "red");
-  valueMatchesGrammar("border", "1px solid red");
-  const ratios = [1, 2, 3].map(
-    (salt) => time("background", colours(salt * 1000)) / time("border", colours(salt * 1000)),
-  );
-  expect(Math.min(...ratios)).toBeLessThan(4);
+  const { stepsToRead } = await import("../../compiler/validateValue");
+  const colours = Array.from({ length: 200 }, (_, one) => `#${(one * 4099).toString(16).padStart(6, "0").slice(-6)}`);
+  const steps = (property: string) =>
+    colours.reduce(
+      (sum, value) => sum + stepsToRead(property, property === "border" ? `1px solid ${value}` : value),
+      0,
+    );
+  expect(steps("background") / steps("border")).toBeLessThan(2);
 });
 
 /**

@@ -66,21 +66,21 @@ function sendHtml(res, html, mode) {
  * document with a fallback, it is a document a crawler reads the first of. A page
  * that set none keeps the shell's.
  */
-const fillTemplate = ({ html, title, head, lang, dir, portals }) =>
-  fillDocument({ template, html, title, head, lang, dir, portals });
+const fillTemplate = ({ html, title, head, lang, dir, data, portals }) =>
+  fillDocument({ template, html, title, head, lang, dir, data, portals });
 
 /** Renders an ISR/prerender path with the request context poisoned (shared cache, no per-request data). */
 async function bakeShared(path) {
   const dom = installDom(`${origin}${path}`);
   try {
-    const { html, title, head, lang, dir, portals, blockedBy } = await prerender(path);
+    const { html, title, head, lang, dir, data, portals, blockedBy } = await prerender(path);
     if (blockedBy !== undefined) {
       throw new Error(`Route ${path} is cached (static/isr) but read the request (${blockedBy}).`);
     }
     // The FULL document is what goes in the cache, head included. Caching the body
     // alone and filling the shell at send time would work until the shell changed
     // under a cached page — and the head is what would silently go stale.
-    return fillTemplate({ html, title, head, lang, dir, portals });
+    return fillTemplate({ html, title, head, lang, dir, data, portals });
   } finally {
     dom.close();
   }
@@ -207,7 +207,7 @@ const server = createServer(async (req, res) => {
     //    reads for auth / per-user output; the router reads the URL off the shimmed `window`.
     const dom = installDom(`${origin}${url}`);
     const started = process.hrtime.bigint();
-    const { html, title, head, lang, dir, portals, redirect } = await render({
+    const { html, title, head, lang, dir, data, portals, redirect } = await render({
       url: new URL(url, origin),
       cookies: parseCookies(req.headers.cookie),
     });
@@ -225,7 +225,7 @@ const server = createServer(async (req, res) => {
     }
 
     res.setHeader("Server-Timing", `render;dur=${ms.toFixed(1)}`);
-    sendHtml(res, fillTemplate({ html, title, head, lang, dir, portals }), "dynamic");
+    sendHtml(res, fillTemplate({ html, title, head, lang, dir, data, portals }), "dynamic");
     console.log(`${req.method} ${url} → ${ms.toFixed(1)}ms, ${html.length}b`);
   } catch (error) {
     res.statusCode = 500;

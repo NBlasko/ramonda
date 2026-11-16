@@ -65,11 +65,12 @@ import { type SourceMap, transform } from "../compiler/transform";
 
 export interface CssPluginOptions {
   /**
-   * Where `block` is imported from in the emitted code. Defaults to `@ramonda/css`.
+   * Where the emitted code imports its helpers from. Defaults to `@ramonda/css/compiled`.
    *
    * The one thing a wrapper for another JSX library changes: point it at a module that re-exports
-   * `block`, and the same transform produces a value that library's own `css` prop can take. The
-   * transform has always accepted it; this is where a plugin user reaches it.
+   * `@ramonda/css/compiled`, and the same transform produces a value that library's own `css` prop
+   * can take. Pointed at `@ramonda/css` itself it breaks the build: the main entry does not export
+   * what compiled code calls.
    */
   readonly runtime?: string;
 }

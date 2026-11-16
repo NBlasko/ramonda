@@ -109,6 +109,21 @@ export interface UnresolvedIssue {
  * site is listed on every run, so the count cannot grow unnoticed — the escape hatch is a record,
  * not a silence.
  */
+/**
+ * A `ramonda-check-ignore` on a line where nothing is reported, so it silences nothing.
+ *
+ * An ignore is for a fault being fixed, and it has to go when the fault does: left behind, it silences
+ * whatever is written on that line next, and the run never listed it — `annotated` holds only the
+ * ignores that matched a report.
+ */
+export interface StaleIgnore {
+  /** The words written after it. */
+  reason: string;
+  file: string;
+  line: number;
+  column: number;
+}
+
 export interface AnnotatedSite {
   what: string;
   /** The author's own words. A directive without them is refused. */
@@ -397,6 +412,8 @@ export interface AnalyzeResult {
   unresolved: UnresolvedIssue[];
   /** Places where the author has written down why one cannot be followed — see `AnnotatedSite`. */
   annotated: AnnotatedSite[];
+  /** Ignores on a line where nothing is reported — see `StaleIgnore`. */
+  staleIgnores: StaleIgnore[];
   /** Declarations no root reaches — see `UnreachableIssue`. */
   unreachable: UnreachableIssue[];
   /** Route tables whose views can never appear — see `UnreachableRouteIssue`. */
@@ -836,6 +853,8 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
   })[] = [];
   const classesAsChildren: ClassAsChildIssue[] = [];
   const annotated: AnnotatedSite[] = [];
+  /** `file:line` (from zero) of every directive a report asked about — the rest silence nothing. */
+  const usedDirectives = new Set<string>();
   const roots = new Set<ComponentNode>();
   /** Package root → what its fragment contributed, or `null` for one that has none. */
   const splicedPackages = new Map<string, SplicedPackage | null>();
@@ -1053,9 +1072,12 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
   function directiveOnLine(fileName: string, text: string, line: number): string | undefined {
     const lines = fileLines.get(fileName) ?? text.split("\n");
     fileLines.set(fileName, lines);
-    for (const candidate of [lines[line], lines[line - 1]]) {
+    for (const at of [line, line - 1]) {
+      const candidate = lines[at];
       const found = candidate === undefined ? null : /ramonda-check-ignore\b:?(.*)$/.exec(candidate);
       if (!found) continue;
+      // Asked for a report on this line, so the directive is doing its job — see `staleIgnoresIn`.
+      usedDirectives.add(`${fileName}:${at}`);
       // The comment's own closing delimiter is not part of the reason: JSX writes one, and a block
       // comment writes one. Left in, an EMPTY directive read as a reason.
       //
@@ -1335,12 +1357,15 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
   const paramsOffRoute = readsOffTheRoute(reached, routesAbove, pathTo);
   const keysOffRoute = keysOffTheRoute(reached, routesAbove, pathTo);
   const linksToConditionalRoutes = linksOffTheirCondition(routesAbove);
+  // Last: every report has asked for its directive by now, the graph's unresolved tags included.
+  const staleIgnores = sources.flatMap((source) => staleIgnoresIn(source, usedDirectives));
 
   return {
     issues,
     findings,
     unresolved,
     annotated,
+    staleIgnores,
     unreachable,
     unreachableRoutes,
     secondProviders,
@@ -1775,7 +1800,7 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
       slotHoles: [],
       slots: slotsOf(node),
       stableProps: [...stablePropsOf(node.name, resolver)],
-      exported: (ts.getCombinedModifierFlags(node) & ts.ModifierFlags.Export) !== 0,
+      exported: (ts.getCombinedModifierFlags(node) & ts.ModifierFlags.Export) !== 0 || insideAnExport(node),
       uses: new Set(),
       opaque: false,
       usesChildren: node.getText().includes("children"),
@@ -1814,6 +1839,26 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
       // A root has no props, so it hands nothing to a slot.
       rootMounts.push({ id, target });
       edge(id, target.id, "renders", "bootstrap", node);
+      return;
+    }
+    /**
+     * `bootstrap(shell())`, `bootstrap(wrap(ui))` — a call to a helper. A helper is a node of the
+     * graph and a component calling one gets a `calls` edge to it; the root gets the same, and
+     * nothing is followed. Without it the root was a hole, everything below went unjudged, and the
+     * testing library's `render` carried an ignore for a design that is right.
+     */
+    const argument = node.arguments[0] ? unwrapAs(node.arguments[0]) : undefined;
+    const callee =
+      argument &&
+      ts.isCallExpression(argument) &&
+      (ts.isIdentifier(argument.expression) || ts.isPropertyAccessExpression(argument.expression))
+        ? resolve(argument.expression)
+        : undefined;
+    const helper = callee ? helpers.get(callee) : undefined;
+    if (helper) {
+      roots.add(helper);
+      rootMounts.push({ id, target: helper });
+      edge(id, helper.id, "calls", "bootstrap", node);
     } else {
       /**
        * The reason is read from what was WRITTEN, which is the argument itself when it is not JSX.
@@ -2144,16 +2189,35 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
    * One hop to a local const, and both arms of a ternary, which is how a tag chosen between two
    * elements is written. Anything else is unknown, and unknown is a hole rather than a guess.
    */
-  function namesAnElement(expression: ts.Expression): boolean {
+  function namesAnElement(expression: ts.Expression, seen = new Set<ts.Node>()): boolean {
+    // A chain of aliases can close on itself — `const A = B; const B = A;` — and the guard, not a
+    // depth, is what ends it. Found when the tag path started asking this too.
+    if (seen.has(expression)) return false;
+    seen.add(expression);
     if (ts.isStringLiteralLike(expression)) return true;
     if (ts.isConditionalExpression(expression)) {
-      return namesAnElement(unwrapAs(expression.whenTrue)) && namesAnElement(unwrapAs(expression.whenFalse));
+      return (
+        namesAnElement(unwrapAs(expression.whenTrue), seen) && namesAnElement(unwrapAs(expression.whenFalse), seen)
+      );
     }
     if (ts.isIdentifier(expression)) {
       const behind = initializerBehind(expression);
-      return behind !== undefined && behind !== expression && namesAnElement(unwrapAs(behind));
+      if (behind !== undefined && behind !== expression && namesAnElement(unwrapAs(behind), seen)) return true;
     }
-    return false;
+    return stringTyped(expression);
+  }
+
+  /**
+   * Whether the TYPE says every value is a string, where the syntax cannot — `node.t` read from a
+   * parsed content tree, `headingTag()` returning `"h1" | "h2"`. Read from the syntax alone, the docs
+   * site's code block was an unresolved component and carried an ignore for a design that is right.
+   * `any` and `unknown` are not string types, and a union with a component is not all strings: those
+   * prove nothing and stay holes.
+   */
+  function stringTyped(expression: ts.Expression): boolean {
+    const type = checker.getTypeAtLocation(expression);
+    const parts = type.isUnion() ? type.types : [type];
+    return parts.every((part) => (part.flags & ts.TypeFlags.StringLike) !== 0);
   }
 
   /** `value as never` and `(value)` are the same value; the cast is for the compiler, not for this. */
@@ -2904,7 +2968,9 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
             why: `\`${opening.tagName.getText()}\` is a prop, so only a caller can say what it mounts`,
           });
           readDirective(opening, "slot");
-        } else {
+        } else if (!(ts.isIdentifier(opening.tagName) && namesAnElement(opening.tagName))) {
+          // `<Heading>` with `Heading` a string — chosen between `"h1"` and `"h2"` — is an element,
+          // the same answer the factory gives `__h(tag, …)`.
           unresolvedEdge(owner.id, via, opening, whyUnresolved(opening.tagName, "the tag"), opening.tagName);
         }
       }
@@ -3056,7 +3122,7 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
 
   function strandedRoutes(reached: Set<ComponentNode>): UnreachableRouteIssue[] {
     // No root, no verdict — the same reason a library is not judged for dead declarations.
-    if (roots.size === 0) return [];
+    if (!hasOwnRoot()) return [];
     /**
      * An outlet spreading props this cannot read could be handing over ANY of these tables, and
      * both verdicts here are about a table nothing named. Neither survives that, so neither is
@@ -3116,7 +3182,7 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
     routesAbove: Map<ComponentNode, Set<string | null | undefined>>,
     pathTo: Map<ComponentNode, string[]>,
   ): ParamsOffRouteIssue[] {
-    if (roots.size === 0 || anOutletSpreadsUnread) return [];
+    if (!hasOwnRoot() || anOutletSpreadsUnread) return [];
 
     const found: ParamsOffRouteIssue[] = [];
     for (const read of paramReads) {
@@ -3212,7 +3278,7 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
     routesAbove: Map<ComponentNode, Set<string | null | undefined>>,
     pathTo: Map<ComponentNode, string[]>,
   ): UnsuppliedKeyIssue[] {
-    if (roots.size === 0 || anOutletSpreadsUnread) return [];
+    if (!hasOwnRoot() || anOutletSpreadsUnread) return [];
 
     const found: UnsuppliedKeyIssue[] = [];
     for (const read of keyedReads) {
@@ -3303,9 +3369,23 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
     }
   }
 
+  /**
+   * Whether THIS project has a root of its own — the one question "app or library" turns on.
+   *
+   * A dependency compiled from source may have a root, and it says nothing about this project.
+   * Counting every root made the router an app the moment the testing library's `render` got one:
+   * its published components were reported as nothing mounting them, and its graph was refused as a
+   * fragment. Asked by both, so the two cannot disagree.
+   */
+  function hasOwnRoot(): boolean {
+    const mine = owner(projectRoot);
+    const own = mine ? `${mine.name}/` : undefined;
+    return rootMounts.some((root) => own === undefined || root.id.startsWith(own));
+  }
+
   function deadOnes(reached: Set<ComponentNode>): UnreachableIssue[] {
     // No root, no verdict: in a library everything is unreachable by definition.
-    if (roots.size === 0) return [];
+    if (!hasOwnRoot()) return [];
     /**
      * This project's OWN declarations, and nothing else.
      *
@@ -3419,6 +3499,7 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
       const walkedAt = walked.get(arrangement);
       if (walkedAt !== undefined && walkedAt <= path.length) return;
       walked.set(arrangement, path.length);
+      arrangementsVisited++;
       reached.add(node);
       /**
        * EVERY arrival is recorded, `undefined` included — an arrival with no outlet above is an
@@ -4192,7 +4273,7 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
      * job — and a call whose argument nothing can name starts no tree. Counting it made every
      * package that maps testing-library in its tsconfig come out as an app.
      */
-    const scope = roots.size > 0 ? "app" : "library";
+    const scope = hasOwnRoot() ? "app" : "library";
     const ownedBy = home ? `${home.name}/` : undefined;
     /**
      * A library describes ITSELF.
@@ -4771,4 +4852,78 @@ export function createProgram(
     options: { ...parsed.options, noLib: false, lib: ["lib.esnext.d.ts"], types: [] },
   });
   return { program, notes };
+}
+
+/**
+ * Each directive in a file that no report asked about. A directive is the words in a COMMENT: the
+ * same words in a string or in JSX text are content, so the innermost node at the match decides.
+ */
+function staleIgnoresIn(source: ts.SourceFile, used: ReadonlySet<string>): StaleIgnore[] {
+  const stale: StaleIgnore[] = [];
+  const lines = source.text.split("\n");
+  let offset = 0;
+  lines.forEach((text, index) => {
+    const found = /(?:\/\/|\/\*).*?ramonda-check-ignore\b:?(.*)$/.exec(text);
+    const start = offset;
+    offset += text.length + 1;
+    if (found === null || used.has(`${source.fileName}:${index}`)) return;
+    const at = start + found.index;
+    if (insideContent(source, at)) return;
+    stale.push({
+      reason: found[1].replace(/\*\/\s*(?:\}\s*)?$/, "").trim(),
+      file: source.fileName,
+      line: index + 1,
+      column: found.index + 1,
+    });
+  });
+  return stale;
+}
+
+/** Whether a position falls in a string, a template or JSX text — content, not a comment. */
+function insideContent(source: ts.SourceFile, position: number): boolean {
+  let inside = false;
+  const visit = (node: ts.Node): void => {
+    if (inside || position < node.getStart(source) || position >= node.getEnd()) return;
+    if (
+      ts.isStringLiteralLike(node) ||
+      ts.isTemplateHead(node) ||
+      ts.isTemplateMiddle(node) ||
+      ts.isTemplateTail(node) ||
+      node.kind === ts.SyntaxKind.JsxText
+    ) {
+      inside = true;
+      return;
+    }
+    ts.forEachChild(node, visit);
+  };
+  ts.forEachChild(source, visit);
+  return inside;
+}
+
+/**
+ * How many arrangements the context walk has visited, over the life of the module — its work as a
+ * COUNT, read as a difference by a test. Timed, the ladder test failed under a loaded gate: a time
+ * measures the machine as much as the walk.
+ */
+let arrangementsVisited = 0;
+export function arrangementsVisitedSoFar(): number {
+  return arrangementsVisited;
+}
+
+/**
+ * Whether a declaration sits inside an exported function — `renderHook` declaring `HookHost`. It cannot
+ * exist without that function, so it is entered through what the package publishes, as an exported
+ * component is. The function mounts it through a call whose parameter the graph does not fill: calls
+ * are not followed, and this is what keeps that from reading as a component nothing mounts.
+ */
+function insideAnExport(node: ts.Node): boolean {
+  for (let at = node.parent; at !== undefined; at = at.parent) {
+    const declared = ts.isFunctionDeclaration(at)
+      ? at
+      : (ts.isArrowFunction(at) || ts.isFunctionExpression(at)) && ts.isVariableDeclaration(at.parent)
+        ? at.parent
+        : undefined;
+    if (declared !== undefined && (ts.getCombinedModifierFlags(declared) & ts.ModifierFlags.Export) !== 0) return true;
+  }
+  return false;
 }

@@ -51,13 +51,7 @@ export type { StyleValue } from "./runtime/types";
 export { read, toStyle } from "./runtime/value";
 export type { Setting } from "./runtime/value";
 /**
- * `shorthands` and `conditionsOf` are called by EMITTED code and by nothing anybody writes.
- *
- * A block is a class string, and two things do not fit in one: what a shorthand clears, and the
- * conditions a hashed key stands for. Each module registers what its own blocks need, so a page
- * pays for the shorthands it writes rather than for a table of all ninety-eight. They are part of
- * the surface because a build imports them by name, which is the same reason `mergeClassNames` and `pick` are.
+ * Joins class names with precedence: a later block wins where both set the same thing. The same
+ * function `@ramonda/css/compiled` hands emitted code, because it reads what that code registered.
  */
-export { conditionsOf, mergeClassNames, namesOf, pick, shorthands } from "./runtime/merge";
-/** Called by a development build's emitted code for a spread — see `sources.ts`. */
-export { withoutSourceMarks } from "./runtime/sources";
+export { mergeClassNames } from "./runtime/merge";

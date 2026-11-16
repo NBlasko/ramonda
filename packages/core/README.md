@@ -249,7 +249,7 @@ An unknown name — a custom event — is still accepted and arrives as `Event`.
 ### Server rendering
 
 ```ts
-const html = await renderToString(<App />);   // on the server
+const { body: html } = await renderPage(<App />);   // on the server
 hydrateRoot(<App />, container);              // on the client
 ```
 

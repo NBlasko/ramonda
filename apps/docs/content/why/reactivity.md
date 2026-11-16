@@ -77,9 +77,9 @@ a shallowly-different set of [props](/concepts/props) — regardless of which pr
 re-renders it. (A signal per prop does exist, and it serves whatever READS that prop under
 tracking — a `@compute`, a subscription's `connect`, [a hook's props
 callback](#a-hooks-props-callback-is-fine-grained). The component's own render is not one of those:
-it re-renders on the props bag, not on the keys it read.) To
-skip a prop-driven re-render in the rare case it matters, gate it with
-`@ShouldUpdateOnPropsChange`.
+it re-renders on the props bag, not on the keys it read.) A prop rebuilt with the same contents is
+declared a value with [`@StableProps`](/reference/decorators/StableProps); there is no gate an app
+writes, because a rule that is wrong stops a component rendering when it should.
 
 **[Context](/composition/context) is per-key** — and this one is free. A consumer reacts
 only to the keys it reads: read `ctx.theme` and it re-renders when `theme` changes, but

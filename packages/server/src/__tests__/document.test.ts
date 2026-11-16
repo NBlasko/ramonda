@@ -221,3 +221,37 @@ describe("fillDocument places named portal targets", () => {
     expect(out).toContain('data-ramonda-portal-target="a&quot;b"');
   });
 });
+
+/** `<html data-*>` from the page's `Head` — a theme above all — by `lang`'s rule, one attribute per key. */
+describe("fillDocument writes the page's data-* on <html>", () => {
+  const SCAFFOLDED = `<!doctype html>\n<html lang="en">\n  <head><title>App</title><!--head--></head><body><!--ssr--></body></html>`;
+
+  test("adds each, after lang", () => {
+    const out = fillDocument({
+      template: SCAFFOLDED,
+      html: "",
+      lang: "sr",
+      data: { theme: "dark", density: "compact" },
+    });
+    expect(out).toContain('<html lang="sr" data-theme="dark" data-density="compact">');
+  });
+
+  test("replaces the shell's own value rather than adding a second", () => {
+    const shell = `<!doctype html><html lang="en" data-theme="light"><head></head><body><!--ssr--></body></html>`;
+    expect(fillDocument({ template: shell, html: "", data: { theme: "dark" } })).toContain(
+      '<html lang="en" data-theme="dark">',
+    );
+  });
+
+  test("a value cannot break out of the attribute", () => {
+    expect(fillDocument({ template: SCAFFOLDED, html: "", data: { theme: 'x" onload="alert(1)' } })).toContain(
+      '<html lang="en" data-theme="x&quot; onload=&quot;alert(1)">',
+    );
+  });
+});
+
+test("fillDocument refuses a data key that is not an attribute name, rather than writing markup", () => {
+  expect(() =>
+    fillDocument({ template: "<html><body><!--ssr--></body></html>", html: "", data: { 'x" onload="y': "1" } }),
+  ).toThrow(/is not a data attribute's name/);
+});

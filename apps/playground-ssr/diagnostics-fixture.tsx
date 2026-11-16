@@ -13,7 +13,7 @@
  * One `window.` added to the record path would pass every suite in the repository and break every
  * SSR consumer, in development, which is the only place diagnostics exist at all.
  */
-import { Component, created, Hook, renderToString, state, type RamondaNode } from "@ramonda/core";
+import { Component, created, Hook, renderPage, state, type RamondaNode } from "@ramonda/core";
 
 class Store extends Hook<{ seed: number }> {
   @state value = this.props.seed;
@@ -59,5 +59,5 @@ export class Faulty extends Component {
  * separately would be measuring a second instance.
  */
 export function render(): Promise<string> {
-  return renderToString(<Faulty />);
+  return renderPage(<Faulty />).then((page) => page.body);
 }

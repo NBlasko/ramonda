@@ -80,7 +80,6 @@ export type DiagnosticCode =
   | "RMD037"
   | "RMD038"
   | "RMD039"
-  | "RMD040"
   | "RMD043"
   | "RMD044"
   | "RMD046"
@@ -350,12 +349,6 @@ export const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
     severity: "warning",
     title: "`class` where `className` was meant",
     fix: "Ramonda reads `className`, and a `class` written on an element is renamed to it before the vnode is built — so the element IS styled and the page is not broken. What the rename cannot save is the two cases beside it. If the element carries `className` as well, that one wins and this `class` is dropped without a word. And a COMPONENT is renamed just the same, so `<Panel class=…>` arrives as `className`: a `class` prop that component declared reads `undefined` on every render, for ever. Write `className` and both go away, and the source says what the element gets. This is the one place the JSX deliberately differs from HTML, because `class` is a reserved word in the object literal a JSX factory receives.",
-  },
-  RMD040: {
-    duplicate: { decorators: ["ShouldUpdateOnPropsChange"], effect: "displaces" },
-    severity: "error",
-    title: "More than one `@ShouldUpdateOnPropsChange` on one class",
-    fix: 'There can only be one answer to "take these props?", so one of them decides and the others never run — a gate that looks present and is not. **The HIGHEST of them is the one that decides**: the last declaration applied is the one that stands, and class decorators apply bottom-up, so the one written furthest from the class is applied last — the opposite of RMD032, where a member decorator initialises top to bottom. Remove the extras and combine their conditions into one callback. A SUBCLASS declaring its own is not this — that is an override, and it is silent on purpose.',
   },
   RMD043: {
     severity: "warning",

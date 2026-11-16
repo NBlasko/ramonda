@@ -1,4 +1,4 @@
-import { Component, hydrateRoot, list, type RamondaNode, renderPage, renderToString } from "@ramonda/core";
+import { Component, hydrateRoot, list, type RamondaNode, renderPage } from "@ramonda/core";
 import { getComponentInstance } from "@ramonda/core/testing";
 import { act } from "@ramonda/testing-library";
 import { describe, expect, test } from "vitest";
@@ -102,7 +102,7 @@ class Page extends Component {
 
 describe("on the server", () => {
   test("the markup carries what the watchers would have shown", async () => {
-    const html = await renderToString(<Page />);
+    const html = (await renderPage(<Page />)).body;
 
     // Values through a watched field, and through a watched field inside a list row.
     expect(html).toContain('value="r0"');
@@ -140,7 +140,7 @@ describe("on the server", () => {
      * those is what this asks. An earlier form of this test matched an attribute the server has not
      * written for some time, which made it pass no matter what the page shipped.
      */
-    const html = await renderToString(<Page />);
+    const html = (await renderPage(<Page />)).body;
     const blobs = html.match(/<!--c\d+ .*?-->/g) ?? [];
 
     expect(blobs).toHaveLength(0);

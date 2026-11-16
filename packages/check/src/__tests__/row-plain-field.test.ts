@@ -109,3 +109,14 @@ describe("a row reads a plain field", () => {
     expect(found.filter((i) => i.component === component)).toEqual([]);
   });
 });
+
+/**
+ * The advice ended by offering an ignore — "if a stale value is what you want". A value a row shows
+ * until something unrelated rebuilds that row is not a design anybody can rely on, and an ignore is
+ * for a fault being fixed, never for one. The answers are a signal or the row's own data.
+ */
+test("the advice offers no ignore, and says where a value the row should show belongs", async () => {
+  const { rowReadsAPlainField } = await import("../rules/row-reads-a-plain-field");
+  expect(rowReadsAPlainField.report.advice).not.toContain("ramonda-check-ignore");
+  expect(rowReadsAPlainField.report.advice).toContain("A stale value is not one to want");
+});

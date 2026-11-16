@@ -879,11 +879,9 @@ class Panel extends Component {
 A component has one answer to "who handles an error from below?", so one of them gets it; the others
 never run, and nothing says so — you read a handler that is dead.
 
-**The one that runs is the LOWEST**, `showFallback` above. One rule covers this and
-[`RMD040`](#rmd040-more-than-one-shouldupdateonpropschange-on-one-class): the declaration applied last
-is the one that stands. `@catchError` is a **member** decorator and members initialise top to bottom,
-so the lowest is applied last. A **class** decorator applies bottom-up, so there it is the highest —
-the same rule, the opposite line.
+**The one that runs is the LOWEST**, `showFallback` above: the declaration applied last is the one
+that stands, and `@catchError` is a **member** decorator, so members initialise top to bottom and the
+lowest is applied last.
 
 Keep one, and let it decide. It receives the error, and returning `false` **declines** it, so the
 next component above with a handler takes over:
@@ -1002,27 +1000,11 @@ Reported once per component and tag, so converting a codebase gets one report pe
 for the first `class` and silence for the rest. `ramonda-check` reports the same attribute before it
 renders, as `class-instead-of-classname`.
 
-## RMD040 — More than one `@ShouldUpdateOnPropsChange` on one class
+## RMD040 — retired
 
-```tsx expect-error
-@ShouldUpdateOnPropsChange((_self, previous, next) => next.v !== previous.v)   // this one decides
-@ShouldUpdateOnPropsChange(() => false)                                       // never consulted
-class Gated extends Component<{ v: number }> { render() { … } }
-```
-
-There can only be one answer to "take these props?", so one of them decides and the others never run —
-a gate that looks present and is not.
-
-**The one that decides is the HIGHEST**, which reads backwards. One rule covers this and
-[`RMD032`](#rmd032-more-than-one-catcherror-on-a-component): the declaration applied last is the one
-that stands. `@ShouldUpdateOnPropsChange` is a **class** decorator and class decorators apply bottom-up,
-so the lower declaration writes the rule and the upper one overwrites it. A **member** decorator
-initialises top to bottom, so there it is the lowest — the same rule, the opposite line.
-
-Remove the extras and combine their conditions into one callback.
-
-A **subclass** declaring its own is not this. That is an override — the ordinary way to specialise the
-rule — and it is silent. This fires only for two applications on the same class.
+`@ShouldUpdateOnPropsChange` was removed: a predicate an app writes can stop a component rendering when
+it should, and nothing can check it. Declare a prop that arrives rebuilt with
+[`@StableProps`](/reference/decorators/StableProps) instead.
 
 ## RMD043 — A `<meta>` with nothing to identify it
 

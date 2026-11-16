@@ -51,7 +51,7 @@ import { type BlockSite, afterShebang, findBlocks, mayHoldABlock } from "./scan"
 export interface TransformOptions {
   /** For the source map and for what a refusal says. */
   readonly filename?: string;
-  /** Where `block` is imported from. A wrapper for another JSX library points this at itself. */
+  /** Where the emitted code imports its helpers from — `@ramonda/css/compiled` unless a wrapper for another JSX library points it at its own re-export. */
   readonly runtime?: string;
   /**
    * How to read a module this file imports a named site from — see {@link Imported}.
@@ -1010,7 +1010,7 @@ export function transform(source: string, options: TransformOptions = {}): Trans
         `${shorthandsUsed.size > 0 ? `, shorthands as ${clearing}` : ""}` +
         `${conditionsUsed.size > 0 ? `, conditionsOf as ${conditions}` : ""}` +
         `${namesUsed.size > 0 ? `, namesOf as ${naming}` : ""}` +
-        ` } from ${JSON.stringify(options.runtime ?? "@ramonda/css")};\n` +
+        ` } from ${JSON.stringify(options.runtime ?? "@ramonda/css/compiled")};\n` +
         /**
          * What a class string cannot carry, registered by the module that needs it.
          *

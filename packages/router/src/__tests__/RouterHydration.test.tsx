@@ -1,5 +1,5 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
-import { Component, created, renderToString } from "@ramonda/core";
+import { Component, created, renderPage } from "@ramonda/core";
 import type { RamondaNode } from "@ramonda/core";
 import { allowDiagnostics, render } from "@ramonda/testing-library";
 import { Router, RouteOutlet, Navigator } from "../Router";
@@ -112,7 +112,7 @@ describe("Router hydration", () => {
     allowDiagnostics("RMD007"); // the test exists to show it
     // Server renders /players.
     setUrl("/players");
-    const html = await renderToString(<App />);
+    const html = (await renderPage(<App />)).body;
     expect(html).toContain("players");
 
     // The document that reaches the browser is being hydrated at a DIFFERENT
@@ -142,7 +142,7 @@ describe("Router hydration", () => {
    */
   test("a blob from before hashScopes still hydrates, at the client's URL", async () => {
     setUrl("/players#tab=film");
-    const html = await renderToString(<App />);
+    const html = (await renderPage(<App />)).body;
     expect(html).toContain("hashScopes");
     // The blob is JSON in the component's opening comment; rewritten to the old shape, as the old
     // router wrote it.
@@ -184,7 +184,7 @@ describe("Router hydration", () => {
       }
     }
     setUrl("/players#tab=film");
-    const html = await renderToString(<Reads />);
+    const html = (await renderPage(<Reads />)).body;
     const old = html.replace(/^<!--c0 (.*?)-->/, (_m, json: string) => {
       const blob = JSON.parse(json);
       const route = blob.hooks[0].state.routeState;
@@ -202,7 +202,7 @@ describe("Router hydration", () => {
 
   test("hydrating at the same URL keeps the server's route", async () => {
     setUrl("/players");
-    const html = await renderToString(<App />);
+    const html = (await renderPage(<App />)).body;
 
     const { container } = render(<App />, { hydrate: html });
 

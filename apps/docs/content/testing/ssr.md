@@ -21,7 +21,7 @@ server involved.
 ## Testing hydration
 
 ```tsx
-const html = await renderToString(<App />);
+const { body: html } = await renderPage(<App />);
 const { getByText } = render(<App />, { hydrate: html });
 ```
 
@@ -59,11 +59,11 @@ class Profile extends Component {
   }
 }
 
-const html = await renderToString(<Profile />);
+const { body: html } = await renderPage(<Profile />);
 expect(html).toContain("Ada");
 ```
 
-`renderToString` awaits promises returned by lifecycle methods. **Use a real macrotask
+`renderPage` awaits promises returned by lifecycle methods. **Use a real macrotask
 in the test**, not a resolved promise:
 
 ```ts

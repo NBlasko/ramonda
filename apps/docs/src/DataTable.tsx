@@ -61,8 +61,9 @@ export class DataTable extends Component<DataTableProps> {
           </thead>
           <tbody>
             {list(this.items, (item) => (
-              // ramonda-check-ignore a row is an array of cells, with no identity of its own to key by
-              <DataTableRow item={item} />
+              // A table from content has no id, so the row's own text is its key. Two rows with the
+              // same text are reported as a duplicate key (RMD002) rather than silently swapped.
+              <DataTableRow key={item.cells.map(textOf).join("\u0000")} item={item} />
             ))}
           </tbody>
         </table>
@@ -107,6 +108,11 @@ function textOf(child: Cell): string {
   if (child == null || typeof child === "boolean") return "";
   if (typeof child === "string" || typeof child === "number") return String(child);
   if (Array.isArray(child)) return (child as Cell[]).map(textOf).join("");
-  const children = (child as { props?: { children?: ComponentChild } }).props?.children;
-  return children === undefined ? "" : textOf(children);
+  // An element keeps its children on the vnode itself, a component (a link) in its attributes. Read
+  // from `props`, which neither has, an inline `<code>` or a link was empty — a heading of code
+  // labelled its cells with nothing, and rows that differed only there came out as one key, which
+  // the duplicate-key report found.
+  const element = child as { children?: unknown[]; attributes?: { children?: ComponentChild } };
+  const children = element.children ?? element.attributes?.children;
+  return children === undefined ? "" : textOf(children as Cell);
 }

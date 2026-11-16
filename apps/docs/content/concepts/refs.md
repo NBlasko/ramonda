@@ -123,7 +123,8 @@ it runs.
 
 **`Ref<T>`** is what `createRef<T>()` hands back: a `current` that is the node or `null`, and the
 `setCurrent` the framework calls. Annotating a field with it is the usual reason to name it —
-`private input: Ref<HTMLInputElement> = createRef()`.
+`private input: Ref<HTMLInputElement> = createRef()`. It is a type only: there is no class to
+construct, so `createRef` is the one way to make a ref.
 
 **`RefTarget<T>`** is what a `ref` prop accepts, and it is deliberately smaller than `Ref<T>`: only
 `setCurrent`. `Ref<T>` holds a mutable `current`, which makes it invariant — a

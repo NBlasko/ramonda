@@ -984,8 +984,14 @@ for (const group of groups.values()) {
    * `unresolved`, `unreachable`, `unreachableRoutes` — are not questions a fragment can pass: a
    * snippet has no root and no router, so every component in it is unreachable by construction.
    * Measured, they come to 321 reports and not one of them is about the example.
+   *
+   * Except `staleIgnores`, which a fragment answers as well as an app: an ignore on a line where
+   * nothing is reported silences nothing in the example either. The docs taught one over an empty
+   * backdrop, which no rule reports.
    */
-  for (const [rule, issues] of Object.entries(analyzeProgram(program).findings)) {
+  const analysed = analyzeProgram(program);
+  const byRule = { ...analysed.findings, "ignore-that-silences-nothing": analysed.staleIgnores };
+  for (const [rule, issues] of Object.entries(byRule)) {
     for (const issue of issues) {
       const unit = group.units.find((u) => u.path === issue.file);
       // A finding inside the framework's own sources is not this script's business: every program

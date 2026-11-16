@@ -206,6 +206,21 @@ export const GRAPH_REPORTS = [
       `OVER is an attribute: \`<Slot view={Named} />\` is a binding, not a child.\n`,
   }),
 
+  /**
+   * An ignore that silences nothing. An ignore is for a fault being fixed, so it has to go when the
+   * fault does; left behind, it silences whatever is written on that line next, and no run listed it.
+   */
+  report("staleIgnores", {
+    id: "ignore-that-silences-nothing",
+    heading: (n) => `${n} \`ramonda-check-ignore\`(s) on a line where nothing is reported`,
+    lines: (stale) => [`    "${stale.reason}" — nothing on this line or the next is reported. Delete it.`],
+    advice:
+      `An ignore is for a fault being fixed — a bug in this tool until it is fixed, or your own until\n` +
+      `you fix it. When the fault goes, the ignore goes with it: left behind, it silences whatever is\n` +
+      `written on that line next. And a design that is valid needs none — if a rule refuses one, that\n` +
+      `rule is the fault.\n`,
+  }),
+
   report("issues", {
     id: "missing-provider",
     heading: (n) => `${n} consumer(s) with no provider above them`,

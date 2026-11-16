@@ -1,18 +1,18 @@
 ---
-title: renderToString and hydrateRoot
+title: renderPage and hydrateRoot
 description: One turns your app into HTML on the server; the other brings that HTML to life in the browser.
 section: Server rendering
 order: 81
 ---
 
-# `renderToString` and `hydrateRoot`
+# `renderPage` and `hydrateRoot`
 
 The two ends of server rendering: one turns your app into HTML on the server, the
 other brings that HTML to life in the browser.
 
 ```ts
 // on the server
-const html = await renderToString(<App />);
+const { body: html } = await renderPage(<App />);
 
 // in the browser
 hydrateRoot(<App />, document.getElementById("app")!);
@@ -54,13 +54,13 @@ Where they *disagree*, the browser wins — the DOM is corrected — and develop
 reports it as [`RMD007`](/reference/diagnostics/rmd007). See
 [hydration mismatches](/ssr/mismatches) for why that happens and how to avoid it.
 
-## Rendering one REQUEST — `RenderToStringOptions` and `ServerRequestInit`
+## Rendering one REQUEST — `RenderPageOptions` and `ServerRequestInit`
 
-`renderToString(vnode)` renders a page that knows nothing about who asked for it. Pass a `request`
+`renderPage(vnode)` renders a page that knows nothing about who asked for it. Pass a `request`
 and it becomes a per-request render: `requestContext()` reads answer from what you seeded.
 
 ```ts
-const html = await renderToString(<App />, {
+const { body: html } = await renderPage(<App />, {
   request: { url: new URL(req.url ?? "/", "http://localhost"), headers: new Headers(), cookies: new Map() },
 });
 ```

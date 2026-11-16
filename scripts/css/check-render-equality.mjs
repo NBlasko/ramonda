@@ -79,7 +79,7 @@ function compile(name, source, shared, compiled) {
   const header = imports.map((other) => `import { ${other} } from "./${other}";\n`).join("");
   const built = transform(`${header}${shared}export const ${name} = @@( ${source} );\n`, { filename: file });
   if (built === undefined) throw new Error(`${name}: nothing compiled`);
-  const imported = /^import \{([^}]*)\} from "@ramonda\/css";$/m.exec(built.code)?.[1] ?? "";
+  const imported = /^import \{([^}]*)\} from "@ramonda\/css\/compiled";$/m.exec(built.code)?.[1] ?? "";
   const bound = imported
     .split(",")
     .map((one) => one.trim())

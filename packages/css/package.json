@@ -33,6 +33,14 @@
         "default": "./dist/index.js"
       }
     },
+    "./compiled": {
+      "types": "./dist/compiled.d.ts",
+      "import": {
+        "development": "./dist/compiled.js",
+        "production": "./dist/compiled.prod.js",
+        "default": "./dist/compiled.js"
+      }
+    },
     "./config": {
       "import": {
         "types": "./dist/config.d.ts",

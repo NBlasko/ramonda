@@ -3,7 +3,6 @@ import { getDOM, findAll } from "../test/setup";
 import { Component } from "../base/Component";
 import { state, created, interval, destroyed as destroyedDecorator } from "../base/decorators";
 import { list } from "../base/list";
-import { ShouldUpdateOnPropsChange } from "../index";
 import { ErrorBoundary } from "../base/ErrorBoundary";
 
 describe("ErrorBoundary", () => {
@@ -148,24 +147,19 @@ describe("ErrorBoundary", () => {
     expect(destroyed).toEqual(["Child"]);
   });
 
-  test("a props gate that throws reaches the boundary, and its component leaves", async () => {
+  test("a component that throws while the parent reconciles reaches the boundary, and the one it replaced leaves", async () => {
     /**
-     * `@ShouldUpdateOnPropsChange` is user code the diff calls SYNCHRONOUSLY, while the parent is
-     * still reconciling — so it is one of the very few things that can throw with a LIVE region in
-     * hand. The region has already been taken out of the map the loop's own teardown pass walks, so
-     * nothing downstream would ever find it: without the by-hand teardown its nodes stay on the page
-     * under the fallback and its `@destroyed` never runs.
+     * A component built while the parent reconciles, throwing as it is built, in the slot another
+     * component held: the boundary shows its fallback, and the one it replaced is gone and destroyed.
      *
-     * Found by removing that teardown and watching all 1295 tests pass — the branch was reachable
-     * and nothing was asking it anything.
+     * This used to be asked through `@ShouldUpdateOnPropsChange`, user code the diff called while it
+     * held the previous occupant's live region — the shape the by-hand teardown in `DiffAndMerge`'s
+     * component-entry catch exists for. With that decorator removed, nothing measured reaches that
+     * teardown any more: here the previous occupant is torn down before the new one is built.
      */
     const torn: string[] = [];
     let gateThrows = false;
 
-    @ShouldUpdateOnPropsChange(() => {
-      if (gateThrows) throw new Error("gate boom");
-      return true;
-    })
     class Gated extends Component<{ n: number }> {
       @destroyedDecorator bye() {
         torn.push("gated");
@@ -175,13 +169,22 @@ describe("ErrorBoundary", () => {
       }
     }
 
+    class Breaks extends Component<{ n: number }> {
+      boom = (() => {
+        throw new Error("gate boom");
+      })();
+      render() {
+        return <b>never</b>;
+      }
+    }
+
     class Shell extends Component {
       @state n = 1;
       render() {
         return (
           <div id="shell">
             <ErrorBoundary fallback={() => <i id="fb">fb</i>}>
-              <Gated n={this.n} />
+              {gateThrows ? <Breaks n={this.n} /> : <Gated n={this.n} />}
             </ErrorBoundary>
             <u id="tail">tail</u>
           </div>

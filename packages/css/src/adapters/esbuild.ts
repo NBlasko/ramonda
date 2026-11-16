@@ -42,7 +42,7 @@ import { transform } from "../compiler/transform";
  */
 
 export interface EsbuildCssPluginOptions {
-  /** Where `block` is imported from in the emitted code. Defaults to `@ramonda/css`. */
+  /** Where the emitted code imports its helpers from. Defaults to `@ramonda/css/compiled` — see the Vite plugin's. */
   readonly runtime?: string;
   /**
    * Which paths are looked at, as esbuild's own `onLoad` filter. Defaults to every source extension.

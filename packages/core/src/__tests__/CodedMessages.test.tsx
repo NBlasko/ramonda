@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { getDOM } from "../test/setup";
-import { ShouldUpdateOnPropsChange, state, watchProp } from "../base/decorators";
+import { state, watchProp } from "../base/decorators";
 import { Component } from "../base/Component";
 import { Head } from "../base/Head";
 import { resetDiagnostics } from "../debug/diagnostics";
@@ -118,27 +118,6 @@ describe("the ten that were messages", () => {
     const withError = printed.find((call) => call.some((arg) => (arg as { error?: unknown })?.error instanceof Error));
     expect(withError).toBeDefined();
     expect(of("RMD038")?.data).toEqual({ component: "Child", reason: expect.any(String) });
-    unmount();
-  });
-
-  test("RMD040 — more than one @ShouldUpdateOnPropsChange on one class", async () => {
-    // Reported when the class is DEFINED, not when it renders: a class decorator applies at
-    // definition, and the second application is what finds the first.
-    @ShouldUpdateOnPropsChange(() => true)
-    @ShouldUpdateOnPropsChange(() => true)
-    class Twice extends Component<{ id: number }> {
-      render() {
-        return <p>{this.props.id}</p>;
-      }
-    }
-    const { unmount } = await getDOM(<Twice id={1} />);
-
-    expect(codes()).toContain("RMD040");
-    expect(of("RMD040")?.severity).toBe("error");
-    expect(of("RMD040")?.data?.component).toBe("Twice");
-    // The advice has to name the right one, and which one that is reads backwards — see
-    // `PropsGateInheritance.test.tsx`, which measures it.
-    expect(of("RMD040")?.fix).toContain("HIGHEST");
     unmount();
   });
 

@@ -72,7 +72,6 @@ so a component that misuses the same property on every render reports once.
 | `RMD037` | error | An object among JSX children that is not markup |
 | `RMD038` | error | A `@watchProp` selector threw |
 | `RMD039` | warning | `class` where `className` was meant |
-| `RMD040` | error | More than one `@ShouldUpdateOnPropsChange` on one class |
 | `RMD043` | warning | A `<meta>` with nothing to identify it |
 | `RMD044` | error | An unknown element type in JSX |
 | `RMD046` | warning | More than one `@StableProps` on one class |
@@ -1090,3 +1089,10 @@ add keys the framework should not have needed.
 See the changeset for the measurements, and `__tests__/HoleAlignment.test.tsx` for the
 arrangements it covers — conditionals at the start, middle and end, in both directions, with
 elements and with components.
+
+### RMD040 — retired 2026-11-16
+
+It reported more than one `@ShouldUpdateOnPropsChange` on one class. The decorator is gone: it took a
+predicate an app writes, and a predicate can stop a component rendering when it should — silently,
+and nothing can check it. `@StableProps` covers the case it was documented for by NAME, and a class
+with two of a decorator that does not exist cannot be written.

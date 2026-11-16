@@ -18,7 +18,7 @@ is a production build:
 
 ```ts alternatives
 export default defineConfig(({ mode }) => ({
-  plugins: [ramondaCss({ runtime: "@ramonda/css" })],
+  plugins: [ramondaCss({ runtime: "@ramonda/css/compiled" })],
 }));
 ```
 
