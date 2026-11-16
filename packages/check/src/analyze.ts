@@ -2169,16 +2169,35 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
    * One hop to a local const, and both arms of a ternary, which is how a tag chosen between two
    * elements is written. Anything else is unknown, and unknown is a hole rather than a guess.
    */
-  function namesAnElement(expression: ts.Expression): boolean {
+  function namesAnElement(expression: ts.Expression, seen = new Set<ts.Node>()): boolean {
+    // A chain of aliases can close on itself — `const A = B; const B = A;` — and the guard, not a
+    // depth, is what ends it. Found when the tag path started asking this too.
+    if (seen.has(expression)) return false;
+    seen.add(expression);
     if (ts.isStringLiteralLike(expression)) return true;
     if (ts.isConditionalExpression(expression)) {
-      return namesAnElement(unwrapAs(expression.whenTrue)) && namesAnElement(unwrapAs(expression.whenFalse));
+      return (
+        namesAnElement(unwrapAs(expression.whenTrue), seen) && namesAnElement(unwrapAs(expression.whenFalse), seen)
+      );
     }
     if (ts.isIdentifier(expression)) {
       const behind = initializerBehind(expression);
-      return behind !== undefined && behind !== expression && namesAnElement(unwrapAs(behind));
+      if (behind !== undefined && behind !== expression && namesAnElement(unwrapAs(behind), seen)) return true;
     }
-    return false;
+    return stringTyped(expression);
+  }
+
+  /**
+   * Whether the TYPE says every value is a string, where the syntax cannot — `node.t` read from a
+   * parsed content tree, `headingTag()` returning `"h1" | "h2"`. Read from the syntax alone, the docs
+   * site's code block was an unresolved component and carried an ignore for a design that is right.
+   * `any` and `unknown` are not string types, and a union with a component is not all strings: those
+   * prove nothing and stay holes.
+   */
+  function stringTyped(expression: ts.Expression): boolean {
+    const type = checker.getTypeAtLocation(expression);
+    const parts = type.isUnion() ? type.types : [type];
+    return parts.every((part) => (part.flags & ts.TypeFlags.StringLike) !== 0);
   }
 
   /** `value as never` and `(value)` are the same value; the cast is for the compiler, not for this. */
@@ -2929,7 +2948,9 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
             why: `\`${opening.tagName.getText()}\` is a prop, so only a caller can say what it mounts`,
           });
           readDirective(opening, "slot");
-        } else {
+        } else if (!(ts.isIdentifier(opening.tagName) && namesAnElement(opening.tagName))) {
+          // `<Heading>` with `Heading` a string — chosen between `"h1"` and `"h2"` — is an element,
+          // the same answer the factory gives `__h(tag, …)`.
           unresolvedEdge(owner.id, via, opening, whyUnresolved(opening.tagName, "the tag"), opening.tagName);
         }
       }
