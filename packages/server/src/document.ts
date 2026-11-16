@@ -46,6 +46,11 @@ export interface Document {
   /** `<html dir>`, by the same rule. */
   dir?: string;
   /**
+   * `<html data-*>` — `renderPage()`'s `data`, keyed as `Head`'s `data` names them: `{ theme: "dark" }`
+   * is `data-theme="dark"`. Each by the rule above: written over the shell's, absent leaves it.
+   */
+  data?: Record<string, string>;
+  /**
    * What each named portal target collected — `renderPage()`'s `portals`.
    *
    * A portal aimed at a name rather than an element is the only kind that can exist on the server:
@@ -77,12 +82,18 @@ export interface Document {
  * the two. `<!--portals-->` is the exception and throws — see below for why that one cannot be
  * quiet.
  */
-export function fillDocument({ template, html, title, head, lang, dir, portals }: Document): string {
+export function fillDocument({ template, html, title, head, lang, dir, data, portals }: Document): string {
   // The shell's own `<html>`, BEFORE the page goes in. After it, a shell with no `<html>` — valid HTML —
   // had the rendered page searched instead, and a `<html` in a code sample or a script string was
   // rewritten. Found by the final review.
   let out = setRootAttribute(template, "lang", lang);
   out = setRootAttribute(out, "dir", dir);
+  for (const [key, value] of Object.entries(data ?? {})) {
+    // `Head` refuses such a key before it is ever rendered; this is the caller that wrote one by hand.
+    if (!/^[a-z0-9_.-]+$/.test(key))
+      throw new Error(`[ramonda] fillDocument: \`${key}\` in \`data\` is not a data attribute's name.`);
+    out = setRootAttribute(out, `data-${key}`, value);
+  }
   out = out.replace("<!--ssr-->", () => html ?? "");
   // An EMPTY title is a report that nothing set one — `renderPage` returns `""` when no `Head` in
   // the tree spoke — and not a title of "". Writing it emptied the shell's own `<title>`, which a
@@ -120,7 +131,7 @@ const PORTALS_MARKER = "<!--portals-->";
  * second that the browser would ignore. Found by a review: a search over the raw text did both
  * wrong. Only the first `<html` tag, which `<!doctype html>` is not.
  */
-function setRootAttribute(shell: string, name: "lang" | "dir", value: string | undefined): string {
+function setRootAttribute(shell: string, name: string, value: string | undefined): string {
   if (value === undefined) return shell;
   const tag = htmlTag(shell);
   if (tag === undefined) return shell;

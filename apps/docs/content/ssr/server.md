@@ -29,8 +29,8 @@ const template = await readFile("dist/index.html", "utf8");
 async function handle(url: string): Promise<string> {
   const dom = installDom(url);
   try {
-    const { body, title, head, lang, dir, portals } = await renderPage(<App />);
-    return fillDocument({ template, html: body, title, head, lang, dir, portals });
+    const { body, title, head, lang, dir, data, portals } = await renderPage(<App />);
+    return fillDocument({ template, html: body, title, head, lang, dir, data, portals });
   } finally {
     dom.close();
   }
@@ -122,6 +122,9 @@ They come from a [`Head`](/ssr/head#the-pages-language-lang-and-dir) in the page
 app's pages are not all served as the language its one shell names. A page that set neither leaves
 the shell exactly as it was. Leave them out of the call and the server sends the shell's language;
 the client corrects it after hydration, which a screen reader and a crawler may not wait for.
+
+**`data` goes there too**, one `data-*` attribute per key, by the same rule — a theme a
+[`Head`](/ssr/head#a-theme-on-html-data) chose is in the first paint rather than a flash later.
 
 ### `escapeHtml(value)` and `PORTAL_TARGET_ATTR`
 

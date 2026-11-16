@@ -30,7 +30,7 @@ When you render on the server, `renderPage` returns them next to the body:
 
 ```ts
 const page = await renderPage(<App />);
-// { body, title, head, lang, dir }
+// { body, title, head, lang, dir, data }
 ```
 
 ## Why a hook
@@ -55,6 +55,7 @@ one `<head>` the way many [portals](/composition/portal) share one target.
 | `link` | canonical URLs, alternates, icons, preloads |
 | `lang` | `<html lang>` — the language the page is in |
 | `dir` | `<html dir>` — `"ltr"`, `"rtl"` or `"auto"`; any string compiles, so `cond ? "rtl" : "ltr"` needs no annotation |
+| `data` | `<html data-*>` — `{ theme: "dark" }` is `data-theme="dark"`. [A theme on `<html>`](#a-theme-on-html-data) |
 
 `meta` takes `MetaTag`s and `link` takes `LinkTag`s — a `<link>` is identified by its `rel`, its
 `href`, and its `hreflang` and `sizes` when it has them, and carries `type` and `crossOrigin` too. So
@@ -115,6 +116,39 @@ a French page for one whose `Head` sets no `lang`, and `<html>` stays French.
 On the server, `renderPage` returns `lang` and `dir`, and [`fillDocument`](/ssr/server) writes them
 over the shell's `<html lang="en">`. Pass them through, as you pass `title`. A page that set neither
 leaves the shell's value standing.
+
+## A theme on `<html>` — `data`
+
+A theme is a set of custom properties selected by an attribute, `[data-theme="dark"]`, and it goes on
+`<html>` because every block on the page sits under it. `data` sets `data-*` there:
+
+```tsx
+import { Component, Head, state } from "@ramonda/core";
+
+export class App extends Component {
+  @state theme = "light";
+
+  head = this.use(Head, (self: App) => ({ data: { theme: self.theme } }));
+
+  dark() {
+    this.theme = "dark";
+  }
+
+  render() {
+    return <button onclick={this.dark}>Dark</button>;
+  }
+}
+```
+
+Each key follows `lang`'s rules on its own: the deeper `Head` wins, `undefined` says nothing, and a
+page that goes away hands back what `<html>` had. `renderPage` returns `data` beside `lang`, and
+`fillDocument` writes it, so the first paint is already dark.
+
+Write a key the way the selector names it, after `data-`: `"color-scheme"`, not `colorScheme`. HTML
+lowercases an attribute's name, so `colorScheme` would land as `data-colorscheme`, which no
+`[data-color-scheme]` matches — it is refused with that said.
+
+There is no `class` for `<html>`: a class would be a second way to say what `data` says.
 
 ## Each `<meta>` needs an identifier — `MetaTag`
 

@@ -380,9 +380,10 @@ export interface StaticRender {
    */
   title?: string;
   head?: string;
-  /** `<html lang>` and `<html dir>`, as `renderPage` returns them. */
+  /** `<html lang>`, `<html dir>` and `<html data-*>`, as `renderPage` returns them. */
   lang?: string;
   dir?: string;
+  data?: Record<string, string>;
   /**
    * Set when the render touched per-request data (a cookie, a header, a seeded value), naming
    * the field. The route CANNOT be prerendered — bake it and one visitor's data would be served
@@ -451,6 +452,8 @@ export interface RenderedPage {
   lang?: string;
   /** `<html dir>`, by the same rule. */
   dir?: string;
+  /** `<html data-*>` by the same rule, keyed as `Head`'s `data` names them: `{ theme: "dark" }`. */
+  data?: Record<string, string>;
   /**
    * What each NAMED portal target collected, by name — the blocks belonging in a
    * container outside the app's root.
@@ -584,7 +587,13 @@ const MANAGED_HEAD = `[${PORTAL_ATTR}]`;
  * a pair of anchors (the anchors included, because the client hydrates against
  * them), and outside a block, the elements `Head` marked.
  */
-function collectHead(): { title: string; head: string; lang?: string; dir?: string } {
+function collectHead(): {
+  title: string;
+  head: string;
+  lang?: string;
+  dir?: string;
+  data?: Record<string, string>;
+} {
   /**
    * Marked BEFORE anything is read, and before the block is paired.
    *

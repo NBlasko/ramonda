@@ -65,7 +65,11 @@ export function renderDocument(page: RenderedPage, options: DocumentOptions = {}
 
   return (
     "<!doctype html>" +
-    `<html lang="${escapeAttribute(page.lang ?? fallbackLang)}"${page.dir ? ` dir="${escapeAttribute(page.dir)}"` : ""}>` +
+    `<html lang="${escapeAttribute(page.lang ?? fallbackLang)}"${page.dir ? ` dir="${escapeAttribute(page.dir)}"` : ""}` +
+    Object.entries(page.data ?? {})
+      .map(([key, value]) => ` data-${key}="${escapeAttribute(value)}"`)
+      .join("") +
+    ">" +
     "<head>" +
     '<meta charset="utf-8">' +
     '<meta name="viewport" content="width=device-width, initial-scale=1">' +
