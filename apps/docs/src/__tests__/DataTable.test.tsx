@@ -136,6 +136,48 @@ describe("a prose table", () => {
     expect(table.querySelector("tbody td")!.textContent).toBe("RMD001");
     expect(table.querySelectorAll("tbody td")[1]!.getAttribute("data-label")).toBe("Means");
   });
+
+  /**
+   * A heading written as code — or as a link — labels its cells with its text. The text was read from
+   * `props`, which a vnode does not have, so a heading of code labelled every cell with nothing; found
+   * when rows keyed by the same text came out as one key.
+   */
+  test("a heading of inline code or a link labels its cells with its text", () => {
+    const table = mount(
+      __h(DataTable, {
+        columns: ["Name", __h("code", null, "@state"), __h("a", { href: "/x" }, __h("code", null, "list"))],
+        rows: [["count", "yes", "no"]],
+      }),
+    );
+    const labels = [...table.querySelectorAll("tbody td")].map((cell) => cell.getAttribute("data-label"));
+    expect(labels).toEqual([null, "@state", "list"]);
+  });
+
+  /**
+   * A table from content has no id, so a row is keyed by its own text. Two rows with the same text
+   * are one key twice, and that is REPORTED — a duplicate key — rather than two rows silently trading
+   * places. The published pages below are held to having none.
+   */
+  test("two rows with the same text are reported, not silently swapped", () => {
+    const said: string[] = [];
+    const spy = vi.spyOn(console, "log").mockImplementation((...args: unknown[]) => {
+      said.push(args.map(String).join(" "));
+    });
+    try {
+      mount(
+        __h(DataTable, {
+          columns: ["Code", "Means"],
+          rows: [
+            ["RMD001", "x"],
+            ["RMD001", "x"],
+          ],
+        }),
+      );
+    } finally {
+      spy.mockRestore();
+    }
+    expect(said.some((line) => line.includes("RMD002"))).toBe(true);
+  });
 });
 
 /**
@@ -149,7 +191,8 @@ describe("the published pages", () => {
     const reports: string[] = [];
     const spy = vi.spyOn(console, "log").mockImplementation((...args: unknown[]) => {
       const line = args.map(String).join(" ");
-      if (line.includes("RMD020")) reports.push(line.replace(/%c/g, " ").slice(0, 160));
+      // RMD002 too: a row is keyed by its text, so two identical rows on a page would be one key twice.
+      if (line.includes("RMD020") || line.includes("RMD002")) reports.push(line.replace(/%c/g, " ").slice(0, 160));
     });
     // The strict render is what catches a table converted afresh on every render: `rows` would be a
     // new array each time, and a component's props are compared by reference.
