@@ -18,6 +18,9 @@ test("render refuses, and says what is missing and both ways out", () => {
   expect(() => render(<Plain />)).toThrow(/globals: true/);
   expect(() => render(<Plain />)).toThrow(/dont-cleanup-after-each/);
   expect(() => render(<Plain />)).toThrow(/dont-fail-on-diagnostics/);
-  // Refused before anything was mounted: nothing is left in the document to leak.
-  expect(document.body.innerHTML).toBe("");
+  // Refused before anything was mounted: nothing is left in the document to leak. Everything but the
+  // devtools panel, which core's development build appends when its own import resolves — a race with
+  // this line, not anything `render` left. Asked of the whole body, it failed the gate under load.
+  const left = [...document.body.children].filter((element) => element.localName !== "ramonda-devtools");
+  expect(left.map((element) => element.outerHTML)).toEqual([]);
 });
