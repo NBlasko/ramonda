@@ -770,19 +770,15 @@ There is no chunk. The module is pulled into the caller's chunk, or left out of 
 and looked for at run time — which works on a dev server, where the source is served as it sits, and
 404s in production, where nothing emitted it. The build says nothing either way.
 
-If it is deliberate, say so and the report stops. Either the bundler's own marker, which you
-probably already need for the build to be quiet:
+If it is deliberate — an optional package, loaded only when it is installed — say so with the
+bundler's own marker, which you need for the build to be quiet anyway, and the report stops:
 
 ```ts
 const load = () => import(/* @vite-ignore */ specifier);
 ```
 
-or this package's annotation, which also keeps the reason where the next reader will find it:
-
-```ts
-// ramonda-check-ignore the panel's specifier is built, so the build cannot follow it
-const load = () => import(specifier);
-```
+That is the one spelling. A `ramonda-check-ignore` here would be a second way to say the same thing,
+and an ignore is for a fault being fixed.
 
 Measured across this repository when the rule was written: 88 dynamic imports with a literal path
 and 3 without, every one of the three already marked. A rule that reported those would have opened

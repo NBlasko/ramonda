@@ -77,3 +77,14 @@ describe("a dynamic import whose path is not a literal", () => {
     );
   });
 });
+
+/**
+ * A path the bundler cannot read on purpose — an optional package loaded only when it is installed — is
+ * a design, and it has one spelling: the bundler's own marker, which tells the bundler too. The advice
+ * also offered `ramonda-check-ignore`, a second way to say it, and an ignore is for a fault being fixed.
+ */
+test("the advice names the bundler's marker as the one way to say it is deliberate", async () => {
+  const { unsplittableImport } = await import("../rules/unsplittable-import");
+  expect(unsplittableImport.report.advice).toContain("/* @vite-ignore */");
+  expect(unsplittableImport.report.advice).not.toContain("ramonda-check-ignore");
+});
