@@ -3465,6 +3465,7 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
       const walkedAt = walked.get(arrangement);
       if (walkedAt !== undefined && walkedAt <= path.length) return;
       walked.set(arrangement, path.length);
+      arrangementsVisited++;
       reached.add(node);
       /**
        * EVERY arrival is recorded, `undefined` included — an arrival with no outlet above is an
@@ -4863,4 +4864,14 @@ function insideContent(source: ts.SourceFile, position: number): boolean {
   };
   ts.forEachChild(source, visit);
   return inside;
+}
+
+/**
+ * How many arrangements the context walk has visited, over the life of the module — its work as a
+ * COUNT, read as a difference by a test. Timed, the ladder test failed under a loaded gate: a time
+ * measures the machine as much as the walk.
+ */
+let arrangementsVisited = 0;
+export function arrangementsVisitedSoFar(): number {
+  return arrangementsVisited;
 }

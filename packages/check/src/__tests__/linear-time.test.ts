@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, test } from "vitest";
-import { analyzeProject } from "../analyze";
+import { analyzeProject, arrangementsVisitedSoFar } from "../analyze";
 
 /**
  * What a project's source holds, read in LINEAR time.
@@ -106,16 +106,19 @@ describe("the component tree, walked once per arrangement", () => {
     ).join("");
     return `import { Component, bootstrap } from "@ramonda/core";\n\n${classes}\nclass App extends Component {\n  render() {\n    return <div><R0a /><R0b /></div>;\n  }\n}\nbootstrap(<App />, null);\n`;
   };
-  const took = (depth: number) => {
+  /**
+   * Counted, not timed: the arrangements the walk visits. Timed, as the difference of two runs, it
+   * failed under a loaded gate and passed alone. Measured: 2 rungs visit 7 arrangements and 22 visit
+   * 47; walking every path instead of every arrangement, 15 and 16,777,215.
+   */
+  const visits = (depth: number) => {
     const tsconfig = projectOf(ladder(depth));
-    const started = performance.now();
+    const before = arrangementsVisitedSoFar();
     analyzeProject(tsconfig);
-    return performance.now() - started;
+    return arrangementsVisitedSoFar() - before;
   };
 
   test("a ladder with 2^22 paths to its bottom costs about what one of two rungs does", () => {
-    const short = took(2);
-    const long = took(22);
-    expect(long - short).toBeLessThan(1000);
+    expect(visits(22) - visits(2)).toBeLessThan(100);
   });
 });
