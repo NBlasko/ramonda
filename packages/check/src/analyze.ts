@@ -1800,7 +1800,7 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
       slotHoles: [],
       slots: slotsOf(node),
       stableProps: [...stablePropsOf(node.name, resolver)],
-      exported: (ts.getCombinedModifierFlags(node) & ts.ModifierFlags.Export) !== 0,
+      exported: (ts.getCombinedModifierFlags(node) & ts.ModifierFlags.Export) !== 0 || insideAnExport(node),
       uses: new Set(),
       opaque: false,
       usesChildren: node.getText().includes("children"),
@@ -1839,6 +1839,26 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
       // A root has no props, so it hands nothing to a slot.
       rootMounts.push({ id, target });
       edge(id, target.id, "renders", "bootstrap", node);
+      return;
+    }
+    /**
+     * `bootstrap(shell())`, `bootstrap(wrap(ui))` — a call to a helper. A helper is a node of the
+     * graph and a component calling one gets a `calls` edge to it; the root gets the same, and
+     * nothing is followed. Without it the root was a hole, everything below went unjudged, and the
+     * testing library's `render` carried an ignore for a design that is right.
+     */
+    const argument = node.arguments[0] ? unwrapAs(node.arguments[0]) : undefined;
+    const callee =
+      argument &&
+      ts.isCallExpression(argument) &&
+      (ts.isIdentifier(argument.expression) || ts.isPropertyAccessExpression(argument.expression))
+        ? resolve(argument.expression)
+        : undefined;
+    const helper = callee ? helpers.get(callee) : undefined;
+    if (helper) {
+      roots.add(helper);
+      rootMounts.push({ id, target: helper });
+      edge(id, helper.id, "calls", "bootstrap", node);
     } else {
       /**
        * The reason is read from what was WRITTEN, which is the argument itself when it is not JSX.
@@ -3102,7 +3122,7 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
 
   function strandedRoutes(reached: Set<ComponentNode>): UnreachableRouteIssue[] {
     // No root, no verdict — the same reason a library is not judged for dead declarations.
-    if (roots.size === 0) return [];
+    if (!hasOwnRoot()) return [];
     /**
      * An outlet spreading props this cannot read could be handing over ANY of these tables, and
      * both verdicts here are about a table nothing named. Neither survives that, so neither is
@@ -3162,7 +3182,7 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
     routesAbove: Map<ComponentNode, Set<string | null | undefined>>,
     pathTo: Map<ComponentNode, string[]>,
   ): ParamsOffRouteIssue[] {
-    if (roots.size === 0 || anOutletSpreadsUnread) return [];
+    if (!hasOwnRoot() || anOutletSpreadsUnread) return [];
 
     const found: ParamsOffRouteIssue[] = [];
     for (const read of paramReads) {
@@ -3258,7 +3278,7 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
     routesAbove: Map<ComponentNode, Set<string | null | undefined>>,
     pathTo: Map<ComponentNode, string[]>,
   ): UnsuppliedKeyIssue[] {
-    if (roots.size === 0 || anOutletSpreadsUnread) return [];
+    if (!hasOwnRoot() || anOutletSpreadsUnread) return [];
 
     const found: UnsuppliedKeyIssue[] = [];
     for (const read of keyedReads) {
@@ -3349,9 +3369,23 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
     }
   }
 
+  /**
+   * Whether THIS project has a root of its own — the one question "app or library" turns on.
+   *
+   * A dependency compiled from source may have a root, and it says nothing about this project.
+   * Counting every root made the router an app the moment the testing library's `render` got one:
+   * its published components were reported as nothing mounting them, and its graph was refused as a
+   * fragment. Asked by both, so the two cannot disagree.
+   */
+  function hasOwnRoot(): boolean {
+    const mine = owner(projectRoot);
+    const own = mine ? `${mine.name}/` : undefined;
+    return rootMounts.some((root) => own === undefined || root.id.startsWith(own));
+  }
+
   function deadOnes(reached: Set<ComponentNode>): UnreachableIssue[] {
     // No root, no verdict: in a library everything is unreachable by definition.
-    if (roots.size === 0) return [];
+    if (!hasOwnRoot()) return [];
     /**
      * This project's OWN declarations, and nothing else.
      *
@@ -4239,7 +4273,7 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
      * job — and a call whose argument nothing can name starts no tree. Counting it made every
      * package that maps testing-library in its tsconfig come out as an app.
      */
-    const scope = roots.size > 0 ? "app" : "library";
+    const scope = hasOwnRoot() ? "app" : "library";
     const ownedBy = home ? `${home.name}/` : undefined;
     /**
      * A library describes ITSELF.
@@ -4874,4 +4908,22 @@ function insideContent(source: ts.SourceFile, position: number): boolean {
 let arrangementsVisited = 0;
 export function arrangementsVisitedSoFar(): number {
   return arrangementsVisited;
+}
+
+/**
+ * Whether a declaration sits inside an exported function — `renderHook` declaring `HookHost`. It cannot
+ * exist without that function, so it is entered through what the package publishes, as an exported
+ * component is. The function mounts it through a call whose parameter the graph does not fill: calls
+ * are not followed, and this is what keeps that from reading as a component nothing mounts.
+ */
+function insideAnExport(node: ts.Node): boolean {
+  for (let at = node.parent; at !== undefined; at = at.parent) {
+    const declared = ts.isFunctionDeclaration(at)
+      ? at
+      : (ts.isArrowFunction(at) || ts.isFunctionExpression(at)) && ts.isVariableDeclaration(at.parent)
+        ? at.parent
+        : undefined;
+    if (declared !== undefined && (ts.getCombinedModifierFlags(declared) & ts.ModifierFlags.Export) !== 0) return true;
+  }
+  return false;
 }

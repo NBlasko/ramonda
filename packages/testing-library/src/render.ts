@@ -140,10 +140,8 @@ export function render<T = unknown>(ui: VNode, options: RenderOptions = {}): Ren
 
   act(() => {
     if (options.hydrate) {
-      // ramonda-check-ignore the caller hands us the tree to mount, which is what this helper is for
       hydrateRoot(wrap(ui), container);
     } else {
-      // ramonda-check-ignore the caller hands us the tree to mount, which is what this helper is for
       bootstrap(wrap(ui), container);
     }
   });
