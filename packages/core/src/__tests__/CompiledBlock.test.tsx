@@ -1197,6 +1197,27 @@ describe("an attribute hole holding a listener object", () => {
   });
 });
 
+describe("a template attribute written over two lines of a CRLF file", () => {
+  test("is the server's, though the parser gave its CRLF back as LF — the element is kept", async () => {
+    const WRAPPED = __template({ t: "p", a: { title: "one\r\ntwo" }, c: ["x"] });
+    class Wrapped extends Component {
+      render() {
+        return <div>{__block(WRAPPED, [])}</div>;
+      }
+    }
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    container.innerHTML = await renderToString(<Wrapped />);
+    const served = container.querySelector("p");
+    hydrateRoot(<Wrapped />, container);
+    await Promise.resolve();
+    await Promise.resolve();
+    const kept = container.querySelector("p") === served;
+    container.remove();
+    expect(kept).toBe(true);
+  });
+});
+
 describe("a child hole built holding markup", () => {
   test("holds the markup and nothing else", async () => {
     class Boxed extends Component {

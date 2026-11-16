@@ -137,8 +137,14 @@ interface Places {
 }
 
 function placesIn(code: string, file: string): Places {
+  // Every line terminator JavaScript knows, as the JSX transforms count them for `jsxDEV`: `\r\n` once, a
+  // lone `\r`, `\n`, U+2028 and U+2029. Columns are UTF-16 units, as theirs are.
   const starts = [0];
-  for (let i = 0; i < code.length; i++) if (code.charCodeAt(i) === 10) starts.push(i + 1);
+  for (let i = 0; i < code.length; i++) {
+    const c = code.charCodeAt(i);
+    if (c === 13 && code.charCodeAt(i + 1) === 10) continue;
+    if (c === 10 || c === 13 || c === 0x2028 || c === 0x2029) starts.push(i + 1);
+  }
   return {
     file,
     at(offset) {
@@ -250,6 +256,10 @@ function childrenOf(element: JSXElement): Child[] | undefined {
   const children: Child[] = [];
   for (const child of element.children) {
     if (child.type === "JSXText") {
+      // Two characters the JSX transforms disagree on — Oxc trims U+0085 and U+200B where lines meet, esbuild
+      // keeps them (measured over every character of the BMP; on all others they agree, and so does this
+      // compiler) — so no one cleaning matches both: the element is left to whichever transform runs.
+      if (/[\u0085\u200b]/.test(child.value as string)) return undefined;
       const text = cleanText(child.value as string);
       if (text === undefined) continue;
       // An entity is decoded by the transform after this one; this one leaves the element to it.
@@ -385,9 +395,9 @@ class Compiler {
         } else if (value.type === "Literal") {
           const text = value.value as string;
           if (name !== "key" && bakeable(tag, name)) {
-            // With line breaks as HTML gives them back — a CRLF checkout's arrive as LF in a served page.
-            const folded = text.replace(/\r\n?/g, "\n");
-            baked.push(`${JSON.stringify(ATTRIBUTE_OF_PROPERTY[name] ?? name)}: ${JSON.stringify(folded)}`);
+            // As written, a CRLF checkout's line breaks too — esbuild and Oxc keep them in the props `jsx()` is
+            // handed. A served page's come back as LF; hydration's `matches` reads them as the same.
+            baked.push(`${JSON.stringify(ATTRIBUTE_OF_PROPERTY[name] ?? name)}: ${JSON.stringify(text)}`);
             continue;
           }
           // JSX's string, which has no escapes, as a JavaScript one.
@@ -422,19 +432,18 @@ class Compiler {
         // nothing
       } else if (fixed) {
         const described: string[] = [];
+        // Text runs side by side — split by a JSX comment — are one text node, as a server sends them.
+        let text: string | undefined;
         for (const child of children) {
-          if (child.kind !== "text") {
-            described.push(describe((child as { node: JSXElement }).node, false));
+          if (child.kind === "text") {
+            text = (text ?? "") + child.text;
             continue;
           }
-          // Text runs side by side — split by a JSX comment — are one text node, as a server sends them.
-          const last = described.length - 1;
-          if (last >= 0 && described[last].startsWith('"')) {
-            described[last] = JSON.stringify((JSON.parse(described[last]) as string) + child.text);
-          } else {
-            described.push(JSON.stringify(child.text));
-          }
+          if (text !== undefined) described.push(JSON.stringify(text));
+          text = undefined;
+          described.push(describe((child as { node: JSXElement }).node, false));
         }
+        if (text !== undefined) described.push(JSON.stringify(text));
         parts.push(`c: [${described.join(", ")}]`);
       } else if (children.length === 1 && children[0].kind === "expression") {
         parts.push(`h: ${hole([children[0].node])}`);

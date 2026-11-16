@@ -449,7 +449,8 @@ function matches(
   if (node.a !== undefined) {
     for (const name in node.a) {
       const found = (element as Element).getAttribute(name);
-      if (found === node.a[name]) continue;
+      // The HTML parser gives a served attribute's line breaks back as LF, whatever the source wrote.
+      if (found === node.a[name] || found === node.a[name].replace(/\r\n?/g, "\n")) continue;
       if (__DEV__) {
         const tag = `<${node.t}>`;
         const page = found === null ? `${tag} without ${name}` : `${name}="${found}" on ${tag}`;

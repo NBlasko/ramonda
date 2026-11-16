@@ -1,6 +1,13 @@
 import { describe, expect, test } from "vitest";
 import { build as esbuild, type Plugin, transformSync } from "esbuild";
 import { createServer } from "vite";
+import { createRequire } from "node:module";
+
+/** Oxc's own transform, as Vite 8 runs it — rolldown's, reached through the Vite this package tests with. */
+function oxc(): { transformSync(file: string, code: string, options: object): { code: string } } {
+  const fromVite = createRequire(createRequire(import.meta.url).resolve("vite"));
+  return fromVite("rolldown/utils") as never;
+}
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -152,11 +159,16 @@ describe("a host element tree", () => {
     expect(a).toBe(`{ t: "a", d: [["onclick", 0], ["hidden", 1]], c: ["x"] }`);
   });
 
-  test("a literal written over two lines of a CRLF file is baked with LF, as HTML gives it back", () => {
+  test("a literal written over two lines of a CRLF file is baked as written, as esbuild and Oxc hand it to `jsx()`", () => {
+    const source = `const p = <p title="one\r\ntwo">x</p>;`;
     const {
       templates: [p],
-    } = compile(`const p = <p title="one\r\ntwo">x</p>;`);
-    expect(p).toBe(`{ t: "p", a: { "title": "one\\ntwo" }, c: ["x"] }`);
+    } = compile(source);
+    const written = /title: "([^"]*)"/.exec(transformSync(source, { loader: "jsx", jsx: "automatic" }).code)?.[1];
+    expect({ baked: p, esbuild: written }).toEqual({
+      baked: `{ t: "p", a: { "title": "one\\r\\ntwo" }, c: ["x"] }`,
+      esbuild: "one\\r\\ntwo",
+    });
   });
 
   test("`htmlFor` is written as `for` on the template", () => {
@@ -224,21 +236,58 @@ describe("text, cleaned as the JSX transforms clean it", () => {
     expect(compiledText(inner)).toBe(esbuildText(inner));
   });
 
-  test("as esbuild does, over every mix of whitespace and line breaks", () => {
-    const pieces = [" ", "\t", "\n", "\r\n", "\r", "\u00a0", "\u2028", "\u3000", "a", "b"];
+  /** The text Oxc — Vite 8's transform — gives the same `<p>`, or `undefined` for none. */
+  const oxcText = (inner: string): string | undefined => {
+    const out = oxc().transformSync("a.jsx", `const a = <p>${inner}</p>;`, { jsx: { runtime: "automatic" } }).code;
+    const children = /children: ("(?:[^"\\]|\\.)*")/.exec(out);
+    return children === null ? undefined : (new Function(`return ${children[1]};`)() as string);
+  };
+
+  test("as esbuild and Oxc both do, over every mix of whitespace and line breaks — or not at all", () => {
+    const pieces = [
+      " ",
+      "\t",
+      "\n",
+      "\r\n",
+      "\r",
+      "\u00a0",
+      "\u2028",
+      "\u3000",
+      "\u180e",
+      "\u200b",
+      "\u0085",
+      "a",
+      "b",
+    ];
     let seed = 7;
     const next = (): number => {
       seed = (seed * 1103515245 + 12345) % 2147483648;
       return seed;
     };
     const differ: string[] = [];
-    for (let run = 0; run < 400; run++) {
+    for (let run = 0; run < 600; run++) {
       let inner = "x";
       for (let k = next() % 8; k > 0; k--) inner += pieces[next() % pieces.length];
       inner += "y";
-      if (compiledText(inner) !== esbuildText(inner)) differ.push(JSON.stringify(inner));
+      // Left to `jsx()`, it is whichever transform's: nothing to compare.
+      if (compileJsx(`const a = <p>${inner}</p>;`, "page.tsx") === undefined) continue;
+      const compiled = compiledText(inner);
+      if (compiled !== esbuildText(inner) || compiled !== oxcText(inner)) differ.push(JSON.stringify(inner));
     }
     expect(differ).toEqual([]);
+  });
+
+  test.each([
+    ["a zero-width space", "\n  \u200bHello\n"],
+    ["a next-line character", "\n \u0085Hello\n"],
+  ])("text the two transforms clean differently — %s — is left to `jsx()`", (_name, inner) => {
+    expect({
+      esbuild: esbuildText(inner) === oxcText(inner),
+      compiled: compileJsx(`const a = <p>${inner}</p>;`, "page.tsx"),
+    }).toEqual({
+      esbuild: false,
+      compiled: undefined,
+    });
   });
 });
 
@@ -591,6 +640,28 @@ describe("where each element was written, for a development build", () => {
     expect(out?.templates).toEqual([
       `{ t: "section", f: "/app/src/page.tsx", l: [2, 3], c: [{ t: "p", l: [3, 5], c: ["x"] }, { t: "button", l: [4, 5], d: [["onclick", 0]], c: ["save"] }] }`,
     ]);
+  });
+
+  test.each([
+    ["a CR line break", "const s = 1;\rconst x = <p>{y}</p>;"],
+    ["a CRLF line break", "const s = 1;\r\nconst x = <p>{y}</p>;"],
+    ["a line separator in a string", 'const s = "\u2028";\nconst x = <p>{y}</p>;'],
+    ["a paragraph separator in a string", 'const s = "\u2029";\nconst x = <p>{y}</p>;'],
+    ["a character outside the BMP", 'const s = "😀"; const x = <p>{y}</p>;'],
+  ])("at the line and column esbuild and Oxc hand `jsxDEV`, after %s", (_name, source) => {
+    const place = (code: string): string | undefined => {
+      const found = /lineNumber: (\d+),\s*columnNumber: (\d+)/.exec(code);
+      return found === null ? undefined : `${found[1]}:${found[2]}`;
+    };
+    const fromEsbuild = place(transformSync(source, { loader: "jsx", jsx: "automatic", jsxDev: true }).code);
+    const fromOxc = place(
+      oxc().transformSync("a.jsx", source, { jsx: { runtime: "automatic", development: true } }).code,
+    );
+    const compiled = /l: \[(\d+), (\d+)\]/.exec(compileJsx(source, "a.jsx", { sources: true })?.templates[0] ?? "");
+    expect({ esbuild: fromEsbuild, oxc: fromOxc }).toEqual({
+      esbuild: `${compiled?.[1]}:${compiled?.[2]}`,
+      oxc: `${compiled?.[1]}:${compiled?.[2]}`,
+    });
   });
 
   test("and nothing of it otherwise: a production bundle carries no file paths", () => {
