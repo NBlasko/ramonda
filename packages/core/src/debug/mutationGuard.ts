@@ -21,7 +21,7 @@ import { stateLabel } from "./stateLabels";
  *
  * One proxy per object, kept in a WeakMap. Identity has to stay stable:
  * `this.user` returning a fresh proxy on each read would break every `===` the
- * diff and `@ShouldUpdateOnPropsChange` rely on, and the guard would turn every
+ * diff and `@StableProps` rely on, and the guard would turn every
  * render into a change.
  *
  * ## What is left alone

@@ -179,17 +179,6 @@ export function assertEventType(type: unknown, decorator: string): void {
   }
 }
 
-/** @ShouldUpdateOnPropsChange((self, previous, next) => …) */
-export function assertPropsGate(decide: unknown): void {
-  if (typeof decide !== "function") {
-    fail(
-      "ShouldUpdateOnPropsChange",
-      `Expects a callback answering "take these props?", got ${show(decide)}. ` +
-        `Use @ShouldUpdateOnPropsChange((self, previous, next) => previous.id !== next.id).`,
-    );
-  }
-}
-
 /** @watchProp((p) => p.value) */
 export function assertSelector(selector: unknown, decorator: string): void {
   if (typeof selector !== "function") {

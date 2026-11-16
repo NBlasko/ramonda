@@ -1,13 +1,4 @@
-import {
-  Component,
-  bootstrap,
-  catchError,
-  compute,
-  createContext,
-  ShouldUpdateOnPropsChange,
-  StableProps,
-  state,
-} from "@ramonda/core";
+import { Component, bootstrap, catchError, compute, createContext, StableProps, state } from "@ramonda/core";
 
 /**
  * Written the way an app is written: real JSX, and the AUTOMATIC runtime a real `tsconfig.json`
@@ -23,19 +14,6 @@ const [ThemeProvider, ThemeConsumer] = createContext({ theme: "light" }, { label
 class Twice extends Component {
   @catchError logIt() {}
   @catchError showFallback() {}
-  render() {
-    return (
-      <div>
-        <i />
-      </div>
-    );
-  }
-}
-
-// Two class decorators of the same single-use kind.
-@ShouldUpdateOnPropsChange(() => true)
-@ShouldUpdateOnPropsChange(() => false)
-class GatedTwice extends Component {
   render() {
     return (
       <div>
@@ -105,8 +83,8 @@ class Sub extends Base {
 }
 
 // One of each: silent.
-@ShouldUpdateOnPropsChange(() => true)
-class Fine extends Component {
+@StableProps("a")
+class Fine extends Component<{ a?: object }> {
   @catchError handle() {}
   render() {
     return (
@@ -130,7 +108,6 @@ class App extends Component {
     return (
       <div>
         <Twice />
-        <GatedTwice />
         <RedundantTwice />
         <ManyFields />
         <Sub />

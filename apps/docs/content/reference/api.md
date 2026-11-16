@@ -130,7 +130,6 @@ anyway under a server DOM shim.
 | | |
 |---|---|
 | [`@watchProp(selector)`](/reference/decorators/watchProp) | Runs when one prop changes, **before** the render. [Props](/concepts/props) |
-| [`@ShouldUpdateOnPropsChange`](/reference/decorators/ShouldUpdateOnPropsChange) | A CLASS decorator taking `(self, previous, next) => boolean`: gates whether new props from the parent are taken up (their signals update + a render). For ignoring a change that really happened — a prop merely rebuilt with equal contents is `@StableProps`' job. Components only. |
 | [`@deferHydration`](/reference/decorators/deferHydration) | Keeps the server's markup while a promise settles. [Async on the server](/ssr/async) |
 | [`@catchError`](/reference/decorators/catchError) | Declares the method that handles an error thrown anywhere below this component. Return `false` to decline it and let the next one above take over. Components only; one per class ([RMD032](/reference/diagnostics/rmd032)). |
 

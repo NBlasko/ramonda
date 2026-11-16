@@ -28,7 +28,6 @@ Three questions come up about every decorator, and none of them is guessable fro
 | [`@watchProp`](/reference/decorators/watchProp) | client in practice¹ | component · hook | yes — one per selector |
 | [`@deferHydration`](/reference/decorators/deferHydration) | client (hydration only) | component · hook | yes — all are awaited |
 | [`@catchError`](/reference/decorators/catchError) | both | **component only** | **no** — a subclass may override |
-| [`@ShouldUpdateOnPropsChange`](/reference/decorators/ShouldUpdateOnPropsChange) | client in practice¹ | **component only** | **no** — a subclass may override |
 | [`@StableProps`](/reference/decorators/StableProps) | client in practice¹ | both | **no** — it takes a list |
 | [`@onWindow`](/reference/decorators/onWindow) / [`@onDocument`](/reference/decorators/onDocument) | **client only**² | component · hook | yes |
 | [`@interval`](/reference/decorators/interval) / [`@timeout`](/reference/decorators/timeout) | **client only**² | component · hook | yes |
@@ -63,13 +62,13 @@ footnotes above.
 it needs no element of its own, and behaviour needs state, lifecycle, derived values and
 listeners just as much as a component does.
 
-Three do not, and each is **refused twice**: TypeScript rejects it at the decorator itself, and a
-build with no types throws at construction, with a message saying what to do instead. Neither is
-a lint you can talk past — the second exists because the first is not there in plain JavaScript.
+One does not, and it is **refused twice**: TypeScript rejects it at the decorator itself, and a
+build with no types throws, with a message saying what to do instead. Neither is a lint you can
+talk past — the second exists because the first is not there in plain JavaScript.
 
 | | why not |
 |---|---|
-| `@ShouldUpdateOnPropsChange` | It gates a **parent-driven** prop update. A hook's props come from its `this.use()` callback and refresh on every owner render — there is nothing to gate. |
+| `@catchError` | An error travels up the **component** tree, and a hook is not on it — the handler would never be called. |
 
 **`@StableProps` goes on both**, and means one thing on each: *these props are values, compare
 them by content.* A hook's props are rebuilt by its own callback on every owner render; a
@@ -129,13 +128,8 @@ Most decorators stack, and the order is defined:
   duplicate and is not reported.
 - **Listeners and timers** stack freely — that is the normal way to bind several events.
 
-Three are single:
+One more is single:
 
-- **`@ShouldUpdateOnPropsChange`** — there is one answer to "take these props?". Two on ONE class are
-  reported in development (RMD040), and **the highest** is the one that decides — class decorators apply
-  bottom-up, so it is applied last. That is the opposite line from `@catchError` above, and the same
-  rule: whichever is applied last is the one that stands. A **subclass** may declare its own, which
-  overrides the base's — that is not a duplicate and is not reported.
 - **`@StableProps`** — it takes as many names as you like, so a second one adds nothing you could not
   write in the first. Two on one class **merge** into the union and are reported as
   [RMD046](/reference/diagnostics/rmd046): the result is what you

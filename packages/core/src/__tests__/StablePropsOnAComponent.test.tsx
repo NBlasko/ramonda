@@ -1,7 +1,7 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { getDOM } from "../test/setup";
 import { Component } from "../base/Component";
-import { ShouldUpdateOnPropsChange, StableProps, state } from "../base/decorators";
+import { StableProps, state } from "../base/decorators";
 import { configureDev } from "../config";
 import { resetDiagnostics } from "../debug/diagnostics";
 
@@ -9,10 +9,9 @@ import { resetDiagnostics } from "../debug/diagnostics";
  * `@StableProps` on a COMPONENT: the parent writes the literal, the child declares it a value.
  *
  * An object literal in JSX is a fresh reference on every render, so `<Panel filter={{ q }} />` hands
- * the child a changed prop every time and re-renders it forever. The other control a component has
- * is `@ShouldUpdateOnPropsChange`, and it takes a PREDICATE — a thing an app can get wrong in the
- * direction that matters, a component that stops rendering when it should. This takes NAMES: the
- * framework does the comparing, and the worst a mistake can do is fail to type-check.
+ * the child a changed prop every time and re-renders it forever. This takes NAMES: the framework
+ * does the comparing, and the worst a mistake can do is fail to type-check. A predicate an app writes
+ * — `@ShouldUpdateOnPropsChange`, removed — could stop a component rendering when it should.
  */
 let childRenders = 0;
 
@@ -153,50 +152,6 @@ describe("RMD020 and a declared prop", () => {
     await dom.settle();
 
     expect(records.some((record) => record.code === "RMD020")).toBe(true);
-    dom.unmount();
-  });
-});
-
-/**
- * Both decorators on one component, which is now a reachable combination.
- *
- * The ORDER is the whole of it: `resolveStable` runs first, so a hand-written gate is handed the
- * RESOLVED props — `previous.filter !== next.filter` sees "the same" when the contents match, which
- * is what the declaration promised. Resolving after the gate would mean a component taking props
- * identical to the ones it already had.
- */
-describe("@StableProps beside @ShouldUpdateOnPropsChange", () => {
-  test("the gate sees the settled reference, not the parent's fresh literal", async () => {
-    const sawSameReference: boolean[] = [];
-
-    @StableProps("filter")
-    @ShouldUpdateOnPropsChange((_self, previous: { filter: unknown }, next: { filter: unknown }) => {
-      sawSameReference.push(previous.filter === next.filter);
-      return true;
-    })
-    class Gated extends Component<{ filter: { q: string } }> {
-      render() {
-        return <li>{this.props.filter.q}</li>;
-      }
-    }
-
-    class Owner extends Component {
-      @state tick = 0;
-      render() {
-        return (
-          <ul>
-            <Gated filter={{ q: "open" }} />
-          </ul>
-        );
-      }
-    }
-
-    const dom = await getDOM<Owner>(<Owner />);
-    await dom.settle();
-    dom.instance.tick = 1;
-    await dom.settle();
-
-    expect(sawSameReference).toEqual([true]);
     dom.unmount();
   });
 });

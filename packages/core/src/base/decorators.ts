@@ -1,7 +1,6 @@
-import { attach, detach, STATE_KEYS, PERSIST_KEYS, PROPS_GATE, INITIAL_PRIMITIVES } from "../helpers/constants";
+import { attach, detach, STATE_KEYS, PERSIST_KEYS, INITIAL_PRIMITIVES } from "../helpers/constants";
 import { reportNonSerializableState } from "../debug/serializableState";
 import { createId } from "../helpers/createId";
-import { isComponentClass } from "../vdom/guards";
 import { className, displayName } from "../helpers/utils";
 import type { Effect } from "../reactivity/effect";
 import { State } from "../reactivity/State";
@@ -30,7 +29,6 @@ import {
   assertSelector,
   assertEnv,
   assertStablePropKeys,
-  assertPropsGate,
 } from "../debug/validateDecorator";
 
 type EnhancedClassFieldDecoratorContext = ClassFieldDecoratorContext<
@@ -39,7 +37,7 @@ type EnhancedClassFieldDecoratorContext = ClassFieldDecoratorContext<
 
 type EnhancedClassMethodDecoratorContext = ClassMethodDecoratorContext<
   // COMPONENT_RUNTIME is optional: components carry it, hooks do not — which is how
-  // a decorator can tell the two apart (see @ShouldUpdateOnPropsChange).
+  // a decorator can tell the two apart.
   {
     [GLOBAL_RUNTIME]: Runtime;
     [COMPONENT_RUNTIME]?: ComponentRuntime;
@@ -548,7 +546,7 @@ export function catchError<This extends CatchErrorOwner>(
 
     // By NAME, so a subclass overriding the method — with or without `super` —
     // is the one that runs. Capturing `value` would pin the base's body for ever,
-    // which is the trap @ShouldUpdateOnPropsChange used to have.
+    // which is the trap a method-shaped decorator falls into.
     runtime.catchError = (e: unknown) => (this as unknown as Record<string, (e: unknown) => unknown>)[contextName](e);
   });
 }
@@ -565,83 +563,6 @@ export function deferHydration(value: (...args: never[]) => unknown, context: En
   context.addInitializer(function (this) {
     this[GLOBAL_RUNTIME].deferHydrations.push(() => value.call(this));
   });
-}
-
-/**
- * The rule a component follows when its parent hands it new props: return `true`
- * to take them, `false` to ignore the update.
- *
- * ```tsx
- * @ShouldUpdateOnPropsChange((self, previous, next) => previous.id !== next.id)
- * class Row extends Component<{ id: number; noisy: unknown }> { … }
- * ```
- *
- * It runs ONLY when the parent re-renders and hands this component a new set of
- * props — never for the component's own `@state` writes, which always render.
- *
- * A CLASS decorator, because it says what the component IS rather than something
- * it does — one answer per class, and nothing a subclass would want to reach with
- * `super`. `self` is inferred from the class it is written on, so nothing needs
- * annotating; it is there for a rule that depends on the instance.
- *
- * **Components only.** A hook has no parent handing it JSX props — its `props`
- * come from the `this.use()` callback and are refreshed on every owner render — so
- * this throws if placed on one rather than sitting there doing nothing.
- *
- * Without it, props are compared shallowly, which is right for almost everything.
- * Reach for this only when you have measured that the default comparison is the
- * problem — a deep object that is rebuilt every render, most often.
- *
- * It was a method decorator, and the move fixed two faults that this shape cannot
- * have. A subclass overriding the decorated METHOD without re-decorating ran the
- * base's body, because the function was captured at decoration time; there is no
- * method to capture now. And declaring it at both levels — the ordinary way to
- * override a rule — was reported as a duplicate, because nothing recorded WHICH
- * class had declared it; the answer now lives on the constructor, where
- * `Object.hasOwn` tells "declared here" from "inherited" exactly.
- *
- * **Refusing an update leaves the props STALE for the component's own later
- * renders too.** Nothing re-reads them until the parent sends another update, so
- * a re-render caused by this component's own `@state` still shows the props it
- * last accepted. That is the trade the rule buys, and it is why it is an escape
- * hatch rather than an optimisation to reach for.
- */
-export function ShouldUpdateOnPropsChange<
-  C extends (new (...args: never[]) => object) & { readonly __isComponent: true },
->(decide: (self: InstanceOf<C>, previous: PropsOf<C>, next: PropsOf<C>) => boolean) {
-  if (__DEV__) {
-    assertPropsGate(decide);
-  }
-
-  return (ctor: C) => {
-    // A hook reaches its inputs a different way (the this.use() callback), and the
-    // component update path that consults this rule never runs for one — so on a
-    // hook it would be a silent no-op. Thrown in every build; the TYPE already
-    // refuses it, so this is for the build that has no types.
-    if (!isComponentClass(ctor)) {
-      throw new Error(
-        `[Ramonda] @ShouldUpdateOnPropsChange is for components, not hooks. A hook's props come from its ` +
-          `this.use() callback and refresh on every owner render — there is no parent-driven prop update to gate. ` +
-          `Put the decorator on the component that renders <${className(ctor)} />, or drop it.`,
-      );
-    }
-
-    // OWN property, not inherited: a subclass declaring its own rule shadows the
-    // base's, which is an override and silent. Two applications on the SAME class
-    // both write here, and the second finds the first — the one case worth
-    // reporting, and the one the method form could not see.
-    //
-    // Reported BEFORE the write below, so `hasOwn` is still answering about the previous
-    // declaration. The write is unconditional, which is what makes the one written furthest from the
-    // class the one that decides — measured, because the order is the opposite of how it reads.
-    if (__DEV__ && Object.hasOwn(ctor, PROPS_GATE)) {
-      diagnose("RMD040", className(ctor), `<${className(ctor)} /> declares more than one.`, {
-        component: className(ctor),
-      });
-    }
-
-    (ctor as unknown as { [PROPS_GATE]?: unknown })[PROPS_GATE] = decide;
-  };
 }
 
 export interface LifecycleOptions {
@@ -1306,22 +1227,6 @@ export function persist(_value: unknown, context: EnhancedClassFieldDecoratorCon
 }
 
 /**
- * The instance a class constructs, and the props its constructor takes.
- *
- * **Both are conditional types on purpose**, and that is the whole mechanism behind
- * `@StableProps`' type inference. A conditional type is not an inference
- * site, so TypeScript cannot resolve `C` from the decorator's ARGUMENTS — it defers until
- * the decorator is applied, where the decorated class supplies `C`. Only then are the
- * arguments checked, contextually, against a `C` that is finally known.
- *
- * Measured while writing this: the obvious shape — a type parameter sitting directly in the
- * callback's parameter position (`props?: (self: This) => …`) — fixes `This` to `unknown`
- * from an unannotated arrow before the class is ever looked at, which is why a decorator taking
- * such a callback needs `(self: Card)` spelled out.
- */
-type InstanceOf<C> = C extends new (...args: never[]) => infer I ? I : never;
-
-/**
  * The props of a component or a hook INSTANCE — which is what a method decorator has to
  * work from, since its context is generic in the instance type rather than in the class.
  *
@@ -1330,7 +1235,6 @@ type InstanceOf<C> = C extends new (...args: never[]) => infer I ? I : never;
  * carries the type in a phantom (`PROPS_TYPE`).
  */
 type PropsOfInstance<T> = T extends { props: infer P } ? P : T extends { [PROPS_TYPE]?: infer P } ? P : never;
-type PropsOf<C> = C extends new (props: infer P, ...rest: never[]) => unknown ? P : never;
 
 /**
  * The props `@StableProps` checks its names against, for a COMPONENT or a HOOK.
@@ -1426,10 +1330,10 @@ type DeclarablePropsOf<C> = C extends new (
  * settles it there exactly as it settles a hook's: the diff hands back the identity it already
  * had while the contents match, and the child is not re-rendered at all.
  *
- * What it deliberately is NOT is a rule the app writes. `@ShouldUpdateOnPropsChange` takes a
- * predicate, and a predicate is a thing an app can get wrong in the direction that matters — a
- * component that stops rendering when it should. This takes NAMES: the framework does the
- * comparing, and the worst a wrong name can do is fail to type-check.
+ * What it deliberately is NOT is a rule the app writes. A predicate — "take these props?" — is a
+ * thing an app can get wrong in the direction that matters, a component that stops rendering when it
+ * should; `@ShouldUpdateOnPropsChange` was that, and was removed for it. This takes NAMES: the
+ * framework does the comparing, and the worst a wrong name can do is fail to type-check.
  *
  * **The names are type-checked** against the props of whatever it is on — `@StableProps("kye")` is
  * a compile error that names `"kye"` — with no type argument to write at the call site.
