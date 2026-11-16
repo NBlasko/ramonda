@@ -51,7 +51,7 @@ export interface RenderOptions {
    *
    * - `true` hydrates whatever is already in `container` (pass one).
    * - **A string** is that markup: it is written into the container first, so a
-   *   test can hand over `await renderToString(<App />)` and let the harness own
+   *   test can hand over `(await renderPage(<App />)).body` and let the harness own
    *   the container — which means automatic cleanup covers it.
    *
    * The string form is the one to reach for. Hydration tests are exactly where a

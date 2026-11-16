@@ -131,6 +131,40 @@ describe("on the client", () => {
   });
 });
 
+/**
+ * `data` is an object written inside the callback, so every evaluation hands a fresh one — and every
+ * prop of a hook is a signal comparing by reference. `meta` and `link` are declared values for exactly
+ * that reason; `data` was not, so the head republished and rewrote `<html>` on every render of its owner.
+ * Found by review.
+ */
+test("an owner re-rendering with the same data does not rewrite <html>", async () => {
+  class App extends Component {
+    @state tick = 0;
+    // The callback reads `tick`, so it runs again on every tick — and hands a fresh `data` with the
+    // same contents each time, and nothing else that differs.
+    head = this.use(Head, (self: App) => ({ data: { theme: self.tick >= 0 ? "dark" : "light" } }));
+    render() {
+      return <p>{this.tick}</p>;
+    }
+  }
+  const { instance, settle } = await getDOM<App>(<App />);
+  const writes: string[] = [];
+  const real = html().setAttribute.bind(html());
+  html().setAttribute = (name: string, value: string) => {
+    writes.push(name);
+    real(name, value);
+  };
+  try {
+    for (let n = 1; n <= 5; n++) {
+      instance.tick = n;
+      await settle();
+    }
+  } finally {
+    html().setAttribute = real;
+  }
+  expect(writes).toEqual([]);
+});
+
 describe("when the registry is reset", () => {
   test("hands back what <html> had — the next request must not inherit a theme", async () => {
     html().setAttribute("data-theme", "light");

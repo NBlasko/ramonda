@@ -91,7 +91,7 @@ export interface HeadOptions {
  * ## Why a hook
  *
  * A decorator would fix the values at class-definition time, so a title could
- * never contain anything the page computed. An option on `renderToString` would
+ * never contain anything the page computed. An option on `renderPage` would
  * only let the TOP of the tree speak, and the component that knows the title is
  * the leaf — the route, not the shell.
  *
@@ -160,11 +160,12 @@ export interface HeadOptions {
  * Reactive: pass a callback (`this.use(Head, () => ({ title: this.pageTitle }))`)
  * and the head follows the value.
  *
- * `meta` and `link` are declared VALUES: a call site writes them as an array literal inside the
+ * `meta`, `link` and `data` are declared VALUES: a call site writes them as a literal inside the
  * callback, so a fresh one arrives on every evaluation and every prop is a signal comparing by
- * reference. Without this the head republished on every render of the owner, whatever it changed.
+ * reference. Without this the head republished on every render of the owner, whatever it changed —
+ * `data` was left out when it was added, and rewrote `<html>` on every one until review found it.
  */
-@StableProps("meta", "link")
+@StableProps("meta", "link", "data")
 export class Head extends Hook<HeadOptions> {
   /** This hook's node in the tree, and the proof it has published — see `publish`. */
   private node: HeadNode | undefined;
