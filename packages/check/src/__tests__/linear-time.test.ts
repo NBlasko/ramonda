@@ -56,11 +56,21 @@ function projectOf(source: string): string {
   return join(root, "tsconfig.json");
 }
 
+/**
+ * The fastest of three runs. Most of a run is building the program, and under a loaded gate that
+ * varies by more than the 500 ms these allow: one run of the same input failed the gate twice and
+ * passed alone. A quadratic pattern over 40,000 characters costs seconds on every run, so the
+ * fastest still tells the two apart and a busy machine does not.
+ */
 const took = (markup: string) => {
   const tsconfig = project(markup);
-  const started = performance.now();
-  analyzeProject(tsconfig);
-  return performance.now() - started;
+  let fastest = Number.POSITIVE_INFINITY;
+  for (let run = 0; run < 3; run++) {
+    const started = performance.now();
+    analyzeProject(tsconfig);
+    fastest = Math.min(fastest, performance.now() - started);
+  }
+  return fastest;
 };
 
 describe("read in linear time", () => {
