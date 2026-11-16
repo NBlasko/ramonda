@@ -65,8 +65,8 @@ const EXPECTED = [
   // Compiled JSX never calls it: that goes through `@ramonda/core/jsx-runtime`, which the compiler
   // imports itself. The name is deliberately one nobody reaches for by habit.
   "__h",
-  // server rendering
-  "renderToString",
+  // server rendering. `renderToString` is not here: it returned the body alone, which `renderPage`
+  // returns beside the title, the head, `lang` and the portals, so it was a second way that lost them.
   "renderPage",
   "renderStatic",
   "renderDocument",
@@ -163,7 +163,7 @@ const EXPECTED_TYPES = [
   "RefCallback",
   "RefTarget",
   "RenderEnv",
-  "RenderToStringOptions",
+  "RenderPageOptions",
   "RenderedPage",
   "RequestContext",
   "RequestCookies",
@@ -241,7 +241,7 @@ import type {
   RefCallback,
   RefTarget,
   RenderEnv,
-  RenderToStringOptions,
+  RenderPageOptions,
   RenderedPage,
   RequestContext,
   RequestCookies,
@@ -278,7 +278,7 @@ export type __Published = [
   RefCallback<Element>,
   RefTarget<Element>,
   RenderEnv,
-  RenderToStringOptions,
+  RenderPageOptions,
   RenderedPage,
   RequestContext,
   RequestCookies,

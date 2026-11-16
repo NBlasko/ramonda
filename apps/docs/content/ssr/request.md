@@ -65,11 +65,11 @@ const user = requestContext().get(currentUser);
 The validation — the cookie, the database, the secret — stays on the server. The page only sees
 the value you chose to seed.
 
-Values already resolved before the render starts go straight to `renderToString`, and they are
+Values already resolved before the render starts go straight to `renderPage`, and they are
 keyed **by the key itself**:
 
 ```tsx
-const html = await renderToString(<App />, {
+const { body: html } = await renderPage(<App />, {
   request: {
     url: new URL(req.url ?? "/", "https://example.com"),
     cookies: new Map([["session", req.headers.cookie ?? ""]]),

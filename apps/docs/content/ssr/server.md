@@ -7,7 +7,7 @@ order: 86.5
 
 # The server plumbing
 
-[`renderToString`](/ssr/render) turns your app into markup. Two things have to happen around it:
+[`renderPage`](/ssr/render) turns your app into markup. Two things have to happen around it:
 Node needs a DOM to render into, and the markup needs a document to go into. `@ramonda/server` is
 those two, and nothing else.
 

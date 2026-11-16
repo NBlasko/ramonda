@@ -1,4 +1,4 @@
-import { Component, created, renderToString, state } from "@ramonda/core";
+import { Component, created, renderPage, state } from "@ramonda/core";
 import type { RamondaNode } from "@ramonda/core";
 import { act, render } from "@ramonda/testing-library";
 import { beforeEach, describe, expect, test } from "vitest";
@@ -60,14 +60,14 @@ async function settle(): Promise<void> {
 describe("clientOnly: true", () => {
   test("a server render does not fetch, and the page says it is loading", async () => {
     const App = appWith(true);
-    const html = await renderToString(<App />);
+    const html = (await renderPage(<App />)).body;
     expect(calls).toBe(0);
     expect(html).toContain("pending");
   });
 
   test("the client's first render agrees with the server's, then it fetches", async () => {
     const App = appWith(true);
-    const html = await renderToString(<App />);
+    const html = (await renderPage(<App />)).body;
     const { container } = render(<App />, { hydrate: html });
 
     // The same markup as the server's, so hydration keeps it rather than throwing it away.
@@ -92,7 +92,7 @@ describe("left out, or false", () => {
     ["left out", undefined],
   ])("when %s, the server fetches and the data is in the page", async (_how, clientOnly) => {
     const App = appWith(clientOnly);
-    const html = await renderToString(<App />);
+    const html = (await renderPage(<App />)).body;
     expect(calls).toBe(1);
     expect(html).toContain("ada");
   });
@@ -122,7 +122,7 @@ describe("an infinite query", () => {
         return <Feed />;
       }
     }
-    const html = await renderToString(<App />);
+    const html = (await renderPage(<App />)).body;
     expect(pages).toBe(0);
     expect(html).toContain("pending");
   });
@@ -165,7 +165,7 @@ describe("clientOnly: true, on every path that fetches", () => {
         return <Feed />;
       }
     }
-    await renderToString(<App />);
+    await renderPage(<App />);
     expect(pages).toBe(0);
   });
 
@@ -191,7 +191,7 @@ describe("clientOnly: true, on every path that fetches", () => {
         return <Card />;
       }
     }
-    await renderToString(<App />);
+    await renderPage(<App />);
     expect(calls).toBe(0);
   });
 });
@@ -228,7 +228,7 @@ describe("clientOnly: true, invalidated or refetched during the server render", 
         return <Card />;
       }
     }
-    await renderToString(<App />);
+    await renderPage(<App />);
     expect(calls).toBe(0);
   });
 });

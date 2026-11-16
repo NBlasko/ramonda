@@ -1,5 +1,5 @@
 import { describe, test, expect, vi, afterEach } from "vitest";
-import { Component, state, persist, created, renderToString, type RamondaNode } from "@ramonda/core";
+import { Component, state, persist, created, renderPage, type RamondaNode } from "@ramonda/core";
 import { render, fireEvent, cleanup } from "../index";
 
 /**
@@ -42,7 +42,7 @@ afterEach(() => {
 describe("render with hydrate", () => {
   test("adopts the server's markup rather than rebuilding it", async () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
-    const html = await renderToString(<Greeting name="ada" />);
+    const html = (await renderPage(<Greeting name="ada" />)).body;
     expect(html).toContain("hello ada");
 
     const { container, getByText } = render(<Greeting name="ada" />, {
@@ -56,7 +56,7 @@ describe("render with hydrate", () => {
 
   test("the adopted tree is live — listeners are attached", async () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
-    const html = await renderToString(<Greeting />);
+    const html = (await renderPage(<Greeting />)).body;
 
     const { container, getByText } = render(<Greeting />, { hydrate: html });
 
@@ -69,7 +69,7 @@ describe("render with hydrate", () => {
 
   test("a hydrated tree is cleaned up like any other", async () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
-    const html = await renderToString(<Greeting />);
+    const html = (await renderPage(<Greeting />)).body;
 
     const { container } = render(<Greeting />, { hydrate: html });
     expect(container.isConnected).toBe(true);
@@ -83,7 +83,7 @@ describe("render with hydrate", () => {
 
   test("hydrate: true adopts what is already in a supplied container", async () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
-    const html = await renderToString(<Greeting name="grace" />);
+    const html = (await renderPage(<Greeting name="grace" />)).body;
 
     const mine = document.createElement("main");
     mine.innerHTML = html;

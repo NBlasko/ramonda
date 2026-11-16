@@ -273,12 +273,12 @@ export interface ServerRequestInit {
   values?: Iterable<readonly [RequestKey<unknown>, unknown]>;
 }
 
-export interface RenderToStringOptions {
+export interface RenderPageOptions {
   /** When present, this render is per-request: `requestContext()` reads return these values. */
   request?: ServerRequestInit;
 }
 
-export async function renderToString(vnode: ComponentChild, opts?: RenderToStringOptions): Promise<string> {
+export async function renderToString(vnode: ComponentChild, opts?: RenderPageOptions): Promise<string> {
   // One page, one numbering. Every render of a page goes through here, and the head and the portal
   // targets are marked afterwards from the same counter — so a marker's number is where it sits in
   // the page rather than where the process happened to be.
@@ -492,7 +492,7 @@ export interface RenderedPage {
  * empty and the title already restored. An earlier version of this comment
  * claimed the before-reset was what covered that case. It is not.
  */
-export async function renderPage(vnode: ComponentChild, opts?: RenderToStringOptions): Promise<RenderedPage> {
+export async function renderPage(vnode: ComponentChild, opts?: RenderPageOptions): Promise<RenderedPage> {
   return inTurn(async () => {
     resetHead();
     resetPortalTargets();

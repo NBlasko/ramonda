@@ -45,7 +45,7 @@ defineServer(routes, {
 
 - **static** pages are written to `dist/static/` by `npm run build` and served as files.
 - **ISR** pages are cached and refreshed in the background when stale.
-- **dynamic** pages render on each request via `renderToString({ request })`.
+- **dynamic** pages render on each request via `renderPage(<App />, { request })`.
 
 A route can read per-request data (cookies, headers, a signed-in user) with
 `requestContext()`. If a route marked `prerender` reads the request, the **build fails

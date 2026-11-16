@@ -501,15 +501,15 @@ mounts is written in its body.
 
 ## Where a tree starts
 
-`bootstrap` and `hydrateRoot` in the browser, `renderToString`, `renderPage` and `renderStatic` on
-the server. All five are handed a component and render it, so all five are roots.
+`bootstrap` and `hydrateRoot` in the browser, `renderPage` and `renderStatic` on the server. All four
+are handed a component and render it, so all four are roots.
 
-**An app entered only from a server is judged like any other**, and leaving the server's three out
-made it pass in silence. The same file, one line different:
+**An app entered only from a server is judged like any other**, and leaving the server's out made it
+pass in silence. The same file, one line different:
 
 ```
 bootstrap(<App />, null)     <Reader> consumes "Theme" — nothing provides it on this path
-renderToString(<App />)      0 root(s) — every consumer has a provider above it
+renderPage(<App />)          0 root(s) — every consumer has a provider above it
 ```
 
 The second sentence was never checked. With no root the walk has nowhere to start, the project is

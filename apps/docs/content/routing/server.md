@@ -114,7 +114,7 @@ guard carries both decorators.
 `@mounted` runs on both sides (it's `shared`), which is what makes this work on the very
 first load. On the client the `replace` is an ordinary navigation. On the server there
 is no history to change and no client to re-render for, so the render instead **signals
-a redirect**: `renderToString` throws a `ServerRedirect`, and the server answers with a
+a redirect**: `renderPage` throws a `ServerRedirect`, and the server answers with a
 302 to `/login`. The browser then requests `/login` and gets the right page — rather
 than being handed the account page for a URL it isn't allowed to see.
 
@@ -227,10 +227,10 @@ Your server boundary translates the throw into a response. The SSR starter does 
 for you; by hand it is:
 
 ```ts
-import { renderToString, ServerRedirect } from "@ramonda/core";
+import { renderPage, ServerRedirect } from "@ramonda/core";
 
 try {
-  const html = await renderToString(<App />);
+  const { body: html } = await renderPage(<App />);
   // …send the page
 } catch (err) {
   if (err instanceof ServerRedirect) {

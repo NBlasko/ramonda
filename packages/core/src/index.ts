@@ -44,10 +44,12 @@ export type { PortalTarget } from "./base/portalTarget";
 
 // Server rendering and hydration. Exported now that there is a server that uses
 // them (apps/playground-ssr); until then the tests reached them by path.
-export { renderToString, renderPage, renderStatic } from "./hydration/ssr";
-export type { RenderedPage, StaticRender, RenderToStringOptions, ServerRequestInit } from "./hydration/ssr";
+// `renderToString` stays internal: it returned the body alone, which `renderPage` returns beside the
+// title, the head, `lang` and the portals — so a page served from it lost all four, silently.
+export { renderPage, renderStatic } from "./hydration/ssr";
+export type { RenderedPage, StaticRender, RenderPageOptions, ServerRequestInit } from "./hydration/ssr";
 // A route guard (or any tree code) can ask a server render to redirect instead of
-// producing a page. `renderToString` throws `ServerRedirect`; catch it at the
+// producing a page. `renderPage` throws `ServerRedirect`; catch it at the
 // server boundary and answer with a 302. `captureServerRedirect` is the low-level
 // hook the router uses to record one. See hydration/serverRedirect.ts.
 export { ServerRedirect, captureServerRedirect } from "./hydration/serverRedirect";

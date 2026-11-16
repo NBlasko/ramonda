@@ -36,7 +36,7 @@ It holds because [a component is not an element](/why/classes#why-no-fragment) â
 component puts what its `render()` returns on the page, one element or several or none
 â€” so nothing has to be wrapped in order to be grouped, and there is nothing left for
 the framework to add. The one exception is a server-rendered page, which carries HTML
-comments until it hydrates and then does not; [renderToString and
+comments until it hydrates and then does not; [renderPage and
 hydrateRoot](/ssr/render) describes them.
 
 ## The diagnostics are the other half

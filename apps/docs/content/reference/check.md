@@ -579,7 +579,7 @@ $ ramonda-check tsconfig.json --graph-html app.html
 
 One self-contained file — open it, no server and no network. Rows are distance from the roots, so
 what mounts something is read by going up. A **root** is a call rather than a declaration, so it is
-labelled by the call: `hydrateRoot`, `renderToString`. A dashed edge is a render that may never
+labelled by the call: `hydrateRoot`, `renderPage`. A dashed edge is a render that may never
 happen, which is a distinction the graph makes and nothing else shows you. And whatever no root
 reaches gets a band of its own rather than being drawn beside the roots, because "nothing mounts
 this" and "this is an entry point" are the opposite of each other.

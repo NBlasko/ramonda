@@ -1,5 +1,5 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
-import { Component, renderToString } from "@ramonda/core";
+import { Component, renderPage } from "@ramonda/core";
 import type { RamondaNode } from "@ramonda/core";
 import { Router, RouteOutlet } from "../Router";
 import { createRoutes } from "../match";
@@ -55,7 +55,7 @@ describe("Router on the server", () => {
     // Bug 1: @created used to run window.addEventListener on the server, because
     // @created defaults to env "shared". popstate is now an @onWindow effect, and
     // effects never run server-side.
-    await renderToString(<App />);
+    await renderPage(<App />);
     expect(popstateListeners).toBe(0);
   });
 
@@ -64,11 +64,11 @@ describe("Router on the server", () => {
     // did (a server render never unmounts), so the counter leaked and the next
     // render threw. The counter is now @created({ env: "client" }), so the server
     // never touches it.
-    const first = await renderToString(<App />);
+    const first = (await renderPage(<App />)).body;
     expect(first).toContain("<span>home</span>");
 
-    await expect(renderToString(<App />)).resolves.toContain("<span>home</span>");
+    await expect(renderPage(<App />).then((page) => page.body)).resolves.toContain("<span>home</span>");
     // And a third, to be sure it is not a one-off reset.
-    await expect(renderToString(<App />)).resolves.toContain("<span>home</span>");
+    await expect(renderPage(<App />).then((page) => page.body)).resolves.toContain("<span>home</span>");
   });
 });

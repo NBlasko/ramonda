@@ -75,22 +75,21 @@ package not added at the start is installed like any other, later.
 
 | | |
 |---|---|
-| `renderToString(vnode, opts?)` | An app → HTML, awaiting async lifecycle. `opts.request` makes it a per-request render so `requestContext()` returns real values. [Details](/ssr/render) |
-| `renderPage(vnode)` | The same, plus `{ title, head, lang, dir, data }`. [Head](/ssr/head) |
+| `renderPage(vnode, opts?)` | An app → `{ body, title, head, lang, dir, data, portals }`, awaiting async lifecycle. `opts.request` makes it a per-request render so `requestContext()` returns real values. [Details](/ssr/render) |
 | `renderStatic(vnode, url)` | A build-time render with the request context poisoned — returns `{ html }` to bake or `{ blockedBy }` if the route read per-request data. |
 | `renderDocument(page, options?)` | Wraps a rendered page in a complete document. [Static builds](/ssr/static) |
 | `hydrateRoot(vnode, element)` | Adopts the server's DOM instead of rebuilding it. |
-| `ServerRedirect` | Thrown by `renderToString` when a render asks to redirect; catch it and answer with a 302. [Guards](/routing/server) |
+| `ServerRedirect` | Thrown by `renderPage` when a render asks to redirect; catch it and answer with a 302. [Guards](/routing/server) |
 | `captureServerRedirect()` | Low-level hook to record a server redirect for the current render. [Guards](/routing/server) |
 | `requestContext()` | Per-request data — `url`, `cookies`, `headers`, `get(key)`. Read it **synchronously**: on the server the scope is cleared before the render's first `await` ([RMD053](/reference/diagnostics/rmd053)). Per-request reads throw during a static build (that guards prerendering). |
 | `requestKey<T>(label)` | Declares a typed per-request slot for `requestContext().get`. |
-| `seedRequest(key, value)` | Server-only: fills a slot for the render already under way. Values known beforehand go to `renderToString` as `request.values`, keyed by the key itself. [Details](/ssr/request) |
+| `seedRequest(key, value)` | Server-only: fills a slot for the render already under way. Values known beforehand go to `renderPage` as `request.values`, keyed by the key itself. [Details](/ssr/request) |
 | `RequestReadDuringBuild` | Thrown when per-request data is read during a static build — the route cannot be prerendered. |
 
 `ServerRequestInit.values` takes pairs of KEY and value — an array literal is the natural spelling,
 since `new Map([…])` cannot infer a heterogeneous one. A label is never written twice.
 
-The types beside them: `RenderToStringOptions` and `ServerRequestInit` are what `renderToString` takes,
+The types beside them: `RenderPageOptions` and `ServerRequestInit` are what `renderPage` takes,
 `StaticRender` is what `renderStatic` returns (`{ html }` or `{ blockedBy }`), and the per-request family
 is `RequestContext` with `RequestCookies`, `RequestMode`, plus `RequestKey<T>` and `RequestKeyOptions`
 for a declared slot.
@@ -168,7 +167,7 @@ All 41, grouped by what they belong to. The server and per-request ones are expl
 
 **Lifecycle** — `LifecycleOptions` · `RenderEnv`
 
-**Server rendering** — `RenderedPage` · `DocumentOptions` · `RenderToStringOptions` ·
+**Server rendering** — `RenderedPage` · `DocumentOptions` · `RenderPageOptions` ·
 `ServerRequestInit` · `StaticRender` · `RequestContext` · `RequestCookies` · `RequestKey` ·
 `RequestKeyOptions` · `RequestMode`
 

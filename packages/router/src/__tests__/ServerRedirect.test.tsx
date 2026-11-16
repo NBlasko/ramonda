@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { Component, mounted, renderToString, ServerRedirect } from "@ramonda/core";
+import { Component, mounted, renderPage, ServerRedirect } from "@ramonda/core";
 import type { RamondaNode } from "@ramonda/core";
 import { render } from "@ramonda/testing-library";
 import { Router, RouteOutlet, Navigator } from "../Router";
@@ -72,7 +72,7 @@ describe("server-side route-guard redirect", () => {
     authed = false;
     window.history.pushState(null, "", "/");
 
-    const err = await renderToString(<App />).catch((e: unknown) => e);
+    const err = await renderPage(<App />).catch((e: unknown) => e);
 
     expect(err).toBeInstanceOf(ServerRedirect);
     expect((err as ServerRedirect).url).toBe("/login");
@@ -83,7 +83,7 @@ describe("server-side route-guard redirect", () => {
     authed = true;
     window.history.pushState(null, "", "/");
 
-    const html = await renderToString(<App />);
+    const html = (await renderPage(<App />)).body;
 
     expect(html).toContain("<h1>Secret</h1>");
     expect(html).not.toContain("Please log in");
@@ -122,7 +122,7 @@ describe("server-side route-guard redirect", () => {
     }
 
     window.history.pushState(null, "", "/");
-    const err = await renderToString(<DoubleApp />).catch((e: unknown) => e);
+    const err = await renderPage(<DoubleApp />).catch((e: unknown) => e);
 
     expect(err).toBeInstanceOf(ServerRedirect);
     expect((err as ServerRedirect).url).toBe("/first");

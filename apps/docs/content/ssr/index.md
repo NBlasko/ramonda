@@ -42,8 +42,7 @@ The [`env`](/ssr/env) option decides what runs where.
 
 | | |
 |---|---|
-| [`renderToString`](/ssr/render) | your app → HTML |
-| [`renderPage`](/ssr/head) | the HTML plus the `<head>` its components set |
+| [`renderPage`](/ssr/render) | your app → HTML, with the `<head>` its components set |
 | [`renderDocument`](/ssr/static) | wraps that in a full HTML document |
 | [`hydrateRoot`](/ssr/render) | in the browser, adopts the server's HTML |
 | [`renderStatic`](/ssr/modes) | a build render that refuses to bake a per-request page |
@@ -52,5 +51,5 @@ The [`env`](/ssr/env) option decides what runs where.
 
 ## Next
 
-- [renderToString and hydrateRoot](/ssr/render) — the pair.
+- [renderPage and hydrateRoot](/ssr/render) — the pair.
 - [Rendering modes](/ssr/modes) — static, dynamic, and ISR per route.

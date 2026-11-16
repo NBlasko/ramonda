@@ -148,7 +148,7 @@ the behaviour you care about.
 The SSR path is worth one test, because it is the part with no app wiring to inspect:
 
 ```ts
-const html = await renderToString(<App />);
+const { body: html } = await renderPage(<App />);
 expect(html).toContain("Ada");
 
 // Hydrate the very markup the server produced.

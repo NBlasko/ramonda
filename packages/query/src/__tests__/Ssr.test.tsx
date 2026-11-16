@@ -1,4 +1,4 @@
-import { Component, renderToString } from "@ramonda/core";
+import { Component, renderPage } from "@ramonda/core";
 import type { RamondaNode } from "@ramonda/core";
 import { act, allowDiagnostics, render, waitFor } from "@ramonda/testing-library";
 import { beforeEach, describe, expect, test, vi } from "vitest";
@@ -70,7 +70,7 @@ async function settle(): Promise<void> {
 
 describe("server rendering", () => {
   test("the data is in the HTML, not a spinner", async () => {
-    const html = await renderToString(<App />);
+    const html = (await renderPage(<App />)).body;
 
     expect(html).toContain("ada");
     expect(html).not.toContain("pending");
@@ -78,7 +78,7 @@ describe("server rendering", () => {
   });
 
   test("the snapshot rides along in the state blob", async () => {
-    const html = await renderToString(<App />);
+    const html = (await renderPage(<App />)).body;
 
     // No app wiring, no `dehydrate()` call, no script tag: the query's answer is in
     // the hook's own `@state`, which core already serializes per component.
@@ -111,7 +111,7 @@ describe("server rendering", () => {
   });
 
   test("the client renders the server's data on its FIRST render, and does not refetch", async () => {
-    const html = await renderToString(<App />);
+    const html = (await renderPage(<App />)).body;
     expect(calls).toBe(1);
 
     const { container } = render(<App />, { hydrate: html });
@@ -152,7 +152,7 @@ describe("server rendering", () => {
       }
     }
 
-    const html = await renderToString(<AlwaysApp />);
+    const html = (await renderPage(<AlwaysApp />)).body;
     expect(calls).toBe(1);
 
     const { container } = render(<AlwaysApp />, { hydrate: html });
@@ -193,7 +193,7 @@ describe("server rendering", () => {
       }
     }
 
-    const html = await renderToString(<FailingApp />);
+    const html = (await renderPage(<FailingApp />)).body;
     expect(html).toContain("bad gateway");
 
     const { container } = render(<FailingApp />, { hydrate: html });
@@ -218,7 +218,7 @@ describe("server rendering", () => {
       }
     }
 
-    const html = await renderToString(<Pair />);
+    const html = (await renderPage(<Pair />)).body;
 
     expect(calls).toBe(1);
     // Counting the rendered TEXT, not every "ada" in the document: each observer
@@ -240,7 +240,7 @@ describe("server rendering", () => {
       }
     }
 
-    const html = await renderToString(<Pair />);
+    const html = (await renderPage(<Pair />)).body;
 
     // The honest cost of carrying data through `@state`: two observers of one key
     // ship two copies. Bytes, not correctness — and `dehydrate`/`hydrate` is the
@@ -275,7 +275,7 @@ describe("server rendering", () => {
       }
     }
 
-    const html = await renderToString(<Page id={1} />);
+    const html = (await renderPage(<Page id={1} />)).body;
     expect(calls).toBe(1);
 
     // The mismatch is REAL here, and core is right to report it: the server's
@@ -352,7 +352,7 @@ describe("the server does not keep working after the response", () => {
       }
     }
 
-    const html = await renderToString(<Slow />);
+    const html = (await renderPage(<Slow />)).body;
     expect(html).toContain("late");
 
     await new Promise((resolve) => setTimeout(resolve, 20));

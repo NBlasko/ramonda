@@ -68,9 +68,9 @@ export async function render(request?: ServerRequestInit): Promise<RenderResult>
   const path = request?.url?.pathname ?? window.location.pathname;
   const status = matchCompiled(path, routes).key === "*" ? 404 : 200;
   try {
-    // `renderPage`, not `renderToString`: the latter hands back the body and NOTHING else — no
-    // title, no meta, no portal blocks. A page whose title and description never reach the HTML is
-    // invisible to exactly the crawlers server rendering exists for.
+    // `renderPage` hands back the title, the meta and the portal blocks beside the body. A page
+    // whose title and description never reach the HTML is invisible to exactly the crawlers server
+    // rendering exists for.
     const { body, title, head, lang, dir, data, portals } = await renderPage(
       <App />,
       request ? { request } : undefined,
