@@ -26,6 +26,12 @@ type Bag = Record<string, unknown>;
 const NO_BAG: Bag = {};
 
 /**
+ * The hooks left off their owner's walk, each with what puts it back — see `register` in `useCommon`.
+ * A WeakMap rather than a property on the hook: a hook may freeze itself in its constructor.
+ */
+const dormant = new WeakMap<object, () => void>();
+
+/**
  * Calls the props callback, and in a development build holds it to the same two standards
  * `render()` is held to — the phase is marked, so randomness read while building a bag is
  * attributed to the bag (RMD021), and under a strict render it is called twice and the two
@@ -447,7 +453,40 @@ export function useCommon<T extends BaseHook<unknown>, P>(
     }
   };
 
-  internalHooks.push(updateFn);
+  const register = () => {
+    internalHooks.push(updateFn);
+    // The owner is a hook this walk had left out, and now it has a child to walk: it goes back on
+    // ITS owner's list, and so on up, as far as the first one that was never left out.
+    const wake = dormant.get(that);
+    if (wake !== undefined) {
+      dormant.delete(that);
+      wake();
+    }
+  };
+
+  /**
+   * A hook whose props can never move, with no hook of its own, is left off the owner's walk.
+   *
+   * Its update would read the cached bag, find it the same, and walk no children — on every render
+   * of the owner, for the life of the page. Measured on a page with five hooks rendered ten times:
+   * forty of fifty updates did nothing, and the two hooks taking no props built an empty bag on
+   * each one. "Can never move" is exact: a callback that read no signal has nothing that can mark
+   * its cache dirty, so it is never called again whether or not it is walked, and a hook taking no
+   * props has no callback at all. What the hook sees is the same either way.
+   *
+   * Production only. A development build walks every hook, because RMD027 is asked on that walk:
+   * it calls the callback again to catch a value no signal backs — `{ items: this.items }` over a
+   * plain field — and that callback is exactly the one that reads no signal. What could change
+   * such a value is `@ramonda/check`'s to refuse (`cached-read-of-a-plain-field`).
+   *
+   * A hook can still gain a child later — `use()` is a method, and nothing stops a method from
+   * calling it — so a hook left out is remembered, and `register` puts it back the moment one of
+   * its own hooks has something to walk.
+   */
+  const canMove = cache !== undefined && cache.deps.size > 0;
+  const hasChildren = (hookInstance[INTERNAL_HOOKS]?.length ?? 0) > 0;
+  if (__DEV__ || canMove || hasChildren) register();
+  else dormant.set(hookInstance, register);
 
   // The cache holds a listener on every signal its callback read, and those signals outlive the
   // hook — an owner's `@state` belongs to the owner, and a context signal belongs to the
