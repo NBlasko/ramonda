@@ -55,6 +55,21 @@ let created = 0;
 /* Written in a static block, while the class is being made: never stale. */
 let seeded = 0;
 
+/* A second helper filling the same slot before it reads it: still a self-filling memo. */
+function pct(n: number): string {
+  fmt ??= { format: String };
+  return `${fmt.format(n)}%`;
+}
+
+/* An object with a getter, returned: the getter is not run by whoever calls this. */
+function makeView() {
+  return {
+    get since() {
+      return Date.now() - lastSaved;
+    },
+  };
+}
+
 /* A function returning handlers: the handlers are not run by whoever calls it. */
 let lastSaved = 0;
 function makeActions() {
@@ -102,6 +117,27 @@ export function makeCard(o: { size?: number }) {
     }
   }
   return SizedCard;
+}
+
+/* A base whose method reads a field; a subclass overriding it reads nothing. */
+class PricedBase extends Component {
+  rate = 2;
+  priced(): number {
+    return this.rate;
+  }
+  bump(): void {
+    this.rate = 3;
+  }
+  render() {
+    return <p />;
+  }
+}
+/* Not reported: the base's `priced` never runs on this class. */
+class Overrides extends PricedBase {
+  override priced(): number {
+    return 1;
+  }
+  overridden = this.use(Takes, (self: Overrides) => ({ value: self.priced() }));
 }
 
 /* Props callbacks declared away from their `this.use`. */
@@ -156,6 +192,18 @@ class Cart extends Component {
   /* REPORTED — a getter that writes a field it does not fill lazily is a writer like any other. */
   counted = this.use(Takes, (self: Cart) => ({ value: self.counter }));
 
+  /* REPORTED — a field written through a pattern. */
+  toned = this.use(Takes, (self: Cart) => ({ value: self.tone }));
+  /* REPORTED — a destructured method, called: bound to the instance, it runs as `self.priced2()` would. */
+  destructuredMethod = this.use(Takes, ({ priced2 }: Cart) => ({ value: priced2() }));
+
+  /* Not reported: two helpers each filling the slot first; a getter in an object handed back; a lazy
+     memo inside a `.map`; a field only a static method writes, through the class's `this`. */
+  twoHelpers = this.use(Takes, () => ({ value: money(1) + pct(2) }));
+  view = this.use(Takes, () => ({ value: makeView() }));
+  nestedLazy = this.use(Takes, (self: Cart) => ({ value: self.prices() }));
+  staticWrite = this.use(Takes, (self: Cart) => ({ value: self.note2 }));
+
   /* Not reported: a static block's write, a handler a getter returns, a method's lazy memo. */
   quietSeeded = this.use(Takes, () => ({ value: seeded }));
   quietHandler = this.use(Takes, (self: Cart) => ({ value: self.onSave }));
@@ -188,6 +236,26 @@ class Cart extends Component {
 
   static {
     seeded = 1;
+  }
+
+  priced2(): number {
+    return this.rate;
+  }
+
+  private fmt2?: { format(n: number): string };
+  prices(): string[] {
+    return [1, 2].map((i) => (this.fmt2 ??= { format: String }).format(i));
+  }
+
+  /* Written through a pattern by a handler. */
+  tone = "a";
+  setTone(next: string): void {
+    [this.tone] = [next];
+  }
+
+  note2 = "";
+  static clear(this: { note2: string }): void {
+    this.note2 = "";
   }
 
   counter = 0;

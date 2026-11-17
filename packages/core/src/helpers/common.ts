@@ -1,4 +1,4 @@
-import { HOOK_RUNTIME, INTERNAL_HOOKS, GLOBAL_RUNTIME, CHILD_HOOKS } from "../core/runtime";
+import { HOOK_RUNTIME, INTERNAL_HOOKS, GLOBAL_RUNTIME, CHILD_HOOKS, type HookWalk } from "../core/runtime";
 import { className, displayName } from "./utils";
 import { STABLE_PROPS, attach, detach } from "./constants";
 import { valueEqual } from "./valueEqual";
@@ -253,10 +253,10 @@ export function useCommon<T extends BaseHook<unknown>, P>(
     );
   }
 
-  // Writable, because a hook woken later is put back by replacing the list — see `register`.
+  // A box, written once: a registration replaces the list inside it — see `HookWalk` and `register`.
   if (!that[INTERNAL_HOOKS]) {
     Object.defineProperty(that, INTERNAL_HOOKS, {
-      value: [],
+      value: { list: [] },
       configurable: false,
       enumerable: false,
       writable: true,
@@ -442,7 +442,7 @@ export function useCommon<T extends BaseHook<unknown>, P>(
 
     // Indexed loop over the children — the fastest form, and this runs on
     // every hook update.
-    const children = hookInstance[INTERNAL_HOOKS];
+    const children = hookInstance[INTERNAL_HOOKS]?.list;
     if (children !== undefined) {
       const len = children.length;
       for (let i = 0; i < len; i++) {
@@ -458,24 +458,22 @@ export function useCommon<T extends BaseHook<unknown>, P>(
     // at the end instead, a hook reading the woken one's child served its old value in a production
     // build, and the right one in development, where nothing sleeps.
     //
-    // Woken, it goes into a COPY of the list. A wake can happen while the owner is walking that list —
-    // a props callback that calls a method which `use()`s — and the walk holds the list it began with;
-    // spliced into in place, the hook after it was skipped for that pass (measured: it showed its old
-    // value). The walk finishes over the old list, and the next one reads the new.
-    const list = that[INTERNAL_HOOKS] as (() => void)[];
-    if (!woken) {
-      list.push(updateFn);
-    } else {
+    // Into a NEW list, whichever way it arrives. A registration can happen while the owner is walking
+    // its list — a props callback that calls a method which `use()`s — and that walk goes on over the
+    // list it began with; spliced into in place, the hook after a woken one was skipped for that pass
+    // (measured: it showed its old value). One rule for both: the walk in progress finishes over the
+    // old list, and the next one reads the new.
+    const walk = that[INTERNAL_HOOKS] as HookWalk;
+    let at = walk.list.length;
+    if (woken) {
       // A sibling used before this one is on the walk exactly when it is not asleep.
-      let at = 0;
+      at = 0;
       for (const sibling of childHooks) {
         if (sibling === hookInstance) break;
         if (!dormant.has(sibling)) at++;
       }
-      const next = list.slice();
-      next.splice(at, 0, updateFn);
-      that[INTERNAL_HOOKS] = next;
     }
+    walk.list = [...walk.list.slice(0, at), updateFn, ...walk.list.slice(at)];
     // The owner is a hook this walk had left out, and now it has a child to walk: it goes back on
     // ITS owner's list, and so on up, as far as the first one that was never left out.
     const wake = dormant.get(that);
@@ -505,7 +503,7 @@ export function useCommon<T extends BaseHook<unknown>, P>(
    * its own hooks has something to walk.
    */
   const canMove = cache !== undefined && cache.deps.size > 0;
-  const hasChildren = (hookInstance[INTERNAL_HOOKS]?.length ?? 0) > 0;
+  const hasChildren = (hookInstance[INTERNAL_HOOKS]?.list.length ?? 0) > 0;
   if (__DEV__ || canMove || hasChildren) register(false);
   else dormant.set(hookInstance, () => register(true));
 

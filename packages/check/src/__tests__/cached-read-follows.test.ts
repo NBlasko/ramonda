@@ -35,6 +35,8 @@ describe("a cached reader, followed", () => {
       "ofTotal:var created:id",
       "destructured:rate:bump",
       "counted:counter:nextId",
+      "toned:tone:setTone",
+      "destructuredMethod:rate:bump",
       "title:var lang:setLang",
     ]);
   });

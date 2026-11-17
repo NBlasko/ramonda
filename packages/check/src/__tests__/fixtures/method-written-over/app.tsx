@@ -30,6 +30,10 @@ class Editor extends Base {
     this.submit = this.send;
     /* REPORTED — a method inherited from the base. */
     this.save = this.send;
+    /* REPORTED — through a pattern, both shapes, and through Object.assign. */
+    [this.submit] = [this.send];
+    ({ submit: this.submit } = { submit: this.send });
+    Object.assign(this, { submit: this.send });
     /* Not reported: a field. */
     this.later = this.send;
     /* Not reported: a nested class's own `this`. */

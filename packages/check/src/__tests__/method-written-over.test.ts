@@ -17,6 +17,9 @@ describe("a method written over", () => {
       "Editor.constructor:submit",
       "Editor.swap:submit",
       "Editor.swap:save",
+      "Editor.swap:submit",
+      "Editor.swap:submit",
+      "Editor.swap:submit",
     ]);
   });
 });

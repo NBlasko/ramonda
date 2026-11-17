@@ -95,6 +95,15 @@ class WakesMidWalk extends Hook {
   last = this.use(Shows, (self: WakesMidWalk) => ({ v: self.tick }));
 }
 
+/** Freezes itself in its constructor, holding a hook that sleeps until it grows one of its own. */
+class FrozenOwner extends Hook {
+  sleeper = this.use(Grows);
+  constructor(...args: ConstructorParameters<typeof Hook<undefined>>) {
+    super(...args);
+    Object.freeze(this);
+  }
+}
+
 function mount<T>(node: unknown): { instance: T; container: HTMLElement; done: () => void } {
   const container = document.createElement("div");
   document.body.appendChild(container);
@@ -111,7 +120,8 @@ function mount<T>(node: unknown): { instance: T; container: HTMLElement; done: (
   };
 }
 
-const walked = (owner: object): number => (owner as { [INTERNAL_HOOKS]?: unknown[] })[INTERNAL_HOOKS]?.length ?? 0;
+const walked = (owner: object): number =>
+  (owner as { [INTERNAL_HOOKS]?: { list: unknown[] } })[INTERNAL_HOOKS]?.list.length ?? 0;
 
 describe("a hook left off its owner's walk", () => {
   test("__DEV__ is false in this run", () => {
@@ -248,6 +258,32 @@ describe("a hook left off its owner's walk", () => {
     instance.n++;
     flushSync();
     expect(container.textContent).toBe("1:1");
+    done();
+  });
+
+  /**
+   * A hook that froze itself can still have a hook of its own woken: the walk is a box written onto it
+   * once, and a registration replaces the list INSIDE the box. Replacing the list on the owner itself
+   * threw — `Cannot assign to read only property` — the moment the hook it held woke.
+   */
+  test("a hook woken under an owner that froze itself goes back on", () => {
+    class Page extends Component {
+      @state tick = 0;
+      owner = this.use(FrozenOwner);
+      render() {
+        return (
+          <p>
+            {String(this.owner.sleeper.late?.value)}:{this.tick}
+          </p>
+        );
+      }
+    }
+    const { instance, container, done } = mount<Page>(<Page />);
+    instance.owner.sleeper.grow();
+    instance.owner.sleeper.n = 4;
+    instance.tick++;
+    flushSync();
+    expect(container.textContent).toBe("4:1");
     done();
   });
 });

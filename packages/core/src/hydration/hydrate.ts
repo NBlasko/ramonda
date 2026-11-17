@@ -456,7 +456,7 @@ function hydrateComponentRegion(
     // publish the SERVER's route and hold it until the next render. Hooks have to
     // see the final state — after the blob, and after any @created that corrects it.
     if (component[INTERNAL_HOOKS]) {
-      for (const update of component[INTERNAL_HOOKS]) update();
+      for (const update of component[INTERNAL_HOOKS].list) update();
     }
 
     seedWatchProps(component);
@@ -988,7 +988,7 @@ function resumeHydration(component: BaseComponent): void {
    * the chunk it awaited: `5 usd` where the component's own state already said `sr`.
    */
   if (component[INTERNAL_HOOKS]) {
-    for (const update of component[INTERNAL_HOOKS]) update();
+    for (const update of component[INTERNAL_HOOKS].list) update();
   }
 
   /**

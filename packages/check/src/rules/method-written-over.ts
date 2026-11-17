@@ -1,5 +1,5 @@
 import ts from "typescript";
-import { memberName, positionOf } from "../syntax";
+import { memberName, positionOf, targetsOf } from "../syntax";
 import { heritage } from "./render-reach";
 import type { Rule } from "./rule";
 
@@ -18,8 +18,10 @@ import type { Rule } from "./rule";
  * reason was: a value that changes is `@state`, and a method that decides between two behaviours
  * reads that state.
  *
- * Writes from OUTSIDE the class — `row.submit = x` on an instance somewhere else — are not
- * reachable here: this package asks where names are declared, never what type a value has.
+ * Through a pattern (`[this.submit] = [this.send]`) and through `Object.assign(this, { submit })` too.
+ * Writes from OUTSIDE the class — `row.submit = x` on an instance somewhere else — are not reachable
+ * here: this package asks where names are declared, never what type a value has; nor is an
+ * `Object.assign(this, source)` whose source is not written there.
  */
 export interface MethodWrittenOverIssue {
   /** The component or hook. */
@@ -92,20 +94,42 @@ export const methodWrittenOver = {
             ((ts.isMethodDeclaration(at) || ts.isAccessor(at)) && ts.isObjectLiteralExpression(at.parent)))
         )
           return;
-        const target =
+        // Every target an assignment writes, through any pattern: `[this.submit] = [this.send]` too.
+        const targets: ts.Expression[] = [];
+        if (
           ts.isBinaryExpression(at) &&
           at.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
           at.operatorToken.kind <= ts.SyntaxKind.LastAssignment
-            ? at.left
-            : undefined;
-        if (
-          target !== undefined &&
-          ts.isPropertyAccessExpression(target) &&
-          target.expression.kind === ts.SyntaxKind.ThisKeyword &&
-          ts.isIdentifier(target.name) &&
-          methods.has(target.name.text)
         ) {
-          found.push({ component: self.name, method: target.name.text, writtenIn, ...positionOf(target) });
+          targetsOf(at.left, targets);
+        }
+        for (const target of targets) {
+          if (
+            ts.isPropertyAccessExpression(target) &&
+            target.expression.kind === ts.SyntaxKind.ThisKeyword &&
+            ts.isIdentifier(target.name) &&
+            methods.has(target.name.text)
+          ) {
+            found.push({ component: self.name, method: target.name.text, writtenIn, ...positionOf(target) });
+          }
+        }
+        // `Object.assign(this, { submit: … })` writes each key of the object it is handed.
+        if (
+          ts.isCallExpression(at) &&
+          ts.isPropertyAccessExpression(at.expression) &&
+          at.expression.getText() === "Object.assign" &&
+          at.arguments[0]?.kind === ts.SyntaxKind.ThisKeyword
+        ) {
+          for (const source of at.arguments.slice(1)) {
+            if (!ts.isObjectLiteralExpression(source)) continue;
+            for (const property of source.properties) {
+              const key =
+                property.name !== undefined && ts.isIdentifier(property.name) ? property.name.text : undefined;
+              if (key !== undefined && methods.has(key)) {
+                found.push({ component: self.name, method: key, writtenIn, ...positionOf(property) });
+              }
+            }
+          }
         }
         ts.forEachChild(at, walk);
       })(member);

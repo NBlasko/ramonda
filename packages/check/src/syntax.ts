@@ -163,3 +163,23 @@ export function isHandedOver(node: ts.Node): boolean {
   const parent = node.parent;
   return (ts.isPropertyAssignment(parent) && parent.initializer === node) || ts.isShorthandPropertyAssignment(parent);
 }
+
+/**
+ * Every identifier or property access an assignment's left side writes, through any destructuring —
+ * `[a, this.b] = list`, `({ a, c: this.c } = cfg)`, `[a = 1] = list`.
+ */
+export function targetsOf(left: ts.Node, into: ts.Expression[]): void {
+  if (ts.isIdentifier(left) || ts.isPropertyAccessExpression(left)) into.push(left);
+  else if (ts.isParenthesizedExpression(left)) targetsOf(left.expression, into);
+  else if (ts.isArrayLiteralExpression(left)) for (const one of left.elements) targetsOf(one, into);
+  else if (ts.isObjectLiteralExpression(left)) {
+    for (const one of left.properties) {
+      if (ts.isShorthandPropertyAssignment(one)) into.push(one.name);
+      else if (ts.isPropertyAssignment(one)) targetsOf(one.initializer, into);
+      else if (ts.isSpreadAssignment(one)) targetsOf(one.expression, into);
+    }
+  } else if (ts.isSpreadElement(left)) targetsOf(left.expression, into);
+  else if (ts.isBinaryExpression(left) && left.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+    targetsOf(left.left, into);
+  }
+}

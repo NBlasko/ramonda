@@ -1,5 +1,5 @@
 import ts from "typescript";
-import { callbackOwner, isHandedOver, isLocalRead, isThisUse, memberName, positionOf } from "../syntax";
+import { callbackOwner, isHandedOver, isLocalRead, isThisUse, memberName, positionOf, targetsOf } from "../syntax";
 import { hasDecorator, heritage, memberBody, runsNow } from "./render-reach";
 // The field judgement itself, shared with `row-reads-a-plain-field`: which fields a CACHED reader
 // can go stale on, and which writes count. See `stale-field.ts` for why it is not written twice.
@@ -85,18 +85,20 @@ interface Write {
   writer: string;
   /** The body it runs in — matched against the bodies a reader walks. */
   scope: ts.Node;
-  /** A lazy first value — `??=`, `||=`, `if (!x) x = …` — which only the reader that makes it may ignore. */
+  /** The function holding it, when that is not `scope` itself — a class made inside it is made by it. */
+  fn: ts.Node;
+  /** A lazy first value — `??=`, `||=`, `if (!x) x = …` — which only a reader filling it itself may ignore. */
   lazy: boolean;
+  /** Where the write is, to tell whether a body fills the slot before it reads it. */
+  pos: number;
 }
 
-/** What a cached reader reads, and in which body — the place decides whether a lazy write can be ignored. */
+/** What a cached reader reads, and where — the place decides whether a lazy write can be ignored. */
 interface Reads {
-  /** Every `this.X` read, by name → the bodies it was read in. */
-  fields: Map<string, Set<ts.Node>>;
-  /** A `let` or `var` declared outside the reader → its name, and the bodies it was read in. */
-  variables: Map<ts.Symbol, { name: string; declaration: ts.VariableDeclaration; scopes: Set<ts.Node> }>;
-  /** Every body the reader walked. */
-  walked: Set<ts.Node>;
+  /** Every `this.X` read, by name → each body it was read in, with its first read there. */
+  fields: Map<string, Map<ts.Node, number>>;
+  /** A `let` or `var` declared outside the reader → its name, and each body it was read in. */
+  variables: Map<ts.Symbol, { name: string; declaration: ts.VariableDeclaration; first: Map<ts.Node, number> }>;
 }
 
 /** The name a report gives the function a write is in — a method, a function, or neither. */
@@ -124,48 +126,46 @@ function isStatic(member: ts.Node): boolean {
   );
 }
 
+/** A node with a `this` of its own: a nested class, a `function`, a method or accessor of an object literal. */
+function bindsThis(node: ts.Node): boolean {
+  return (
+    ts.isClassDeclaration(node) ||
+    ts.isClassExpression(node) ||
+    ts.isFunctionDeclaration(node) ||
+    ts.isFunctionExpression(node) ||
+    ((ts.isMethodDeclaration(node) || ts.isAccessor(node)) && ts.isObjectLiteralExpression(node.parent))
+  );
+}
+
 /**
- * The body a write runs in — or `undefined` for one that is over before any instance can read it: while
- * the module is first evaluated, in a static block or a static field, or in the function that makes the
- * class (a class declared in a factory). An instance field's initializer runs once per instance, so it
- * is a place of its own.
+ * Where a write runs — its body and the function holding it — or `undefined` for one that is over before
+ * any instance exists: while the module is first evaluated, or in a static block or static field. An
+ * instance field's initializer runs once per instance, so it is a place of its own. Whether the function
+ * holding it MAKES the class reading it (a class declared in a factory) is the reader's question, asked
+ * in `madeTooEarly`.
  */
-function runScope(node: ts.Node, cls: ts.ClassLikeDeclaration): ts.Node | undefined {
+function placeOf(node: ts.Node): { scope: ts.Node; fn: ts.Node } | undefined {
   for (let at: ts.Node | undefined = node.parent; at !== undefined; at = at.parent) {
     if (ts.isClassStaticBlockDeclaration(at)) return undefined;
-    if (ts.isPropertyDeclaration(at)) return isStatic(at) ? undefined : at;
-    if (ts.isFunctionLike(at)) {
-      const makesTheClass = at.getSourceFile() === cls.getSourceFile() && cls.pos >= at.pos && cls.end <= at.end;
-      return makesTheClass ? undefined : bodyOf(at);
-    }
+    if (ts.isPropertyDeclaration(at)) return isStatic(at) ? undefined : { scope: at, fn: at };
+    if (ts.isFunctionLike(at)) return { scope: bodyOf(at), fn: at };
   }
   return undefined;
 }
 
-/** Every identifier or `this.X` an assignment's left side writes, through any destructuring. */
-function targetsOf(left: ts.Node, into: ts.Expression[]): void {
-  if (ts.isIdentifier(left) || ts.isPropertyAccessExpression(left)) into.push(left);
-  else if (ts.isParenthesizedExpression(left)) targetsOf(left.expression, into);
-  else if (ts.isArrayLiteralExpression(left)) for (const one of left.elements) targetsOf(one, into);
-  else if (ts.isObjectLiteralExpression(left)) {
-    for (const one of left.properties) {
-      if (ts.isShorthandPropertyAssignment(one)) into.push(one.name);
-      else if (ts.isPropertyAssignment(one)) targetsOf(one.initializer, into);
-      else if (ts.isSpreadAssignment(one)) targetsOf(one.expression, into);
-    }
-  } else if (ts.isSpreadElement(left)) targetsOf(left.expression, into);
-  else if (ts.isBinaryExpression(left) && left.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
-    // `[a = 1] = list` — a default inside a pattern.
-    targetsOf(left.left, into);
-  }
+/** Whether a write runs in the function that makes `cls` — over before any instance of it exists. */
+function madeTooEarly(write: Write, cls: ts.ClassLikeDeclaration): boolean {
+  return write.fn.getSourceFile() === cls.getSourceFile() && cls.pos >= write.fn.pos && cls.end <= write.fn.end;
 }
 
-/** Every write under a node — the target and, for an assignment, the assignment. */
+/** Every write under a node — its target and, for an assignment, the assignment — `this` kept bound if asked. */
 function writesUnder(
   root: ts.Node,
+  keepThis: boolean,
   visit: (target: ts.Expression, write: ts.BinaryExpression | undefined) => void,
 ): void {
   (function walk(at: ts.Node): void {
+    if (keepThis && at !== root && bindsThis(at)) return;
     const targets: ts.Expression[] = [];
     let write: ts.BinaryExpression | undefined;
     if (
@@ -189,69 +189,70 @@ function writesUnder(
 }
 
 /**
- * Whether a write is a LAZY first value — `x ??= make()`, `x ||= make()`, or `if (!x) x = make()`. It
+ * Where a LAZY first value begins — `x ??= make()`, `x ||= make()`, or `if (!x) x = make()` — or
+ * `undefined` for a write that is not one. It
  * fills an empty slot once; it still changes what a reader that read the empty slot first holds, so it
- * is ignored only for the reader that makes it itself (see `staleWriter`).
+ * is ignored only for a reader that fills it itself before every read (see `staleWriter`).
  */
-function isLazy(write: ts.BinaryExpression, isIt: (node: ts.Expression) => boolean): boolean {
+function lazyFrom(write: ts.BinaryExpression, isIt: (node: ts.Expression) => boolean): number | undefined {
   const operator = write.operatorToken.kind;
   if (operator === ts.SyntaxKind.QuestionQuestionEqualsToken || operator === ts.SyntaxKind.BarBarEqualsToken)
-    return true;
-  if (operator !== ts.SyntaxKind.EqualsToken) return false;
+    return write.left.getStart();
+  if (operator !== ts.SyntaxKind.EqualsToken) return undefined;
   let statement: ts.Node = write.parent;
-  if (!ts.isExpressionStatement(statement)) return false;
+  if (!ts.isExpressionStatement(statement)) return undefined;
   if (ts.isBlock(statement.parent) && statement.parent.statements.length === 1) statement = statement.parent;
   const guard = statement.parent;
-  if (!ts.isIfStatement(guard) || guard.thenStatement !== statement) return false;
+  if (!ts.isIfStatement(guard) || guard.thenStatement !== statement) return undefined;
   const tested = guard.expression;
+  // From the `if`: its test reads the slot, and that read is the memo asking whether to fill it.
   if (ts.isPrefixUnaryExpression(tested) && tested.operator === ts.SyntaxKind.ExclamationToken)
-    return isIt(tested.operand);
+    return isIt(tested.operand) ? guard.getStart() : undefined;
   if (ts.isBinaryExpression(tested)) {
     const empty = (node: ts.Expression): boolean =>
       node.kind === ts.SyntaxKind.NullKeyword || (ts.isIdentifier(node) && node.text === "undefined");
     const kind = tested.operatorToken.kind;
-    if (kind !== ts.SyntaxKind.EqualsEqualsEqualsToken && kind !== ts.SyntaxKind.EqualsEqualsToken) return false;
-    return (isIt(tested.left) && empty(tested.right)) || (isIt(tested.right) && empty(tested.left));
+    if (kind !== ts.SyntaxKind.EqualsEqualsEqualsToken && kind !== ts.SyntaxKind.EqualsEqualsToken) return undefined;
+    const guarded = (isIt(tested.left) && empty(tested.right)) || (isIt(tested.right) && empty(tested.left));
+    return guarded ? guard.getStart() : undefined;
   }
-  return false;
+  return undefined;
 }
 
 /**
- * The writes to a `let` or `var` that can come after the class reading it exists. Only the declaring
- * file is read, and that is complete rather than a shortcut: an imported binding is read-only in every
- * module but its own, so no other file can assign it.
+ * Every write to a `let` or `var` that runs after its module was first evaluated — asked once per
+ * variable for the whole program, since nothing in the answer depends on who reads it. Only the
+ * declaring file is read, and that is complete rather than a shortcut: an imported binding is read-only
+ * in every module but its own, so no other file can assign it.
  */
-function variableWrites(
-  declaration: ts.VariableDeclaration,
-  symbol: ts.Symbol,
-  cls: ts.ClassLikeDeclaration,
-  resolve: Resolver,
-): Write[] {
+const writesOfVariable = new WeakMap<ts.VariableDeclaration, Write[]>();
+function variableWrites(declaration: ts.VariableDeclaration, symbol: ts.Symbol, resolve: Resolver): Write[] {
+  const known = writesOfVariable.get(declaration);
+  if (known !== undefined) return known;
   const writes: Write[] = [];
   const isIt = (node: ts.Expression): boolean => ts.isIdentifier(node) && resolve(node) === symbol;
-  writesUnder(declaration.getSourceFile(), (target, write) => {
+  writesUnder(declaration.getSourceFile(), false, (target, write) => {
     if (!isIt(target)) return;
-    const scope = runScope(target, cls);
-    if (scope === undefined) return;
-    writes.push({ writer: writerName(target), scope, lazy: write !== undefined && isLazy(write, isIt) });
+    const place = placeOf(target);
+    if (place === undefined) return;
+    const from = write === undefined ? undefined : lazyFrom(write, isIt);
+    writes.push({ writer: writerName(target), ...place, lazy: from !== undefined, pos: from ?? target.getStart() });
   });
+  writesOfVariable.set(declaration, writes);
   return writes;
 }
 
 /**
  * The writes to this class's ordinary fields that can come after the first render, by field — the
  * same fields and the same members `staleFieldsOf` judges, with where each write runs and whether it
- * is lazy.
+ * is lazy. A static member's `this` is the class, and a nested `function`'s is its own: neither writes
+ * an instance field.
  */
-function fieldWrites(
-  declaring: readonly ts.ClassLikeDeclaration[],
-  cls: ts.ClassLikeDeclaration,
-  resolve: Resolver,
-): Map<string, Write[]> {
+function fieldWrites(declaring: readonly ts.ClassLikeDeclaration[], resolve: Resolver): Map<string, Write[]> {
   const plain = new Set<string>();
   for (const one of declaring) {
     for (const member of one.members) {
-      if (!ts.isPropertyDeclaration(member) || trackedOrHarmless(member, resolve)) continue;
+      if (!ts.isPropertyDeclaration(member) || isStatic(member) || trackedOrHarmless(member, resolve)) continue;
       const name = memberName(member);
       if (name !== undefined) plain.add(name);
     }
@@ -260,9 +261,10 @@ function fieldWrites(
   if (plain.size === 0) return writes;
   for (const one of declaring) {
     for (const member of one.members) {
+      if (isStatic(member) || ts.isClassStaticBlockDeclaration(member)) continue;
       if (!writesAfterTheFirstRender(member, resolve)) continue;
       const writer = memberName(member) ?? "a method";
-      writesUnder(member, (target, write) => {
+      writesUnder(member, true, (target, write) => {
         if (
           !ts.isPropertyAccessExpression(target) ||
           target.expression.kind !== ts.SyntaxKind.ThisKeyword ||
@@ -270,14 +272,15 @@ function fieldWrites(
         )
           return;
         const field = target.name.text;
-        const scope = runScope(target, cls);
-        if (scope === undefined) return;
+        const place = placeOf(target);
+        if (place === undefined) return;
         const isIt = (node: ts.Expression): boolean =>
           ts.isPropertyAccessExpression(node) &&
           node.expression.kind === ts.SyntaxKind.ThisKeyword &&
           node.name.text === field;
         const list = writes.get(field) ?? [];
-        list.push({ writer, scope, lazy: write !== undefined && isLazy(write, isIt) });
+        const from = write === undefined ? undefined : lazyFrom(write, isIt);
+        list.push({ writer, ...place, lazy: from !== undefined, pos: from ?? target.getStart() });
         writes.set(field, list);
       });
     }
@@ -288,20 +291,20 @@ function fieldWrites(
 /**
  * The first write that leaves this reader stale, by its writer — or `undefined`.
  *
- * A lazy first value is ignored only when the reader makes it itself and reads the slot nowhere else:
- * `money()` filling `fmt ??= …` and then formatting with it, a getter returning `this._api ??= create()`.
- * Read anywhere else first, the reader holds what the empty slot gave it — `@compute get show() {
- * return !dismissed }` with `dismissed ||= true` in a handler is as stale as any other write.
+ * A lazy first value is ignored only for a self-filling memo: every write to the slot is lazy, and every
+ * body this reader reads it in fills it first — `money()` and `pct()` each doing `fmt ??= …` before
+ * formatting, a getter returning `this._api ??= create()`. Such a reader never sees the slot empty, and a
+ * slot filled once is never changed again, by whichever body filled it. A slot read anywhere else holds
+ * what the empty slot gave it: `@compute get show() { return !dismissed }` with `dismissed ||= true` in a
+ * handler is as stale as any other write.
  */
-function staleWriter(
-  writes: readonly Write[],
-  readIn: ReadonlySet<ts.Node>,
-  walked: ReadonlySet<ts.Node>,
-): string | undefined {
+function staleWriter(writes: readonly Write[], first: ReadonlyMap<ts.Node, number>): string | undefined {
+  if (writes.length === 0) return undefined;
   for (const write of writes) {
-    const madeByTheReader =
-      write.lazy && walked.has(write.scope) && [...readIn].every((scope) => scope === write.scope);
-    if (!madeByTheReader) return write.writer;
+    if (!write.lazy) return write.writer;
+  }
+  for (const [scope, at] of first) {
+    if (!writes.some((write) => write.scope === scope && write.pos <= at)) return writes[0].writer;
   }
   return undefined;
 }
@@ -337,17 +340,19 @@ function outerVariable(
  * this.priced() }`, where `priced()` reads a plain `rate`, caches exactly the stale answer a direct
  * read would — the compute tracks the signals read while it evaluated, wherever they were read.
  * Reading only the compute's own body reported the version somebody writes on their first day and
- * missed the version that ships. Measured with a plant.
+ * missed the version that ships. Measured with a plant. The member that runs is the NEAREST one up the
+ * chain: a base's method a subclass overrides is never run.
  *
  * A GETTER read through `this`, or destructured from the owner, is followed the same way, because
- * reading it runs it; a `@compute` getter is not, because it is a signal. A call to a FUNCTION this
- * program declares is followed too — it has no `this` of the component's, but it can read a module's
- * `let`, and that goes stale in exactly the same way.
+ * reading it runs it, and so is a destructured method that is called; a `@compute` getter is not,
+ * because it is a signal. A call to a FUNCTION this program declares is followed too — it has no `this`
+ * of the component's, but it can read a module's `let`, and that goes stale in exactly the same way.
  *
- * A function the reader only BUILDS — returned, stored, handed over in an object — does not run while
- * it reads, so it is not walked; one passed to a call or invoked on the spot is (`runsNow`). Bounded and
- * cycle-guarded. A function the program does not declare — a library's, the platform's — is not
- * followed, and what it reads is not known here.
+ * A function the reader only BUILDS — returned, stored, handed over in an object, an accessor of an
+ * object it returns — does not run while it reads, so it is not walked; one passed to a call or invoked
+ * on the spot is (`runsNow`), and its body is a place of its own. Bounded and cycle-guarded. A function
+ * the program does not declare — a library's, the platform's — is not followed, and what it reads is not
+ * known here.
  */
 function readsIn(
   node: ts.Node,
@@ -355,52 +360,74 @@ function readsIn(
   declaring: readonly ts.ClassLikeDeclaration[],
   resolve: Resolver,
 ): Reads {
-  const reads: Reads = { fields: new Map(), variables: new Map(), walked: new Set() };
+  const reads: Reads = { fields: new Map(), variables: new Map() };
   // A props callback names its owner as `this`, its parameter, or the parameter destructured — see
   // `callbackOwner`. A method the walk follows into has only `this`, and a free function none.
   const callback = callbackOwner(node);
   const seen = new Set<ts.Node>();
 
-  const memberNamed = (name: string): ts.ClassElement[] =>
-    declaring.flatMap((one) => one.members.filter((member) => memberName(member) === name));
+  /** The members of that name in the nearest class up the chain — the one that runs. */
+  const nearestNamed = (name: string): ts.ClassElement[] => {
+    for (const one of declaring) {
+      const found = one.members.filter((member) => memberName(member) === name);
+      if (found.length > 0) return found;
+    }
+    return [];
+  };
   const plainGetter = (member: ts.ClassElement): member is ts.GetAccessorDeclaration =>
     ts.isGetAccessorDeclaration(member) && !hasDecorator(member, "compute", resolve) && member.body !== undefined;
-  const readField = (name: string, scope: ts.Node): void => {
-    const scopes = reads.fields.get(name) ?? new Set<ts.Node>();
-    scopes.add(scope);
-    reads.fields.set(name, scopes);
+  const note = (into: Map<ts.Node, number>, scope: ts.Node, at: number): void => {
+    const before = into.get(scope);
+    if (before === undefined || at < before) into.set(scope, at);
   };
 
   const walk = (at: ts.Node, depth: number, hasThis: boolean): void => {
     if (depth > 6 || seen.has(at)) return;
     seen.add(at);
-    const scope = bodyOf(at);
-    reads.walked.add(scope);
 
     const owner = at === node ? callback : callbackOwner(at);
-    (function look(current: ts.Node): void {
+    (function look(current: ts.Node, scope: ts.Node): void {
       if (current !== at) {
-        // Built, not run: a function returned, stored or handed over in an object.
-        if ((ts.isArrowFunction(current) || ts.isFunctionExpression(current)) && !runsNow(current)) return;
+        // Built, not run: a function returned, stored or handed over in an object, or an accessor of one.
+        if (ts.isArrowFunction(current) || ts.isFunctionExpression(current)) {
+          if (!runsNow(current)) return;
+          // Run now, on the spot or by whoever it is handed to: a body of its own, the reader's all the same.
+          scope = bodyOf(current);
+        }
         if (isHandedOver(current)) return;
+        if (ts.isAccessor(current) && ts.isObjectLiteralExpression(current.parent)) return;
       }
       if (ts.isIdentifier(current)) {
         if (hasThis && owner.destructured.has(current.text) && isLocalRead(current)) {
           const name = owner.destructured.get(current.text) as string;
-          const getters = memberNamed(name).filter(plainGetter);
-          for (const getter of getters) walk(getter, depth + 1, true);
-          if (getters.length === 0) readField(name, scope);
+          const members = nearestNamed(name);
+          const called = ts.isCallExpression(current.parent) && current.parent.expression === current;
+          let followed = false;
+          for (const member of members) {
+            if (plainGetter(member)) {
+              walk(member, depth + 1, true);
+              followed = true;
+            } else if (ts.isMethodDeclaration(member)) {
+              // Methods are bound to the instance, so a destructured one runs as `self.priced()` would.
+              if (called && member.body) walk(member.body, depth + 1, true);
+              followed = true;
+            }
+          }
+          if (!followed) {
+            const scopes = reads.fields.get(name) ?? new Map<ts.Node, number>();
+            note(scopes, scope, current.getStart());
+            reads.fields.set(name, scopes);
+          }
         }
         const outer = outerVariable(current, at === node ? node : (at.parent ?? at), cls, resolve);
         if (outer !== undefined) {
-          const known = reads.variables.get(outer.symbol);
-          if (known !== undefined) known.scopes.add(scope);
-          else
-            reads.variables.set(outer.symbol, {
-              name: current.text,
-              declaration: outer.declaration,
-              scopes: new Set([scope]),
-            });
+          const known = reads.variables.get(outer.symbol) ?? {
+            name: current.text,
+            declaration: outer.declaration,
+            first: new Map<ts.Node, number>(),
+          };
+          note(known.first, scope, current.getStart());
+          reads.variables.set(outer.symbol, known);
         }
       }
       if (
@@ -412,7 +439,7 @@ function readsIn(
         const name = current.name.text;
         const called = ts.isCallExpression(current.parent) && current.parent.expression === current;
         let followed = false;
-        for (const member of memberNamed(name)) {
+        for (const member of nearestNamed(name)) {
           if (called) {
             const body = memberBody(member);
             if (body) walk(body, depth + 1, true);
@@ -422,14 +449,18 @@ function readsIn(
             followed = true;
           }
         }
-        if (!called && !followed) readField(name, scope);
+        if (!called && !followed) {
+          const scopes = reads.fields.get(name) ?? new Map<ts.Node, number>();
+          note(scopes, scope, current.getStart());
+          reads.fields.set(name, scopes);
+        }
       }
       if (ts.isCallExpression(current) && ts.isIdentifier(current.expression)) {
         const body = projectFunctionBody(current.expression, resolve);
         if (body !== undefined) walk(body, depth + 1, false);
       }
-      ts.forEachChild(current, look);
-    })(at);
+      ts.forEachChild(current, (child) => look(child, scope));
+    })(at, bodyOf(at));
   };
 
   walk(node, 0, true);
@@ -523,17 +554,15 @@ export const cachedReadOfAPlainField = {
      * field → its writes after the first render. `resolve` reaches the BASES as well: a plain field on a
      * shared base is this component's field, and goes stale in exactly the same way.
      */
-    const writesTo = fieldWrites(declaring, cls, resolve);
+    const writesTo = fieldWrites(declaring, resolve);
 
     const found: CachedReadOfAPlainFieldIssue[] = [];
-    /** Each outer variable's writes, asked once for the class: every read would otherwise walk its file again. */
-    const variableWritesOf = new Map<ts.Symbol, Write[]>();
 
     /** One reported read, whichever kind of cached reader found it. */
     const report = (node: ts.Node, reader: CachedReadOfAPlainFieldIssue["reader"], named: string): void => {
       const reads = readsIn(node, cls, declaring, resolve);
-      for (const [field, readIn] of reads.fields) {
-        const writer = staleWriter(writesTo.get(field) ?? [], readIn, reads.walked);
+      for (const [field, first] of reads.fields) {
+        const writer = staleWriter(writesTo.get(field) ?? [], first);
         if (writer === undefined) continue;
         found.push({
           component: self.name,
@@ -546,12 +575,8 @@ export const cachedReadOfAPlainField = {
         });
       }
       for (const [symbol, read] of reads.variables) {
-        let writes = variableWritesOf.get(symbol);
-        if (writes === undefined) {
-          writes = variableWrites(read.declaration, symbol, cls, resolve);
-          variableWritesOf.set(symbol, writes);
-        }
-        const writer = staleWriter(writes, read.scopes, reads.walked);
+        const writes = variableWrites(read.declaration, symbol, resolve).filter((write) => !madeTooEarly(write, cls));
+        const writer = staleWriter(writes, read.first);
         if (writer === undefined) continue;
         found.push({
           component: self.name,
