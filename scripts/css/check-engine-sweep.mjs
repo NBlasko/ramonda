@@ -233,7 +233,16 @@ function askTheChecker(checkProject, cases) {
 const ENGINES = ["chromium", "firefox", "webkit"];
 const cases = sweepCases();
 const [verdicts, checkProject] = await Promise.all([askTheEngines(cases), loadCheckProject()]);
-const said = askTheChecker(checkProject, cases);
+/**
+ * The cases a project at a time, 250 of them. One project of every case held 3 GB of heap and died at
+ * Node's default limit on a 14 GB Linux laptop (2.2 GB there); 250 to a project peak at 770 MB, and
+ * every case gets the same findings either way — each is a file of its own, measured over all 2495.
+ */
+const PER_PROJECT = 250;
+const said = [];
+for (let at = 0; at < cases.length; at += PER_PROJECT) {
+  said.push(...askTheChecker(checkProject, cases.slice(at, at + PER_PROJECT)));
+}
 
 const baseIndex = new Map();
 for (const [index, one] of cases.entries()) if (one.isBase) baseIndex.set(`${one.site}|${one.base}`, index);
