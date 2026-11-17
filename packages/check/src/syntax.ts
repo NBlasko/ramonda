@@ -105,7 +105,12 @@ export interface CallbackOwner {
 
 export function callbackOwner(callback: ts.Node): CallbackOwner {
   const parameter =
-    ts.isArrowFunction(callback) || ts.isFunctionExpression(callback) ? callback.parameters[0]?.name : undefined;
+    ts.isArrowFunction(callback) ||
+    ts.isFunctionExpression(callback) ||
+    ts.isFunctionDeclaration(callback) ||
+    ts.isMethodDeclaration(callback)
+      ? callback.parameters[0]?.name
+      : undefined;
   const self = parameter !== undefined && ts.isIdentifier(parameter) ? parameter.text : undefined;
   const destructured = new Map<string, string>();
   const rests: ts.BindingElement[] = [];

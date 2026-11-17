@@ -75,6 +75,7 @@ import { ariaThatContradictsTheTag } from "./aria-that-contradicts-the-tag";
 import { roleThatFightsTheTag } from "./role-that-fights-the-tag";
 import { liveRegionThatContradictsItsRole } from "./live-region-that-contradicts-its-role";
 import { arrowFields } from "./arrow-fields";
+import { methodWrittenOver } from "./method-written-over";
 import { clockReadWhileRendering } from "./clock-read-while-rendering";
 import { refBuiltWhereItCannotBeKept } from "./ref-built-where-it-cannot-be-kept";
 import { stateWrittenWhileRendering } from "./state-written-while-rendering";
@@ -251,6 +252,7 @@ export {
 } from "./live-region-that-contradicts-its-role";
 
 export { arrowFields, type ArrowFieldIssue } from "./arrow-fields";
+export { methodWrittenOver, type MethodWrittenOverIssue } from "./method-written-over";
 export { asyncRender, type AsyncRenderIssue } from "./async-render";
 export { cachedReadOfAPlainField, type CachedReadOfAPlainFieldIssue } from "./cached-read-of-a-plain-field";
 export { watchOfAPropThatIsNotThere, type WatchOfAPropThatIsNotThereIssue } from "./watch-of-a-prop-that-is-not-there";
@@ -315,6 +317,7 @@ export const CLASS_RULES = [
   clockReadWhileRendering,
   refBuiltWhereItCannotBeKept,
   cachedReadOfAPlainField,
+  methodWrittenOver,
   arrowFields,
   browserUrl,
   domWrites,

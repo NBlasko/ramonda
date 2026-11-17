@@ -195,6 +195,8 @@ on the signals it reads — so a compute means the schema is rebuilt when what i
 and not otherwise:
 
 ```tsx
+import { Component, compute, state } from "@ramonda/core";
+
 class SignupForm extends Component {
   @state accountType: "personal" | "business" = "personal";
 

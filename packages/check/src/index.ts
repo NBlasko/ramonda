@@ -27,6 +27,7 @@ export type {
   ClockReadWhileRenderingIssue,
   RefBuiltWhereItCannotBeKeptIssue,
   CachedReadOfAPlainFieldIssue,
+  MethodWrittenOverIssue,
   ContextConsumedAboveItsProviderIssue,
   ControlWithNoLabelIssue,
   FormFieldWithoutWhatTheFormNeedsIssue,

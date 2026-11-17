@@ -4,7 +4,7 @@ import { hasDecorator, heritage, memberBody } from "./render-reach";
 // The field judgement itself, shared with `row-reads-a-plain-field`: which fields a CACHED reader
 // can go stale on, and which writes count. See `stale-field.ts` for why it is not written twice.
 import { staleFieldsOf } from "./stale-field";
-import type { Rule } from "./rule";
+import type { Resolver, Rule } from "./rule";
 
 /**
  * A CACHED reader — a `@compute` or a hook's props callback — reading an ordinary field that
@@ -69,37 +69,136 @@ export interface CachedReadOfAPlainFieldIssue {
   reader: "a `@compute`" | "a props callback";
   /** The member that will hold a stale value — the compute, or the field the `this.use` is on. */
   named: string;
-  /** The ordinary field it reads. */
+  /** The ordinary field it reads — or the variable, when `variable` says so. */
   field: string;
-  /** The member that writes the field, which is what makes it stale. */
+  /** A `let` or `var` declared outside the class rather than a field of it. */
+  variable: boolean;
+  /** The member or function that writes it, which is what makes it stale. */
   writtenBy: string;
   file: string;
   line: number;
   column: number;
 }
 
-/** A member's name when it has a plain one. */
-/** Every `this.X` read anywhere under a node. */
-function fieldsReadIn(node: ts.Node, declaring: readonly ts.ClassLikeDeclaration[]): Set<string> {
-  const found = new Set<string>();
+/** What a cached reader reads that can go stale: its class's fields, and variables outside it. */
+interface Reads {
+  /** Every `this.X` read, by name — the caller keeps the ones something writes later. */
+  fields: Set<string>;
+  /** A `let` or `var` declared outside the reader and written inside a function → that function. */
+  variables: Map<string, string>;
+}
+
+/** The name a report gives the function a write is in — a method, a function, or neither. */
+function writerName(node: ts.Node): string {
+  for (let at: ts.Node | undefined = node.parent; at !== undefined; at = at.parent) {
+    if ((ts.isFunctionDeclaration(at) || ts.isMethodDeclaration(at)) && at.name !== undefined) return at.name.getText();
+    if (ts.isVariableDeclaration(at) && ts.isIdentifier(at.name)) return at.name.text;
+    if (ts.isPropertyAssignment(at) || ts.isPropertyDeclaration(at)) return at.name.getText();
+    if (ts.isCallExpression(at) && ts.isIdentifier(at.expression))
+      return `a callback given to \`${at.expression.text}\``;
+  }
+  return "a function";
+}
+
+/** Whether a node runs inside some function — so not while the module is first evaluated. */
+function insideAFunction(node: ts.Node): boolean {
+  for (let at: ts.Node | undefined = node.parent; at !== undefined; at = at.parent) {
+    if (ts.isFunctionLike(at) || ts.isClassStaticBlockDeclaration(at)) return true;
+  }
+  return false;
+}
+
+/**
+ * Where a `let` or `var` is written after its module has been evaluated — the function holding the
+ * first such write, or `undefined` when nothing writes it then.
+ *
+ * Only the declaring file is read, and that is complete rather than a shortcut: an imported binding
+ * is read-only in every module but its own, so no other file can assign it.
+ */
+function laterWriterOf(declaration: ts.VariableDeclaration, symbol: ts.Symbol, resolve: Resolver): string | undefined {
+  let writer: string | undefined;
+  const note = (target: ts.Node): void => {
+    if (writer === undefined && ts.isIdentifier(target) && insideAFunction(target) && resolve(target) === symbol) {
+      writer = writerName(target);
+    }
+  };
+  (function walk(at: ts.Node): void {
+    if (writer !== undefined) return;
+    if (
+      ts.isBinaryExpression(at) &&
+      at.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
+      at.operatorToken.kind <= ts.SyntaxKind.LastAssignment
+    ) {
+      note(at.left);
+    }
+    if (
+      (ts.isPostfixUnaryExpression(at) || ts.isPrefixUnaryExpression(at)) &&
+      (at.operator === ts.SyntaxKind.PlusPlusToken || at.operator === ts.SyntaxKind.MinusMinusToken)
+    ) {
+      note(at.operand);
+    }
+    ts.forEachChild(at, walk);
+  })(declaration.getSourceFile());
+  return writer;
+}
+
+/** A `let` or `var` this identifier reads, when it is declared outside `scope` and outside `cls`. */
+function outerVariable(
+  id: ts.Identifier,
+  scope: ts.Node,
+  cls: ts.ClassLikeDeclaration,
+  resolve: Resolver,
+): { declaration: ts.VariableDeclaration; symbol: ts.Symbol } | undefined {
+  if (!isLocalRead(id)) return undefined;
+  const symbol = resolve(id);
+  const declaration = symbol?.declarations?.find((one): one is ts.VariableDeclaration => ts.isVariableDeclaration(one));
+  if (symbol === undefined || declaration === undefined) return undefined;
+  const list = declaration.parent;
+  if (!ts.isVariableDeclarationList(list) || (list.flags & (ts.NodeFlags.Const | ts.NodeFlags.Using)) !== 0)
+    return undefined;
+  const file = declaration.getSourceFile();
+  if (file.isDeclarationFile || file.fileName.includes("node_modules")) return undefined;
+  // Declared inside the function being read — a local of its own — or inside the class: neither is
+  // outside it, and a local written inside its own function is just a local.
+  const inside = (outer: ts.Node): boolean =>
+    outer.getSourceFile() === file && declaration.pos >= outer.pos && declaration.end <= outer.end;
+  if (inside(scope) || inside(cls)) return undefined;
+  return { declaration, symbol };
+}
+
+/**
+ * Everything a cached reader reads that can go stale — wherever the reading happens.
+ *
+ * A CALL through `this` is a method, and the method is FOLLOWED: `@compute get total() { return
+ * this.priced() }`, where `priced()` reads a plain `rate`, caches exactly the stale answer a direct
+ * read would — the compute tracks the signals read while it evaluated, wherever they were read.
+ * Reading only the compute's own body reported the version somebody writes on their first day and
+ * missed the version that ships. Measured with a plant.
+ *
+ * A GETTER read through `this` is followed the same way, because reading it runs it; a `@compute`
+ * getter is not, because it is a signal. And a call to a FUNCTION this program declares is
+ * followed too — it has no `this` of the component's, but it can read a module's `let`, and that
+ * goes stale in exactly the same way: nothing about writing a variable invalidates a cache.
+ *
+ * Bounded and cycle-guarded. A function the program does not declare — a library's, the platform's
+ * — is not followed, and what it reads is not known here.
+ */
+function readsIn(
+  node: ts.Node,
+  cls: ts.ClassLikeDeclaration,
+  declaring: readonly ts.ClassLikeDeclaration[],
+  resolve: Resolver,
+): Reads {
+  const reads: Reads = { fields: new Set(), variables: new Map() };
   // A props callback names its owner as `this`, its parameter, or the parameter destructured — see
-  // `callbackOwner`. A method the walk follows into has only `this`.
+  // `callbackOwner`. A method the walk follows into has only `this`, and a free function none.
   const callback = callbackOwner(node);
   const walked = new Set<ts.Node>();
 
-  /**
-   * A CALL through `this` is a method rather than a field read — and the method is FOLLOWED, which
-   * is the half that was missing.
-   *
-   * `@compute get total() { return this.priced() }`, where `priced()` reads a plain `rate`, caches
-   * exactly the stale answer a direct read would: the compute tracks the signals read while it
-   * evaluated, wherever they were read. Reading only the compute's own body reported the version
-   * somebody writes on their first day and missed the version that ships. Measured with a plant.
-   *
-   * Bounded and cycle-guarded, and it follows `this.` only — a free function has no `this`, so
-   * there is no field of this component's for it to read.
-   */
-  const walk = (at: ts.Node, depth: number): void => {
+  const memberNamed = (name: string): ts.ClassElement[] =>
+    declaring.flatMap((one) => one.members.filter((member) => memberName(member) === name));
+
+  const walk = (at: ts.Node, depth: number, hasThis: boolean): void => {
     if (depth > 6 || walked.has(at)) return;
     walked.add(at);
 
@@ -107,29 +206,90 @@ function fieldsReadIn(node: ts.Node, declaring: readonly ts.ClassLikeDeclaration
     (function look(current: ts.Node): void {
       // A function handed over in a props bag is not run by the callback — see `isHandedOver`.
       if (at === node && current !== node && isHandedOver(current)) return;
-      if (ts.isIdentifier(current) && owner.destructured.has(current.text) && isLocalRead(current)) {
-        found.add(owner.destructured.get(current.text) as string);
-      }
-      if (ts.isPropertyAccessExpression(current) && owner.is(current.expression) && ts.isIdentifier(current.name)) {
-        const name = current.name.text;
-        if (ts.isCallExpression(current.parent) && current.parent.expression === current) {
-          for (const cls of declaring) {
-            for (const member of cls.members) {
-              if (member.name === undefined || !ts.isIdentifier(member.name) || member.name.text !== name) continue;
-              const body = memberBody(member);
-              if (body) walk(body, depth + 1);
-            }
-          }
-        } else {
-          found.add(name);
+      if (ts.isIdentifier(current)) {
+        if (hasThis && owner.destructured.has(current.text) && isLocalRead(current)) {
+          reads.fields.add(owner.destructured.get(current.text) as string);
         }
+        const outer = outerVariable(current, at === node ? node : (at.parent ?? at), cls, resolve);
+        if (outer !== undefined && !reads.variables.has(current.text)) {
+          const writer = laterWriterOf(outer.declaration, outer.symbol, resolve);
+          if (writer !== undefined) reads.variables.set(current.text, writer);
+        }
+      }
+      if (
+        hasThis &&
+        ts.isPropertyAccessExpression(current) &&
+        owner.is(current.expression) &&
+        ts.isIdentifier(current.name)
+      ) {
+        const name = current.name.text;
+        const called = ts.isCallExpression(current.parent) && current.parent.expression === current;
+        let followed = false;
+        for (const member of memberNamed(name)) {
+          if (called) {
+            const body = memberBody(member);
+            if (body) walk(body, depth + 1, true);
+            followed = true;
+          } else if (ts.isGetAccessorDeclaration(member) && !hasDecorator(member, "compute", resolve) && member.body) {
+            walk(member.body, depth + 1, true);
+            followed = true;
+          }
+        }
+        if (!called && !followed) reads.fields.add(name);
+      }
+      if (ts.isCallExpression(current) && ts.isIdentifier(current.expression)) {
+        const body = projectFunctionBody(current.expression, resolve);
+        if (body !== undefined) walk(body, depth + 1, false);
       }
       ts.forEachChild(current, look);
     })(at);
   };
 
-  walk(node, 0);
-  return found;
+  walk(node, 0, true);
+  return reads;
+}
+
+/** The function a name stands for, when this program declares it — or `undefined`. */
+function projectFunction(name: ts.Expression, resolve: Resolver): ts.FunctionLikeDeclaration | undefined {
+  const declaration = resolve(name)?.declarations?.[0];
+  if (declaration === undefined) return undefined;
+  const file = declaration.getSourceFile();
+  if (file.isDeclarationFile || file.fileName.includes("node_modules")) return undefined;
+  if (ts.isFunctionDeclaration(declaration)) return declaration;
+  if (ts.isVariableDeclaration(declaration) && declaration.initializer !== undefined) {
+    const value = declaration.initializer;
+    if (ts.isArrowFunction(value) || ts.isFunctionExpression(value)) return value;
+  }
+  return undefined;
+}
+
+function projectFunctionBody(name: ts.Expression, resolve: Resolver): ts.Node | undefined {
+  return projectFunction(name, resolve)?.body;
+}
+
+/** The function a `this.use` call's second argument is — written there, named, or a method. */
+function propsCallback(
+  argument: ts.Expression | undefined,
+  declaring: readonly ts.ClassLikeDeclaration[],
+  resolve: Resolver,
+): ts.Node | undefined {
+  if (argument === undefined) return undefined;
+  if (ts.isArrowFunction(argument) || ts.isFunctionExpression(argument)) return argument;
+  if (ts.isIdentifier(argument)) return projectFunction(argument, resolve);
+  if (
+    ts.isPropertyAccessExpression(argument) &&
+    argument.expression.kind === ts.SyntaxKind.ThisKeyword &&
+    ts.isIdentifier(argument.name)
+  ) {
+    const name = argument.name.text;
+    for (const one of declaring) {
+      const method = one.members.find(
+        (member): member is ts.MethodDeclaration => ts.isMethodDeclaration(member) && memberName(member) === name,
+      );
+      if (method?.body !== undefined) return method;
+    }
+  }
+  return undefined;
 }
 
 export const cachedReadOfAPlainField = {
@@ -138,12 +298,13 @@ export const cachedReadOfAPlainField = {
   report: {
     severity: "error",
     reportedWhen:
-      "a `@compute` or a hook's props callback reads an ordinary field that is written after the first render, so the cached value goes stale",
+      "a `@compute` or a hook's props callback reads an ordinary field written after the first render, or a `let` written inside a function, so the cached value goes stale",
     alsoReportedAs: ["RMD027"],
     heading: (found) => `${found.length} cached read(s) that can hold a stale value:`,
     lines: (issue) => [
       `  ${issue.file}:${issue.line}:${issue.column}`,
-      `    <${issue.component}>'s \`${issue.named}\` — ${issue.reader} — reads \`${issue.field}\`, ` +
+      `    <${issue.component}>'s \`${issue.named}\` — ${issue.reader} — reads ` +
+        `${issue.variable ? "the variable " : ""}\`${issue.field}\`, ` +
         `which is not state: \`${issue.writtenBy}\` writes it, and that invalidates nothing.`,
     ],
     advice:
@@ -155,7 +316,9 @@ export const cachedReadOfAPlainField = {
       "from before the field changed. Nothing throws and nothing is reported — the number is simply\n" +
       "wrong.\n\n" +
       "Mark the field `@state`. That is what it is: data the render depends on and something\n" +
-      "changes. Nothing else about the component has to move.\n\n" +
+      "changes. Nothing else about the component has to move. A variable outside the class is the\n" +
+      "same fault one step further out: hold the value in `@state` on the component or a hook that\n" +
+      "owns it, and read it from there.\n\n" +
       "A field nothing writes after the first render is NOT reported — a constant a compute reads\n" +
       "can never go stale, and neither can one written in the constructor or `@created`.\n\n",
   },
@@ -170,16 +333,35 @@ export const cachedReadOfAPlainField = {
     const writtenBy = staleFieldsOf(cls, resolve);
     /** This class and its bases — what a `this.method()` hop out of a cached reader can land in. */
     const declaring = [cls, ...heritage(cls, resolve)];
-    if (writtenBy.size === 0) return [];
 
     const found: CachedReadOfAPlainFieldIssue[] = [];
 
     /** One reported read, whichever kind of cached reader found it. */
     const report = (node: ts.Node, reader: CachedReadOfAPlainFieldIssue["reader"], named: string): void => {
-      for (const field of fieldsReadIn(node, declaring)) {
+      const reads = readsIn(node, cls, declaring, resolve);
+      for (const field of reads.fields) {
         const writer = writtenBy.get(field);
         if (writer === undefined) continue;
-        found.push({ component: self.name, reader, named, field, writtenBy: writer, ...positionOf(node) });
+        found.push({
+          component: self.name,
+          reader,
+          named,
+          field,
+          variable: false,
+          writtenBy: writer,
+          ...positionOf(node),
+        });
+      }
+      for (const [variable, writer] of reads.variables) {
+        found.push({
+          component: self.name,
+          reader,
+          named,
+          field: variable,
+          variable: true,
+          writtenBy: writer,
+          ...positionOf(node),
+        });
       }
     };
 
@@ -193,17 +375,19 @@ export const cachedReadOfAPlainField = {
       /**
        * `x = this.use(Hook, () => ({ … }))` — the SECOND argument, which is the props callback.
        *
-       * Only a function written there is walked. `this.use(Hook, someFactory)` hands over a value
-       * this cannot follow without dataflow, and a plain object rather than a callback is a
+       * Written there, or NAMED there: `this.use(Hook, makeProps)` is the same callback declared
+       * somewhere else, and whoever writes it should not have to know that the inline spelling is
+       * the one this reads. A name this program declares is followed to its function; a method of
+       * the class, `this.use(Hook, this.build)`, to its body. A value it cannot name — a parameter,
+       * a library's function — is not known here. A plain object rather than a callback is a
        * different fault with its own report (`RMD055`, which the types refuse anyway).
        */
       if (!ts.isPropertyDeclaration(member) || member.initializer === undefined) continue;
       const call = member.initializer;
       if (!ts.isCallExpression(call) || !isThisUse(call)) continue;
 
-      const factory = call.arguments[1];
+      const factory = propsCallback(call.arguments[1], declaring, resolve);
       if (factory === undefined) continue;
-      if (!ts.isArrowFunction(factory) && !ts.isFunctionExpression(factory)) continue;
 
       const named = memberName(member);
       if (named !== undefined) report(factory, "a props callback", named);
