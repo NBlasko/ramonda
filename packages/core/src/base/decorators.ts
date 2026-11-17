@@ -863,8 +863,10 @@ function buildKey(args: unknown[]): string | undefined {
     const arg = args[i];
     const typeofArg = typeof arg;
     if (typeofArg !== "string" && typeofArg !== "number" && typeofArg !== "boolean") return undefined;
-    if (i > 0) key += "|";
-    key += `${typeofArg[0]}:${String(arg)}`;
+    // Each argument with its length in front, so no text an argument holds can pass for the edge between
+    // two: with a separator, `("a|s:b", "c")` and `("a", "b|s:c")` built one key and shared one handler.
+    const text = String(arg);
+    key += `${typeofArg[0]}${text.length}:${text}`;
   }
   return key;
 }

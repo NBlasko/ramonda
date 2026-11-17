@@ -420,3 +420,32 @@ describe("a component that goes away", () => {
     expect({ held: held > 0, left: listeners() }).toEqual({ held: true, left: 0 });
   });
 });
+
+describe("@memoized with more than one argument", () => {
+  test("keeps two calls apart whatever their strings hold — no text passes for the edge between two", async () => {
+    const seen: string[] = [];
+    class Picker extends Component {
+      @memoized
+      pick(first: string, second: string) {
+        return () => seen.push(`${first} + ${second}`);
+      }
+      render() {
+        return (
+          <div>
+            <button id="one" onclick={this.pick("a|s:b", "c")}>
+              one
+            </button>
+            <button id="two" onclick={this.pick("a", "b|s:c")}>
+              two
+            </button>
+          </div>
+        );
+      }
+    }
+    const app = await getDOM<Picker>(<Picker />);
+    await app.settle();
+    (app.container.querySelector("#one") as HTMLElement).click();
+    (app.container.querySelector("#two") as HTMLElement).click();
+    expect(seen).toEqual(["a|s:b + c", "a + b|s:c"]);
+  });
+});
