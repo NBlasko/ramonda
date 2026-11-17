@@ -73,8 +73,10 @@
   "scripts": {
     "dev": "tsup --watch",
     "build": "tsup && ramonda-check tsconfig.json --graph dist/ramonda-graph.json && ramonda-check-bundle dist",
-    "test": "vitest run --coverage && pnpm test:prod",
+    "test": "vitest run --coverage && pnpm test:compiled && pnpm test:prod && pnpm test:prod:compiled",
+    "test:compiled": "vitest run --config vitest.compiled.config.ts",
     "test:prod": "NODE_ENV=production vitest run --config vitest.prod.config.ts --coverage --coverage.reportsDirectory=coverage-prod",
+    "test:prod:compiled": "NODE_ENV=production vitest run --config vitest.prod.compiled.config.ts",
     "check-types": "tsc --noEmit",
     "lint": "oxlint",
     "format": "biome format --write src"

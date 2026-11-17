@@ -113,7 +113,10 @@ export interface CssPluginLike {
   config(this: unknown, userConfig: unknown, environment: { mode?: string; command?: string } | undefined): object;
   resolveId(this: unknown, id: string): string | null;
   load(this: unknown, id: string): string | { code: string; map: ViteMap } | null;
-  transform(this: unknown, code: string, id: string): { code: string; map: ViteMap } | null;
+  transform: {
+    order: "pre";
+    handler(this: unknown, code: string, id: string): { code: string; map: ViteMap } | null;
+  };
   handleHotUpdate(this: unknown, context: HotUpdate): Promise<ModulesBack>;
   hotUpdate(this: unknown, context: HotUpdate): Promise<ModulesBack>;
   generateBundle(this: unknown, options: unknown, bundle: Bundle): void;
@@ -565,49 +568,57 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
       return { code: css, map: forVite(map) };
     },
 
-    transform(this: unknown, code, id) {
-      // Our own stylesheet, coming back round. Read by `load` and never transformed.
-      if (id.endsWith(SUFFIX)) return null;
+    /**
+     * `order: "pre"` puts it before every other transform, `@ramonda/build`'s JSX compiler's too: what it
+     * rewrites is syntax no JavaScript parser reads, so a compiler that came first would find nothing
+     * it can parse and leave the whole file to the JSX transform.
+     */
+    transform: {
+      order: "pre",
+      handler(this: unknown, code, id) {
+        // Our own stylesheet, coming back round. Read by `load` and never transformed.
+        if (id.endsWith(SUFFIX)) return null;
 
-      const file = id.split("?")[0];
-      if (file.endsWith(".css") && !file.includes("node_modules") && !id.startsWith("\0")) {
-        checkStylesheet(file, code);
-        return null;
-      }
-      // A query string is Vite's — `?used`, `?v=hash`, `?worker`. A file skipped because of one is a
-      // file whose blocks silently do not compile.
-      if (!fileMayHoldABlock(file) || file.includes("node_modules") || id.startsWith("\0")) return null;
+        const file = id.split("?")[0];
+        if (file.endsWith(".css") && !file.includes("node_modules") && !id.startsWith("\0")) {
+          checkStylesheet(file, code);
+          return null;
+        }
+        // A query string is Vite's — `?used`, `?v=hash`, `?worker`. A file skipped because of one is a
+        // file whose blocks silently do not compile.
+        if (!fileMayHoldABlock(file) || file.includes("node_modules") || id.startsWith("\0")) return null;
 
-      const result = compile(file, code);
-      if (result === undefined) return null;
+        const result = compile(file, code);
+        if (result === undefined) return null;
 
-      /**
-       * The import that carries this file's rules, appended rather than prepended: the CSS is applied
-       * to elements this module creates, and a stylesheet's own position in the file decides nothing
-       * about that. Appending leaves every source position — and therefore the map — untouched.
-       */
-      const own = sheet.cssFor(file);
-      /**
-       * The import that carries the project's declared TOKENS, beside the one carrying its rules.
-       *
-       * The generated `:root` is written to disk, and with nothing importing it
-       * `var(--color-accent-main)` resolves to its registered initial value and nothing else:
-       * correct classes, unstyled page.
-       *
-       * Emitted beside the block import rather than asked of the project, for the same reason
-       * codegen runs itself: a line a project has to remember is a line most projects will not
-       * have. Both bundlers dedupe an import by path, so the declarations arrive once however many
-       * modules ask for them.
-       */
-      const declared = variablesSheetFor(file);
-      const code2 =
-        own === ""
-          ? result.code
-          : `${result.code}\n` +
-            `${declared === undefined ? "" : `import ${JSON.stringify(declared)};\n`}` +
-            `import ${JSON.stringify(file + SUFFIX)};\n`;
+        /**
+         * The import that carries this file's rules, appended rather than prepended: the CSS is applied
+         * to elements this module creates, and a stylesheet's own position in the file decides nothing
+         * about that. Appending leaves every source position — and therefore the map — untouched.
+         */
+        const own = sheet.cssFor(file);
+        /**
+         * The import that carries the project's declared TOKENS, beside the one carrying its rules.
+         *
+         * The generated `:root` is written to disk, and with nothing importing it
+         * `var(--color-accent-main)` resolves to its registered initial value and nothing else:
+         * correct classes, unstyled page.
+         *
+         * Emitted beside the block import rather than asked of the project, for the same reason
+         * codegen runs itself: a line a project has to remember is a line most projects will not
+         * have. Both bundlers dedupe an import by path, so the declarations arrive once however many
+         * modules ask for them.
+         */
+        const declared = variablesSheetFor(file);
+        const code2 =
+          own === ""
+            ? result.code
+            : `${result.code}\n` +
+              `${declared === undefined ? "" : `import ${JSON.stringify(declared)};\n`}` +
+              `import ${JSON.stringify(file + SUFFIX)};\n`;
 
-      return { code: code2, map: forVite(result.map) };
+        return { code: code2, map: forVite(result.map) };
+      },
     },
 
     /**

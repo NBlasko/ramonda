@@ -1,5 +1,6 @@
 import { IS_LIST, ORIGIN_SYM, OWN_CHILDREN } from "./constants";
 import { isListNode, isVNode } from "../vdom/guards";
+import { blockOf, isChildHole } from "../core/block";
 
 type Bag = Record<string, unknown>;
 
@@ -90,6 +91,22 @@ function same(a: unknown, b: unknown, walk: Walk): boolean {
     // The component that rendered it: a node is reused only for a vnode built where it was
     // (`areSimilarNodes`), so the same markup from another builder renders as something else.
     if (a[ORIGIN_SYM] !== b[ORIGIN_SYM]) return false;
+    // A compiled block keeps what it says in its template and its holes: the same template, and each
+    // hole saying the same — a child hole's children opened as an element's are, an attribute's value as
+    // any value is.
+    const ba = blockOf(a);
+    const bb = blockOf(b);
+    if (ba !== undefined || bb !== undefined) {
+      if (ba === undefined || bb === undefined || ba.template !== bb.template) return false;
+      if (!sameMembers(a.attributes ?? {}, b.attributes ?? {}, walk)) return false;
+      for (let i = 0; i < ba.values.length; i++) {
+        const x = ba.values[i];
+        const y = bb.values[i];
+        const children = isChildHole(ba.template, i) && Array.isArray(x) && Array.isArray(y);
+        if (!(children ? sameMembers(x, y, walk) : same(x, y, walk))) return false;
+      }
+      return true;
+    }
     // An element's own children array is built by `h` with it; a component's arrives among its
     // attributes and is opened only when JSX made it.
     return (

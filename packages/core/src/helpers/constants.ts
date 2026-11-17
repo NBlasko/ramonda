@@ -19,7 +19,12 @@ export { svgElements } from "@ramonda/dom-facts";
  * twenty-one names apart, and a test that pinned them together was the confession that there were
  * two.
  */
-export { BOOLEAN_ATTRIBUTES, keptInAProperty } from "@ramonda/dom-facts";
+export {
+  BOOLEAN_ATTRIBUTES,
+  keptInAProperty,
+  ATTRIBUTE_OF_PROPERTY,
+  attributeWrittenBy,
+} from "@ramonda/dom-facts";
 
 export const DONE = 5;
 export type DONE = 5;
@@ -29,6 +34,8 @@ export const COMPONENT_TYPE = 7;
 export type COMPONENT_TYPE = 7;
 
 export const IS_SVG = Symbol("isSvg");
+/** On a compiled block's vnode: its template and hole values. See `core/block.ts`. */
+export const BLOCK = Symbol("block");
 export const KEY_SYM = Symbol("key");
 /**
  * The JSX child slot this node was built for — its index among its parent's children,

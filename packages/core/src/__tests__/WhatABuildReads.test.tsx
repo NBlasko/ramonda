@@ -1,4 +1,5 @@
 import { describe, test, expect, vi } from "vitest";
+import { COMPILED } from "../test/compiled";
 import { getDOM } from "../test/setup";
 import { state, destroyed } from "../base/decorators";
 import { Component, __h, createRef, list, type EventOn } from "../index";
@@ -382,7 +383,8 @@ describe("an element's own children on an update", () => {
     });
   });
 
-  test("a child someone else took out is put back on the next render", async () => {
+  // The jsx() path's own: a compiled template never checks its static children again — see CompiledBlock.
+  test.skipIf(COMPILED)("a child someone else took out is put back on the next render", async () => {
     const app = await getDOM<Rows>(<Rows />);
     await app.settle();
     (app.container.querySelector("#i2") as HTMLElement).remove();
@@ -413,7 +415,8 @@ describe("an element's own children on an update", () => {
     expect(Array.from(ul.children, (li) => li.id)).toEqual(["i3", "i1", "i2"]);
   });
 
-  test("a child someone else replaced is claimed, not built a second time beside it", async () => {
+  // The jsx() path's own: a compiled template never checks its static children again — see CompiledBlock.
+  test.skipIf(COMPILED)("a child someone else replaced is claimed, not built a second time beside it", async () => {
     class Copy extends Component {
       @state renders = 0;
       render() {
@@ -433,7 +436,8 @@ describe("an element's own children on an update", () => {
     expect({ text: button.textContent, nodes: button.childNodes.length }).toEqual({ text: "Copy", nodes: 1 });
   });
 
-  test("a child a @destroyed takes out while the order stays is put back", async () => {
+  // The jsx() path's own: a compiled template never checks its static children again — see CompiledBlock.
+  test.skipIf(COMPILED)("a child a @destroyed takes out while the order stays is put back", async () => {
     let victim: Element | null = null;
     class Widget extends Component {
       @destroyed
@@ -841,7 +845,8 @@ describe("an element with one child on an update", () => {
     });
   });
 
-  test("a child someone else took out is put back on the next render", async () => {
+  // The jsx() path's own: a compiled template never checks its static children again — see CompiledBlock.
+  test.skipIf(COMPILED)("a child someone else took out is put back on the next render", async () => {
     const app = await getDOM<Label>(<Label />);
     await app.settle();
     const label = app.container.querySelector("#label") as HTMLElement;

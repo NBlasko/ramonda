@@ -96,3 +96,7 @@ export function Fragment(): never {
       "wanted the vnodes.",
   );
 }
+
+// What `@ramonda/build`'s JSX compiler writes for an element tree whose shape never changes — here, beside
+// `jsx`, because only the compiler calls it. See `core/block.ts`.
+export { template as __template, block as __block } from "./core/block";

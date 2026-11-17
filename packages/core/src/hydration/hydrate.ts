@@ -2,7 +2,8 @@ import { enclosingBlock } from "../core/enclosingBlock";
 import { COMPONENT_TYPE, CHILD_RECORD, ORIGIN_SYM, REQUEST_ATTR } from "../helpers/constants";
 import { className, displayName } from "../helpers/utils";
 import { installClientRequestScope } from "./requestContext";
-import { applyChangesOnAttributes, formatAttributes } from "../core/Attribute";
+import { applyChangesOnAttributes, formatAttributes, writeHoleAttributes } from "../core/Attribute";
+import { adoptBlock, blockOf, type BlockMiss, type BlockVNode } from "../core/block";
 import { generateRenderOutput } from "../helpers/generateRenderOutput";
 import { seedWatchProps } from "../helpers/watchProps";
 import { runComponentEffects } from "../reactivity/effect";
@@ -284,6 +285,36 @@ function hydrateElement(
 ): EnhancedChildNode | null {
   if (!cursor || cursor.nodeName !== vnode.name) {
     return hydrationFallback(vnode, placeholder, cursor, parent);
+  }
+
+  // A compiled block adopts the server's element hole by hole — see `adoptBlock`.
+  if (blockOf(vnode) !== undefined) {
+    const miss: BlockMiss = { expected: `<${vnodeName(vnode)}>`, found: cursor };
+    const adopted = adoptBlock(
+      vnode as BlockVNode,
+      cursor as unknown as Element,
+      {
+        // Left with more than it claimed — this level, or any level inside it, a nested block's among them:
+        // a hole that holds the same value next time is not diffed, so nothing below it would be reached.
+        children: (children, element) => {
+          const before = leftBehind;
+          hydrateChildren(children, placeholder, element);
+          return leftBehind !== before;
+        },
+        attributes: (element, attributes) => {
+          if (__DEV__) reportAttributeMismatches(placeholder, element, formatAttributes(attributes));
+          writeHoleAttributes(element as unknown as ChildNode, attributes);
+        },
+      },
+      miss,
+    );
+    if (adopted) return nextOf(cursor);
+    // Named where it first differs, inside the element: the tag outside is the template's.
+    if (__DEV__) {
+      const found = typeof miss.found === "string" ? miss.found : describeFound(miss.found);
+      reportStructureMismatch(placeholder, `${miss.expected}, from its compiled template,`, found);
+    }
+    return hydrationFallback(vnode, placeholder, cursor, parent, false);
   }
 
   if (__DEV__) {
@@ -661,6 +692,13 @@ function closeBlock(open: Comment, walk: HydrationWalk, component: BaseComponent
   if (__DEV__ && fromServer > 0) reportBlockLengthMismatch(component, fromServer);
 }
 
+/**
+ * How many levels hydration has left holding nodes the server sent beyond what the render claimed. A
+ * compiled block asks it around a hole's children, which reach any depth (see `adoptBlock`).
+ */
+let leftBehind = 0;
+
+/** Where the server sent more than the render claimed, the nodes are left in place, reported and counted. */
 function hydrateChildren(
   vnodeChildren: unknown[] | undefined,
   placeholder: MaybeComponent,
@@ -699,6 +737,7 @@ function hydrateChildren(
       walk.count + extra,
     );
   }
+  if (walk.cursor !== null) leftBehind++;
 }
 
 /**
@@ -1077,8 +1116,10 @@ function hydrationFallback(
   placeholder: MaybeComponent,
   existingNode: EnhancedChildNode | null,
   parent: Node,
+  /** `false` when the caller has said already what differs. */
+  report = true,
 ): EnhancedChildNode | null {
-  if (__DEV__) {
+  if (__DEV__ && report) {
     reportStructureMismatch(placeholder, `<${vnodeName(vnode)}>`, describeFound(existingNode));
   }
   const fresh = diffAndMerge(vnode, placeholder, undefined);

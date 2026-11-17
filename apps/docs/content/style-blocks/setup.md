@@ -62,9 +62,10 @@ A server-rendered app from [`create-ramonda`](/guide/installation) runs Vite in 
 esbuild for the production build, so the plugin goes in two files:
 
 - `vite.config.ts`: add `ramondaCss()` to the `plugins` array beside `ramonda()`.
-- `scripts/build.mjs`: put `ramondaCss({ filter: /src\/.*\.tsx?$/ })` in the empty `plugins` array.
-  Both bundles need it. The server bundle writes the class names into the HTML, and the client
-  bundle carries the rules.
+- `scripts/build.mjs`: put `ramondaCss({ filter: /src\/.*\.tsx?$/ })` in the `plugins` array, after
+  `ramonda()`. Both bundles need it. The server bundle writes the class names into the HTML, and the
+  client bundle carries the rules. The order matters to esbuild, which hands a file to the first plugin
+  that loads it: `ramonda()` compiles the JSX of a file with no block, and passes one with a block on.
 
 You don't add a `<link>`. The build writes the page the server sends, and it links the stylesheet
 when there is one. In development the rules come with the script, so a page can show unstyled for a

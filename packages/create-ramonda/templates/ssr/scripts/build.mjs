@@ -24,7 +24,7 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { build } from "esbuild";
-import { ramondaOptions, ramondaDefine } from "@ramonda/build/esbuild";
+import { ramonda, ramondaOptions, ramondaDefine } from "@ramonda/build/esbuild";
 
 // A production build, whatever the shell exports: `ramondaDefine` takes `import.meta.env.DEV` from
 // `NODE_ENV`, and a shell with `NODE_ENV=development` would otherwise ship every development branch.
@@ -41,8 +41,9 @@ const shared = {
   // Through `ramondaDefine` because writing `define` plainly would drop the entries that make
   // `import.meta.env.RAMONDA_PUBLIC_*` readable — see its own note.
   define: ramondaDefine(),
-  // Where a bundler plugin goes, in both builds at once — `@ramonda/css`'s, for instance.
-  plugins: [],
+  // `ramonda()` compiles the JSX, as the dev server's plugin does, so production runs the same code.
+  // Another bundler plugin goes after it, in both builds at once — `@ramonda/css`'s, for instance.
+  plugins: [ramonda()],
 };
 
 // `public/` — a favicon, `robots.txt`, images, a JSON file the site fetches — is copied, and the

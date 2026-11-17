@@ -22,7 +22,7 @@ describe("an error that is not a refusal", () => {
   test("comes out as itself, with no position attached", async () => {
     const { ramondaCss } = await import("../adapters/vite");
     const plugin = ramondaCss();
-    const transform = plugin.transform as (this: unknown, code: string, id: string) => unknown;
+    const transform = plugin.transform.handler as (this: unknown, code: string, id: string) => unknown;
 
     expect(() =>
       transform.call({}, `const a = <div className={@@( display: flex; )}>x</div>;\n`, "/src/Card.tsx"),

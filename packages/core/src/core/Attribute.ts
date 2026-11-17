@@ -1,5 +1,14 @@
 import type { EnhancedHTMLNode } from "../types/vdom";
-import { IS_SVG, KEY_SYM, STYLE_SYM, REF_SYM, BOOLEAN_ATTRIBUTES, keptInAProperty } from "../helpers/constants";
+import {
+  IS_SVG,
+  KEY_SYM,
+  STYLE_SYM,
+  REF_SYM,
+  BOOLEAN_ATTRIBUTES,
+  keptInAProperty,
+  ATTRIBUTE_OF_PROPERTY,
+  attributeWrittenBy,
+} from "../helpers/constants";
 import { checkBooleanAttribute } from "../debug/booleanAttribute";
 import {
   INPUT_OWN_EVENTS,
@@ -13,8 +22,17 @@ import {
 import { queueBeforeTheMounts } from "./commit";
 type NodeAttributes = Record<string, any>;
 
+/**
+ * An attribute record this file builds itself, from a page or from holes: with no prototype, so an
+ * attribute named `__proto__`, `constructor` or `hasOwnProperty` is an entry like any other. A record an
+ * author built — the props of an element — is read by its own properties instead.
+ */
+export function record(): NodeAttributes {
+  return Object.create(null) as NodeAttributes;
+}
+
 /** What an element built this pass already carries: nothing. Read, never written. */
-const NONE: NodeAttributes = Object.freeze({});
+const NONE: NodeAttributes = Object.freeze(record());
 
 /**
  * What the diff wrote on an element last pass — the attributes it is compared with on the next.
@@ -80,6 +98,34 @@ export function applyChangesOnAttributes(
     writeDefaults(enhancedNode as unknown as HTMLInputElement, rawNextAttributes, onServer);
     if (!onServer) controlInput(enhancedNode as unknown as HTMLInputElement, rawNextAttributes);
   }
+}
+
+/**
+ * A compiled block's attribute holes, written. Only the names its holes give are this diff's — the
+ * template's own attributes are set where it was built, and read back from the page they would be taken
+ * away as attributes the render no longer gives. So where the element holds no record — the server's,
+ * being hydrated, or one whose last pass threw — the record it starts from is the page's value of each of
+ * those names: a value the page holds and the render does not is still taken away.
+ */
+export function writeHoleAttributes(
+  enhancedNode: ChildNode,
+  rawNextAttributes: NodeAttributes,
+  onServer = false,
+): void {
+  if ((enhancedNode as Written)[WRITTEN] === undefined) {
+    // Matched by the attribute each name writes: the page holds `readonly` where the hole says `readOnly`.
+    // A compiled element writes each attribute from one hole — one written twice is left to `jsx()`.
+    const svg = (enhancedNode as EnhancedHTMLNode)[IS_SVG] === true;
+    const holeOf = new Map<string, string>();
+    for (const name in rawNextAttributes) holeOf.set(attributeWrittenBy(name, svg), name);
+    const written: NodeAttributes = record();
+    for (const [name, value] of Object.entries(getAllFromNode(enhancedNode as EnhancedHTMLNode))) {
+      const hole = holeOf.get(attributeWrittenBy(name, svg));
+      if (hole !== undefined) written[hole] = value;
+    }
+    (enhancedNode as Written)[WRITTEN] = written;
+  }
+  applyChangesOnAttributes(enhancedNode, rawNextAttributes, onServer);
 }
 
 /**
@@ -209,7 +255,7 @@ function toDashed(name: string): string {
 function objectStyleToString(styleObject: Record<string, string>): string {
   let styleString = "";
   for (const key in styleObject) {
-    if (styleObject.hasOwnProperty(key)) {
+    if (Object.hasOwn(styleObject, key)) {
       const value = styleObject[key];
       // A declaration with no value is not a declaration; emitting `key:;` would
       // make the browser drop it, and on some engines the whole rule with it.
@@ -310,6 +356,13 @@ export function writeValue(enhancedNode: EnhancedHTMLNode, value: unknown, onSer
  * still ticked, a video still audible, a checkbox still mixed.
  */
 const PROPERTY_TRUTH = new Set(["checked", "muted", "indeterminate"]);
+
+/**
+ * The names `formPropertyDiverged` compares with the element itself — `value` and `PROPERTY_TRUTH`: a
+ * user moves them on the element, so they reach the attribute diff on every render, however equal their
+ * value is to the last one. A compiled block asks this of each attribute hole (`core/block.ts`).
+ */
+export const COMPARED_WITH_THE_ELEMENT: ReadonlySet<string> = new Set(["value", ...PROPERTY_TRUTH]);
 // `formPropertyDiverged` names the same three, as comparisons: it is asked of every equal attribute.
 
 function attachNextOnenhancedNode(
@@ -319,7 +372,7 @@ function attachNextOnenhancedNode(
   onServer: boolean,
 ) {
   for (const name in nextAttributes) {
-    if (!nextAttributes.hasOwnProperty(name)) continue;
+    if (!Object.hasOwn(nextAttributes, name)) continue;
     const nextAttribute = nextAttributes[name];
 
     if (isInvisibleOnScreen(nextAttribute, name)) {
@@ -539,8 +592,14 @@ function setNextOnenhancedNode(enhancedNode: EnhancedHTMLNode, name: string, val
   enhancedNode.setAttribute(name, value);
 }
 
-/** The DOM's name for each attribute the JSX spells differently — read back the way it was written. */
-const ALIASED_BACK: Readonly<Record<string, string>> = { class: "className", for: "htmlFor" };
+/**
+ * The DOM's name for each attribute the JSX spells differently — read back the way it was written. With no
+ * prototype, as `ATTRIBUTE_OF_PROPERTY` has none: a page's attribute may be named `constructor`.
+ */
+const ALIASED_BACK: Readonly<Record<string, string>> = Object.assign(
+  Object.create(null) as Record<string, string>,
+  Object.fromEntries(Object.entries(ATTRIBUTE_OF_PROPERTY).map(([property, attribute]) => [attribute, property])),
+);
 
 function removeByQualifiedName(enhancedNode: EnhancedHTMLNode, name: string) {
   if (name === "key") {
@@ -620,7 +679,7 @@ function formPropertyDiverged(enhancedNode: EnhancedHTMLNode, name: string, next
 }
 
 function getAllFromNode(enhancedNode: EnhancedHTMLNode): Record<string, any> {
-  const nodeAttributes: Record<string, any> = {};
+  const nodeAttributes: Record<string, any> = record();
 
   /**
    * Handed back under the name the JSX WROTE, which is why `_listeners` is keyed by it.
@@ -675,7 +734,8 @@ function removePreviousFromenhancedNode(
   nextAttributes: NodeAttributes,
 ) {
   for (const name in previousAttributes) {
-    const nextAttribute = nextAttributes[name];
+    // Its own: a page's attribute may be named `constructor`, which every object answers otherwise.
+    const nextAttribute = Object.hasOwn(nextAttributes, name) ? nextAttributes[name] : undefined;
 
     if (!isInvisibleOnScreen(nextAttribute, name)) continue;
     // Nothing was written for it last pass either — a record keeps a name it held as `undefined` or
@@ -704,6 +764,27 @@ function removePreviousFromenhancedNode(
       removeByQualifiedName(enhancedNode, name);
     }
   }
+}
+
+/**
+ * Takes away what only the server wrote on an element a compiled block adopts — an attribute `next` does
+ * not name, the exposed request's stamp among them — by the attribute diff's own removal, which keeps
+ * what it keeps: an attribute a default holds (see {@link heldAsADefault}).
+ *
+ * What `next` names is matched folded on an HTML element, where the parser folded the page's names, and
+ * as written on an SVG one, where it did not: a block writes its baked attributes once, so one the diff
+ * took away for its spelling would not come back.
+ */
+export function dropServerOnly(element: Element, next: NodeAttributes, svg: boolean): void {
+  const named = new Set<string>();
+  for (const name in next) named.add(attributeWrittenBy(name, svg));
+  const page: NodeAttributes = record();
+  for (const attribute of Array.from(element.attributes)) {
+    if (!named.has(attributeWrittenBy(attribute.name, svg))) {
+      page[ALIASED_BACK[attribute.name] ?? attribute.name] = attribute.value;
+    }
+  }
+  removePreviousFromenhancedNode(element as unknown as EnhancedHTMLNode, page, next);
 }
 
 /**
@@ -776,7 +857,7 @@ function isPrimitive(val: unknown): boolean {
  */
 // A `ref` is an object too, and is applied on every pass on its own account — see
 // `getPreviousFromenhancedNode`.
-function changedInPlace(name: string, next: unknown): boolean {
+export function changedInPlace(name: string, next: unknown): boolean {
   // `null` never reaches here: the loop skips a value invisible on screen first.
   return typeof next === "object" && !name.startsWith("on");
 }

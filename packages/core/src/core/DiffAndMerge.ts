@@ -1,6 +1,7 @@
 import { enclosingBlock } from "./enclosingBlock";
 import { settleProps } from "../helpers/common";
 import { applyChangesOnAttributes } from "./Attribute";
+import { applyBlock, blockOf, blockStateOf, markupOf, type BlockVNode } from "./block";
 import type {
   BaseComponent,
   ComponentChild,
@@ -603,7 +604,13 @@ function executeChangesOnStringNode(
   placeholderComponent: MaybeComponent,
   maybeenhancedNode: MaybeEnhancedNode | EnhancedChildNode,
 ) {
-  const built = maybeenhancedNode?.nodeName !== vnode.name;
+  // A compiled block, which `@ramonda/build` writes for a tree of host elements — see `core/block.ts`.
+  if (blockOf(vnode) !== undefined) {
+    return applyBlock(vnode as BlockVNode, maybeenhancedNode as Element | undefined, placeholderComponent);
+  }
+  // A node a compiled block made holds that block's static parts and its record: an element of the same
+  // tag and key that is not that block — an uncompiled branch the key matched — is built afresh.
+  const built = maybeenhancedNode?.nodeName !== vnode.name || blockStateOf(maybeenhancedNode) !== undefined;
   const enhancedNode = built ? createElement(vnode) : maybeenhancedNode;
 
   // The side this element is being built for, taken from the component that owns it rather than
@@ -613,14 +620,26 @@ function executeChangesOnStringNode(
   const onServer = placeholderComponent?.[COMPONENT_RUNTIME]?.env === "server";
 
   applyChangesOnAttributes(enhancedNode, vnode.attributes, onServer, built);
+  diffChildrenOf(enhancedNode, vnode.children, placeholderComponent, built);
+  return enhancedNode;
+}
 
-  const vnodeChildren = vnode.children;
-
+/**
+ * Brings an element's children into line with `vnodeChildren` — the element diff's second half, and a
+ * compiled block's for an element whose children are a hole (see `core/block.ts`). `built` says the
+ * element was created this pass and holds nothing yet.
+ */
+export function diffChildrenOf(
+  enhancedNode: ChildNode,
+  vnodeChildren: unknown[],
+  placeholderComponent: MaybeComponent,
+  built: boolean,
+): void {
   // A new element has no children to claim, keep or move: each is built and appended, in order. Those
   // that are regions — a list, a component — keep the path that knows them.
   if (built && (vnodeChildren as { [HAS_REGION]?: boolean })[HAS_REGION] !== true) {
     appendBuiltChildren(vnodeChildren, placeholderComponent, enhancedNode);
-    return enhancedNode;
+    return;
   }
 
   const { cloneChildren, orderedNodes, previousOrder } = applyDiffOnChildren(
@@ -647,8 +666,6 @@ function executeChangesOnStringNode(
     // A lone child placed again is the same record, and a write on a node costs more than a read.
     if ((enhancedNode as Placed)[PLACED] !== placed) (enhancedNode as Placed)[PLACED] = placed;
   }
-
-  return enhancedNode;
 }
 
 function createElement(vnodeString: VNodeString): SVGElement | HTMLElement {
@@ -1082,7 +1099,7 @@ const regionsBelow = new WeakMap<readonly unknown[], boolean>();
  * why this cannot lean on `HAS_REGION`, which `h` sets for a group as much as for a list. Once per
  * array: settled markup hands the same arrays back.
  */
-function holdsARegion(children: readonly unknown[]): boolean {
+export function holdsARegion(children: readonly unknown[]): boolean {
   const known = regionsBelow.get(children);
   if (known !== undefined) return known;
   let found = false;
@@ -1096,6 +1113,9 @@ function holdsARegion(children: readonly unknown[]): boolean {
       // on its own — its state, a list it renders — reports to the component, which renders itself.
       const inner = (child as { children?: unknown }).children;
       if (Array.isArray(inner)) found = holdsARegion(inner);
+      // A compiled block's children are in its holes.
+      const block = blockOf(child) !== undefined ? markupOf(child as BlockVNode) : undefined;
+      for (let j = 0; !found && block !== undefined && j < block.length; j++) found = holdsARegion(block[j]);
     }
   }
   regionsBelow.set(children, found);
@@ -2158,6 +2178,12 @@ function areSimilarNodes(enhancedNode: EnhancedNode | EnhancedChildNode, virtual
    * live instance with no teardown. There is no host element to be confused for a `<span>` now, and
    * a component that stops being rendered loses its region — which is what runs its `@destroyed`.
    */
+  // A block matches only a node cloned from the same template, and a node cloned from one only a block of
+  // it.
+  const vBlock = blockOf(virtualNode);
+  const eBlock = blockStateOf(enhancedNode);
+  if (vBlock !== undefined || eBlock !== undefined) return vBlock?.template === eBlock?.template;
+
   return enhancedNode.nodeName === virtualNode.name;
 }
 

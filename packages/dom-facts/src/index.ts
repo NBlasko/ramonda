@@ -227,3 +227,33 @@ export const UNEDITED_INPUT_TYPES: ReadonlySet<string> = new Set([
   "reset",
   "submit",
 ]);
+
+/**
+ * The attributes JSX spells as their DOM property, because the attribute's own name is a keyword in
+ * JavaScript: `className` is written as `class`, and `htmlFor` as `for`. `@ramonda/core` reads them back
+ * under the JSX name, and `@ramonda/build` writes the attribute's name into a template.
+ */
+export const ATTRIBUTE_OF_PROPERTY: Readonly<Record<string, string>> = noPrototype({
+  className: "class",
+  htmlFor: "for",
+});
+
+/**
+ * A lookup table with no prototype: a JSX name is any word an author or a served page writes, and on a plain
+ * object `constructor`, `toString` or `__proto__` would find `Object`'s members instead of nothing.
+ */
+function noPrototype<T extends Record<string, string>>(entries: T): Readonly<T> {
+  return Object.freeze(Object.assign(Object.create(null) as T, entries));
+}
+
+/**
+ * The attribute a JSX name writes, as the element holds it: the alias above, folded on an HTML element —
+ * whose parser folds every name, so `tabIndex` and `tabindex` are one attribute — and as written on an SVG
+ * one, which keeps the case. `@ramonda/build` asks it to find an attribute written twice, `@ramonda/core`
+ * to know which attributes on a served element a compiled template names: the two have to agree, or one
+ * bakes what the other takes away.
+ */
+export function attributeWrittenBy(name: string, svg: boolean): string {
+  const attribute = ATTRIBUTE_OF_PROPERTY[name] ?? name;
+  return svg ? attribute : attribute.toLowerCase();
+}

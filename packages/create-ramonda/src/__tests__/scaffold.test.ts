@@ -772,8 +772,16 @@ describe("the css add-on", () => {
     if (mode === "ssr") {
       const build = read("scripts/build.mjs");
       expect(build).toContain('import { ramondaCss } from "@ramonda/css/esbuild";');
-      expect(build).toMatch(/plugins: \[ramondaCss\(\{ filter: /);
+      expect(build).toMatch(/plugins: \[ramonda\(\), ramondaCss\(\{ filter: /);
     }
+  });
+
+  test("ssr: production compiles the JSX, as the dev server does", () => {
+    // Without the plugin, `dev` ran the compiled templates and a production build the plain `jsx()`
+    // calls — two code paths, and a difference between them shows in one place only.
+    const build = make("ssr", []).read("scripts/build.mjs");
+    expect(build).toContain('import { ramonda, ramondaOptions, ramondaDefine } from "@ramonda/build/esbuild";');
+    expect(build).toMatch(/\n  plugins: \[ramonda\(\)\],\n/);
   });
 
   /**

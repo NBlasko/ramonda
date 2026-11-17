@@ -51,6 +51,48 @@ Invalid or unexpected token` the first time a browser reads it.
 That shipped here once. [Installation](/guide/installation#what-those-settings-are-and-why-they-are-not-yours-to-keep)
 tells that story at length; this page is about the package that closes it.
 
+## The JSX it compiles
+
+The plugin also compiles your JSX before the bundler sees it. A tree of host elements — a row, a card,
+a form — becomes a **template**, built once, and the few values a render computes: the `{…}` in an
+attribute or between tags. A render then compares those values with the ones it wrote last, and leaves
+everything that cannot change alone.
+
+```tsx
+row(row: Row) {
+  return (
+    <tr className={this.selected === row.id ? "danger" : ""}>
+      <td className="col-md-1">{row.id}</td>
+      <td className="col-md-4">{row.label}</td>
+    </tr>
+  );
+}
+```
+
+Here the template is the `<tr>` and its cells with their classes, and each render computes three values:
+the row's class, its id and its label. Your `render()` and the JSX in it read exactly as before.
+
+These are compiled the ordinary way, and an element inside them is a template of its own: a component, a
+fragment, an element with a spread (`{...props}`), a namespaced tag or attribute (`xlink:href`), a `class`
+attribute (write `className`), a `children` attribute, a `key` below a tree's root, an element that writes
+one attribute twice (`for` beside `htmlFor`), a `__proto__` attribute, a `<this>` tag, text holding a
+next-line character (U+0085) or a zero-width space (U+200B), which esbuild and Oxc clean differently, and text or an attribute with an `&` in it, which may begin an
+entity (`&amp;`) that only the JSX transform decodes. Each JSX tree is its own template, so the two branches of
+`cond ? <input className="a" /> : <input className="b" />` are two elements: switching builds the other one,
+and focus, the caret and an open `<details>` stay with the one that went. One element whose attribute
+changes — `<input className={cond ? "a" : "b"} />` — is the same element throughout. `ramonda({ compile: false })` builds the app without the
+compiler — the way to tell whether something that misbehaves is the compiler's.
+
+With esbuild the compiler reads each `.tsx` and `.jsx` file in its `onLoad` step, and esbuild hands a
+file to the first plugin that loads it. A plugin of yours that loads those files too — to instrument
+them for coverage, say — goes before `ramonda()` in `plugins`, and the files it loads are then
+compiled the ordinary way.
+
+With Vite the compiler is a plugin of its own, `ramonda:compile`, which `ramonda()` returns beside its
+settings, so `plugins: [ramonda()]` holds both. It compiles each module as Vite read it — a file outside
+`server.fs.allow` is refused before the compiler sees it — after any `order: "pre"` transform, such as
+`@ramonda/css`'s, and before the JSX transform.
+
 ## Vite
 
 ```ts
@@ -88,14 +130,17 @@ The refusals follow: `oxc: false`, and an `oxc.jsx` that is not the automatic ru
 
 ## esbuild
 
-For a build you call yourself, spread the options in:
+For a build you call yourself, spread the options in and add the plugin. The options are the transform's
+settings; the plugin compiles the JSX, as `ramonda()` does on Vite, so a production build runs the same code
+as the dev server:
 
 ```ts
 import { build } from "esbuild";
-import { ramondaOptions } from "@ramonda/build/esbuild";
+import { ramonda, ramondaOptions } from "@ramonda/build/esbuild";
 
 await build({
   ...ramondaOptions,
+  plugins: [ramonda()],
   entryPoints: ["src/entry-client.tsx"],
   bundle: true,
   format: "esm",
@@ -103,8 +148,10 @@ await build({
 });
 ```
 
+The options spread on their own build the JSX as `jsx()` calls, as `ramonda({ compile: false })` does.
+
 For a build assembled somewhere you cannot reach — a tool that calls esbuild for you and takes
-plugins — there is the plugin form, which fills in whatever the build did not set:
+plugins — the plugin alone fills in whatever the build did not set, and compiles the JSX:
 
 ```ts
 import { build } from "esbuild";

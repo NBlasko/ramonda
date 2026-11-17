@@ -1,3 +1,5 @@
+import type { RamondaOptions } from "./options";
+export type { RamondaOptions } from "./options";
 import {
   PUBLIC_ENV_PREFIX,
   RAMONDA_TRANSFORM,
@@ -12,7 +14,7 @@ import {
 /**
  * Structural, rather than imported from `vite`, so this package's types do not make the whole of
  * Vite a dependency of anybody who only wanted the esbuild half. Vite accepts any object with a
- * `name` and hooks it recognises; these are the three it will call here.
+ * `name` and hooks it recognises; these are the ones it will call here.
  */
 interface VitePluginLike {
   name: string;
@@ -27,6 +29,27 @@ interface VitePluginLike {
     order: "post";
     handler: (this: unknown, code: string, id: string) => Promise<{ code: string; map: string } | null>;
   };
+}
+
+/**
+ * The JSX compiler, a plugin of its own: its transform runs before the JSX transform, and the decorators'
+ * runs after them all — one plugin holds one transform.
+ */
+interface CompilePluginLike {
+  name: string;
+  enforce: "pre";
+  configResolved: (config: { isProduction?: boolean }) => void;
+  transform: {
+    handler: (this: unknown, code: string, id: string) => Promise<{ code: string; map: CompiledMap } | null>;
+  };
+}
+
+/** A source map as Vite takes one from a transform. */
+interface CompiledMap {
+  version: number;
+  sources: string[];
+  names: string[];
+  mappings: string;
 }
 
 /** What Vite hands the `config` hook as `this`: the one thing read from it is which Vite is running. */
@@ -126,11 +149,12 @@ function samePrefix(prefix: string | string[] | undefined): boolean {
  * but the decorators, and a plugin that rewrites a file's syntax first, such as a style block's, has
  * already run whatever order the app listed the plugins in.
  */
-export function ramonda(): VitePluginLike {
+export function ramonda(options: RamondaOptions = {}): [VitePluginLike, CompilePluginLike] {
   /** Decided in `config`, the first hook Vite calls, and read by the two that follow. */
   let oxc = false;
+  const compile = options.compile !== false;
 
-  return {
+  const settings: VitePluginLike = {
     name: "ramonda",
 
     /**
@@ -227,7 +251,44 @@ export function ramonda(): VitePluginLike {
       },
     },
   };
+
+  /**
+   * A development build, as Vite decides it: the compiled templates say where each element was written, as
+   * `jsxDEV` is told, and import the runtime from `jsx-dev-runtime` — the module the dev server's dependency
+   * scan already pre-bundles, so the first page is not re-bundled and reloaded for a late discovery.
+   */
+  let development = false;
+
+  /**
+   * The JSX compiler. It reads the source as Vite read it — which keeps to `server.fs.allow` — ahead of
+   * the transform that compiles JSX to `jsx()` calls: a `pre` plugin's transform runs before every plain
+   * plugin's. It is not `order: "pre"` itself, so that a transform which is — `@ramonda/css`'s, which
+   * rewrites syntax no parser reads — has run first, whatever order the plugins are listed in.
+   *
+   * A module with a query is Vite's own (`?raw`, `?url`), one in `node_modules` was built by somebody
+   * else, and one whose id starts with `\0` is another plugin's. The compiler — the parser with it — is
+   * imported on the first module it compiles: a build with `compile: false` never loads it.
+   */
+  const compiler: CompilePluginLike = {
+    name: "ramonda:compile",
+    enforce: "pre",
+    configResolved(config) {
+      development = config.isProduction === false;
+    },
+    transform: {
+      async handler(code, id) {
+        if (!compile || id.startsWith("\0") || id.includes("?") || !JSX_SCRIPT.test(id)) return null;
+        if (id.includes("/node_modules/")) return null;
+        const { compileJsx } = await import("./compile");
+        const compiled = compileJsx(code, id, { development });
+        return compiled === undefined ? null : { code: compiled.code, map: compiled.map };
+      },
+    },
+  };
+
+  return [settings, compiler];
 }
 
 /** A module Oxc has turned into JavaScript: what a decorator can be written in. */
 const SCRIPT = /\.[cm]?[jt]sx?$/;
+const JSX_SCRIPT = /\.[jt]sx$/;

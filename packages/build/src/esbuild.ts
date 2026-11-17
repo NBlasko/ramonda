@@ -1,3 +1,6 @@
+import { readFile } from "node:fs/promises";
+import type { RamondaOptions } from "./options";
+export type { RamondaOptions } from "./options";
 import { RAMONDA_TRANSFORM, check, envDefines, fillIn, lowersDecorators, refuse } from "./settings";
 
 /**
@@ -12,9 +15,20 @@ interface EsbuildOptionsLike {
   platform?: string;
 }
 
+interface OnLoadResultLike {
+  contents: string;
+  loader: "tsx" | "jsx";
+}
+
 interface EsbuildPluginLike {
   name: string;
-  setup: (build: { initialOptions: EsbuildOptionsLike }) => void;
+  setup: (build: {
+    initialOptions: EsbuildOptionsLike;
+    onLoad: (
+      options: { filter: RegExp; namespace?: string },
+      callback: (args: { path: string }) => Promise<OnLoadResultLike | undefined>,
+    ) => void;
+  }) => void;
 }
 
 /**
@@ -77,7 +91,7 @@ export function ramondaDefine(own: Record<string, string> = {}): Record<string, 
  * that never mentions a target has already chosen the broken one. That is why an unset target here
  * is filled in rather than left alone.
  */
-export function ramonda(): EsbuildPluginLike {
+export function ramonda(settings: RamondaOptions = {}): EsbuildPluginLike {
   return {
     name: "ramonda",
     setup(build) {
@@ -101,6 +115,24 @@ export function ramonda(): EsbuildPluginLike {
       // `platform` is the only place `import.meta.env.SSR` can be read from honestly, and the plugin is
       // the one form that gets to see it.
       options.define = { ...envDefines(process.env, { ssr: options.platform === "node" }), ...options.define };
+
+      // The JSX compiler reads each module as the app wrote it; esbuild then compiles what is left.
+      if (settings.compile !== false) {
+        // Files only — a module another plugin made up has no path to read — and never a package's.
+        build.onLoad({ filter: /\.[jt]sx$/, namespace: "file" }, async (args) => {
+          if (/[\\/]node_modules[\\/]/.test(args.path)) return undefined;
+          const code = await readFile(args.path, "utf8");
+          // Here, on the first file it reads: a build with `compile: false` never loads the parser.
+          const { compileJsx } = await import("./compile");
+          const compiled = compileJsx(code, args.path);
+          if (compiled === undefined) return undefined;
+          const map = Buffer.from(JSON.stringify(compiled.map)).toString("base64");
+          return {
+            contents: `${compiled.code}\n//# sourceMappingURL=data:application/json;base64,${map}\n`,
+            loader: args.path.endsWith(".tsx") ? "tsx" : "jsx",
+          };
+        });
+      }
     },
   };
 }

@@ -55,9 +55,12 @@
     "format": "biome format --write src"
   },
   "dependencies": {
-    "esbuild": "^0.28.2"
+    "esbuild": "^0.28.2",
+    "magic-string": "^1.4.3",
+    "oxc-parser": "^0.155.0"
   },
   "devDependencies": {
+    "@ramonda/dom-facts": "workspace:*",
     "@ramonda/check": "workspace:^",
     "@types/node": "^26.6.5",
     "tsup": "^8.5.1",
