@@ -229,3 +229,23 @@ describe("environment variables", () => {
     }
   });
 });
+
+describe("`import.meta.env.SSR`, from the plugin", () => {
+  /** What a bundle built with the scaffolded SSR app's shared options says `SSR` is. */
+  const said = async (platform: "node" | "browser"): Promise<string | undefined> => {
+    const result = await esbuild({
+      ...ramondaOptions,
+      stdin: { contents: "export const ssr = import.meta.env.SSR;", loader: "js" },
+      bundle: true,
+      write: false,
+      format: "esm",
+      platform,
+      plugins: [ramonda()],
+    });
+    return /ssr = (\w+)/.exec(result.outputFiles[0].text)?.[1];
+  };
+
+  test("is true in the server bundle and false in the client one, the build's `define` left to the plugin", async () => {
+    expect({ server: await said("node"), client: await said("browser") }).toEqual({ server: "true", client: "false" });
+  });
+});
