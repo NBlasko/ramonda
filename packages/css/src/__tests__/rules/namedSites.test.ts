@@ -1,6 +1,7 @@
 import { type Finding, checkBlock } from "../../compiler/rules";
 import { checkSource } from "../../compiler/source";
 import { describe, expect, test } from "vitest";
+import { cpuTime } from "../cpuTime";
 import { findBlocks } from "../../compiler/scan";
 import { namedSites, syntaxesIn } from "../../compiler/references";
 import { readBlock } from "../../compiler/read";
@@ -268,11 +269,9 @@ describe("a registered property set to a value its syntax refuses", () => {
      * twice the spaces took four times as long — 40 000 took 2.5 s, on every check of the file.
      */
     test("a value with a long run of spaces is read in linear time", () => {
-      const started = performance.now();
-
-      rules(`${angle}const s = @@( $(angle): 1deg${" ".repeat(40000)}2deg; );\n`);
-
-      expect(performance.now() - started).toBeLessThan(500);
+      expect(cpuTime(() => rules(`${angle}const s = @@( $(angle): 1deg${" ".repeat(40000)}2deg; );\n`))).toBeLessThan(
+        500,
+      );
     });
 
     /** A hole's value is not known here, and is refused for being one at all. */

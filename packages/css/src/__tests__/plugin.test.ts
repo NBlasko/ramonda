@@ -5,6 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { describe, expect, test } from "vitest";
+import { cpuTime } from "./cpuTime";
 import { virtualFile } from "../compiler/virtual";
 import { SELECTORS } from "../compiler/keywords.generated";
 import { NO_COMPILER, init } from "../adapters/plugin";
@@ -522,9 +523,7 @@ describe("hover", () => {
   test("and a hover over a value of long whitespace answers at once", () => {
     const marked = `const a = <div className={@@( border-left: 4px${" ".repeat(20_000)}so${CARET}lid red; )}>x</div>;\n`;
     const { service, caret } = editor(marked);
-    const started = performance.now();
-    service.getQuickInfoAtPosition(FILE, caret);
-    expect(performance.now() - started).toBeLessThan(500);
+    expect(cpuTime(() => service.getQuickInfoAtPosition(FILE, caret))).toBeLessThan(500);
   });
 
   /** The user's own example: a `var()` may stand for any part, so the build keeps it whole, and says so. */

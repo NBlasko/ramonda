@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
+import { cpuTime } from "./cpuTime";
 import { CssBlockError } from "../compiler/errors";
 import { checkSource } from "../compiler/source";
 import { transform } from "../compiler/transform";
@@ -1389,16 +1390,14 @@ describe("advice that leads somewhere", () => {
  * time. Measured: 4000 custom properties in one block took 3.2 s and 16 000 took 57 s, on every
  * build of the file — a generated theme is exactly this shape.
  *
- * The bound is wide on purpose. 8000 took 14.8 s squared and take 0.6 s now, but 5.2 s inside the
- * whole gate, where every package's tests share the machine.
+ * The bound is wide on purpose. 8000 took 14.8 s squared and take 0.6 s now; timed by the clock they
+ * took 5.2 s inside the whole gate, where every package's tests share the machine, so it asks for CPU.
  */
 describe("a block with thousands of declarations", () => {
   test("is compiled in linear time", () => {
     const declarations = Array.from({ length: 8000 }, (_, index) => `  --v${index}: ${index}px;`).join("\n");
-    const started = performance.now();
-
-    transform(`const s = @@(\n${declarations}\n);\n`, { filename: "C.tsx" });
-
-    expect(performance.now() - started).toBeLessThan(10_000);
+    expect(cpuTime(() => transform(`const s = @@(\n${declarations}\n);\n`, { filename: "C.tsx" }))).toBeLessThan(
+      10_000,
+    );
   }, 60_000);
 });

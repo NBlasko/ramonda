@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import { cpuTime } from "./cpuTime";
 import { checkSource } from "../compiler/source";
 import { placehold } from "../compiler/tooling";
 import { formatText } from "../adapters/tooling";
@@ -1180,9 +1181,5 @@ describe("odd text keeps its meaning and settles", () => {
 test("a run of comments before an arm is read in linear time", () => {
   const notes = "/**/".repeat(40);
   const source = `declare const t: "a" | "b";\nexport const x = (k: number) => @@(\n  match $(t) {\n    a => ( color: red; );\n    ${notes} b => ( color: blue; );\n  }\n);\n`;
-  const started = performance.now();
-
-  formatText(source, "A.tsx", (text) => text);
-
-  expect(performance.now() - started).toBeLessThan(1000);
+  expect(cpuTime(() => formatText(source, "A.tsx", (text) => text))).toBeLessThan(1000);
 });

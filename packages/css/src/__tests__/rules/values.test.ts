@@ -3,6 +3,7 @@ import { type Finding, checkBlock } from "../../compiler/rules";
 import { KEYWORDS } from "../../compiler/keywords.generated";
 import { canonicalValue } from "../../compiler/normalise";
 import { describe, expect, test } from "vitest";
+import { cpuTime } from "../cpuTime";
 import { findBlocks } from "../../compiler/scan";
 import { namedSites } from "../../compiler/references";
 import { readBlock } from "../../compiler/read";
@@ -1297,13 +1298,10 @@ describe("a shorthand, read through its longhands", () => {
 });
 
 test("a shorthand's long run of digits is answered at once", () => {
-  // The best of three, as the timing tests in `selectors.test.ts` take it: one run can stall under load.
-  const runs = [0, 1, 2].map(() => {
-    const started = performance.now();
-    rules(`  margin: ${"0".repeat(20_000)}x auto;`);
-    return performance.now() - started;
-  });
-  expect(Math.min(...runs)).toBeLessThan(250);
+  // Sized and bounded as the conditions in `selectors.test.ts` are, and for the same reason: at 20,000
+  // digits the number patterns planted back cost 490 ms, and the linear reading 156 inside a loaded gate.
+  // At 80,000: 6.5 s planted, and 550 ms inside the whole css suite with coverage, beside core's suite.
+  expect(cpuTime(() => rules(`  margin: ${"0".repeat(80_000)}x auto;`))).toBeLessThan(2_500);
 });
 
 /**
@@ -1436,12 +1434,7 @@ test("a long list is answered quickly, whatever the answer", () => {
   once();
   // The best of three, under a limit set from both ends, measured: ~70 ms here and 251 ms on a CI
   // runner, which is about 3.5 times slower; the 200,000 budget this guards against took 1255 ms here.
-  const runs = [0, 1, 2].map(() => {
-    const started = performance.now();
-    once();
-    return performance.now() - started;
-  });
-  expect(Math.min(...runs)).toBeLessThan(600);
+  expect(cpuTime(once)).toBeLessThan(600);
 });
 
 /**
@@ -1449,11 +1442,9 @@ test("a long list is answered quickly, whatever the answer", () => {
  * this rule ran was quadratic in the spaces before it.
  */
 test("a value of long whitespace is answered at once", () => {
-  const started = performance.now();
   // A name of two words, which no other rule speaks about — so the grammar is asked, and with it the
   // `!important` strip, over every one of the spaces.
-  rules(`  font-family: Helvetica${" ".repeat(20_000)}Neue;`);
-  expect(performance.now() - started).toBeLessThan(250);
+  expect(cpuTime(() => rules(`  font-family: Helvetica${" ".repeat(20_000)}Neue;`))).toBeLessThan(250);
 });
 
 /**
@@ -1463,13 +1454,12 @@ test("a value of long whitespace is answered at once", () => {
  */
 test("a value seen before is not read again", async () => {
   const { valueMatchesGrammar } = await import("../../compiler/validateValue");
+  const { readingsBegun } = await import("../../compiler/matchValue");
   valueMatchesGrammar("background", "red");
-  const runs = [0, 1, 2].map(() => {
-    const started = performance.now();
-    for (let one = 0; one < 1000; one++) valueMatchesGrammar("background", "red");
-    return performance.now() - started;
-  });
-  expect(Math.min(...runs)).toBeLessThan(50);
+  // Counted, not timed: the readings the matcher begins, which memory leaves at none.
+  const before = readingsBegun();
+  for (let one = 0; one < 1000; one++) valueMatchesGrammar("background", "red");
+  expect(readingsBegun() - before).toBe(0);
 });
 
 /**

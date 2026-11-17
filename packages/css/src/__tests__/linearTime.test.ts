@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import { cpuTime } from "./cpuTime";
 import { importedSites } from "../compiler/references";
 import { parseValueSyntax } from "../compiler/valueSyntax";
 import { exclusive, widthSlot } from "../runtime/conditions";
@@ -7,27 +8,30 @@ import { rules } from "./rules/helpers";
 /**
  * Text an author writes, read in LINEAR time.
  *
- * Every case is the input a ReDoS checker (`recheck`) produced for one pattern, grown to 40,000
+ * Every case is the input a ReDoS checker (`recheck`) produced for one pattern, grown to 160,000
  * characters — and every one of them was MEASURED slow before its fix: a pattern whose two parts can
  * both take the same character tries every way of sharing it. The compiler answers the editor on each
  * keystroke and the runtime answers on each render, so a quadratic pattern is a frozen editor or a
  * stalled page the day somebody pastes the wrong thing.
  *
- * The bound is generous on purpose — a slow CI machine must not fail it — and still a hundred times
- * below what each took: 1–3 s here, and one never finished.
+ * Asked as CPU (see `cpuTime`). Each took 1–3 s at 40,000 before its fix, and one never finished; the
+ * attribute bracket, planted back, takes 1.5 s there. At four times that length a quadratic pattern
+ * costs sixteen times as much and a linear one four, which is the gap the 2.5 s bound sits in: the
+ * bracket planted back costs 27 s here, and the dearest linear case — the same bracket — 820 ms inside
+ * the whole css suite with coverage, beside core's suite. Linux laptop, Ryzen 5 2500U.
  */
-const N = 40_000;
+const N = 160_000;
 const SPACES = " ".repeat(N);
 
-const quickly = (run: () => unknown) => {
-  const started = performance.now();
-  try {
-    run();
-  } catch {
-    // Refusing the input is an answer too; only the time is asked here.
-  }
-  return performance.now() - started;
-};
+/** The CPU `run` took (see `cpuTime`); refusing the input is an answer too, so a throw is not a failure. */
+const quickly = (run: () => unknown) =>
+  cpuTime(() => {
+    try {
+      run();
+    } catch {
+      // Only the cost is asked here.
+    }
+  });
 
 describe("read in linear time", () => {
   test.each<[string, () => unknown]>([
@@ -51,6 +55,6 @@ describe("read in linear time", () => {
     // `compiler/rules/selectors.ts`: an attribute bracket that never closes.
     ["an attribute bracket that never closes", () => rules(`  &[a${"[".repeat(N)} { color: red; }`)],
   ])("%s", (_what, run) => {
-    expect(quickly(run)).toBeLessThan(250);
+    expect(quickly(run)).toBeLessThan(2_500);
   });
 });

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import { cpuTime } from "./cpuTime";
 import { urlsIn, withoutQuery } from "../compiler/urlsIn";
 
 describe("the url() reader behind url-not-found", () => {
@@ -22,18 +23,12 @@ describe("the url() reader behind url-not-found", () => {
     ["url( and a run of spaces", `url(${" ".repeat(40000)}x`],
     ["many url( in a row", "url(".repeat(20000)],
   ])("%s is read in linear time", (_what, text) => {
-    const started = performance.now();
-    urlsIn(text);
-
-    expect(performance.now() - started).toBeLessThan(500);
+    expect(cpuTime(() => urlsIn(text))).toBeLessThan(500);
   });
 
   test("a query or fragment is cut at the first one, in linear time", () => {
     expect(withoutQuery("./icons.svg#home")).toBe("./icons.svg");
     expect(withoutQuery("./a.png?v=2#x")).toBe("./a.png");
-    const started = performance.now();
-    withoutQuery(`./${"#".repeat(40000)}`);
-
-    expect(performance.now() - started).toBeLessThan(500);
+    expect(cpuTime(() => withoutQuery(`./${"#".repeat(40000)}`))).toBeLessThan(500);
   });
 });
