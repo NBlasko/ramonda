@@ -43,6 +43,18 @@ function config(): string {
   return loaded;
 }
 
+/* Lazy, but filled by a handler after a reader read the empty value: stale. */
+let dismissed = false;
+export function dismiss(): void {
+  dismissed ||= true;
+}
+
+/* Counted by every instance's field initializer, after the first one rendered: stale. */
+let created = 0;
+
+/* Written in a static block, while the class is being made: never stale. */
+let seeded = 0;
+
 /* A function returning handlers: the handlers are not run by whoever calls it. */
 let lastSaved = 0;
 function makeActions() {
@@ -132,6 +144,23 @@ class Cart extends Component {
   lazyGetter = this.use(Takes, (self: Cart) => ({ value: self.api }));
   handlers = this.use(Takes, () => ({ value: makeActions() }));
 
+  /* REPORTED — a lazy write the reader does not make, after it read the empty value. */
+  shown = this.use(Takes, () => ({ value: !dismissed }));
+  /* REPORTED — `fmt` read here before `money` fills it: the reader holds the empty value. */
+  eager = this.use(Takes, () => ({ value: (fmt ? "a" : "b") + money(1) }));
+  /* REPORTED — `created`, which every later instance's field initializer moves. */
+  id = ++created;
+  ofTotal = this.use(Takes, (self: Cart) => ({ value: `${self.id} of ${created}` }));
+  /* REPORTED — a getter destructured from the owner runs as `self.shown` does. */
+  destructured = this.use(Takes, ({ shown }: Cart) => ({ value: shown }));
+  /* REPORTED — a getter that writes a field it does not fill lazily is a writer like any other. */
+  counted = this.use(Takes, (self: Cart) => ({ value: self.counter }));
+
+  /* Not reported: a static block's write, a handler a getter returns, a method's lazy memo. */
+  quietSeeded = this.use(Takes, () => ({ value: seeded }));
+  quietHandler = this.use(Takes, (self: Cart) => ({ value: self.onSave }));
+  quietMethodMemo = this.use(Takes, (self: Cart) => ({ value: self.api2().base }));
+
   /* Not reported: written only at module evaluation, a constant, a local, a @compute. */
   quietTheme = this.use(Takes, () => ({ value: theme }));
   quietConst = this.use(Takes, () => ({ value: PREFIX }));
@@ -155,6 +184,29 @@ class Cart extends Component {
 
   get shown(): number {
     return this.rate;
+  }
+
+  static {
+    seeded = 1;
+  }
+
+  counter = 0;
+  get nextId(): number {
+    return this.counter++;
+  }
+
+  draft = "";
+  get onSave() {
+    return () => this.persist(this.draft);
+  }
+  persist(_text: string): void {}
+  edit(text: string): void {
+    this.draft = text;
+  }
+
+  private _api2?: { base: string };
+  api2() {
+    return (this._api2 ??= createApi());
   }
 
   private _api?: { base: string };

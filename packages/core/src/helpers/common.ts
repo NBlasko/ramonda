@@ -31,9 +31,6 @@ const NO_BAG: Bag = {};
  */
 const dormant = new WeakMap<object, () => void>();
 
-/** The hooks on their owner's walk, so a woken one can be put back in its `use()` place. */
-const walked = new WeakSet<object>();
-
 /**
  * Calls the props callback, and in a development build holds it to the same two standards
  * `render()` is held to — the phase is marked, so randomness read while building a bag is
@@ -256,12 +253,10 @@ export function useCommon<T extends BaseHook<unknown>, P>(
     );
   }
 
-  let internalHooks = that[INTERNAL_HOOKS];
-
-  if (!internalHooks) {
-    internalHooks = [];
+  // Writable, because a hook woken later is put back by replacing the list — see `register`.
+  if (!that[INTERNAL_HOOKS]) {
     Object.defineProperty(that, INTERNAL_HOOKS, {
-      value: internalHooks,
+      value: [],
       configurable: false,
       enumerable: false,
       writable: true,
@@ -462,16 +457,25 @@ export function useCommon<T extends BaseHook<unknown>, P>(
     // so far; a woken one goes after every hook on the walk that was used before it. Measured: woken
     // at the end instead, a hook reading the woken one's child served its old value in a production
     // build, and the right one in development, where nothing sleeps.
-    let at = internalHooks.length;
-    if (woken) {
-      at = 0;
+    //
+    // Woken, it goes into a COPY of the list. A wake can happen while the owner is walking that list —
+    // a props callback that calls a method which `use()`s — and the walk holds the list it began with;
+    // spliced into in place, the hook after it was skipped for that pass (measured: it showed its old
+    // value). The walk finishes over the old list, and the next one reads the new.
+    const list = that[INTERNAL_HOOKS] as (() => void)[];
+    if (!woken) {
+      list.push(updateFn);
+    } else {
+      // A sibling used before this one is on the walk exactly when it is not asleep.
+      let at = 0;
       for (const sibling of childHooks) {
         if (sibling === hookInstance) break;
-        if (walked.has(sibling)) at++;
+        if (!dormant.has(sibling)) at++;
       }
+      const next = list.slice();
+      next.splice(at, 0, updateFn);
+      that[INTERNAL_HOOKS] = next;
     }
-    internalHooks.splice(at, 0, updateFn);
-    walked.add(hookInstance);
     // The owner is a hook this walk had left out, and now it has a child to walk: it goes back on
     // ITS owner's list, and so on up, as far as the first one that was never left out.
     const wake = dormant.get(that);

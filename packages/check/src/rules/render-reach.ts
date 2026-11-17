@@ -230,7 +230,7 @@ export function entryPoints(cls: ts.ClassDeclaration, resolve: Resolver): { memb
  * shown a way to tell apart from `rows.map(…)` without asking what the callee does with what it is
  * handed.
  */
-function runsNow(fn: ts.ArrowFunction | ts.FunctionExpression): boolean {
+export function runsNow(fn: ts.ArrowFunction | ts.FunctionExpression): boolean {
   const parent = fn.parent;
   if (parent === undefined) return false;
 

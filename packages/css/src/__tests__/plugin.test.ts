@@ -523,9 +523,11 @@ describe("hover", () => {
   test("and a hover over a value of long whitespace answers at once", () => {
     const marked = (round: number) =>
       `const a = <div className={@@( border-left: 4px${" ".repeat(20_000 + round)}so${CARET}lid red; )}>x</div>;\n`;
-    // A program of its own each round, built before the clock starts: only the hover is timed.
+    // A program of its own each round, built before the clock starts — a language service builds it on
+    // the first question, so it is asked for here — and only the hover is timed.
     const hover = (round: number) => {
       const { service, caret } = editor(marked(round));
+      service.getProgram();
       return () => service.getQuickInfoAtPosition(FILE, caret);
     };
     expect(cpuTime(hover)).toBeLessThan(500);

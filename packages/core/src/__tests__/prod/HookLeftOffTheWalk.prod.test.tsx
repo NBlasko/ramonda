@@ -61,6 +61,40 @@ class Reads extends Hook<{ v: number | undefined; tick: number }> {
   }
 }
 
+/** Takes nothing, and grows a hook reading its own state the first time it is asked to. */
+class GrowsOnce extends Hook {
+  @state n = 1;
+  child: Says | undefined;
+
+  ensure(): void {
+    this.child ??= this.use(Says, (self: GrowsOnce) => ({ x: self.n }));
+  }
+}
+
+/** Takes a tick, and nothing else. */
+class Ticks extends Hook<{ t: number }> {}
+
+/** Takes a number, and says it. */
+class Shows extends Hook<{ v: number }> {
+  get v(): number {
+    return this.props.v;
+  }
+}
+
+/**
+ * A hook owning three: the first asleep, the second waking it from its props callback — during the walk
+ * — and the third after both.
+ */
+class WakesMidWalk extends Hook {
+  @state tick = 0;
+  sleeper = this.use(GrowsOnce);
+  waker = this.use(Ticks, (self: WakesMidWalk) => {
+    if (self.tick > 0) self.sleeper.ensure();
+    return { t: self.tick };
+  });
+  last = this.use(Shows, (self: WakesMidWalk) => ({ v: self.tick }));
+}
+
 function mount<T>(node: unknown): { instance: T; container: HTMLElement; done: () => void } {
   const container = document.createElement("div");
   document.body.appendChild(container);
@@ -171,6 +205,8 @@ describe("a hook left off its owner's walk", () => {
   test("a hook that goes back on is walked where it was used, before the hooks used after it", () => {
     class Page extends Component {
       @state tick = 0;
+      // Asleep, and used before `grows`: not on the walk, so not counted when `grows` is put back.
+      asleep = this.use(Bare);
       grows = this.use(GrowsReading);
       reads = this.use(Reads, (self: Page) => ({ v: self.grows.child?.value, tick: self.tick }));
       render() {
@@ -187,6 +223,31 @@ describe("a hook left off its owner's walk", () => {
     instance.tick++;
     flushSync();
     expect(container.textContent).toBe("5");
+    done();
+  });
+
+  /**
+   * Woken DURING a walk, a hook goes into a copy of the list: the walk in progress finishes over the
+   * list it began with. Spliced into that list instead, every hook after it shifted along by one and
+   * the walk ended a hook early — `last` kept its old props and the page showed 0.
+   */
+  test("a hook woken during its owner's walk does not push another off that walk", () => {
+    class Page extends Component {
+      @state n = 0;
+      owner = this.use(WakesMidWalk);
+      render() {
+        return (
+          <p>
+            {this.owner.last.v}:{this.n}
+          </p>
+        );
+      }
+    }
+    const { instance, container, done } = mount<Page>(<Page />);
+    instance.owner.tick = 1;
+    instance.n++;
+    flushSync();
+    expect(container.textContent).toBe("1:1");
     done();
   });
 });

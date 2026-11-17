@@ -81,25 +81,24 @@ export function fieldsWrittenIn(node: ts.Node): Set<string> {
  * Whether a write inside this member can leave a cached reader stale.
  *
  * `false` for everything that runs before the first render — the constructor, `@created` — and for
- * the renders themselves, where a write is the memo pattern rather than a change. A getter is the same
- * pattern, `get api() { return (this._api ??= createApi()) }`, now that a cached reader's getters are
- * followed. `@destroyed` runs after the last render, so nothing is left to be stale.
+ * the renders themselves, where a write is the memo pattern rather than a change. `@destroyed` runs
+ * after the last render, so nothing is left to be stale.
  */
 export function writesAfterTheFirstRender(member: ts.ClassElement, resolve: Resolver): boolean {
   if (ts.isConstructorDeclaration(member)) return false;
-  if (ts.isGetAccessorDeclaration(member)) return false;
   if (hasDecorator(member, "created", resolve) || hasDecorator(member, "destroyed", resolve)) return false;
   if (hasDecorator(member, "compute", resolve)) return false;
   return memberName(member) !== "render";
 }
 
 /**
- * A GETTER over a plain field is not found, and that is the honest limit of this.
+ * A GETTER over a plain field is not found by `row-reads-a-plain-field`, and that is the honest limit of
+ * that rule.
  *
- * `private raw = "x"; get label() { return this.raw }` — a cached reader that shows `this.label` is as
- * stale as one that shows `this.raw`, and measured, both rules go quiet: only a `PropertyDeclaration`
- * becomes a candidate below, and a getter is not one. Following it means deciding what a getter returns,
- * which is the dataflow this package refuses. Written down rather than left to be discovered.
+ * `private raw = "x"; get label() { return this.raw }` — a row that shows `this.label` is as stale as one
+ * that shows `this.raw`, and the row rule goes quiet: only a `PropertyDeclaration` becomes a candidate
+ * below, and a getter is not one. `cached-read-of-a-plain-field` follows the getter instead — reading it
+ * runs it — and judges the fields it reads.
  */
 
 /**

@@ -30,6 +30,11 @@ describe("a cached reader, followed", () => {
       "loop:var unit:cycle",
       "counts:var count:bump",
       "counts:var count:bumpOther",
+      "shown:var dismissed:dismiss",
+      "eager:var fmt:money",
+      "ofTotal:var created:id",
+      "destructured:rate:bump",
+      "counted:counter:nextId",
       "title:var lang:setLang",
     ]);
   });
