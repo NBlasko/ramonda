@@ -50,7 +50,7 @@ describe("the JSX runtime entries", () => {
    * symbol, and a copy that differed would be read by the diff as an ordinary element.
    */
   test("and `__template` and `__block` are each one value, not two", () => {
-    expect([dev.__template, dev.__block]).toEqual([runtime.__template, runtime.__block]);
+    expect(dev.__template).toBe(runtime.__template);
     expect(dev.__block).toBe(runtime.__block);
   });
 });

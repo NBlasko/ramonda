@@ -562,8 +562,9 @@ export class ListEngine<T> {
   }
 
   /**
-   * A position that produced no row this pass. Taken by position, its scope is still in `scopes`, and is
-   * let go here as an unclaimed one is at the end of a pass that rebuilt the maps.
+   * A position that produced no row this pass. On the pass that takes rows by position its scope is still
+   * in `scopes`, and is let go here. A pass that rebuilt the maps lets go only the scopes it did not
+   * claim — a scope it made this pass for a row with no output is not among them (TODO: on main too).
    */
   private dropRow(same: boolean, index: number, nextByIndex: (ItemScope<T> | undefined)[]): void {
     const scope = nextByIndex[index];

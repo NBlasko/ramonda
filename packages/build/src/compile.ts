@@ -35,10 +35,13 @@
  */
 import { parseSync } from "oxc-parser";
 import MagicString from "magic-string";
+import { RAMONDA_TRANSFORM } from "./settings";
 import { ATTRIBUTE_OF_PROPERTY, BOOLEAN_ATTRIBUTES, attributeWrittenBy, svgElements } from "@ramonda/dom-facts";
 
-const RUNTIME = "@ramonda/core/jsx-runtime";
-const DEV_RUNTIME = "@ramonda/core/jsx-dev-runtime";
+// From the import source the JSX transform is configured with, so the compiler and the transform import
+// the same runtime — two copies of it would read each other's blocks as plain elements.
+const RUNTIME = `${RAMONDA_TRANSFORM.jsxImportSource}/jsx-runtime`;
+const DEV_RUNTIME = `${RAMONDA_TRANSFORM.jsxImportSource}/jsx-dev-runtime`;
 const TEMPLATE = "__ramondaTemplate";
 const BLOCK = "__ramondaBlock";
 

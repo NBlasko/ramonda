@@ -696,19 +696,21 @@ describe("where each element was written, for a development build", () => {
     expect(compileJsx(`const p = <p>{x}</p>;`, "/app/src/page.tsx")?.templates).toEqual([`{ t: "p", h: 0 }`]);
   });
 
-  test("the Vite plugin asks for it when the build is not production", async () => {
+  test("the Vite plugin asks for it, and for the development runtime, when the build is not production", async () => {
     const source = `export const view = <p>{1}</p>;\n`;
     const compiled = async (isProduction: boolean) => {
       const [, compiler] = viteRamonda();
       compiler.configResolved({ isProduction });
       return (await compiler.transform.handler.call(undefined, source, "/app/src/view.tsx"))?.code ?? "";
     };
+    const runtime = (code: string): string | undefined => /from "(@ramonda\/core\/[^"]+)"/.exec(code)?.[1];
+    const [development, production] = [await compiled(false), await compiled(true)];
     expect({
-      development: (await compiled(false)).includes(`f: "/app/src/view.tsx"`),
-      production: (await compiled(true)).includes("f:"),
+      places: [development.includes(`f: "/app/src/view.tsx"`), production.includes("f:")],
+      runtime: [runtime(development), runtime(production)],
     }).toEqual({
-      development: true,
-      production: false,
+      places: [true, false],
+      runtime: ["@ramonda/core/jsx-dev-runtime", "@ramonda/core/jsx-runtime"],
     });
   });
 });
