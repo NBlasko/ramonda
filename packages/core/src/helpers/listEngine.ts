@@ -589,6 +589,10 @@ export class ListEngine<T> {
   ): void {
     const scope = this.lastScope!;
     scope.empty = true;
+    // What the row rendered before it went empty is no longer anybody's: nothing reads an empty scope's
+    // vnode, and holding it kept the whole subtree — nested lists, their owners — alive while the row
+    // stayed empty. A new scope starts without one too.
+    scope.vnode = undefined as unknown as VNode;
     scope.key = scopeKey;
     nextByIndex[index] = scope;
     if (!same) this.claimScope(nextScopes, scopeKey, scope);

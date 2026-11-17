@@ -267,11 +267,13 @@ describe("a registered property set to a value its syntax refuses", () => {
      *
      * Found by CodeQL on the PR: `/\s*!\s*important\s*$/` starts again at every space. Measured,
      * twice the spaces took four times as long — 40 000 took 2.5 s, on every check of the file.
+     *
+     * Sized and bounded as the conditions in `selectors.test.ts` are: at 40,000 the linear reading
+     * reached 436 ms inside the whole css suite with coverage, too close to the 500 it was held to.
      */
     test("a value with a long run of spaces is read in linear time", () => {
-      expect(cpuTime(() => rules(`${angle}const s = @@( $(angle): 1deg${" ".repeat(40000)}2deg; );\n`))).toBeLessThan(
-        500,
-      );
+      const css = (round: number) => `${angle}const s = @@( $(angle): 1deg${" ".repeat(160_000 + round)}2deg; );\n`;
+      expect(cpuTime((round) => () => rules(css(round)))).toBeLessThan(2_500);
     });
 
     /** A hole's value is not known here, and is refused for being one at all. */

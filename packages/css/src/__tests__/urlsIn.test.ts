@@ -19,16 +19,16 @@ describe("the url() reader behind url-not-found", () => {
   });
 
   /** CodeQL on the PR: the regex this replaced did not return in two minutes on these. */
-  test.each([
-    ["url( and a run of spaces", `url(${" ".repeat(40000)}x`],
-    ["many url( in a row", "url(".repeat(20000)],
+  test.each<[string, (round: number) => string]>([
+    ["url( and a run of spaces", (round) => `url(${" ".repeat(40000 + round)}x`],
+    ["many url( in a row", (round) => "url(".repeat(20000 + round)],
   ])("%s is read in linear time", (_what, text) => {
-    expect(cpuTime(() => urlsIn(text))).toBeLessThan(500);
+    expect(cpuTime((round) => () => urlsIn(text(round)))).toBeLessThan(500);
   });
 
   test("a query or fragment is cut at the first one, in linear time", () => {
     expect(withoutQuery("./icons.svg#home")).toBe("./icons.svg");
     expect(withoutQuery("./a.png?v=2#x")).toBe("./a.png");
-    expect(cpuTime(() => withoutQuery(`./${"#".repeat(40000)}`))).toBeLessThan(500);
+    expect(cpuTime((round) => () => withoutQuery(`./${"#".repeat(40000 + round)}`))).toBeLessThan(500);
   });
 });

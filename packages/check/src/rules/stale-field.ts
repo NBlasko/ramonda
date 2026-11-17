@@ -81,11 +81,13 @@ export function fieldsWrittenIn(node: ts.Node): Set<string> {
  * Whether a write inside this member can leave a cached reader stale.
  *
  * `false` for everything that runs before the first render — the constructor, `@created` — and for
- * the renders themselves, where a write is the memo pattern rather than a change. `@destroyed` runs
- * after the last render, so nothing is left to be stale.
+ * the renders themselves, where a write is the memo pattern rather than a change. A getter is the same
+ * pattern, `get api() { return (this._api ??= createApi()) }`, now that a cached reader's getters are
+ * followed. `@destroyed` runs after the last render, so nothing is left to be stale.
  */
 export function writesAfterTheFirstRender(member: ts.ClassElement, resolve: Resolver): boolean {
   if (ts.isConstructorDeclaration(member)) return false;
+  if (ts.isGetAccessorDeclaration(member)) return false;
   if (hasDecorator(member, "created", resolve) || hasDecorator(member, "destroyed", resolve)) return false;
   if (hasDecorator(member, "compute", resolve)) return false;
   return memberName(member) !== "render";

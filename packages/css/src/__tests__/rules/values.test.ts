@@ -1301,7 +1301,7 @@ test("a shorthand's long run of digits is answered at once", () => {
   // Sized and bounded as the conditions in `selectors.test.ts` are, and for the same reason: at 20,000
   // digits the number patterns planted back cost 490 ms, and the linear reading 156 inside a loaded gate.
   // At 80,000: 6.5 s planted, and 550 ms inside the whole css suite with coverage, beside core's suite.
-  expect(cpuTime(() => rules(`  margin: ${"0".repeat(80_000)}x auto;`))).toBeLessThan(2_500);
+  expect(cpuTime((round) => () => rules(`  margin: ${"0".repeat(80_000 + round)}x auto;`))).toBeLessThan(2_500);
 });
 
 /**
@@ -1422,19 +1422,19 @@ describe("a family name that begins with a generic family", () => {
  * The grammar is asked on every keystroke in the editor. Measured in review: twenty layers of
  * `background` took 608 ms before the reading budget came down; "cannot say" is the answer either
  * way, so it has to be a quick one.
+ *
+ * Counted, not timed: the readings the matcher begins, which the budget bounds. At the 10,000 budget
+ * these two take 28,886 and 29,718; with the 200,000 it once had, 587,011 and 599,718. Timed, the test
+ * read the same value three times after reading it once, and the value is remembered — it measured
+ * 20 ms of memory where a fresh value costs about 300.
  */
-test("a long list is answered quickly, whatever the answer", () => {
+test("a long list is answered quickly, whatever the answer", async () => {
+  const { stepsToRead } = await import("../../compiler/validateValue");
   const layers = "url(a.png) no-repeat scroll 0 0 / 40px 40px padding-box border-box, ".repeat(20);
-  // Once first: the grammars are read and cached on the first call, once per editor session, and
-  // under a full gate's load that alone came to more than this test allows.
-  const once = () => {
-    rules(`  background: ${layers}#fff;`);
-    rules(`  transition: ${"opacity 150ms ease-in 0s, ".repeat(20)}transform 1s linear;`);
-  };
-  once();
-  // The best of three, under a limit set from both ends, measured: ~70 ms here and 251 ms on a CI
-  // runner, which is about 3.5 times slower; the 200,000 budget this guards against took 1255 ms here.
-  expect(cpuTime(once)).toBeLessThan(600);
+  expect(stepsToRead("background", `${layers}#fff`)).toBeLessThan(60_000);
+  expect(stepsToRead("transition", `${"opacity 150ms ease-in 0s, ".repeat(20)}transform 1s linear`)).toBeLessThan(
+    60_000,
+  );
 });
 
 /**
@@ -1443,8 +1443,11 @@ test("a long list is answered quickly, whatever the answer", () => {
  */
 test("a value of long whitespace is answered at once", () => {
   // A name of two words, which no other rule speaks about — so the grammar is asked, and with it the
-  // `!important` strip, over every one of the spaces.
-  expect(cpuTime(() => rules(`  font-family: Helvetica${" ".repeat(20_000)}Neue;`))).toBeLessThan(250);
+  // `!important` strip, over every one of the spaces. Sized and bounded as the conditions in
+  // `selectors.test.ts` are: at 20,000 spaces the strip planted back cost 390 ms and the linear
+  // reading up to 110 inside a loaded gate, too close to tell apart under one limit.
+  const css = (round: number) => `  font-family: Helvetica${" ".repeat(80_000 + round)}Neue;`;
+  expect(cpuTime((round) => () => rules(css(round)))).toBeLessThan(2_500);
 });
 
 /**

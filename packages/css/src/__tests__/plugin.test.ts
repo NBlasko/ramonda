@@ -521,9 +521,14 @@ describe("hover", () => {
 
   /** Found in review: the trailing-`;` strip was CUBIC — 5000 spaces took 65 s — and a hover is per caret move. */
   test("and a hover over a value of long whitespace answers at once", () => {
-    const marked = `const a = <div className={@@( border-left: 4px${" ".repeat(20_000)}so${CARET}lid red; )}>x</div>;\n`;
-    const { service, caret } = editor(marked);
-    expect(cpuTime(() => service.getQuickInfoAtPosition(FILE, caret))).toBeLessThan(500);
+    const marked = (round: number) =>
+      `const a = <div className={@@( border-left: 4px${" ".repeat(20_000 + round)}so${CARET}lid red; )}>x</div>;\n`;
+    // A program of its own each round, built before the clock starts: only the hover is timed.
+    const hover = (round: number) => {
+      const { service, caret } = editor(marked(round));
+      return () => service.getQuickInfoAtPosition(FILE, caret);
+    };
+    expect(cpuTime(hover)).toBeLessThan(500);
   });
 
   /** The user's own example: a `var()` may stand for any part, so the build keeps it whole, and says so. */

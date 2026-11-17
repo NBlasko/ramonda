@@ -37,6 +37,30 @@ class Grows extends Hook {
   }
 }
 
+/** Takes a number, and says it. */
+class Says extends Hook<{ x: number }> {
+  get value(): number {
+    return this.props.x;
+  }
+}
+
+/** Takes nothing, and grows a hook that reads its own state, when asked. */
+class GrowsReading extends Hook {
+  @state n = 1;
+  child: Says | undefined;
+
+  grow(): void {
+    this.child = this.use(Says, (self: GrowsReading) => ({ x: self.n }));
+  }
+}
+
+/** Reads what it is handed. */
+class Reads extends Hook<{ v: number | undefined; tick: number }> {
+  get v(): number | undefined {
+    return this.props.v;
+  }
+}
+
 function mount<T>(node: unknown): { instance: T; container: HTMLElement; done: () => void } {
   const container = document.createElement("div");
   document.body.appendChild(container);
@@ -135,6 +159,34 @@ describe("a hook left off its owner's walk", () => {
     instance.tick++;
     flushSync();
     expect(container.textContent).toBe("7:2");
+    done();
+  });
+
+  /**
+   * Back in its `use()` place, not at the end: `reads` is used after `grows` and reads what `grows`'s
+   * child says, so `grows` has to be updated first. Woken at the end of the walk, `reads` was updated
+   * before the child heard its new input and showed the old value — in production only, since in
+   * development nothing sleeps.
+   */
+  test("a hook that goes back on is walked where it was used, before the hooks used after it", () => {
+    class Page extends Component {
+      @state tick = 0;
+      grows = this.use(GrowsReading);
+      reads = this.use(Reads, (self: Page) => ({ v: self.grows.child?.value, tick: self.tick }));
+      render() {
+        return <p>{String(this.reads.v)}</p>;
+      }
+    }
+    const { instance, container, done } = mount<Page>(<Page />);
+    instance.grows.grow();
+    instance.tick++;
+    flushSync();
+    expect(container.textContent).toBe("1");
+
+    instance.grows.n = 5;
+    instance.tick++;
+    flushSync();
+    expect(container.textContent).toBe("5");
     done();
   });
 });

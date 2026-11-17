@@ -72,10 +72,26 @@ export const methodWrittenOver = {
 
     const found: MethodWrittenOverIssue[] = [];
     for (const member of cls.members) {
+      // A static member's `this` is the class, not an instance.
+      if (ts.isClassStaticBlockDeclaration(member)) continue;
+      if (
+        ts.canHaveModifiers(member) &&
+        ts.getModifiers(member)?.some((one) => one.kind === ts.SyntaxKind.StaticKeyword)
+      )
+        continue;
       const writtenIn = ts.isConstructorDeclaration(member) ? "constructor" : (memberName(member) ?? "a member");
       (function walk(at: ts.Node): void {
-        // A nested class has a `this` of its own.
-        if (at !== member && (ts.isClassDeclaration(at) || ts.isClassExpression(at))) return;
+        // Only an arrow keeps the instance's `this`. A nested class, a `function`, and a method or
+        // accessor written in an object literal each have a `this` of their own.
+        if (
+          at !== member &&
+          (ts.isClassDeclaration(at) ||
+            ts.isClassExpression(at) ||
+            ts.isFunctionDeclaration(at) ||
+            ts.isFunctionExpression(at) ||
+            ((ts.isMethodDeclaration(at) || ts.isAccessor(at)) && ts.isObjectLiteralExpression(at.parent)))
+        )
+          return;
         const target =
           ts.isBinaryExpression(at) &&
           at.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&

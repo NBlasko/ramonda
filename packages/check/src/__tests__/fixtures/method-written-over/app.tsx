@@ -40,6 +40,27 @@ class Editor extends Base {
       }
     }
     void Inner;
+    /* Not reported: a `function`'s own `this`, and an object literal's. */
+    const el = {
+      addEventListener(_t: string, f: () => void) {
+        void f;
+      },
+    };
+    el.addEventListener("x", function (this: { submit: boolean }) {
+      this.submit = true;
+    });
+    const o = {
+      submit() {},
+      reset() {
+        this.submit = () => {};
+      },
+    };
+    void o;
+  }
+
+  /* Not reported: a static member's `this` is the class, whatever it names. */
+  static configure(this: { submit: unknown }): void {
+    this.submit = 1;
   }
 
   render() {

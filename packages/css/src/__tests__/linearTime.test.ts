@@ -21,39 +21,43 @@ import { rules } from "./rules/helpers";
  * the whole css suite with coverage, beside core's suite. Linux laptop, Ryzen 5 2500U.
  */
 const N = 160_000;
-const SPACES = " ".repeat(N);
+/** `N` spaces, and one more each round so no round is answered from memory — see `cpuTime`. */
+const spaces = (round: number) => " ".repeat(N + round);
 
-/** The CPU `run` took (see `cpuTime`); refusing the input is an answer too, so a throw is not a failure. */
-const quickly = (run: () => unknown) =>
-  cpuTime(() => {
+/** The CPU a case took (see `cpuTime`); refusing the input is an answer too, so a throw is not a failure. */
+const quickly = (run: (round: number) => unknown) =>
+  cpuTime((round) => () => {
     try {
-      run();
+      run(round);
     } catch {
       // Only the cost is asked here.
     }
   });
 
 describe("read in linear time", () => {
-  test.each<[string, () => unknown]>([
+  test.each<[string, (round: number) => unknown]>([
     // `runtime/conditions.ts`: a feature's value between two runs of spaces.
-    ["a media pair that never closes", () => exclusive([`@media (min-width:${SPACES}x`], ["@media (max-width: 1px)"])],
+    [
+      "a media pair that never closes",
+      (round) => exclusive([`@media (min-width:${spaces(round)}x`], ["@media (max-width: 1px)"]),
+    ],
     // A range group: the text before and after the comparison both took a `<`.
-    ["a range group of nothing but comparisons", () => widthSlot([`@media (${"<".repeat(N)}`])],
+    ["a range group of nothing but comparisons", (round) => widthSlot([`@media (${"<".repeat(N + round)}`])],
     // And the split around the comparison, spaces on either side of nothing.
-    ["spaces before a comparison that is not there", () => widthSlot([`@media (width${SPACES}x < 40rem)`])],
+    ["spaces before a comparison that is not there", (round) => widthSlot([`@media (width${spaces(round)}x < 40rem)`])],
     // `compiler/valueSyntax.ts`: spaces before a range that never comes.
-    ["spaces inside a registered type", () => parseValueSyntax(`<length${SPACES}x>`)],
+    ["spaces inside a registered type", (round) => parseValueSyntax(`<length${spaces(round)}x>`)],
     // `compiler/references.ts`: spaces between two names with no `as`.
     [
       "spaces in an import with no `as`",
-      () =>
-        importedSites(`import { a${SPACES}b } from "./x";\n`, {
+      (round) =>
+        importedSites(`import { a${spaces(round)}b } from "./x";\n`, {
           filename: "/a.tsx",
           read: () => "export const a = @@keyframes(\n  from { opacity: 0; }\n);\n",
         }),
     ],
     // `compiler/rules/selectors.ts`: an attribute bracket that never closes.
-    ["an attribute bracket that never closes", () => rules(`  &[a${"[".repeat(N)} { color: red; }`)],
+    ["an attribute bracket that never closes", (round) => rules(`  &[a${"[".repeat(N + round)} { color: red; }`)],
   ])("%s", (_what, run) => {
     expect(quickly(run)).toBeLessThan(2_500);
   });

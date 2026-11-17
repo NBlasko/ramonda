@@ -1395,9 +1395,10 @@ describe("advice that leads somewhere", () => {
  */
 describe("a block with thousands of declarations", () => {
   test("is compiled in linear time", () => {
-    const declarations = Array.from({ length: 8000 }, (_, index) => `  --v${index}: ${index}px;`).join("\n");
-    expect(cpuTime(() => transform(`const s = @@(\n${declarations}\n);\n`, { filename: "C.tsx" }))).toBeLessThan(
-      10_000,
-    );
+    const declarations = (round: number) =>
+      Array.from({ length: 8000 + round }, (_, index) => `  --v${index}: ${index}px;`).join("\n");
+    expect(
+      cpuTime((round) => () => transform(`const s = @@(\n${declarations(round)}\n);\n`, { filename: "C.tsx" })),
+    ).toBeLessThan(10_000);
   }, 60_000);
 });

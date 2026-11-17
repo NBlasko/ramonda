@@ -513,22 +513,32 @@ describe("a condition that cannot switch", () => {
    * tell apart; at these, 6.5–20 s planted against at most 960 ms (a length that never ends), inside
    * the whole css suite with coverage, beside core's suite. Linux laptop, Ryzen 5 2500U.
    */
-  test.each([
-    ["a pair that never closes", `  @media (min-width:${" ".repeat(8_000)}(x)) { color: red; }`],
-    ["a pair that never closes, in @supports", `  @supports (min-width:${" ".repeat(8_000)}(x)) { color: red; }`],
-    ["a number that never ends", `  @media (min-width: 0${"00".repeat(40_000)}!) { color: red; }`],
-    ["a range of nothing but comparisons", `  @media (${"<".repeat(80_000)}) { color: red; }`],
-    ["a range with a long run of spaces", `  @media (width${" ".repeat(80_000)}>= 40) { color: red; }`],
+  test.each<[string, (round: number) => string]>([
+    ["a pair that never closes", (n) => `  @media (min-width:${" ".repeat(8_000 + n)}(x)) { color: red; }`],
+    [
+      "a pair that never closes, in @supports",
+      (n) => `  @supports (min-width:${" ".repeat(8_000 + n)}(x)) { color: red; }`,
+    ],
+    ["a number that never ends", (n) => `  @media (min-width: 0${"00".repeat(40_000 + n)}!) { color: red; }`],
+    ["a range of nothing but comparisons", (n) => `  @media (${"<".repeat(80_000 + n)}) { color: red; }`],
+    ["a range with a long run of spaces", (n) => `  @media (width${" ".repeat(80_000 + n)}>= 40) { color: red; }`],
     // The unit `supports-a-media-feature` reads — CodeQL's find: the pattern alone is quadratic on a run
     // of `%` (2.5 s at 40,000), so it must be one that cannot be, not one `kindOf` happens to guard.
-    ["a run of percent signs in @supports", `  @supports (min-width: 1${"%".repeat(160_000)}!) { color: red; }`],
-    ["a run of percent signs that is a length", `  @supports (min-width: 1${"%".repeat(160_000)}) { color: red; }`],
+    [
+      "a run of percent signs in @supports",
+      (n) => `  @supports (min-width: 1${"%".repeat(160_000 + n)}!) { color: red; }`,
+    ],
+    [
+      "a run of percent signs that is a length",
+      (n) => `  @supports (min-width: 1${"%".repeat(160_000 + n)}) { color: red; }`,
+    ],
     // The same digits as a declaration's value: the splitter and the value rules read numbers with the
     // same pattern, and it was in twelve places.
-    ["a value that never ends", `  padding: 0${"00".repeat(40_000)}!;`],
-    ["a length that never ends", `  margin: 1${"00".repeat(40_000)}.;`],
+    ["a value that never ends", (n) => `  padding: 0${"00".repeat(40_000 + n)}!;`],
+    ["a length that never ends", (n) => `  margin: 1${"00".repeat(40_000 + n)}.;`],
   ])("%s is answered at once", (_what, css) => {
-    expect(cpuTime(() => rules(css))).toBeLessThan(2_500);
+    // An input of its own each round: the same one twice is answered from memory — see `cpuTime`.
+    expect(cpuTime((round) => () => rules(css(round)))).toBeLessThan(2_500);
   });
 
   test.each([

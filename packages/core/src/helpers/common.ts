@@ -31,6 +31,9 @@ const NO_BAG: Bag = {};
  */
 const dormant = new WeakMap<object, () => void>();
 
+/** The hooks on their owner's walk, so a woken one can be put back in its `use()` place. */
+const walked = new WeakSet<object>();
+
 /**
  * Calls the props callback, and in a development build holds it to the same two standards
  * `render()` is held to — the phase is marked, so randomness read while building a bag is
@@ -453,8 +456,22 @@ export function useCommon<T extends BaseHook<unknown>, P>(
     }
   };
 
-  const register = () => {
-    internalHooks.push(updateFn);
+  const register = (woken: boolean) => {
+    // In `use()` order, which is the order the walk keeps: a hook's props can read a hook used before
+    // it, so the one used first has to be updated first. A hook registered as it is used is the last
+    // so far; a woken one goes after every hook on the walk that was used before it. Measured: woken
+    // at the end instead, a hook reading the woken one's child served its old value in a production
+    // build, and the right one in development, where nothing sleeps.
+    let at = internalHooks.length;
+    if (woken) {
+      at = 0;
+      for (const sibling of childHooks) {
+        if (sibling === hookInstance) break;
+        if (walked.has(sibling)) at++;
+      }
+    }
+    internalHooks.splice(at, 0, updateFn);
+    walked.add(hookInstance);
     // The owner is a hook this walk had left out, and now it has a child to walk: it goes back on
     // ITS owner's list, and so on up, as far as the first one that was never left out.
     const wake = dormant.get(that);
@@ -485,8 +502,8 @@ export function useCommon<T extends BaseHook<unknown>, P>(
    */
   const canMove = cache !== undefined && cache.deps.size > 0;
   const hasChildren = (hookInstance[INTERNAL_HOOKS]?.length ?? 0) > 0;
-  if (__DEV__ || canMove || hasChildren) register();
-  else dormant.set(hookInstance, register);
+  if (__DEV__ || canMove || hasChildren) register(false);
+  else dormant.set(hookInstance, () => register(true));
 
   // The cache holds a listener on every signal its callback read, and those signals outlive the
   // hook — an owner's `@state` belongs to the owner, and a context signal belongs to the

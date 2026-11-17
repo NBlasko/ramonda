@@ -1,4 +1,6 @@
 import { describe, test, expect, vi } from "vitest";
+import { setFlagsFromString } from "node:v8";
+import { runInNewContext } from "node:vm";
 import { getDOM } from "../test/setup";
 import { Component, state, list } from "../index";
 import { State } from "../reactivity/State";
@@ -162,5 +164,41 @@ describe("a list row whose callback produced nothing", () => {
       vi.restoreAllMocks();
     }
     expect(made).toBe(0);
+  });
+  /**
+   * What the row rendered before it went empty is let go. The kept scope held its last vnode — the whole
+   * subtree, nested lists and their owners — for as long as the row stayed empty, where a scope made
+   * afresh let it go with the scope. Asked of the collector itself: a `WeakRef` to an object only that
+   * subtree holds, and `gc()` reached through V8's flag, since vitest starts its workers without it.
+   */
+  test("lets go of what it rendered before it went empty", async () => {
+    setFlagsFromString("--expose_gc");
+    const gc = runInNewContext("gc") as () => void;
+    let held: WeakRef<object> | undefined;
+    class Rows extends Component {
+      @state items = [1, 2, 3];
+      @state hide = false;
+      row(n: number) {
+        if (n !== 2) return <li>{n}</li>;
+        if (this.hide) return null as never;
+        const payload = { n };
+        held ??= new WeakRef(payload);
+        return <li data-payload={payload as never}>{n}</li>;
+      }
+      render() {
+        return <ul>{list(this.items, this.row)}</ul>;
+      }
+    }
+    const app = await getDOM<Rows>(<Rows />);
+    await app.settle();
+    app.instance.hide = true;
+    await app.settle();
+    app.instance.items = [...app.instance.items];
+    await app.settle();
+    for (let round = 0; round < 5; round++) {
+      gc();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    expect(held?.deref()).toBeUndefined();
   });
 });

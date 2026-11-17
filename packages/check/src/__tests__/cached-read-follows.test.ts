@@ -25,6 +25,11 @@ describe("a cached reader, followed", () => {
       "namedConst:rate:bump",
       "method:rate:bump",
       "getter:rate:bump",
+      "pattern:var first:setFirst",
+      "objectPattern:var region:setRegion",
+      "loop:var unit:cycle",
+      "counts:var count:bump",
+      "counts:var count:bumpOther",
       "title:var lang:setLang",
     ]);
   });

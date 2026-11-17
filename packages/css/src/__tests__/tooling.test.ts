@@ -1179,7 +1179,7 @@ describe("odd text keeps its meaning and settles", () => {
  * every two more comments. A formatter that hangs on a file is a formatter nobody can save with.
  */
 test("a run of comments before an arm is read in linear time", () => {
-  const notes = "/**/".repeat(40);
-  const source = `declare const t: "a" | "b";\nexport const x = (k: number) => @@(\n  match $(t) {\n    a => ( color: red; );\n    ${notes} b => ( color: blue; );\n  }\n);\n`;
-  expect(cpuTime(() => formatText(source, "A.tsx", (text) => text))).toBeLessThan(1000);
+  const source = (round: number) =>
+    `declare const t: "a" | "b";\nexport const x = (k: number) => @@(\n  match $(t) {\n    a => ( color: red; );\n    ${"/**/".repeat(40 + round)} b => ( color: blue; );\n  }\n);\n`;
+  expect(cpuTime((round) => () => formatText(source(round), "A.tsx", (text) => text))).toBeLessThan(1000);
 });

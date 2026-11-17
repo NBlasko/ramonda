@@ -84,8 +84,11 @@ export interface CachedReadOfAPlainFieldIssue {
 interface Reads {
   /** Every `this.X` read, by name — the caller keeps the ones something writes later. */
   fields: Set<string>;
-  /** A `let` or `var` declared outside the reader and written inside a function → that function. */
-  variables: Map<string, string>;
+  /**
+   * A `let` or `var` declared outside the reader and written later → its name and that writer. Keyed by
+   * the variable, not the name: two modules may each have a `count`.
+   */
+  variables: Map<ts.Symbol, { name: string; writer: string }>;
 }
 
 /** The name a report gives the function a write is in — a method, a function, or neither. */
@@ -100,25 +103,83 @@ function writerName(node: ts.Node): string {
   return "a function";
 }
 
-/** Whether a node runs inside some function — so not while the module is first evaluated. */
-function insideAFunction(node: ts.Node): boolean {
+/** The function a node runs in, or `undefined` at a module's top level. */
+function enclosingFunction(node: ts.Node): ts.Node | undefined {
   for (let at: ts.Node | undefined = node.parent; at !== undefined; at = at.parent) {
-    if (ts.isFunctionLike(at) || ts.isClassStaticBlockDeclaration(at)) return true;
+    if (ts.isFunctionLike(at) || ts.isClassStaticBlockDeclaration(at)) return at;
+  }
+  return undefined;
+}
+
+/** Every identifier an assignment's left side writes, through any destructuring. */
+function targetsOf(left: ts.Node, into: ts.Identifier[]): void {
+  if (ts.isIdentifier(left)) into.push(left);
+  else if (ts.isParenthesizedExpression(left)) targetsOf(left.expression, into);
+  else if (ts.isArrayLiteralExpression(left)) for (const one of left.elements) targetsOf(one, into);
+  else if (ts.isObjectLiteralExpression(left)) {
+    for (const one of left.properties) {
+      if (ts.isShorthandPropertyAssignment(one)) into.push(one.name);
+      else if (ts.isPropertyAssignment(one)) targetsOf(one.initializer, into);
+      else if (ts.isSpreadAssignment(one)) targetsOf(one.expression, into);
+    }
+  } else if (ts.isSpreadElement(left)) targetsOf(left.expression, into);
+  else if (ts.isBinaryExpression(left) && left.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+    // `[a = 1] = list` — a default inside a pattern.
+    targetsOf(left.left, into);
+  }
+}
+
+/**
+ * Whether a write is a LAZY first value — `x ??= make()`, `x ||= make()`, or `if (!x) x = make()` — which
+ * fills an empty variable once and never changes a value anybody has read.
+ */
+function isLazyInit(write: ts.BinaryExpression, symbol: ts.Symbol, resolve: Resolver): boolean {
+  const operator = write.operatorToken.kind;
+  if (operator === ts.SyntaxKind.QuestionQuestionEqualsToken || operator === ts.SyntaxKind.BarBarEqualsToken)
+    return true;
+  if (operator !== ts.SyntaxKind.EqualsToken) return false;
+  let statement: ts.Node = write.parent;
+  if (!ts.isExpressionStatement(statement)) return false;
+  if (ts.isBlock(statement.parent) && statement.parent.statements.length === 1) statement = statement.parent;
+  const guard = statement.parent;
+  if (!ts.isIfStatement(guard) || guard.thenStatement !== statement) return false;
+  const tested = guard.expression;
+  const isIt = (node: ts.Expression): boolean => ts.isIdentifier(node) && resolve(node) === symbol;
+  if (ts.isPrefixUnaryExpression(tested) && tested.operator === ts.SyntaxKind.ExclamationToken)
+    return isIt(tested.operand);
+  if (ts.isBinaryExpression(tested)) {
+    const empty = (node: ts.Expression): boolean =>
+      node.kind === ts.SyntaxKind.NullKeyword || (ts.isIdentifier(node) && node.text === "undefined");
+    const kind = tested.operatorToken.kind;
+    if (kind !== ts.SyntaxKind.EqualsEqualsEqualsToken && kind !== ts.SyntaxKind.EqualsEqualsToken) return false;
+    return (isIt(tested.left) && empty(tested.right)) || (isIt(tested.right) && empty(tested.left));
   }
   return false;
 }
 
 /**
- * Where a `let` or `var` is written after its module has been evaluated — the function holding the
- * first such write, or `undefined` when nothing writes it then.
+ * Where a `let` or `var` is written after the class reading it exists — the function holding the first
+ * such write, or `undefined` when nothing writes it then.
  *
- * Only the declaring file is read, and that is complete rather than a shortcut: an imported binding
- * is read-only in every module but its own, so no other file can assign it.
+ * Not a write: one made while its module is first evaluated, or in the function that makes the class
+ * (a class declared in a factory), both of which are over before any instance can read it; and a lazy
+ * first value (`isLazyInit`). Only the declaring file is read, and that is complete rather than a
+ * shortcut: an imported binding is read-only in every module but its own, so no other file can assign it.
  */
-function laterWriterOf(declaration: ts.VariableDeclaration, symbol: ts.Symbol, resolve: Resolver): string | undefined {
+function laterWriterOf(
+  declaration: ts.VariableDeclaration,
+  symbol: ts.Symbol,
+  cls: ts.ClassLikeDeclaration,
+  resolve: Resolver,
+): string | undefined {
   let writer: string | undefined;
-  const note = (target: ts.Node): void => {
-    if (writer === undefined && ts.isIdentifier(target) && insideAFunction(target) && resolve(target) === symbol) {
+  const note = (targets: ts.Identifier[], write?: ts.BinaryExpression): void => {
+    for (const target of targets) {
+      if (writer !== undefined || resolve(target) !== symbol) continue;
+      const runsIn = enclosingFunction(target);
+      if (runsIn === undefined) continue;
+      if (runsIn.getSourceFile() === cls.getSourceFile() && cls.pos >= runsIn.pos && cls.end <= runsIn.end) continue;
+      if (write !== undefined && isLazyInit(write, symbol, resolve)) continue;
       writer = writerName(target);
     }
   };
@@ -129,13 +190,22 @@ function laterWriterOf(declaration: ts.VariableDeclaration, symbol: ts.Symbol, r
       at.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
       at.operatorToken.kind <= ts.SyntaxKind.LastAssignment
     ) {
-      note(at.left);
+      const targets: ts.Identifier[] = [];
+      targetsOf(at.left, targets);
+      note(targets, at);
     }
     if (
       (ts.isPostfixUnaryExpression(at) || ts.isPrefixUnaryExpression(at)) &&
       (at.operator === ts.SyntaxKind.PlusPlusToken || at.operator === ts.SyntaxKind.MinusMinusToken)
     ) {
-      note(at.operand);
+      const targets: ts.Identifier[] = [];
+      targetsOf(at.operand, targets);
+      note(targets);
+    }
+    if ((ts.isForOfStatement(at) || ts.isForInStatement(at)) && !ts.isVariableDeclarationList(at.initializer)) {
+      const targets: ts.Identifier[] = [];
+      targetsOf(at.initializer, targets);
+      note(targets);
     }
     ts.forEachChild(at, walk);
   })(declaration.getSourceFile());
@@ -188,6 +258,7 @@ function readsIn(
   cls: ts.ClassLikeDeclaration,
   declaring: readonly ts.ClassLikeDeclaration[],
   resolve: Resolver,
+  writers: Map<ts.Symbol, string | undefined>,
 ): Reads {
   const reads: Reads = { fields: new Set(), variables: new Map() };
   // A props callback names its owner as `this`, its parameter, or the parameter destructured — see
@@ -204,16 +275,20 @@ function readsIn(
 
     const owner = at === node ? callback : callbackOwner(at);
     (function look(current: ts.Node): void {
-      // A function handed over in a props bag is not run by the callback — see `isHandedOver`.
-      if (at === node && current !== node && isHandedOver(current)) return;
+      // A function handed over in an object — a props bag, or one a followed function returns — is not
+      // run by the reader. See `isHandedOver`.
+      if (current !== at && isHandedOver(current)) return;
       if (ts.isIdentifier(current)) {
         if (hasThis && owner.destructured.has(current.text) && isLocalRead(current)) {
           reads.fields.add(owner.destructured.get(current.text) as string);
         }
         const outer = outerVariable(current, at === node ? node : (at.parent ?? at), cls, resolve);
-        if (outer !== undefined && !reads.variables.has(current.text)) {
-          const writer = laterWriterOf(outer.declaration, outer.symbol, resolve);
-          if (writer !== undefined) reads.variables.set(current.text, writer);
+        if (outer !== undefined && !reads.variables.has(outer.symbol)) {
+          // Asked once per variable per class: every read of it would otherwise walk its file again.
+          if (!writers.has(outer.symbol))
+            writers.set(outer.symbol, laterWriterOf(outer.declaration, outer.symbol, cls, resolve));
+          const writer = writers.get(outer.symbol);
+          if (writer !== undefined) reads.variables.set(outer.symbol, { name: current.text, writer });
         }
       }
       if (
@@ -335,10 +410,12 @@ export const cachedReadOfAPlainField = {
     const declaring = [cls, ...heritage(cls, resolve)];
 
     const found: CachedReadOfAPlainFieldIssue[] = [];
+    /** Each outer variable's later writer, asked once for the class. */
+    const writers = new Map<ts.Symbol, string | undefined>();
 
     /** One reported read, whichever kind of cached reader found it. */
     const report = (node: ts.Node, reader: CachedReadOfAPlainFieldIssue["reader"], named: string): void => {
-      const reads = readsIn(node, cls, declaring, resolve);
+      const reads = readsIn(node, cls, declaring, resolve, writers);
       for (const field of reads.fields) {
         const writer = writtenBy.get(field);
         if (writer === undefined) continue;
@@ -352,7 +429,7 @@ export const cachedReadOfAPlainField = {
           ...positionOf(node),
         });
       }
-      for (const [variable, writer] of reads.variables) {
+      for (const { name: variable, writer } of reads.variables.values()) {
         found.push({
           component: self.name,
           reader,

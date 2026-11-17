@@ -1,4 +1,8 @@
 import { Component, Hook, bootstrap, compute, state } from "@ramonda/core";
+import { readOther } from "./other";
+
+declare function createApi(): { base: string };
+declare function load(): string;
 
 class Takes extends Hook<{ value: unknown }> {}
 
@@ -25,6 +29,67 @@ function counted(): number {
   let n = 0;
   n += 1;
   return n;
+}
+
+/* Written lazily, once, into an empty variable: never stale. */
+let fmt: { format(n: number): string } | undefined;
+function money(n: number): string {
+  fmt ??= { format: String };
+  return fmt.format(n);
+}
+let loaded: string | undefined;
+function config(): string {
+  if (!loaded) loaded = load();
+  return loaded;
+}
+
+/* A function returning handlers: the handlers are not run by whoever calls it. */
+let lastSaved = 0;
+function makeActions() {
+  return {
+    save: () => {
+      lastSaved = Date.now();
+    },
+    since: () => Date.now() - lastSaved,
+  };
+}
+
+/* Written through a pattern or a loop: stale like any other write. */
+let first = "en";
+export function setFirst(next: string[]): void {
+  [first] = next;
+}
+let region = "rs";
+export function setRegion(cfg: { region: string }): void {
+  ({ region } = cfg);
+}
+let unit = "px";
+export function cycle(list: string[]): void {
+  for (unit of list) void unit;
+}
+
+/* A `count` here and another in `./other.ts`, each written later: two variables, both stale. */
+let count = 0;
+export function bump(): void {
+  count++;
+}
+function readHere(): number {
+  return count;
+}
+
+/* A class made in a function, its variable written there — before the class exists. */
+export function makeCard(o: { size?: number }) {
+  let size = o.size ?? 0;
+  size = Math.max(size, 10);
+  class SizedCard extends Component {
+    @compute get px(): number {
+      return (size ?? 0) * 2;
+    }
+    render() {
+      return <p>{this.px}</p>;
+    }
+  }
+  return SizedCard;
 }
 
 /* Props callbacks declared away from their `this.use`. */
@@ -55,6 +120,18 @@ class Cart extends Component {
   /* REPORTED — the field, through a getter. */
   getter = this.use(Takes, (self: Cart) => ({ value: self.shown }));
 
+  /* REPORTED — written through an array pattern, an object pattern, a `for…of`. */
+  pattern = this.use(Takes, () => ({ value: first }));
+  objectPattern = this.use(Takes, () => ({ value: region }));
+  loop = this.use(Takes, () => ({ value: unit }));
+  /* REPORTED twice — two variables named `count`, one in each module. */
+  counts = this.use(Takes, () => ({ value: readHere() + readOther() }));
+
+  /* Not reported: a lazy first value, in a variable or behind a getter; handlers handed back. */
+  lazy = this.use(Takes, () => ({ value: money(1) + config() }));
+  lazyGetter = this.use(Takes, (self: Cart) => ({ value: self.api }));
+  handlers = this.use(Takes, () => ({ value: makeActions() }));
+
   /* Not reported: written only at module evaluation, a constant, a local, a @compute. */
   quietTheme = this.use(Takes, () => ({ value: theme }));
   quietConst = this.use(Takes, () => ({ value: PREFIX }));
@@ -78,6 +155,11 @@ class Cart extends Component {
 
   get shown(): number {
     return this.rate;
+  }
+
+  private _api?: { base: string };
+  get api() {
+    return (this._api ??= createApi());
   }
 
   props_(self: Cart) {
