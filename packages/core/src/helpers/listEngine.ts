@@ -86,6 +86,11 @@ interface ItemScope<T> {
   deps: Set<State<unknown>>;
   dirty: boolean;
   /**
+   * The callback produced nothing for this row last time. The scope stays — its subscriptions are what bring
+   * the row back when what it read changes — and is used again, never replaced by a new one.
+   */
+  empty: boolean;
+  /**
    * Something INSIDE this row changed while the row itself did not: a list in it has a row that is
    * dirty. The callback need not run again — its vnode is still right — but the diff must open the
    * row, because opening it is the only way to reach the list that changed. See `markRowsAbove`.
@@ -456,6 +461,12 @@ export class ListEngine<T> {
       // render's vnode untouched. `clean` tells the diff it may skip the subtree
       // entirely.
       if (existing && existing.item === item && !existing.dirty && !builderChanged) {
+        // Still nothing: nothing the callback read has moved since it produced none.
+        if (existing.empty) {
+          nextByIndex[i] = existing;
+          if (!same) this.claimScope(nextScopes, scopeKey, existing);
+          continue;
+        }
         rows++;
         if (existing.vnode.attributes?.key != null) keyedRows++;
         out.push(existing.vnode);
@@ -477,7 +488,7 @@ export class ListEngine<T> {
         if (__DEV__) {
           diagnose("RMD013", `${host.name}:empty`, `The render callback produced nothing for item ${i}.`);
         }
-        this.dropRow(same, i, nextByIndex);
+        this.keepEmpty(same, i, scopeKey, nextByIndex, nextScopes);
         continue;
       }
 
@@ -494,7 +505,7 @@ export class ListEngine<T> {
             `The render callback returned ${describe(vnode)} for item ${i}.`,
           );
         }
-        this.dropRow(same, i, nextByIndex);
+        this.keepEmpty(same, i, scopeKey, nextByIndex, nextScopes);
         continue;
       }
 
@@ -536,6 +547,7 @@ export class ListEngine<T> {
 
       out.push(vnode);
       clean.push(false);
+      this.lastScope!.empty = false;
       this.lastScope!.dirtyBelow = false;
       this.lastScope!.key = scopeKey;
       rowScopes.push(this.lastScope! as RowScope);
@@ -562,16 +574,24 @@ export class ListEngine<T> {
   }
 
   /**
-   * A position that produced no row this pass. On the pass that takes rows by position its scope is still
-   * in `scopes`, and is let go here. A pass that rebuilt the maps lets go only the scopes it did not
-   * claim — a scope it made this pass for a row with no output is not among them (TODO: on main too).
+   * A position whose callback produced no row this pass. Its scope — the one `buildItem` just ran, kept or
+   * made — is kept as this position's and this key's, marked empty, so the next pass uses it again: its
+   * subscriptions bring the row back when what it read changes, and it is let go when the item leaves, as
+   * any row's is. Made afresh on every pass instead, the last one's was never let go and a signal the row
+   * read gathered one more subscription per pass.
    */
-  private dropRow(same: boolean, index: number, nextByIndex: (ItemScope<T> | undefined)[]): void {
-    const scope = nextByIndex[index];
-    nextByIndex[index] = undefined;
-    if (!same || scope === undefined) return;
-    this.releaseScope(scope);
-    this.scopes.delete(scope.key as string);
+  private keepEmpty(
+    same: boolean,
+    index: number,
+    scopeKey: string,
+    nextByIndex: (ItemScope<T> | undefined)[],
+    nextScopes: Map<string, ItemScope<T>>,
+  ): void {
+    const scope = this.lastScope!;
+    scope.empty = true;
+    scope.key = scopeKey;
+    nextByIndex[index] = scope;
+    if (!same) this.claimScope(nextScopes, scopeKey, scope);
   }
 
   /**
@@ -621,6 +641,7 @@ export class ListEngine<T> {
       vnode: undefined as unknown as VNode,
       deps: new Set(),
       dirty: false,
+      empty: false,
       dirtyBelow: false,
       engine: this as ListEngine<unknown>,
       addDep(state: State<unknown>) {

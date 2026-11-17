@@ -110,7 +110,8 @@ describe("a list handed the same array again", () => {
     });
   });
 
-  test("a row that renders nothing lets go of what it read", async () => {
+  // It keeps what it read — once — so a signal it read can bring it back; see ListEmptyRow.test.tsx.
+  test("a row that renders nothing keeps what it read, once, and gathers no more", async () => {
     const shared = new State(0);
     const listeners = () => (shared as unknown as { _listeners?: Map<unknown, unknown> })._listeners?.size ?? 0;
     class Reading extends Component {
@@ -130,7 +131,10 @@ describe("a list handed the same array again", () => {
     const before = listeners();
     app.instance.hidden = 2;
     await app.settle();
-    expect({ before, after: listeners() }).toEqual({ before: 3, after: 2 });
+    const after = listeners();
+    shared.set(1);
+    await app.settle();
+    expect({ before, after, again: listeners() }).toEqual({ before: 3, after: 3, again: 3 });
   });
 
   test("a row taken off the end in place lets go of what it read", async () => {
