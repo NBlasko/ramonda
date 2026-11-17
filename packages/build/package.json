@@ -56,8 +56,8 @@
   },
   "dependencies": {
     "esbuild": "^0.28.2",
-    "magic-string": "^1.4.3",
-    "oxc-parser": "^0.155.0"
+    "magic-string": "^1.4.5",
+    "oxc-parser": "^0.158.0"
   },
   "devDependencies": {
     "@ramonda/dom-facts": "workspace:*",

@@ -48,7 +48,7 @@
     "format": "biome format --write src"
   },
   "dependencies": {
-    "linkedom": "^0.18.13"
+    "linkedom": "^0.18.15"
   },
   "devDependencies": {
     "@ramonda/check": "workspace:^",
