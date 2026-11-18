@@ -70,13 +70,6 @@ export function runsIn(node: ts.Node): ts.Node | undefined {
 }
 
 /**
- * The writes to this class's ordinary fields that can come after the first render, by field — the
- * judgement both cached-reader rules ask, with where each write runs. A static member's `this` is the
- * class, and a nested `function`'s is its own: neither writes an instance field. A `function` HELD in a
- * field is the exception, called through the owner (`this.onDone()`) — unless its `this` is declared
- * as another type, `function (this: HTMLInputElement)`, which says whose it is.
- */
-/**
  * Whether a `function`'s `this` is the instance: it declares none, or declares one naming the class or a
  * base (`this: Cart`, `this: Cart | void`). A `this` declared as another type is that type's.
  */
@@ -95,6 +88,13 @@ function thisIsTheInstance(
   );
 }
 
+/**
+ * The writes to this class's ordinary fields that can come after the first render, by field — the
+ * judgement both cached-reader rules ask, with where each write runs. A static member's `this` is the
+ * class, and a nested `function`'s is its own: neither writes an instance field. A `function` HELD in a
+ * field is the exception, called through the owner (`this.onDone()`) — unless its `this` is declared
+ * as another type, `function (this: HTMLInputElement)`, which says whose it is.
+ */
 export function fieldWrites(
   declaring: readonly ts.ClassLikeDeclaration[],
   resolve: Resolver,

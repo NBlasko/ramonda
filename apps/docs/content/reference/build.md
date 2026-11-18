@@ -206,25 +206,32 @@ finds that variable `undefined` after adopting Ramonda's build settings. Rename 
 server and pass it down. Setting `envPrefix` yourself is **refused** rather than merged, because a plugin
 that quietly widened what reaches the browser would be the one mistake here nobody can walk back.
 
-**With esbuild, call `ramondaDefine` rather than writing `define` yourself:**
+**With esbuild, let the plugin write them:**
 
 ```ts
 import { build } from "esbuild";
-import { ramondaDefine, ramondaOptions } from "@ramonda/build/esbuild";
+import { ramonda, ramondaOptions } from "@ramonda/build/esbuild";
 
 process.env.NODE_ENV = "production";
-await build({ ...ramondaOptions, define: ramondaDefine(), entryPoints: ["src/main.tsx"] });
+await build({ ...ramondaOptions, plugins: [ramonda()], entryPoints: ["src/main.tsx"] });
 ```
+
+It writes them for each build it runs in, so `import.meta.env.SSR` is `true` in a build for
+`platform: "node"` and `false` in one for the browser — one shared options object serves a server build
+and a client build alike.
 
 `import.meta.env.DEV`, `PROD` and `MODE` follow `NODE_ENV`, and it counts as production only when it is
 unset or says so. So a production build script says it first: a shell that exports
 `NODE_ENV=development` would otherwise make `DEV` true in the bundle and ship every development branch —
 the devtools import among them.
 
-`ramondaOptions` is spread, and a spread cannot refuse anything — a plain `define` written after it
-replaces the env entries, and every `import.meta.env.RAMONDA_PUBLIC_…` read becomes a live reference that
-throws in the browser, because esbuild creates no `import.meta.env` of its own. The plugin form needs none
-of this: it runs after the options are assembled, so it merges into whatever is there.
+Without the plugin, call `ramondaDefine` rather than writing `define` yourself. `ramondaOptions` is
+spread, and a spread cannot refuse anything — a plain `define` written after it replaces the env entries,
+and every `import.meta.env.RAMONDA_PUBLIC_…` read becomes a live reference that throws in the browser,
+because esbuild creates no `import.meta.env` of its own. `ramondaDefine()` cannot know which side it builds
+for, so it says `SSR` is `false`; a server build passes `ramondaDefine({ "import.meta.env.SSR": "true" })`.
+The plugin needs none of this: it runs after the options are assembled, merges into whatever is there, and
+knows the platform.
 
 **Types.** Declare the names your app reads, once, and a typo becomes a build error. Two interfaces, and
 both are needed — `ImportMetaEnv` on its own is attached to nothing, and the error you get is

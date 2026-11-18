@@ -370,7 +370,7 @@ export class ListEngine<T> {
     let yours: Set<unknown> | undefined;
 
     /**
-     * The same array as last pass, every position holding a row: a row of it was invalidated
+     * The same array as last pass, every position holding a scope — an empty row keeps one: a row of it was invalidated
      * — every row of a list reading the one signal that moved, a select — or a list inside one was. Each
      * id and each scope is then where last pass left it, so they are taken by position, and the maps
      * that find them by item and by id are neither read nor rebuilt.
@@ -379,9 +379,9 @@ export class ListEngine<T> {
     let same = each === before && !builderChanged && byIndex !== undefined && byIndex.length === each.length;
     if (same) {
       for (let i = 0; i < each.length; i++) {
-        // A position that produced no row last pass has no scope to take, and one holding another item —
-        // the array replaced, sorted or reversed in place (RMD005) — has to find its row by the item, so
-        // a row's state goes where its item went.
+        // A position holding another item — the array replaced, sorted or reversed in place (RMD005) —
+        // has to find its row by the item, so a row's state goes where its item went. Every position holds
+        // a scope, an empty row's included; one with none is a pass that threw part-way.
         const scope = (byIndex as (ItemScope<T> | undefined)[])[i];
         if (scope === undefined || scope.item !== each[i]) {
           same = false;
