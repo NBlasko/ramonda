@@ -1,6 +1,8 @@
 import ts from "typescript";
 import {
   callbackOwner,
+  contains,
+  invokedOnTheSpot,
   isHandedOver,
   isLocalRead,
   isStatic,
@@ -12,7 +14,7 @@ import {
 import { hasDecorator, heritage, runsNow } from "./render-reach";
 // The field judgement itself, shared with `row-reads-a-plain-field`: which fields a CACHED reader
 // can go stale on, and which writes count. See `stale-field.ts` for why it is not written twice.
-import { trackedOrHarmless, writesAfterTheFirstRender } from "./stale-field";
+import { type FieldWrite, fieldWrites, runsIn } from "./stale-field";
 import type { Resolver, Rule } from "./rule";
 
 /**
@@ -57,7 +59,8 @@ import type { Resolver, Rule } from "./rule";
  * `prefix = "Total: "` — can never be stale, and it is the commonest plain field there is. So a
  * WRITE is required, and writes in the constructor, in a field initializer and in `@created` do not
  * count: all three run before the first render, so the first computed value already has the final
- * one.
+ * one. A write inside a FUNCTION written there does — even one invoked on the spot: which functions run
+ * when is not followed, so any function holding a write is a later place.
  *
  * **A write from inside a render or a `@compute`** — the memo pattern,
  * `if (!this.cache) this.cache = expensive()`. Advising `@state` there would be advising a loop.
@@ -91,13 +94,10 @@ export interface CachedReadOfAPlainFieldIssue {
   column: number;
 }
 
-/** One write that can leave a cached reader stale: who makes it, and the function or field it runs in. */
-interface Write {
-  writer: string;
+/** One write that can leave a cached reader stale — see `FieldWrite` — or a script's global with no writer in view. */
+interface Write extends FieldWrite {
   /** A script's global with no writer in view — any script may write it. */
   global?: true;
-  /** The function holding it — a class made inside that function is made by it. */
-  fn: ts.Node;
 }
 
 /** What a cached reader reads that something may write later. */
@@ -111,6 +111,9 @@ interface Reads {
 /** The name a report gives the function a write is in — a method, a function, or neither. */
 function writerName(node: ts.Node): string {
   for (let at: ts.Node | undefined = node.parent; at !== undefined; at = at.parent) {
+    // Named for itself, not for what holds it: the function around an IIFE may be one that makes the class.
+    if ((ts.isArrowFunction(at) || ts.isFunctionExpression(at)) && invokedOnTheSpot(at))
+      return "a function invoked where it is written";
     if ((ts.isFunctionDeclaration(at) || ts.isMethodDeclaration(at) || ts.isAccessor(at)) && at.name !== undefined)
       return at.name.getText();
     if (ts.isVariableDeclaration(at) && ts.isIdentifier(at.name)) return at.name.text;
@@ -121,34 +124,28 @@ function writerName(node: ts.Node): string {
   return "a function";
 }
 
-/**
- * The function (or instance field initializer) a write runs in — or `undefined` for one that is over
- * before any instance exists: while the module is first evaluated, or in a static block or static
- * field. An instance field's initializer runs once per instance, so it counts. Any function holding a
- * write is a later place — one invoked on the spot as well, which errs on the side of reporting. Whether
- * the function holding it MAKES the class reading it (a class declared in a factory) is the reader's
- * question, asked in `madeTooEarly`.
- */
-function runsIn(node: ts.Node): ts.Node | undefined {
-  for (let at: ts.Node | undefined = node.parent; at !== undefined; at = at.parent) {
-    if (ts.isClassStaticBlockDeclaration(at)) return undefined;
-    if (ts.isPropertyDeclaration(at)) return isStatic(at) ? undefined : at;
-    if (ts.isFunctionLike(at)) return at;
+/** The members of that name in the nearest class up the chain — the one an instance has. */
+function nearestMembers(declaring: readonly ts.ClassLikeDeclaration[], name: string): ts.ClassElement[] {
+  for (const one of declaring) {
+    const found = one.members.filter((member) => memberName(member) === name);
+    if (found.length > 0) return found;
   }
-  return undefined;
+  return [];
 }
 
 /** Whether a write runs in the function that makes `cls` — over before any instance of it exists. */
 function madeTooEarly(write: Write, cls: ts.ClassLikeDeclaration): boolean {
-  return write.fn.getSourceFile() === cls.getSourceFile() && cls.pos >= write.fn.pos && cls.end <= write.fn.end;
+  return contains(write.fn, cls);
 }
 
 /** The writes of each file, by variable — per program, because the symbols are one checker's. */
 const writesInFile = new WeakMap<Resolver, WeakMap<ts.SourceFile, Map<ts.Symbol, Write[]>>>();
 
 /**
- * Every write to a `let` or `var` that runs after its module was first evaluated — collected once per
- * file for the whole program, since nothing in the answer depends on who reads it. Only the declaring
+ * Every write to a `let` or `var` that runs in a function or an instance field's initializer — a write
+ * made while the module is first evaluated does not count, one inside a function does, even a function
+ * invoked then. Collected once per file for the whole program, since nothing in the answer depends on
+ * who reads it. Only the declaring
  * file is read, and for a module that is complete rather than a shortcut: an imported binding is
  * read-only in every module but its own, so no other file can assign it. A script's top-level one is a
  * GLOBAL, which any other script can assign: with no writer in this file, it is still counted as
@@ -188,48 +185,6 @@ function variableWrites(declaration: ts.VariableDeclaration, symbol: ts.Symbol, 
   return global && writes.length === 0 ? [{ writer: "any script", fn: declaration, global: true }] : writes;
 }
 
-/**
- * The writes to this class's ordinary fields that can come after the first render, by field — the
- * same fields and the same members `staleFieldsOf` judges, with where each write runs. A static
- * member's `this` is the class, and a nested `function`'s is its own: neither writes an instance field.
- */
-function fieldWrites(declaring: readonly ts.ClassLikeDeclaration[], resolve: Resolver): Map<string, Write[]> {
-  const plain = new Set<string>();
-  for (const one of declaring) {
-    for (const member of one.members) {
-      if (!ts.isPropertyDeclaration(member) || isStatic(member) || trackedOrHarmless(member, resolve)) continue;
-      const name = memberName(member);
-      if (name !== undefined) plain.add(name);
-    }
-  }
-  const writes = new Map<string, Write[]>();
-  if (plain.size === 0) return writes;
-  for (const one of declaring) {
-    for (const member of one.members) {
-      if (isStatic(member) || ts.isClassStaticBlockDeclaration(member)) continue;
-      if (!writesAfterTheFirstRender(member, resolve)) continue;
-      const writer = memberName(member) ?? "a method";
-      writesUnder(member, true, (target) => {
-        if (
-          !ts.isPropertyAccessExpression(target) ||
-          target.expression.kind !== ts.SyntaxKind.ThisKeyword ||
-          !plain.has(target.name.text)
-        )
-          return;
-        const field = target.name.text;
-        const fn = runsIn(target);
-        // An instance field's initializer writes this instance before its first render — the constructor's
-        // time, which `writesAfterTheFirstRender` does not count either.
-        if (fn === undefined || ts.isPropertyDeclaration(fn)) return;
-        const list = writes.get(field) ?? [];
-        list.push({ writer, fn });
-        writes.set(field, list);
-      });
-    }
-  }
-  return writes;
-}
-
 /** A `let` or `var` this identifier reads, when it is declared outside `scope` and outside `cls`. */
 function outerVariable(
   id: ts.Identifier,
@@ -248,9 +203,7 @@ function outerVariable(
   if (file.isDeclarationFile || file.fileName.includes("node_modules")) return undefined;
   // Declared inside the function being read — a local of its own — or inside the class: neither is
   // outside it, and a local written inside its own function is just a local.
-  const inside = (outer: ts.Node): boolean =>
-    outer.getSourceFile() === file && declaration.pos >= outer.pos && declaration.end <= outer.end;
-  if (inside(scope) || inside(cls)) return undefined;
+  if (contains(scope, declaration) || contains(cls, declaration)) return undefined;
   return { declaration, symbol };
 }
 
@@ -292,13 +245,7 @@ function readsIn(
   const seen = new Set<ts.Node>();
 
   /** The members of that name in the nearest class up the chain — the one that runs. */
-  const nearestNamed = (name: string): ts.ClassElement[] => {
-    for (const one of declaring) {
-      const found = one.members.filter((member) => memberName(member) === name);
-      if (found.length > 0) return found;
-    }
-    return [];
-  };
+  const nearestNamed = (name: string): ts.ClassElement[] => nearestMembers(declaring, name);
   const plainGetter = (member: ts.ClassElement): member is ts.GetAccessorDeclaration =>
     ts.isGetAccessorDeclaration(member) && !hasDecorator(member, "compute", resolve) && member.body !== undefined;
 
@@ -357,15 +304,10 @@ function readsIn(
       }
       if (ts.isCallExpression(current) && ts.isIdentifier(current.expression)) {
         const fn = projectFunction(current.expression, resolve);
-        // An ARROW written inside the class keeps the instance's `this` — `const price = (n) => n *
-        // this.rate` in a compute, called a line later. A `function`, or one written outside, has none.
-        const keepsThis =
-          fn !== undefined &&
-          ts.isArrowFunction(fn) &&
-          fn.getSourceFile() === cls.getSourceFile() &&
-          fn.pos >= cls.pos &&
-          fn.end <= cls.end;
-        if (fn?.body !== undefined) walk(fn.body, depth + 1, hasThis && keepsThis);
+        // An arrow's `this` is the one where it is WRITTEN, whoever calls it: an arrow written in a member
+        // of this class keeps the instance's — `const price = (n) => n * this.rate` in a compute, called a
+        // line later, or from a nested `function`. A `function`, or an arrow written anywhere else, has none.
+        if (fn?.body !== undefined) walk(fn.body, depth + 1, fn !== undefined && arrowSeesTheInstance(fn, cls));
       }
       ts.forEachChild(current, look);
     })(at);
@@ -381,18 +323,39 @@ function runsWhere(expression: ts.Expression): boolean {
   return ts.isCallExpression(parent) && (parent.expression === expression || parent.arguments.includes(expression));
 }
 
-/** The function a name stands for, when this program declares it — or `undefined`. */
+/**
+ * The function a name stands for, when this program declares it — or `undefined`. Of an overloaded one,
+ * the implementation: the signatures before it have no body to run.
+ */
 function projectFunction(name: ts.Expression, resolve: Resolver): ts.FunctionLikeDeclaration | undefined {
-  const declaration = resolve(name)?.declarations?.[0];
-  if (declaration === undefined) return undefined;
-  const file = declaration.getSourceFile();
-  if (file.isDeclarationFile || file.fileName.includes("node_modules")) return undefined;
-  if (ts.isFunctionDeclaration(declaration)) return declaration;
-  if (ts.isVariableDeclaration(declaration) && declaration.initializer !== undefined) {
-    const value = declaration.initializer;
-    if (ts.isArrowFunction(value) || ts.isFunctionExpression(value)) return value;
+  for (const declaration of resolve(name)?.declarations ?? []) {
+    const file = declaration.getSourceFile();
+    if (file.isDeclarationFile || file.fileName.includes("node_modules")) return undefined;
+    if (ts.isFunctionDeclaration(declaration) && declaration.body !== undefined) return declaration;
+    if (ts.isVariableDeclaration(declaration) && declaration.initializer !== undefined) {
+      const value = declaration.initializer;
+      if (ts.isArrowFunction(value) || ts.isFunctionExpression(value)) return value;
+    }
   }
   return undefined;
+}
+
+/**
+ * Whether an arrow's `this` is the instance of `cls`: the nearest function around it that is not an arrow
+ * is a member of `cls` — a method, an accessor, the constructor — or it sits in an instance field's
+ * initializer. An arrow takes `this` from where it is written, never from its caller.
+ */
+function arrowSeesTheInstance(fn: ts.FunctionLikeDeclaration, cls: ts.ClassLikeDeclaration): boolean {
+  if (!ts.isArrowFunction(fn)) return false;
+  for (let at: ts.Node | undefined = fn.parent; at !== undefined; at = at.parent) {
+    if (ts.isArrowFunction(at)) continue;
+    if (ts.isPropertyDeclaration(at)) return at.parent === cls && !isStatic(at);
+    if (ts.isFunctionLike(at)) {
+      const member = ts.isMethodDeclaration(at) || ts.isAccessor(at) || ts.isConstructorDeclaration(at);
+      return member && at.parent === cls && !isStatic(at);
+    }
+  }
+  return false;
 }
 
 /** The function a `this.use` call's second argument is — written there, named, or a method. */
@@ -412,13 +375,9 @@ function propsCallback(
     // The nearest declaration of that name — the one an instance has — and of an overloaded method, the
     // implementation, the one with a body. A field holding a function is `arrow-fields`' to refuse.
     const name = argument.name.text;
-    for (const one of declaring) {
-      const named = one.members.filter((each) => memberName(each) === name);
-      if (named.length === 0) continue;
-      return named.find(
-        (each): each is ts.MethodDeclaration => ts.isMethodDeclaration(each) && each.body !== undefined,
-      );
-    }
+    return nearestMembers(declaring, name).find(
+      (each): each is ts.MethodDeclaration => ts.isMethodDeclaration(each) && each.body !== undefined,
+    );
   }
   return undefined;
 }

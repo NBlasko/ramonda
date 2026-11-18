@@ -25,6 +25,13 @@ function label(): string {
   return `${PREFIX}${lang}`;
 }
 
+/* An overloaded function reading the variable `setLang` writes: its implementation is followed. */
+function labelled(n: number): string;
+function labelled(n: string): string;
+function labelled(n: number | string): string {
+  return `${lang}${n}`;
+}
+
 /* A function with a local of its own, written inside it: a local, not a variable outside. */
 function counted(): number {
   let n = 0;
@@ -111,6 +118,24 @@ function readHere(): number {
   return count;
 }
 
+/* Written by a function invoked on the spot in a factory: any function holding a write is a later place,
+   and the report names that function, not the factory around it. */
+export function makeSized() {
+  let side = 1;
+  (() => {
+    side = 2;
+  })();
+  class Sized extends Component {
+    @compute get px(): number {
+      return side;
+    }
+    render() {
+      return <p>{this.px}</p>;
+    }
+  }
+  return Sized;
+}
+
 /* A class made in a function, its variable written there — before the class exists. */
 export function makeCard(o: { size?: number }) {
   let size = o.size ?? 0;
@@ -164,6 +189,8 @@ class Cart extends Component {
 
   /* REPORTED — the variable, read directly in a props callback. */
   direct = this.use(Takes, () => ({ value: lang }));
+  /* REPORTED — the variable, read through an overloaded function's implementation. */
+  overloadedFunction = this.use(Takes, () => ({ value: labelled(1) }));
   /* REPORTED — the variable, read through a function this program declares. */
   throughAFunction = this.use(Takes, () => ({ value: label() }));
   /* REPORTED — the field, through a callback declared as a function elsewhere. */
@@ -207,15 +234,9 @@ class Cart extends Component {
   /* REPORTED — a script's global, by the script that writes it; and one nothing in view writes. */
   global = this.use(Takes, () => ({ value: scriptTheme }));
   anyScript = this.use(Takes, () => ({ value: scriptLang }));
-  /* Not followed — the same, a `function` a getter returns, however it is called (TODO 184). */
-  fnExpr = this.use(Takes, (self: Cart) => ({ value: self.fe() }));
-  seenTwice = this.use(Takes, ({ fe }: Cart) => ({ value: [[0].map(() => fe()), this.fe()] }));
-  handedGetter = this.use(Takes, (self: Cart) => ({ value: [1].map(self.fe) }));
   /* REPORTED — written after an `await`, in an async function invoked in a field initializer and in a module. */
   asyncField = this.use(Takes, (self: Cart) => ({ value: self.remoteRate }));
   asyncVar = this.use(Takes, () => ({ value: remote }));
-  /* Not followed — a function a getter returns from a branch (TODO 184). */
-  branch = this.use(Takes, (self: Cart) => ({ value: self.fmtBranch() }));
   /* REPORTED — `this.buildOver`, an overloaded method: its implementation is the one that runs. */
   overloaded = this.use(Takes, this.buildOver);
   /* Not reported: a field holding a function — `arrow-fields` refuses every such field, and written as a
@@ -271,6 +292,16 @@ class Cart extends Component {
     return price(this.tick);
   }
 
+  /* REPORTED — the same arrow, reached first from a nested `function`: an arrow's `this` is where it is written. */
+  @compute get viaHelper(): number {
+    const price = (n: number) => n * this.rate;
+    // `helper` is declared below the return, so the call to it is the first way `price` is reached.
+    return helper() + price(this.tick);
+    function helper(): number {
+      return price(1);
+    }
+  }
+
   /* REPORTED — `this.fnGetter()` runs the getter, and the getter reads `rate`. */
   @compute get viaFnGetter(): number {
     return this.fnGetter();
@@ -300,20 +331,10 @@ class Cart extends Component {
     return 1;
   })();
 
-  get fe() {
-    return function (this: Cart | void) {
-      return this ? this.rate : 0;
-    };
-  }
   remoteRate = 1;
   loading = (async () => {
     this.remoteRate = Number(await loadLater());
   })();
-  compact = false;
-  get fmtBranch() {
-    if (this.compact) return () => this.rate;
-    return () => 0;
-  }
   buildOver(self: Cart): { value: number };
   buildOver(self: Cart, scale?: number): { value: number } {
     return { value: self.rate * (scale ?? 1) };

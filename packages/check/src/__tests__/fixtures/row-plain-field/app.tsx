@@ -440,3 +440,21 @@ export class ArrowFieldCallback extends Component<{ tasks: Task[] }> {
     return <ul>{list(this.props.tasks, this.row)}</ul>;
   }
 }
+
+/** Reported: the field is written through a pattern, which is a write like `=`. */
+export class WrittenThroughAPattern extends Component {
+  label = "old";
+  tasks: Task[] = [];
+
+  bump() {
+    [this.label] = ["new"];
+  }
+
+  row(t: Task) {
+    return <li>{t.title + this.label}</li>;
+  }
+
+  render() {
+    return <ul>{list(this.tasks, this.row)}</ul>;
+  }
+}

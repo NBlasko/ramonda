@@ -1,5 +1,5 @@
 import ts from "typescript";
-import { memberName } from "../syntax";
+import { isStatic, memberName, writesUnder } from "../syntax";
 import { hasDecorator, heritage } from "./render-reach";
 import type { Resolver } from "./rule";
 
@@ -42,39 +42,73 @@ export function trackedOrHarmless(member: ts.PropertyDeclaration, resolve: Resol
   );
 }
 
-/** Every `this.X` WRITTEN anywhere under a node — `=`, `+=`, `++` alike. */
-export function fieldsWrittenIn(node: ts.Node): Set<string> {
-  const found = new Set<string>();
+/** One write to a field or variable that can come after the first render: who makes it, and where it runs. */
+export interface FieldWrite {
+  writer: string;
+  /** The function (or instance field initializer) holding it — a class made inside that function is made by it. */
+  fn: ts.Node;
+}
 
-  const note = (target: ts.Expression): void => {
-    if (
-      ts.isPropertyAccessExpression(target) &&
-      target.expression.kind === ts.SyntaxKind.ThisKeyword &&
-      ts.isIdentifier(target.name)
-    ) {
-      found.add(target.name.text);
-    }
-  };
+/**
+ * The function (or instance field initializer) a write runs in — or `undefined` for one that is over
+ * before any instance exists: while the module is first evaluated, or in a static block or static
+ * field. An instance field's initializer runs once per instance, so it counts. Any function holding a
+ * write is a later place — one invoked on the spot as well, which errs on the side of reporting. Whether
+ * the function holding it MAKES the class reading it (a class declared in a factory) is the reader's
+ * question, asked in `madeTooEarly`.
+ */
+export function runsIn(node: ts.Node): ts.Node | undefined {
+  for (let at: ts.Node | undefined = node.parent; at !== undefined; at = at.parent) {
+    if (ts.isClassStaticBlockDeclaration(at)) return undefined;
+    if (ts.isPropertyDeclaration(at)) return isStatic(at) ? undefined : at;
+    if (ts.isFunctionLike(at)) return at;
+  }
+  return undefined;
+}
 
-  const walk = (at: ts.Node): void => {
-    if (
-      ts.isBinaryExpression(at) &&
-      at.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
-      at.operatorToken.kind <= ts.SyntaxKind.LastAssignment
-    ) {
-      note(at.left);
+/**
+ * The writes to this class's ordinary fields that can come after the first render, by field — the
+ * judgement both cached-reader rules ask, with where each write runs. A static
+ * member's `this` is the class, and a nested `function`'s is its own: neither writes an instance field.
+ */
+export function fieldWrites(
+  declaring: readonly ts.ClassLikeDeclaration[],
+  resolve: Resolver,
+): Map<string, FieldWrite[]> {
+  const plain = new Set<string>();
+  for (const one of declaring) {
+    for (const member of one.members) {
+      if (!ts.isPropertyDeclaration(member) || isStatic(member) || trackedOrHarmless(member, resolve)) continue;
+      const name = memberName(member);
+      if (name !== undefined) plain.add(name);
     }
-    if (
-      (ts.isPostfixUnaryExpression(at) || ts.isPrefixUnaryExpression(at)) &&
-      (at.operator === ts.SyntaxKind.PlusPlusToken || at.operator === ts.SyntaxKind.MinusMinusToken)
-    ) {
-      note(at.operand);
+  }
+  const writes = new Map<string, FieldWrite[]>();
+  if (plain.size === 0) return writes;
+  for (const one of declaring) {
+    for (const member of one.members) {
+      if (isStatic(member) || ts.isClassStaticBlockDeclaration(member)) continue;
+      if (!writesAfterTheFirstRender(member, resolve)) continue;
+      const writer = memberName(member) ?? "a method";
+      writesUnder(member, true, (target) => {
+        if (
+          !ts.isPropertyAccessExpression(target) ||
+          target.expression.kind !== ts.SyntaxKind.ThisKeyword ||
+          !plain.has(target.name.text)
+        )
+          return;
+        const field = target.name.text;
+        const fn = runsIn(target);
+        // An instance field's initializer writes this instance before its first render — the constructor's
+        // time, which `writesAfterTheFirstRender` does not count either.
+        if (fn === undefined || ts.isPropertyDeclaration(fn)) return;
+        const list = writes.get(field) ?? [];
+        list.push({ writer, fn });
+        writes.set(field, list);
+      });
     }
-    ts.forEachChild(at, walk);
-  };
-
-  walk(node);
-  return found;
+  }
+  return writes;
 }
 
 /**
@@ -122,29 +156,9 @@ export function writesAfterTheFirstRender(member: ts.ClassElement, resolve: Reso
  * own fields, which is what both rules had before, and the base-class case is the class rule's.
  */
 export function staleFieldsOf(cls: ts.ClassDeclaration, resolve: Resolver): Map<string, string> {
-  const declared = [cls, ...heritage(cls, resolve)];
-
-  const plain = new Set<string>();
-  for (const declaring of declared) {
-    for (const member of declaring.members) {
-      if (!ts.isPropertyDeclaration(member)) continue;
-      if (trackedOrHarmless(member, resolve)) continue;
-      const name = memberName(member);
-      if (name !== undefined) plain.add(name);
-    }
-  }
-
   const writtenBy = new Map<string, string>();
-  if (plain.size === 0) return writtenBy;
-
-  for (const declaring of declared) {
-    for (const member of declaring.members) {
-      if (!writesAfterTheFirstRender(member, resolve)) continue;
-      const where = memberName(member) ?? "a method";
-      for (const field of fieldsWrittenIn(member)) {
-        if (plain.has(field) && !writtenBy.has(field)) writtenBy.set(field, where);
-      }
-    }
+  for (const [field, writes] of fieldWrites([cls, ...heritage(cls, resolve)], resolve)) {
+    if (writes.length > 0) writtenBy.set(field, writes[0].writer);
   }
   return writtenBy;
 }

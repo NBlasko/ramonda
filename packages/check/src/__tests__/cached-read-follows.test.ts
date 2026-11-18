@@ -8,7 +8,9 @@ const here = dirname(fileURLToPath(import.meta.url));
 const run = () => analyzeProject(join(here, "fixtures", "cached-read-follows", "tsconfig.json"));
 
 /**
- * A cached reader is followed wherever it reads — so that writing it any other way is not a way out.
+ * A cached reader is followed through a closed list of paths — methods, a getter's own body, functions
+ * the project declares, named callbacks, variables outside the class — and every one of them is here,
+ * with the shapes beside them that are not followed, and why (TODO 184 decides those one by one).
  *
  * A hook whose props callback reads no signal is never called again (and in a production build is
  * not walked at all — see `register` in core's `helpers/common.ts`), so what it read must be something
@@ -20,7 +22,9 @@ describe("a cached reader, followed", () => {
   test("every path to a stale value is reported, and named", () => {
     const found = run().findings["cached-read-of-a-plain-field"];
     expect(found.map((one) => `${one.named}:${one.variable ? "var " : ""}${one.field}:${one.writtenBy}`)).toEqual([
+      "px:var side:a function invoked where it is written",
       "direct:var lang:setLang",
+      "overloadedFunction:var lang:setLang",
       "throughAFunction:var lang:setLang",
       "named:rate:bump",
       "namedConst:rate:bump",
@@ -43,7 +47,7 @@ describe("a cached reader, followed", () => {
       "global:var scriptTheme:useDark",
       "anyScript:var scriptLang:any script",
       "asyncField:remoteRate:loading",
-      "asyncVar:var remote:a function",
+      "asyncVar:var remote:a function invoked where it is written",
       "overloaded:rate:bump",
       "readsOther:other:iife",
       "toned:tone:setTone",
@@ -53,6 +57,7 @@ describe("a cached reader, followed", () => {
       "methodMemo:_api2:api2",
       "title:var lang:setLang",
       "local:rate:bump",
+      "viaHelper:rate:bump",
       "viaFnGetter:rate:bump",
     ]);
   });

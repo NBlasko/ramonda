@@ -58,6 +58,8 @@ describe("a row reads a plain field", () => {
       // A base's callback showing a base's field: one instance, one row, one stale value.
       "RowsFromABase.row:label",
       "ArrowFieldCallback.row:label",
+      // Written through a pattern: the shared write walker reads every target of an assignment.
+      "WrittenThroughAPattern.row:label",
     ]);
   });
 

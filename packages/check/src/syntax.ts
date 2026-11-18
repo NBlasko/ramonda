@@ -239,3 +239,8 @@ export function invokedOnTheSpot(fn: ts.ArrowFunction | ts.FunctionExpression): 
   while (at.parent !== undefined && ts.isParenthesizedExpression(at.parent)) at = at.parent;
   return at.parent !== undefined && ts.isCallExpression(at.parent) && at.parent.expression === at;
 }
+
+/** Whether `inner` lies inside `outer` — the same file, and within its span. */
+export function contains(outer: ts.Node, inner: ts.Node): boolean {
+  return outer.getSourceFile() === inner.getSourceFile() && inner.pos >= outer.pos && inner.end <= outer.end;
+}
