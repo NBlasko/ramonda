@@ -51,8 +51,9 @@ export interface FieldWrite {
 
 /**
  * The function (or instance field initializer) a write runs in — or `undefined` for one that is over
- * before any instance exists: while the module is first evaluated, or in a static block or static
- * field. An instance field's initializer runs once per instance, so it counts. Any function holding a
+ * before any instance exists, while the module is first evaluated. A static block or static field runs
+ * where its class is evaluated, so its place is whatever holds the class: the module, or a factory that
+ * runs later. An instance field's initializer runs once per instance, so it counts. Any function holding a
  * write is a later place — one invoked on the spot as well, which errs on the side of reporting. Whether
  * the function holding it MAKES the class reading it (a class declared in a factory) is the reader's
  * question, asked in `madeTooEarly`.
@@ -70,9 +71,30 @@ export function runsIn(node: ts.Node): ts.Node | undefined {
 
 /**
  * The writes to this class's ordinary fields that can come after the first render, by field — the
- * judgement both cached-reader rules ask, with where each write runs. A static
- * member's `this` is the class, and a nested `function`'s is its own: neither writes an instance field.
+ * judgement both cached-reader rules ask, with where each write runs. A static member's `this` is the
+ * class, and a nested `function`'s is its own: neither writes an instance field. A `function` HELD in a
+ * field is the exception, called through the owner (`this.onDone()`) — unless its `this` is declared
+ * as another type, `function (this: HTMLInputElement)`, which says whose it is.
  */
+/**
+ * Whether a `function`'s `this` is the instance: it declares none, or declares one naming the class or a
+ * base (`this: Cart`, `this: Cart | void`). A `this` declared as another type is that type's.
+ */
+function thisIsTheInstance(
+  fn: ts.FunctionExpression,
+  declaring: readonly ts.ClassLikeDeclaration[],
+  resolve: Resolver,
+): boolean {
+  const declared = fn.parameters.find((one) => ts.isIdentifier(one.name) && one.name.text === "this")?.type;
+  if (declared === undefined) return true;
+  const named = ts.isUnionTypeNode(declared) ? declared.types : [declared];
+  return named.some(
+    (one) =>
+      ts.isTypeReferenceNode(one) &&
+      (resolve(one.typeName)?.declarations ?? []).some((declaration) => declaring.some((cls) => cls === declaration)),
+  );
+}
+
 export function fieldWrites(
   declaring: readonly ts.ClassLikeDeclaration[],
   resolve: Resolver,
@@ -95,7 +117,10 @@ export function fieldWrites(
       // A field holding a `function` writes the instance when it is called through the owner,
       // `this.onDone()`, so its body is read as the member's own — not skipped for having a `this` of its own.
       const value = ts.isPropertyDeclaration(member) ? member.initializer : undefined;
-      const root = value !== undefined && ts.isFunctionExpression(value) ? value : member;
+      const root =
+        value !== undefined && ts.isFunctionExpression(value) && thisIsTheInstance(value, declaring, resolve)
+          ? value
+          : member;
       writesUnder(root, true, (target) => {
         if (
           !ts.isPropertyAccessExpression(target) ||

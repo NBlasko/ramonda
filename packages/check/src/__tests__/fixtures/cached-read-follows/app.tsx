@@ -32,6 +32,16 @@ function labelled(n: number | string): string {
   return `${lang}${n}`;
 }
 
+/* A local of the function the reader calls, written by an arrow inside it: that call's local. */
+function sum(xs: number[]): number {
+  let acc = 0;
+  const add = (n: number) => {
+    acc += n;
+  };
+  for (const x of xs) add(x);
+  return acc;
+}
+
 /* A function with a local of its own, written inside it: a local, not a variable outside. */
 function counted(): number {
   let n = 0;
@@ -166,6 +176,15 @@ class PricedBase extends Component {
   priced(): number {
     return this.rate;
   }
+  /* A base method's local, written by its own arrow: a local of the call. */
+  totalled(): number {
+    let s = 0;
+    const add = (n: number) => {
+      s += n;
+    };
+    add(1);
+    return s;
+  }
   /* An arrow written in a base's method: its `this` is this instance all the same. */
   pricedByArrow(): number {
     const read = () => this.rate;
@@ -184,6 +203,8 @@ class Overrides extends PricedBase {
     return 1;
   }
   overridden = this.use(Takes, (self: Overrides) => ({ value: self.priced() }));
+  /* Not reported: a local of a base method's call. */
+  usesBase = this.use(Takes, (self: Overrides) => ({ value: self.totalled() }));
   /* REPORTED — the base method's arrow reads `rate`, which the base's `bump` writes. */
   baseArrow = this.use(Takes, (self: Overrides) => ({ value: self.pricedByArrow() }));
 }
@@ -212,6 +233,17 @@ class Cart extends Component {
     const read = () => self.rate;
     return { value: read() };
   });
+  /* Not reported: an inner arrow's own `self`, and its own `rate`, are not the owner's — matched by the
+     binding a name resolves to, never by its text; and a local of a function the reader calls. */
+  shadow = this.use(Takes, (self: Cart) => {
+    const pick = (self: { rate: number }) => self.rate;
+    return { value: pick({ rate: 2 }) };
+  });
+  shadowD = this.use(Takes, ({ rate }: Cart) => {
+    const fmt = (rate: number) => rate.toFixed(2);
+    return { value: fmt(3) };
+  });
+  usesHelper = this.use(Takes, () => ({ value: sum([1, 2]) }));
   /* REPORTED — the variable, read through an overloaded function's implementation. */
   overloadedFunction = this.use(Takes, () => ({ value: labelled(1) }));
   /* REPORTED — the variable, read through a function this program declares. */

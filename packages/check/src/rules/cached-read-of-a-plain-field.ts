@@ -1,6 +1,5 @@
 import ts from "typescript";
 import {
-  callbackOwner,
   contains,
   isHandedOver,
   isLocalRead,
@@ -114,11 +113,59 @@ function writerName(node: ts.Node): string {
     if ((ts.isFunctionDeclaration(at) || ts.isMethodDeclaration(at) || ts.isAccessor(at)) && at.name !== undefined)
       return at.name.getText();
     if (ts.isVariableDeclaration(at) && ts.isIdentifier(at.name)) return at.name.text;
-    if (ts.isPropertyAssignment(at) || ts.isPropertyDeclaration(at)) return at.name.getText();
+    // A static field is not something anyone calls: the function around its class is.
+    if (ts.isPropertyAssignment(at) || (ts.isPropertyDeclaration(at) && !isStatic(at))) return at.name.getText();
     if (ts.isCallExpression(at) && ts.isIdentifier(at.expression))
       return `a callback given to \`${at.expression.text}\``;
   }
-  return "a function";
+  return `a function at the top level of ${node.getSourceFile().fileName.split("/").pop()}`;
+}
+
+/** The owner a callback names: `this`, its parameter, and the members its parameter destructures. */
+interface Owner {
+  /** Whether this expression IS the owner — `this`, or the parameter itself, by the binding it resolves to. */
+  is(expression: ts.Expression): boolean;
+  /** The member a destructured local reads — `{ tick: t }` makes `t` read `tick` — or `undefined`. */
+  member(id: ts.Identifier): string | undefined;
+}
+
+/** A body whose owner is `this` and nothing else — a method's, a getter's. */
+const THIS_ONLY: Owner = {
+  is: (expression) => expression.kind === ts.SyntaxKind.ThisKeyword,
+  member: () => undefined,
+};
+
+/** The owner of a props callback, every name matched by the declaration it resolves to. */
+function ownerOf(callback: ts.Node, resolve: Resolver): Owner {
+  const parameter =
+    ts.isArrowFunction(callback) ||
+    ts.isFunctionExpression(callback) ||
+    ts.isFunctionDeclaration(callback) ||
+    ts.isMethodDeclaration(callback)
+      ? callback.parameters[0]
+      : undefined;
+  if (parameter === undefined) return THIS_ONLY;
+  const bindings = new Map<ts.Node, string>();
+  if (ts.isObjectBindingPattern(parameter.name)) {
+    for (const element of parameter.name.elements) {
+      if (element.dotDotDotToken !== undefined || !ts.isIdentifier(element.name)) continue;
+      const member = element.propertyName ?? element.name;
+      if (ts.isIdentifier(member)) bindings.set(element, member.text);
+    }
+  }
+  const declarations = (id: ts.Node): readonly ts.Declaration[] => resolve(id)?.declarations ?? [];
+  return {
+    is: (expression) =>
+      expression.kind === ts.SyntaxKind.ThisKeyword ||
+      (ts.isIdentifier(parameter.name) && ts.isIdentifier(expression) && declarations(expression).includes(parameter)),
+    member: (id) => {
+      for (const declaration of declarations(id)) {
+        const member = bindings.get(declaration);
+        if (member !== undefined) return member;
+      }
+      return undefined;
+    },
+  };
 }
 
 /** The members of that name in the nearest class up the chain — the one an instance has. */
@@ -182,11 +229,10 @@ function variableWrites(declaration: ts.VariableDeclaration, symbol: ts.Symbol, 
   return global && writes.length === 0 ? [{ writer: "any script", fn: declaration, global: true }] : writes;
 }
 
-/** A `let` or `var` this identifier reads, when it is declared outside `scope` and outside `cls`. */
+/** A `let` or `var` this identifier reads, when it is not local to what the reader runs (see `local`). */
 function outerVariable(
   id: ts.Identifier,
-  scope: ts.Node,
-  cls: ts.ClassLikeDeclaration,
+  local: (declaration: ts.Node) => boolean,
   resolve: Resolver,
 ): { declaration: ts.VariableDeclaration; symbol: ts.Symbol } | undefined {
   if (!isLocalRead(id)) return undefined;
@@ -198,9 +244,9 @@ function outerVariable(
     return undefined;
   const file = declaration.getSourceFile();
   if (file.isDeclarationFile || file.fileName.includes("node_modules")) return undefined;
-  // Declared inside the function being read — a local of its own — or inside the class: neither is
+  // Declared in a function the reader runs — a local of that call — or in the class or a base: neither is
   // outside it, and a local written inside its own function is just a local.
-  if (contains(scope, declaration) || contains(cls, declaration)) return undefined;
+  if (local(declaration)) return undefined;
   return { declaration, symbol };
 }
 
@@ -229,19 +275,19 @@ function outerVariable(
  * fix with neighbours of its own; which of those shapes to follow, to forbid, or to mark unknown in the
  * Ramonda graph is decided shape by shape, toward one way of writing each thing.
  */
-function readsIn(
-  node: ts.Node,
-  cls: ts.ClassLikeDeclaration,
-  declaring: readonly ts.ClassLikeDeclaration[],
-  resolve: Resolver,
-): Reads {
+function readsIn(node: ts.Node, declaring: readonly ts.ClassLikeDeclaration[], resolve: Resolver): Reads {
   const reads: Reads = { fields: new Set(), variables: new Map() };
   // A props callback names its owner as `this`, its parameter, or the parameter destructured — see
-  // `callbackOwner`. A method the walk follows into has only `this`, and a free function none.
-  const callback = callbackOwner(node);
+  // `ownerOf`. A method the walk follows into has only `this`, and a free function none.
+  const rootOwner = ownerOf(node, resolve);
   const seen = new Set<ts.Node>();
+  /**
+   * A declaration local to what the reader runs: inside it, or inside a body it walks — a method's, a
+   * base method's, a function's it calls. A local is only ever read by walking the body that holds it.
+   */
+  const local = (declaration: ts.Node): boolean =>
+    contains(node, declaration) || [...seen].some((body) => contains(body, declaration));
 
-  /** The members of that name in the nearest class up the chain — the one that runs. */
   const plainGetter = (member: ts.ClassElement): member is ts.GetAccessorDeclaration =>
     ts.isGetAccessorDeclaration(member) && !hasDecorator(member, "compute", resolve) && member.body !== undefined;
 
@@ -267,7 +313,9 @@ function readsIn(
 
     // The root callback's owner — `this`, its `self` parameter, its destructured names — is in scope
     // anywhere written inside it, so an arrow there called a line later reads `self` as the owner too.
-    const owner = at === node || contains(node, at) ? callback : callbackOwner(at);
+    // Matched by the binding a name resolves to, never by its text: an inner `(self) => self.rate` is
+    // somebody else's `self`.
+    const owner = at === node || contains(node, at) ? rootOwner : THIS_ONLY;
     (function look(current: ts.Node): void {
       if (current !== at) {
         // Built, not run: a function returned, stored or handed over in an object, or an accessor of one.
@@ -276,15 +324,16 @@ function readsIn(
         if (ts.isAccessor(current) && ts.isObjectLiteralExpression(current.parent)) return;
       }
       if (ts.isIdentifier(current)) {
-        if (hasThis && owner.destructured.has(current.text) && isLocalRead(current)) {
-          const name = owner.destructured.get(current.text) as string;
+        const destructured = hasThis && isLocalRead(current) ? owner.member(current) : undefined;
+        if (destructured !== undefined) {
+          const name = destructured;
           // Methods are bound to the instance, so a destructured one runs as `self.priced()` would.
           let followed = false;
           for (const member of nearestMembers(declaring, name))
             followed = follow(member, runsWhere(current)) || followed;
           if (!followed) reads.fields.add(name);
         }
-        const outer = outerVariable(current, at === node ? node : (at.parent ?? at), cls, resolve);
+        const outer = outerVariable(current, local, resolve);
         if (outer !== undefined) {
           if (!reads.variables.has(outer.symbol))
             reads.variables.set(outer.symbol, { name: current.text, declaration: outer.declaration });
@@ -433,7 +482,7 @@ export const cachedReadOfAPlainField = {
 
     /** One reported read, whichever kind of cached reader found it. */
     const report = (node: ts.Node, reader: CachedReadOfAPlainFieldIssue["reader"], named: string): void => {
-      const reads = readsIn(node, cls, declaring, resolve);
+      const reads = readsIn(node, declaring, resolve);
       for (const field of reads.fields) {
         const writer = writesTo.get(field)?.[0]?.writer;
         if (writer === undefined) continue;

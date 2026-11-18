@@ -476,3 +476,25 @@ export class WrittenByAFunctionField extends Component {
     return <ul>{list(this.tasks, this.row)}</ul>;
   }
 }
+
+interface Field {
+  value: string;
+}
+
+/** Silent: a `function` field whose `this` is declared as another type writes that, not the instance. */
+export class WrittenOnAnElement extends Component {
+  value = "old";
+  tasks: Task[] = [];
+
+  onInput = function (this: Field) {
+    this.value = "x";
+  };
+
+  row(t: Task) {
+    return <li>{t.title + this.value}</li>;
+  }
+
+  render() {
+    return <ul>{list(this.tasks, this.row)}</ul>;
+  }
+}
