@@ -197,18 +197,26 @@ class Cart extends Component {
   returned = this.use(Takes, (self: Cart) => ({ value: self.fmt() }));
   /* REPORTED — a method handed to a call that runs it. */
   passed = this.use(Takes, (self: Cart) => ({ value: [1, 2].map(self.format) }));
-  /* REPORTED — a `function` field called through the owner, whose `this` is the instance there. */
-  boundFunction = this.use(Takes, (self: Cart) => ({ value: self.calc() }));
-  /* REPORTED — `this.build`, the nearest member of that name, an arrow field (declared before its use). */
+  /* REPORTED — a script's global, by the script that writes it; and one nothing in view writes. */
+  global = this.use(Takes, () => ({ value: scriptTheme }));
+  anyScript = this.use(Takes, () => ({ value: scriptLang }));
+  /* REPORTED — a `function` a getter returns, called through the owner: its `this` is the instance. */
+  fnExpr = this.use(Takes, (self: Cart) => ({ value: self.fe() }));
+  /* REPORTED — a function a getter returns from a branch. */
+  branch = this.use(Takes, (self: Cart) => ({ value: self.fmtBranch() }));
+  /* REPORTED — `this.buildOver`, an overloaded method: its implementation is the one that runs. */
+  overloaded = this.use(Takes, this.buildOver);
+  /* Not reported: a field holding a function — `arrow-fields` refuses every such field, and written as a
+     method it is followed — called through the owner, destructured, or handed over as the callback. */
   build = (self: Cart) => ({ value: self.rate });
   builtByField = this.use(Takes, this.build);
-  /* REPORTED — a script's global, which any script can assign. */
-  global = this.use(Takes, () => ({ value: scriptTheme }));
-  /* Not reported: a `function` field destructured — its `this` is undefined there, so it reads nothing of
-     this instance; and a field written only by a field initializer, before the first render. */
+  boundFunction = this.use(Takes, (self: Cart) => ({ value: self.calc() }));
   unboundFunction = this.use(Takes, ({ calc }: Cart) => ({ value: calc() }));
+  /* Not reported: a field written only by a field initializer, directly or in a function invoked on the
+     spot, before the first render. */
   initialised = this.use(Takes, (self: Cart) => ({ value: self.seq }));
-  /* REPORTED — an arrow field, destructured and called. */
+  readsOther = this.use(Takes, (self: Cart) => ({ value: self.other }));
+  /* Not reported: an arrow field, destructured and called — `arrow-fields` refuses the field. */
   destructuredArrow = this.use(Takes, ({ pricedArrow }: Cart) => ({ value: pricedArrow() }));
   /* REPORTED — a field written through a pattern. */
   toned = this.use(Takes, (self: Cart) => ({ value: self.tone }));
@@ -273,6 +281,26 @@ class Cart extends Component {
   };
   seq = 0;
   first = this.seq++;
+  other = 1;
+  iife = (() => {
+    this.other = 5;
+    return 1;
+  })();
+
+  get fe() {
+    return function (this: Cart) {
+      return this.rate;
+    };
+  }
+  compact = false;
+  get fmtBranch() {
+    if (this.compact) return () => this.rate;
+    return () => 0;
+  }
+  buildOver(self: Cart): { value: number };
+  buildOver(self: Cart, scale?: number): { value: number } {
+    return { value: self.rate * (scale ?? 1) };
+  }
 
   @compute get doubled(): number {
     return this.tick * 2;

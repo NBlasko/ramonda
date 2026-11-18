@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 import ts from "typescript";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { analyzeProject } from "../analyze";
+import { analyzeProject, createProgram } from "../analyze";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const run = () => analyzeProject(join(here, "fixtures", "method-written-over", "tsconfig.json"));
@@ -24,13 +24,12 @@ describe("a method written over", () => {
     ]);
   });
 
-  test("the fixture is a program TypeScript accepts", () => {
-    const config = ts.readConfigFile(join(here, "fixtures", "method-written-over", "tsconfig.json"), ts.sys.readFile);
-    const parsed = ts.parseJsonConfigFileContent(config.config, ts.sys, join(here, "fixtures", "method-written-over"));
-    const program = ts.createProgram(parsed.fileNames, parsed.options);
-    const errors = ts
-      .getPreEmitDiagnostics(program)
-      .map((one) => ts.flattenDiagnosticMessageText(one.messageText, "\n"));
-    expect(errors).toEqual([]);
+  test("the fixture is a program TypeScript accepts, as the analyzer builds it", () => {
+    const { program, notes } = createProgram(join(here, "fixtures", "method-written-over", "tsconfig.json"));
+    expect(program.getRootFileNames().filter((name) => name.includes("/method-written-over/")).length).toBe(1);
+    expect(notes).toEqual([]);
+    expect(
+      ts.getPreEmitDiagnostics(program).map((one) => ts.flattenDiagnosticMessageText(one.messageText, "\n")),
+    ).toEqual([]);
   });
 });

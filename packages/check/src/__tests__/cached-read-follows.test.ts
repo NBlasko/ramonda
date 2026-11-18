@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 import ts from "typescript";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { analyzeProject } from "../analyze";
+import { analyzeProject, createProgram } from "../analyze";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const run = () => analyzeProject(join(here, "fixtures", "cached-read-follows", "tsconfig.json"));
@@ -41,10 +41,11 @@ describe("a cached reader, followed", () => {
       "counted:counter:nextId",
       "returned:rate:bump",
       "passed:rate:bump",
-      "boundFunction:rate:bump",
-      "builtByField:rate:bump",
-      "global:var scriptTheme:any script — it is a global, in a file with no import or export",
-      "destructuredArrow:rate:bump",
+      "global:var scriptTheme:useDark",
+      "anyScript:var scriptLang:any script",
+      "fnExpr:rate:bump",
+      "branch:rate:bump",
+      "overloaded:rate:bump",
       "toned:tone:setTone",
       "destructuredMethod:rate:bump",
       "twoHelpers:var fmt:money",
@@ -60,13 +61,13 @@ describe("a cached reader, followed", () => {
    * The fixture compiles. One that did not proved nothing: `shown` was declared twice, a field and a
    * getter, so `self.shown` was the field at runtime while the rule followed the getter.
    */
-  test("the fixture is a program TypeScript accepts", () => {
-    const config = ts.readConfigFile(join(here, "fixtures", "cached-read-follows", "tsconfig.json"), ts.sys.readFile);
-    const parsed = ts.parseJsonConfigFileContent(config.config, ts.sys, join(here, "fixtures", "cached-read-follows"));
-    const program = ts.createProgram(parsed.fileNames, parsed.options);
-    const errors = ts
-      .getPreEmitDiagnostics(program)
-      .map((one) => ts.flattenDiagnosticMessageText(one.messageText, "\n"));
-    expect(errors).toEqual([]);
+  test("the fixture is a program TypeScript accepts, as the analyzer builds it", () => {
+    const { program, notes } = createProgram(join(here, "fixtures", "cached-read-follows", "tsconfig.json"));
+    // Not an empty program, which would accept anything: the fixture's own files are in it.
+    expect(program.getRootFileNames().filter((name) => name.includes("/cached-read-follows/")).length).toBe(3);
+    expect(notes).toEqual([]);
+    expect(
+      ts.getPreEmitDiagnostics(program).map((one) => ts.flattenDiagnosticMessageText(one.messageText, "\n")),
+    ).toEqual([]);
   });
 });

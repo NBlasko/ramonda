@@ -70,7 +70,9 @@ export const methodWrittenOver = {
       "no signal, so it runs once and the hook keeps that function for good. Writing `this.submit`\n" +
       "afterwards changes nothing the hook can see.\n\n" +
       'Keep the method, and keep what changes in `@state`: `@state mode = "draft"`, and\n' +
-      '`submit() { return this.mode === "draft" ? this.saveDraft() : this.send() }`.\n\n',
+      '`submit() { return this.mode === "draft" ? this.saveDraft() : this.send() }`.\n\n' +
+      "The commonest write of this kind is `this.onClick = this.onClick.bind(this)` in a constructor, and it\n" +
+      "is not needed: Ramonda binds every method to its instance already. Delete the line.\n\n",
   },
 
   read(cls, { self, resolve }) {

@@ -128,9 +128,18 @@ function runsIn(node: ts.Node): ts.Node | undefined {
   for (let at: ts.Node | undefined = node.parent; at !== undefined; at = at.parent) {
     if (ts.isClassStaticBlockDeclaration(at)) return undefined;
     if (ts.isPropertyDeclaration(at)) return isStatic(at) ? undefined : at;
+    // A function invoked on the spot runs where it is written: `(() => { … })()`.
+    if ((ts.isArrowFunction(at) || ts.isFunctionExpression(at)) && invokedOnTheSpot(at)) continue;
     if (ts.isFunctionLike(at)) return at;
   }
   return undefined;
+}
+
+/** `(() => …)()` — a function called where it is written, with or without the parentheses kept. */
+function invokedOnTheSpot(fn: ts.ArrowFunction | ts.FunctionExpression): boolean {
+  let at: ts.Node = fn;
+  while (ts.isParenthesizedExpression(at.parent)) at = at.parent;
+  return ts.isCallExpression(at.parent) && at.parent.expression === at;
 }
 
 /** Whether a write runs in the function that makes `cls` — over before any instance of it exists. */
@@ -139,35 +148,43 @@ function madeTooEarly(write: Write, cls: ts.ClassLikeDeclaration): boolean {
 }
 
 /**
- * Every write to a `let` or `var` that runs after its module was first evaluated — asked once per
- * variable for the whole program, since nothing in the answer depends on who reads it. Only the
+ * Every write to a `let` or `var` that runs after its module was first evaluated — collected once per
+ * file for the whole program, since nothing in the answer depends on who reads it. Only the
  * declaring file is read, and for a module that is complete rather than a shortcut: an imported binding
  * is read-only in every module but its own, so no other file can assign it. A script's top-level one is
  * a global, and counts as written.
  */
-const writesOfVariable = new WeakMap<ts.VariableDeclaration, Write[]>();
+/** The writer a script's global is reported with when no file in view writes it. */
+export const ANY_SCRIPT = "any script";
+
+const writesInFile = new WeakMap<ts.SourceFile, Map<ts.Symbol, Write[]>>();
 function variableWrites(declaration: ts.VariableDeclaration, symbol: ts.Symbol, resolve: Resolver): Write[] {
-  const known = writesOfVariable.get(declaration);
-  if (known !== undefined) return known;
-  const writes: Write[] = [];
   const file = declaration.getSourceFile();
-  // A top-level `let` in a file with no import or export is a GLOBAL, which any other script can assign —
-  // and no single file says where. It is counted as written, by name.
-  if (
+  // One pass per file, every variable's writes at once: a file read once for each variable in it cost
+  // a whole traversal per `let`.
+  let bySymbol = writesInFile.get(file);
+  if (bySymbol === undefined) {
+    const found = new Map<ts.Symbol, Write[]>();
+    writesUnder(file, false, (target) => {
+      if (!ts.isIdentifier(target)) return;
+      const written = resolve(target);
+      const fn = runsIn(target);
+      if (written === undefined || fn === undefined) return;
+      const list = found.get(written) ?? [];
+      list.push({ writer: writerName(target), fn });
+      found.set(written, list);
+    });
+    bySymbol = found;
+    writesInFile.set(file, bySymbol);
+  }
+  const writes = bySymbol.get(symbol) ?? [];
+  // A top-level `let` in a file with no import or export is a GLOBAL, which any other script can assign
+  // and no single file says where: with no writer in view, it is still counted as written.
+  const global =
     !ts.isExternalModule(file) &&
     ts.isVariableStatement(declaration.parent.parent) &&
-    declaration.parent.parent.parent === file
-  ) {
-    writes.push({ writer: "any script — it is a global, in a file with no import or export", fn: declaration });
-  }
-  const isIt = (node: ts.Expression): boolean => ts.isIdentifier(node) && resolve(node) === symbol;
-  writesUnder(file, false, (target) => {
-    if (!isIt(target)) return;
-    const fn = runsIn(target);
-    if (fn !== undefined) writes.push({ writer: writerName(target), fn });
-  });
-  writesOfVariable.set(declaration, writes);
-  return writes;
+    declaration.parent.parent.parent === file;
+  return global && writes.length === 0 ? [{ writer: ANY_SCRIPT, fn: declaration }] : writes;
 }
 
 /**
@@ -290,28 +307,29 @@ function readsIn(
      * when it is called. Anything else is a value, and the caller records it as read.
      */
     /**
-     * `runs`: the member is called, or handed to a call (`.map(this.format)`, which runs what it is handed
-     * — see `runsNow`). `bound`: reached through the owner, `this.x` or `self.x`, rather than destructured.
-     * A method is bound to the instance by the framework, and an arrow field keeps the instance's `this`
-     * wherever it goes; a `function` field has it only when called through the owner.
+     * Runs what reading or calling a member runs, and says whether it is a member that runs at all. A
+     * GETTER runs when it is read; called (`this.fmt()`), what it returns runs too — so every function
+     * written in it is walked, whichever branch returns it, with the instance's `this` when it is reached
+     * through the owner (`bound`). A METHOD runs when it is called or handed to a call (`.map(this.format)`,
+     * see `runsNow`), and is bound to the instance by the framework. A field holding a function is NOT
+     * followed: `arrow-fields` refuses every such field, and written as a method it is followed here.
      */
     const follow = (member: ts.ClassElement, runs: boolean, bound: boolean): boolean => {
       if (plainGetter(member)) {
         walk(member, depth + 1, true);
-        // Called, a getter's RESULT runs too: `get fmt() { return () => this.rate }` read as `this.fmt()`.
         if (runs && member.body !== undefined) {
-          for (const statement of member.body.statements) {
-            const value = ts.isReturnStatement(statement) ? statement.expression : undefined;
-            if (value !== undefined && (ts.isArrowFunction(value) || ts.isFunctionExpression(value)))
-              walk(value.body, depth + 1, ts.isArrowFunction(value));
-          }
+          (function returned(at: ts.Node): void {
+            if (ts.isArrowFunction(at) || ts.isFunctionExpression(at)) {
+              walk(at.body, depth + 1, ts.isArrowFunction(at) || bound);
+              return;
+            }
+            ts.forEachChild(at, returned);
+          })(member.body);
         }
         return true;
       }
-      const fn = functionOf(member);
-      if (fn === undefined) return false;
-      if (runs && fn.body !== undefined)
-        walk(fn.body, depth + 1, ts.isMethodDeclaration(fn) || ts.isArrowFunction(fn) || bound);
+      if (!ts.isMethodDeclaration(member)) return false;
+      if (runs && member.body !== undefined) walk(member.body, depth + 1, true);
       return true;
     };
 
@@ -368,16 +386,6 @@ function readsIn(
   return reads;
 }
 
-/** The function a member is: a method, or a field holding an arrow or a `function`. */
-function functionOf(member: ts.ClassElement): ts.FunctionLikeDeclaration | undefined {
-  if (ts.isMethodDeclaration(member)) return member;
-  if (ts.isPropertyDeclaration(member) && member.initializer !== undefined) {
-    const value = member.initializer;
-    if (ts.isArrowFunction(value) || ts.isFunctionExpression(value)) return value;
-  }
-  return undefined;
-}
-
 /** Whether what this expression names runs here: it is called, or handed to a call, which runs it. */
 function runsWhere(expression: ts.Expression): boolean {
   const parent = expression.parent;
@@ -412,11 +420,15 @@ function propsCallback(
     argument.expression.kind === ts.SyntaxKind.ThisKeyword &&
     ts.isIdentifier(argument.name)
   ) {
-    // The nearest member of that name — the one an instance has — a method or a function field.
+    // The nearest declaration of that name — the one an instance has — and of an overloaded method, the
+    // implementation, the one with a body. A field holding a function is `arrow-fields`' to refuse.
     const name = argument.name.text;
     for (const one of declaring) {
-      const member = one.members.find((each) => memberName(each) === name);
-      if (member !== undefined) return functionOf(member);
+      const named = one.members.filter((each) => memberName(each) === name);
+      if (named.length === 0) continue;
+      return named.find(
+        (each): each is ts.MethodDeclaration => ts.isMethodDeclaration(each) && each.body !== undefined,
+      );
     }
   }
   return undefined;
@@ -433,9 +445,12 @@ export const cachedReadOfAPlainField = {
     heading: (found) => `${found.length} cached read(s) that can hold a stale value:`,
     lines: (issue) => [
       `  ${issue.file}:${issue.line}:${issue.column}`,
-      `    <${issue.component}>'s \`${issue.named}\` — ${issue.reader} — reads ` +
-        `${issue.variable ? "the variable " : ""}\`${issue.field}\`, ` +
-        `which is not state: \`${issue.writtenBy}\` writes it, and that invalidates nothing.`,
+      issue.writtenBy === ANY_SCRIPT
+        ? `    <${issue.component}>'s \`${issue.named}\` — ${issue.reader} — reads the global \`${issue.field}\`, ` +
+          "which any script may write, and that invalidates nothing."
+        : `    <${issue.component}>'s \`${issue.named}\` — ${issue.reader} — reads ` +
+          `${issue.variable ? "the variable " : ""}\`${issue.field}\`, ` +
+          `which is not state: \`${issue.writtenBy}\` writes it, and that invalidates nothing.`,
     ],
     advice:
       "A `@compute` caches, and it recomputes when something it TRACKS changes — state and props. A\n" +

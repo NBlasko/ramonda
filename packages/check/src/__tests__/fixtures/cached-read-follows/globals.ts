@@ -3,3 +3,6 @@ let scriptTheme = "light";
 function useDark(): void {
   scriptTheme = "dark";
 }
+
+// A global nothing in view writes — still a global, which any script may write.
+let scriptLang = "en";
