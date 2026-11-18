@@ -1,5 +1,28 @@
 # @ramonda/css
 
+## 0.15.0
+
+### Minor Changes
+
+- 3eb0458: **Breaking:** what only compiled code calls — `shorthands`, `pick`, `conditionsOf`, `namesOf` and
+  `withoutSourceMarks` — moved from `@ramonda/css` to `@ramonda/css/compiled`, and the compiler now
+  imports from there. On the main entry they were a second way to do what a block and a `match` already
+  do, and nothing checked a hand-written call. `mergeClassNames`, `read` and `toStyle` stay where they
+  are. A library that ships blocks compiled by an earlier version imports these from `@ramonda/css` and
+  must be rebuilt with this one. A plugin's `runtime` option set to `@ramonda/css` must say
+  `@ramonda/css/compiled` now — the main entry no longer exports what compiled code calls — and a
+  wrapper's own runtime module re-exports `@ramonda/css/compiled`.
+
+### Patch Changes
+
+- ae86b90: Tests only; nothing a consumer installs changes. The linear-time tests measure the CPU a reading takes instead of
+  the clock, each round on an input of its own, so a loaded machine no longer fails them and a quadratic pattern still
+  does; the ones whose linear and quadratic costs came too close read inputs four times larger. Two tests count instead
+  of timing: the reading budget by readings begun, and the remembered value by readings it did not begin.
+- 6e75325: The Vite plugin's transform runs before every other one (`order: "pre"`), so a file with style blocks reaches
+  `@ramonda/build`'s JSX compiler as JavaScript and is compiled like any other, whichever order the two plugins
+  are listed in.
+
 ## 0.14.0
 
 ### Minor Changes
