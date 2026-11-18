@@ -1,4 +1,4 @@
-import type { HOOK_RUNTIME, HookRuntime, INTERNAL_HOOKS, Runtime, GLOBAL_RUNTIME } from "../core/runtime";
+import type { HOOK_RUNTIME, HookRuntime, HookWalk, INTERNAL_HOOKS, Runtime, GLOBAL_RUNTIME } from "../core/runtime";
 
 export type HookProps = Record<string, any> | undefined;
 
@@ -107,6 +107,6 @@ export declare const PROPS_TYPE: unique symbol;
 // unbound.
 export declare class BaseHook<_Options> {
   public [GLOBAL_RUNTIME]: Runtime;
-  public [INTERNAL_HOOKS]?: (() => void)[];
+  public [INTERNAL_HOOKS]?: HookWalk;
   public [HOOK_RUNTIME]: HookRuntime;
 }

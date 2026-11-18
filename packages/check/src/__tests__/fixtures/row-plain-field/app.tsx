@@ -440,3 +440,61 @@ export class ArrowFieldCallback extends Component<{ tasks: Task[] }> {
     return <ul>{list(this.props.tasks, this.row)}</ul>;
   }
 }
+
+/** Reported: the field is written through a pattern, which is a write like `=`. */
+export class WrittenThroughAPattern extends Component {
+  label = "old";
+  tasks: Task[] = [];
+
+  bump() {
+    [this.label] = ["new"];
+  }
+
+  row(t: Task) {
+    return <li>{t.title + this.label}</li>;
+  }
+
+  render() {
+    return <ul>{list(this.tasks, this.row)}</ul>;
+  }
+}
+
+/** Reported: a field holding a `function` writes the instance when called through it, `this.onDone()`. */
+export class WrittenByAFunctionField extends Component {
+  label = "old";
+  tasks: Task[] = [];
+
+  onDone = function (this: WrittenByAFunctionField) {
+    this.label = "new";
+  };
+
+  row(t: Task) {
+    return <li>{t.title + this.label}</li>;
+  }
+
+  render() {
+    return <ul>{list(this.tasks, this.row)}</ul>;
+  }
+}
+
+interface Field {
+  value: string;
+}
+
+/** Silent: a `function` field whose `this` is declared as another type writes that, not the instance. */
+export class WrittenOnAnElement extends Component {
+  value = "old";
+  tasks: Task[] = [];
+
+  onInput = function (this: Field) {
+    this.value = "x";
+  };
+
+  row(t: Task) {
+    return <li>{t.title + this.value}</li>;
+  }
+
+  render() {
+    return <ul>{list(this.tasks, this.row)}</ul>;
+  }
+}

@@ -672,17 +672,15 @@ function useStyleBlocks(targetDir: string, mode: Mode): void {
 
   edit(join(targetDir, "scripts", "build.mjs"), [
     [
-      'import { ramonda, ramondaOptions, ramondaDefine } from "@ramonda/build/esbuild";\n',
-      'import { ramonda, ramondaOptions, ramondaDefine } from "@ramonda/build/esbuild";\nimport { ramondaCss } from "@ramonda/css/esbuild";\n',
+      'import { ramonda, ramondaOptions } from "@ramonda/build/esbuild";\n',
+      'import { ramonda, ramondaOptions } from "@ramonda/build/esbuild";\nimport { ramondaCss } from "@ramonda/css/esbuild";\n',
     ],
     [
-      "  // `ramonda()` compiles the JSX, as the dev server's plugin does, so production runs the same code.\n" +
-        "  // Another bundler plugin goes after it, in both builds at once — `@ramonda/css`'s, for instance.\n" +
+      "  // Another bundler plugin goes after it, in both builds at once — `@ramonda/css`'s, for instance.\n" +
         "  plugins: [ramonda()],",
-      "  // `ramonda()` compiles the JSX, as the dev server's plugin does. esbuild hands a file to the first\n" +
-        "  // plugin that loads it, and the compiler passes on one with a style block, which it cannot parse —\n" +
-        "  // so it goes first, and the blocks after it. `filter` names the files that may hold one, because\n" +
-        "  // esbuild hands a plugin a path rather than the code.\n" +
+      "  // esbuild hands a file to the first plugin that loads it, and the compiler passes on one with a\n" +
+        "  // style block, which it cannot parse — so it goes first, and the blocks after it. `filter` names the\n" +
+        "  // files that may hold one, because esbuild hands a plugin a path rather than the code.\n" +
         "  plugins: [ramonda(), ramondaCss({ filter: /src\\/.*\\.tsx?$/ })],",
     ],
   ]);

@@ -2,7 +2,14 @@ import type { Context, DefaultProps, RenderableProps } from "./commonTypes";
 import type { COMPONENT_TYPE, TEXT_TYPE } from "../helpers/constants";
 import { IS_SVG, KEY_SYM, SLOT_SYM, IS_LIST, CHILD_RECORD, ORIGIN_SYM, STYLE_SYM, REF_SYM } from "../helpers/constants";
 
-import type { COMPONENT_RUNTIME, ComponentRuntime, INTERNAL_HOOKS, GLOBAL_RUNTIME, Runtime } from "../core/runtime";
+import type {
+  COMPONENT_RUNTIME,
+  ComponentRuntime,
+  HookWalk,
+  INTERNAL_HOOKS,
+  GLOBAL_RUNTIME,
+  Runtime,
+} from "../core/runtime";
 import type { RenderEnv } from "../core/renderEnv";
 // Re-exported as public API (index.ts pulls it from here — a public folder — so
 // the internal-folders rule stays satisfied). It is the argument type for the
@@ -267,7 +274,7 @@ export declare class BaseComponent<P = DefaultProps> {
   public [GLOBAL_RUNTIME]: Runtime;
   public [COMPONENT_RUNTIME]: ComponentRuntime;
 
-  public [INTERNAL_HOOKS]?: (() => void)[];
+  public [INTERNAL_HOOKS]?: HookWalk;
 
   public props: RenderableProps<P>;
 

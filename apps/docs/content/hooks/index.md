@@ -158,8 +158,10 @@ eventually. The hook never sees this argument, and a production build stores non
   [lifecycle](/concepts/lifecycle) demo.
 - **On every re-render of the owner**, the hook tree is walked in `use()` order and the new
   values flow into each hook, cascading down through any nested hooks. A hook's props callback
-  is only *called* if a signal it reads has moved; the walk itself never skips, because a nested
-  hook can depend on state its parent's bag says nothing about.
+  is only *called* if a signal it reads has moved, and a hook with hooks of its own is always
+  walked, because a nested hook can depend on state its parent's bag says nothing about. In a
+  production build, a hook whose props can never move — it takes none, or its callback read no
+  signal — and that has no hooks of its own is left off the walk: there is nothing to give it.
 
 ## The one cost to know
 

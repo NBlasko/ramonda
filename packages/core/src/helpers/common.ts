@@ -1,4 +1,4 @@
-import { HOOK_RUNTIME, INTERNAL_HOOKS, GLOBAL_RUNTIME, CHILD_HOOKS } from "../core/runtime";
+import { HOOK_RUNTIME, INTERNAL_HOOKS, GLOBAL_RUNTIME, CHILD_HOOKS, type HookWalk } from "../core/runtime";
 import { className, displayName } from "./utils";
 import { STABLE_PROPS, attach, detach } from "./constants";
 import { valueEqual } from "./valueEqual";
@@ -24,6 +24,12 @@ type Bag = Record<string, unknown>;
 
 /** Stands in for a cache that has not built yet. Shared, and never read — see `PropsCache.bag`. */
 const NO_BAG: Bag = {};
+
+/**
+ * The hooks left off their owner's walk, each with what puts it back — see `register` in `useCommon`.
+ * A WeakMap rather than a property on the hook: a hook may freeze itself in its constructor.
+ */
+const dormant = new WeakMap<object, () => void>();
 
 /**
  * Calls the props callback, and in a development build holds it to the same two standards
@@ -191,9 +197,10 @@ const STABLE_DEPTH = 5;
  *
  * ## What it does not do
  *
- * It does not skip the owner's render, and it does not skip the walk: `updateFn` still visits
- * every child hook, because a child can depend on state of its own that the parent's bag says
- * nothing about. Only the CALL and the prop diff are skipped.
+ * It does not skip the owner's render, and a CLEAN pass still walks on: `updateFn` visits every
+ * child hook, because a child can depend on state of its own that the parent's bag says nothing
+ * about. Only the CALL and the prop diff are skipped. Leaving a hook off the walk altogether is a
+ * different decision, made once when it is used — see `register` below.
  */
 interface PropsCache {
   /**
@@ -247,12 +254,10 @@ export function useCommon<T extends BaseHook<unknown>, P>(
     );
   }
 
-  let internalHooks = that[INTERNAL_HOOKS];
-
-  if (!internalHooks) {
-    internalHooks = [];
+  // A box, written once: a registration replaces the list inside it — see `HookWalk` and `register`.
+  if (!that[INTERNAL_HOOKS]) {
     Object.defineProperty(that, INTERNAL_HOOKS, {
-      value: internalHooks,
+      value: { list: [] },
       configurable: false,
       enumerable: false,
       writable: true,
@@ -438,7 +443,7 @@ export function useCommon<T extends BaseHook<unknown>, P>(
 
     // Indexed loop over the children — the fastest form, and this runs on
     // every hook update.
-    const children = hookInstance[INTERNAL_HOOKS];
+    const children = hookInstance[INTERNAL_HOOKS]?.list;
     if (children !== undefined) {
       const len = children.length;
       for (let i = 0; i < len; i++) {
@@ -447,7 +452,66 @@ export function useCommon<T extends BaseHook<unknown>, P>(
     }
   };
 
-  internalHooks.push(updateFn);
+  const register = (woken: boolean) => {
+    // In `use()` order, which is the order the walk keeps: a hook's props can read a hook used before
+    // it, so the one used first has to be updated first. A hook registered as it is used is the last
+    // so far; a woken one goes after every hook on the walk that was used before it. Measured: woken
+    // at the end instead, a hook reading the woken one's child served its old value in a production
+    // build, and the right one in development, where nothing sleeps.
+    //
+    // A woken hook goes into a NEW list. A wake can happen while the owner is walking its list — a props
+    // callback that calls a method which `use()`s — and that walk goes on over the list it began with;
+    // spliced into in place, the hook after the woken one was skipped for that pass (measured: it showed
+    // its old value). The walk in progress finishes over the old list, and the next one reads the new.
+    //
+    // A hook arriving as it is used goes on the END, in place, which shifts nothing a walk has still to
+    // reach. A walk in progress may or may not reach it — `for…of` does, a counted loop does not — and
+    // either is right: it has just read its props, so its update would find nothing to do. Copying here
+    // too made registering n hooks on one owner cost n²/2 copies.
+    const walk = that[INTERNAL_HOOKS] as HookWalk;
+    if (!woken) {
+      walk.list.push(updateFn);
+    } else {
+      // A sibling used before this one is on the walk exactly when it is not asleep.
+      let at = 0;
+      for (const sibling of childHooks) {
+        if (sibling === hookInstance) break;
+        if (!dormant.has(sibling)) at++;
+      }
+      walk.list = [...walk.list.slice(0, at), updateFn, ...walk.list.slice(at)];
+    }
+    // The owner is a hook this walk had left out, and now it has a child to walk: it goes back on
+    // ITS owner's list, and so on up, as far as the first one that was never left out.
+    const wake = dormant.get(that);
+    if (wake !== undefined) {
+      dormant.delete(that);
+      wake();
+    }
+  };
+
+  /**
+   * A hook whose props can never move, with no hook of its own, is left off the owner's walk.
+   *
+   * Its update would read the cached bag, find it the same, and walk no children — on every render
+   * of the owner, for the life of the page. Measured on a page with five hooks rendered ten times:
+   * forty of fifty updates did nothing, and the two hooks taking no props built an empty bag on
+   * each one. "Can never move" is exact: a callback that read no signal has nothing that can mark
+   * its cache dirty, so it is never called again whether or not it is walked, and a hook taking no
+   * props has no callback at all. What the hook sees is the same either way.
+   *
+   * Production only. A development build walks every hook, because RMD027 is asked on that walk:
+   * it calls the callback again to catch a value no signal backs — `{ items: this.items }` over a
+   * plain field — and that callback is exactly the one that reads no signal. What could change
+   * such a value is `@ramonda/check`'s to refuse (`cached-read-of-a-plain-field`).
+   *
+   * A hook can still gain a child later — `use()` is a method, and nothing stops a method from
+   * calling it — so a hook left out is remembered, and `register` puts it back the moment one of
+   * its own hooks has something to walk.
+   */
+  const canMove = cache !== undefined && cache.deps.size > 0;
+  const hasChildren = (hookInstance[INTERNAL_HOOKS]?.list.length ?? 0) > 0;
+  if (__DEV__ || canMove || hasChildren) register(false);
+  else dormant.set(hookInstance, () => register(true));
 
   // The cache holds a listener on every signal its callback read, and those signals outlive the
   // hook — an owner's `@state` belongs to the owner, and a context signal belongs to the

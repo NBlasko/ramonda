@@ -1,5 +1,5 @@
 import ts from "typescript";
-import { memberName } from "../syntax";
+import { invokedOnTheSpot, memberName } from "../syntax";
 import type { Resolver } from "./rule";
 
 /**
@@ -230,7 +230,7 @@ export function entryPoints(cls: ts.ClassDeclaration, resolve: Resolver): { memb
  * shown a way to tell apart from `rows.map(…)` without asking what the callee does with what it is
  * handed.
  */
-function runsNow(fn: ts.ArrowFunction | ts.FunctionExpression): boolean {
+export function runsNow(fn: ts.ArrowFunction | ts.FunctionExpression): boolean {
   const parent = fn.parent;
   if (parent === undefined) return false;
 
@@ -240,17 +240,7 @@ function runsNow(fn: ts.ArrowFunction | ts.FunctionExpression): boolean {
   if (ts.isCallExpression(parent) && parent.arguments.includes(fn)) return true;
 
   // `(() => …)()` — invoked on the spot, with or without the parentheses TypeScript keeps.
-  if (ts.isCallExpression(parent) && parent.expression === fn) return true;
-  if (
-    ts.isParenthesizedExpression(parent) &&
-    parent.parent !== undefined &&
-    ts.isCallExpression(parent.parent) &&
-    parent.parent.expression === parent
-  ) {
-    return true;
-  }
-
-  return false;
+  return invokedOnTheSpot(fn);
 }
 
 /**

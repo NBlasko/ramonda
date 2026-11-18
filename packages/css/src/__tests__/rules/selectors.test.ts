@@ -1,5 +1,6 @@
 import { type Finding, checkBlock } from "../../compiler/rules";
 import { describe, expect, test } from "vitest";
+import { cpuTime } from "../cpuTime";
 import { readBlock } from "../../compiler/read";
 import { check, checkNamed, checkNamedFree, messages, rules } from "./helpers";
 
@@ -505,30 +506,39 @@ describe("a condition that cannot switch", () => {
    * `(a:` and a long run of spaces — took 65 s at 5,000 spaces, the lazy value and the spaces around
    * it trading the same characters; and a run of zeros with no end was quadratic in the number test.
    * Measured before the fix: 2,000 spaces ~4 s, 20,000 zeros ~1.7 s.
+   *
+   * Asked as CPU (see `cpuTime`), over inputs four times those: a linear reading costs four times as
+   * much and a quadratic one sixteen, and the 2.5 s bound sits in that gap. At a quarter of these sizes
+   * the number patterns planted back cost 0.4–1.2 s and the linear readings up to 266 ms, too close to
+   * tell apart; at these, 6.5–20 s planted against at most 960 ms (a length that never ends), inside
+   * the whole css suite with coverage, beside core's suite. Linux laptop, Ryzen 5 2500U.
    */
-  test.each([
-    ["a pair that never closes", `  @media (min-width:${" ".repeat(2_000)}(x)) { color: red; }`],
-    ["a pair that never closes, in @supports", `  @supports (min-width:${" ".repeat(2_000)}(x)) { color: red; }`],
-    ["a number that never ends", `  @media (min-width: 0${"00".repeat(10_000)}!) { color: red; }`],
-    ["a range of nothing but comparisons", `  @media (${"<".repeat(20_000)}) { color: red; }`],
-    ["a range with a long run of spaces", `  @media (width${" ".repeat(20_000)}>= 40) { color: red; }`],
+  test.each<[string, (round: number) => string]>([
+    ["a pair that never closes", (n) => `  @media (min-width:${" ".repeat(8_000 + n)}(x)) { color: red; }`],
+    [
+      "a pair that never closes, in @supports",
+      (n) => `  @supports (min-width:${" ".repeat(8_000 + n)}(x)) { color: red; }`,
+    ],
+    ["a number that never ends", (n) => `  @media (min-width: 0${"00".repeat(40_000 + n)}!) { color: red; }`],
+    ["a range of nothing but comparisons", (n) => `  @media (${"<".repeat(80_000 + n)}) { color: red; }`],
+    ["a range with a long run of spaces", (n) => `  @media (width${" ".repeat(80_000 + n)}>= 40) { color: red; }`],
     // The unit `supports-a-media-feature` reads — CodeQL's find: the pattern alone is quadratic on a run
     // of `%` (2.5 s at 40,000), so it must be one that cannot be, not one `kindOf` happens to guard.
-    ["a run of percent signs in @supports", `  @supports (min-width: 1${"%".repeat(40_000)}!) { color: red; }`],
-    ["a run of percent signs that is a length", `  @supports (min-width: 1${"%".repeat(40_000)}) { color: red; }`],
+    [
+      "a run of percent signs in @supports",
+      (n) => `  @supports (min-width: 1${"%".repeat(160_000 + n)}!) { color: red; }`,
+    ],
+    [
+      "a run of percent signs that is a length",
+      (n) => `  @supports (min-width: 1${"%".repeat(160_000 + n)}) { color: red; }`,
+    ],
     // The same digits as a declaration's value: the splitter and the value rules read numbers with the
     // same pattern, and it was in twelve places.
-    ["a value that never ends", `  padding: 0${"00".repeat(10_000)}!;`],
-    ["a length that never ends", `  margin: 1${"00".repeat(10_000)}.;`],
+    ["a value that never ends", (n) => `  padding: 0${"00".repeat(40_000 + n)}!;`],
+    ["a length that never ends", (n) => `  margin: 1${"00".repeat(40_000 + n)}.;`],
   ])("%s is answered at once", (_what, css) => {
-    // The best of three: one run can stall twentyfold under a full gate's parallel load — measured,
-    // 254 ms for a run that takes 12 — and a quadratic reading would be seconds on every one of them.
-    const runs = [0, 1, 2].map(() => {
-      const started = performance.now();
-      rules(css);
-      return performance.now() - started;
-    });
-    expect(Math.min(...runs)).toBeLessThan(250);
+    // An input of its own each round: the same one twice is answered from memory — see `cpuTime`.
+    expect(cpuTime(css, rules)).toBeLessThan(2_500);
   });
 
   test.each([

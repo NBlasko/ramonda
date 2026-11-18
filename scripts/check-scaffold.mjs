@@ -159,8 +159,8 @@ function addStyleBlocks(app) {
     const before = readFileSync(script, "utf8");
     const after = before
       .replace(
-        'import { ramonda, ramondaOptions, ramondaDefine } from "@ramonda/build/esbuild";',
-        'import { ramonda, ramondaOptions, ramondaDefine } from "@ramonda/build/esbuild";\nimport { ramondaCss } from "@ramonda/css/esbuild";',
+        'import { ramonda, ramondaOptions } from "@ramonda/build/esbuild";',
+        'import { ramonda, ramondaOptions } from "@ramonda/build/esbuild";\nimport { ramondaCss } from "@ramonda/css/esbuild";',
       )
       .replace("plugins: [ramonda()]", "plugins: [ramonda(), ramondaCss({ filter: /src\\/.*\\.tsx$/ })]");
     if (!after.includes("ramondaCss({")) fail("could not wire `ramondaCss()` into the generated scripts/build.mjs");

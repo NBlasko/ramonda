@@ -158,3 +158,84 @@ export function isHandedOver(node: ts.Node): boolean {
   const parent = node.parent;
   return (ts.isPropertyAssignment(parent) && parent.initializer === node) || ts.isShorthandPropertyAssignment(parent);
 }
+
+/**
+ * Every identifier or property access an assignment's left side writes, through any destructuring —
+ * `[a, this.b] = list`, `({ a, c: this.c } = cfg)`, `[a = 1] = list`.
+ */
+export function targetsOf(left: ts.Node, into: ts.Expression[]): void {
+  if (ts.isIdentifier(left) || ts.isPropertyAccessExpression(left)) into.push(left);
+  else if (ts.isParenthesizedExpression(left)) targetsOf(left.expression, into);
+  else if (ts.isArrayLiteralExpression(left)) for (const one of left.elements) targetsOf(one, into);
+  else if (ts.isObjectLiteralExpression(left)) {
+    for (const one of left.properties) {
+      if (ts.isShorthandPropertyAssignment(one)) into.push(one.name);
+      else if (ts.isPropertyAssignment(one)) targetsOf(one.initializer, into);
+      else if (ts.isSpreadAssignment(one)) targetsOf(one.expression, into);
+    }
+  } else if (ts.isSpreadElement(left)) targetsOf(left.expression, into);
+  else if (ts.isBinaryExpression(left) && left.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+    targetsOf(left.left, into);
+  }
+}
+
+/** Whether a class member is `static` — its `this` is the class, not an instance. */
+export function isStatic(member: ts.Node): boolean {
+  return (
+    ts.canHaveModifiers(member) &&
+    ts.getModifiers(member)?.some((one) => one.kind === ts.SyntaxKind.StaticKeyword) === true
+  );
+}
+
+/**
+ * A node with a `this` of its own: a nested class, a `function`, a method or accessor of an object
+ * literal. Only an arrow keeps the `this` around it.
+ */
+export function bindsThis(node: ts.Node): boolean {
+  return (
+    ts.isClassDeclaration(node) ||
+    ts.isClassExpression(node) ||
+    ts.isFunctionDeclaration(node) ||
+    ts.isFunctionExpression(node) ||
+    ((ts.isMethodDeclaration(node) || ts.isAccessor(node)) && ts.isObjectLiteralExpression(node.parent))
+  );
+}
+
+/**
+ * Every target written under a node — an assignment of any operator (`??=` and `||=` are writes like any
+ * other), `++`/`--`, a `for…of` — through any pattern, with `this` kept bound if asked.
+ */
+export function writesUnder(root: ts.Node, keepThis: boolean, visit: (target: ts.Expression) => void): void {
+  (function walk(at: ts.Node): void {
+    if (keepThis && at !== root && bindsThis(at)) return;
+    const targets: ts.Expression[] = [];
+    if (
+      ts.isBinaryExpression(at) &&
+      at.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
+      at.operatorToken.kind <= ts.SyntaxKind.LastAssignment
+    ) {
+      targetsOf(at.left, targets);
+    } else if (
+      (ts.isPostfixUnaryExpression(at) || ts.isPrefixUnaryExpression(at)) &&
+      (at.operator === ts.SyntaxKind.PlusPlusToken || at.operator === ts.SyntaxKind.MinusMinusToken)
+    ) {
+      targetsOf(at.operand, targets);
+    } else if ((ts.isForOfStatement(at) || ts.isForInStatement(at)) && !ts.isVariableDeclarationList(at.initializer)) {
+      targetsOf(at.initializer, targets);
+    }
+    for (const target of targets) visit(target);
+    ts.forEachChild(at, walk);
+  })(root);
+}
+
+/** `(() => …)()` — a function called where it is written, through any parentheses TypeScript keeps. */
+export function invokedOnTheSpot(fn: ts.ArrowFunction | ts.FunctionExpression): boolean {
+  let at: ts.Node = fn;
+  while (at.parent !== undefined && ts.isParenthesizedExpression(at.parent)) at = at.parent;
+  return at.parent !== undefined && ts.isCallExpression(at.parent) && at.parent.expression === at;
+}
+
+/** Whether `inner` lies inside `outer` — the same file, and within its span. */
+export function contains(outer: ts.Node, inner: ts.Node): boolean {
+  return outer.getSourceFile() === inner.getSourceFile() && inner.pos >= outer.pos && inner.end <= outer.end;
+}

@@ -106,6 +106,7 @@ const EXPECTED_TYPES = [
   "LinkWithoutADestinationIssue",
   "ListenerAddedByHandIssue",
   "MediaWithNoCaptionsIssue",
+  "MethodWrittenOverIssue",
   "NamedOnlyByAPlaceholderIssue",
   "OneProviderPerComponentIssue",
   "PersistOfALossyValueIssue",

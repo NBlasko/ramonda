@@ -288,9 +288,10 @@ describe("the types a Vite project needs", () => {
    * development branch is `import.meta.env.DEV`, which `@ramonda/build` defines on both halves.
    */
   /**
-   * The build is a PRODUCTION build whatever the shell says. Found by review: `ramondaDefine` takes
-   * `import.meta.env.DEV` from `NODE_ENV`, so a shell exporting `NODE_ENV=development` shipped every
-   * development branch — the devtools import among them — in the production bundle.
+   * The build is a PRODUCTION build whatever the shell says. `ramonda()` takes `import.meta.env.DEV`
+   * from `NODE_ENV`, so a shell exporting `NODE_ENV=development` would ship every development branch —
+   * the devtools import among them — in the production bundle; the script sets it before the plugin
+   * reads it.
    */
   /**
    * A failed SSR load forgets Vite's module graph, so the next request loads afresh. Found by the
@@ -307,11 +308,11 @@ describe("the types a Vite project needs", () => {
     expect(failed).toContain("vite.moduleGraph.invalidateAll()");
   });
 
-  test("the build script says production before it asks for the defines", () => {
+  test("the build script says production before the plugin asks for the defines", () => {
     const script = make("ssr", []).read("scripts/build.mjs");
     const set = script.indexOf('process.env.NODE_ENV = "production"');
     expect(set).toBeGreaterThan(-1);
-    expect(set).toBeLessThan(script.indexOf("ramondaDefine()"));
+    expect(set).toBeLessThan(script.indexOf("plugins: [ramonda()]"));
   });
 
   test("and nothing in it defines or declares `__DEV__`", () => {
@@ -384,10 +385,10 @@ describe("development is development", () => {
      */
     expect(scripts.dev).toBe("node server.mjs");
     expect(read("scripts/build.mjs")).toContain('conditions: ["production"]');
-    // Through `ramondaDefine`, which merges in the `import.meta.env.RAMONDA_PUBLIC_*` entries — writing
-    // `define` plainly would drop them and every such read would throw in a browser.
-    expect(read("scripts/build.mjs")).toContain("define: ramondaDefine()");
-    expect(read("scripts/build.mjs")).toContain('ramondaDefine } from "@ramonda/build/esbuild"');
+    // The defines are `ramonda()`'s, per build: one `define` in `shared` would hand the server bundle the
+    // client's `import.meta.env.SSR`, false, since a build's own `define` wins over the plugin's.
+    expect(read("scripts/build.mjs")).not.toContain("define:");
+    expect(read("scripts/build.mjs")).toContain("plugins: [ramonda()]");
     expect(scripts.start).toContain("--prod");
   });
 });
@@ -780,7 +781,7 @@ describe("the css add-on", () => {
     // Without the plugin, `dev` ran the compiled templates and a production build the plain `jsx()`
     // calls — two code paths, and a difference between them shows in one place only.
     const build = make("ssr", []).read("scripts/build.mjs");
-    expect(build).toContain('import { ramonda, ramondaOptions, ramondaDefine } from "@ramonda/build/esbuild";');
+    expect(build).toContain('import { ramonda, ramondaOptions } from "@ramonda/build/esbuild";');
     expect(build).toMatch(/\n  plugins: \[ramonda\(\)\],\n/);
   });
 

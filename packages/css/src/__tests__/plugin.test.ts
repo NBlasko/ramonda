@@ -5,6 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { describe, expect, test } from "vitest";
+import { cpuTime } from "./cpuTime";
 import { virtualFile } from "../compiler/virtual";
 import { SELECTORS } from "../compiler/keywords.generated";
 import { NO_COMPILER, init } from "../adapters/plugin";
@@ -520,11 +521,16 @@ describe("hover", () => {
 
   /** Found in review: the trailing-`;` strip was CUBIC — 5000 spaces took 65 s — and a hover is per caret move. */
   test("and a hover over a value of long whitespace answers at once", () => {
-    const marked = `const a = <div className={@@( border-left: 4px${" ".repeat(20_000)}so${CARET}lid red; )}>x</div>;\n`;
-    const { service, caret } = editor(marked);
-    const started = performance.now();
-    service.getQuickInfoAtPosition(FILE, caret);
-    expect(performance.now() - started).toBeLessThan(500);
+    const marked = (round: number) =>
+      `const a = <div className={@@( border-left: 4px${" ".repeat(20_000 + round)}so${CARET}lid red; )}>x</div>;\n`;
+    // A program of its own each round, built before the clock starts — a language service builds it on
+    // the first question, so it is asked for here — and only the hover is timed.
+    const open = (round: number) => {
+      const opened = editor(marked(round));
+      opened.service.getProgram();
+      return opened;
+    };
+    expect(cpuTime(open, ({ service, caret }) => service.getQuickInfoAtPosition(FILE, caret))).toBeLessThan(500);
   });
 
   /** The user's own example: a `var()` may stand for any part, so the build keeps it whole, and says so. */
