@@ -273,7 +273,7 @@ describe("a registered property set to a value its syntax refuses", () => {
      */
     test("a value with a long run of spaces is read in linear time", () => {
       const css = (round: number) => `${angle}const s = @@( $(angle): 1deg${" ".repeat(160_000 + round)}2deg; );\n`;
-      expect(cpuTime((round) => () => rules(css(round)))).toBeLessThan(2_500);
+      expect(cpuTime(css, rules)).toBeLessThan(2_500);
     });
 
     /** A hole's value is not known here, and is refused for being one at all. */

@@ -30,14 +30,23 @@ describe("a cached reader, followed", () => {
       "loop:var unit:cycle",
       "counts:var count:bump",
       "counts:var count:bumpOther",
+      "lazy:var fmt:money",
+      "lazy:var loaded:config",
+      "lazyGetter:_api:api",
       "shown:var dismissed:dismiss",
       "eager:var fmt:money",
       "ofTotal:var created:id",
       "destructured:rate:bump",
       "counted:counter:nextId",
+      "destructuredArrow:rate:bump",
       "toned:tone:setTone",
       "destructuredMethod:rate:bump",
+      "twoHelpers:var fmt:money",
+      "nestedLazy:fmt2:prices",
+      "methodMemo:_api2:api2",
       "title:var lang:setLang",
+      "local:rate:bump",
+      "viaFnGetter:rate:bump",
     ]);
   });
 });

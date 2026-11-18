@@ -538,7 +538,7 @@ describe("a condition that cannot switch", () => {
     ["a length that never ends", (n) => `  margin: 1${"00".repeat(40_000 + n)}.;`],
   ])("%s is answered at once", (_what, css) => {
     // An input of its own each round: the same one twice is answered from memory — see `cpuTime`.
-    expect(cpuTime((round) => () => rules(css(round)))).toBeLessThan(2_500);
+    expect(cpuTime(css, rules)).toBeLessThan(2_500);
   });
 
   test.each([

@@ -1181,5 +1181,5 @@ describe("odd text keeps its meaning and settles", () => {
 test("a run of comments before an arm is read in linear time", () => {
   const source = (round: number) =>
     `declare const t: "a" | "b";\nexport const x = (k: number) => @@(\n  match $(t) {\n    a => ( color: red; );\n    ${"/**/".repeat(40 + round)} b => ( color: blue; );\n  }\n);\n`;
-  expect(cpuTime((round) => () => formatText(source(round), "A.tsx", (text) => text))).toBeLessThan(1000);
+  expect(cpuTime(source, (text) => formatText(text, "A.tsx", (out) => out))).toBeLessThan(1000);
 });

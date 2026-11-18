@@ -458,22 +458,27 @@ export function useCommon<T extends BaseHook<unknown>, P>(
     // at the end instead, a hook reading the woken one's child served its old value in a production
     // build, and the right one in development, where nothing sleeps.
     //
-    // Into a NEW list, whichever way it arrives. A registration can happen while the owner is walking
-    // its list — a props callback that calls a method which `use()`s — and that walk goes on over the
-    // list it began with; spliced into in place, the hook after a woken one was skipped for that pass
-    // (measured: it showed its old value). One rule for both: the walk in progress finishes over the
-    // old list, and the next one reads the new.
+    // A woken hook goes into a NEW list. A wake can happen while the owner is walking its list — a props
+    // callback that calls a method which `use()`s — and that walk goes on over the list it began with;
+    // spliced into in place, the hook after the woken one was skipped for that pass (measured: it showed
+    // its old value). The walk in progress finishes over the old list, and the next one reads the new.
+    //
+    // A hook arriving as it is used goes on the END, in place, which shifts nothing a walk has still to
+    // reach. A walk in progress may or may not reach it — `for…of` does, a counted loop does not — and
+    // either is right: it has just read its props, so its update would find nothing to do. Copying here
+    // too made registering n hooks on one owner cost n²/2 copies.
     const walk = that[INTERNAL_HOOKS] as HookWalk;
-    let at = walk.list.length;
-    if (woken) {
+    if (!woken) {
+      walk.list.push(updateFn);
+    } else {
       // A sibling used before this one is on the walk exactly when it is not asleep.
-      at = 0;
+      let at = 0;
       for (const sibling of childHooks) {
         if (sibling === hookInstance) break;
         if (!dormant.has(sibling)) at++;
       }
+      walk.list = [...walk.list.slice(0, at), updateFn, ...walk.list.slice(at)];
     }
-    walk.list = [...walk.list.slice(0, at), updateFn, ...walk.list.slice(at)];
     // The owner is a hook this walk had left out, and now it has a child to walk: it goes back on
     // ITS owner's list, and so on up, as far as the first one that was never left out.
     const wake = dormant.get(that);

@@ -1,5 +1,5 @@
 import ts from "typescript";
-import { memberName, positionOf, targetsOf } from "../syntax";
+import { bindsThis, isStatic, memberName, positionOf, targetsOf } from "../syntax";
 import { heritage } from "./render-reach";
 import type { Rule } from "./rule";
 
@@ -35,15 +35,20 @@ export interface MethodWrittenOverIssue {
   column: number;
 }
 
-/** The instance methods a class has, its bases' included. */
+/**
+ * The instance methods a class has, its bases' included — by the NEAREST declaration of each name, which
+ * is the one an instance has: a base's `submit()` that a subclass declares again as a field is a field.
+ */
 function methodsOf(declaring: readonly ts.ClassLikeDeclaration[]): Set<string> {
   const methods = new Set<string>();
+  const seen = new Set<string>();
   for (const one of declaring) {
     for (const member of one.members) {
-      if (!ts.isMethodDeclaration(member)) continue;
-      if (member.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.StaticKeyword)) continue;
+      if (isStatic(member) || ts.isClassStaticBlockDeclaration(member)) continue;
       const name = memberName(member);
-      if (name !== undefined) methods.add(name);
+      if (name === undefined || seen.has(name)) continue;
+      if (ts.isMethodDeclaration(member) || ts.isPropertyDeclaration(member) || ts.isAccessor(member)) seen.add(name);
+      if (ts.isMethodDeclaration(member)) methods.add(name);
     }
   }
   return methods;
@@ -75,25 +80,11 @@ export const methodWrittenOver = {
     const found: MethodWrittenOverIssue[] = [];
     for (const member of cls.members) {
       // A static member's `this` is the class, not an instance.
-      if (ts.isClassStaticBlockDeclaration(member)) continue;
-      if (
-        ts.canHaveModifiers(member) &&
-        ts.getModifiers(member)?.some((one) => one.kind === ts.SyntaxKind.StaticKeyword)
-      )
-        continue;
+      if (ts.isClassStaticBlockDeclaration(member) || isStatic(member)) continue;
       const writtenIn = ts.isConstructorDeclaration(member) ? "constructor" : (memberName(member) ?? "a member");
       (function walk(at: ts.Node): void {
-        // Only an arrow keeps the instance's `this`. A nested class, a `function`, and a method or
-        // accessor written in an object literal each have a `this` of their own.
-        if (
-          at !== member &&
-          (ts.isClassDeclaration(at) ||
-            ts.isClassExpression(at) ||
-            ts.isFunctionDeclaration(at) ||
-            ts.isFunctionExpression(at) ||
-            ((ts.isMethodDeclaration(at) || ts.isAccessor(at)) && ts.isObjectLiteralExpression(at.parent)))
-        )
-          return;
+        // Only an arrow keeps the instance's `this` — see `bindsThis`.
+        if (at !== member && bindsThis(at)) return;
         // Every target an assignment writes, through any pattern: `[this.submit] = [this.send]` too.
         const targets: ts.Expression[] = [];
         if (

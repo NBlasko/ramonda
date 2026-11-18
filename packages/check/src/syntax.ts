@@ -183,3 +183,25 @@ export function targetsOf(left: ts.Node, into: ts.Expression[]): void {
     targetsOf(left.left, into);
   }
 }
+
+/** Whether a class member is `static` — its `this` is the class, not an instance. */
+export function isStatic(member: ts.Node): boolean {
+  return (
+    ts.canHaveModifiers(member) &&
+    ts.getModifiers(member)?.some((one) => one.kind === ts.SyntaxKind.StaticKeyword) === true
+  );
+}
+
+/**
+ * A node with a `this` of its own: a nested class, a `function`, a method or accessor of an object
+ * literal. Only an arrow keeps the `this` around it.
+ */
+export function bindsThis(node: ts.Node): boolean {
+  return (
+    ts.isClassDeclaration(node) ||
+    ts.isClassExpression(node) ||
+    ts.isFunctionDeclaration(node) ||
+    ts.isFunctionExpression(node) ||
+    ((ts.isMethodDeclaration(node) || ts.isAccessor(node)) && ts.isObjectLiteralExpression(node.parent))
+  );
+}

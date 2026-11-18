@@ -1301,7 +1301,7 @@ test("a shorthand's long run of digits is answered at once", () => {
   // Sized and bounded as the conditions in `selectors.test.ts` are, and for the same reason: at 20,000
   // digits the number patterns planted back cost 490 ms, and the linear reading 156 inside a loaded gate.
   // At 80,000: 6.5 s planted, and 550 ms inside the whole css suite with coverage, beside core's suite.
-  expect(cpuTime((round) => () => rules(`  margin: ${"0".repeat(80_000 + round)}x auto;`))).toBeLessThan(2_500);
+  expect(cpuTime((round) => `  margin: ${"0".repeat(80_000 + round)}x auto;`, rules)).toBeLessThan(2_500);
 });
 
 /**
@@ -1447,7 +1447,7 @@ test("a value of long whitespace is answered at once", () => {
   // `selectors.test.ts` are: at 20,000 spaces the strip planted back cost 390 ms and the linear
   // reading up to 110 inside a loaded gate, too close to tell apart under one limit.
   const css = (round: number) => `  font-family: Helvetica${" ".repeat(80_000 + round)}Neue;`;
-  expect(cpuTime((round) => () => rules(css(round)))).toBeLessThan(2_500);
+  expect(cpuTime(css, rules)).toBeLessThan(2_500);
 });
 
 /**

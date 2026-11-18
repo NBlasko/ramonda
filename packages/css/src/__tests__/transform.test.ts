@@ -1399,7 +1399,10 @@ describe("a block with thousands of declarations", () => {
       // Every name its round's own: the compiler remembers each declaration it has read.
       Array.from({ length: 8000 }, (_, index) => `  --r${round}v${index}: ${index}px;`).join("\n");
     expect(
-      cpuTime((round) => () => transform(`const s = @@(\n${declarations(round)}\n);\n`, { filename: "C.tsx" })),
+      cpuTime(
+        (round) => `const s = @@(\n${declarations(round)}\n);\n`,
+        (source) => transform(source, { filename: "C.tsx" }),
+      ),
     ).toBeLessThan(10_000);
   }, 60_000);
 });

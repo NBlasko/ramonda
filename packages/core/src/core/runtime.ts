@@ -158,8 +158,8 @@ export const INTERNAL_HOOKS = Symbol("internalHooks");
 /**
  * The hooks an owner walks on each update, in `use()` order — held in a box rather than on the owner.
  *
- * A registration REPLACES `list` instead of changing it, so a walk in progress finishes over the list it
- * began with (see `register` in `helpers/common.ts`). The box is written onto the owner once: a hook may
+ * A hook woken into the middle REPLACES `list` instead of changing it, so a walk in progress finishes over
+ * the list it began with (see `register` in `helpers/common.ts`). The box is written onto the owner once: a hook may
  * freeze itself in its constructor, and a frozen owner takes no new property value, while the box it
  * already holds stays writable — freezing is shallow.
  */

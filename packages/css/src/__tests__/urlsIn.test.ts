@@ -23,12 +23,12 @@ describe("the url() reader behind url-not-found", () => {
     ["url( and a run of spaces", (round) => `url(${" ".repeat(40000 + round)}x`],
     ["many url( in a row", (round) => "url(".repeat(20000 + round)],
   ])("%s is read in linear time", (_what, text) => {
-    expect(cpuTime((round) => () => urlsIn(text(round)))).toBeLessThan(500);
+    expect(cpuTime(text, urlsIn)).toBeLessThan(500);
   });
 
   test("a query or fragment is cut at the first one, in linear time", () => {
     expect(withoutQuery("./icons.svg#home")).toBe("./icons.svg");
     expect(withoutQuery("./a.png?v=2#x")).toBe("./a.png");
-    expect(cpuTime((round) => () => withoutQuery(`./${"#".repeat(40000 + round)}`))).toBeLessThan(500);
+    expect(cpuTime((round) => `./${"#".repeat(40000 + round)}`, withoutQuery)).toBeLessThan(500);
   });
 });

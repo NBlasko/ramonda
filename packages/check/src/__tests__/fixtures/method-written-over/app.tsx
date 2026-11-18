@@ -6,6 +6,7 @@ class Takes extends Hook<{ run: () => void }> {}
 
 class Base extends Component {
   save(): void {}
+  cancel(): void {}
 }
 
 /** Every write to a method this class has, and the writes beside them that are not one. */
@@ -24,6 +25,8 @@ class Editor extends Base {
 
   submit(): void {}
   send(): void {}
+  /* A field on this class, though the base has a method of the name: writing it writes a field. */
+  cancel = () => {};
 
   swap(): void {
     /* REPORTED — a handler writing a method of its own. */
@@ -34,6 +37,8 @@ class Editor extends Base {
     [this.submit] = [this.send];
     ({ submit: this.submit } = { submit: this.send });
     Object.assign(this, { submit: this.send });
+    /* Not reported: the nearest `cancel` is a field. */
+    this.cancel = () => {};
     /* Not reported: a field. */
     this.later = this.send;
     /* Not reported: a nested class's own `this`. */

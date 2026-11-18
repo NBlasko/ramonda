@@ -31,7 +31,7 @@ function counted(): number {
   return n;
 }
 
-/* Written lazily, once, into an empty variable: never stale. */
+/* Written lazily, once, into an empty variable: a write like any other — a reader that read it empty keeps that. */
 let fmt: { format(n: number): string } | undefined;
 function money(n: number): string {
   fmt ??= { format: String };
@@ -43,7 +43,7 @@ function config(): string {
   return loaded;
 }
 
-/* Lazy, but filled by a handler after a reader read the empty value: stale. */
+/* Filled lazily by a handler after a reader read the empty value: stale. */
 let dismissed = false;
 export function dismiss(): void {
   dismissed ||= true;
@@ -55,7 +55,7 @@ let created = 0;
 /* Written in a static block, while the class is being made: never stale. */
 let seeded = 0;
 
-/* A second helper filling the same slot before it reads it: still a self-filling memo. */
+/* A second helper filling the same slot: a second writer. */
 function pct(n: number): string {
   fmt ??= { format: String };
   return `${fmt.format(n)}%`;
@@ -175,9 +175,10 @@ class Cart extends Component {
   /* REPORTED twice — two variables named `count`, one in each module. */
   counts = this.use(Takes, () => ({ value: readHere() + readOther() }));
 
-  /* Not reported: a lazy first value, in a variable or behind a getter; handlers handed back. */
+  /* REPORTED — a lazy first value, in a variable or behind a getter, is a write like any other. */
   lazy = this.use(Takes, () => ({ value: money(1) + config() }));
   lazyGetter = this.use(Takes, (self: Cart) => ({ value: self.api }));
+  /* Not reported: handlers handed back, which the reader does not run. */
   handlers = this.use(Takes, () => ({ value: makeActions() }));
 
   /* REPORTED — a lazy write the reader does not make, after it read the empty value. */
@@ -189,25 +190,27 @@ class Cart extends Component {
   ofTotal = this.use(Takes, (self: Cart) => ({ value: `${self.id} of ${created}` }));
   /* REPORTED — a getter destructured from the owner runs as `self.shown` does. */
   destructured = this.use(Takes, ({ shown }: Cart) => ({ value: shown }));
-  /* REPORTED — a getter that writes a field it does not fill lazily is a writer like any other. */
+  /* REPORTED — a getter that writes a field is a writer like any other. */
   counted = this.use(Takes, (self: Cart) => ({ value: self.counter }));
 
+  /* REPORTED — an arrow field, destructured and called. */
+  destructuredArrow = this.use(Takes, ({ pricedArrow }: Cart) => ({ value: pricedArrow() }));
   /* REPORTED — a field written through a pattern. */
   toned = this.use(Takes, (self: Cart) => ({ value: self.tone }));
   /* REPORTED — a destructured method, called: bound to the instance, it runs as `self.priced2()` would. */
   destructuredMethod = this.use(Takes, ({ priced2 }: Cart) => ({ value: priced2() }));
 
-  /* Not reported: two helpers each filling the slot first; a getter in an object handed back; a lazy
-     memo inside a `.map`; a field only a static method writes, through the class's `this`. */
+  /* REPORTED — two helpers filling one slot; a lazy memo inside a `.map`; a method's lazy memo. */
   twoHelpers = this.use(Takes, () => ({ value: money(1) + pct(2) }));
-  view = this.use(Takes, () => ({ value: makeView() }));
   nestedLazy = this.use(Takes, (self: Cart) => ({ value: self.prices() }));
-  staticWrite = this.use(Takes, (self: Cart) => ({ value: self.note2 }));
+  methodMemo = this.use(Takes, (self: Cart) => ({ value: self.api2().base }));
 
-  /* Not reported: a static block's write, a handler a getter returns, a method's lazy memo. */
+  /* Not reported: a getter in an object handed back; a field only a static method writes, through the
+     class's `this`; a static block's write; a handler a getter returns. */
+  view = this.use(Takes, () => ({ value: makeView() }));
+  staticWrite = this.use(Takes, (self: Cart) => ({ value: self.note2 }));
   quietSeeded = this.use(Takes, () => ({ value: seeded }));
   quietHandler = this.use(Takes, (self: Cart) => ({ value: self.onSave }));
-  quietMethodMemo = this.use(Takes, (self: Cart) => ({ value: self.api2().base }));
 
   /* Not reported: written only at module evaluation, a constant, a local, a @compute. */
   quietTheme = this.use(Takes, () => ({ value: theme }));
@@ -225,6 +228,24 @@ class Cart extends Component {
   @compute get title(): string {
     return label();
   }
+
+  /* REPORTED — an arrow kept in a local and called: it keeps the instance's `this`. */
+  @compute get local(): number {
+    const price = (n: number) => n * this.rate;
+    return price(this.tick);
+  }
+
+  /* REPORTED — `this.fnGetter()` runs the getter, and the getter reads `rate`. */
+  @compute get viaFnGetter(): number {
+    return this.fnGetter();
+  }
+
+  get fnGetter() {
+    const r = this.rate;
+    return () => r;
+  }
+
+  pricedArrow = () => this.rate;
 
   @compute get doubled(): number {
     return this.tick * 2;
