@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import ts from "typescript";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { analyzeProject } from "../analyze";
@@ -33,11 +34,16 @@ describe("a cached reader, followed", () => {
       "lazy:var fmt:money",
       "lazy:var loaded:config",
       "lazyGetter:_api:api",
-      "shown:var dismissed:dismiss",
+      "notDismissed:var dismissed:dismiss",
       "eager:var fmt:money",
       "ofTotal:var created:id",
       "destructured:rate:bump",
       "counted:counter:nextId",
+      "returned:rate:bump",
+      "passed:rate:bump",
+      "boundFunction:rate:bump",
+      "builtByField:rate:bump",
+      "global:var scriptTheme:any script — it is a global, in a file with no import or export",
       "destructuredArrow:rate:bump",
       "toned:tone:setTone",
       "destructuredMethod:rate:bump",
@@ -48,5 +54,19 @@ describe("a cached reader, followed", () => {
       "local:rate:bump",
       "viaFnGetter:rate:bump",
     ]);
+  });
+
+  /**
+   * The fixture compiles. One that did not proved nothing: `shown` was declared twice, a field and a
+   * getter, so `self.shown` was the field at runtime while the rule followed the getter.
+   */
+  test("the fixture is a program TypeScript accepts", () => {
+    const config = ts.readConfigFile(join(here, "fixtures", "cached-read-follows", "tsconfig.json"), ts.sys.readFile);
+    const parsed = ts.parseJsonConfigFileContent(config.config, ts.sys, join(here, "fixtures", "cached-read-follows"));
+    const program = ts.createProgram(parsed.fileNames, parsed.options);
+    const errors = ts
+      .getPreEmitDiagnostics(program)
+      .map((one) => ts.flattenDiagnosticMessageText(one.messageText, "\n"));
+    expect(errors).toEqual([]);
   });
 });

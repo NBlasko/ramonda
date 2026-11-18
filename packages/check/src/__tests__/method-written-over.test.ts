@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import ts from "typescript";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { analyzeProject } from "../analyze";
@@ -21,5 +22,15 @@ describe("a method written over", () => {
       "Editor.swap:submit",
       "Editor.swap:submit",
     ]);
+  });
+
+  test("the fixture is a program TypeScript accepts", () => {
+    const config = ts.readConfigFile(join(here, "fixtures", "method-written-over", "tsconfig.json"), ts.sys.readFile);
+    const parsed = ts.parseJsonConfigFileContent(config.config, ts.sys, join(here, "fixtures", "method-written-over"));
+    const program = ts.createProgram(parsed.fileNames, parsed.options);
+    const errors = ts
+      .getPreEmitDiagnostics(program)
+      .map((one) => ts.flattenDiagnosticMessageText(one.messageText, "\n"));
+    expect(errors).toEqual([]);
   });
 });

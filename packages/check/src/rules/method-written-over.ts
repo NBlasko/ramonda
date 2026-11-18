@@ -1,5 +1,5 @@
 import ts from "typescript";
-import { bindsThis, isStatic, memberName, positionOf, targetsOf } from "../syntax";
+import { bindsThis, isStatic, memberName, positionOf, writesUnder } from "../syntax";
 import { heritage } from "./render-reach";
 import type { Rule } from "./rule";
 
@@ -82,28 +82,21 @@ export const methodWrittenOver = {
       // A static member's `this` is the class, not an instance.
       if (ts.isClassStaticBlockDeclaration(member) || isStatic(member)) continue;
       const writtenIn = ts.isConstructorDeclaration(member) ? "constructor" : (memberName(member) ?? "a member");
+      // Every target an assignment writes, through any pattern — `[this.submit] = [this.send]` too — with
+      // only an arrow keeping the instance's `this` (see `writesUnder`, shared with the cached-read rule).
+      writesUnder(member, true, (target) => {
+        if (
+          ts.isPropertyAccessExpression(target) &&
+          target.expression.kind === ts.SyntaxKind.ThisKeyword &&
+          ts.isIdentifier(target.name) &&
+          methods.has(target.name.text)
+        ) {
+          found.push({ component: self.name, method: target.name.text, writtenIn, ...positionOf(target) });
+        }
+      });
       (function walk(at: ts.Node): void {
         // Only an arrow keeps the instance's `this` — see `bindsThis`.
         if (at !== member && bindsThis(at)) return;
-        // Every target an assignment writes, through any pattern: `[this.submit] = [this.send]` too.
-        const targets: ts.Expression[] = [];
-        if (
-          ts.isBinaryExpression(at) &&
-          at.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
-          at.operatorToken.kind <= ts.SyntaxKind.LastAssignment
-        ) {
-          targetsOf(at.left, targets);
-        }
-        for (const target of targets) {
-          if (
-            ts.isPropertyAccessExpression(target) &&
-            target.expression.kind === ts.SyntaxKind.ThisKeyword &&
-            ts.isIdentifier(target.name) &&
-            methods.has(target.name.text)
-          ) {
-            found.push({ component: self.name, method: target.name.text, writtenIn, ...positionOf(target) });
-          }
-        }
         // `Object.assign(this, { submit: … })` writes each key of the object it is handed.
         if (
           ts.isCallExpression(at) &&

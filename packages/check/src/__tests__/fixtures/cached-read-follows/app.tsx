@@ -182,7 +182,7 @@ class Cart extends Component {
   handlers = this.use(Takes, () => ({ value: makeActions() }));
 
   /* REPORTED — a lazy write the reader does not make, after it read the empty value. */
-  shown = this.use(Takes, () => ({ value: !dismissed }));
+  notDismissed = this.use(Takes, () => ({ value: !dismissed }));
   /* REPORTED — `fmt` read here before `money` fills it: the reader holds the empty value. */
   eager = this.use(Takes, () => ({ value: (fmt ? "a" : "b") + money(1) }));
   /* REPORTED — `created`, which every later instance's field initializer moves. */
@@ -193,6 +193,21 @@ class Cart extends Component {
   /* REPORTED — a getter that writes a field is a writer like any other. */
   counted = this.use(Takes, (self: Cart) => ({ value: self.counter }));
 
+  /* REPORTED — the function a getter returns, called through it. */
+  returned = this.use(Takes, (self: Cart) => ({ value: self.fmt() }));
+  /* REPORTED — a method handed to a call that runs it. */
+  passed = this.use(Takes, (self: Cart) => ({ value: [1, 2].map(self.format) }));
+  /* REPORTED — a `function` field called through the owner, whose `this` is the instance there. */
+  boundFunction = this.use(Takes, (self: Cart) => ({ value: self.calc() }));
+  /* REPORTED — `this.build`, the nearest member of that name, an arrow field (declared before its use). */
+  build = (self: Cart) => ({ value: self.rate });
+  builtByField = this.use(Takes, this.build);
+  /* REPORTED — a script's global, which any script can assign. */
+  global = this.use(Takes, () => ({ value: scriptTheme }));
+  /* Not reported: a `function` field destructured — its `this` is undefined there, so it reads nothing of
+     this instance; and a field written only by a field initializer, before the first render. */
+  unboundFunction = this.use(Takes, ({ calc }: Cart) => ({ value: calc() }));
+  initialised = this.use(Takes, (self: Cart) => ({ value: self.seq }));
   /* REPORTED — an arrow field, destructured and called. */
   destructuredArrow = this.use(Takes, ({ pricedArrow }: Cart) => ({ value: pricedArrow() }));
   /* REPORTED — a field written through a pattern. */
@@ -246,6 +261,18 @@ class Cart extends Component {
   }
 
   pricedArrow = () => this.rate;
+
+  get fmt() {
+    return () => this.rate;
+  }
+  format(n: number): number {
+    return n * this.rate;
+  }
+  calc = function (this: Cart | void): number {
+    return this ? this.rate : 0;
+  };
+  seq = 0;
+  first = this.seq++;
 
   @compute get doubled(): number {
     return this.tick * 2;

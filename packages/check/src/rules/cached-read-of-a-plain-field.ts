@@ -1,6 +1,5 @@
 import ts from "typescript";
 import {
-  bindsThis,
   callbackOwner,
   isHandedOver,
   isLocalRead,
@@ -8,9 +7,9 @@ import {
   isThisUse,
   memberName,
   positionOf,
-  targetsOf,
+  writesUnder,
 } from "../syntax";
-import { hasDecorator, heritage, memberBody, runsNow } from "./render-reach";
+import { hasDecorator, heritage, runsNow } from "./render-reach";
 // The field judgement itself, shared with `row-reads-a-plain-field`: which fields a CACHED reader
 // can go stale on, and which writes count. See `stale-field.ts` for why it is not written twice.
 import { trackedOrHarmless, writesAfterTheFirstRender } from "./stale-field";
@@ -140,45 +139,29 @@ function madeTooEarly(write: Write, cls: ts.ClassLikeDeclaration): boolean {
 }
 
 /**
- * Every target written under a node — an assignment of any operator (`??=` and `||=` are writes like any
- * other), `++`/`--`, a `for…of` — through any pattern, with `this` kept bound if asked.
- */
-function writesUnder(root: ts.Node, keepThis: boolean, visit: (target: ts.Expression) => void): void {
-  (function walk(at: ts.Node): void {
-    if (keepThis && at !== root && bindsThis(at)) return;
-    const targets: ts.Expression[] = [];
-    if (
-      ts.isBinaryExpression(at) &&
-      at.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
-      at.operatorToken.kind <= ts.SyntaxKind.LastAssignment
-    ) {
-      targetsOf(at.left, targets);
-    } else if (
-      (ts.isPostfixUnaryExpression(at) || ts.isPrefixUnaryExpression(at)) &&
-      (at.operator === ts.SyntaxKind.PlusPlusToken || at.operator === ts.SyntaxKind.MinusMinusToken)
-    ) {
-      targetsOf(at.operand, targets);
-    } else if ((ts.isForOfStatement(at) || ts.isForInStatement(at)) && !ts.isVariableDeclarationList(at.initializer)) {
-      targetsOf(at.initializer, targets);
-    }
-    for (const target of targets) visit(target);
-    ts.forEachChild(at, walk);
-  })(root);
-}
-
-/**
  * Every write to a `let` or `var` that runs after its module was first evaluated — asked once per
  * variable for the whole program, since nothing in the answer depends on who reads it. Only the
- * declaring file is read, and that is complete rather than a shortcut: an imported binding is read-only
- * in every module but its own, so no other file can assign it.
+ * declaring file is read, and for a module that is complete rather than a shortcut: an imported binding
+ * is read-only in every module but its own, so no other file can assign it. A script's top-level one is
+ * a global, and counts as written.
  */
 const writesOfVariable = new WeakMap<ts.VariableDeclaration, Write[]>();
 function variableWrites(declaration: ts.VariableDeclaration, symbol: ts.Symbol, resolve: Resolver): Write[] {
   const known = writesOfVariable.get(declaration);
   if (known !== undefined) return known;
   const writes: Write[] = [];
+  const file = declaration.getSourceFile();
+  // A top-level `let` in a file with no import or export is a GLOBAL, which any other script can assign —
+  // and no single file says where. It is counted as written, by name.
+  if (
+    !ts.isExternalModule(file) &&
+    ts.isVariableStatement(declaration.parent.parent) &&
+    declaration.parent.parent.parent === file
+  ) {
+    writes.push({ writer: "any script — it is a global, in a file with no import or export", fn: declaration });
+  }
   const isIt = (node: ts.Expression): boolean => ts.isIdentifier(node) && resolve(node) === symbol;
-  writesUnder(declaration.getSourceFile(), false, (target) => {
+  writesUnder(file, false, (target) => {
     if (!isIt(target)) return;
     const fn = runsIn(target);
     if (fn !== undefined) writes.push({ writer: writerName(target), fn });
@@ -217,7 +200,9 @@ function fieldWrites(declaring: readonly ts.ClassLikeDeclaration[], resolve: Res
           return;
         const field = target.name.text;
         const fn = runsIn(target);
-        if (fn === undefined) return;
+        // An instance field's initializer writes this instance before its first render — the constructor's
+        // time, which `writesAfterTheFirstRender` does not count either.
+        if (fn === undefined || ts.isPropertyDeclaration(fn)) return;
         const list = writes.get(field) ?? [];
         list.push({ writer, fn });
         writes.set(field, list);
@@ -304,14 +289,29 @@ function readsIn(
      * a getter runs when it is read (and before what it returns is called), a method or a function field
      * when it is called. Anything else is a value, and the caller records it as read.
      */
-    const follow = (member: ts.ClassElement, called: boolean): boolean => {
+    /**
+     * `runs`: the member is called, or handed to a call (`.map(this.format)`, which runs what it is handed
+     * — see `runsNow`). `bound`: reached through the owner, `this.x` or `self.x`, rather than destructured.
+     * A method is bound to the instance by the framework, and an arrow field keeps the instance's `this`
+     * wherever it goes; a `function` field has it only when called through the owner.
+     */
+    const follow = (member: ts.ClassElement, runs: boolean, bound: boolean): boolean => {
       if (plainGetter(member)) {
         walk(member, depth + 1, true);
+        // Called, a getter's RESULT runs too: `get fmt() { return () => this.rate }` read as `this.fmt()`.
+        if (runs && member.body !== undefined) {
+          for (const statement of member.body.statements) {
+            const value = ts.isReturnStatement(statement) ? statement.expression : undefined;
+            if (value !== undefined && (ts.isArrowFunction(value) || ts.isFunctionExpression(value)))
+              walk(value.body, depth + 1, ts.isArrowFunction(value));
+          }
+        }
         return true;
       }
-      const body = memberBody(member);
-      if (body === undefined) return false;
-      if (called) walk(body, depth + 1, true);
+      const fn = functionOf(member);
+      if (fn === undefined) return false;
+      if (runs && fn.body !== undefined)
+        walk(fn.body, depth + 1, ts.isMethodDeclaration(fn) || ts.isArrowFunction(fn) || bound);
       return true;
     };
 
@@ -327,9 +327,8 @@ function readsIn(
         if (hasThis && owner.destructured.has(current.text) && isLocalRead(current)) {
           const name = owner.destructured.get(current.text) as string;
           // Methods are bound to the instance, so a destructured one runs as `self.priced()` would.
-          const called = ts.isCallExpression(current.parent) && current.parent.expression === current;
           let followed = false;
-          for (const member of nearestNamed(name)) followed = follow(member, called) || followed;
+          for (const member of nearestNamed(name)) followed = follow(member, runsWhere(current), false) || followed;
           if (!followed) reads.fields.add(name);
         }
         const outer = outerVariable(current, at === node ? node : (at.parent ?? at), cls, resolve);
@@ -345,9 +344,8 @@ function readsIn(
         ts.isIdentifier(current.name)
       ) {
         const name = current.name.text;
-        const called = ts.isCallExpression(current.parent) && current.parent.expression === current;
         let followed = false;
-        for (const member of nearestNamed(name)) followed = follow(member, called) || followed;
+        for (const member of nearestNamed(name)) followed = follow(member, runsWhere(current), true) || followed;
         if (!followed) reads.fields.add(name);
       }
       if (ts.isCallExpression(current) && ts.isIdentifier(current.expression)) {
@@ -368,6 +366,22 @@ function readsIn(
 
   walk(node, 0, true);
   return reads;
+}
+
+/** The function a member is: a method, or a field holding an arrow or a `function`. */
+function functionOf(member: ts.ClassElement): ts.FunctionLikeDeclaration | undefined {
+  if (ts.isMethodDeclaration(member)) return member;
+  if (ts.isPropertyDeclaration(member) && member.initializer !== undefined) {
+    const value = member.initializer;
+    if (ts.isArrowFunction(value) || ts.isFunctionExpression(value)) return value;
+  }
+  return undefined;
+}
+
+/** Whether what this expression names runs here: it is called, or handed to a call, which runs it. */
+function runsWhere(expression: ts.Expression): boolean {
+  const parent = expression.parent;
+  return ts.isCallExpression(parent) && (parent.expression === expression || parent.arguments.includes(expression));
 }
 
 /** The function a name stands for, when this program declares it — or `undefined`. */
@@ -398,12 +412,11 @@ function propsCallback(
     argument.expression.kind === ts.SyntaxKind.ThisKeyword &&
     ts.isIdentifier(argument.name)
   ) {
+    // The nearest member of that name — the one an instance has — a method or a function field.
     const name = argument.name.text;
     for (const one of declaring) {
-      const method = one.members.find(
-        (member): member is ts.MethodDeclaration => ts.isMethodDeclaration(member) && memberName(member) === name,
-      );
-      if (method?.body !== undefined) return method;
+      const member = one.members.find((each) => memberName(each) === name);
+      if (member !== undefined) return functionOf(member);
     }
   }
   return undefined;
@@ -444,12 +457,6 @@ export const cachedReadOfAPlainField = {
   },
 
   read(cls, { self, resolve }) {
-    /**
-     * field → the member that writes it after the first render. Empty means nothing can be stale.
-     *
-     * `resolve` is handed over so the BASES are asked as well: a plain field on a shared base is
-     * this component's field, and goes stale in exactly the same way.
-     */
     /** This class and its bases — what a `this.method()` hop out of a cached reader can land in. */
     const declaring = [cls, ...heritage(cls, resolve)];
     /**

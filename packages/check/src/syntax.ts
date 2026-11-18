@@ -205,3 +205,30 @@ export function bindsThis(node: ts.Node): boolean {
     ((ts.isMethodDeclaration(node) || ts.isAccessor(node)) && ts.isObjectLiteralExpression(node.parent))
   );
 }
+
+/**
+ * Every target written under a node — an assignment of any operator (`??=` and `||=` are writes like any
+ * other), `++`/`--`, a `for…of` — through any pattern, with `this` kept bound if asked.
+ */
+export function writesUnder(root: ts.Node, keepThis: boolean, visit: (target: ts.Expression) => void): void {
+  (function walk(at: ts.Node): void {
+    if (keepThis && at !== root && bindsThis(at)) return;
+    const targets: ts.Expression[] = [];
+    if (
+      ts.isBinaryExpression(at) &&
+      at.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
+      at.operatorToken.kind <= ts.SyntaxKind.LastAssignment
+    ) {
+      targetsOf(at.left, targets);
+    } else if (
+      (ts.isPostfixUnaryExpression(at) || ts.isPrefixUnaryExpression(at)) &&
+      (at.operator === ts.SyntaxKind.PlusPlusToken || at.operator === ts.SyntaxKind.MinusMinusToken)
+    ) {
+      targetsOf(at.operand, targets);
+    } else if ((ts.isForOfStatement(at) || ts.isForInStatement(at)) && !ts.isVariableDeclarationList(at.initializer)) {
+      targetsOf(at.initializer, targets);
+    }
+    for (const target of targets) visit(target);
+    ts.forEachChild(at, walk);
+  })(root);
+}
