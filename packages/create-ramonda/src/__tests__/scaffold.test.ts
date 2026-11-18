@@ -288,9 +288,10 @@ describe("the types a Vite project needs", () => {
    * development branch is `import.meta.env.DEV`, which `@ramonda/build` defines on both halves.
    */
   /**
-   * The build is a PRODUCTION build whatever the shell says. Found by review: `ramonda()` takes
-   * `import.meta.env.DEV` from `NODE_ENV`, so a shell exporting `NODE_ENV=development` shipped every
-   * development branch — the devtools import among them — in the production bundle.
+   * The build is a PRODUCTION build whatever the shell says. `ramonda()` takes `import.meta.env.DEV`
+   * from `NODE_ENV`, so a shell exporting `NODE_ENV=development` would ship every development branch —
+   * the devtools import among them — in the production bundle; the script sets it before the plugin
+   * reads it.
    */
   /**
    * A failed SSR load forgets Vite's module graph, so the next request loads afresh. Found by the

@@ -197,9 +197,10 @@ const STABLE_DEPTH = 5;
  *
  * ## What it does not do
  *
- * It does not skip the owner's render, and it does not skip the walk: `updateFn` still visits
- * every child hook, because a child can depend on state of its own that the parent's bag says
- * nothing about. Only the CALL and the prop diff are skipped.
+ * It does not skip the owner's render, and a CLEAN pass still walks on: `updateFn` visits every
+ * child hook, because a child can depend on state of its own that the parent's bag says nothing
+ * about. Only the CALL and the prop diff are skipped. Leaving a hook off the walk altogether is a
+ * different decision, made once when it is used — see `register` below.
  */
 interface PropsCache {
   /**
