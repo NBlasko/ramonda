@@ -200,23 +200,21 @@ class Cart extends Component {
   /* REPORTED — a getter that writes a field is a writer like any other. */
   counted = this.use(Takes, (self: Cart) => ({ value: self.counter }));
 
-  /* REPORTED — the function a getter returns, called through it. */
+  /* Not followed — what a getter RETURNS is outside the closed list (TODO 184): silent. */
   returned = this.use(Takes, (self: Cart) => ({ value: self.fmt() }));
   /* REPORTED — a method handed to a call that runs it. */
   passed = this.use(Takes, (self: Cart) => ({ value: [1, 2].map(self.format) }));
   /* REPORTED — a script's global, by the script that writes it; and one nothing in view writes. */
   global = this.use(Takes, () => ({ value: scriptTheme }));
   anyScript = this.use(Takes, () => ({ value: scriptLang }));
-  /* REPORTED — a `function` a getter returns, called through the owner: its `this` is the instance. */
+  /* Not followed — the same, a `function` a getter returns, however it is called (TODO 184). */
   fnExpr = this.use(Takes, (self: Cart) => ({ value: self.fe() }));
-  /* REPORTED — the same, after a call of it destructured (no `this`) walked the same body first. */
   seenTwice = this.use(Takes, ({ fe }: Cart) => ({ value: [[0].map(() => fe()), this.fe()] }));
-  /* Not reported: the same getter's result handed to a call, which calls it with no `this`. */
   handedGetter = this.use(Takes, (self: Cart) => ({ value: [1].map(self.fe) }));
   /* REPORTED — written after an `await`, in an async function invoked in a field initializer and in a module. */
   asyncField = this.use(Takes, (self: Cart) => ({ value: self.remoteRate }));
   asyncVar = this.use(Takes, () => ({ value: remote }));
-  /* REPORTED — a function a getter returns from a branch. */
+  /* Not followed — a function a getter returns from a branch (TODO 184). */
   branch = this.use(Takes, (self: Cart) => ({ value: self.fmtBranch() }));
   /* REPORTED — `this.buildOver`, an overloaded method: its implementation is the one that runs. */
   overloaded = this.use(Takes, this.buildOver);
@@ -226,9 +224,10 @@ class Cart extends Component {
   builtByField = this.use(Takes, this.build);
   boundFunction = this.use(Takes, (self: Cart) => ({ value: self.calc() }));
   unboundFunction = this.use(Takes, ({ calc }: Cart) => ({ value: calc() }));
-  /* Not reported: a field written only by a field initializer, directly or in a function invoked on the
-     spot, before the first render. */
+  /* Not reported: a field written only by a field initializer, before the first render. */
   initialised = this.use(Takes, (self: Cart) => ({ value: self.seq }));
+  /* REPORTED — written inside a function, though invoked on the spot in an initializer: any function holding
+     a write is a later place, which errs on the side of reporting. */
   readsOther = this.use(Takes, (self: Cart) => ({ value: self.other }));
   /* Not reported: an arrow field, destructured and called — `arrow-fields` refuses the field. */
   destructuredArrow = this.use(Takes, ({ pricedArrow }: Cart) => ({ value: pricedArrow() }));

@@ -1,7 +1,6 @@
 import ts from "typescript";
 import {
   callbackOwner,
-  invokedOnTheSpot,
   isHandedOver,
   isLocalRead,
   isStatic,
@@ -125,23 +124,15 @@ function writerName(node: ts.Node): string {
 /**
  * The function (or instance field initializer) a write runs in — or `undefined` for one that is over
  * before any instance exists: while the module is first evaluated, or in a static block or static
- * field. An instance field's initializer runs once per instance, so it counts. Whether the function
- * holding it MAKES the class reading it (a class declared in a factory) is the reader's question, asked
- * in `madeTooEarly`.
+ * field. An instance field's initializer runs once per instance, so it counts. Any function holding a
+ * write is a later place — one invoked on the spot as well, which errs on the side of reporting. Whether
+ * the function holding it MAKES the class reading it (a class declared in a factory) is the reader's
+ * question, asked in `madeTooEarly`.
  */
 function runsIn(node: ts.Node): ts.Node | undefined {
   for (let at: ts.Node | undefined = node.parent; at !== undefined; at = at.parent) {
     if (ts.isClassStaticBlockDeclaration(at)) return undefined;
     if (ts.isPropertyDeclaration(at)) return isStatic(at) ? undefined : at;
-    // A function invoked on the spot runs where it is written: `(() => { … })()`. Not an async or a
-    // generator one, whose body runs on past the call — an assignment after an `await` comes later.
-    if (
-      (ts.isArrowFunction(at) || ts.isFunctionExpression(at)) &&
-      invokedOnTheSpot(at) &&
-      at.asteriskToken === undefined &&
-      !ts.getModifiers(at)?.some((one) => one.kind === ts.SyntaxKind.AsyncKeyword)
-    )
-      continue;
     if (ts.isFunctionLike(at)) return at;
   }
   return undefined;
@@ -280,9 +271,13 @@ function outerVariable(
  *
  * A function the reader only BUILDS — returned, stored, handed over in an object, an accessor of an
  * object it returns — does not run while it reads, so it is not walked; one passed to a call or invoked
- * on the spot is (`runsNow`). Bounded and cycle-guarded. A function
- * the program does not declare — a library's, the platform's — is not followed, and what it reads is not
- * known here.
+ * on the spot is (`runsNow`). Bounded and cycle-guarded.
+ *
+ * **That is a closed list**, and on purpose (TODO 184). What a getter RETURNS when it is called, a field
+ * holding a function, a library's or the platform's function: none is followed, and what they read is not
+ * known here. Following "what a function reads" further found new shapes in every review round, each
+ * fix with neighbours of its own; which of those shapes to follow, to forbid, or to mark unknown in the
+ * Ramonda graph is decided shape by shape, toward one way of writing each thing.
  */
 function readsIn(
   node: ts.Node,
@@ -294,8 +289,7 @@ function readsIn(
   // A props callback names its owner as `this`, its parameter, or the parameter destructured — see
   // `callbackOwner`. A method the walk follows into has only `this`, and a free function none.
   const callback = callbackOwner(node);
-  const seenBound = new Set<ts.Node>();
-  const seenUnbound = new Set<ts.Node>();
+  const seen = new Set<ts.Node>();
 
   /** The members of that name in the nearest class up the chain — the one that runs. */
   const nearestNamed = (name: string): ts.ClassElement[] => {
@@ -309,32 +303,18 @@ function readsIn(
     ts.isGetAccessorDeclaration(member) && !hasDecorator(member, "compute", resolve) && member.body !== undefined;
 
   const walk = (at: ts.Node, depth: number, hasThis: boolean): void => {
-    // Once per body and per `this`: the same body reached unbound first and bound later reads more the
-    // second time — a `function` a getter returns, called destructured and then through the owner.
-    const seenAs = hasThis ? seenBound : seenUnbound;
-    if (depth > 6 || seenAs.has(at)) return;
-    seenAs.add(at);
+    if (depth > 6 || seen.has(at)) return;
+    seen.add(at);
 
     /**
-     * Runs what reading or calling a member runs, and says whether it is a member that runs at all. A
-     * GETTER runs when it is read; called (`this.fmt()`), what it returns runs too — so every function
-     * written in it is walked, whichever branch returns it, with the instance's `this` when it is reached
-     * through the owner (`bound`). A METHOD runs when it is called or handed to a call (`.map(this.format)`,
-     * see `runsNow`), and is bound to the instance by the framework. A field holding a function is NOT
-     * followed: `arrow-fields` refuses every such field, and written as a method it is followed here.
+     * Runs what reading or calling a member runs, and says whether it is a member that runs at all: a
+     * GETTER's own body when it is read, a METHOD's when it is called or handed to a call (`.map(this.format)`,
+     * see `runsNow`) — bound to the instance by the framework. That is the whole list (TODO 184): what a
+     * getter RETURNS is not followed, nor a field holding a function (`arrow-fields` refuses those).
      */
-    const follow = (member: ts.ClassElement, runs: boolean, bound: boolean): boolean => {
+    const follow = (member: ts.ClassElement, runs: boolean): boolean => {
       if (plainGetter(member)) {
         walk(member, depth + 1, true);
-        if (runs && member.body !== undefined) {
-          (function returned(at: ts.Node): void {
-            if (ts.isArrowFunction(at) || ts.isFunctionExpression(at)) {
-              walk(at.body, depth + 1, ts.isArrowFunction(at) || bound);
-              return;
-            }
-            ts.forEachChild(at, returned);
-          })(member.body);
-        }
         return true;
       }
       if (!ts.isMethodDeclaration(member)) return false;
@@ -355,7 +335,7 @@ function readsIn(
           const name = owner.destructured.get(current.text) as string;
           // Methods are bound to the instance, so a destructured one runs as `self.priced()` would.
           let followed = false;
-          for (const member of nearestNamed(name)) followed = follow(member, runsWhere(current), false) || followed;
+          for (const member of nearestNamed(name)) followed = follow(member, runsWhere(current)) || followed;
           if (!followed) reads.fields.add(name);
         }
         const outer = outerVariable(current, at === node ? node : (at.parent ?? at), cls, resolve);
@@ -372,9 +352,7 @@ function readsIn(
       ) {
         const name = current.name.text;
         let followed = false;
-        // Bound only when called through the owner: handed to a call, what a getter returns is called bare.
-        const calledHere = ts.isCallExpression(current.parent) && current.parent.expression === current;
-        for (const member of nearestNamed(name)) followed = follow(member, runsWhere(current), calledHere) || followed;
+        for (const member of nearestNamed(name)) followed = follow(member, runsWhere(current)) || followed;
         if (!followed) reads.fields.add(name);
       }
       if (ts.isCallExpression(current) && ts.isIdentifier(current.expression)) {
