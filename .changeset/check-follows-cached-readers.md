@@ -8,4 +8,5 @@ inline (`this.use(Hook, makeProps)`, `this.use(Hook, this.build)`). What a gette
 and a library's function are not followed. It also reports a `let` or `var` declared outside the class and written
 inside a function, and counts a lazy first value (`??=`, `||=`, `if (!x) x = …`) as a write like any other: a value
 made once belongs in a module constant or a `@compute`. `row-reads-a-plain-field` now sees a field written through a
-pattern. The new rule `method-written-over` reports an assignment to one of a component's or hook's own methods.
+pattern, and no longer counts a write through the `this` of a nested `function`, which is that function's own. The new
+rule `method-written-over` reports an assignment to one of a component's or hook's own methods.

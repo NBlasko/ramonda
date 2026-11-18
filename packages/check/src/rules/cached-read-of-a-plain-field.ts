@@ -2,7 +2,6 @@ import ts from "typescript";
 import {
   callbackOwner,
   contains,
-  invokedOnTheSpot,
   isHandedOver,
   isLocalRead,
   isStatic,
@@ -59,8 +58,9 @@ import type { Resolver, Rule } from "./rule";
  * `prefix = "Total: "` — can never be stale, and it is the commonest plain field there is. So a
  * WRITE is required, and writes in the constructor, in a field initializer and in `@created` do not
  * count: all three run before the first render, so the first computed value already has the final
- * one. A write inside a FUNCTION written there does — even one invoked on the spot: which functions run
- * when is not followed, so any function holding a write is a later place.
+ * one. Those members are skipped whole, so a handler written INSIDE one of them is not counted either
+ * — a known gap, on the running list. Anywhere else, any function holding a write is a later place,
+ * even one invoked on the spot: which functions run when is not followed.
  *
  * **A write from inside a render or a `@compute`** — the memo pattern,
  * `if (!this.cache) this.cache = expensive()`. Advising `@state` there would be advising a loop.
@@ -111,9 +111,6 @@ interface Reads {
 /** The name a report gives the function a write is in — a method, a function, or neither. */
 function writerName(node: ts.Node): string {
   for (let at: ts.Node | undefined = node.parent; at !== undefined; at = at.parent) {
-    // Named for itself, not for what holds it: the function around an IIFE may be one that makes the class.
-    if ((ts.isArrowFunction(at) || ts.isFunctionExpression(at)) && invokedOnTheSpot(at))
-      return "a function invoked where it is written";
     if ((ts.isFunctionDeclaration(at) || ts.isMethodDeclaration(at) || ts.isAccessor(at)) && at.name !== undefined)
       return at.name.getText();
     if (ts.isVariableDeclaration(at) && ts.isIdentifier(at.name)) return at.name.text;
@@ -245,7 +242,6 @@ function readsIn(
   const seen = new Set<ts.Node>();
 
   /** The members of that name in the nearest class up the chain — the one that runs. */
-  const nearestNamed = (name: string): ts.ClassElement[] => nearestMembers(declaring, name);
   const plainGetter = (member: ts.ClassElement): member is ts.GetAccessorDeclaration =>
     ts.isGetAccessorDeclaration(member) && !hasDecorator(member, "compute", resolve) && member.body !== undefined;
 
@@ -269,7 +265,9 @@ function readsIn(
       return true;
     };
 
-    const owner = at === node ? callback : callbackOwner(at);
+    // The root callback's owner — `this`, its `self` parameter, its destructured names — is in scope
+    // anywhere written inside it, so an arrow there called a line later reads `self` as the owner too.
+    const owner = at === node || contains(node, at) ? callback : callbackOwner(at);
     (function look(current: ts.Node): void {
       if (current !== at) {
         // Built, not run: a function returned, stored or handed over in an object, or an accessor of one.
@@ -282,7 +280,8 @@ function readsIn(
           const name = owner.destructured.get(current.text) as string;
           // Methods are bound to the instance, so a destructured one runs as `self.priced()` would.
           let followed = false;
-          for (const member of nearestNamed(name)) followed = follow(member, runsWhere(current)) || followed;
+          for (const member of nearestMembers(declaring, name))
+            followed = follow(member, runsWhere(current)) || followed;
           if (!followed) reads.fields.add(name);
         }
         const outer = outerVariable(current, at === node ? node : (at.parent ?? at), cls, resolve);
@@ -299,7 +298,7 @@ function readsIn(
       ) {
         const name = current.name.text;
         let followed = false;
-        for (const member of nearestNamed(name)) followed = follow(member, runsWhere(current)) || followed;
+        for (const member of nearestMembers(declaring, name)) followed = follow(member, runsWhere(current)) || followed;
         if (!followed) reads.fields.add(name);
       }
       if (ts.isCallExpression(current) && ts.isIdentifier(current.expression)) {
@@ -307,7 +306,7 @@ function readsIn(
         // An arrow's `this` is the one where it is WRITTEN, whoever calls it: an arrow written in a member
         // of this class keeps the instance's — `const price = (n) => n * this.rate` in a compute, called a
         // line later, or from a nested `function`. A `function`, or an arrow written anywhere else, has none.
-        if (fn?.body !== undefined) walk(fn.body, depth + 1, fn !== undefined && arrowSeesTheInstance(fn, cls));
+        if (fn?.body !== undefined) walk(fn.body, depth + 1, arrowSeesTheInstance(fn, declaring));
       }
       ts.forEachChild(current, look);
     })(at);
@@ -341,18 +340,20 @@ function projectFunction(name: ts.Expression, resolve: Resolver): ts.FunctionLik
 }
 
 /**
- * Whether an arrow's `this` is the instance of `cls`: the nearest function around it that is not an arrow
- * is a member of `cls` — a method, an accessor, the constructor — or it sits in an instance field's
+ * Whether an arrow's `this` is the instance: the nearest function around it that is not an arrow is a
+ * member of the class or a base — a method, an accessor, the constructor — or it sits in an instance field's
  * initializer. An arrow takes `this` from where it is written, never from its caller.
  */
-function arrowSeesTheInstance(fn: ts.FunctionLikeDeclaration, cls: ts.ClassLikeDeclaration): boolean {
+function arrowSeesTheInstance(fn: ts.FunctionLikeDeclaration, declaring: readonly ts.ClassLikeDeclaration[]): boolean {
   if (!ts.isArrowFunction(fn)) return false;
+  // The class or one of its bases: a base's method runs on this instance too.
+  const ownOrInherited = (parent: ts.Node): boolean => declaring.some((one) => one === parent);
   for (let at: ts.Node | undefined = fn.parent; at !== undefined; at = at.parent) {
     if (ts.isArrowFunction(at)) continue;
-    if (ts.isPropertyDeclaration(at)) return at.parent === cls && !isStatic(at);
+    if (ts.isPropertyDeclaration(at)) return ownOrInherited(at.parent) && !isStatic(at);
     if (ts.isFunctionLike(at)) {
       const member = ts.isMethodDeclaration(at) || ts.isAccessor(at) || ts.isConstructorDeclaration(at);
-      return member && at.parent === cls && !isStatic(at);
+      return member && ownOrInherited(at.parent) && !isStatic(at);
     }
   }
   return false;

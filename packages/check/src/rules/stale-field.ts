@@ -59,8 +59,10 @@ export interface FieldWrite {
  */
 export function runsIn(node: ts.Node): ts.Node | undefined {
   for (let at: ts.Node | undefined = node.parent; at !== undefined; at = at.parent) {
-    if (ts.isClassStaticBlockDeclaration(at)) return undefined;
-    if (ts.isPropertyDeclaration(at)) return isStatic(at) ? undefined : at;
+    // A static block or static field runs when its class is evaluated — at the module's top level, or
+    // each time a factory around the class runs — so the place is whatever holds the class.
+    if (ts.isClassStaticBlockDeclaration(at) || (ts.isPropertyDeclaration(at) && isStatic(at))) continue;
+    if (ts.isPropertyDeclaration(at)) return at;
     if (ts.isFunctionLike(at)) return at;
   }
   return undefined;
@@ -90,7 +92,11 @@ export function fieldWrites(
       if (isStatic(member) || ts.isClassStaticBlockDeclaration(member)) continue;
       if (!writesAfterTheFirstRender(member, resolve)) continue;
       const writer = memberName(member) ?? "a method";
-      writesUnder(member, true, (target) => {
+      // A field holding a `function` writes the instance when it is called through the owner,
+      // `this.onDone()`, so its body is read as the member's own — not skipped for having a `this` of its own.
+      const value = ts.isPropertyDeclaration(member) ? member.initializer : undefined;
+      const root = value !== undefined && ts.isFunctionExpression(value) ? value : member;
+      writesUnder(root, true, (target) => {
         if (
           !ts.isPropertyAccessExpression(target) ||
           target.expression.kind !== ts.SyntaxKind.ThisKeyword ||
@@ -151,9 +157,7 @@ export function writesAfterTheFirstRender(member: ts.ClassElement, resolve: Reso
  * Upward only. A class cannot know who extends it, so a `@compute` on a base reading a field its
  * subclass writes stays out of reach — and out of the claim.
  *
- * `resolve` is optional because a MODULE rule has none: `row-reads-a-plain-field` reads a file
- * rather than a class, so its context answers no questions about declarations. It gets the class's
- * own fields, which is what both rules had before, and the base-class case is the class rule's.
+ * Both rules ask it through `resolve`, so both see the fields a class inherits as well as its own.
  */
 export function staleFieldsOf(cls: ts.ClassDeclaration, resolve: Resolver): Map<string, string> {
   const writtenBy = new Map<string, string>();

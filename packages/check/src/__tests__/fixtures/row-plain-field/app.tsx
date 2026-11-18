@@ -458,3 +458,21 @@ export class WrittenThroughAPattern extends Component {
     return <ul>{list(this.tasks, this.row)}</ul>;
   }
 }
+
+/** Reported: a field holding a `function` writes the instance when called through it, `this.onDone()`. */
+export class WrittenByAFunctionField extends Component {
+  label = "old";
+  tasks: Task[] = [];
+
+  onDone = function (this: WrittenByAFunctionField) {
+    this.label = "new";
+  };
+
+  row(t: Task) {
+    return <li>{t.title + this.label}</li>;
+  }
+
+  render() {
+    return <ul>{list(this.tasks, this.row)}</ul>;
+  }
+}

@@ -60,6 +60,8 @@ describe("a row reads a plain field", () => {
       "ArrowFieldCallback.row:label",
       // Written through a pattern: the shared write walker reads every target of an assignment.
       "WrittenThroughAPattern.row:label",
+      // A `function` held in a field writes the instance when it is called through the field.
+      "WrittenByAFunctionField.row:label",
     ]);
   });
 

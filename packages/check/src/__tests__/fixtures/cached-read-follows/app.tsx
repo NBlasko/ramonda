@@ -136,6 +136,15 @@ export function makeSized() {
   return Sized;
 }
 
+/* Written by a static field of a class made in a factory: whenever the factory runs, after this one renders. */
+let made = 0;
+export function later() {
+  class Counted {
+    static next = (made = made + 1);
+  }
+  return Counted;
+}
+
 /* A class made in a function, its variable written there — before the class exists. */
 export function makeCard(o: { size?: number }) {
   let size = o.size ?? 0;
@@ -157,6 +166,11 @@ class PricedBase extends Component {
   priced(): number {
     return this.rate;
   }
+  /* An arrow written in a base's method: its `this` is this instance all the same. */
+  pricedByArrow(): number {
+    const read = () => this.rate;
+    return read();
+  }
   bump(): void {
     this.rate = 3;
   }
@@ -170,6 +184,8 @@ class Overrides extends PricedBase {
     return 1;
   }
   overridden = this.use(Takes, (self: Overrides) => ({ value: self.priced() }));
+  /* REPORTED — the base method's arrow reads `rate`, which the base's `bump` writes. */
+  baseArrow = this.use(Takes, (self: Overrides) => ({ value: self.pricedByArrow() }));
 }
 
 /* Props callbacks declared away from their `this.use`. */
@@ -189,6 +205,13 @@ class Cart extends Component {
 
   /* REPORTED — the variable, read directly in a props callback. */
   direct = this.use(Takes, () => ({ value: lang }));
+  /* REPORTED — `made`, written by a static field of a class a factory makes. */
+  staticInFactory = this.use(Takes, () => ({ value: made }));
+  /* REPORTED — an arrow written in the callback reads `self`, the owner. */
+  selfInArrow = this.use(Takes, (self: Cart) => {
+    const read = () => self.rate;
+    return { value: read() };
+  });
   /* REPORTED — the variable, read through an overloaded function's implementation. */
   overloadedFunction = this.use(Takes, () => ({ value: labelled(1) }));
   /* REPORTED — the variable, read through a function this program declares. */

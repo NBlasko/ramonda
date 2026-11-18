@@ -22,8 +22,11 @@ describe("a cached reader, followed", () => {
   test("every path to a stale value is reported, and named", () => {
     const found = run().findings["cached-read-of-a-plain-field"];
     expect(found.map((one) => `${one.named}:${one.variable ? "var " : ""}${one.field}:${one.writtenBy}`)).toEqual([
-      "px:var side:a function invoked where it is written",
+      "px:var side:makeSized",
+      "baseArrow:rate:bump",
       "direct:var lang:setLang",
+      "staticInFactory:var made:next",
+      "selfInArrow:rate:bump",
       "overloadedFunction:var lang:setLang",
       "throughAFunction:var lang:setLang",
       "named:rate:bump",
@@ -47,7 +50,7 @@ describe("a cached reader, followed", () => {
       "global:var scriptTheme:useDark",
       "anyScript:var scriptLang:any script",
       "asyncField:remoteRate:loading",
-      "asyncVar:var remote:a function invoked where it is written",
+      "asyncVar:var remote:a function",
       "overloaded:rate:bump",
       "readsOther:other:iife",
       "toned:tone:setTone",
