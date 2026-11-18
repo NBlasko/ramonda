@@ -1,5 +1,63 @@
 # @ramonda/check
 
+## 0.19.0
+
+### Minor Changes
+
+- f756fd1: `cached-read-of-a-plain-field` follows a cached reader further, along a closed list of paths: a method it calls or
+  hands to a call, a getter's own body, a function the project declares, and a props callback named rather than written
+  inline (`this.use(Hook, makeProps)`, `this.use(Hook, this.build)`). What a getter returns, a field holding a function
+  and a library's function are not followed. It also reports a `let` or `var` declared outside the class and written
+  inside a function, and counts a lazy first value (`??=`, `||=`, `if (!x) x = …`) as a write like any other: a value
+  made once belongs in a module constant or a `@compute`. `row-reads-a-plain-field` now sees a field written through a
+  pattern, and no longer counts a static field, a write in a static member, or a write through the `this` of a nested
+  `function` — each of those `this` is the class's or the function's own. The new rule `method-written-over` reports an
+  assignment to one of a component's or hook's own methods.
+- 03243d9: `ramonda-check` reads a route table through every part — `createRoutes(playerRoutes, cond ? debugRoutes : undefined, { … })`: a name holding another table is followed, a condition's both arms are read. Before, only the first argument was, so a page behind a later part was judged on no route, and every feature's table was reported as handed to no outlet.
+  
+  A new check, `link-to-a-conditional-route`: a `<Link>`, a `push`/`replace` or a `route()` naming a route that exists only under a condition, from code not under that same condition — the type has the route in every build. A `const` holding the condition counts as the condition, and `import.meta.env.PROD` as `!import.meta.env.DEV`.
+- aedc318: **Breaking:** `@ShouldUpdateOnPropsChange` is removed, and `RMD040` is retired with it. It took a
+  predicate an app writes, and a predicate can stop a component rendering when it should — silently, and
+  nothing can check it. Nothing in this repository or either trial app used it. A prop that arrives
+  rebuilt with the same contents is declared a value with `@StableProps`, which takes names and does the
+  comparing itself. `duplicate-decorators` no longer names it.
+- c8a5df1: A root whose argument calls a helper — `bootstrap(shell())`, `bootstrap(wrap(ui))` — gets the `calls`
+  edge a component calling that helper gets, so what the helper mounts is reached and judged. It was an
+  unresolved root, and `@ramonda/testing-library`'s `render` carried two ignores for a design that is
+  right. Nothing is followed: a helper is a node, and a parameter it mounts stays the caller's. A
+  component declared inside an exported function is entered through that export, as an exported one is,
+  so `renderHook`'s host is not reported as unreachable now that the package has a root.
+  
+  "App or library" is asked of this project's OWN roots now, in every place that asks it: a dependency
+  compiled from source may have a root, and it made the router an app — its published components
+  reported as unreachable, and its graph refused as a fragment.
+- f4d73ce: **A `ramonda-check-ignore` that silences nothing fails the run**, as `ignore-that-silences-nothing`. An
+  ignore is for a fault being fixed — a bug in this tool until it is fixed, or the app's own until it
+  fixes it — so it goes when the fault does; left behind, it silenced whatever was written on that line
+  next, and no run listed it. A directive is read only in a comment: the same words in a string, a
+  template or JSX text are content. The docs showed one over an empty backdrop, which no rule reports;
+  they show a fault being fixed now, and say that a design that is right needs no ignore.
+
+### Patch Changes
+
+- 228dbe0: `Head` sets `data-*` on `<html>`: `this.use(Head, (self) => ({ data: { theme: self.theme } }))` is
+  `<html data-theme="dark">`, by `lang`'s rules — the deeper `Head` wins per key, `undefined` says
+  nothing, and a page that goes away hands back what `<html>` had. `renderPage` and `renderStatic` return
+  `data`, `renderDocument` and `fillDocument` write it, so a theme is in the first paint. A key is
+  written as it follows `data-`; `colorScheme` is refused, because HTML lowercases it and no
+  `[data-color-scheme]` would match. The scaffolded server passes `data` through, and `dom-writes`
+  names it as the answer for a value that belongs on `<html>` — the docs no longer show an ignore for it.
+- 9df4ad1: `row-reads-a-plain-field` no longer offers an ignore for a value "stale on purpose": a row shows it until
+  something unrelated rebuilds that row. A value the row should show is `@state`, or a field of the
+  item. An ignore is for a fault being fixed, never the answer to a design.
+- 2f701dc: A tag whose TYPE is a string is an element, not an unresolved component: `__h(node.t, …)` with the tag
+  read from a parsed tree, and `<Heading>` with `Heading` returned as `"h1" | "h2"`. Only the syntax was
+  read before, so the docs site's own code block carried a `ramonda-check-ignore` for a design that is
+  right. `any`, `unknown` and a union with a component still prove nothing and are reported.
+- 8de5716: `unsplittable-import` names the bundler's own marker, `import(/* @vite-ignore */ name)`, as the one way
+  to say a path the bundler cannot read is deliberate. It offered `ramonda-check-ignore` as well: a second
+  way to say it, and an ignore is for a fault being fixed.
+
 ## 0.18.0
 
 ### Minor Changes
