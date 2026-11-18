@@ -3,6 +3,7 @@ import { readOther } from "./other";
 
 declare function createApi(): { base: string };
 declare function load(): string;
+declare function loadLater(): Promise<string>;
 
 class Takes extends Hook<{ value: unknown }> {}
 
@@ -48,6 +49,12 @@ let dismissed = false;
 export function dismiss(): void {
   dismissed ||= true;
 }
+
+/* Filled by an async function invoked on the spot: after its `await`, later than the module's evaluation. */
+let remote = "";
+void (async () => {
+  remote = await loadLater();
+})();
 
 /* Counted by every instance's field initializer, after the first one rendered: stale. */
 let created = 0;
@@ -202,6 +209,13 @@ class Cart extends Component {
   anyScript = this.use(Takes, () => ({ value: scriptLang }));
   /* REPORTED — a `function` a getter returns, called through the owner: its `this` is the instance. */
   fnExpr = this.use(Takes, (self: Cart) => ({ value: self.fe() }));
+  /* REPORTED — the same, after a call of it destructured (no `this`) walked the same body first. */
+  seenTwice = this.use(Takes, ({ fe }: Cart) => ({ value: [[0].map(() => fe()), this.fe()] }));
+  /* Not reported: the same getter's result handed to a call, which calls it with no `this`. */
+  handedGetter = this.use(Takes, (self: Cart) => ({ value: [1].map(self.fe) }));
+  /* REPORTED — written after an `await`, in an async function invoked in a field initializer and in a module. */
+  asyncField = this.use(Takes, (self: Cart) => ({ value: self.remoteRate }));
+  asyncVar = this.use(Takes, () => ({ value: remote }));
   /* REPORTED — a function a getter returns from a branch. */
   branch = this.use(Takes, (self: Cart) => ({ value: self.fmtBranch() }));
   /* REPORTED — `this.buildOver`, an overloaded method: its implementation is the one that runs. */
@@ -288,10 +302,14 @@ class Cart extends Component {
   })();
 
   get fe() {
-    return function (this: Cart) {
-      return this.rate;
+    return function (this: Cart | void) {
+      return this ? this.rate : 0;
     };
   }
+  remoteRate = 1;
+  loading = (async () => {
+    this.remoteRate = Number(await loadLater());
+  })();
   compact = false;
   get fmtBranch() {
     if (this.compact) return () => this.rate;

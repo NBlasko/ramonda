@@ -1,6 +1,7 @@
 import ts from "typescript";
 import {
   callbackOwner,
+  invokedOnTheSpot,
   isHandedOver,
   isLocalRead,
   isStatic,
@@ -80,6 +81,8 @@ export interface CachedReadOfAPlainFieldIssue {
   named: string;
   /** The ordinary field it reads — or the variable, when `variable` says so. */
   field: string;
+  /** A script's global no file in view writes — any script may: `writtenBy` then names nobody. */
+  global: boolean;
   /** A `let` or `var` declared outside the class rather than a field of it. */
   variable: boolean;
   /** The member or function that writes it, which is what makes it stale. */
@@ -92,6 +95,8 @@ export interface CachedReadOfAPlainFieldIssue {
 /** One write that can leave a cached reader stale: who makes it, and the function or field it runs in. */
 interface Write {
   writer: string;
+  /** A script's global with no writer in view — any script may write it. */
+  global?: true;
   /** The function holding it — a class made inside that function is made by it. */
   fn: ts.Node;
 }
@@ -128,18 +133,18 @@ function runsIn(node: ts.Node): ts.Node | undefined {
   for (let at: ts.Node | undefined = node.parent; at !== undefined; at = at.parent) {
     if (ts.isClassStaticBlockDeclaration(at)) return undefined;
     if (ts.isPropertyDeclaration(at)) return isStatic(at) ? undefined : at;
-    // A function invoked on the spot runs where it is written: `(() => { … })()`.
-    if ((ts.isArrowFunction(at) || ts.isFunctionExpression(at)) && invokedOnTheSpot(at)) continue;
+    // A function invoked on the spot runs where it is written: `(() => { … })()`. Not an async or a
+    // generator one, whose body runs on past the call — an assignment after an `await` comes later.
+    if (
+      (ts.isArrowFunction(at) || ts.isFunctionExpression(at)) &&
+      invokedOnTheSpot(at) &&
+      at.asteriskToken === undefined &&
+      !ts.getModifiers(at)?.some((one) => one.kind === ts.SyntaxKind.AsyncKeyword)
+    )
+      continue;
     if (ts.isFunctionLike(at)) return at;
   }
   return undefined;
-}
-
-/** `(() => …)()` — a function called where it is written, with or without the parentheses kept. */
-function invokedOnTheSpot(fn: ts.ArrowFunction | ts.FunctionExpression): boolean {
-  let at: ts.Node = fn;
-  while (ts.isParenthesizedExpression(at.parent)) at = at.parent;
-  return ts.isCallExpression(at.parent) && at.parent.expression === at;
 }
 
 /** Whether a write runs in the function that makes `cls` — over before any instance of it exists. */
@@ -147,22 +152,27 @@ function madeTooEarly(write: Write, cls: ts.ClassLikeDeclaration): boolean {
   return write.fn.getSourceFile() === cls.getSourceFile() && cls.pos >= write.fn.pos && cls.end <= write.fn.end;
 }
 
+/** The writes of each file, by variable — per program, because the symbols are one checker's. */
+const writesInFile = new WeakMap<Resolver, WeakMap<ts.SourceFile, Map<ts.Symbol, Write[]>>>();
+
 /**
  * Every write to a `let` or `var` that runs after its module was first evaluated — collected once per
- * file for the whole program, since nothing in the answer depends on who reads it. Only the
- * declaring file is read, and for a module that is complete rather than a shortcut: an imported binding
- * is read-only in every module but its own, so no other file can assign it. A script's top-level one is
- * a global, and counts as written.
+ * file for the whole program, since nothing in the answer depends on who reads it. Only the declaring
+ * file is read, and for a module that is complete rather than a shortcut: an imported binding is
+ * read-only in every module but its own, so no other file can assign it. A script's top-level one is a
+ * GLOBAL, which any other script can assign: with no writer in this file, it is still counted as
+ * written, and reported as a global.
  */
-/** The writer a script's global is reported with when no file in view writes it. */
-export const ANY_SCRIPT = "any script";
-
-const writesInFile = new WeakMap<ts.SourceFile, Map<ts.Symbol, Write[]>>();
 function variableWrites(declaration: ts.VariableDeclaration, symbol: ts.Symbol, resolve: Resolver): Write[] {
   const file = declaration.getSourceFile();
   // One pass per file, every variable's writes at once: a file read once for each variable in it cost
   // a whole traversal per `let`.
-  let bySymbol = writesInFile.get(file);
+  let ofProgram = writesInFile.get(resolve);
+  if (ofProgram === undefined) {
+    ofProgram = new WeakMap();
+    writesInFile.set(resolve, ofProgram);
+  }
+  let bySymbol = ofProgram.get(file);
   if (bySymbol === undefined) {
     const found = new Map<ts.Symbol, Write[]>();
     writesUnder(file, false, (target) => {
@@ -175,7 +185,7 @@ function variableWrites(declaration: ts.VariableDeclaration, symbol: ts.Symbol, 
       found.set(written, list);
     });
     bySymbol = found;
-    writesInFile.set(file, bySymbol);
+    ofProgram.set(file, bySymbol);
   }
   const writes = bySymbol.get(symbol) ?? [];
   // A top-level `let` in a file with no import or export is a GLOBAL, which any other script can assign
@@ -184,7 +194,7 @@ function variableWrites(declaration: ts.VariableDeclaration, symbol: ts.Symbol, 
     !ts.isExternalModule(file) &&
     ts.isVariableStatement(declaration.parent.parent) &&
     declaration.parent.parent.parent === file;
-  return global && writes.length === 0 ? [{ writer: ANY_SCRIPT, fn: declaration }] : writes;
+  return global && writes.length === 0 ? [{ writer: "any script", fn: declaration, global: true }] : writes;
 }
 
 /**
@@ -284,7 +294,8 @@ function readsIn(
   // A props callback names its owner as `this`, its parameter, or the parameter destructured — see
   // `callbackOwner`. A method the walk follows into has only `this`, and a free function none.
   const callback = callbackOwner(node);
-  const seen = new Set<ts.Node>();
+  const seenBound = new Set<ts.Node>();
+  const seenUnbound = new Set<ts.Node>();
 
   /** The members of that name in the nearest class up the chain — the one that runs. */
   const nearestNamed = (name: string): ts.ClassElement[] => {
@@ -298,14 +309,12 @@ function readsIn(
     ts.isGetAccessorDeclaration(member) && !hasDecorator(member, "compute", resolve) && member.body !== undefined;
 
   const walk = (at: ts.Node, depth: number, hasThis: boolean): void => {
-    if (depth > 6 || seen.has(at)) return;
-    seen.add(at);
+    // Once per body and per `this`: the same body reached unbound first and bound later reads more the
+    // second time — a `function` a getter returns, called destructured and then through the owner.
+    const seenAs = hasThis ? seenBound : seenUnbound;
+    if (depth > 6 || seenAs.has(at)) return;
+    seenAs.add(at);
 
-    /**
-     * Runs what reading or calling a member runs, and says whether the member is one that runs at all:
-     * a getter runs when it is read (and before what it returns is called), a method or a function field
-     * when it is called. Anything else is a value, and the caller records it as read.
-     */
     /**
      * Runs what reading or calling a member runs, and says whether it is a member that runs at all. A
      * GETTER runs when it is read; called (`this.fmt()`), what it returns runs too — so every function
@@ -363,7 +372,9 @@ function readsIn(
       ) {
         const name = current.name.text;
         let followed = false;
-        for (const member of nearestNamed(name)) followed = follow(member, runsWhere(current), true) || followed;
+        // Bound only when called through the owner: handed to a call, what a getter returns is called bare.
+        const calledHere = ts.isCallExpression(current.parent) && current.parent.expression === current;
+        for (const member of nearestNamed(name)) followed = follow(member, runsWhere(current), calledHere) || followed;
         if (!followed) reads.fields.add(name);
       }
       if (ts.isCallExpression(current) && ts.isIdentifier(current.expression)) {
@@ -445,7 +456,7 @@ export const cachedReadOfAPlainField = {
     heading: (found) => `${found.length} cached read(s) that can hold a stale value:`,
     lines: (issue) => [
       `  ${issue.file}:${issue.line}:${issue.column}`,
-      issue.writtenBy === ANY_SCRIPT
+      issue.global
         ? `    <${issue.component}>'s \`${issue.named}\` — ${issue.reader} — reads the global \`${issue.field}\`, ` +
           "which any script may write, and that invalidates nothing."
         : `    <${issue.component}>'s \`${issue.named}\` — ${issue.reader} — reads ` +
@@ -494,21 +505,23 @@ export const cachedReadOfAPlainField = {
           named,
           field,
           variable: false,
+          global: false,
           writtenBy: writer,
           ...positionOf(node),
         });
       }
       for (const [symbol, read] of reads.variables) {
         const writes = variableWrites(read.declaration, symbol, resolve).filter((write) => !madeTooEarly(write, cls));
-        const writer = writes[0]?.writer;
-        if (writer === undefined) continue;
+        const write = writes[0];
+        if (write === undefined) continue;
         found.push({
           component: self.name,
           reader,
           named,
           field: read.name,
           variable: true,
-          writtenBy: writer,
+          global: write.global === true,
+          writtenBy: write.writer,
           ...positionOf(node),
         });
       }

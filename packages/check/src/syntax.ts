@@ -232,3 +232,10 @@ export function writesUnder(root: ts.Node, keepThis: boolean, visit: (target: ts
     ts.forEachChild(at, walk);
   })(root);
 }
+
+/** `(() => …)()` — a function called where it is written, through any parentheses TypeScript keeps. */
+export function invokedOnTheSpot(fn: ts.ArrowFunction | ts.FunctionExpression): boolean {
+  let at: ts.Node = fn;
+  while (at.parent !== undefined && ts.isParenthesizedExpression(at.parent)) at = at.parent;
+  return at.parent !== undefined && ts.isCallExpression(at.parent) && at.parent.expression === at;
+}

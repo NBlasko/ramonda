@@ -44,6 +44,9 @@ describe("a cached reader, followed", () => {
       "global:var scriptTheme:useDark",
       "anyScript:var scriptLang:any script",
       "fnExpr:rate:bump",
+      "seenTwice:rate:bump",
+      "asyncField:remoteRate:loading",
+      "asyncVar:var remote:a function",
       "branch:rate:bump",
       "overloaded:rate:bump",
       "toned:tone:setTone",
@@ -61,6 +64,11 @@ describe("a cached reader, followed", () => {
    * The fixture compiles. One that did not proved nothing: `shown` was declared twice, a field and a
    * getter, so `self.shown` was the field at runtime while the rule followed the getter.
    */
+  test("a script's global no file in view writes is said to be one, not given a writer", () => {
+    const found = run().findings["cached-read-of-a-plain-field"];
+    expect(found.filter((one) => one.global).map((one) => one.named)).toEqual(["anyScript"]);
+  });
+
   test("the fixture is a program TypeScript accepts, as the analyzer builds it", () => {
     const { program, notes } = createProgram(join(here, "fixtures", "cached-read-follows", "tsconfig.json"));
     // Not an empty program, which would accept anything: the fixture's own files are in it.
