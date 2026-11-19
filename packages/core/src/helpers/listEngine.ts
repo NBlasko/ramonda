@@ -185,11 +185,18 @@ export function inLevel<T>(rows: readonly unknown[] | undefined, host: ListHost 
  * component re-rendered, synchronously inside a row walk would otherwise give its lists that row as
  * their parent and that region's host.
  */
+/**
+ * Whether the list context is already what `atTopLevel` would set — no row, no region's host, and
+ * `block` — so a caller can run its reconcile directly, without handing it over as a callback. A
+ * callback is a closure, and a closure keeps its function's variables in a context made on every call.
+ */
+export function isAtTopLevel(block?: EnclosingBlock): boolean {
+  return enclosingRow.current === undefined && enclosingHost.current === undefined && enclosingBlock.current === block;
+}
+
 export function atTopLevel<T>(run: () => T, block?: EnclosingBlock): T {
   // From a drain — every entry today — all three are already empty, and there is nothing to restore.
-  if (enclosingRow.current === undefined && enclosingHost.current === undefined && enclosingBlock.current === block) {
-    return run();
-  }
+  if (isAtTopLevel(block)) return run();
   const outerBlock = enclosingBlock.current;
   enclosingBlock.current = block;
   try {

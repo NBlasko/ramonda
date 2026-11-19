@@ -11,7 +11,8 @@ of its own only then. A list row whose callback reads the signals it read last t
 list on a select — stays subscribed to them instead of detaching and attaching each one again.
 
 A first render makes less to throw away: a level with nothing before it makes no index of previous
-regions and no map of positions, and puts its nodes in, in order.
+regions and no map of positions, and puts its nodes in, in order; and the diff's per-component
+functions write no function inside them, so no call keeps its variables in a context made for it.
 
 The work a commit leaves for after the DOM is in is lighter too. A component with no effects queues
 nothing to run them. The queue is walked with a cursor instead of `shift()`: when every component still
