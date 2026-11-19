@@ -601,3 +601,47 @@ describe("a component's context", () => {
     expect(container.textContent).toBe("outerinner");
   });
 });
+
+describe("a first render", () => {
+  /**
+   * Every node of a first render is new, so nothing is in order to keep: they go in, in order, and the
+   * walk that keeps what is already in place — and protects the focus while it moves things — is not
+   * taken. It reads `document.activeElement` before it moves anything; a first render reads it never.
+   */
+  test("puts every node in, in order, without the walk that keeps nodes in place", () => {
+    const descriptor = Object.getOwnPropertyDescriptor(Document.prototype, "activeElement");
+    if (descriptor?.get === undefined) throw new Error("activeElement is not an accessor here");
+    const read = descriptor.get;
+    let reads = 0;
+    Object.defineProperty(Document.prototype, "activeElement", {
+      ...descriptor,
+      get(this: Document) {
+        reads++;
+        return read.call(this);
+      },
+    });
+    class Cell extends Component<{ text: string }> {
+      render() {
+        return <td>{this.props.text}</td>;
+      }
+    }
+    let container: HTMLElement | undefined;
+    try {
+      container = mount(
+        <table>
+          <tbody>
+            <tr>
+              <Cell text="a" />
+              <Cell text="b" />
+              <Cell text="c" />
+            </tr>
+          </tbody>
+        </table>,
+      );
+    } finally {
+      Object.defineProperty(Document.prototype, "activeElement", descriptor);
+    }
+    expect(container.querySelector("tr")?.textContent).toBe("abc");
+    expect(reads).toBe(0);
+  });
+});

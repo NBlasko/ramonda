@@ -10,6 +10,9 @@ cached on it; and a component reads its parent's context object until it provide
 of its own only then. A list row whose callback reads the signals it read last time — every row of a
 list on a select — stays subscribed to them instead of detaching and attaching each one again.
 
+A first render makes less to throw away: a level with nothing before it makes no index of previous
+regions and no map of positions, and puts its nodes in, in order.
+
 The work a commit leaves for after the DOM is in is lighter too. A component with no effects queues
 nothing to run them. The queue is walked with a cursor instead of `shift()`: when every component still
 queued an entry, creating 10,000 rows of five components queued 50,000, and the same build measured

@@ -112,7 +112,7 @@ export function diffAndMerge(
  */
 export function mountRoot(vnode: ComponentChild, container: ChildNode): void {
   const unclaimed: (EnhancedChildNode | DONE)[] = [];
-  const result = atTopLevel(() => reconcileEntries([vnode], [], undefined, undefined, container, unclaimed));
+  const result = atTopLevel(() => reconcileEntries([vnode], NO_ENTRIES, undefined, undefined, container, unclaimed));
   (container as EnhancedChildNode)[CHILD_RECORD] = result.entries;
 
   /**
@@ -1158,9 +1158,23 @@ export function listHostFor(owner: MaybeComponent): ListHost {
  * from seeing each other, and what keeps a component's chrome out of reach of
  * content passed into it.
  */
+/**
+ * The previous record of a level that had none — a component's first render, a list's first rows. Shared,
+ * and never written: `reconcileEntries` only reads what it is handed as `previous`.
+ */
+const NO_ENTRIES: readonly RecordEntry[] = Object.freeze([]);
+
+/**
+ * The regions a level had before, when it had none. Shared, and never written: the only write to the
+ * index is in the walk over `previous`, which is empty whenever this is the one used — so a first
+ * render makes no `Map`. Measured in Chrome, creating 1,000 rows of five components: `new Map` was
+ * 259 B allocated per component, most of it one of these per level for nothing.
+ */
+const NO_REGIONS: Map<unknown, ListRegion | ComponentRegion> = new Map();
+
 export function reconcileEntries(
   children: unknown[],
-  previous: RecordEntry[],
+  previous: readonly RecordEntry[],
   clean: boolean[] | undefined,
   placeholderComponent: MaybeComponent,
   parent: ChildNode,
@@ -1186,7 +1200,7 @@ export function reconcileEntries(
   const cloneChildren: (EnhancedChildNode | DONE)[] = [];
   // Looked up by owner, never by position: a region keeps its nodes even when it
   // moves among its siblings.
-  const previousRegions = new Map<unknown, ListRegion | ComponentRegion>();
+  const previousRegions = previous.length === 0 ? NO_REGIONS : new Map<unknown, ListRegion | ComponentRegion>();
   /**
    * Regions a LATER one with the same owner pushed out of the index.
    *
@@ -1330,7 +1344,7 @@ export function reconcileEntries(
 
         const inner = reconcileEntries(
           listNode.vnodes,
-          before?.entries ?? [],
+          before?.entries ?? NO_ENTRIES,
           listNode.clean,
           placeholderComponent,
           parent,
@@ -1612,6 +1626,18 @@ export function reorderChildren(
       i++;
     }
     if (i === length && cursor === null) return;
+  }
+
+  /**
+   * Every node is new: the run had nothing in it before — a block's previous order is empty, or an
+   * element has no children yet. Nothing is in order to keep, so each goes in, in order, and no map of
+   * positions is made: the first render of every element and every component lands here. Nothing in
+   * the run can hold focus either, since nothing was in it.
+   */
+  if (previousOrder !== undefined ? previousOrder.length === 0 : parent.firstChild === null) {
+    const reference = anchor ?? firstHostedBlock(parent);
+    for (let n = 0; n < length; n++) parent.insertBefore(orderedNodes[n], reference);
+    return;
   }
 
   // Current position of every child, so "already in relative order" is decidable.
@@ -2311,7 +2337,7 @@ function buildComponent(
   // A component's lists report to the component, which re-renders itself: no row above it, and no
   // region's host, is theirs. Only here, where the component is BUILT and its render reconciled on
   // the spot — taking new props only queues a render, which runs from a drain.
-  const inner = atTopLevel(() => reconcileEntries(children, [], undefined, component, parent, unclaimed));
+  const inner = atTopLevel(() => reconcileEntries(children, NO_ENTRIES, undefined, component, parent, unclaimed));
 
   const region: ComponentRegion = {
     owner,
