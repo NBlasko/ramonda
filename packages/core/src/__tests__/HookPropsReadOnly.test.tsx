@@ -9,7 +9,7 @@ import { resetDiagnostics } from "../debug/diagnostics";
  * no error, and reading the key back still returned the old value.
  *
  * RMD015 throws in every build, exactly like a write to a component's props
- * (RMD004) — one rule for read-only inputs. See the note in createPropsProxy.
+ * (RMD004) — one rule for read-only inputs. See the note in `propsHandler.set` (base/Component.ts).
  */
 
 interface SizeProps {

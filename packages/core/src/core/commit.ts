@@ -36,6 +36,18 @@ interface PendingMount {
 const pending: PendingMount[] = [];
 
 /**
+ * The next entry of `pending` to run. The flush walks the queue with this cursor and drops what it has
+ * run in one cut when it ends, never one `shift()` at a time.
+ *
+ * Every component built queues at least one entry — its first `runComponentEffects` — so creating
+ * 10,000 rows of five components queues 50,000, and `shift()` on an array that long moves every entry
+ * after the first whenever V8 cannot trim the array from the front. Measured in Chrome
+ * (js-framework-benchmark, create 10,000 rows): the same build took about 800 ms or about 3,900 ms of
+ * script, run to run, nearly all of the difference in this flush.
+ */
+let head = 0;
+
+/**
  * A flush already running. A @mounted callback can synchronously cause another
  * render — and therefore another flush — and re-entering would run later
  * entries before earlier ones finish. The outer loop picks up whatever the
@@ -202,7 +214,7 @@ export function discardPendingUpdates(component: BaseComponent): void {
  * and strand the head update until an unrelated later commit.
  */
 export function hasPendingPostCommit(): boolean {
-  return pending.length > 0 || pendingCommitWork.size > 0;
+  return pending.length > head || pendingCommitWork.size > 0;
 }
 
 /**
@@ -300,9 +312,10 @@ export function flushPostCommit(): void {
     let ran = 0;
     for (;;) {
       runBeforeTheMounts();
-      if (pending.length === 0) break;
+      if (head === pending.length) break;
       if (++ran > MAX_WORK_PER_FLUSH) {
         pending.length = 0;
+        head = 0;
         throw new Error(
           `[Ramonda] @mounted loop: mounting kept queueing more mounts ${MAX_WORK_PER_FLUSH} times without settling, ` +
             `so Ramonda stopped it rather than let the tab freeze. An @mounted that mounts a component which mounts another, ` +
@@ -310,7 +323,7 @@ export function flushPostCommit(): void {
         );
       }
 
-      const next = pending.shift()!;
+      const next = pending[head++];
       if (next.component[COMPONENT_RUNTIME].isDestroyed) continue;
 
       try {
@@ -350,6 +363,12 @@ export function flushPostCommit(): void {
       }
     }
   } finally {
+    // Whatever ran is dropped — all of it on the way out of the loop, and only what ran when something
+    // threw out of it, so the entries still waiting stay queued for the next flush.
+    if (head > 0) {
+      pending.splice(0, head);
+      head = 0;
+    }
     /**
      * After every mount, because that is what "the DOM this commit builds is in
      * place" means — and commit-level work is entitled to read the finished result.
@@ -377,7 +396,8 @@ export function flushPostCommit(): void {
  * the next flush.
  */
 export function discardPendingWork(component: BaseComponent): void {
-  for (let i = pending.length - 1; i >= 0; i--) {
+  // Only the entries still waiting: one before `head` has run, and removing it would move the cursor.
+  for (let i = pending.length - 1; i >= head; i--) {
     if (pending[i].component === component) pending.splice(i, 1);
   }
 }

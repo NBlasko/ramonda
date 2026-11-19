@@ -916,7 +916,7 @@ function hydrateLevelEntries(
  * A method returning something that is not a promise means "hydrate now" —
  * that is the ordinary case, and it must cost nothing.
  */
-function collectDeferrals(deferrals: (() => unknown)[]): Promise<unknown> | undefined {
+function collectDeferrals(deferrals: readonly (() => unknown)[]): Promise<unknown> | undefined {
   if (deferrals.length === 0) return undefined;
 
   let waiting: Promise<unknown>[] | undefined;

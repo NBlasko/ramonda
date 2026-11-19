@@ -61,9 +61,9 @@ export function lifecycleCleanupManagement(component: BaseComponent<unknown>) {
    * 1466 tests, which is what a branch nothing can enter looks like — two more paths to read and
    * none to trust. `reactivity/effect.ts` had the third copy and lost it too.
    *
-   * And it is not an arbitrary pick of two: `Runtime` holds nine of these arrays, and the other
-   * seven — `mounts`, `updates`, `creates`, `watchProps`, `deferHydrations`, `hooksOptions`,
-   * `clearReactives` — were never guarded anywhere. `clearReactives` is read three lines below this
+   * And it is not an arbitrary pick of two: `Runtime` holds eight of these lists, and the other
+   * six — `mounts`, `updates`, `creates`, `watchProps`, `deferHydrations`, `clearReactives` — were
+   * never guarded anywhere. `clearReactives` is read three lines below this
    * loop, in exactly the shape these two now have.
    */
   const effects = runtime.effects;

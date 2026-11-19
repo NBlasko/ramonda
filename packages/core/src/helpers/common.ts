@@ -1,4 +1,4 @@
-import { HOOK_RUNTIME, INTERNAL_HOOKS, GLOBAL_RUNTIME, CHILD_HOOKS, type HookWalk } from "../core/runtime";
+import { HOOK_RUNTIME, INTERNAL_HOOKS, GLOBAL_RUNTIME, CHILD_HOOKS, type HookWalk, addTo } from "../core/runtime";
 import { className, displayName } from "./utils";
 import { STABLE_PROPS, attach, detach } from "./constants";
 import { valueEqual } from "./valueEqual";
@@ -518,7 +518,7 @@ export function useCommon<T extends BaseHook<unknown>, P>(
   // provider. Without this the destroyed hook's cache stays subscribed and is invalidated
   // forever by writes it can no longer do anything about.
   if (cache) {
-    runtime.clearReactives.push(() => {
+    addTo(runtime, "clearReactives", () => {
       for (const dep of cache.deps) dep[detach](cacheId);
       cache.deps.clear();
     });

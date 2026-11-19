@@ -1,6 +1,6 @@
 import { createId } from "../helpers/createId";
 import { CONTEXT_READS, STABLE_PROPS } from "../helpers/constants";
-import { type Runtime, HOOK_RUNTIME } from "../core/runtime";
+import { type Runtime, HOOK_RUNTIME, addTo } from "../core/runtime";
 import { attach, detach } from "../helpers/constants";
 import { Hook } from "./Hook";
 import type { State } from "../reactivity/State";
@@ -409,7 +409,7 @@ export function createContext<T extends object>(
               signal[attach]({ id: listenerId, onChange: owner.reBuild });
 
               // Detach when the consumer's component unmounts.
-              owner.clearReactives.push(() => signal[detach](listenerId));
+              addTo(owner, "clearReactives", () => signal[detach](listenerId));
             }
 
             return signal.get();

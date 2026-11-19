@@ -6,7 +6,7 @@ import { state } from "../base/decorators";
 /**
  * A prop under a SYMBOL key, which the props proxy answers differently from every other prop.
  *
- * `createPropsProxy`'s first line returns `rawProps[key]` for a symbol and stops there — no signal
+ * The props handler's `get` returns `rawProps[key]` for a symbol and stops there — no signal
  * is made, so the read is not tracked. Every other prop goes through a `State` whose listener is
  * the component's own `reBuild`.
  *
