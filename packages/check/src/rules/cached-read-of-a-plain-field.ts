@@ -1,5 +1,6 @@
 import ts from "typescript";
 import {
+  callbackOwner,
   contains,
   isHandedOver,
   isLocalRead,
@@ -123,53 +124,6 @@ function writerName(node: ts.Node): string {
   return `a function at the top level of ${node.getSourceFile().fileName.split("/").pop()}`;
 }
 
-/** The owner a callback names: `this`, its parameter, and the members its parameter destructures. */
-interface Owner {
-  /** Whether this expression IS the owner — `this`, or the parameter itself, by the binding it resolves to. */
-  is(expression: ts.Expression): boolean;
-  /** The member a destructured local reads — `{ tick: t }` makes `t` read `tick` — or `undefined`. */
-  member(id: ts.Identifier): string | undefined;
-}
-
-/** A body whose owner is `this` and nothing else — a method's, a getter's. */
-const THIS_ONLY: Owner = {
-  is: (expression) => expression.kind === ts.SyntaxKind.ThisKeyword,
-  member: () => undefined,
-};
-
-/** The owner of a props callback, every name matched by the declaration it resolves to. */
-function ownerOf(callback: ts.Node, resolve: Resolver): Owner {
-  const parameter =
-    ts.isArrowFunction(callback) ||
-    ts.isFunctionExpression(callback) ||
-    ts.isFunctionDeclaration(callback) ||
-    ts.isMethodDeclaration(callback)
-      ? callback.parameters[0]
-      : undefined;
-  if (parameter === undefined) return THIS_ONLY;
-  const bindings = new Map<ts.Node, string>();
-  if (ts.isObjectBindingPattern(parameter.name)) {
-    for (const element of parameter.name.elements) {
-      if (element.dotDotDotToken !== undefined || !ts.isIdentifier(element.name)) continue;
-      const member = element.propertyName ?? element.name;
-      if (ts.isIdentifier(member)) bindings.set(element, member.text);
-    }
-  }
-  const declarations = (id: ts.Node): readonly ts.Declaration[] => resolve(id)?.declarations ?? [];
-  return {
-    is: (expression) =>
-      expression.kind === ts.SyntaxKind.ThisKeyword ||
-      (ts.isIdentifier(parameter.name) && ts.isIdentifier(expression) && declarations(expression).includes(parameter)),
-    member: (id) => {
-      for (const declaration of declarations(id)) {
-        const member = bindings.get(declaration);
-        if (member !== undefined) return member;
-      }
-      return undefined;
-    },
-  };
-}
-
 /** The members of that name in the nearest class up the chain — the one an instance has. */
 function nearestMembers(declaring: readonly ts.ClassLikeDeclaration[], name: string): ts.ClassElement[] {
   for (const one of declaring) {
@@ -280,8 +234,8 @@ function outerVariable(
 function readsIn(node: ts.Node, declaring: readonly ts.ClassLikeDeclaration[], resolve: Resolver): Reads {
   const reads: Reads = { fields: new Set(), variables: new Map() };
   // A props callback names its owner as `this`, its parameter, or the parameter destructured — see
-  // `ownerOf`. A method the walk follows into has only `this`, and a free function none.
-  const rootOwner = ownerOf(node, resolve);
+  // `callbackOwner`. A method the walk follows into has only `this`, and a free function none.
+  const rootOwner = callbackOwner(node, resolve);
   const seen = new Set<ts.Node>();
   /**
    * A declaration local to what the reader runs: inside it, or inside a body it walks — a method's, a
@@ -317,7 +271,7 @@ function readsIn(node: ts.Node, declaring: readonly ts.ClassLikeDeclaration[], r
     // anywhere written inside it, so an arrow there called a line later reads `self` as the owner too.
     // Matched by the binding a name resolves to, never by its text: an inner `(self) => self.rate` is
     // somebody else's `self`.
-    const owner = at === node || contains(node, at) ? rootOwner : THIS_ONLY;
+    const owner = at === node || contains(node, at) ? rootOwner : callbackOwner(at, resolve);
     (function look(current: ts.Node): void {
       if (current !== at) {
         // Built, not run: a function returned, stored or handed over in an object, or an accessor of one.

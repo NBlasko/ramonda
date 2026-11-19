@@ -86,51 +86,71 @@ export function hookNamed(arg: ts.Expression): ts.Expression {
  * How a hook's props callback names the component it belongs to: `this`, the parameter the docs
  * write it with — `(self: App) => self.tick` — or that parameter destructured, `({ tick }) => tick`.
  *
- * One answer for every rule that reads a props callback. Two of them recognised only `this.`, so each
- * was silent on the shape every page teaches; found by measuring the runtime's RMD022 against the
- * checker, one shape at a time.
+ * One answer for every rule that reads a props callback, and every name in it matched by the
+ * declaration it RESOLVES to, never by its text: an inner `(self) => self.rate` is somebody else's
+ * `self`, and `[1, 2].map((rate) => rate * 2)` inside `({ rate }) => …` is somebody else's `rate`.
+ * `this` is the owner only where it is the root's — a `function` written inside has a `this` of its
+ * own (`bindsThis`), on the read side as on the write side.
+ *
+ * Given a body with no parameter — a method's or a getter's, which a rule follows into — the owner is
+ * `this` and nothing else.
  */
 export interface CallbackOwner {
-  /** Whether this expression IS the owner — `this`, or the parameter. */
+  /** Whether this expression IS the owner — the root's `this`, or the parameter itself. */
   is(expression: ts.Expression): boolean;
-  /** A destructured parameter's locals, each with the member it reads: `{ tick: t }` is `t` → `tick`. */
-  destructured: ReadonlyMap<string, string>;
-  /**
-   * Whether this expression is the parameter's REST copy, `{ ...all }` — every member, copied when the
-   * callback is called, so `all.tick` reads `tick`. By the binding it resolves to, not its name: an inner
-   * `(all) => all.total` is somebody else's `all`.
-   */
-  isRest(expression: ts.Expression, resolve: (id: ts.Node) => ts.Symbol | undefined): boolean;
+  /** The member a destructured local reads — `{ tick: t }` makes `t` read `tick` — or `undefined`. */
+  member(id: ts.Identifier): string | undefined;
+  /** Whether this expression is the parameter's REST copy, `{ ...all }` — every member, copied at the call. */
+  isRest(expression: ts.Expression): boolean;
 }
 
-export function callbackOwner(callback: ts.Node): CallbackOwner {
+export function callbackOwner(root: ts.Node, resolve: (id: ts.Node) => ts.Symbol | undefined): CallbackOwner {
   const parameter =
-    ts.isArrowFunction(callback) || ts.isFunctionExpression(callback) ? callback.parameters[0]?.name : undefined;
-  const self = parameter !== undefined && ts.isIdentifier(parameter) ? parameter.text : undefined;
-  const destructured = new Map<string, string>();
-  const rests: ts.BindingElement[] = [];
-  if (parameter !== undefined && ts.isObjectBindingPattern(parameter)) {
-    for (const element of parameter.elements) {
+    ts.isArrowFunction(root) ||
+    ts.isFunctionExpression(root) ||
+    ts.isFunctionDeclaration(root) ||
+    ts.isMethodDeclaration(root)
+      ? root.parameters[0]
+      : undefined;
+  const members = new Map<ts.Node, string>();
+  const rests: ts.Node[] = [];
+  if (parameter !== undefined && ts.isObjectBindingPattern(parameter.name)) {
+    for (const element of parameter.name.elements) {
       if (!ts.isIdentifier(element.name)) continue;
-      // A rest element is not a member named after its binding — see `isRest`.
       if (element.dotDotDotToken !== undefined) {
         rests.push(element);
         continue;
       }
       const member = element.propertyName ?? element.name;
-      if (ts.isIdentifier(member)) destructured.set(element.name.text, member.text);
+      if (ts.isIdentifier(member)) members.set(element, member.text);
     }
   }
+  const declarations = (id: ts.Node): readonly ts.Node[] => resolve(id)?.declarations ?? [];
   return {
-    isRest: (expression, resolve) =>
-      rests.length > 0 &&
-      ts.isIdentifier(expression) &&
-      rests.some((rest) => resolve(expression)?.declarations?.includes(rest) === true),
     is: (expression) =>
-      expression.kind === ts.SyntaxKind.ThisKeyword ||
-      (self !== undefined && ts.isIdentifier(expression) && expression.text === self),
-    destructured,
+      (expression.kind === ts.SyntaxKind.ThisKeyword && thisIsTheRoots(expression, root)) ||
+      (parameter !== undefined &&
+        ts.isIdentifier(parameter.name) &&
+        ts.isIdentifier(expression) &&
+        declarations(expression).includes(parameter)),
+    member: (id) => {
+      for (const declaration of declarations(id)) {
+        const member = members.get(declaration);
+        if (member !== undefined) return member;
+      }
+      return undefined;
+    },
+    isRest: (expression) =>
+      rests.length > 0 && ts.isIdentifier(expression) && declarations(expression).some((one) => rests.includes(one)),
   };
+}
+
+/** Whether a `this` written under `root` is the root's: no `function`, class or object method between. */
+function thisIsTheRoots(self: ts.Node, root: ts.Node): boolean {
+  for (let at = self.parent; at !== undefined && at !== root; at = at.parent) {
+    if (bindsThis(at)) return false;
+  }
+  return true;
 }
 
 /** Whether an identifier is a READ of a local, rather than where it is declared or a property name. */

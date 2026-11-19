@@ -110,8 +110,7 @@ export function reactiveReadIn(
   }
 
   // `this`, the parameter, or the parameter destructured — see `callbackOwner`.
-  const owner = callbackOwner(body);
-  const destructured = owner.destructured;
+  const owner = callbackOwner(body, resolve);
   const isOwner = owner.is;
 
   let found: string | undefined;
@@ -123,17 +122,17 @@ export function reactiveReadIn(
     if (excluded.includes(node)) return;
     // A function handed over in the bag is not run by the callback, so what it reads is not read here.
     if (isHandedOver(node)) return;
-    if (ts.isIdentifier(node) && destructured.has(node.text) && isLocalRead(node)) {
-      const member = destructured.get(node.text) as string;
+    const member = ts.isIdentifier(node) && isLocalRead(node) ? owner.member(node) : undefined;
+    if (member !== undefined) {
       if (member === "props" || reactive.has(member)) {
-        found = node.text;
+        found = (node as ts.Identifier).text;
         return;
       }
     }
     // Through the owner, or through the parameter's rest copy — `{ ...all }` read `all.tick` at the call.
     if (
       ts.isPropertyAccessExpression(node) &&
-      (isOwner(node.expression) || owner.isRest(node.expression, resolve)) &&
+      (isOwner(node.expression) || owner.isRest(node.expression)) &&
       ts.isIdentifier(node.name)
     ) {
       const written = node.expression.getText();
