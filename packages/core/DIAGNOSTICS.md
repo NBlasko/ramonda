@@ -260,12 +260,15 @@ still read both through its own hooks, which is what makes the mistake invisible
 from the one place that made it. A DEV-only report would leave production doing
 exactly that, silently.
 
-The check is `Object.hasOwn(owner.context, contextId)`, and own-ness is exactly
-the question. A context object is `Object.create(parentContext)`, so a Provider
-ABOVE this component leaves the key inherited here rather than own — which is
-nesting, is ordinary, and must stay legal. Only a second publish on one
-component makes the key own. Widening this to `in` refuses every nested
-Provider, and core's tests fail if it is.
+The check is `owner.ownsContext && Object.hasOwn(owner.context, contextId)`, and
+own-ness is exactly the question. A component reads its parent's context object
+until its first publish, which makes it one of its own with
+`Object.create(parentContext)` — so a Provider ABOVE this component leaves the
+key either on an object this component does not own, or inherited here rather
+than own. Both are nesting, are ordinary, and must stay legal. Only a second
+publish on one component makes the key own on its own object. Widening this to
+`in`, or dropping the `ownsContext` half, refuses every nested Provider, and
+core's tests fail if it is.
 
 **Nothing is declared for it, and `single` is a different question.** `single`
 says whether NESTING is a fault — two on one path, on different components — and

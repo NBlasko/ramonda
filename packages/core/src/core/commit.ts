@@ -39,11 +39,12 @@ const pending: PendingMount[] = [];
  * The next entry of `pending` to run. The flush walks the queue with this cursor and drops what it has
  * run in one cut when it ends, never one `shift()` at a time.
  *
- * Every component built queues at least one entry — its first `runComponentEffects` — so creating
- * 10,000 rows of five components queues 50,000, and `shift()` on an array that long moves every entry
- * after the first whenever V8 cannot trim the array from the front. Measured in Chrome
- * (js-framework-benchmark, create 10,000 rows): the same build took about 800 ms or about 3,900 ms of
- * script, run to run, nearly all of the difference in this flush.
+ * A commit queues an entry for every `@mounted` and for every component with effects it built, so a
+ * large one queues tens of thousands, and `shift()` on an array that long moves every entry after the
+ * first whenever V8 cannot trim the array from the front. Measured in Chrome (js-framework-benchmark,
+ * create 10,000 rows of five components, when every component still queued one entry): the same build
+ * took about 800 ms or about 3,900 ms of script, run to run, nearly all of the difference in this
+ * flush.
  */
 let head = 0;
 
@@ -59,7 +60,10 @@ let flushing = false;
  * Bounds one flush. A @mounted that mounts a component whose @mounted does the same
  * would otherwise spin forever, and a frozen tab is the worst failure this
  * codebase has (see MAX_BUILDS_PER_DRAIN in Task.ts for the same reasoning).
- * Set far beyond any legitimate tree.
+ *
+ * It counts what the flush's own work queues — never the entries waiting when the flush began. Those
+ * are the commit's, as many as it built, and counting them made a commit of 100,000 entries — 20,000
+ * rows of five components, when each queued one — stop as a "loop" that never was one.
  */
 const MAX_WORK_PER_FLUSH = 100_000;
 
@@ -309,11 +313,14 @@ export function flushPostCommit(): void {
   let escapedMount: { value: unknown } | undefined;
 
   try {
+    // What the commit queued before this flush began is its own, whatever its size; only what running
+    // it queues on top counts towards the bound.
     let ran = 0;
+    const queuedByTheCommit = pending.length - head;
     for (;;) {
       runBeforeTheMounts();
       if (head === pending.length) break;
-      if (++ran > MAX_WORK_PER_FLUSH) {
+      if (++ran > queuedByTheCommit + MAX_WORK_PER_FLUSH) {
         pending.length = 0;
         head = 0;
         throw new Error(

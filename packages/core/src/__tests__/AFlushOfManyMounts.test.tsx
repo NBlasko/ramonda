@@ -1,12 +1,17 @@
 import { afterEach, describe, expect, test } from "vitest";
 import { Component, bootstrap, mounted, state, unmount } from "../index";
+import { getComponentInstance } from "../testing";
 import { flushSync } from "../testing";
+import { flushPostCommit, hasPendingPostCommit, queuePostCommit } from "../core/commit";
+import { effectLike } from "../test/effectLike";
+import type { BaseComponent } from "../types/vdom";
 
 /**
- * The queue a commit leaves for after the DOM is in: every component's `@mounted`, and its first
- * effects run — one entry at least for every component built.
+ * The queue a commit leaves for after the DOM is in: every component's `@mounted`, and the first run of
+ * its effects — an entry for each, and none for a component that has neither.
  *
- * Creating 10,000 rows of five components queues 50,000 entries. Taken off the front one `shift()` at
+ * A large commit queues tens of thousands of entries: 10,000 rows of five components queued 50,000,
+ * when every component still queued one. Taken off the front one `shift()` at
  * a time, an array that long is moved whole on each take whenever V8 cannot trim it from the front:
  * measured in Chrome (js-framework-benchmark), the same build created 10,000 rows in about 800 ms or
  * about 3,900 ms of script, run to run. The flush walks the queue with a cursor instead.
@@ -145,5 +150,80 @@ describe("a flush of many mounts", () => {
     expect(order).toEqual(["first", "second", "third"]);
     expect(early.textContent).toBe("");
     expect(late.textContent).toBe("secondthird");
+  });
+
+  /**
+   * A component with no effects queues nothing for them: every effect it will have is registered while
+   * it is constructed, so there is nothing to run. The first component's `@mounted` runs first, and
+   * looks at what is still queued behind it.
+   */
+  test("a component with no effects queues nothing for them, and one with an effect does", () => {
+    const seen: boolean[] = [];
+    class Probe extends Component {
+      @mounted look(): void {
+        seen.push(hasPendingPostCommit());
+      }
+      render() {
+        return <i />;
+      }
+    }
+    class Plain extends Component {
+      render() {
+        return <i />;
+      }
+    }
+    class Effectful extends Component {
+      @effectLike()
+      run(): void {}
+      render() {
+        return <i />;
+      }
+    }
+    mount(
+      <div>
+        <Probe />
+        <Plain />
+        <Plain />
+      </div>,
+    );
+    mount(
+      <div>
+        <Probe />
+        <Effectful />
+      </div>,
+    );
+    expect(seen).toEqual([false, true]);
+  });
+
+  /**
+   * The bound on a flush counts what the flush's own work queues, never what the commit queued before
+   * it began: as many entries as the commit built are its own.
+   */
+  test("runs a commit of more entries than the bound, and stops work that keeps queueing more", () => {
+    class Page extends Component {
+      render() {
+        return <p />;
+      }
+    }
+    const element = mount(<Page />);
+    const page = getComponentInstance(element.firstElementChild) as unknown as BaseComponent;
+
+    let ran = 0;
+    const count = () => {
+      ran++;
+    };
+    for (let i = 0; i < 100_010; i++) queuePostCommit(page, count);
+    flushPostCommit();
+    expect(ran).toBe(100_010);
+
+    let again = 0;
+    const queueAgain = () => {
+      again++;
+      queuePostCommit(page, queueAgain);
+    };
+    queuePostCommit(page, queueAgain);
+    expect(() => flushPostCommit()).toThrow(/@mounted loop/);
+    expect(again).toBe(100_001);
+    expect(hasPendingPostCommit()).toBe(false);
   });
 });

@@ -11,7 +11,13 @@ import type { ServerWork } from "./serverWork";
 
 export interface Runtime {
   id: number;
+  /**
+   * The context this component reads and its children inherit: its parent's own object until it
+   * publishes something — see `contextToWrite`.
+   */
   context: Context;
+  /** Whether `context` is this component's own object rather than its parent's. */
+  ownsContext: boolean;
   mounts: readonly LifecycleEntry[];
   creates: readonly LifecycleEntry[];
   destroys: readonly LifecycleEntry[];
@@ -80,6 +86,8 @@ export interface ComponentRuntime {
    */
   catchError?: (e: unknown) => unknown;
   propsSignals: Map<string, State<unknown>>;
+  /** Whether construction is over — see `finishConstruction`. */
+  constructed: boolean;
   parent?: BaseComponent;
   inBuildQueue?: boolean;
   isInitialized?: boolean;
@@ -145,6 +153,8 @@ export interface HookRuntime {
    */
   rawProps: Record<string, unknown>;
   propsSignals: Map<string, State<unknown>>;
+  /** Whether construction is over — see `finishConstruction`. */
+  constructed: boolean;
 }
 
 export const GLOBAL_RUNTIME = Symbol("globalRuntime");
@@ -152,28 +162,54 @@ export const COMPONENT_RUNTIME = Symbol("componentRuntime");
 export const HOOK_RUNTIME = Symbol("hookRuntime");
 export const INTERNAL_HOOKS = Symbol("internalHooks");
 
+/**
+ * The context a component publishes on — its own object, made here the first time it publishes.
+ *
+ * A component reads its parent's context object until then, and so do the children it builds: most
+ * components publish nothing, and an own object for each was `Object.create(parent)` per component —
+ * measured in Chrome after creating 1,000 rows of five components, every component with a child
+ * became a PROTOTYPE, 1.4 hidden classes and a prototype record per component. Made at the first
+ * publish, the object is in place before any child is built: a Provider is a hook, made with its
+ * owner (RMD063), and `Head` publishes in `@created` — both before the owner renders.
+ *
+ * Made with `Object.create(parent)`, so a read still walks to the nearest ancestor that published,
+ * and a write lands as an OWN property, which keeps it from the component's siblings.
+ */
+export function contextToWrite(runtime: Runtime): Context {
+  if (!runtime.ownsContext) {
+    runtime.context = Object.create(runtime.context) as Context;
+    runtime.ownsContext = true;
+  }
+  return runtime.context;
+}
+
 /** The hooks an owner walks on each update, in `use()` order: each one's update. */
 export type HookWalk = (() => void)[];
 
 /**
- * Components and hooks whose construction is over. A hook is made only while its owner is being made —
- * see `useCommon` (RMD063) — and this is how `use()` knows the owner's construction has ended.
+ * Marks a component or hook as constructed: from here on, `use()` on it throws (RMD063).
  *
  * Written by whoever calls `new`, once it returns: the base constructors run FIRST, before a subclass's
  * field initializers, so nothing inside the instance can mark the end of its own construction. The
  * framework calls `new` in three places — a component built by the diff, one adopted by hydration, and
  * a hook in `use()` — and each marks what it built.
+ *
+ * On the runtime the instance already has, not in a `WeakSet`: measured in Chrome, a set that had held
+ * every component of 1,000 rows kept its 64 KB table after the rows were cleared.
  */
-const constructed = new WeakSet<object>();
-
-/** Marks a component or hook as constructed: from here on, `use()` on it throws (RMD063). */
 export function finishConstruction(instance: object): void {
-  constructed.add(instance);
+  runtimeOf(instance).constructed = true;
 }
 
 /** Whether a component or hook has finished being constructed. */
 export function isConstructed(instance: object): boolean {
-  return constructed.has(instance);
+  return runtimeOf(instance).constructed;
+}
+
+/** A hook's own runtime, or a component's — the one that says whether it is constructed. */
+function runtimeOf(instance: object): { constructed: boolean } {
+  const of = instance as { [HOOK_RUNTIME]?: HookRuntime; [COMPONENT_RUNTIME]: ComponentRuntime };
+  return of[HOOK_RUNTIME] ?? of[COMPONENT_RUNTIME];
 }
 
 // Child hook instances of a component/hook, in `use()` order — a deterministic
@@ -226,6 +262,7 @@ export const createRuntime = (that: BaseComponent<unknown>, context: Context): R
     effects: NONE,
     updates: NONE,
     context,
+    ownsContext: false,
     clearReactives: NONE,
     id: createId(),
     creates: NONE,
@@ -263,6 +300,7 @@ export const createComponentRuntime = (
     depth: 1,
     propsSignals: new Map<string, State<unknown>>(),
     env,
+    constructed: false,
     catchError: undefined,
     parent: undefined,
     inBuildQueue: undefined,
@@ -280,5 +318,6 @@ export const createHookRuntime = (rawProps: HookProps): HookRuntime => {
     // A hook with no props still needs a bag to read from — see HookRuntime.
     rawProps: rawProps ?? {},
     propsSignals: new Map<string, State<unknown>>(),
+    constructed: false,
   };
 };

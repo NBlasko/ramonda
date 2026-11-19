@@ -1,5 +1,5 @@
 import { Hook } from "./Hook";
-import { GLOBAL_RUNTIME } from "../core/runtime";
+import { GLOBAL_RUNTIME, contextToWrite } from "../core/runtime";
 import { queueAfterCommit } from "../core/commit";
 import { StableProps, created, destroyed, watchProp } from "./decorators";
 import { PORTAL_ATTR } from "../helpers/constants";
@@ -227,8 +227,7 @@ export class Head extends Hook<HeadOptions> {
     if (this.node !== undefined) return;
 
     const registry = registryForDocument();
-    const context = this[GLOBAL_RUNTIME].context;
-    const parent = context[HEAD_PARENT] as HeadNode | undefined;
+    const parent = this[GLOBAL_RUNTIME].context[HEAD_PARENT] as HeadNode | undefined;
 
     // The raw options, NOT flattened: the node is the state, and the head is a
     // function of the tree computed each apply. Flattening here would cache a
@@ -244,7 +243,7 @@ export class Head extends Hook<HeadOptions> {
 
     // An OWN property, so this component's descendants inherit it and its siblings
     // — which read the same ancestor object — do not.
-    context[HEAD_PARENT] = node;
+    contextToWrite(this[GLOBAL_RUNTIME])[HEAD_PARENT] = node;
 
     this.registry = registry;
     this.node = node;

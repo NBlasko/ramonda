@@ -3,6 +3,7 @@ import { attach, detach } from "../helpers/constants";
 import type { BaseComponent } from "../types/vdom";
 import type { State } from "./State";
 import { reactivityScope } from "./tracker";
+import { queuePostCommit } from "../core/commit";
 
 export interface Effect {
   id: number;
@@ -29,6 +30,21 @@ export interface Effect {
  */
 function isCleanup(value: unknown): value is () => void {
   return typeof value === "function";
+}
+
+/**
+ * Queues a component's effects to run once the commit's DOM is in — or nothing, for a component that
+ * has none.
+ *
+ * Every effect a component will ever have is registered while it is constructed — by a decorator's
+ * initializer, or a hook made with it (RMD063) — so a component with none now has none for life, and
+ * queuing it a run that finds nothing to do would be work for nothing: measured on
+ * js-framework-benchmark, creating 10,000 rows of five components queued 50,000 such entries, and
+ * each re-render of a component queued one more.
+ */
+export function queueComponentEffects(component: BaseComponent<unknown>): void {
+  if (component[GLOBAL_RUNTIME].effects.length === 0) return;
+  queuePostCommit(component, () => runComponentEffects(component));
 }
 
 export function runComponentEffects(component: BaseComponent<unknown>) {

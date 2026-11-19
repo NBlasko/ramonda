@@ -6,7 +6,7 @@ import { applyChangesOnAttributes, formatAttributes, writeHoleAttributes } from 
 import { adoptBlock, blockOf, type BlockMiss, type BlockVNode } from "../core/block";
 import { generateRenderOutput } from "../helpers/generateRenderOutput";
 import { seedWatchProps } from "../helpers/watchProps";
-import { runComponentEffects } from "../reactivity/effect";
+import { queueComponentEffects } from "../reactivity/effect";
 import { COMPONENT_RUNTIME, GLOBAL_RUNTIME, INTERNAL_HOOKS, finishConstruction } from "../core/runtime";
 import {
   buildComponentRegion,
@@ -390,8 +390,8 @@ function hydrateComponentRegion(
   // closure and TypeScript does not carry a narrowing across one.
   const marker = open as unknown as Comment;
 
-  const parentContext = placeholder?.[GLOBAL_RUNTIME].context;
-  const context = Object.create(parentContext || null) as Context;
+  // The parent's own object, shared until this component publishes on it — see `contextToWrite`.
+  const context = placeholder?.[GLOBAL_RUNTIME].context ?? (Object.create(null) as Context);
   const component = new vnode.name(vnode.attributes, context);
   finishConstruction(component);
   const runtime = component[GLOBAL_RUNTIME];
@@ -559,7 +559,7 @@ function hydrateComponentRegion(
     // runs children first. Pages MIX the two: anything hydration cannot adopt is built instead.
     // Measured on a hydrated parent whose child was newly built — `["parent", "child"]`, exactly
     // inverted — which meant a parent effect could not see what a child effect had done.
-    queuePostCommit(component, () => runComponentEffects(component));
+    queueComponentEffects(component);
 
     return region;
   }
@@ -1028,7 +1028,7 @@ function resumeHydration(component: BaseComponent): void {
   for (const mount of runtime.mounts) {
     if (mount.env !== "server") queuePostCommit(component, () => mount.cb(componentRuntime.env));
   }
-  queuePostCommit(component, () => runComponentEffects(component));
+  queueComponentEffects(component);
 
   // This subtree is its own commit — the page's flush finished long ago.
   flushPostCommit();

@@ -12,14 +12,15 @@ export type RenderableProps<P> = Readonly<P> & {
 /**
  * The bag a component publishes on, and every descendant reads from.
  *
- * One object per component, made with `Object.create(parentContext)`. So a READ walks the
- * prototype chain and finds the nearest ancestor that published, and a WRITE lands as an OWN
+ * A component reads its parent's object until it publishes; its first publish makes it one of its
+ * own with `Object.create(parentContext)` — see `contextToWrite` in `core/runtime.ts`. So a READ walks
+ * the prototype chain and finds the nearest ancestor that published, and a WRITE lands as an OWN
  * property, which is what keeps a sibling from seeing it. Both halves are load-bearing: the chain
  * is the lookup, and own-ness is the scope.
  *
  * A hook publishes onto its OWNER's object, because a hook is handed the owning component's
- * runtime — which is why publishing belongs in `@created` rather than a constructor: by then the
- * component has its own object, and its children are rendered after, which is when they look.
+ * runtime. A hook is made with its owner (RMD063) and `Head` publishes in `@created`, so the object
+ * is in place before the owner renders — and its children are built after, which is when they look.
  *
  * The keys belong to whoever publishes, and each publisher takes one nothing outside it can name:
  * `createContext` a fresh number from `createId()`, `Head` a module-private symbol. That is what

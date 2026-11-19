@@ -4,6 +4,7 @@ import { flushSync } from "../testing";
 import { COMPONENT_RUNTIME, GLOBAL_RUNTIME } from "../core/runtime";
 import { State } from "../reactivity/State";
 import { attach, detach } from "../helpers/constants";
+import { createContext } from "../base/Context";
 
 /**
  * What a component instance holds, and what a list row does when it runs again.
@@ -410,5 +411,193 @@ describe("a list row that runs again", () => {
     });
     expect(counts.attached).toBe(0);
     expect(counts.detached).toBe(2);
+  });
+});
+
+describe("a component's context", () => {
+  /**
+   * A component reads its parent's context object until it publishes on it. An own object for every
+   * component made each one with a child a PROTOTYPE — 1.4 hidden classes and a prototype record per
+   * component, measured.
+   */
+  test("is its parent's object while it publishes nothing", () => {
+    const made: Component[] = [];
+    class Leaf extends Component {
+      constructor(...args: ConstructorParameters<typeof Component>) {
+        super(...args);
+        made.push(this);
+      }
+      render() {
+        return <i />;
+      }
+    }
+    class Middle extends Component {
+      constructor(...args: ConstructorParameters<typeof Component>) {
+        super(...args);
+        made.push(this);
+      }
+      render() {
+        return (
+          <b>
+            <Leaf />
+          </b>
+        );
+      }
+    }
+    class Top extends Component {
+      constructor(...args: ConstructorParameters<typeof Component>) {
+        super(...args);
+        made.push(this);
+      }
+      render() {
+        return (
+          <div>
+            <Middle />
+            <Leaf />
+          </div>
+        );
+      }
+    }
+    mount(<Top />);
+    const [top, ...below] = made;
+    expect(below).toHaveLength(3);
+    for (const one of below) expect(one[GLOBAL_RUNTIME].context).toBe(top[GLOBAL_RUNTIME].context);
+  });
+
+  test("is an object of its own once it provides, inheriting its parent's, and its children read that", () => {
+    const [ThemeProvider, ThemeConsumer] = createContext({ theme: "dark" }, { label: "Theme" });
+    const made: Component[] = [];
+    class Reader extends Component {
+      theme = this.use(ThemeConsumer);
+      constructor(...args: ConstructorParameters<typeof Component>) {
+        super(...args);
+        made.push(this);
+      }
+      render() {
+        return <i>{this.theme.theme}</i>;
+      }
+    }
+    class Gives extends Component {
+      provider = this.use(ThemeProvider, () => ({ theme: "light" }));
+      constructor(...args: ConstructorParameters<typeof Component>) {
+        super(...args);
+        made.push(this);
+      }
+      render() {
+        return <Reader />;
+      }
+    }
+    class Top extends Component {
+      constructor(...args: ConstructorParameters<typeof Component>) {
+        super(...args);
+        made.push(this);
+      }
+      render() {
+        return (
+          <div>
+            <Gives />
+          </div>
+        );
+      }
+    }
+    const container = mount(<Top />);
+    const [top, gives, reader] = made;
+    expect(container.textContent).toBe("light");
+    expect(gives[GLOBAL_RUNTIME].context).not.toBe(top[GLOBAL_RUNTIME].context);
+    expect(Object.getPrototypeOf(gives[GLOBAL_RUNTIME].context)).toBe(top[GLOBAL_RUNTIME].context);
+    expect(reader[GLOBAL_RUNTIME].context).toBe(gives[GLOBAL_RUNTIME].context);
+  });
+
+  /**
+   * A provides, B publishes nothing, and C is mounted later, under a condition: C looks up when it is
+   * made, through B's object — which is A's — and finds A's value.
+   */
+  test("reaches a component mounted later, through a parent that provides nothing", () => {
+    const [ThemeProvider, ThemeConsumer] = createContext({ theme: "dark" }, { label: "Theme" });
+    class C extends Component {
+      theme = this.use(ThemeConsumer);
+      render() {
+        return <i>{this.theme.theme}</i>;
+      }
+    }
+    let b: B | undefined;
+    class B extends Component {
+      @state open = false;
+      constructor(...args: ConstructorParameters<typeof Component>) {
+        super(...args);
+        b = this;
+      }
+      render() {
+        return <p>{this.open ? <C /> : null}</p>;
+      }
+    }
+    class A extends Component {
+      provider = this.use(ThemeProvider, () => ({ theme: "light" }));
+      render() {
+        return <B />;
+      }
+    }
+    const container = mount(<A />);
+    expect(container.textContent).toBe("");
+    b!.open = true;
+    flushSync();
+    expect(container.textContent).toBe("light");
+  });
+
+  test("a sibling's publish is not seen beside it", () => {
+    const [ThemeProvider, ThemeConsumer] = createContext({ theme: "dark" }, { label: "Theme" });
+    class Gives extends Component {
+      provider = this.use(ThemeProvider, () => ({ theme: "light" }));
+      render() {
+        return <i>given</i>;
+      }
+    }
+    class Beside extends Component {
+      theme = this.use(ThemeConsumer);
+      render() {
+        return <i>{this.theme.theme}</i>;
+      }
+    }
+    const container = mount(
+      <div>
+        <Gives />
+        <Beside />
+      </div>,
+    );
+    expect(container.textContent).toBe("givendark");
+  });
+
+  /**
+   * The same context provided by a parent and again by its child is nesting, not a second Provider on
+   * one component: the child reads its parent's object, which has the key as its OWN, until the child
+   * publishes on an object of its own.
+   */
+  test("provided again below is nesting, and the inner value is read below it", () => {
+    const [ThemeProvider, ThemeConsumer] = createContext({ theme: "dark" }, { label: "Theme" });
+    class Reader extends Component {
+      theme = this.use(ThemeConsumer);
+      render() {
+        return <i>{this.theme.theme}</i>;
+      }
+    }
+    class Inner extends Component {
+      provider = this.use(ThemeProvider, () => ({ theme: "inner" }));
+      render() {
+        return <Reader />;
+      }
+    }
+    class Outer extends Component {
+      provider = this.use(ThemeProvider, () => ({ theme: "outer" }));
+      render() {
+        return (
+          <div>
+            <Reader />
+            <Inner />
+          </div>
+        );
+      }
+    }
+    const container = mount(<Outer />);
+    expect(container.textContent).toBe("outerinner");
   });
 });

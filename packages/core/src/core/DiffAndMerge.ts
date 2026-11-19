@@ -47,7 +47,7 @@ import { checkNesting } from "../debug/domNesting";
 import { seedWatchProps } from "../helpers/watchProps";
 import type { Context } from "../types/commonTypes";
 import { COMPONENT_RUNTIME, GLOBAL_RUNTIME, finishConstruction } from "./runtime";
-import { runComponentEffects } from "../reactivity/effect";
+import { queueComponentEffects } from "../reactivity/effect";
 import { getRenderEnv } from "./renderEnv";
 import { getServerWorkCollector } from "./serverWork";
 import {
@@ -2200,8 +2200,8 @@ export function buildComponentRegion(
   parent: ChildNode,
 ): ComponentRegion {
   const placeholderComponentRuntime = placeholderComponent?.[COMPONENT_RUNTIME];
-  const parentContext = placeholderComponent?.[GLOBAL_RUNTIME].context;
-  const currentContext = Object.create(parentContext || null) as Context;
+  // The parent's own object, shared until this component publishes on it — see `contextToWrite`.
+  const currentContext = placeholderComponent?.[GLOBAL_RUNTIME].context ?? (Object.create(null) as Context);
 
   const component = componentFactory(vnode.name, vnode.attributes, currentContext);
   const componentRuntime = component[COMPONENT_RUNTIME];
@@ -2340,7 +2340,7 @@ function buildComponent(
 
   // Deferred with the rest, not left inline: this runs effects for the first time, and running it
   // inline would move it ahead of @mounted. No-op on the server.
-  queuePostCommit(component, () => runComponentEffects(component));
+  queueComponentEffects(component);
   return region;
 }
 
