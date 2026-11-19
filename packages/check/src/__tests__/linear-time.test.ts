@@ -6,6 +6,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, test } from "vitest";
 import { analyzeProject, arrangementsVisitedSoFar } from "../analyze";
+import { cpuTime } from "./cpuTime";
 
 /**
  * What a project's source holds, read in LINEAR time.
@@ -13,7 +14,8 @@ import { analyzeProject, arrangementsVisitedSoFar } from "../analyze";
  * Each case is the input a ReDoS checker (`recheck`) produced for one pattern here, grown to 40,000
  * characters, and each was MEASURED slow before its fix — two parts of a pattern that can both take
  * the same character try every way of sharing it. Asked as the DIFFERENCE from the same project with
- * a short value, because building the program is most of a run and is not what is being measured.
+ * a short value, because building the program is most of a run and is not what is being measured —
+ * and as CPU, the fewest of three, each on a project of its own (see `cpuTime`).
  */
 const FIXTURES = resolve(dirname(fileURLToPath(import.meta.url)), "fixtures");
 const N = 40_000;
@@ -57,21 +59,20 @@ function projectOf(source: string): string {
 }
 
 /**
- * The fastest of three runs. Most of a run is building the program, and under a loaded gate that
- * varies by more than the 500 ms these allow: one run of the same input failed the gate twice and
- * passed alone. A quadratic pattern over 40,000 characters costs seconds on every run, so the
- * fastest still tells the two apart and a busy machine does not.
+ * The CPU the analyzer spends on a project rendering `markup`, the fewest of three — each round a
+ * project of its own, written before the clock starts, so neither the disk nor a cached answer is in
+ * what is timed.
+ *
+ * Measured on his Linux laptop (Ryzen 5 2500U), long minus short: at most 296 ms with both patterns as
+ * they are, under coverage with four cores busy; with each pattern's quadratic form planted back, alone
+ * and without coverage, 5,925 ms for the number and 2,459 ms for the directive. The 1,500 ms bound sits
+ * between, and coverage only widens the planted side.
  */
-const took = (markup: string) => {
-  const tsconfig = project(markup);
-  let fastest = Number.POSITIVE_INFINITY;
-  for (let run = 0; run < 3; run++) {
-    const started = performance.now();
-    analyzeProject(tsconfig);
-    fastest = Math.min(fastest, performance.now() - started);
-  }
-  return fastest;
-};
+const took = (markup: string) =>
+  cpuTime(
+    (round) => project(`${markup}\n        {/* round ${round} */}`),
+    (tsconfig) => analyzeProject(tsconfig),
+  );
 
 describe("read in linear time", () => {
   test.each<[string, (long: boolean) => string]>([
@@ -91,7 +92,7 @@ describe("read in linear time", () => {
   ])("%s", (_what, markup) => {
     const short = took(markup(false));
     const long = took(markup(true));
-    expect(long - short).toBeLessThan(500);
+    expect(long - short).toBeLessThan(1500);
   });
 });
 
