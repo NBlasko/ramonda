@@ -57,12 +57,14 @@ import type { Resolver, Rule } from "./rule";
  * `prefix = "Total: "` — can never be stale, and it is the commonest plain field there is. So a
  * WRITE is required, and writes in the constructor, in a field initializer and in `@created` do not
  * count: all three run before the first render, so the first computed value already has the final
- * one. Those members are skipped whole, so a handler written INSIDE one of them is not counted either
- * — a known gap, on the running list. Anywhere else, any function holding a write is a later place,
- * even one invoked on the spot: which functions run when is not followed.
+ * one. Their own writes, that is: a function written INSIDE one of them — a listener the constructor
+ * adds, a timer `@created` starts — runs later, and its writes count (see `runsByTheFirstRender`).
+ * Anywhere else, any function holding a write is a later place, even one invoked on the spot: which
+ * functions run when is not followed.
  *
  * **A write from inside a render or a `@compute`** — the memo pattern,
- * `if (!this.cache) this.cache = expensive()`. Advising `@state` there would be advising a loop.
+ * `if (!this.cache) this.cache = expensive()`. A render's own writes, again: a handler it writes,
+ * `onclick={() => { this.rate = 3 }}`, runs on a click, and its write counts. Advising `@state` there would be advising a loop.
  * `state-written-while-rendering` is the rule with an opinion about that shape.
  *
  * **`@destroyed`**, which runs after the last render.

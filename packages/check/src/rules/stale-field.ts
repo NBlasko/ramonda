@@ -112,8 +112,11 @@ export function fieldWrites(
   for (const one of declaring) {
     for (const member of one.members) {
       if (isStatic(member) || ts.isClassStaticBlockDeclaration(member)) continue;
-      if (!writesAfterTheFirstRender(member, resolve)) continue;
-      const writer = memberName(member) ?? "a method";
+      // The constructor, `@created` and `render()` write before or at the first render — but a function
+      // written inside one, a handler or a timer's callback, runs later, and its writes count.
+      const early = runsByTheFirstRender(member, resolve);
+      if (!early && !writesAfterTheFirstRender(member, resolve)) continue;
+      const writer = ts.isConstructorDeclaration(member) ? "constructor" : (memberName(member) ?? "a method");
       // A field holding a `function` writes the instance when it is called through the owner,
       // `this.onDone()`, so its body is read as the member's own — not skipped for having a `this` of its own.
       const value = ts.isPropertyDeclaration(member) ? member.initializer : undefined;
@@ -133,6 +136,8 @@ export function fieldWrites(
         // An instance field's initializer writes this instance before its first render — the constructor's
         // time, which `writesAfterTheFirstRender` does not count either.
         if (fn === undefined || ts.isPropertyDeclaration(fn)) return;
+        // The early member's own writes are its time; only a function written inside it runs later.
+        if (early && fn === member) return;
         const list = writes.get(field) ?? [];
         list.push({ writer, fn });
         writes.set(field, list);
@@ -149,6 +154,20 @@ export function fieldWrites(
  * the renders themselves, where a write is the memo pattern rather than a change. `@destroyed` runs
  * after the last render, so nothing is left to be stale.
  */
+/**
+ * Whether this member runs before or at the first render — the constructor, `@created`, `render()`.
+ *
+ * Its own writes leave nothing stale: they are the starting value, or the memo pattern in a render.
+ * A function WRITTEN inside it is another matter — `onclick={() => { this.rate = 3 }}` in `render()`,
+ * `setInterval(() => this.rate++, 1000)` in `@created` — because it runs later, when it is called, and
+ * `fieldWrites` counts the writes inside it.
+ */
+export function runsByTheFirstRender(member: ts.ClassElement, resolve: Resolver): boolean {
+  if (ts.isConstructorDeclaration(member)) return true;
+  if (hasDecorator(member, "created", resolve)) return true;
+  return memberName(member) === "render" && !hasDecorator(member, "compute", resolve);
+}
+
 export function writesAfterTheFirstRender(member: ts.ClassElement, resolve: Resolver): boolean {
   if (ts.isConstructorDeclaration(member)) return false;
   if (hasDecorator(member, "created", resolve) || hasDecorator(member, "destroyed", resolve)) return false;
