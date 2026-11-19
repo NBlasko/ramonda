@@ -152,17 +152,30 @@ export const COMPONENT_RUNTIME = Symbol("componentRuntime");
 export const HOOK_RUNTIME = Symbol("hookRuntime");
 export const INTERNAL_HOOKS = Symbol("internalHooks");
 
+/** The hooks an owner walks on each update, in `use()` order: each one's update. */
+export type HookWalk = (() => void)[];
+
 /**
- * The hooks an owner walks on each update, in `use()` order — held in a box rather than on the owner.
+ * Components and hooks whose construction is over. A hook is made only while its owner is being made —
+ * see `useCommon` (RMD063) — and this is how `use()` knows the owner's construction has ended.
  *
- * A hook woken into the middle REPLACES `list` instead of changing it, so a walk in progress finishes over
- * the list it began with (see `register` in `helpers/common.ts`). The box is written onto the owner once: a hook may
- * freeze itself in its constructor, and a frozen owner takes no new property value, while the box it
- * already holds stays writable — freezing is shallow.
+ * Written by whoever calls `new`, once it returns: the base constructors run FIRST, before a subclass's
+ * field initializers, so nothing inside the instance can mark the end of its own construction. The
+ * framework calls `new` in three places — a component built by the diff, one adopted by hydration, and
+ * a hook in `use()` — and each marks what it built.
  */
-export interface HookWalk {
-  list: (() => void)[];
+const constructed = new WeakSet<object>();
+
+/** Marks a component or hook as constructed: from here on, `use()` on it throws (RMD063). */
+export function finishConstruction(instance: object): void {
+  constructed.add(instance);
 }
+
+/** Whether a component or hook has finished being constructed. */
+export function isConstructed(instance: object): boolean {
+  return constructed.has(instance);
+}
+
 // Child hook instances of a component/hook, in `use()` order — a deterministic
 // tree used to serialize/restore state across the server→client boundary.
 export const CHILD_HOOKS = Symbol("childHooks");

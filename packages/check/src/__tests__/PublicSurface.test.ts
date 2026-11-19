@@ -41,6 +41,7 @@ const EXPECTED_TYPES = [
   "JsonFinding",
   "JsonReport",
   "AriaHiddenOnFocusableIssue",
+  "HookUsedOutsideAFieldIssue",
   "PresentationRoleOnFocusableIssue",
   "AriaStateWithNoRoleIssue",
   "AutocompleteThatFillsNothingIssue",

@@ -151,6 +151,12 @@ eventually. The hook never sees this argument, and a production build stores non
 - **A hook is created the moment `this.use()` runs** — while the owner itself is
   being built, before the owner's own `@created`. Hooks are built in `this.use()`
   order.
+- **A hook is a field, and only a field** — `private timer = this.use(Timeout, …)`. Every
+  owner then makes the same hooks, once, in the same order. A `use()` anywhere else — a method,
+  `@created`, `@mounted`, a handler, behind a condition or in a loop — is refused:
+  [`hook-used-outside-a-field`](/rules/hook-used-outside-a-field) reports it before anything runs,
+  and [RMD063](/reference/diagnostics/rmd063) throws when it runs after the owner was built. A hook
+  that should do nothing at times is still made, with options that make it idle.
 - **Its lifecycle is part of the owner's, not a separate pass.** A hook has no
   element, so there's no separate mount for it: its `@created` runs as the owner is
   built, its `@mounted` once the owner's DOM is on the page, its `@destroyed` when the

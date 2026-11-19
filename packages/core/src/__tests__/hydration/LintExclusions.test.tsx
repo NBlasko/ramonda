@@ -52,9 +52,11 @@ describe("hydration: unpersisted-state lint, exclusions and mutation", () => {
       @state v = 1;
     }
     class C extends Component {
+      // A hook is made in a field (RMD063); `@created` can still hand the instance to another field.
+      helper = this.use(Helper);
       later: unknown;
       @created seed() {
-        this.later = this.use(Helper);
+        this.later = this.helper;
       }
       render() {
         return (

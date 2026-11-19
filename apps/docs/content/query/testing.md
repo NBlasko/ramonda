@@ -130,7 +130,7 @@ expect(fetcher).toHaveBeenCalledTimes(1);
 Reject from the fetcher and set `retry: 0`, or the test waits out the backoff:
 
 ```tsx
-this.use(Query, () => ({
+private user = this.use(Query, () => ({
   key: ["user", "1"],
   fetch: async () => {
     throw new Error("503");

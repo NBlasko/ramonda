@@ -145,7 +145,7 @@ function insertTaskInQueue(component: BaseComponent<unknown>) {
 
 function updateBuild(component: BaseComponent<unknown>) {
   if (component[INTERNAL_HOOKS]) {
-    for (const update of component[INTERNAL_HOOKS].list) {
+    for (const update of component[INTERNAL_HOOKS]) {
       update();
     }
   }

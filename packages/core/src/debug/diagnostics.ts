@@ -97,7 +97,8 @@ export type DiagnosticCode =
   | "RMD059"
   | "RMD060"
   | "RMD061"
-  | "RMD062";
+  | "RMD062"
+  | "RMD063";
 interface DiagnosticSpec {
   /**
    * The rule, and it is about the OUTCOME rather than how bad the code looks:
@@ -448,6 +449,14 @@ export const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
     severity: "warning",
     title: "A field read its model while a commit ran",
     fix: "A field learns its model through render, and the render an edit's handler causes runs once the commit is over. An edit sent from the commit's own work — `@mounted`, `@updated`, `render()`, the constructor, `@created`, `@destroyed`, `@watchProp`, `@catchError` — is answered, but whether its handler took the edit or refused it is known only once that render has run — so the next event in the same commit (a second edit, the `change` after an `input`, the end of a word that is handed over again) reads the model as it was, and a `change` after a refused edit reaches `onchange` with the text the handler refused. What a field shows is state: write it — `@state on = true`, or `this.text = …` in `@mounted` — and the commit's render shows it. An edit that must go through the field's handler and the form around it is sent once the commit is over: `queueMicrotask(() => this.box.current?.click())`. A library handed the field tells you its value through its own callback, which writes state. `ramonda-check` reports an edit sent from the commit before it ships, as `field-set-by-an-event`.",
+  },
+  RMD063: {
+    thrown: true,
+    // An error, and it THROWS in every build — see `useCommon` in `helpers/common.ts`. The prose here is
+    // what development prints beside the throw.
+    severity: "error",
+    title: "A hook used after its owner was constructed",
+    fix: "A hook is made while its owner is made, and at no other time: write every hook as a field — `private timer = this.use(Timeout, () => ({ run: this.tick }))` — never from a method, `@created`, `@mounted`, a handler or a callback, and never behind a condition. Every `use()` then runs once, in the same order, for every instance: the update walk, the hook tree hydration restores state into, and what `ramonda-check` proves about a class all rest on that. A hook that should do nothing at times is still made; give it options that make it idle — `Timeout` and `Listener` start only when you call `start()` or `listen()`. A Provider used later would be seen by the descendants built after it and not by the ones built before. `ramonda-check` reports every shape but a field before anything runs, as `hook-used-outside-a-field`.",
   },
   RMD060: {
     // error: nothing renders. The component's output is a promise, so the diff is handed an object

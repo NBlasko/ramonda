@@ -7,7 +7,7 @@ import { adoptBlock, blockOf, type BlockMiss, type BlockVNode } from "../core/bl
 import { generateRenderOutput } from "../helpers/generateRenderOutput";
 import { seedWatchProps } from "../helpers/watchProps";
 import { runComponentEffects } from "../reactivity/effect";
-import { COMPONENT_RUNTIME, GLOBAL_RUNTIME, INTERNAL_HOOKS } from "../core/runtime";
+import { COMPONENT_RUNTIME, GLOBAL_RUNTIME, INTERNAL_HOOKS, finishConstruction } from "../core/runtime";
 import {
   buildComponentRegion,
   componentRegionOwner,
@@ -393,6 +393,7 @@ function hydrateComponentRegion(
   const parentContext = placeholder?.[GLOBAL_RUNTIME].context;
   const context = Object.create(parentContext || null) as Context;
   const component = new vnode.name(vnode.attributes, context);
+  finishConstruction(component);
   const runtime = component[GLOBAL_RUNTIME];
   const componentRuntime = component[COMPONENT_RUNTIME];
 
@@ -456,7 +457,7 @@ function hydrateComponentRegion(
     // publish the SERVER's route and hold it until the next render. Hooks have to
     // see the final state — after the blob, and after any @created that corrects it.
     if (component[INTERNAL_HOOKS]) {
-      for (const update of component[INTERNAL_HOOKS].list) update();
+      for (const update of component[INTERNAL_HOOKS]) update();
     }
 
     seedWatchProps(component);
@@ -988,7 +989,7 @@ function resumeHydration(component: BaseComponent): void {
    * the chunk it awaited: `5 usd` where the component's own state already said `sr`.
    */
   if (component[INTERNAL_HOOKS]) {
-    for (const update of component[INTERNAL_HOOKS].list) update();
+    for (const update of component[INTERNAL_HOOKS]) update();
   }
 
   /**

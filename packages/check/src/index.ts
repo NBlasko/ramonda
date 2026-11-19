@@ -28,6 +28,7 @@ export type {
   RefBuiltWhereItCannotBeKeptIssue,
   CachedReadOfAPlainFieldIssue,
   MethodWrittenOverIssue,
+  HookUsedOutsideAFieldIssue,
   ContextConsumedAboveItsProviderIssue,
   ControlWithNoLabelIssue,
   FormFieldWithoutWhatTheFormNeedsIssue,

@@ -46,7 +46,7 @@ import { lifecycleCleanupManagement } from "../helpers/lifecycleMenagement";
 import { checkNesting } from "../debug/domNesting";
 import { seedWatchProps } from "../helpers/watchProps";
 import type { Context } from "../types/commonTypes";
-import { COMPONENT_RUNTIME, GLOBAL_RUNTIME } from "./runtime";
+import { COMPONENT_RUNTIME, GLOBAL_RUNTIME, finishConstruction } from "./runtime";
 import { runComponentEffects } from "../reactivity/effect";
 import { getRenderEnv } from "./renderEnv";
 import { getServerWorkCollector } from "./serverWork";
@@ -2345,5 +2345,7 @@ function buildComponent(
 }
 
 function componentFactory(component: ComponentClassKind, props: Record<string, unknown>, ctx: Context): BaseComponent {
-  return new component(props, ctx);
+  const instance = new component(props, ctx);
+  finishConstruction(instance);
+  return instance;
 }
