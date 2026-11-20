@@ -261,7 +261,7 @@ TypeScript to infer `ctx` from the same object it is currently inferring — `ct
 
 ```tsx expect-error
 // `ctx` is implicitly `any`, so `ctx.singal` (typo) passes.
-this.use(Query, () => ({ key: ["user", id], fetch: (ctx) => loadUser(id, ctx.signal) }));
+private user = this.use(Query, () => ({ key: ["user", id], fetch: (ctx) => loadUser(id, ctx.signal) }));
 ```
 
 Pin the type arguments and everything else follows from them:

@@ -23,6 +23,12 @@ describe("a hook used outside a field", () => {
       "Everywhere.open:Timer",
       "Everywhere.made:Counter",
       "Everywhere.ready:Counter",
+      "Spelled.viaSuper:Counter",
+      "Spelled.viaIndex:Counter",
+      "Spelled.viaCall:Counter",
+      "Spelled.viaBind:a hook",
+      "Spelled.viaAlias:a hook",
+      "Spelled.viaCast:Counter",
       "Grows.grow:Counter",
     ]);
   });

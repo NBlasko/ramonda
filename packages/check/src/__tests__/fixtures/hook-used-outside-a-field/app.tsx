@@ -65,6 +65,41 @@ class Everywhere extends Component {
   }
 }
 
+/** Every other way of reading `use` off the instance, each REPORTED. */
+class Spelled extends Everywhere {
+  viaSuper(): void {
+    /* REPORTED — the base's `use`, through `super`. */
+    super.use(Counter);
+  }
+  viaIndex(): void {
+    /* REPORTED — by its name in brackets. */
+    this["use"](Counter);
+  }
+  viaCall(): void {
+    /* REPORTED — through `.call`. */
+    this.use.call(this, Counter);
+  }
+  viaBind(): void {
+    /* REPORTED — through `.bind`. */
+    this.use.bind(this)(Counter);
+  }
+  viaAlias(): void {
+    /* REPORTED — taken out under its own name. */
+    const { use } = this;
+    use.call(this, Counter);
+  }
+  viaCast(): void {
+    /* REPORTED — through a cast of `this`. */
+    (this as Spelled).use(Counter);
+  }
+  viaFunction(): void {
+    /* Not reported: a `function`'s `this` is its own, even one declared as this class (TODO 184). */
+    [1].forEach(function (this: Spelled) {
+      this.use(Counter);
+    }, this);
+  }
+}
+
 /** In a hook, the same. */
 class Grows extends Hook {
   child: unknown;
@@ -74,4 +109,4 @@ class Grows extends Hook {
   }
 }
 
-export { Fields, Inner, Everywhere, Grows };
+export { Fields, Inner, Everywhere, Spelled, Grows };

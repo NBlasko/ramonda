@@ -142,4 +142,79 @@ describe("a hook made with its owner", () => {
     expect(element.textContent).toBe("page");
     expect(() => adopted[0].open()).toThrow(/RMD063/);
   });
+
+  test("in a base's fields and a subclass's, and after super() in a constructor, is made", () => {
+    class Base extends Component {
+      first = this.use(Counter, () => ({ start: 1 }));
+      render() {
+        return <p>{this.first.n}</p>;
+      }
+    }
+    let derived: Derived | undefined;
+    class Derived extends Base {
+      second = this.use(Counter, () => ({ start: 2 }));
+      third: Counter;
+      constructor(...args: ConstructorParameters<typeof Component>) {
+        super(...args);
+        // Still constructing: the mark is set once the most-derived constructor has returned.
+        this.third = this.use(Counter, () => ({ start: 3 }));
+        derived = this;
+      }
+    }
+    bootstrap(<Derived />, container());
+    flushSync();
+    expect([derived!.first, derived!.second, derived!.third].every((one) => one instanceof Counter)).toBe(true);
+  });
+
+  test("on the server, from @created, is refused; in a field it renders", async () => {
+    class Served extends Component {
+      counter = this.use(Counter, () => ({ start: 1 }));
+      render() {
+        return <p>{this.counter.n}</p>;
+      }
+    }
+    class Late extends Component {
+      @created made(): void {
+        this.use(Counter, () => ({ start: 1 }));
+      }
+      render() {
+        return <p />;
+      }
+    }
+    expect(await renderToString(<Served />)).toContain("0");
+    await expect(renderToString(<Late />)).rejects.toThrow(/RMD063/);
+  });
+
+  /**
+   * A component the server did not render is BUILT by hydration rather than adopted — through the diff's
+   * path, which marks it like any other.
+   */
+  test("from a method of a component hydration built because the server had not rendered it, is refused", async () => {
+    const built: Extra[] = [];
+    class Extra extends Component {
+      constructor(...args: ConstructorParameters<typeof Component>) {
+        super(...args);
+        built.push(this);
+      }
+      open(): void {
+        this.use(Counter, () => ({ start: 1 }));
+      }
+      render() {
+        return <b>extra</b>;
+      }
+    }
+    class Page extends Component<{ withExtra: boolean }> {
+      render() {
+        return <div>{this.props.withExtra ? <Extra /> : null}</div>;
+      }
+    }
+    const element = container();
+    element.innerHTML = await renderToString(<Page withExtra={false} />);
+    hydrateRoot(<Page withExtra={true} />, element);
+    flushSync();
+
+    expect(built).toHaveLength(1);
+    expect(element.textContent).toBe("extra");
+    expect(() => built[0].open()).toThrow(/RMD063/);
+  });
 });

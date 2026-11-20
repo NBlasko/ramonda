@@ -1,5 +1,5 @@
 import ts from "typescript";
-import { bindsThis, hookNamed, isStatic, isThisUse, memberName, positionOf } from "../syntax";
+import { bindsThis, hookNamed, isStatic, memberName, positionOf } from "../syntax";
 import type { Rule } from "./rule";
 
 /**
@@ -14,6 +14,12 @@ import type { Rule } from "./rule";
  *
  * The constructor body is refused too, even unconditionally: one shape is one answer, and a field
  * says everything a statement in the constructor can.
+ *
+ * Every way of reading `use` off the instance counts, not only the call: `super.use`, `this["use"]`,
+ * `(this as X).use`, `this.use.call(…)` and `.bind(…)`, and `const { use } = this`. Inside a `function`
+ * written in the class, `this` is that function's own and is not read — even when the function
+ * declares `this: ThisClass` and is handed the instance (TODO 184); the runtime refuses that call when
+ * it runs, as it refuses every `use()` after construction.
  */
 export interface HookUsedOutsideAFieldIssue {
   /** The component or hook. */
@@ -34,7 +40,17 @@ export interface HookUsedOutsideAFieldIssue {
  * change no value and run nothing: `instance = this.use(hook as never, …) as T` is still the call,
  * once, for every instance.
  */
-function isAFieldsWholeInitializer(call: ts.CallExpression): boolean {
+function isAFieldsWholeInitializer(read: ts.Node): boolean {
+  // Only `this.use(…)` itself, called: `super.use`, `this["use"]`, `.call`, a destructured `use` are not it.
+  const call = read.parent;
+  if (
+    !ts.isPropertyAccessExpression(read) ||
+    read.expression.kind !== ts.SyntaxKind.ThisKeyword ||
+    !ts.isCallExpression(call) ||
+    call.expression !== read
+  ) {
+    return false;
+  }
   let at: ts.Node = call;
   while (
     ts.isParenthesizedExpression(at.parent) ||
@@ -47,6 +63,67 @@ function isAFieldsWholeInitializer(call: ts.CallExpression): boolean {
   }
   const parent = at.parent;
   return ts.isPropertyDeclaration(parent) && parent.initializer === at && !isStatic(parent);
+}
+
+/** `this` or `super`, through what only the compiler reads — `(this as Probe)`, `this!`. */
+function isTheInstance(expression: ts.Expression): boolean {
+  let at = expression;
+  while (
+    ts.isParenthesizedExpression(at) ||
+    ts.isAsExpression(at) ||
+    ts.isSatisfiesExpression(at) ||
+    ts.isNonNullExpression(at) ||
+    ts.isTypeAssertionExpression(at)
+  ) {
+    at = at.expression;
+  }
+  return at.kind === ts.SyntaxKind.ThisKeyword || at.kind === ts.SyntaxKind.SuperKeyword;
+}
+
+/**
+ * The node that reads `use` off the instance, when `node` is one — every way of writing it: `this.use`,
+ * `super.use`, `this["use"]`, `(this as X).use`, and `const { use } = this`. Read, it is a hook made, or
+ * about to be: called right there, through `.call` or `.bind`, or later through a name.
+ */
+function useReadAt(node: ts.Node): ts.Node | undefined {
+  if (ts.isPropertyAccessExpression(node) && node.name.text === "use" && isTheInstance(node.expression)) return node;
+  if (
+    ts.isElementAccessExpression(node) &&
+    ts.isStringLiteralLike(node.argumentExpression) &&
+    node.argumentExpression.text === "use" &&
+    isTheInstance(node.expression)
+  ) {
+    return node;
+  }
+  if (ts.isVariableDeclaration(node) && ts.isObjectBindingPattern(node.name) && node.initializer !== undefined) {
+    if (!isTheInstance(node.initializer)) return undefined;
+    const taken = node.name.elements.find((element) => {
+      const name = element.propertyName ?? element.name;
+      return ts.isIdentifier(name) && name.text === "use";
+    });
+    return taken;
+  }
+  return undefined;
+}
+
+/** The hook a read of `use` makes, as written — the first argument of the call it is, or a placeholder. */
+function hookOf(read: ts.Node): string {
+  const parent = read.parent;
+  if (ts.isCallExpression(parent) && parent.expression === read && parent.arguments[0] !== undefined) {
+    return hookNamed(parent.arguments[0]).getText();
+  }
+  // `this.use.call(this, Hook)` — the hook is the second argument.
+  const call = parent.parent;
+  if (
+    ts.isPropertyAccessExpression(parent) &&
+    parent.name.text === "call" &&
+    call !== undefined &&
+    ts.isCallExpression(call) &&
+    call.arguments[1] !== undefined
+  ) {
+    return hookNamed(call.arguments[1]).getText();
+  }
+  return "a hook";
 }
 
 export const hookUsedOutsideAField = {
@@ -82,9 +159,9 @@ export const hookUsedOutsideAField = {
         // Only an arrow keeps the instance's `this` — see `bindsThis`: a `function`'s `this` is its own,
         // and a class declared inside this one has its `use()` calls read when that class is.
         if (at !== member && bindsThis(at)) return;
-        if (ts.isCallExpression(at) && isThisUse(at) && !isAFieldsWholeInitializer(at)) {
-          const hook = at.arguments[0] === undefined ? "a hook" : hookNamed(at.arguments[0]).getText();
-          found.push({ component: self.name, hook, usedIn, ...positionOf(at) });
+        const read = useReadAt(at);
+        if (read !== undefined && !isAFieldsWholeInitializer(read)) {
+          found.push({ component: self.name, hook: hookOf(read), usedIn, ...positionOf(read) });
         }
         ts.forEachChild(at, walk);
       })(member);
