@@ -35,14 +35,26 @@ export interface StateOptions<T> {
  * - **No snapshot on the common path.** `Array.from(listeners.values())` used to
  *   allocate on every set; with one listener there is nothing to snapshot.
  */
+/**
+ * What a signal calls when it changes: a function, or an object it calls `reBuild` on — a component's
+ * runtime, which re-renders its component. See `heardBy`.
+ */
+export type Heard = (() => void) | { reBuild(): void };
+
+/** Calls whatever a signal heard by — see `Heard`. */
+function call(listener: Heard): void {
+  if (typeof listener === "function") listener();
+  else listener.reBuild();
+}
+
 export class State<T> {
   private _value: T;
 
   /** The only listener, while there is only one. */
-  private _listener: (() => void) | undefined;
+  private _listener: Heard | undefined;
   private _listenerId: number | string | undefined;
   /** Allocated on the second listener; from then on it is the only store. */
-  private _listeners: Map<number | string, () => void> | undefined;
+  private _listeners: Map<number | string, Heard> | undefined;
 
   constructor(initialValue: T, options?: StateOptions<T>) {
     this._value = initialValue;
@@ -66,7 +78,21 @@ export class State<T> {
     }
   }
 
-  [attach](listener: { id: number | string; onChange: () => void }) {
+  /**
+   * A signal with one listener already on it — a prop's, or `@state`'s, which the component's own
+   * re-render listens to — made without the two objects `{ listener: { id, onChange } }` that the
+   * constructor reads and drops. A prop signal is made for every prop a component reads, so those two
+   * objects were made for nearly every component built: measured in Chrome, creating 1,000 rows of five
+   * components, the props proxy's `get` allocated 73 B per component, most of it these.
+   */
+  static heardBy<T>(initialValue: T, id: number | string, onChange: Heard): State<T> {
+    const state = new State(initialValue);
+    state._listenerId = id;
+    state._listener = onChange;
+    return state;
+  }
+
+  [attach](listener: { id: number | string; onChange: Heard }) {
     const map = this._listeners;
     if (map !== undefined) {
       map.set(listener.id, listener.onChange);
@@ -81,7 +107,7 @@ export class State<T> {
     }
 
     // Second listener: upgrade to the Map and stop using the single slot.
-    const upgraded = new Map<number | string, () => void>();
+    const upgraded = new Map<number | string, Heard>();
     upgraded.set(this._listenerId as number | string, this._listener);
     upgraded.set(listener.id, listener.onChange);
     this._listeners = upgraded;
@@ -169,7 +195,7 @@ export class State<T> {
 
     const single = this._listener;
     if (single !== undefined) {
-      single();
+      call(single);
       return;
     }
 
@@ -180,7 +206,7 @@ export class State<T> {
     // while being notified, and iterating the live Map would then be undefined.
     const toNotify = Array.from(map.values());
     for (const listener of toNotify) {
-      listener();
+      call(listener);
     }
   }
 }

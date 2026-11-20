@@ -406,7 +406,7 @@ export function createContext<T extends object>(
 
               // Unique id: "contextId:runtimeId:key", e.g. "101:5:theme".
               const listenerId = `${contextId}:${owner.id}:${key}`;
-              signal[attach]({ id: listenerId, onChange: owner.reBuild });
+              signal[attach]({ id: listenerId, onChange: owner });
 
               // Detach when the consumer's component unmounts.
               addTo(owner, "clearReactives", () => signal[detach](listenerId));

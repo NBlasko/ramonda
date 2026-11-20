@@ -289,41 +289,72 @@ export function addTo<K extends RuntimeList>(runtime: Runtime, key: K, entry: En
  * 120 B), and one more shape transition for each field. Written here, every runtime has the same shape
  * from birth, and its fields stay in the object.
  */
+/**
+ * The class a component's runtime is an instance of — so `reBuild` is ONE method on its prototype rather
+ * than a closure made for every component, and the runtime itself is what a component's signals call:
+ * `State.heardBy(value, runtime.id, runtime)`. Measured in Chrome after creating 1,000 rows of five
+ * components: the `reBuild` closure and the scope it kept were 48 B of the 582 B a component kept.
+ */
+class ComponentRuntimeRecord {
+  mounts: readonly LifecycleEntry[] = NONE;
+  effects: readonly Effect[] = NONE;
+  updates: readonly (() => void)[] = NONE;
+  context: Context;
+  ownsContext = false;
+  clearReactives: readonly (() => void)[] = NONE;
+  id: number = createId();
+  creates: readonly LifecycleEntry[] = NONE;
+  destroys: readonly LifecycleEntry[] = NONE;
+  watchProps: readonly WatchPropEntry[] = NONE;
+  deferHydrations: readonly (() => unknown)[] = NONE;
+  owner: BaseComponent;
+  holder?: object;
+  rawProps: Record<string | symbol, unknown>;
+  depth = 1;
+  propsSignals: PropSignals = new PropSignalStore() as PropSignals;
+  env: RenderEnv = "client";
+  constructed = false;
+  catchError: ((e: unknown) => unknown) | undefined = undefined;
+  parent: BaseComponent | undefined = undefined;
+  inBuildQueue: boolean | undefined = undefined;
+  isInitialized: boolean | undefined = undefined;
+  hydrationPending: boolean | undefined = undefined;
+  serverWork: ServerWork | undefined = undefined;
+  isDestroyed: boolean | undefined = undefined;
+  block: EnclosingBlock | undefined = undefined;
+  region: ComponentRegion | undefined = undefined;
+
+  constructor(that: BaseComponent<unknown>, context: Context, rawProps: Record<string | symbol, unknown> | undefined) {
+    this.context = context;
+    this.owner = that;
+    this.rawProps = rawProps ?? {};
+  }
+
+  /** Re-renders the component: queues it — see `addTaskToQueue`. */
+  reBuild(): void {
+    addTaskToQueue(this.owner);
+  }
+}
+
+/**
+ * A component's runtime: ONE object, which the instance holds under both `GLOBAL_RUNTIME` and
+ * `COMPONENT_RUNTIME`. The two halves were two objects made side by side in `Component`'s constructor
+ * and never apart for a moment of their lives; one object is one allocation fewer per component and
+ * one shape. A hook is handed this same object as its `GLOBAL_RUNTIME` — its owner's — and keeps a
+ * `HookRuntime` of its own.
+ *
+ * Every field it will ever hold is there from construction, the optional ones as `undefined` (see
+ * `ComponentRuntimeRecord`). A field added later — `parent`, `block` and `region` are set while the
+ * component is built, the flags through its life — changes the object's hidden class, and V8 then keeps
+ * it in a separate property array. Measured in Chrome after creating 1,000 rows of five components:
+ * 3.4 property arrays per component (about 120 B), and one more shape transition for each field.
+ */
 export const createComponentRuntime = (
   that: BaseComponent<unknown>,
   context: Context,
   rawProps: Record<string | symbol, unknown> | undefined,
 ): ComponentRuntime => {
-  const runtime: ComponentRuntime = {
-    reBuild: () => addTaskToQueue(that),
-    mounts: NONE,
-    effects: NONE,
-    updates: NONE,
-    context,
-    ownsContext: false,
-    clearReactives: NONE,
-    id: createId(),
-    creates: NONE,
-    destroys: NONE,
-    watchProps: NONE,
-    deferHydrations: NONE,
-    // The component itself. No extra retention: `reBuild` already closes over the same object.
-    owner: that,
-    rawProps: rawProps ?? {},
-    depth: 1,
-    propsSignals: new PropSignalStore() as PropSignals,
-    env: "client",
-    constructed: false,
-    catchError: undefined,
-    parent: undefined,
-    inBuildQueue: undefined,
-    isInitialized: undefined,
-    hydrationPending: undefined,
-    serverWork: undefined,
-    isDestroyed: undefined,
-    block: undefined,
-    region: undefined,
-  };
+  const runtime = new ComponentRuntimeRecord(that, context, rawProps);
 
   // The DEV-only twin of `owner`, kept separate because a diagnostic reads it and
   // production must not: same object, stripped from the prod build.

@@ -63,12 +63,7 @@ const propsHandler: ProxyHandler<PropsTarget> = {
     if (!sig) {
       const value = componentRuntime.rawProps[key];
       const runtime = component[GLOBAL_RUNTIME];
-      sig = new State(value, {
-        listener: {
-          id: runtime.id,
-          onChange: runtime.reBuild,
-        },
-      });
+      sig = State.heardBy(value, runtime.id, runtime);
       componentRuntime.propsSignals[key] = sig;
     }
 

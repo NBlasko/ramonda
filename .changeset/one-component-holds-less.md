@@ -6,7 +6,8 @@ A component instance holds less, and a list row that runs again writes no subscr
 All lists a runtime keeps (`@mounted`, `@effect`, `@updated` and the rest) share one frozen empty list
 until something is added; a component's runtime is one object, every field of it there from
 construction; every props proxy shares one handler, and a component's or hook's prop signals are kept
-in a small store whose prototype holds nothing rather than in a `Map`; an element's own children are
+in a small store whose prototype holds nothing rather than in a `Map`, each made with its listener on
+and heard by the runtime itself, whose `reBuild` is one method rather than a closure per component; an element's own children are
 walked by sibling, so no `NodeList` is left cached on it; and a component reads its parent's context
 object until it provides something, making one of its own only then. A list row whose callback reads
 the signals it read last time — every row of a list on a select — stays subscribed to them instead of

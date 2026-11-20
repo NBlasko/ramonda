@@ -23,9 +23,7 @@ function createPropsProxy(hook: Hook<HookProps>) {
           // createHookRuntime normalises a missing bag to `{}`.
           const value = hookRuntime.rawProps[key];
 
-          sig = new State(value, {
-            listener: { id: runtime.id, onChange: runtime.reBuild },
-          });
+          sig = State.heardBy(value, runtime.id, runtime);
           hookRuntime.propsSignals[key] = sig;
         }
 

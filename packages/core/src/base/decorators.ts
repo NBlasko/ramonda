@@ -1,5 +1,6 @@
 import { attach, detach, STATE_KEYS, PERSIST_KEYS, INITIAL_PRIMITIVES } from "../helpers/constants";
 import { reportNonSerializableState } from "../debug/serializableState";
+import { labelState } from "../debug/stateLabels";
 import { createId } from "../helpers/createId";
 import { className, displayName } from "../helpers/utils";
 import type { Effect } from "../reactivity/effect";
@@ -262,11 +263,8 @@ export function state(_value: unknown, context: EnhancedClassFieldDecoratorConte
     // "through the constructor" case. Later writes are checked in the setter below.
     if (__DEV__) reportNonSerializableState(initialValue, contextName, owner);
 
-    const state = new State(initialValue, {
-      listener: { id: runtime.id, onChange: runtime.reBuild },
-      metaData: contextName,
-      owner,
-    });
+    const state = State.heardBy(initialValue, runtime.id, runtime);
+    if (__DEV__) labelState(state, contextName, owner);
 
     // Register as serializable state (used by hydration) — always, not dev-only.
     // The cast names the ONE property being written rather than opening the whole instance:
