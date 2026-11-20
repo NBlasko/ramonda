@@ -19,8 +19,9 @@ export type RenderableProps<P> = Readonly<P> & {
  * is the lookup, and own-ness is the scope.
  *
  * A hook publishes onto its OWNER's object, because a hook is handed the owning component's
- * runtime. A hook is made with its owner (RMD063) and `Head` publishes in `@created`, so the object
- * is in place before the owner renders — and its children are built after, which is when they look.
+ * runtime. Every publisher makes the object while the component is constructed — a Provider as it
+ * is made, `Head` from its constructor — so it is in place before the component builds anything, a
+ * `Portal`'s children in `@created` included, and its children look after.
  *
  * The keys belong to whoever publishes, and each publisher takes one nothing outside it can name:
  * `createContext` a fresh number from `createId()`, `Head` a module-private symbol. That is what

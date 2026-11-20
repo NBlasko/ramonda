@@ -179,6 +179,22 @@ export class Head extends Hook<HeadOptions> {
   private registry: HeadRegistry | undefined;
 
   /**
+   * Reserves the component's own context object now, while the component is being constructed — before
+   * any `@created` runs.
+   *
+   * A component reads its parent's context object until it publishes (`contextToWrite`), and this hook
+   * publishes in `@created`. A `Portal` used before it on the same component builds its children in ITS
+   * `@created`, which runs first: those children took the shared object, and the object this hook then
+   * made was not theirs. Measured: a `Head` in content the portal built later joined the head tree under
+   * the layout rather than under its owner, and its title won. Made here, the object is in place before
+   * anything the component builds.
+   */
+  constructor(...args: ConstructorParameters<typeof Hook<HeadOptions>>) {
+    super(...args);
+    contextToWrite(this[GLOBAL_RUNTIME]);
+  }
+
+  /**
    * `shared`, so the server gets the head too — the entire reason this runs here rather
    * than in the reactive half: a `@watchProp` does not fire on mount, and nothing reactive
    * runs during a server render at all.
@@ -219,9 +235,9 @@ export class Head extends Hook<HeadOptions> {
    * own: the outgoing node removes itself on `@destroyed`, and `resolve` runs after
    * the commit, so it only ever sees the nodes still live.
    *
-   * Done in `@created` rather than the constructor because the context a component
-   * writes to must be its OWN, and because its children are rendered afterwards —
-   * which is exactly when they need to find this.
+   * Written to the object the constructor reserved as the component's own, in `@created`
+   * — the one place that runs on the server and, as `publishOnHydrate`, on a hydrating
+   * client; the component's children are rendered afterwards, which is when they look.
    */
   private publish(): void {
     if (this.node !== undefined) return;

@@ -169,9 +169,11 @@ export const INTERNAL_HOOKS = Symbol("internalHooks");
  * A component reads its parent's context object until then, and so do the children it builds: most
  * components publish nothing, and an own object for each was `Object.create(parent)` per component —
  * measured in Chrome after creating 1,000 rows of five components, every component with a child
- * became a PROTOTYPE, 1.4 hidden classes and a prototype record per component. Made at the first
- * publish, the object is in place before any child is built: a Provider is a hook, made with its
- * owner (RMD063), and `Head` publishes in `@created` — both before the owner renders.
+ * became a PROTOTYPE, 1.4 hidden classes and a prototype record per component. The object has to be
+ * in place before the component builds anything, and every publisher makes it while the component is
+ * constructed: a Provider publishes as it is made, and a hook is made with its owner (RMD063); `Head`
+ * publishes in `@created`, so it calls this from its constructor — a `Portal` used before it builds
+ * its children in its own `@created`, which runs first.
  *
  * Made with `Object.create(parent)`, so a read still walks to the nearest ancestor that published,
  * and a write lands as an OWN property, which keeps it from the component's siblings.
