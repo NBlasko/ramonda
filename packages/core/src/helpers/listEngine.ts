@@ -102,6 +102,13 @@ interface ItemScope<T> {
   onChange: () => void;
   /** The host the row's last run was built for, which `onChange` asks to render again. */
   host: ListHost;
+  /**
+   * True while the row's callback runs. Last run's subscriptions stay on through the run, so a write the
+   * callback makes to a signal it read last time reaches this row's own listener — which answers nothing
+   * then, as when the row was detached from everything while it ran. Measured without it: one extra
+   * render of the host for a row that bumps a counter it reads.
+   */
+  building: boolean;
   dirty: boolean;
   /**
    * The callback produced nothing for this row last time. The scope stays — its subscriptions are what bring
@@ -658,6 +665,7 @@ export class ListEngine<T> {
       id: createId(),
       onChange: undefined as unknown as () => void,
       host: undefined as unknown as ListHost,
+      building: false,
       item,
       index,
       vnode: undefined as unknown as VNode,
@@ -672,6 +680,7 @@ export class ListEngine<T> {
       },
     };
     scope.onChange = () => {
+      if (scope.building) return;
       scope.dirty = true;
       this.anyDirty = true;
       this.markRowsAbove();
@@ -710,6 +719,7 @@ export class ListEngine<T> {
 
     const previousTracker = trackerContainer.current;
     trackerContainer.current = scope;
+    scope.building = true;
 
     let vnode: VNode | null | undefined;
     let done = false;
@@ -721,6 +731,7 @@ export class ListEngine<T> {
       // Restored rather than nulled: a list may be built from inside a @compute,
       // and that tracker still has reads to collect after this returns.
       trackerContainer.current = previousTracker;
+      scope.building = false;
       if (done) {
         // Subscribe what is read for the first time, and release what was not read again: a branch
         // taken last time may not be taken now, and a stale dep would keep invalidating.

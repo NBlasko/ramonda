@@ -224,6 +224,27 @@ describe("a component's props", () => {
    * named after anything `Object.prototype` has: in `{}` its `constructor` would be found before any
    * prop of that name was read, and the prop would read `Object`.
    */
+  /**
+   * Frozen, sealed or made non-extensible, the props still answer like a plain object. A proxy whose
+   * target can no longer be extended must report the target's REAL prototype, so the target is a plain
+   * object — the component rides on it in a private field — and there is no prototype trap to lie.
+   * Measured before: with a class instance as the target and a trap answering `Object.prototype`,
+   * `Object.getPrototypeOf(Object.freeze(this.props))` threw a `TypeError`.
+   */
+  test("frozen, still answer like a plain object", () => {
+    const seen: unknown[] = [];
+    class Leaf extends Component<{ a: number }> {
+      render() {
+        Object.freeze(this.props);
+        seen.push(Object.getPrototypeOf(this.props) === Object.prototype, this.props instanceof Object);
+        return <i>{this.props.a}</i>;
+      }
+    }
+    const container = mount(<Leaf a={1} />);
+    expect(container.textContent).toBe("1");
+    expect(seen).toEqual([true, true]);
+  });
+
   test("named after what Object.prototype holds read what the parent passed", () => {
     const made: Named[] = [];
     type NamedProps = { constructor: string; toString: string; hasOwnProperty: string; valueOf: string };
@@ -408,6 +429,40 @@ describe("a list row that runs again", () => {
       expect(runs).toBeGreaterThanOrEqual(100);
       expect(counts).toEqual({ attached: 0, detached: 0 });
     }
+  });
+
+  /**
+   * A row that writes, while it runs, a signal it read last time does not mark itself: as on main, where
+   * the row was detached from everything while it ran. Its subscriptions stay on now, so its own
+   * listener answers nothing while the row is building.
+   */
+  test("that writes a signal it read last run does not ask its host to render again", () => {
+    const counter = new State(0);
+    let table: Table | undefined;
+    let renders = 0;
+    class Table extends Component {
+      // One row: a second row reading the counter would be told of the write, and would ask too — as on main.
+      @state rows = items(1, 1);
+      @state tick = 0;
+      constructor(...args: ConstructorParameters<typeof Component>) {
+        super(...args);
+        table = this;
+      }
+      row(item: Item) {
+        const seen = counter.get();
+        if (this.tick > 0 && item.id === 1) counter.set(seen + 1);
+        return <li key={item.id}>{item.label}</li>;
+      }
+      render() {
+        renders++;
+        return <ul>{list(this.rows, this.row)}</ul>;
+      }
+    }
+    mount(<Table />);
+    renders = 0;
+    table!.tick = 1;
+    flushSync();
+    expect(renders).toBe(1);
   });
 
   /**

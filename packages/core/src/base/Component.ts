@@ -28,19 +28,33 @@ const lifecycles = new Set(["render"]);
 // it into a decorator would trade that compile-time guarantee for a runtime
 // check, which is the wrong direction.
 
+/** A constructor that hands back the object it is given, so a subclass's private field lands on that object. */
+class OnTheGiven {
+  constructor(given: object) {
+    // biome-ignore lint/correctness/noConstructorReturn: returning `given` is the point — see `PropsTarget`.
+    return given;
+  }
+}
+
 /**
- * What a props proxy stands in front of: nothing but the component it belongs to.
+ * What a props proxy stands in front of: a PLAIN object, carrying the component it belongs to in a
+ * private field.
  *
- * The component sits in a private field, which no reflection reaches — `Object.keys(this.props)`,
- * `Reflect.ownKeys` and `in` see an empty object, as they did when the target was `{}`.
+ * Plain, so it answers every reflection as `{}` did — `Object.keys`, `Reflect.ownKeys`, `in`, and its
+ * prototype, `Object.prototype` — with no trap to say so. A trap cannot: once the props are frozen,
+ * sealed or made non-extensible (a deep freeze, immer's auto-freeze), a proxy must report its target's
+ * real prototype, and a class instance as the target with a trap answering `Object.prototype` threw a
+ * `TypeError` there — measured. The private field is invisible to all of it, and `new PropsTarget({},
+ * component)` puts it on the `{}` through `OnTheGiven`.
  */
-class PropsTarget {
+class PropsTarget extends OnTheGiven {
   readonly #component: Component<ComponentProps>;
-  constructor(component: Component<ComponentProps>) {
+  constructor(given: object, component: Component<ComponentProps>) {
+    super(given);
     this.#component = component;
   }
-  static componentOf(target: PropsTarget): Component<ComponentProps> {
-    return target.#component;
+  static componentOf(target: object): Component<ComponentProps> {
+    return (target as PropsTarget).#component;
   }
 }
 
@@ -51,7 +65,7 @@ class PropsTarget {
  * after creating 1,000 rows of five components, about 100 B and four allocations per component, for
  * code that was the same every time.
  */
-const propsHandler: ProxyHandler<PropsTarget> = {
+const propsHandler: ProxyHandler<object> = {
   get(target, key: string | symbol) {
     const component = PropsTarget.componentOf(target);
     if (typeof key === "symbol") {
@@ -89,15 +103,11 @@ const propsHandler: ProxyHandler<PropsTarget> = {
       )} /> — props are read-only and owned by the parent. Copy the value into @state, or call a callback prop to ask the parent to change it.`,
     );
   },
-  // A plain object's, as `{}` gave before — not `PropsTarget.prototype`.
-  getPrototypeOf() {
-    return Object.prototype;
-  },
 };
 
 function createPropsProxy<P extends ComponentProps>(component: Component<P>): RenderableProps<P> {
   return new Proxy(
-    new PropsTarget(component as unknown as Component<ComponentProps>),
+    new PropsTarget({}, component as unknown as Component<ComponentProps>),
     propsHandler,
   ) as unknown as RenderableProps<P>;
 }
