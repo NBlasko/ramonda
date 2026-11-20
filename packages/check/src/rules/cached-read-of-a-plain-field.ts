@@ -422,7 +422,9 @@ export const cachedReadOfAPlainField = {
       "that read the slot before it was filled keeps what it read. A value made once belongs in a module\n" +
       "constant (`const FMT = new Intl.NumberFormat()`), or in a `@compute` when it depends on state.\n\n" +
       "A field nothing writes after the first render is NOT reported — a constant a compute reads\n" +
-      "can never go stale, and neither can one written in the constructor or `@created`.\n\n",
+      "can never go stale, and neither can one the constructor or `@created` writes itself. A function\n" +
+      "written in one of them — a listener, a timer, a handler `render()` hands an element — runs later,\n" +
+      "and its write is named for the member it is written in.\n\n",
   },
 
   read(cls, { self, resolve }) {

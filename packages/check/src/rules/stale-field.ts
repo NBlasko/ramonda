@@ -116,6 +116,9 @@ export function fieldWrites(
       // written inside one, a handler or a timer's callback, runs later, and its writes count.
       const early = runsByTheFirstRender(member, resolve);
       if (!early && !writesAfterTheFirstRender(member, resolve)) continue;
+      // The member's own function: the method, or the arrow a field holds — `render = () => …`.
+      const held = ts.isPropertyDeclaration(member) ? member.initializer : undefined;
+      const own = held !== undefined && (ts.isArrowFunction(held) || ts.isFunctionExpression(held)) ? held : member;
       const writer = ts.isConstructorDeclaration(member) ? "constructor" : (memberName(member) ?? "a method");
       // A field holding a `function` writes the instance when it is called through the owner,
       // `this.onDone()`, so its body is read as the member's own — not skipped for having a `this` of its own.
@@ -137,7 +140,7 @@ export function fieldWrites(
         // time, which `writesAfterTheFirstRender` does not count either.
         if (fn === undefined || ts.isPropertyDeclaration(fn)) return;
         // The early member's own writes are its time; only a function written inside it runs later.
-        if (early && fn === member) return;
+        if (early && fn === own) return;
         const list = writes.get(field) ?? [];
         list.push({ writer, fn });
         writes.set(field, list);
@@ -147,13 +150,6 @@ export function fieldWrites(
   return writes;
 }
 
-/**
- * Whether a write inside this member can leave a cached reader stale.
- *
- * `false` for everything that runs before the first render — the constructor, `@created` — and for
- * the renders themselves, where a write is the memo pattern rather than a change. `@destroyed` runs
- * after the last render, so nothing is left to be stale.
- */
 /**
  * Whether this member runs before or at the first render — the constructor, `@created`, `render()`.
  *
@@ -168,6 +164,13 @@ export function runsByTheFirstRender(member: ts.ClassElement, resolve: Resolver)
   return memberName(member) === "render" && !hasDecorator(member, "compute", resolve);
 }
 
+/**
+ * Whether a write inside this member can leave a cached reader stale.
+ *
+ * `false` for everything that runs before the first render — the constructor, `@created` — and for
+ * the renders themselves, where a write is the memo pattern rather than a change. `@destroyed` runs
+ * after the last render, so nothing is left to be stale.
+ */
 export function writesAfterTheFirstRender(member: ts.ClassElement, resolve: Resolver): boolean {
   if (ts.isConstructorDeclaration(member)) return false;
   if (hasDecorator(member, "created", resolve) || hasDecorator(member, "destroyed", resolve)) return false;

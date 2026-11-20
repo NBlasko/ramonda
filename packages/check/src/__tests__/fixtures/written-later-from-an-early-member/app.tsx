@@ -51,4 +51,17 @@ class Rated extends Component {
   }
 }
 
-export { Rated };
+/** `render` written as an arrow field: its own write is still the memo pattern. Nothing reported. */
+class ArrowRender extends Component {
+  @state tick = 1;
+  memo = 0;
+  @compute get total(): number {
+    return this.tick * this.memo;
+  }
+  render = () => {
+    this.memo = 1;
+    return <p>{this.total}</p>;
+  };
+}
+
+export { Rated, ArrowRender };
