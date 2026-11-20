@@ -104,12 +104,22 @@ export interface CallbackOwner {
   isRest(expression: ts.Expression): boolean;
 }
 
-export function callbackOwner(root: ts.Node, resolve: (id: ts.Node) => ts.Symbol | undefined): CallbackOwner {
+export function callbackOwner(
+  root: ts.Node,
+  resolve: (id: ts.Node) => ts.Symbol | undefined,
+  /**
+   * `false` for a body a rule FOLLOWS into — a method's, a getter's, a function's it calls — whose owner
+   * is `this` and nothing else, even when the body is itself a function: `(k) => (o) => o.rate` returns
+   * a function, and its `o` is not the component.
+   */
+  withParameter = true,
+): CallbackOwner {
   const parameter =
-    ts.isArrowFunction(root) ||
-    ts.isFunctionExpression(root) ||
-    ts.isFunctionDeclaration(root) ||
-    ts.isMethodDeclaration(root)
+    withParameter &&
+    (ts.isArrowFunction(root) ||
+      ts.isFunctionExpression(root) ||
+      ts.isFunctionDeclaration(root) ||
+      ts.isMethodDeclaration(root))
       ? root.parameters[0]
       : undefined;
   const members = new Map<ts.Node, string>();

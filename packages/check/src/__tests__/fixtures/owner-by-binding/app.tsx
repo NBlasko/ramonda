@@ -52,6 +52,15 @@ class Cached extends Component {
     return [this.tick].map((n) => n * this.rate).length;
   }
 
+  /* Not reported: `m`'s body is followed, and the function it returns takes `o`, which is not the component. */
+  m(): number {
+    const make = (k: number) => (o: { rate: number }) => o.rate * k;
+    return make(1)({ rate: 2 });
+  }
+  @compute get followed(): number {
+    return this.tick + this.m();
+  }
+
   /* Not reported: a `function`'s `this` is its own. */
   @compute get own(): number {
     return [this.tick].map(function (this: { rate: number }, n: number) {

@@ -271,7 +271,7 @@ function readsIn(node: ts.Node, declaring: readonly ts.ClassLikeDeclaration[], r
     // anywhere written inside it, so an arrow there called a line later reads `self` as the owner too.
     // Matched by the binding a name resolves to, never by its text: an inner `(self) => self.rate` is
     // somebody else's `self`.
-    const owner = at === node || contains(node, at) ? rootOwner : callbackOwner(at, resolve);
+    const owner = at === node || contains(node, at) ? rootOwner : callbackOwner(at, resolve, false);
     (function look(current: ts.Node): void {
       if (current !== at) {
         // Built, not run: a function returned, stored or handed over in an object, or an accessor of one.
