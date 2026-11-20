@@ -12,7 +12,8 @@ read last time — every row of a list on a select — stays subscribed to them 
 attaching each one again.
 
 A first render makes less to throw away: a level with nothing before it makes no index of previous
-regions and no map of positions, and puts its nodes in, in order; and the diff's per-component
+regions and no map of positions, and puts its nodes in, in order; the arrays a level keeps — its
+record, its normalized children — are made as long as they will be rather than grown; and the diff's per-component
 functions write no function inside them, so no call keeps its variables in a context made for it.
 
 The work a commit leaves for after the DOM is in is lighter too. A component with no effects queues
