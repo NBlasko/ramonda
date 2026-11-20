@@ -727,6 +727,50 @@ describe("a component's context", () => {
 
 describe("a first render", () => {
   /**
+   * An empty parent is not proof that every node coming in is new: code outside the framework can hold a
+   * node the framework owns somewhere else — a hand-made portal, a drag library. Brought back while
+   * focused, it keeps the focus, as main's walk keeps it: the path that skips that walk is taken only
+   * when no node coming in is attached anywhere.
+   */
+  test("a node moved out by hand and focused keeps its focus when it is brought back", () => {
+    class Field extends Component {
+      render() {
+        return <input id="moved-field" />;
+      }
+    }
+    let page: Page | undefined;
+    class Page extends Component {
+      @state show = false;
+      constructor(...args: ConstructorParameters<typeof Component>) {
+        super(...args);
+        page = this;
+      }
+      render() {
+        return (
+          <div id="moved-host">
+            {this.show ? <span /> : null}
+            <Field />
+          </div>
+        );
+      }
+    }
+    const container = mount(<Page />);
+    const input = container.querySelector("#moved-field") as HTMLInputElement;
+    const elsewhere = document.createElement("div");
+    document.body.appendChild(elsewhere);
+    elsewhere.appendChild(input);
+    input.focus();
+    expect(document.activeElement).toBe(input);
+
+    page!.show = true;
+    flushSync();
+
+    expect(input.parentNode).toBe(container.querySelector("#moved-host"));
+    expect(document.activeElement).toBe(input);
+    elsewhere.remove();
+  });
+
+  /**
    * Every node of a first render is new, so nothing is in order to keep: they go in, in order, and the
    * walk that keeps what is already in place — and protects the focus while it moves things — is not
    * taken. It reads `document.activeElement` before it moves anything; a first render reads it never.

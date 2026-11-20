@@ -1715,14 +1715,28 @@ export function reorderChildren(
 
   /**
    * Every node is new: the run had nothing in it before — a block's previous order is empty, or an
-   * element has no children yet. Nothing is in order to keep, so each goes in, in order, and no map of
-   * positions is made: the first render of every element and every component lands here. Nothing in
-   * the run can hold focus either, since nothing was in it.
+   * element has no children yet — and no node coming in is attached anywhere. Nothing is in order to
+   * keep and nothing can hold focus, so each goes in, in order, and no map of positions is made: the
+   * first render of every element and every component lands here.
+   *
+   * "Attached nowhere" is checked rather than assumed. An empty parent is not proof of it: code outside
+   * the framework can hold a node the framework owns somewhere else — a hand-made portal, a drag library
+   * — and bringing it back focused must keep its focus, which the walk below does. Measured: skipped on
+   * an empty parent alone, such an input came back unfocused.
    */
   if (previousOrder !== undefined ? previousOrder.length === 0 : parent.firstChild === null) {
-    const reference = anchor ?? firstHostedBlock(parent);
-    for (let n = 0; n < length; n++) parent.insertBefore(orderedNodes[n], reference);
-    return;
+    let attached = false;
+    for (let n = 0; n < length; n++) {
+      if (orderedNodes[n].parentNode !== null) {
+        attached = true;
+        break;
+      }
+    }
+    if (!attached) {
+      const reference = anchor ?? firstHostedBlock(parent);
+      for (let n = 0; n < length; n++) parent.insertBefore(orderedNodes[n], reference);
+      return;
+    }
   }
 
   // Current position of every child, so "already in relative order" is decidable.
