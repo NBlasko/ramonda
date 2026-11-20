@@ -59,14 +59,17 @@ function projectOf(source: string): string {
 }
 
 /**
- * The CPU the analyzer spends on a project rendering `markup`, the fewest of three — each round a
- * project of its own, written before the clock starts, so neither the disk nor a cached answer is in
- * what is timed.
+ * The CPU the analyzer spends on a project rendering `markup`, the fewest of three, each round on a
+ * project of its own written before the clock starts. Reading the files back is inside what is timed,
+ * and costs short and long the same.
  *
- * Measured on his Linux laptop (Ryzen 5 2500U), long minus short: at most 296 ms with both patterns as
- * they are, under coverage with four cores busy; with each pattern's quadratic form planted back, alone
- * and without coverage, 5,925 ms for the number and 2,459 ms for the directive. The 1,500 ms bound sits
- * between, and coverage only widens the planted side.
+ * Measured on his Linux laptop (Ryzen 5 2500U), long minus short. As the code is: −171 to 121 ms alone and
+ * under coverage with four cores busy, and once 689 ms under that load in review — CPU per run under load
+ * falls on one of two levels, and short and long can land on different ones. With each pattern's
+ * quadratic form planted back: 6,254 ms for the number, 9,681 for the directive (9,600 under coverage) —
+ * the directive's input twice as long, because its quadratic form is the cheaper one. The 2,500 ms bound
+ * is 3.6 times the worst reading as the code is and 2.5 times under the lowest planted one, so a machine
+ * half again as fast still fails the plant.
  */
 const took = (markup: string) =>
   cpuTime(
@@ -83,16 +86,16 @@ describe("read in linear time", () => {
         `        <div role="slider" aria-valuenow="0${long ? "00".repeat(N / 2) : "0"}!" aria-valuemin={0} aria-valuemax={9}>x</div>`,
     ],
     // `analyze.ts`: an ignore directive's reason, with spaces between its `*/` and a `}` both pattern
-    // halves could take.
+    // halves could take — twice as long as the number, because its quadratic form is the cheaper one.
     [
       "a directive's reason with a long run of spaces",
       (long) =>
-        `        {/* ramonda-check-ignore: why */${long ? " ".repeat(N) : " "}x}\n        <div onclick={this.go} role="button" tabindex={5}>x</div>`,
+        `        {/* ramonda-check-ignore: why */${long ? " ".repeat(2 * N) : " "}x}\n        <div onclick={this.go} role="button" tabindex={5}>x</div>`,
     ],
   ])("%s", (_what, markup) => {
     const short = took(markup(false));
     const long = took(markup(true));
-    expect(long - short).toBeLessThan(1500);
+    expect(long - short).toBeLessThan(2500);
   });
 });
 
