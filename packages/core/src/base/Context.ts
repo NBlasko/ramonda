@@ -180,7 +180,7 @@ export function createContext<T extends object>(
         getSignal: (key) => {
           const hookRuntime = this[HOOK_RUNTIME];
           const signals = hookRuntime.propsSignals;
-          const existing = signals.get(key);
+          const existing = signals[key];
           if (existing) return existing;
 
           // A key this provider does not supply gets NO signal, so the consumer
@@ -195,7 +195,7 @@ export function createContext<T extends object>(
 
           // Reading through the options proxy lazily creates the signal.
           void this.props[key];
-          return signals.get(key);
+          return signals[key];
         },
       };
       /**

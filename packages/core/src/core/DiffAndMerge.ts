@@ -1982,14 +1982,14 @@ function updateComponentRegion(region: ComponentRegion, vnode: VNodeComponent): 
       const oldValue = prevRaw[key];
 
       if (oldValue !== newValue) {
-        const sig = componentRuntime.propsSignals.get(key);
+        const sig = componentRuntime.propsSignals[key];
         if (sig) sig.set(newValue);
       }
     }
 
     for (const key of Object.keys(prevRaw)) {
       if (!(key in nextRaw)) {
-        const sig = componentRuntime.propsSignals.get(key);
+        const sig = componentRuntime.propsSignals[key];
         if (sig) sig.set(undefined);
       }
     }

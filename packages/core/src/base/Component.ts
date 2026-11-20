@@ -59,7 +59,7 @@ const propsHandler: ProxyHandler<PropsTarget> = {
     }
     const componentRuntime = component[COMPONENT_RUNTIME];
 
-    let sig = componentRuntime.propsSignals.get(key);
+    let sig = componentRuntime.propsSignals[key];
     if (!sig) {
       const value = componentRuntime.rawProps[key];
       const runtime = component[GLOBAL_RUNTIME];
@@ -69,7 +69,7 @@ const propsHandler: ProxyHandler<PropsTarget> = {
           onChange: runtime.reBuild,
         },
       });
-      componentRuntime.propsSignals.set(key, sig);
+      componentRuntime.propsSignals[key] = sig;
     }
 
     return sig.get();

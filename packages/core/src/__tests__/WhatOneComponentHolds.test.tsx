@@ -195,6 +195,28 @@ describe("a component's props", () => {
       (props as { label: string }).label = "c";
     }).toThrow(/RMD004/);
   });
+
+  /**
+   * Each prop's signal is kept by its name in a store whose prototype holds nothing, so a prop may be
+   * named after anything `Object.prototype` has: in `{}` its `constructor` would be found before any
+   * prop of that name was read, and the prop would read `Object`.
+   */
+  test("named after what Object.prototype holds read what the parent passed", () => {
+    const made: Named[] = [];
+    type NamedProps = { constructor: string; toString: string; hasOwnProperty: string; valueOf: string };
+    class Named extends Component<NamedProps> {
+      constructor(...args: ConstructorParameters<typeof Component<NamedProps>>) {
+        super(...args);
+        made.push(this);
+      }
+      render() {
+        const p = this.props;
+        return <p>{`${p.constructor}|${p.toString}|${p.hasOwnProperty}|${p.valueOf}`}</p>;
+      }
+    }
+    const container = mount(<Named constructor="a" toString="b" hasOwnProperty="c" valueOf="d" />);
+    expect(container.textContent).toBe("a|b|c|d");
+  });
 });
 
 /** Counts reads of `childNodes` on every node while `run` runs. */

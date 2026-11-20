@@ -86,7 +86,7 @@ export interface ComponentRuntime extends Runtime {
    * one, and dispatched by name so a subclass override wins.
    */
   catchError?: (e: unknown) => unknown;
-  propsSignals: Map<string, State<unknown>>;
+  propsSignals: PropSignals;
   /** Whether construction is over — see `finishConstruction`. */
   constructed: boolean;
   parent?: BaseComponent;
@@ -153,7 +153,7 @@ export interface HookRuntime {
    * it structural instead of a convention.
    */
   rawProps: Record<string, unknown>;
-  propsSignals: Map<string, State<unknown>>;
+  propsSignals: PropSignals;
   /** Whether construction is over — see `finishConstruction`. */
   constructed: boolean;
 }
@@ -183,6 +183,25 @@ export function contextToWrite(runtime: Runtime): Context {
   }
   return runtime.context;
 }
+
+/**
+ * A component's or hook's prop signals, by prop name — one made the first time a prop is read.
+ *
+ * An instance of a class whose prototype holds nothing, not even `Object.prototype`, rather than a `Map`:
+ * a `Map` keeps a hash table of its own, and nearly every component reads one or two props. Measured in
+ * Chrome after creating 1,000 rows of five components: the store was a `Map` and its table, about 86 B
+ * of the 644 B a component kept. An instance of a class is a fast object whose fields sit in it. With
+ * nothing in its prototype, `signals.constructor` or `signals.toString` is `undefined` — a prop may be
+ * named anything — where `{}` would answer from `Object.prototype`. `Object.create(null)` would answer
+ * the same, but V8 keeps it as a dictionary, as large as the `Map`.
+ */
+export interface PropSignals {
+  [prop: string]: State<unknown> | undefined;
+}
+
+class PropSignalStore {}
+Object.setPrototypeOf(PropSignalStore.prototype, null);
+delete (PropSignalStore.prototype as { constructor?: unknown }).constructor;
 
 /** The hooks an owner walks on each update, in `use()` order: each one's update. */
 export type HookWalk = (() => void)[];
@@ -292,7 +311,7 @@ export const createComponentRuntime = (
     owner: that,
     rawProps: rawProps ?? {},
     depth: 1,
-    propsSignals: new Map<string, State<unknown>>(),
+    propsSignals: new PropSignalStore() as PropSignals,
     env: "client",
     constructed: false,
     catchError: undefined,
@@ -317,7 +336,7 @@ export const createHookRuntime = (rawProps: HookProps): HookRuntime => {
   return {
     // A hook with no props still needs a bag to read from — see HookRuntime.
     rawProps: rawProps ?? {},
-    propsSignals: new Map<string, State<unknown>>(),
+    propsSignals: new PropSignalStore() as PropSignals,
     constructed: false,
   };
 };

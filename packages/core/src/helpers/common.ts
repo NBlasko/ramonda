@@ -442,7 +442,7 @@ export function useCommon<T extends BaseHook<unknown>, P>(
         for (const key in nextProps) {
           const newVal = nextProps[key];
           if (newVal !== prevProps[key]) {
-            sigs.get(key)?.set(newVal);
+            sigs[key]?.set(newVal);
           }
         }
 
@@ -451,13 +451,13 @@ export function useCommon<T extends BaseHook<unknown>, P>(
         //    visits it again.
         for (const key in prevProps) {
           if (!(key in nextProps)) {
-            sigs.get(key)?.set(undefined);
+            sigs[key]?.set(undefined);
           }
         }
       } else {
         // First render: nothing to compare against, so just seed every signal.
         for (const key in nextProps) {
-          sigs.get(key)?.set(nextProps[key]);
+          sigs[key]?.set(nextProps[key]);
         }
       }
     }
