@@ -9,7 +9,6 @@ import {
   COMPONENT_RUNTIME,
   type ComponentRuntime,
   createComponentRuntime,
-  createRuntime,
   type Runtime,
   GLOBAL_RUNTIME,
 } from "../core/runtime";
@@ -120,8 +119,10 @@ export abstract class Component<P extends ComponentProps = DefaultProps> impleme
 
     this.props = createPropsProxy(this);
     bindInstanceMethods(this, Component.prototype, lifecycles);
-    this[GLOBAL_RUNTIME] = createRuntime(this, context);
-    this[COMPONENT_RUNTIME] = createComponentRuntime(props);
+    // One object under both names — see `createComponentRuntime`.
+    const runtime = createComponentRuntime(this, context, props);
+    this[GLOBAL_RUNTIME] = runtime;
+    this[COMPONENT_RUNTIME] = runtime;
   }
 
   /**

@@ -46,7 +46,7 @@ export interface Runtime {
    * inherits. `holder` cannot serve this: it is DEV-only.
    *
    * **Required, and it was optional until 2026-08-21 for no reason anybody could name.** Measured:
-   * `createRuntime` is the only producer of a `Runtime`, it is called from one line — `Component`'s
+   * `createComponentRuntime` is the only producer of a `Runtime`, it is called from one line — `Component`'s
    * constructor — and it always passes `this`; nothing anywhere clears the field afterwards. The
    * optionality was a type lie, and it cost two `?.` at every use plus an argument about what a
    * missing owner should mean. `owner: BaseComponent` type-checks every package in the workspace,
@@ -67,7 +67,8 @@ export interface Runtime {
   reBuild(): void;
 }
 
-export interface ComponentRuntime {
+/** A component's own fields, on the same object as its `Runtime` — see `createComponentRuntime`. */
+export interface ComponentRuntime extends Runtime {
   depth: number;
   /**
    * The props as they arrived, keyed — not `RenderableProps<P>`.
@@ -255,8 +256,26 @@ export function addTo<K extends RuntimeList>(runtime: Runtime, key: K, entry: En
   (list as unknown[]).push(entry);
 }
 
-export const createRuntime = (that: BaseComponent<unknown>, context: Context): Runtime => {
-  const runtime: Runtime = {
+/**
+ * A component's runtime: ONE object, which the instance holds under both `GLOBAL_RUNTIME` and
+ * `COMPONENT_RUNTIME`. The two halves were two objects made side by side in `Component`'s constructor
+ * and never apart for a moment of their lives; one object is one allocation fewer per component and
+ * one shape. A hook is handed this same object as its `GLOBAL_RUNTIME` — its owner's — and keeps a
+ * `HookRuntime` of its own.
+ *
+ * Every field it will ever hold is written here, the optional ones as `undefined`. A field added later
+ * — `parent`, `block` and `region` are set while the component is built, the flags through its life —
+ * changes the object's hidden class, and V8 then keeps it in a separate property array. Measured in
+ * Chrome after creating 1,000 rows of five components: 3.4 property arrays per component (about
+ * 120 B), and one more shape transition for each field. Written here, every runtime has the same shape
+ * from birth, and its fields stay in the object.
+ */
+export const createComponentRuntime = (
+  that: BaseComponent<unknown>,
+  context: Context,
+  rawProps: Record<string | symbol, unknown> | undefined,
+): ComponentRuntime => {
+  const runtime: ComponentRuntime = {
     reBuild: () => addTaskToQueue(that),
     mounts: NONE,
     effects: NONE,
@@ -269,37 +288,12 @@ export const createRuntime = (that: BaseComponent<unknown>, context: Context): R
     destroys: NONE,
     watchProps: NONE,
     deferHydrations: NONE,
-    // `that` is the component — `createRuntime` is only ever called from
-    // `Component`'s constructor. No extra retention: `reBuild` already closes
-    // over the same object.
+    // The component itself. No extra retention: `reBuild` already closes over the same object.
     owner: that,
-  };
-
-  // The DEV-only twin of `owner`, kept separate because a diagnostic reads it and
-  // production must not: same object, stripped from the prod build.
-  if (__DEV__) runtime.holder = that;
-
-  return runtime;
-};
-
-/**
- * Every field a `ComponentRuntime` will ever hold is written here, the optional ones as `undefined`.
- *
- * A field added later — `parent`, `block` and `region` are set while the component is built, the flags
- * through its life — changes the object's hidden class, and V8 then keeps it in a separate property
- * array. Measured in Chrome after creating 1,000 rows of five components: 3.4 property arrays per
- * component (about 120 B), and one more shape transition for each field. Written here, every runtime
- * has the same shape from birth, and its fields stay in the object.
- */
-export const createComponentRuntime = (
-  rawProps: Record<string | symbol, unknown> | undefined,
-  env: RenderEnv = "client",
-): ComponentRuntime => {
-  return {
     rawProps: rawProps ?? {},
     depth: 1,
     propsSignals: new Map<string, State<unknown>>(),
-    env,
+    env: "client",
     constructed: false,
     catchError: undefined,
     parent: undefined,
@@ -311,6 +305,12 @@ export const createComponentRuntime = (
     block: undefined,
     region: undefined,
   };
+
+  // The DEV-only twin of `owner`, kept separate because a diagnostic reads it and
+  // production must not: same object, stripped from the prod build.
+  if (__DEV__) runtime.holder = that;
+
+  return runtime;
 };
 
 export const createHookRuntime = (rawProps: HookProps): HookRuntime => {

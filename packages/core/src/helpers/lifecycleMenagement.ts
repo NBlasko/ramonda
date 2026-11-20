@@ -51,8 +51,9 @@ export function lifecycleCleanupManagement(component: BaseComponent<unknown>) {
   /**
    * No check for the array being there, and that is not an oversight.
    *
-   * `effects` and `destroys` below are non-optional on `Runtime` and are assigned `[]` by
-   * `createRuntime`, which is the only producer of one — verified: it is called from `Component`'s
+   * `effects` and `destroys` below are non-optional on `Runtime` and are assigned a list — the shared
+   * empty one until `addTo` adds the first entry — by `createComponentRuntime`, which is the only
+   * producer of one — verified: it is called from `Component`'s
    * constructor and nowhere else, a `Hook` is handed its OWNER's runtime, and `renderHook` mounts a
    * real component rather than building a runtime by hand. Neither assignment sits under
    * `if (__DEV__)`, so both builds have arrays.

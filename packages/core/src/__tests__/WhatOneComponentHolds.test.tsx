@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "vitest";
-import { Component, bootstrap, list, mounted, state, unmount } from "../index";
+import { Component, Hook, bootstrap, list, mounted, state, unmount } from "../index";
 import { flushSync } from "../testing";
 import { COMPONENT_RUNTIME, GLOBAL_RUNTIME } from "../core/runtime";
 import { State } from "../reactivity/State";
@@ -78,6 +78,29 @@ describe("a component runtime", () => {
     unmount(container);
     expect(leaf[COMPONENT_RUNTIME].isDestroyed).toBe(true);
     expect(keys()).toEqual(born[0]);
+  });
+
+  /**
+   * One object, held under both names: the two halves were made side by side in the constructor and
+   * never apart, and one object is one allocation fewer per component. A hook is handed that same object
+   * as its own `GLOBAL_RUNTIME`.
+   */
+  test("is one object under both names, and a hook is handed its owner's", () => {
+    class Inner extends Hook {}
+    let page: Page | undefined;
+    class Page extends Component {
+      inner = this.use(Inner);
+      constructor(...args: ConstructorParameters<typeof Component>) {
+        super(...args);
+        page = this;
+      }
+      render() {
+        return <p />;
+      }
+    }
+    mount(<Page />);
+    expect(page![GLOBAL_RUNTIME]).toBe(page![COMPONENT_RUNTIME]);
+    expect(page!.inner[GLOBAL_RUNTIME]).toBe(page![GLOBAL_RUNTIME]);
   });
 
   const LISTS = [

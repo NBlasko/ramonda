@@ -53,8 +53,8 @@ export function runComponentEffects(component: BaseComponent<unknown>) {
   // long after the server render has yielded and reset that.
   if (component[COMPONENT_RUNTIME].env === "server") return;
 
-  // No check for the array: `effects` is non-optional on `Runtime` and `createRuntime` — the only
-  // producer of one — assigns `[]` outside `if (__DEV__)`. See `helpers/lifecycleMenagement.ts`.
+  // No check for the array: `effects` is non-optional on `Runtime`, and `createComponentRuntime` — the
+  // only producer of one — assigns a list outside `if (__DEV__)`. See `helpers/lifecycleMenagement.ts`.
   const effects = component[GLOBAL_RUNTIME].effects;
 
   const dirtyEffects: Effect[] = [];

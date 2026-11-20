@@ -4,11 +4,12 @@
 
 A component instance holds less, and a list row that runs again writes no subscription it already has.
 All lists a runtime keeps (`@mounted`, `@effect`, `@updated` and the rest) share one frozen empty list
-until something is added; every field of a component's runtime is there from construction; every props
-proxy shares one handler; an element's own children are walked by sibling, so no `NodeList` is left
-cached on it; and a component reads its parent's context object until it provides something, making one
-of its own only then. A list row whose callback reads the signals it read last time — every row of a
-list on a select — stays subscribed to them instead of detaching and attaching each one again.
+until something is added; a component's runtime is one object, every field of it there from
+construction; every props proxy shares one handler; an element's own children are walked by sibling,
+so no `NodeList` is left cached on it; and a component reads its parent's context object until it
+provides something, making one of its own only then. A list row whose callback reads the signals it
+read last time — every row of a list on a select — stays subscribed to them instead of detaching and
+attaching each one again.
 
 A first render makes less to throw away: a level with nothing before it makes no index of previous
 regions and no map of positions, and puts its nodes in, in order; and the diff's per-component
