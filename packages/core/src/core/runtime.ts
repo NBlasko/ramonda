@@ -358,8 +358,9 @@ export const createComponentRuntime = (
 ): ComponentRuntime => {
   const runtime = new ComponentRuntimeRecord(that, context, rawProps);
 
-  // The DEV-only twin of `owner`, kept separate because a diagnostic reads it and
-  // production must not: same object, stripped from the prod build.
+  // The DEV-only twin of `owner`, kept separate because a diagnostic reads it and production must
+  // not: the field is on every runtime, `undefined` in production, and only this assignment is
+  // stripped from the prod build.
   if (__DEV__) runtime.holder = that;
 
   return runtime;
