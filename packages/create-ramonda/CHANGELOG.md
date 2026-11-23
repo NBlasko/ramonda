@@ -1,5 +1,50 @@
 # create-ramonda
 
+## 0.19.0
+
+### Minor Changes
+
+- 3eb0458: **Breaking:** what only compiled code calls — `shorthands`, `pick`, `conditionsOf`, `namesOf` and
+  `withoutSourceMarks` — moved from `@ramonda/css` to `@ramonda/css/compiled`, and the compiler now
+  imports from there. On the main entry they were a second way to do what a block and a `match` already
+  do, and nothing checked a hand-written call. `mergeClassNames`, `read` and `toStyle` stay where they
+  are. A library that ships blocks compiled by an earlier version imports these from `@ramonda/css` and
+  must be rebuilt with this one. A plugin's `runtime` option set to `@ramonda/css` must say
+  `@ramonda/css/compiled` now — the main entry no longer exports what compiled code calls — and a
+  wrapper's own runtime module re-exports `@ramonda/css/compiled`.
+- 228dbe0: `Head` sets `data-*` on `<html>`: `this.use(Head, (self) => ({ data: { theme: self.theme } }))` is
+  `<html data-theme="dark">`, by `lang`'s rules — the deeper `Head` wins per key, `undefined` says
+  nothing, and a page that goes away hands back what `<html>` had. `renderPage` and `renderStatic` return
+  `data`, `renderDocument` and `fillDocument` write it, so a theme is in the first paint. A key is
+  written as it follows `data-`; `colorScheme` is refused, because HTML lowercases it and no
+  `[data-color-scheme]` would match. The scaffolded server passes `data` through, and `dom-writes`
+  names it as the answer for a value that belongs on `<html>` — the docs no longer show an ignore for it.
+- a6b6dae: A route table can be put together from parts: `createRoutes(playerRoutes, { "/": <Home /> })` takes tables other modules made, literal ones, and `undefined` for a part a condition leaves out — matched in the order given. A spread could not do this, because the table `createRoutes` returns is compiled.
+  
+  `createRoutes` now refuses, when the table is built, a path two parts both name, a second `"*"`, and a route an earlier pattern matches first (`"/players/new"` after `"/players/:id"`), which could never be reached.
+  
+  **Breaking:** tables are registered under a name — `declare module "@ramonda/router" { interface Routes { app: typeof routes } }` replaces `interface Register { routes: typeof routes }`. The name lets a module lifted into a package register its own routes beside the app's. Rename the two words in your registration; nothing else changes.
+- aedc318: **Breaking:** `@ShouldUpdateOnPropsChange` is removed, and `RMD040` is retired with it. It took a
+  predicate an app writes, and a predicate can stop a component rendering when it should — silently, and
+  nothing can check it. Nothing in this repository or either trial app used it. A prop that arrives
+  rebuilt with the same contents is declared a value with `@StableProps`, which takes names and does the
+  comparing itself. `duplicate-decorators` no longer names it.
+- a09545a: **Breaking:** `Ref` is exported as a type only. `createRef()` is the one way to make a ref — `new Ref()`
+  was a second way that skipped both the development report for a ref built where it cannot be kept and
+  `ramonda-check`'s `ref-built-where-it-cannot-be-kept`. Replace `new Ref<T>()` with `createRef<T>()`;
+  `Ref<T>` as an annotation is unchanged.
+- 60326f1: **Breaking:** `renderToString` is no longer exported, and `RenderToStringOptions` is `RenderPageOptions`.
+  It returned the body alone, which `renderPage` returns beside the title, the head, `lang`, `data` and the
+  portals — so a page served from it lost all of them, and the docs taught it for serving pages while
+  the scaffold's own server warned against it. Write `const { body } = await renderPage(<App />, opts)`.
+
+### Patch Changes
+
+- 6e75325: A server-rendered app's production build compiles its JSX, as its dev server does: `scripts/build.mjs` holds
+  `plugins: [ramonda()]`. With style blocks, `ramondaCss()` comes after it.
+- 756f30a: A server-rendered app's server bundle has `import.meta.env.SSR` true: the build script leaves its defines to
+  `ramonda()`, which writes them for each build, instead of one `define` shared by the client and the server.
+
 ## 0.18.0
 
 ### Minor Changes

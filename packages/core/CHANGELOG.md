@@ -1,5 +1,99 @@
 # @ramonda/core
 
+## 0.30.0
+
+### Minor Changes
+
+- 56f2c21: A hook is made while its owner is made, and at no other time. `this.use()` on a component or hook whose
+  construction is over throws in every build, as RMD063 — from a method, `@created`, `@mounted`, a handler
+  or a callback. `ramonda-check` refuses every shape but a field's whole initializer, `name = this.use(…)`,
+  as the new `hook-used-outside-a-field`: a `use()` behind a condition, in a loop or in the constructor
+  body runs during construction and is reported before anything runs. Every owner then makes the same
+  hooks, once, in the same order, and a hook left off its owner's walk in production stays off it.
+- 8762b91: Compiled blocks: the runtime half of the JSX compiler in `@ramonda/build`, which turns every tree of host
+  elements into a template and the values of its holes. `__template` builds a tree's static part once, from a
+  description, with the DOM's own calls, in an inert document — never parsed from HTML, which rearranges what
+  it is given, and constructing no custom element and loading no image for it; `__block` carries one render's
+  values. A block is imported from the template and updated by comparing each hole with the value it wrote
+  last. A hole is an attribute, written through the attribute rules as any attribute is, an element's one
+  child — text written straight into its text node, markup through the children diff — or an element's
+  children. A block a server rendered is hydrated in place once its markup matches the template — tags, the
+  template's own attributes and text; markup from another template, another route's page, is built instead,
+  and an attribute only the server wrote goes. A template's static parts are not compared again after that:
+  what someone else changes or takes out there stays, as an attribute someone else sets does. Measured on
+  js-framework-benchmark, the idiomatic row compiled beside main, median script time: selecting a row
+  105.7 → 22.8 ms, creating 10,000 rows 389.1 → 194.4 ms.
+- 228dbe0: `Head` sets `data-*` on `<html>`: `this.use(Head, (self) => ({ data: { theme: self.theme } }))` is
+  `<html data-theme="dark">`, by `lang`'s rules — the deeper `Head` wins per key, `undefined` says
+  nothing, and a page that goes away hands back what `<html>` had. `renderPage` and `renderStatic` return
+  `data`, `renderDocument` and `fillDocument` write it, so a theme is in the first paint. A key is
+  written as it follows `data-`; `colorScheme` is refused, because HTML lowercases it and no
+  `[data-color-scheme]` would match. The scaffolded server passes `data` through, and `dom-writes`
+  names it as the answer for a value that belongs on `<html>` — the docs no longer show an ignore for it.
+- aedc318: **Breaking:** `@ShouldUpdateOnPropsChange` is removed, and `RMD040` is retired with it. It took a
+  predicate an app writes, and a predicate can stop a component rendering when it should — silently, and
+  nothing can check it. Nothing in this repository or either trial app used it. A prop that arrives
+  rebuilt with the same contents is declared a value with `@StableProps`, which takes names and does the
+  comparing itself. `duplicate-decorators` no longer names it.
+- a09545a: **Breaking:** `Ref` is exported as a type only. `createRef()` is the one way to make a ref — `new Ref()`
+  was a second way that skipped both the development report for a ref built where it cannot be kept and
+  `ramonda-check`'s `ref-built-where-it-cannot-be-kept`. Replace `new Ref<T>()` with `createRef<T>()`;
+  `Ref<T>` as an annotation is unchanged.
+- 60326f1: **Breaking:** `renderToString` is no longer exported, and `RenderToStringOptions` is `RenderPageOptions`.
+  It returned the body alone, which `renderPage` returns beside the title, the head, `lang`, `data` and the
+  portals — so a page served from it lost all of them, and the docs taught it for serving pages while
+  the scaffold's own server warned against it. Write `const { body } = await renderPage(<App />, opts)`.
+
+### Patch Changes
+
+- 99b220b: In a production build, a hook whose props can never change — its callback read no signal, or it takes no props
+  — and that has no hook of its own is left off its owner's walk, so an owner's render no longer calls it or builds
+  it an empty props object. What a hook sees is unchanged. A hook that gains a hook of its own later is walked again.
+- 661335c: A list handed the same array again takes its rows by position
+  
+  When a list's array is the same one as last render and a row of it was invalidated — every row of a
+  list reading the one value that moved, as selecting a row does — each row's id and scope is where the
+  last render left it. The list now takes them by position, instead of rebuilding the maps that find them
+  by item and by id. Measured on js-framework-benchmark with the row compiled into a template, median
+  script time for selecting a row went from 27.9 to 22.0 ms; creating and updating rows are unchanged.
+- c5a45a1: A `list()` row whose callback produces nothing keeps one scope, used again on every pass: what it read still
+  brings it back when it changes, and a signal it read no longer gathers one more subscription per pass. While
+  nothing it read moves, the callback is not asked again, and a list handed the same array keeps taking its rows by
+  position with such a row in it.
+- 8248775: `@memoized` keeps calls with more than one argument apart whatever their strings hold: each argument goes into the
+  key with its length in front, so `pick("a|s:b", "c")` and `pick("a", "b|s:c")` no longer share one handler.
+- a3e9f14: `@memoized` finds a handler for one argument by that argument
+  
+  A call with one string, number or boolean — `this.select(row.id)`, once per row per render — is looked
+  up by the value itself; a call with any other arguments keeps its built key, in a table of its own.
+  Measured beside the previous build on js-framework-benchmark, median script time: selecting a row went
+  from 104.6 to 97.4 ms and creating 10,000 rows from 384.3 to 367.4 ms.
+- abace9d: A component instance holds less, and a list row that runs again writes no subscription it already has.
+  All lists a runtime keeps (`@mounted`, `@effect`, `@updated` and the rest) share one frozen empty list
+  until something is added; a component's runtime is one object, every field of it there from
+  construction; every props proxy shares one handler, and a component's or hook's prop signals are kept
+  in a small store whose prototype holds nothing rather than in a `Map`, each made with its listener on
+  and heard by the runtime itself, whose `reBuild` is one method rather than a closure per component; an element's own children are
+  walked by sibling, so no `NodeList` is left cached on it; and a component reads its parent's context
+  object until it provides something, making one of its own only then. A list row whose callback reads
+  the signals it read last time — every row of a list on a select — stays subscribed to them instead of
+  detaching and attaching each one again.
+  
+  A first render makes less to throw away: a level with nothing before it makes no index of previous
+  regions and no map of positions, and puts its nodes in, in order; the arrays a level keeps — its
+  record, its normalized children — are made as long as they will be rather than grown; and the diff's per-component
+  functions write no function inside them, so no call keeps its variables in a context made for it.
+  
+  The work a commit leaves for after the DOM is in is lighter too. A component with no effects queues
+  nothing to run them. The queue is walked with a cursor instead of `shift()`: when every component still
+  queued an entry, creating 10,000 rows of five components queued 50,000, and the same build measured
+  about 800 ms or about 3,900 ms of script from run to run, depending on whether V8 could trim the array
+  from the front. And the bound that stops a flush whose work keeps queueing more counts only what that
+  work queues, so a commit with more than 100,000 entries of its own is no longer stopped as a loop.
+  
+  Measured in Chrome after creating 1,000 rows of five components: about 44 heap objects per component
+  before, about 26 after. Nothing a component or a list does changes, nor the order anything runs in.
+
 ## 0.29.0
 
 ### Minor Changes
