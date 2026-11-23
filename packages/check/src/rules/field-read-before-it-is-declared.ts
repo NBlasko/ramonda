@@ -93,7 +93,7 @@ export const fieldReadBeforeItIsDeclared = {
       }
       if (later.size === 0) continue;
 
-      const owner = callbackOwner(callback);
+      const owner = callbackOwner(callback, resolve);
       const reported = new Set<string>();
       const parameter = callback.parameters[0]?.name;
       const say = (field: string, at: ts.Node) => {
@@ -124,11 +124,7 @@ export const fieldReadBeforeItIsDeclared = {
       // A rest copy, `{ ...all }`, was taken at the call: what is read off it is read too early,
       // wherever the read is — a handed-over function included. One walk, over the whole callback.
       (function rest(node: ts.Node): void {
-        if (
-          ts.isPropertyAccessExpression(node) &&
-          ts.isIdentifier(node.name) &&
-          owner.isRest(node.expression, resolve)
-        ) {
+        if (ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.name) && owner.isRest(node.expression)) {
           say(node.name.text, node);
         }
         ts.forEachChild(node, rest);
@@ -139,9 +135,8 @@ export const fieldReadBeforeItIsDeclared = {
         if (ts.isPropertyAccessExpression(node) && owner.is(node.expression) && ts.isIdentifier(node.name)) {
           say(node.name.text, node);
         }
-        if (ts.isIdentifier(node) && owner.destructured.has(node.text) && isLocalRead(node)) {
-          say(owner.destructured.get(node.text) as string, node);
-        }
+        const member = ts.isIdentifier(node) && isLocalRead(node) ? owner.member(node) : undefined;
+        if (member !== undefined) say(member, node);
         ts.forEachChild(node, look);
       })(callback);
     }

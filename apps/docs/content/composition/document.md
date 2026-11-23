@@ -64,7 +64,7 @@ Title, description, canonical, Open Graph. [`Head`](/ssr/head) is the proven sha
 outside your subtree reactively, through one code path on the server and the client:
 
 ```tsx
-this.use(Head, (self: Article) => ({ title: self.post.title }));
+private head = this.use(Head, (self: Article) => ({ title: self.post.title }));
 ```
 
 ## Content that must live elsewhere in the DOM → `Portal`
@@ -79,7 +79,7 @@ your component tree — so context still reaches it and it is destroyed with its
 way as the title, on the server and the client:
 
 ```tsx
-this.use(Head, (self: App) => ({ lang: self.locale }));
+private head = this.use(Head, (self: App) => ({ lang: self.locale }));
 ```
 
 ## A theme on `<html>` → `Head`'s `data`
@@ -88,7 +88,7 @@ this.use(Head, (self: App) => ({ lang: self.locale }));
 the server and the client, by `lang`'s rules:
 
 ```tsx
-this.use(Head, (self: App) => ({ data: { theme: self.theme } }));
+private head = this.use(Head, (self: App) => ({ data: { theme: self.theme } }));
 ```
 
 `<html>` takes `data-*` and nothing else from a component. A class there would be a second way to

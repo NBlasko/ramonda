@@ -1,6 +1,6 @@
 import { createId } from "../helpers/createId";
 import { CONTEXT_READS, STABLE_PROPS } from "../helpers/constants";
-import { type Runtime, HOOK_RUNTIME } from "../core/runtime";
+import { type Runtime, HOOK_RUNTIME, addTo, contextToWrite } from "../core/runtime";
 import { attach, detach } from "../helpers/constants";
 import { Hook } from "./Hook";
 import type { State } from "../reactivity/State";
@@ -180,7 +180,7 @@ export function createContext<T extends object>(
         getSignal: (key) => {
           const hookRuntime = this[HOOK_RUNTIME];
           const signals = hookRuntime.propsSignals;
-          const existing = signals.get(key);
+          const existing = signals[key];
           if (existing) return existing;
 
           // A key this provider does not supply gets NO signal, so the consumer
@@ -195,7 +195,7 @@ export function createContext<T extends object>(
 
           // Reading through the options proxy lazily creates the signal.
           void this.props[key];
-          return signals.get(key);
+          return signals[key];
         },
       };
       /**
@@ -241,7 +241,7 @@ export function createContext<T extends object>(
        * a node. So two of those side by side are two independent scopes, and a consumer inside each
        * finds its own with nothing passed down.
        */
-      if (Object.hasOwn(owner.context, contextId)) {
+      if (owner.ownsContext && Object.hasOwn(owner.context, contextId)) {
         const holder = holderName(owner);
         const owning = holder || "this component";
         if (__DEV__) {
@@ -272,7 +272,7 @@ export function createContext<T extends object>(
         }
       }
 
-      owner.context[contextId] = channel;
+      contextToWrite(owner)[contextId] = channel;
 
       // Reactive reader for the providing component. It reads the options
       // directly — always fresh before render — so the providing component
@@ -406,10 +406,10 @@ export function createContext<T extends object>(
 
               // Unique id: "contextId:runtimeId:key", e.g. "101:5:theme".
               const listenerId = `${contextId}:${owner.id}:${key}`;
-              signal[attach]({ id: listenerId, onChange: owner.reBuild });
+              signal[attach]({ id: listenerId, onChange: owner });
 
               // Detach when the consumer's component unmounts.
-              owner.clearReactives.push(() => signal[detach](listenerId));
+              addTo(owner, "clearReactives", () => signal[detach](listenerId));
             }
 
             return signal.get();

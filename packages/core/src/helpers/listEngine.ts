@@ -11,6 +11,12 @@ import { createId } from "./createId";
 import type { Each, ItemRender } from "../base/list";
 
 /**
+ * What a row has read before its first run: nothing. Shared by every new row, and never written —
+ * a run records into a set of its own (see `buildItem`).
+ */
+const NO_DEPS: Set<State<unknown>> = new Set();
+
+/**
  * DEV-only: builds the row a SECOND time and reports what came out different — RMD020, for the one
  * position its double render cannot reach.
  *
@@ -72,7 +78,8 @@ function describe(value: unknown): string {
  * proportional to what changed, not to the list length.
  */
 interface ItemScope<T> {
-  listenerId: number;
+  /** The listener id the row subscribes under. */
+  id: number;
   item: T;
   /**
    * The position the vnode was built at.
@@ -83,7 +90,25 @@ interface ItemScope<T> {
    */
   index: number;
   vnode: VNode;
+  /** The signals the row's last run read, each subscribed with the scope itself. */
   deps: Set<State<unknown>>;
+  /**
+   * An empty set the next run records into, swapped with `deps` each run — see `buildItem`. Made when
+   * the row runs a second time: most rows never do, and an empty `Set` made for each of 1,000 rows
+   * measured 120 B a row.
+   */
+  spare: Set<State<unknown>> | undefined;
+  /** Called by a signal the row read when it changes — the scope is its own listener, see `newScope`. */
+  onChange: () => void;
+  /** The host the row's last run was built for, which `onChange` asks to render again. */
+  host: ListHost;
+  /**
+   * True while the row's callback runs. Last run's subscriptions stay on through the run, so a write the
+   * callback makes to a signal it read last time reaches this row's own listener — which answers nothing
+   * then, as when the row was detached from everything while it ran. Measured without it: one extra
+   * render of the host for a row that bumps a counter it reads.
+   */
+  building: boolean;
   dirty: boolean;
   /**
    * The callback produced nothing for this row last time. The scope stays — its subscriptions are what bring
@@ -167,11 +192,18 @@ export function inLevel<T>(rows: readonly unknown[] | undefined, host: ListHost 
  * component re-rendered, synchronously inside a row walk would otherwise give its lists that row as
  * their parent and that region's host.
  */
+/**
+ * Whether the list context is already what `atTopLevel` would set — no row, no region's host, and
+ * `block` — so a caller can run its reconcile directly, without handing it over as a callback. A
+ * callback is a closure, and a closure keeps its function's variables in a context made on every call.
+ */
+export function isAtTopLevel(block?: EnclosingBlock): boolean {
+  return enclosingRow.current === undefined && enclosingHost.current === undefined && enclosingBlock.current === block;
+}
+
 export function atTopLevel<T>(run: () => T, block?: EnclosingBlock): T {
   // From a drain — every entry today — all three are already empty, and there is nothing to restore.
-  if (enclosingRow.current === undefined && enclosingHost.current === undefined && enclosingBlock.current === block) {
-    return run();
-  }
+  if (isAtTopLevel(block)) return run();
   const outerBlock = enclosingBlock.current;
   enclosingBlock.current = block;
   try {
@@ -618,8 +650,43 @@ export class ListEngine<T> {
 
   /** Unsubscribes a scope from every signal its mapper read. */
   private releaseScope(scope: ItemScope<T>): void {
-    for (const dep of scope.deps) dep[detach](scope.listenerId);
+    for (const dep of scope.deps) dep[detach](scope.id);
     scope.deps.clear();
+  }
+
+  /**
+   * A row's scope, which is also what it subscribes to every signal it reads: a `State` takes a
+   * listener as `{ id, onChange }`, and the scope has both, made once for the life of the row.
+   */
+  private newScope(item: T, index: number): ItemScope<T> {
+    const scope: ItemScope<T> = {
+      // From `createId()`, the counter every other listener draws from: a `State` keys its listeners
+      // by id, so a number of this row's own would replace whichever compute or effect held it.
+      id: createId(),
+      onChange: undefined as unknown as () => void,
+      host: undefined as unknown as ListHost,
+      building: false,
+      item,
+      index,
+      vnode: undefined as unknown as VNode,
+      deps: NO_DEPS,
+      spare: undefined,
+      dirty: false,
+      empty: false,
+      dirtyBelow: false,
+      engine: this as ListEngine<unknown>,
+      addDep(state: State<unknown>) {
+        this.deps.add(state);
+      },
+    };
+    scope.onChange = () => {
+      if (scope.building) return;
+      scope.dirty = true;
+      this.anyDirty = true;
+      this.markRowsAbove();
+      scope.host.reBuild();
+    };
+    return scope;
   }
 
   /**
@@ -636,52 +703,46 @@ export class ListEngine<T> {
     render: ItemRender<T>,
     host: ListHost,
   ): VNode | null | undefined {
-    const scope: ItemScope<T> = existing ?? {
-      // From `createId()`, the counter every other listener draws from: a `State` keys its listeners
-      // by id, so a number of this row's own would replace whichever compute or effect held it.
-      listenerId: createId(),
-      item,
-      index,
-      vnode: undefined as unknown as VNode,
-      deps: new Set(),
-      dirty: false,
-      empty: false,
-      dirtyBelow: false,
-      engine: this as ListEngine<unknown>,
-      addDep(state: State<unknown>) {
-        this.deps.add(state);
-      },
-    };
+    const scope = existing ?? this.newScope(item, index);
+    scope.host = host;
 
-    // Drop last run's subscriptions before recording this run's: a branch taken
-    // last time may not be taken now, and a stale dep would keep invalidating.
-    for (const dep of scope.deps) dep[detach](scope.listenerId);
-    scope.deps.clear();
+    // This run's reads go into the spare set, and last run's stay attached until they are compared:
+    // a row that reads the same signals again — `this.selected === row.id`, on every select — is
+    // subscribed to each of them once, for as long as it keeps reading it. Detaching everything and
+    // attaching it again made a select of 1,000 rows do 2,000 subscription writes, and build 1,000
+    // closures and 1,000 listener objects, to arrive where it started.
+    const previous = scope.deps;
+    const reading = scope.spare ?? new Set<State<unknown>>();
+    scope.deps = reading;
+    // A row's first run has no set of last run's reads to keep for the next one.
+    scope.spare = previous === NO_DEPS ? undefined : previous;
 
     const previousTracker = trackerContainer.current;
     trackerContainer.current = scope;
+    scope.building = true;
 
     let vnode: VNode | null | undefined;
+    let done = false;
     try {
       vnode = render(item);
+      if (__DEV__) checkRow(host, item, render, vnode);
+      done = true;
     } finally {
       // Restored rather than nulled: a list may be built from inside a @compute,
       // and that tracker still has reads to collect after this returns.
       trackerContainer.current = previousTracker;
-    }
-
-    if (__DEV__) checkRow(host, item, render, vnode);
-
-    for (const dep of scope.deps) {
-      dep[attach]({
-        id: scope.listenerId,
-        onChange: () => {
-          scope.dirty = true;
-          this.anyDirty = true;
-          this.markRowsAbove();
-          host.reBuild();
-        },
-      });
+      scope.building = false;
+      if (done) {
+        // Subscribe what is read for the first time, and release what was not read again: a branch
+        // taken last time may not be taken now, and a stale dep would keep invalidating.
+        for (const dep of reading) if (!previous.has(dep)) dep[attach](scope);
+        for (const dep of previous) if (!reading.has(dep)) dep[detach](scope.id);
+      } else {
+        // A run that threw leaves the row subscribed to nothing.
+        for (const dep of previous) dep[detach](scope.id);
+        reading.clear();
+      }
+      previous.clear();
     }
 
     scope.item = item;
@@ -732,7 +793,7 @@ export class ListEngine<T> {
    */
   dispose(): void {
     for (const scope of this.scopes.values()) {
-      for (const dep of scope.deps) dep[detach](scope.listenerId);
+      for (const dep of scope.deps) dep[detach](scope.id);
       scope.deps.clear();
     }
     this.scopes.clear();

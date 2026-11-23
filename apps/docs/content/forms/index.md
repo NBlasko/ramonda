@@ -132,10 +132,10 @@ fetcher](/query/queries#typing-the-fetcher) is the same restriction for the same
 
 ```tsx
 // Pinned: `values` is typed, and a wrong field name is an error.
-this.use(Form<typeof schema>, () => ({ schema, defaultValues, onSubmit: (values) => … }));
+private form = this.use(Form<typeof schema>, () => ({ schema, defaultValues, onSubmit: (values) => … }));
 
 // Also fine, no pin needed: the method has its own annotation.
-this.use(Form, () => ({ schema, defaultValues, onSubmit: this.save }));
+private form = this.use(Form, () => ({ schema, defaultValues, onSubmit: this.save }));
 ```
 
 ## What the form gives you

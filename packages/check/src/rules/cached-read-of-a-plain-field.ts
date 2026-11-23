@@ -1,5 +1,6 @@
 import ts from "typescript";
 import {
+  callbackOwner,
   contains,
   isHandedOver,
   isLocalRead,
@@ -57,12 +58,14 @@ import type { Resolver, Rule } from "./rule";
  * `prefix = "Total: "` — can never be stale, and it is the commonest plain field there is. So a
  * WRITE is required, and writes in the constructor, in a field initializer and in `@created` do not
  * count: all three run before the first render, so the first computed value already has the final
- * one. Those members are skipped whole, so a handler written INSIDE one of them is not counted either
- * — a known gap, on the running list. Anywhere else, any function holding a write is a later place,
- * even one invoked on the spot: which functions run when is not followed.
+ * one. Their own writes, that is: a function written INSIDE one of them — a listener the constructor
+ * adds, a timer `@created` starts — runs later, and its writes count (see `runsByTheFirstRender`).
+ * Anywhere else, any function holding a write is a later place, even one invoked on the spot: which
+ * functions run when is not followed.
  *
  * **A write from inside a render or a `@compute`** — the memo pattern,
- * `if (!this.cache) this.cache = expensive()`. Advising `@state` there would be advising a loop.
+ * `if (!this.cache) this.cache = expensive()`. A render's own writes, again: a handler it writes,
+ * `onclick={() => { this.rate = 3 }}`, runs on a click, and its write counts. Advising `@state` there would be advising a loop.
  * `state-written-while-rendering` is the rule with an opinion about that shape.
  *
  * **`@destroyed`**, which runs after the last render.
@@ -119,53 +122,6 @@ function writerName(node: ts.Node): string {
       return `a callback given to \`${at.expression.text}\``;
   }
   return `a function at the top level of ${node.getSourceFile().fileName.split("/").pop()}`;
-}
-
-/** The owner a callback names: `this`, its parameter, and the members its parameter destructures. */
-interface Owner {
-  /** Whether this expression IS the owner — `this`, or the parameter itself, by the binding it resolves to. */
-  is(expression: ts.Expression): boolean;
-  /** The member a destructured local reads — `{ tick: t }` makes `t` read `tick` — or `undefined`. */
-  member(id: ts.Identifier): string | undefined;
-}
-
-/** A body whose owner is `this` and nothing else — a method's, a getter's. */
-const THIS_ONLY: Owner = {
-  is: (expression) => expression.kind === ts.SyntaxKind.ThisKeyword,
-  member: () => undefined,
-};
-
-/** The owner of a props callback, every name matched by the declaration it resolves to. */
-function ownerOf(callback: ts.Node, resolve: Resolver): Owner {
-  const parameter =
-    ts.isArrowFunction(callback) ||
-    ts.isFunctionExpression(callback) ||
-    ts.isFunctionDeclaration(callback) ||
-    ts.isMethodDeclaration(callback)
-      ? callback.parameters[0]
-      : undefined;
-  if (parameter === undefined) return THIS_ONLY;
-  const bindings = new Map<ts.Node, string>();
-  if (ts.isObjectBindingPattern(parameter.name)) {
-    for (const element of parameter.name.elements) {
-      if (element.dotDotDotToken !== undefined || !ts.isIdentifier(element.name)) continue;
-      const member = element.propertyName ?? element.name;
-      if (ts.isIdentifier(member)) bindings.set(element, member.text);
-    }
-  }
-  const declarations = (id: ts.Node): readonly ts.Declaration[] => resolve(id)?.declarations ?? [];
-  return {
-    is: (expression) =>
-      expression.kind === ts.SyntaxKind.ThisKeyword ||
-      (ts.isIdentifier(parameter.name) && ts.isIdentifier(expression) && declarations(expression).includes(parameter)),
-    member: (id) => {
-      for (const declaration of declarations(id)) {
-        const member = bindings.get(declaration);
-        if (member !== undefined) return member;
-      }
-      return undefined;
-    },
-  };
 }
 
 /** The members of that name in the nearest class up the chain — the one an instance has. */
@@ -278,8 +234,8 @@ function outerVariable(
 function readsIn(node: ts.Node, declaring: readonly ts.ClassLikeDeclaration[], resolve: Resolver): Reads {
   const reads: Reads = { fields: new Set(), variables: new Map() };
   // A props callback names its owner as `this`, its parameter, or the parameter destructured — see
-  // `ownerOf`. A method the walk follows into has only `this`, and a free function none.
-  const rootOwner = ownerOf(node, resolve);
+  // `callbackOwner`. A method the walk follows into has only `this`, and a free function none.
+  const rootOwner = callbackOwner(node, resolve);
   const seen = new Set<ts.Node>();
   /**
    * A declaration local to what the reader runs: inside it, or inside a body it walks — a method's, a
@@ -315,7 +271,7 @@ function readsIn(node: ts.Node, declaring: readonly ts.ClassLikeDeclaration[], r
     // anywhere written inside it, so an arrow there called a line later reads `self` as the owner too.
     // Matched by the binding a name resolves to, never by its text: an inner `(self) => self.rate` is
     // somebody else's `self`.
-    const owner = at === node || contains(node, at) ? rootOwner : THIS_ONLY;
+    const owner = at === node || contains(node, at) ? rootOwner : callbackOwner(at, resolve, false);
     (function look(current: ts.Node): void {
       if (current !== at) {
         // Built, not run: a function returned, stored or handed over in an object, or an accessor of one.
@@ -466,7 +422,9 @@ export const cachedReadOfAPlainField = {
       "that read the slot before it was filled keeps what it read. A value made once belongs in a module\n" +
       "constant (`const FMT = new Intl.NumberFormat()`), or in a `@compute` when it depends on state.\n\n" +
       "A field nothing writes after the first render is NOT reported — a constant a compute reads\n" +
-      "can never go stale, and neither can one written in the constructor or `@created`.\n\n",
+      "can never go stale, and neither can one the constructor or `@created` writes itself. A function\n" +
+      "written in one of them — a listener, a timer, a handler `render()` hands an element — runs later,\n" +
+      "and its write is named for the member it is written in.\n\n",
   },
 
   read(cls, { self, resolve }) {

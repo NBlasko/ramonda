@@ -1,12 +1,13 @@
 import { attach, detach, STATE_KEYS, PERSIST_KEYS, INITIAL_PRIMITIVES } from "../helpers/constants";
 import { reportNonSerializableState } from "../debug/serializableState";
+import { labelState } from "../debug/stateLabels";
 import { createId } from "../helpers/createId";
 import { className, displayName } from "../helpers/utils";
 import type { Effect } from "../reactivity/effect";
 import { State } from "../reactivity/State";
 import { trackerContainer, trackDependency } from "../reactivity/tracker";
 import type { LifecycleEnv } from "../types/vdom";
-import { type Runtime, type ComponentRuntime, GLOBAL_RUNTIME, COMPONENT_RUNTIME } from "../core/runtime";
+import { type Runtime, type ComponentRuntime, GLOBAL_RUNTIME, COMPONENT_RUNTIME, addTo } from "../core/runtime";
 import { diagnose } from "../debug/diagnostics";
 import { markCachedRender } from "../debug/cachedRender";
 import { reportFault } from "../debug/fault";
@@ -101,7 +102,7 @@ function attachEffect(
     mutated: new Set<State<unknown>>(),
   };
 
-  instance[GLOBAL_RUNTIME].effects.push(newEffect);
+  addTo(instance[GLOBAL_RUNTIME], "effects", newEffect);
 }
 
 // --- Building your own subscription decorators -----------------------------
@@ -262,11 +263,8 @@ export function state(_value: unknown, context: EnhancedClassFieldDecoratorConte
     // "through the constructor" case. Later writes are checked in the setter below.
     if (__DEV__) reportNonSerializableState(initialValue, contextName, owner);
 
-    const state = new State(initialValue, {
-      listener: { id: runtime.id, onChange: runtime.reBuild },
-      metaData: contextName,
-      owner,
-    });
+    const state = State.heardBy(initialValue, runtime.id, runtime);
+    if (__DEV__) labelState(state, contextName, owner);
 
     // Register as serializable state (used by hydration) — always, not dev-only.
     // The cast names the ONE property being written rather than opening the whole instance:
@@ -382,7 +380,7 @@ export function updated(value: (...args: never[]) => void, context: EnhancedClas
   ensureStringContextName(context.name, "updated");
 
   context.addInitializer(function (this) {
-    this[GLOBAL_RUNTIME].updates.push(() => value.call(this));
+    addTo(this[GLOBAL_RUNTIME], "updates", () => value.call(this));
   });
 }
 
@@ -561,7 +559,7 @@ export function deferHydration(value: (...args: never[]) => unknown, context: En
   ensureStringContextName(context.name, "deferHydration");
 
   context.addInitializer(function (this) {
-    this[GLOBAL_RUNTIME].deferHydrations.push(() => value.call(this));
+    addTo(this[GLOBAL_RUNTIME], "deferHydrations", () => value.call(this));
   });
 }
 
@@ -658,7 +656,7 @@ function createLifecycleDecorator(phase: LifecyclePhase, decoratorName: string) 
     context.addInitializer(function (this) {
       const bound = this[contextName].bind(this);
       const self = this;
-      this[GLOBAL_RUNTIME][phase].push({
+      addTo(this[GLOBAL_RUNTIME], phase, {
         id: createId(),
         // Wrapped rather than called raw, so a promise that rejects says so. The wrapper returns
         // whatever the method returned — including the promise itself — so every caller behaves
@@ -826,7 +824,7 @@ export function watchProp<
     }
     const contextName = ensureStringContextName(context.name, "watchProp");
     context.addInitializer(function (this) {
-      this[GLOBAL_RUNTIME].watchProps.push({
+      addTo(this[GLOBAL_RUNTIME], "watchProps", {
         id: createId(),
         selectors: selectors as readonly ((props: unknown) => unknown)[],
         cb: this[contextName].bind(this),
@@ -1031,7 +1029,7 @@ export function memoized<T extends (...args: any[]) => any>(
      * and it keeps firing for a handler nobody can reach. `@compute`, the props cache and the context
      * consumer all register the same way, and `releaseMemoEntry`'s own comment says why.
      */
-    this[GLOBAL_RUNTIME].clearReactives.push(() => {
+    addTo(this[GLOBAL_RUNTIME], "clearReactives", () => {
       for (const member of instanceMap.values()) {
         for (const entry of member.one.values()) releaseMemoEntry(entry);
         for (const entry of member.many.values()) releaseMemoEntry(entry);
@@ -1790,7 +1788,7 @@ export function compute<T, R>(
     );
 
     // Cleanup when the component is destroyed.
-    runtime.clearReactives.push(() => {
+    addTo(runtime, "clearReactives", () => {
       for (const dep of cache.deps) {
         dep[detach](internalId);
       }

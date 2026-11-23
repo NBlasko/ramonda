@@ -15,7 +15,7 @@ function createPropsProxy(hook: Hook<HookProps>) {
     {
       get: (_, key: string) => {
         const hookRuntime = hook[HOOK_RUNTIME];
-        let sig = hookRuntime?.propsSignals.get(key);
+        let sig = hookRuntime?.propsSignals[key];
 
         if (!sig) {
           const runtime = hook[GLOBAL_RUNTIME];
@@ -23,10 +23,8 @@ function createPropsProxy(hook: Hook<HookProps>) {
           // createHookRuntime normalises a missing bag to `{}`.
           const value = hookRuntime.rawProps[key];
 
-          sig = new State(value, {
-            listener: { id: runtime.id, onChange: runtime.reBuild },
-          });
-          hookRuntime.propsSignals.set(key, sig);
+          sig = State.heardBy(value, runtime.id, runtime);
+          hookRuntime.propsSignals[key] = sig;
         }
 
         return sig.get();

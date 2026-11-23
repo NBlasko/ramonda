@@ -167,10 +167,11 @@ async function build(mode: Mode): Promise<Build> {
  *
  * Every one is deliberate, for three different reasons:
  *
- * - `RMD004` / `RMD015` / `RMD055` / `RMD056` — writing to props, handing `use()` a props
- *   object instead of a callback, and mounting one context's Provider twice on one component,
- *   THROW in every build rather than only in development. Read-only inputs, a reactive bag and
- *   one provider per context per component are rules, not warnings, so the error and its code ship.
+ * - `RMD004` / `RMD015` / `RMD055` / `RMD056` / `RMD063` — writing to props, handing `use()` a
+ *   props object instead of a callback, mounting one context's Provider twice on one component, and
+ *   using a hook after its owner was constructed, THROW in every build rather than only in
+ *   development. Read-only inputs, a reactive bag, one provider per context per component and a
+ *   hook made with its owner are rules, not warnings, so the error and its code ship.
  *   Dropping the code from the message would leave a developer with a thrown string and
  *   nothing to search for. The prose stays behind: each throw carries one sentence, and the
  *   fix text is in `SPECS`, which development prints beside it.
@@ -202,6 +203,7 @@ const ALLOWED_CODES: Record<string, string> = {
   RMD055: "must be a callback",
   RMD056: "twice",
   RMD062: "render after its last edit",
+  RMD063: "after it was constructed",
 };
 
 /** What must never reach a production build, with a name for the failure message. */

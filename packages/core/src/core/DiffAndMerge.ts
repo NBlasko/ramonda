@@ -46,8 +46,8 @@ import { lifecycleCleanupManagement } from "../helpers/lifecycleMenagement";
 import { checkNesting } from "../debug/domNesting";
 import { seedWatchProps } from "../helpers/watchProps";
 import type { Context } from "../types/commonTypes";
-import { COMPONENT_RUNTIME, GLOBAL_RUNTIME } from "./runtime";
-import { runComponentEffects } from "../reactivity/effect";
+import { COMPONENT_RUNTIME, GLOBAL_RUNTIME, finishConstruction } from "./runtime";
+import { queueComponentEffects } from "../reactivity/effect";
 import { getRenderEnv } from "./renderEnv";
 import { getServerWorkCollector } from "./serverWork";
 import {
@@ -57,7 +57,7 @@ import {
   enclosingRow,
   enclosingHost,
   atTopLevel,
-  inLevel,
+  isAtTopLevel,
   type LazyListNode,
   type ListHost,
   type RowScope,
@@ -112,7 +112,7 @@ export function diffAndMerge(
  */
 export function mountRoot(vnode: ComponentChild, container: ChildNode): void {
   const unclaimed: (EnhancedChildNode | DONE)[] = [];
-  const result = atTopLevel(() => reconcileEntries([vnode], [], undefined, undefined, container, unclaimed));
+  const result = atTopLevel(() => reconcileEntries([vnode], NO_ENTRIES, undefined, undefined, container, unclaimed));
   (container as EnhancedChildNode)[CHILD_RECORD] = result.entries;
 
   /**
@@ -301,7 +301,7 @@ export function refreshComponentRegion(component: BaseComponent): void {
 
   const children = generateRenderOutput(component);
   const unclaimed: (EnhancedChildNode | DONE)[] = [];
-  const result = atTopLevel(() => reconcileEntries(children, region.entries, undefined, component, parent, unclaimed));
+  const result = reconcileAtTopLevel(children, region.entries, component, parent, unclaimed);
   region.entries = result.entries;
 
   // Before the reorder, for the reason the element path has: stale nodes still in the DOM make
@@ -401,11 +401,17 @@ function anchorAfterRegion(region: ComponentRegion, parent: ChildNode, held: rea
  * removing one is never this element's business.
  */
 function ownChildNodes(parent: ChildNode): EnhancedChildNode[] {
-  const children = parent.childNodes as unknown as EnhancedChildNode[];
   const own: EnhancedChildNode[] = [];
   let skipUntil: ChildNode | undefined;
-  for (let i = 0; i < children.length; i++) {
-    const child = children[i];
+  // Walked by sibling, never through `childNodes`: a browser keeps the `NodeList` that read creates on
+  // the element for as long as the element lives. Measured in Chrome after creating 1,000 rows of
+  // five components: two cached lists per row, about 160 B each, read once while building and never
+  // again.
+  for (
+    let child = parent.firstChild as EnhancedChildNode | null;
+    child !== null;
+    child = child.nextSibling as EnhancedChildNode | null
+  ) {
     if (skipUntil !== undefined) {
       if (child === skipUntil) skipUntil = undefined;
       continue;
@@ -1152,9 +1158,83 @@ export function listHostFor(owner: MaybeComponent): ListHost {
  * from seeing each other, and what keeps a component's chrome out of reach of
  * content passed into it.
  */
+/**
+ * The previous record of a level that had none — a component's first render, a list's first rows. Shared,
+ * and never written: `reconcileEntries` only reads what it is handed as `previous`.
+ */
+const NO_ENTRIES: readonly RecordEntry[] = Object.freeze([]);
+
+/**
+ * The regions a level had before, when it had none. Shared, and never written: the only write to the
+ * index is in the walk over `previous`, which is empty whenever this is the one used — so a first
+ * render makes no `Map`. Measured in Chrome, creating 1,000 rows of five components: `new Map` was
+ * 259 B allocated per component, most of it one of these per level for nothing.
+ */
+const NO_REGIONS: Map<unknown, ListRegion | ComponentRegion> = new Map();
+
+/**
+ * A region this pass no longer asks for, taken down.
+ *
+ * The nodes go to `unclaimed` to be unmounted, but the instance and the list engine are reachable only
+ * from here: the region entry itself is about to be dropped. `disposeRegions` takes the entry rather
+ * than its children, so a component region's own `@destroyed` runs.
+ */
+/**
+ * A component's render reconciled as a level of its own — see `atTopLevel`. From a drain, which is every
+ * render today, the context is already the top level, and the reconcile runs directly: written as
+ * `atTopLevel(() => …)` here, the arrow made its caller keep its variables in a context, and the arrow
+ * itself, on every component built and every render. Measured in Chrome, creating 1,000 rows of five
+ * components: `buildComponent` allocated 187 B per component.
+ */
+function reconcileAtTopLevel(
+  children: unknown[],
+  previous: readonly RecordEntry[],
+  component: BaseComponent,
+  parent: ChildNode,
+  unclaimed: (EnhancedChildNode | DONE)[],
+): ReturnType<typeof reconcileEntries> {
+  if (isAtTopLevel()) return reconcileEntries(children, previous, undefined, component, parent, unclaimed);
+  return reconcileFromInsideALevel(children, previous, component, parent, unclaimed);
+}
+
+/** `reconcileAtTopLevel`'s other case, in a function of its own so the closure stays here. */
+function reconcileFromInsideALevel(
+  children: unknown[],
+  previous: readonly RecordEntry[],
+  component: BaseComponent,
+  parent: ChildNode,
+  unclaimed: (EnhancedChildNode | DONE)[],
+): ReturnType<typeof reconcileEntries> {
+  return atTopLevel(() => reconcileEntries(children, previous, undefined, component, parent, unclaimed));
+}
+
+/**
+ * A built component's `@mounted` methods, queued for once its nodes are in the document.
+ *
+ * In a function of its own, called only when there is one: written in `buildComponent`, the arrow each
+ * queues made that function keep its variables in a context on every component built — with a
+ * `@mounted` or without, and most have none.
+ */
+function queueMounts(component: BaseComponent, runtime: Runtime, skipEnv: "client" | "server"): void {
+  const componentRuntime = component[COMPONENT_RUNTIME];
+  for (const mount of runtime.mounts) {
+    if (mount.env !== skipEnv) queuePostCommit(component, () => mount.cb(componentRuntime.env));
+  }
+}
+
+/** DEV only: the unpersisted-state lint, queued after the mounts — in a function of its own, like `queueMounts`. */
+function queueLint(component: BaseComponent, before: NonNullable<ReturnType<typeof snapshotOwnProps>>): void {
+  queuePostCommit(component, () => lintUnpersistedState(component, before));
+}
+
+function retireRegion(region: ListRegion | ComponentRegion, unclaimed: (EnhancedChildNode | DONE)[]): void {
+  collectRegionNodes(region, unclaimed);
+  disposeRegions([region]);
+}
+
 export function reconcileEntries(
   children: unknown[],
-  previous: RecordEntry[],
+  previous: readonly RecordEntry[],
   clean: boolean[] | undefined,
   placeholderComponent: MaybeComponent,
   parent: ChildNode,
@@ -1180,7 +1260,7 @@ export function reconcileEntries(
   const cloneChildren: (EnhancedChildNode | DONE)[] = [];
   // Looked up by owner, never by position: a region keeps its nodes even when it
   // moves among its siblings.
-  const previousRegions = new Map<unknown, ListRegion | ComponentRegion>();
+  const previousRegions = previous.length === 0 ? NO_REGIONS : new Map<unknown, ListRegion | ComponentRegion>();
   /**
    * Regions a LATER one with the same owner pushed out of the index.
    *
@@ -1237,12 +1317,231 @@ export function reconcileEntries(
    */
   const keyIndex: KeyIndex = { map: null, source: cloneChildren, firstFree: 0 };
 
-  const entries: RecordEntry[] = [];
+  /**
+   * As long as the children, from the start — a level never holds more entries than it has children
+   * — filled through `count` and cut to it at the end. Built with `push` from `[]`, a short array
+   * reserved 17 slots on its first push, and this one is KEPT: it is the region's record and the
+   * element's. Measured in Chrome after creating 1,000 rows of five components: the regions' records
+   * held 38,196 slots for 6,007 entries.
+   */
+  const entries: RecordEntry[] = new Array(children.length);
+  let count = 0;
   let changed = false;
   let plainIndex = 0;
 
+  /**
+   * The level's list context — `rows` when its children are a list's rows, `listHost` when they are a
+   * region's — set and put back here, in the body, rather than through `inLevel` and a callback: a
+   * function written inside this one is a closure, and V8 then keeps this call's variables in a
+   * context object made on every call. Measured in Chrome, creating 1,000 rows of five components:
+   * `reconcileEntries` allocated 428 B per component, the inner walk and its context among them.
+   */
+  const leveled = rows !== undefined || listHost !== undefined;
+  const outerRow = enclosingRow.current;
+  const outerHost = enclosingHost.current;
+  if (leveled) enclosingHost.current = listHost ?? outerHost;
+
   try {
-    inLevel(rows, listHost, reconcileChildren);
+    try {
+      for (let i = 0; i < children.length; i++) {
+        const rawVchild = children[i];
+        if (rows !== undefined) enclosingRow.current = rows[i] as RowScope | undefined;
+
+        if (isListNode(rawVchild)) {
+          const found = previousRegions.get(rawVchild.owner);
+          previousRegions.delete(rawVchild.owner);
+          // A list's owner and a component's owner are minted differently and cannot collide, so this
+          // narrowing never actually discards a region — it is what tells the two kinds apart in types.
+          const before = found !== undefined && !isComponentRegion(found) ? found : undefined;
+
+          // A `list()` descriptor has not run its mapper yet. This is the moment to:
+          // the previous region is in hand, and with it the engine holding the
+          // minted ids, the per-item scopes and the whole-list skip.
+          let listNode = rawVchild;
+          /**
+           * Only a `list()` has an engine. A GROUP — an array among the children — has none, and must
+           * not take the one a `list()` left in this slot: the two share an owner, so a list that became
+           * a group found the list's region, and with its engine the skip below trusted a node the engine
+           * never built. Measured: `<Panel>{open ? list(a, …) : [<b />, list(prices, …)]}</Panel>`, and
+           * the prices stayed old. The list's engine is let go of once the group is in its place —
+           * below — or it stays subscribed to whatever its rows read.
+           */
+          let engine: ListRegion["engine"];
+
+          if (isLazyList(rawVchild)) {
+            engine = before?.engine;
+            const materialized = buildLazyList(
+              rawVchild as unknown as LazyListNode,
+              engine as ListEngine<unknown> | undefined,
+              enclosingHost.current ?? listHostFor(placeholderComponent),
+            );
+            listNode = materialized.node as typeof rawVchild;
+            engine = materialized.engine;
+          }
+
+          /**
+           * The engine handed back last pass's node: nothing in this list changed, so the region is kept
+           * whole, without looking at a row. Unrelated state over 10 000 rows walks none of them.
+           *
+           * Safe because "nothing changed" includes what is INSIDE the rows. A list in a row marks every
+           * row above it when one of its own rows is invalidated, and that makes the outer engine build
+           * a new node instead of handing this one back — see `markRowsAbove` in `helpers/listEngine.ts`.
+           * Without it this skip left a list inside a row stale; `AListInsideARow.test.tsx` and
+           * `ListCallbackIdentity.test.tsx` ("BOTH stable") are the cases.
+           *
+           * For a node an ENGINE built, or a GROUP — an array of children — that holds no `list()`
+           * anywhere inside it (`holdsARegion`; a component row does not count, it renders itself). A group is built once by `h` and kept in the vnode around it,
+           * so a row reused from last pass hands back the same group while a list inside it has changed:
+           * `<li>{[<b />, list(…)]}</li>` kept its old prices, and so would `[<div>{list(…)}</div>]`.
+           * One with nothing below it that changes on its own is the same markup when it is the same
+           * object, and is kept whole: `<ul>{this.props.children}</ul>` over 1000 rows diffs none of them.
+           */
+          if (
+            before !== undefined &&
+            before.source === listNode &&
+            (engine !== undefined || !holdsARegion(listNode.vnodes))
+          ) {
+            entries[count++] = before;
+            if (previous[count - 1] !== before) changed = true;
+            continue;
+          }
+
+          const inner = reconcileEntries(
+            listNode.vnodes,
+            before?.entries ?? NO_ENTRIES,
+            listNode.clean,
+            placeholderComponent,
+            parent,
+            unclaimed,
+            listHost,
+            listNode.rows,
+          );
+
+          /**
+           * What the recursion built belongs to THIS pass's undo list.
+           *
+           * The nested call keeps its own `born`, and it is discarded when the call returns — so a
+           * throw LATER in this level (the next list's mapper, which nothing wraps) tore nothing down
+           * and rethrew, and no record ever pointed at the components the list had just built.
+           * Measured on `[list([1], () => <Early/>), list([2], () => { throw })]`: `Early`'s
+           * `@created` had run, its `@interval` went on firing under the fallback, and its
+           * `@destroyed` never ran.
+           *
+           * A list this pass CREATED is added whole, which is also what releases its engine — an
+           * engine nothing holds keeps every item subscribed to whatever it read. An ADOPTED list is
+           * not: it is still in the caller's record, and the rows it built come through `inner.born`.
+           */
+
+          // Released with everything else this level retires, at its end: a pass that throws before
+          // then leaves the list in the record it came from, and its rows must still hear their signals.
+          if (engine === undefined && before?.engine !== undefined) (retiredEngines ??= []).push(before.engine);
+
+          if (inner.born !== undefined) (born ??= []).push(...inner.born);
+
+          const region: ListRegion = {
+            owner: listNode.owner,
+            entries: inner.entries,
+            source: listNode,
+            engine,
+          };
+
+          if (before === undefined) (born ??= []).push(region);
+
+          entries[count++] = region;
+          // Changed only when something in it is: a new region, a different one in this slot, or rows
+          // inside that moved, came or went. A group reused whole — markup settled to last pass's object
+          // — moved nothing, and the parent need not be flattened and reordered for it.
+          if (before === undefined || inner.changed || previous[count - 1] !== before) changed = true;
+          continue;
+        }
+
+        /**
+         * A COMPONENT is a region, so it never reaches `claimOrMount` and never takes a slot from the
+         * node pool. It is looked up by its own identity instead — see `componentRegionOwner`.
+         *
+         * Ahead of the clean check on purpose: `claimByKey` looks for a NODE in the pool, and a
+         * component has none there. A clean component is one whose vnode is the very object from last
+         * render, so its props cannot have changed either and adopting the region is the whole job.
+         */
+        if (isVNode(rawVchild) && rawVchild.type === COMPONENT_TYPE) {
+          const owner = componentRegionOwner(rawVchild, i);
+          const found = previousRegions.get(owner);
+          previousRegions.delete(owner);
+          const before = found !== undefined && isComponentRegion(found) ? found : undefined;
+
+          let region: ComponentRegion;
+          if (
+            clean !== undefined &&
+            clean[i] === true &&
+            before !== undefined &&
+            before.definition === rawVchild.name
+          ) {
+            before.parent = parent;
+            region = before;
+          } else {
+            try {
+              region = reconcileComponentEntry(rawVchild, owner, before, placeholderComponent, parent, unclaimed);
+            } catch (e) {
+              /**
+               * The same door a plain child's build goes through, and it has to be here now.
+               *
+               * `buildDetachedNode` wraps every node it builds, so a throwing render used to reach
+               * `errorHandler` — which walks up to an `ErrorBoundary` — simply by being built there. A
+               * component is built on this path instead, and without this the throw went straight out of
+               * the drain: measured as every `ErrorBoundary` test failing with the child's own error.
+               *
+               * The child is dropped from this render, exactly as a failed node is. What was there
+               * before it is torn down by hand, because it has already been taken out of
+               * `previousRegions` and nothing downstream would find it again.
+               */
+              if (before !== undefined) {
+                collectRegionNodes(before, unclaimed);
+                disposeRegions([before]);
+                changed = true;
+              }
+              errorHandler(e, placeholderComponent);
+              continue;
+            }
+          }
+
+          if (region !== before) (born ??= []).push(region);
+
+          entries[count++] = region;
+          if (previous[count - 1] !== region) changed = true;
+          continue;
+        }
+
+        // Clean item: same vnode object, and nothing it read has changed. Its DOM
+        // subtree is therefore still correct, so it is claimed by key and left
+        // alone — no attribute pass, no recursion, no work proportional to its size.
+        if (clean !== undefined && clean[i] === true) {
+          const claimedNode = claimByKey(rawVchild as VNode, cloneChildren, keyIndex);
+          if (claimedNode !== undefined) {
+            // `claimByKey` only ever answers for a KEYED item, so this clears rather than records.
+            stampSlot(claimedNode, i, true);
+            entries[count++] = claimedNode;
+            if (previous[count - 1] !== claimedNode) changed = true;
+            plainIndex++;
+            continue;
+          }
+          // No node to reuse (first render, or it was unmounted): build it normally.
+        }
+
+        const vchild = filterVirtualChild(rawVchild);
+        if (vchild === undefined) continue;
+
+        const placed = claimOrMount(vchild, plainIndex++, i, placeholderComponent, parent, cloneChildren, keyIndex);
+        if (placed) {
+          entries[count++] = placed as EnhancedChildNode;
+          if (previous[count - 1] !== placed) changed = true;
+        }
+      }
+    } finally {
+      if (leveled) {
+        enclosingRow.current = outerRow;
+        enclosingHost.current = outerHost;
+      }
+    }
   } catch (e) {
     /**
      * The pass is over and its entries are going nowhere, so what it BUILT has to come back down
@@ -1258,213 +1557,19 @@ export function reconcileEntries(
     throw e;
   }
 
-  function reconcileChildren(): void {
-    for (let i = 0; i < children.length; i++) {
-      const rawVchild = children[i];
-      if (rows !== undefined) enclosingRow.current = rows[i] as RowScope | undefined;
-
-      if (isListNode(rawVchild)) {
-        const found = previousRegions.get(rawVchild.owner);
-        previousRegions.delete(rawVchild.owner);
-        // A list's owner and a component's owner are minted differently and cannot collide, so this
-        // narrowing never actually discards a region — it is what tells the two kinds apart in types.
-        const before = found !== undefined && !isComponentRegion(found) ? found : undefined;
-
-        // A `list()` descriptor has not run its mapper yet. This is the moment to:
-        // the previous region is in hand, and with it the engine holding the
-        // minted ids, the per-item scopes and the whole-list skip.
-        let listNode = rawVchild;
-        /**
-         * Only a `list()` has an engine. A GROUP — an array among the children — has none, and must
-         * not take the one a `list()` left in this slot: the two share an owner, so a list that became
-         * a group found the list's region, and with its engine the skip below trusted a node the engine
-         * never built. Measured: `<Panel>{open ? list(a, …) : [<b />, list(prices, …)]}</Panel>`, and
-         * the prices stayed old. The list's engine is let go of once the group is in its place —
-         * below — or it stays subscribed to whatever its rows read.
-         */
-        let engine: ListRegion["engine"];
-
-        if (isLazyList(rawVchild)) {
-          engine = before?.engine;
-          const materialized = buildLazyList(
-            rawVchild as unknown as LazyListNode,
-            engine as ListEngine<unknown> | undefined,
-            enclosingHost.current ?? listHostFor(placeholderComponent),
-          );
-          listNode = materialized.node as typeof rawVchild;
-          engine = materialized.engine;
-        }
-
-        /**
-         * The engine handed back last pass's node: nothing in this list changed, so the region is kept
-         * whole, without looking at a row. Unrelated state over 10 000 rows walks none of them.
-         *
-         * Safe because "nothing changed" includes what is INSIDE the rows. A list in a row marks every
-         * row above it when one of its own rows is invalidated, and that makes the outer engine build
-         * a new node instead of handing this one back — see `markRowsAbove` in `helpers/listEngine.ts`.
-         * Without it this skip left a list inside a row stale; `AListInsideARow.test.tsx` and
-         * `ListCallbackIdentity.test.tsx` ("BOTH stable") are the cases.
-         *
-         * For a node an ENGINE built, or a GROUP — an array of children — that holds no `list()`
-         * anywhere inside it (`holdsARegion`; a component row does not count, it renders itself). A group is built once by `h` and kept in the vnode around it,
-         * so a row reused from last pass hands back the same group while a list inside it has changed:
-         * `<li>{[<b />, list(…)]}</li>` kept its old prices, and so would `[<div>{list(…)}</div>]`.
-         * One with nothing below it that changes on its own is the same markup when it is the same
-         * object, and is kept whole: `<ul>{this.props.children}</ul>` over 1000 rows diffs none of them.
-         */
-        if (
-          before !== undefined &&
-          before.source === listNode &&
-          (engine !== undefined || !holdsARegion(listNode.vnodes))
-        ) {
-          entries.push(before);
-          if (previous[entries.length - 1] !== before) changed = true;
-          continue;
-        }
-
-        const inner = reconcileEntries(
-          listNode.vnodes,
-          before?.entries ?? [],
-          listNode.clean,
-          placeholderComponent,
-          parent,
-          unclaimed,
-          listHost,
-          listNode.rows,
-        );
-
-        /**
-         * What the recursion built belongs to THIS pass's undo list.
-         *
-         * The nested call keeps its own `born`, and it is discarded when the call returns — so a
-         * throw LATER in this level (the next list's mapper, which nothing wraps) tore nothing down
-         * and rethrew, and no record ever pointed at the components the list had just built.
-         * Measured on `[list([1], () => <Early/>), list([2], () => { throw })]`: `Early`'s
-         * `@created` had run, its `@interval` went on firing under the fallback, and its
-         * `@destroyed` never ran.
-         *
-         * A list this pass CREATED is added whole, which is also what releases its engine — an
-         * engine nothing holds keeps every item subscribed to whatever it read. An ADOPTED list is
-         * not: it is still in the caller's record, and the rows it built come through `inner.born`.
-         */
-
-        // Released with everything else this level retires, at its end: a pass that throws before
-        // then leaves the list in the record it came from, and its rows must still hear their signals.
-        if (engine === undefined && before?.engine !== undefined) (retiredEngines ??= []).push(before.engine);
-
-        if (inner.born !== undefined) (born ??= []).push(...inner.born);
-
-        const region: ListRegion = {
-          owner: listNode.owner,
-          entries: inner.entries,
-          source: listNode,
-          engine,
-        };
-
-        if (before === undefined) (born ??= []).push(region);
-
-        entries.push(region);
-        // Changed only when something in it is: a new region, a different one in this slot, or rows
-        // inside that moved, came or went. A group reused whole — markup settled to last pass's object
-        // — moved nothing, and the parent need not be flattened and reordered for it.
-        if (before === undefined || inner.changed || previous[entries.length - 1] !== before) changed = true;
-        continue;
-      }
-
-      /**
-       * A COMPONENT is a region, so it never reaches `claimOrMount` and never takes a slot from the
-       * node pool. It is looked up by its own identity instead — see `componentRegionOwner`.
-       *
-       * Ahead of the clean check on purpose: `claimByKey` looks for a NODE in the pool, and a
-       * component has none there. A clean component is one whose vnode is the very object from last
-       * render, so its props cannot have changed either and adopting the region is the whole job.
-       */
-      if (isVNode(rawVchild) && rawVchild.type === COMPONENT_TYPE) {
-        const owner = componentRegionOwner(rawVchild, i);
-        const found = previousRegions.get(owner);
-        previousRegions.delete(owner);
-        const before = found !== undefined && isComponentRegion(found) ? found : undefined;
-
-        let region: ComponentRegion;
-        if (clean !== undefined && clean[i] === true && before !== undefined && before.definition === rawVchild.name) {
-          before.parent = parent;
-          region = before;
-        } else {
-          try {
-            region = reconcileComponentEntry(rawVchild, owner, before, placeholderComponent, parent, unclaimed);
-          } catch (e) {
-            /**
-             * The same door a plain child's build goes through, and it has to be here now.
-             *
-             * `buildDetachedNode` wraps every node it builds, so a throwing render used to reach
-             * `errorHandler` — which walks up to an `ErrorBoundary` — simply by being built there. A
-             * component is built on this path instead, and without this the throw went straight out of
-             * the drain: measured as every `ErrorBoundary` test failing with the child's own error.
-             *
-             * The child is dropped from this render, exactly as a failed node is. What was there
-             * before it is torn down by hand, because it has already been taken out of
-             * `previousRegions` and nothing downstream would find it again.
-             */
-            if (before !== undefined) {
-              collectRegionNodes(before, unclaimed);
-              disposeRegions([before]);
-              changed = true;
-            }
-            errorHandler(e, placeholderComponent);
-            continue;
-          }
-        }
-
-        if (region !== before) (born ??= []).push(region);
-
-        entries.push(region);
-        if (previous[entries.length - 1] !== region) changed = true;
-        continue;
-      }
-
-      // Clean item: same vnode object, and nothing it read has changed. Its DOM
-      // subtree is therefore still correct, so it is claimed by key and left
-      // alone — no attribute pass, no recursion, no work proportional to its size.
-      if (clean !== undefined && clean[i] === true) {
-        const claimedNode = claimByKey(rawVchild as VNode, cloneChildren, keyIndex);
-        if (claimedNode !== undefined) {
-          // `claimByKey` only ever answers for a KEYED item, so this clears rather than records.
-          stampSlot(claimedNode, i, true);
-          entries.push(claimedNode);
-          if (previous[entries.length - 1] !== claimedNode) changed = true;
-          plainIndex++;
-          continue;
-        }
-        // No node to reuse (first render, or it was unmounted): build it normally.
-      }
-
-      const vchild = filterVirtualChild(rawVchild);
-      if (vchild === undefined) continue;
-
-      const placed = claimOrMount(vchild, plainIndex++, i, placeholderComponent, parent, cloneChildren, keyIndex);
-      if (placed) {
-        entries.push(placed as EnhancedChildNode);
-        if (previous[entries.length - 1] !== placed) changed = true;
-      }
-    }
-  }
-
-  // A region this render no longer asks for — a list that is gone, a component that is gone — and
-  // children that were not claimed.
-  const retire = (region: ListRegion | ComponentRegion): void => {
-    collectRegionNodes(region, unclaimed);
-    // The nodes go to `unclaimed` to be unmounted, but the instance and the list engine are
-    // reachable only from here: the region entry itself is about to be dropped. `disposeRegions`
-    // takes the entry rather than its children, so a component region's own `@destroyed` runs.
-    disposeRegions([region]);
+  for (const region of previousRegions.values()) {
+    retireRegion(region, unclaimed);
     changed = true;
-  };
-  for (const region of previousRegions.values()) retire(region);
-  if (displacedRegions !== undefined) for (const region of displacedRegions) retire(region);
+  }
+  if (displacedRegions !== undefined) {
+    for (const region of displacedRegions) retireRegion(region, unclaimed);
+    changed = true;
+  }
   if (retiredEngines !== undefined) for (const engine of retiredEngines) engine.dispose();
   for (const leftover of cloneChildren) {
     if (leftover !== DONE) unclaimed.push(leftover);
   }
+  if (count !== entries.length) entries.length = count;
   if (previous.length !== entries.length) changed = true;
 
   return { entries, changed, born };
@@ -1606,6 +1711,32 @@ export function reorderChildren(
       i++;
     }
     if (i === length && cursor === null) return;
+  }
+
+  /**
+   * Every node is new: the run had nothing in it before — a block's previous order is empty, or an
+   * element has no children yet — and no node coming in is attached anywhere. Nothing is in order to
+   * keep and nothing can hold focus, so each goes in, in order, and no map of positions is made: the
+   * first render of every element and every component lands here.
+   *
+   * "Attached nowhere" is checked rather than assumed. An empty parent is not proof of it: code outside
+   * the framework can hold a node the framework owns somewhere else — a hand-made portal, a drag library
+   * — and bringing it back focused must keep its focus, which the walk below does. Measured: skipped on
+   * an empty parent alone, such an input came back unfocused.
+   */
+  if (previousOrder !== undefined ? previousOrder.length === 0 : parent.firstChild === null) {
+    let attached = false;
+    for (let n = 0; n < length; n++) {
+      if (orderedNodes[n].parentNode !== null) {
+        attached = true;
+        break;
+      }
+    }
+    if (!attached) {
+      const reference = anchor ?? firstHostedBlock(parent);
+      for (let n = 0; n < length; n++) parent.insertBefore(orderedNodes[n], reference);
+      return;
+    }
   }
 
   // Current position of every child, so "already in relative order" is decidable.
@@ -1865,14 +1996,14 @@ function updateComponentRegion(region: ComponentRegion, vnode: VNodeComponent): 
       const oldValue = prevRaw[key];
 
       if (oldValue !== newValue) {
-        const sig = componentRuntime.propsSignals.get(key);
+        const sig = componentRuntime.propsSignals[key];
         if (sig) sig.set(newValue);
       }
     }
 
     for (const key of Object.keys(prevRaw)) {
       if (!(key in nextRaw)) {
-        const sig = componentRuntime.propsSignals.get(key);
+        const sig = componentRuntime.propsSignals[key];
         if (sig) sig.set(undefined);
       }
     }
@@ -2194,8 +2325,8 @@ export function buildComponentRegion(
   parent: ChildNode,
 ): ComponentRegion {
   const placeholderComponentRuntime = placeholderComponent?.[COMPONENT_RUNTIME];
-  const parentContext = placeholderComponent?.[GLOBAL_RUNTIME].context;
-  const currentContext = Object.create(parentContext || null) as Context;
+  // The parent's own object, shared until this component publishes on it — see `contextToWrite`.
+  const currentContext = placeholderComponent?.[GLOBAL_RUNTIME].context ?? (Object.create(null) as Context);
 
   const component = componentFactory(vnode.name, vnode.attributes, currentContext);
   const componentRuntime = component[COMPONENT_RUNTIME];
@@ -2305,7 +2436,7 @@ function buildComponent(
   // A component's lists report to the component, which re-renders itself: no row above it, and no
   // region's host, is theirs. Only here, where the component is BUILT and its render reconciled on
   // the spot — taking new props only queues a render, which runs from a drain.
-  const inner = atTopLevel(() => reconcileEntries(children, [], undefined, component, parent, unclaimed));
+  const inner = reconcileAtTopLevel(children, NO_ENTRIES, component, parent, unclaimed);
 
   const region: ComponentRegion = {
     owner,
@@ -2320,24 +2451,24 @@ function buildComponent(
   // Queued, not called: the nodes are inserted by the CALLER after this returns, so running any of
   // this here meant running it before they were in the document. Queued in the order they used to
   // run — mounts, lint, then effects — so only the timing moved. See core/commit.ts.
-  for (const mount of runtime.mounts) {
-    if (mount.env !== skipEnv) queuePostCommit(component, () => mount.cb(componentRuntime.env));
-  }
+  if (runtime.mounts.length > 0) queueMounts(component, runtime, skipEnv);
 
   if (__DEV__) {
     // After the mounts, as before: this lint is about fields @created AND @mounted
     // set, so it has to see both.
     if (lintBefore) {
-      queuePostCommit(component, () => lintUnpersistedState(component, lintBefore));
+      queueLint(component, lintBefore);
     }
   }
 
   // Deferred with the rest, not left inline: this runs effects for the first time, and running it
   // inline would move it ahead of @mounted. No-op on the server.
-  queuePostCommit(component, () => runComponentEffects(component));
+  queueComponentEffects(component);
   return region;
 }
 
 function componentFactory(component: ComponentClassKind, props: Record<string, unknown>, ctx: Context): BaseComponent {
-  return new component(props, ctx);
+  const instance = new component(props, ctx);
+  finishConstruction(instance);
+  return instance;
 }

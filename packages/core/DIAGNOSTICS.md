@@ -90,6 +90,7 @@ so a component that misuses the same property on every render reports once.
 | `RMD060` | error | render() is async |
 | `RMD061` | warning | A ref was built while a value was being derived |
 | `RMD062` | warning | A field read its model while a commit ran |
+| `RMD063` | error | A hook used after its owner was constructed |
 
 ### RMD052 — A component among JSX children, where an element was meant
 
@@ -259,12 +260,15 @@ still read both through its own hooks, which is what makes the mistake invisible
 from the one place that made it. A DEV-only report would leave production doing
 exactly that, silently.
 
-The check is `Object.hasOwn(owner.context, contextId)`, and own-ness is exactly
-the question. A context object is `Object.create(parentContext)`, so a Provider
-ABOVE this component leaves the key inherited here rather than own — which is
-nesting, is ordinary, and must stay legal. Only a second publish on one
-component makes the key own. Widening this to `in` refuses every nested
-Provider, and core's tests fail if it is.
+The check is `owner.ownsContext && Object.hasOwn(owner.context, contextId)`, and
+own-ness is exactly the question. A component reads its parent's context object
+until its first publish, which makes it one of its own with
+`Object.create(parentContext)` — so a Provider ABOVE this component leaves the
+key either on an object this component does not own, or inherited here rather
+than own. Both are nesting, are ordinary, and must stay legal. Only a second
+publish on one component makes the key own on its own object. Widening this to
+`in`, or dropping the `ownsContext` half, refuses every nested Provider, and
+core's tests fail if it is.
 
 **Nothing is declared for it, and `single` is a different question.** `single`
 says whether NESTING is a fault — two on one path, on different components — and
@@ -291,6 +295,31 @@ that RENDERS a node.
 
 Splitting the keys between two Providers is not a way out, and the types already
 close it: a Provider takes `options: T` whole, so the second cannot supply half.
+
+### RMD063 — A hook used after its owner was constructed
+
+```tsx
+private timer = this.use(Timeout, () => ({ run: this.tick })); // ✓ a field
+
+open() {
+  this.timer = this.use(Timeout, () => ({ run: this.tick })); // ✗ throws
+}
+```
+
+**It THROWS**, in every build. A hook is made while its owner is made, and at no other time, so every
+`use()` runs once, in the same order, for every instance of the owner. The update walk, the hook tree
+hydration restores state into by position, and what `@ramonda/check` proves about a class all rest on
+that. A `use()` from a method, `@created`, `@mounted`, a handler or a callback runs on some instances
+and not others, at a time the owner picks — a Provider used that way is seen by the descendants built
+after it and not by the ones built before.
+
+The end of construction is marked by whoever calls `new` — the diff, hydration, and `use()` itself for
+a hook — because a base constructor runs before the subclass's field initializers and cannot mark the
+end of its own construction (`finishConstruction` in `core/runtime.ts`).
+
+The runtime cannot see a condition INSIDE the constructor; `@ramonda/check` refuses every shape but a
+field initializer, `name = this.use(…)`, as `hook-used-outside-a-field`. A hook that should do nothing at
+times is still made, and given options that make it idle.
 
 ### RMD057 — A context consumed above the provider on the same component
 

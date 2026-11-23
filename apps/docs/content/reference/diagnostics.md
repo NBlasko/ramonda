@@ -1994,3 +1994,55 @@ through its own callback, which writes state. An event handler is not a commit's
 
 `ramonda-check` reports the same edit before it ships, as
 [`field-set-by-an-event`](/reference/check).
+
+## RMD063 — A hook used after its owner was constructed
+
+```tsx expect-report:hook-used-outside-a-field
+import { Component, Timeout } from "@ramonda/core";
+
+class Toast extends Component {
+  private timer: Timeout | undefined;
+
+  open() {
+    this.timer = this.use(Timeout, () => ({ run: this.close }));   // ✗ throws: Toast is built
+    this.timer.start(3000);
+  }
+
+  close() {}
+
+  render() {
+    return <button onclick={this.open}>Show</button>;
+  }
+}
+```
+
+A hook is made while its owner is made, and at no other time. Every owner then makes the same hooks,
+once, in the same order: the update walk, the hook tree hydration restores state into, and what
+`ramonda-check` proves about a class all rest on that. A `use()` from a method, `@created`, `@mounted`,
+a handler or a callback would run on some instances and not on others, at a time the owner picks — a
+Provider used that way is seen by the descendants built after it and not by the ones built before.
+So it throws, in every build.
+
+Make the hook a field, and give it options that make it idle until it is wanted:
+
+```tsx
+import { Component, Timeout } from "@ramonda/core";
+
+class Toast extends Component {
+  private timer = this.use(Timeout, () => ({ run: this.close }));   // ✓ made with the owner
+
+  open() {
+    this.timer.start(3000);
+  }
+
+  close() {}
+
+  render() {
+    return <button onclick={this.open}>Show</button>;
+  }
+}
+```
+
+`ramonda-check` reports every shape but a field before anything runs — including a `use()` behind a
+condition or in a loop inside a field or the constructor, which runs while the owner is built and so
+cannot be refused at run time — as [`hook-used-outside-a-field`](/reference/check).

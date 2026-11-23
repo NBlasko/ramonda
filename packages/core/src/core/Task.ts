@@ -3,7 +3,7 @@ import { displayName } from "../helpers/utils";
 import { refreshComponentRegion } from "./DiffAndMerge";
 import { errorHandler } from "./errorHandler";
 import { COMPONENT_RUNTIME, GLOBAL_RUNTIME, INTERNAL_HOOKS } from "./runtime";
-import { runComponentEffects } from "../reactivity/effect";
+import { queueComponentEffects } from "../reactivity/effect";
 import { runWatchProps } from "../helpers/watchProps";
 import { notifyComponentUpdate } from "../debug/devtoolsBridge";
 import {
@@ -12,7 +12,6 @@ import {
   hasPendingPostCommit,
   hasPendingUpdated,
   inACommit,
-  queuePostCommit,
   queueUpdated,
 } from "./commit";
 import { reportWriteAfterUnmount, reportOrphanedUpdate, isRunawayUpdate, startDrain } from "../debug/updateRules";
@@ -145,7 +144,7 @@ function insertTaskInQueue(component: BaseComponent<unknown>) {
 
 function updateBuild(component: BaseComponent<unknown>) {
   if (component[INTERNAL_HOOKS]) {
-    for (const update of component[INTERNAL_HOOKS].list) {
+    for (const update of component[INTERNAL_HOOKS]) {
       update();
     }
   }
@@ -189,7 +188,7 @@ function updateBuild(component: BaseComponent<unknown>) {
   // own effect ran before the child had subscribed. `flushPostCommit` at the end
   // of the drain still runs everything within the same microtask, so nothing
   // moved except the order relative to children.
-  queuePostCommit(component, () => runComponentEffects(component));
+  queueComponentEffects(component);
 }
 
 /**

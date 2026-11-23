@@ -71,7 +71,7 @@ The callback form re-renders the portalled content when the values it reads chan
 any other reactive read:
 
 ```tsx
-this.use(Portal, (self) => ({
+private sheet = this.use(Portal, (self) => ({
   children: <div className="sheet">{self.rows} rows</div>,
   target: document.body,
 }));
@@ -87,7 +87,7 @@ does.
 second copy left behind:
 
 ```tsx
-this.use(Portal, (self) => ({
+private sheet = this.use(Portal, (self) => ({
   children: <div className="sheet">…</div>,
   target: self.wide ? document.body : self.localAnchor, // full-screen vs in place
 }));
@@ -100,7 +100,7 @@ then, not lost.
 A target that goes away takes the content off the page, which is how a modal closes:
 
 ```tsx
-this.use(Portal, (self) => ({
+private modal = this.use(Portal, (self) => ({
   children: <Dialog />,
   target: (self.open ? document.body : undefined) as Element,
 }));
@@ -125,7 +125,7 @@ A portal's children go through the real reconciler, so a list is a list — mint
 per-item scopes, the whole-list skip. Nothing about it is special because it is portalled:
 
 ```tsx expect-report:row-without-a-key
-this.use(Portal, () => ({
+private rows = this.use(Portal, () => ({
   children: list(this.rows, (item) => <Row item={item} />),
   target: modals,
 }));
@@ -163,11 +163,16 @@ root in the body — does not exist during a server render: your shell is assemb
 render returns, so there is no element to point at. Name it instead:
 
 ```tsx
-import { portalTarget } from "@ramonda/core";
+import { Component, Portal, portalTarget } from "@ramonda/core";
 
 const modals = portalTarget("modals");
 
-this.use(Portal, () => ({ children: <Dialog />, target: modals }));
+class Page extends Component {
+  private modal = this.use(Portal, () => ({ children: <Dialog />, target: modals }));
+  render() {
+    return <main />;
+  }
+}
 ```
 
 A token kept once — a module constant, as here, or a field — finds its container once. Written

@@ -67,9 +67,9 @@ describe("list scope cleanup", () => {
 
     const provider = (app.instance as unknown as { provider: unknown }).provider as Record<
       symbol,
-      { propsSignals: Map<string, unknown> }
+      { propsSignals: Record<string, unknown> }
     >;
-    const signal = provider[HOOK_RUNTIME].propsSignals.get("theme");
+    const signal = provider[HOOK_RUNTIME].propsSignals.theme;
 
     // Three items, the consuming component, and `App` itself — the provider runs in its owner's
     // runtime, so `App` listens to the signal it provides. This said 4 while row ids came from a

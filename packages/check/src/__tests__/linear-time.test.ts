@@ -6,6 +6,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, test } from "vitest";
 import { analyzeProject, arrangementsVisitedSoFar } from "../analyze";
+import { cpuTime } from "./cpuTime";
 
 /**
  * What a project's source holds, read in LINEAR time.
@@ -13,7 +14,8 @@ import { analyzeProject, arrangementsVisitedSoFar } from "../analyze";
  * Each case is the input a ReDoS checker (`recheck`) produced for one pattern here, grown to 40,000
  * characters, and each was MEASURED slow before its fix — two parts of a pattern that can both take
  * the same character try every way of sharing it. Asked as the DIFFERENCE from the same project with
- * a short value, because building the program is most of a run and is not what is being measured.
+ * a short value, because building the program is most of a run and is not what is being measured —
+ * and as CPU, the fewest of three, each on a project of its own (see `cpuTime`).
  */
 const FIXTURES = resolve(dirname(fileURLToPath(import.meta.url)), "fixtures");
 const N = 40_000;
@@ -57,21 +59,23 @@ function projectOf(source: string): string {
 }
 
 /**
- * The fastest of three runs. Most of a run is building the program, and under a loaded gate that
- * varies by more than the 500 ms these allow: one run of the same input failed the gate twice and
- * passed alone. A quadratic pattern over 40,000 characters costs seconds on every run, so the
- * fastest still tells the two apart and a busy machine does not.
+ * The CPU the analyzer spends on a project rendering `markup`, the fewest of three, each round on a
+ * project of its own written before the clock starts. Reading the files back is inside what is timed,
+ * and costs short and long the same.
+ *
+ * Measured on his Linux laptop (Ryzen 5 2500U), long minus short. As the code is: −171 to 121 ms alone and
+ * under coverage with four cores busy, and once 689 ms under that load in review — CPU per run under load
+ * falls on one of two levels, and short and long can land on different ones. With each pattern's
+ * quadratic form planted back: 6,254 ms for the number, 9,681 for the directive (9,600 under coverage) —
+ * the directive's input twice as long, because its quadratic form is the cheaper one. The 2,500 ms bound
+ * is 3.6 times the worst reading as the code is and 2.5 times under the lowest planted one, so a machine
+ * half again as fast still fails the plant.
  */
-const took = (markup: string) => {
-  const tsconfig = project(markup);
-  let fastest = Number.POSITIVE_INFINITY;
-  for (let run = 0; run < 3; run++) {
-    const started = performance.now();
-    analyzeProject(tsconfig);
-    fastest = Math.min(fastest, performance.now() - started);
-  }
-  return fastest;
-};
+const took = (markup: string) =>
+  cpuTime(
+    (round) => project(`${markup}\n        {/* round ${round} */}`),
+    (tsconfig) => analyzeProject(tsconfig),
+  );
 
 describe("read in linear time", () => {
   test.each<[string, (long: boolean) => string]>([
@@ -82,16 +86,16 @@ describe("read in linear time", () => {
         `        <div role="slider" aria-valuenow="0${long ? "00".repeat(N / 2) : "0"}!" aria-valuemin={0} aria-valuemax={9}>x</div>`,
     ],
     // `analyze.ts`: an ignore directive's reason, with spaces between its `*/` and a `}` both pattern
-    // halves could take.
+    // halves could take — twice as long as the number, because its quadratic form is the cheaper one.
     [
       "a directive's reason with a long run of spaces",
       (long) =>
-        `        {/* ramonda-check-ignore: why */${long ? " ".repeat(N) : " "}x}\n        <div onclick={this.go} role="button" tabindex={5}>x</div>`,
+        `        {/* ramonda-check-ignore: why */${long ? " ".repeat(2 * N) : " "}x}\n        <div onclick={this.go} role="button" tabindex={5}>x</div>`,
     ],
   ])("%s", (_what, markup) => {
     const short = took(markup(false));
     const long = took(markup(true));
-    expect(long - short).toBeLessThan(500);
+    expect(long - short).toBeLessThan(2500);
   });
 });
 

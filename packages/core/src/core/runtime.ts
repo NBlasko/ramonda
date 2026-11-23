@@ -9,20 +9,24 @@ import type { HookProps } from "../types/HookTypes";
 import type { RenderEnv } from "./renderEnv";
 import type { ServerWork } from "./serverWork";
 
-type ClearReactives = (() => void)[];
-
 export interface Runtime {
   id: number;
+  /**
+   * The context this component reads and its children inherit: its parent's own object until it
+   * publishes something — see `contextToWrite`.
+   */
   context: Context;
-  mounts: LifecycleEntry[];
-  creates: LifecycleEntry[];
-  destroys: LifecycleEntry[];
-  watchProps: WatchPropEntry[];
+  /** Whether `context` is this component's own object rather than its parent's. */
+  ownsContext: boolean;
+  mounts: readonly LifecycleEntry[];
+  creates: readonly LifecycleEntry[];
+  destroys: readonly LifecycleEntry[];
+  watchProps: readonly WatchPropEntry[];
   /**
    * `@deferHydration` methods, bound. Called only while hydrating; each may
    * return a promise, and hydration waits for all of them.
    */
-  deferHydrations: (() => unknown)[];
+  deferHydrations: readonly (() => unknown)[];
   /**
    * DEV only. The component this runtime belongs to, so a diagnostic can name it.
    *
@@ -34,22 +38,22 @@ export interface Runtime {
   /**
    * The component this runtime belongs to — always the COMPONENT, never a hook,
    * because a hook shares its owner's runtime rather than making its own (this is
-   * only ever set from `Component`'s constructor). It is the same object
-   * `reBuild` already closes over, so holding it here adds no retention.
+   * only ever set from `Component`'s constructor). It is the object `reBuild` re-renders:
+   * `reBuild()` reads `this.owner` when a signal calls it.
    *
    * A hook needs it to reach its owner as the `placeholderComponent` a reconcile
    * runs under — for the context, render side and depth a portaled subtree
    * inherits. `holder` cannot serve this: it is DEV-only.
    *
    * **Required, and it was optional until 2026-08-21 for no reason anybody could name.** Measured:
-   * `createRuntime` is the only producer of a `Runtime`, it is called from one line — `Component`'s
+   * `createComponentRuntime` is the only producer of a `Runtime`, it is called from one line — `Component`'s
    * constructor — and it always passes `this`; nothing anywhere clears the field afterwards. The
    * optionality was a type lie, and it cost two `?.` at every use plus an argument about what a
    * missing owner should mean. `owner: BaseComponent` type-checks every package in the workspace,
    * which is the proof the lie was free to remove.
    */
   owner: BaseComponent;
-  effects: Effect[];
+  effects: readonly Effect[];
   /**
    * `@updated` methods, bound. Run after the DOM of an UPDATE is committed —
    * never for the first commit, which is `@mounted`'s.
@@ -58,13 +62,13 @@ export interface Runtime {
    * decorator: nothing here is tracked, so there are no dependencies to record,
    * nothing to attach or detach, and no cleanup to run. See `runComponentUpdates`.
    */
-  updates: (() => void)[];
-  clearReactives: ClearReactives;
-  hooksOptions: (() => unknown)[];
+  updates: readonly (() => void)[];
+  clearReactives: readonly (() => void)[];
   reBuild(): void;
 }
 
-export interface ComponentRuntime {
+/** A component's own fields, on the same object as its `Runtime` — see `createComponentRuntime`. */
+export interface ComponentRuntime extends Runtime {
   depth: number;
   /**
    * The props as they arrived, keyed — not `RenderableProps<P>`.
@@ -82,7 +86,9 @@ export interface ComponentRuntime {
    * one, and dispatched by name so a subclass override wins.
    */
   catchError?: (e: unknown) => unknown;
-  propsSignals: Map<string, State<unknown>>;
+  propsSignals: PropSignals;
+  /** Whether construction is over — see `finishConstruction`. */
+  constructed: boolean;
   parent?: BaseComponent;
   inBuildQueue?: boolean;
   isInitialized?: boolean;
@@ -147,7 +153,9 @@ export interface HookRuntime {
    * it structural instead of a convention.
    */
   rawProps: Record<string, unknown>;
-  propsSignals: Map<string, State<unknown>>;
+  propsSignals: PropSignals;
+  /** Whether construction is over — see `finishConstruction`. */
+  constructed: boolean;
 }
 
 export const GLOBAL_RUNTIME = Symbol("globalRuntime");
@@ -156,63 +164,199 @@ export const HOOK_RUNTIME = Symbol("hookRuntime");
 export const INTERNAL_HOOKS = Symbol("internalHooks");
 
 /**
- * The hooks an owner walks on each update, in `use()` order — held in a box rather than on the owner.
+ * The context a component publishes on — its own object, made here the first time it publishes.
  *
- * A hook woken into the middle REPLACES `list` instead of changing it, so a walk in progress finishes over
- * the list it began with (see `register` in `helpers/common.ts`). The box is written onto the owner once: a hook may
- * freeze itself in its constructor, and a frozen owner takes no new property value, while the box it
- * already holds stays writable — freezing is shallow.
+ * A component reads its parent's context object until then, and so do the children it builds: most
+ * components publish nothing, and an own object for each was `Object.create(parent)` per component —
+ * measured in Chrome after creating 1,000 rows of five components, every component with a child
+ * became a PROTOTYPE, 1.4 hidden classes and a prototype record per component. The object has to be
+ * in place before the component builds anything, and every publisher makes it while the component is
+ * constructed: a Provider publishes as it is made, and a hook is made with its owner (RMD063); `Head`
+ * publishes in `@created`, so it calls this from its constructor — a `Portal` used before it builds
+ * its children in its own `@created`, which runs first.
+ *
+ * Made with `Object.create(parent)`, so a read still walks to the nearest ancestor that published,
+ * and a write lands as an OWN property, which keeps it from the component's siblings.
  */
-export interface HookWalk {
-  list: (() => void)[];
+export function contextToWrite(runtime: Runtime): Context {
+  if (!runtime.ownsContext) {
+    runtime.context = Object.create(runtime.context) as Context;
+    runtime.ownsContext = true;
+  }
+  return runtime.context;
 }
+
+/**
+ * A component's or hook's prop signals, by prop name — one made the first time a prop is read.
+ *
+ * An instance of a class whose prototype holds nothing, not even `Object.prototype`, rather than a `Map`:
+ * a `Map` keeps a hash table of its own, and nearly every component reads one or two props. Measured in
+ * Chrome after creating 1,000 rows of five components: the store was a `Map` and its table, about 86 B
+ * of the 644 B a component kept. An instance of a class is a fast object whose fields sit in it. With
+ * nothing in its prototype, `signals.constructor` or `signals.toString` is `undefined` — a prop may be
+ * named anything — where `{}` would answer from `Object.prototype`. `Object.create(null)` would answer
+ * the same, but V8 keeps it as a dictionary, as large as the `Map`.
+ */
+export interface PropSignals {
+  [prop: string]: State<unknown> | undefined;
+}
+
+class PropSignalStore {}
+Object.setPrototypeOf(PropSignalStore.prototype, null);
+delete (PropSignalStore.prototype as { constructor?: unknown }).constructor;
+
+/** The hooks an owner walks on each update, in `use()` order: each one's update. */
+export type HookWalk = (() => void)[];
+
+/**
+ * Marks a component or hook as constructed: from here on, `use()` on it throws (RMD063).
+ *
+ * Written by whoever calls `new`, once it returns: the base constructors run FIRST, before a subclass's
+ * field initializers, so nothing inside the instance can mark the end of its own construction. The
+ * framework calls `new` in three places — a component built by the diff, one adopted by hydration, and
+ * a hook in `use()` — and each marks what it built.
+ *
+ * On the runtime the instance already has, not in a `WeakSet`: measured in Chrome, a set that had held
+ * every component of 1,000 rows kept its 64 KB table after the rows were cleared.
+ */
+export function finishConstruction(instance: object): void {
+  runtimeOf(instance).constructed = true;
+}
+
+/** Whether a component or hook has finished being constructed. */
+export function isConstructed(instance: object): boolean {
+  return runtimeOf(instance).constructed;
+}
+
+/** A hook's own runtime, or a component's — the one that says whether it is constructed. */
+function runtimeOf(instance: object): { constructed: boolean } {
+  const of = instance as { [HOOK_RUNTIME]?: HookRuntime; [COMPONENT_RUNTIME]: ComponentRuntime };
+  return of[HOOK_RUNTIME] ?? of[COMPONENT_RUNTIME];
+}
+
 // Child hook instances of a component/hook, in `use()` order — a deterministic
 // tree used to serialize/restore state across the server→client boundary.
 export const CHILD_HOOKS = Symbol("childHooks");
 
-export const createRuntime = (that: BaseComponent<unknown>, context: Context): Runtime => {
-  const runtime: Runtime = {
-    reBuild: () => addTaskToQueue(that),
-    mounts: [],
-    hooksOptions: [],
-    effects: [],
-    updates: [],
-    context,
-    clearReactives: [],
-    id: createId(),
-    creates: [],
-    destroys: [],
-    watchProps: [],
-    deferHydrations: [],
-    // `that` is the component — `createRuntime` is only ever called from
-    // `Component`'s constructor. No extra retention: `reBuild` already closes
-    // over the same object.
-    owner: that,
-  };
+/**
+ * The one empty list every runtime starts with, in each of its lists, until something is added — see `addTo`.
+ *
+ * Most components declare no `@mounted`, no `@effect`, no `@updated`: measured in Chrome after creating
+ * 1,000 rows of five components, the eight lists were eight empty arrays per component, 144 B of the
+ * 1,602 each component held. Frozen, so a `push` that bypasses `addTo` throws instead of handing its
+ * entry to every component at once.
+ */
+const NONE: readonly never[] = Object.freeze([]);
 
-  // The DEV-only twin of `owner`, kept separate because a diagnostic reads it and
-  // production must not: same object, stripped from the prod build.
+/** The names of a runtime's lists. */
+type RuntimeList =
+  | "mounts"
+  | "creates"
+  | "destroys"
+  | "watchProps"
+  | "deferHydrations"
+  | "effects"
+  | "updates"
+  | "clearReactives";
+
+type EntryOf<L> = L extends readonly (infer E)[] ? E : never;
+
+/**
+ * Adds an entry to one of a runtime's lists — the only way one is added, which the `readonly` on each
+ * list enforces. A list still holding `NONE` gets an array of its own here, on its first entry.
+ *
+ * A loop already walking that list is unaffected either way: a list that was `NONE` when the loop began
+ * had nothing to walk, and one that was already its own is pushed onto in place.
+ */
+export function addTo<K extends RuntimeList>(runtime: Runtime, key: K, entry: EntryOf<Runtime[K]>): void {
+  const list: unknown = runtime[key];
+  if (list === NONE) {
+    (runtime as unknown as Record<K, unknown[]>)[key] = [entry];
+    return;
+  }
+  (list as unknown[]).push(entry);
+}
+
+/**
+ * The class a component's runtime is an instance of — so `reBuild` is ONE method on its prototype rather
+ * than a closure made for every component, and the runtime itself is what a component's signals call:
+ * `State.heardBy(value, runtime.id, runtime)`. Measured in Chrome after creating 1,000 rows of five
+ * components: the `reBuild` closure and the scope it kept were 48 B of the 582 B a component kept.
+ */
+class ComponentRuntimeRecord {
+  mounts: readonly LifecycleEntry[] = NONE;
+  effects: readonly Effect[] = NONE;
+  updates: readonly (() => void)[] = NONE;
+  context: Context;
+  ownsContext = false;
+  clearReactives: readonly (() => void)[] = NONE;
+  id: number = createId();
+  creates: readonly LifecycleEntry[] = NONE;
+  destroys: readonly LifecycleEntry[] = NONE;
+  watchProps: readonly WatchPropEntry[] = NONE;
+  deferHydrations: readonly (() => unknown)[] = NONE;
+  owner: BaseComponent;
+  holder?: object;
+  rawProps: Record<string | symbol, unknown>;
+  depth = 1;
+  propsSignals: PropSignals = new PropSignalStore() as PropSignals;
+  env: RenderEnv = "client";
+  constructed = false;
+  catchError: ((e: unknown) => unknown) | undefined = undefined;
+  parent: BaseComponent | undefined = undefined;
+  inBuildQueue: boolean | undefined = undefined;
+  isInitialized: boolean | undefined = undefined;
+  hydrationPending: boolean | undefined = undefined;
+  serverWork: ServerWork | undefined = undefined;
+  isDestroyed: boolean | undefined = undefined;
+  block: EnclosingBlock | undefined = undefined;
+  region: ComponentRegion | undefined = undefined;
+
+  constructor(that: BaseComponent<unknown>, context: Context, rawProps: Record<string | symbol, unknown> | undefined) {
+    this.context = context;
+    this.owner = that;
+    this.rawProps = rawProps ?? {};
+  }
+
+  /** Re-renders the component: queues it — see `addTaskToQueue`. */
+  reBuild(): void {
+    addTaskToQueue(this.owner);
+  }
+}
+
+/**
+ * A component's runtime: ONE object, which the instance holds under both `GLOBAL_RUNTIME` and
+ * `COMPONENT_RUNTIME`. The two halves were two objects made side by side in `Component`'s constructor
+ * and never apart for a moment of their lives; one object is one allocation fewer per component and
+ * one shape. A hook is handed this same object as its `GLOBAL_RUNTIME` — its owner's — and keeps a
+ * `HookRuntime` of its own.
+ *
+ * Every field it will ever hold is there from construction, the optional ones as `undefined` (see
+ * `ComponentRuntimeRecord`). A field added later — `parent`, `block` and `region` are set while the
+ * component is built, the flags through its life — changes the object's hidden class, and V8 then keeps
+ * it in a separate property array. Measured in Chrome after creating 1,000 rows of five components:
+ * 3.4 property arrays per component (about 120 B), and one more shape transition for each field.
+ */
+export const createComponentRuntime = (
+  that: BaseComponent<unknown>,
+  context: Context,
+  rawProps: Record<string | symbol, unknown> | undefined,
+): ComponentRuntime => {
+  const runtime = new ComponentRuntimeRecord(that, context, rawProps);
+
+  // The DEV-only twin of `owner`, kept separate because a diagnostic reads it and production must
+  // not: the field is on every runtime, `undefined` in production, and only this assignment is
+  // stripped from the prod build.
   if (__DEV__) runtime.holder = that;
 
   return runtime;
-};
-
-export const createComponentRuntime = (
-  rawProps: Record<string | symbol, unknown> | undefined,
-  env: RenderEnv = "client",
-): ComponentRuntime => {
-  return {
-    rawProps: rawProps ?? {},
-    depth: 1,
-    propsSignals: new Map<string, State<unknown>>(),
-    env,
-  };
 };
 
 export const createHookRuntime = (rawProps: HookProps): HookRuntime => {
   return {
     // A hook with no props still needs a bag to read from — see HookRuntime.
     rawProps: rawProps ?? {},
-    propsSignals: new Map<string, State<unknown>>(),
+    propsSignals: new PropSignalStore() as PropSignals,
+    constructed: false,
   };
 };

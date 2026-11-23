@@ -64,7 +64,7 @@ back until one of these is true:
 That is the default. `validateOn` moves when a field validates for the *first* time:
 
 ```tsx
-this.use(Form<typeof schema>, () => ({ schema, defaultValues, onSubmit, validateOn: "blur" }));
+private form = this.use(Form<typeof schema>, () => ({ schema, defaultValues, onSubmit, validateOn: "blur" }));
 ```
 
 | | |
