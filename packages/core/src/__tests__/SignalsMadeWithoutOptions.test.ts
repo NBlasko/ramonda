@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { State } from "../reactivity/State";
-import { attach } from "../helpers/constants";
+import { attach, detach } from "../helpers/constants";
 
 /**
  * The signals made for every component — one per prop it reads, one per `@state` — are made with their
@@ -44,5 +44,29 @@ describe("signals made for every component", () => {
     state.set(3);
     expect([heard, replaced]).toEqual([1, 1]);
     expect(state.get()).toBe(3);
+  });
+
+  /**
+   * The path production takes: a component's signal is heard by its RUNTIME, an object whose `reBuild` it
+   * calls with that object as `this`. A second listener — a list row, a context consumer — moves both
+   * into the Map, and each is still called its own way; each leaves by its id.
+   */
+  test("an object listener is called as one, through the move to a Map and after a detach", () => {
+    const calls: string[] = [];
+    const runtime = {
+      name: "runtime",
+      reBuild(this: { name: string }) {
+        calls.push(this.name);
+      },
+    };
+    const state = State.heardBy(1, 1, runtime);
+    state.set(2);
+    state[attach]({ id: 2, onChange: () => calls.push("row") });
+    state.set(3);
+    state[detach](2);
+    state.set(4);
+    state[detach](1);
+    state.set(5);
+    expect(calls).toEqual(["runtime", "runtime", "row", "runtime"]);
   });
 });

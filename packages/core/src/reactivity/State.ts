@@ -21,21 +21,6 @@ export interface StateOptions<T> {
 }
 
 /**
- * The reactive primitive. An app holds thousands of these and `set` runs on
- * every state change, so the shape is kept deliberately small:
- *
- * Internal to the framework: apps reach reactivity through @state / @compute /
- * context, never through this class.
- *
- * - **No debug fields.** Names live in a DEV-only WeakMap (`debug/stateLabels`),
- *   because a declared field costs a slot per instance even when never assigned.
- * - **Listeners start as a single slot.** Nearly every signal has exactly one
- *   listener — the owning component's `reBuild` — so the Map is allocated only
- *   when a second one arrives. That is most of the memory difference.
- * - **No snapshot on the common path.** `Array.from(listeners.values())` used to
- *   allocate on every set; with one listener there is nothing to snapshot.
- */
-/**
  * What a signal calls when it changes: a function, or an object it calls `reBuild` on — a component's
  * runtime, which re-renders its component. See `heardBy`.
  */
@@ -47,6 +32,21 @@ function call(listener: Heard): void {
   else listener.reBuild();
 }
 
+/**
+ * The reactive primitive. An app holds thousands of these and `set` runs on
+ * every state change, so the shape is kept deliberately small:
+ *
+ * Internal to the framework: apps reach reactivity through @state / @compute /
+ * context, never through this class.
+ *
+ * - **No debug fields.** Names live in a DEV-only WeakMap (`debug/stateLabels`),
+ *   because a declared field costs a slot per instance even when never assigned.
+ * - **Listeners start as a single slot.** Nearly every signal has exactly one
+ *   listener — the owning component's runtime, whose `reBuild` it calls — so the
+ *   Map is allocated only when a second one arrives. That is most of the memory difference.
+ * - **No snapshot on the common path.** `Array.from(listeners.values())` used to
+ *   allocate on every set; with one listener there is nothing to snapshot.
+ */
 export class State<T> {
   private _value: T;
 

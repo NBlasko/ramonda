@@ -38,8 +38,8 @@ export interface Runtime {
   /**
    * The component this runtime belongs to — always the COMPONENT, never a hook,
    * because a hook shares its owner's runtime rather than making its own (this is
-   * only ever set from `Component`'s constructor). It is the same object
-   * `reBuild` already closes over, so holding it here adds no retention.
+   * only ever set from `Component`'s constructor). It is the object `reBuild` re-renders:
+   * `reBuild()` reads `this.owner` when a signal calls it.
    *
    * A hook needs it to reach its owner as the `placeholderComponent` a reconcile
    * runs under — for the context, render side and depth a portaled subtree
@@ -277,20 +277,6 @@ export function addTo<K extends RuntimeList>(runtime: Runtime, key: K, entry: En
   (list as unknown[]).push(entry);
 }
 
-/**
- * A component's runtime: ONE object, which the instance holds under both `GLOBAL_RUNTIME` and
- * `COMPONENT_RUNTIME`. The two halves were two objects made side by side in `Component`'s constructor
- * and never apart for a moment of their lives; one object is one allocation fewer per component and
- * one shape. A hook is handed this same object as its `GLOBAL_RUNTIME` — its owner's — and keeps a
- * `HookRuntime` of its own.
- *
- * Every field it will ever hold is written here, the optional ones as `undefined`. A field added later
- * — `parent`, `block` and `region` are set while the component is built, the flags through its life —
- * changes the object's hidden class, and V8 then keeps it in a separate property array. Measured in
- * Chrome after creating 1,000 rows of five components: 3.4 property arrays per component (about
- * 120 B), and one more shape transition for each field. Written here, every runtime has the same shape
- * from birth, and its fields stay in the object.
- */
 /**
  * The class a component's runtime is an instance of — so `reBuild` is ONE method on its prototype rather
  * than a closure made for every component, and the runtime itself is what a component's signals call:
