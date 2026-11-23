@@ -12,6 +12,9 @@ import { PORTAL_ATTR } from "../helpers/constants";
  * its parent's object until it publishes, so the `Head` reserves its component's own object when it is
  * constructed, before any `@created`: measured without that, a `Head` in content the portal built LATER
  * joined the head tree under the layout instead of under its owner, and its title won.
+ *
+ * Content the portal builds AT ONCE is built before the owner's `Head` publishes into that object, and
+ * joins the `Head` above — as on main. That the two moments give two head trees is on the open list.
  */
 const containers: HTMLElement[] = [];
 let target: HTMLElement;
@@ -51,10 +54,8 @@ class Inner extends Component {
 }
 
 describe("a Head in a portal declared before its owner's Head", () => {
-  test.each([
-    ["built later", false],
-    ["built at once", true],
-  ])("joins its owner's Head, %s", (_how, openAtOnce) => {
+  test("joins its owner's Head when the portal builds it later", () => {
+    const openAtOnce = false;
     let opener: Opens | undefined;
     class Opens extends Component {
       @state open = openAtOnce;

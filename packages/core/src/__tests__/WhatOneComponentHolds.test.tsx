@@ -732,7 +732,10 @@ describe("a first render", () => {
    * focused, it keeps the focus, as main's walk keeps it: the path that skips that walk is taken only
    * when no node coming in is attached anywhere.
    */
-  test("a node moved out by hand and focused keeps its focus when it is brought back", () => {
+  test.each([
+    ["last", false],
+    ["first", true],
+  ])("a node moved out by hand and focused keeps its focus when it is brought back %s", (_where, fieldFirst) => {
     class Field extends Component {
       render() {
         return <input id="moved-field" />;
@@ -746,7 +749,12 @@ describe("a first render", () => {
         page = this;
       }
       render() {
-        return (
+        return fieldFirst ? (
+          <div id="moved-host">
+            <Field />
+            {this.show ? <span /> : null}
+          </div>
+        ) : (
           <div id="moved-host">
             {this.show ? <span /> : null}
             <Field />

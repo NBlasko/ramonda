@@ -187,7 +187,8 @@ export class Head extends Hook<HeadOptions> {
    * `@created`, which runs first: those children took the shared object, and the object this hook then
    * made was not theirs. Measured: a `Head` in content the portal built later joined the head tree under
    * the layout rather than under its owner, and its title won. Made here, the object is in place before
-   * anything the component builds.
+   * anything the component builds, and content built after this hook publishes reads it. Content a
+   * portal builds AT ONCE is built before the publish, and joins the `Head` above, as on main.
    */
   constructor(...args: ConstructorParameters<typeof Hook<HeadOptions>>) {
     super(...args);
